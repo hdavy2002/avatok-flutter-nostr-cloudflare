@@ -179,9 +179,38 @@ def patch_desugaring() -> None:
         print("desugaring enabled (build.gradle)")
 
 
+def patch_dependency_conflicts() -> None:
+    """flutter_webrtc and RealtimeKit both ship a 'com.twilio.audioswitch'
+    namespace (davidliu fork vs com.twilio:audioswitch), which breaks the
+    manifest merger. Keep Twilio's original; drop the fork."""
+    kts = APP / "android/app/build.gradle.kts"
+    g = APP / "android/app/build.gradle"
+    if kts.exists():
+        t = kts.read_text()
+        if "com.github.davidliu" not in t:
+            t += (
+                '\n\nconfigurations.all {\n'
+                '    // Resolve audioswitch namespace clash (flutter_webrtc vs RealtimeKit)\n'
+                '    exclude(group = "com.github.davidliu", module = "audioswitch")\n'
+                '}\n'
+            )
+            kts.write_text(t)
+            print("excluded davidliu:audioswitch (kts)")
+    elif g.exists():
+        t = g.read_text()
+        if "com.github.davidliu" not in t:
+            t += (
+                "\nconfigurations.all {\n"
+                "    exclude group: 'com.github.davidliu', module: 'audioswitch'\n}\n"
+            )
+            g.write_text(t)
+            print("excluded davidliu:audioswitch (groovy)")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_sdks()
     patch_root_compile_sdk()
     patch_desugaring()
+    patch_dependency_conflicts()
     print("postcreate: done")
