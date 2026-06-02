@@ -1,13 +1,71 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme.dart';
+import '../../identity/identity.dart';
 import '../tok/tok_home.dart';
 import '../live/live_home.dart';
 
 /// The AvaTalk launcher — one identity, many apps. AvaTok + AvaLive are live;
 /// the rest are shown locked until their stages ship.
 class HomeLauncher extends StatelessWidget {
-  const HomeLauncher({super.key});
+  final Identity identity;
+  const HomeLauncher({super.key, required this.identity});
+
+  void _showProfile(BuildContext context) {
+    bool revealed = false;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Your identity', style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              const Text('Public key (npub)',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.brand)),
+              const SizedBox(height: 6),
+              SelectableText(identity.npub,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Copy npub'),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: identity.npub));
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Copied')));
+                },
+              ),
+              const Divider(height: 28),
+              const Text('Secret key (nsec) — never share',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.danger)),
+              const SizedBox(height: 6),
+              if (!revealed)
+                TextButton.icon(
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                  icon: const Icon(Icons.visibility, size: 16),
+                  label: const Text('Reveal secret key'),
+                  onPressed: () => setSheet(() => revealed = true),
+                )
+              else
+                SelectableText(identity.nsec,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   static const _apps = <_AppTile>[
     _AppTile('AvaTok', '1:1 video calls', Icons.videocam, AvaColors.brand, true),
@@ -29,13 +87,39 @@ class HomeLauncher extends StatelessWidget {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                child: Column(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('AvaTalk', style: AvaTheme.wordmark(34)),
-                    const SizedBox(height: 2),
-                    const Text('One identity. Every social format.',
-                        style: TextStyle(color: AvaColors.sub, fontSize: 13)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('AvaTalk', style: AvaTheme.wordmark(34)),
+                          const SizedBox(height: 2),
+                          const Text('One identity. Every social format.',
+                              style: TextStyle(color: AvaColors.sub, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => _showProfile(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.person, size: 16, color: AvaColors.brand),
+                            const SizedBox(width: 6),
+                            Text(identity.shortNpub,
+                                style: const TextStyle(
+                                    fontSize: 11, fontFamily: 'monospace')),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),

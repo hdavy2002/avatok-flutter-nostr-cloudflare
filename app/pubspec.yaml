@@ -14,6 +14,8 @@ dependencies:
   permission_handler: ^11.3.1
   uuid: ^4.5.1
   google_fonts: ^6.2.1
+  bip340: ^1.0.4
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_lints: ^4.0.0
