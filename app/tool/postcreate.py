@@ -68,7 +68,56 @@ def patch_sdks() -> None:
         sys.exit(1)
 
 
+def patch_root_compile_sdk() -> None:
+    """Force compileSdk 35 on ALL subprojects (plugins).
+
+    flutter_webrtc's own module pins a lower compileSdk than its androidx
+    deps require, failing :flutter_webrtc:checkDebugAarMetadata. Override it
+    from the root project so every plugin module compiles against API 35.
+    """
+    root_kts = APP / "android/build.gradle.kts"
+    root_g = APP / "android/build.gradle"
+    marker = "AVATOK_FORCE_COMPILE_SDK"
+    if root_kts.exists():
+        t = root_kts.read_text()
+        if marker not in t:
+            block = f'''
+// {marker}: plugins (e.g. flutter_webrtc) need compileSdk 35.
+subprojects {{
+    afterEvaluate {{
+        extensions.findByName("android")?.let {{ ext ->
+            (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(35)
+        }}
+    }}
+}}
+'''
+            root_kts.write_text(t + "\n" + block)
+            print("root build.gradle.kts: forced subproject compileSdk 35")
+        else:
+            print("root build.gradle.kts: compileSdk override already present")
+    elif root_g.exists():
+        t = root_g.read_text()
+        if marker not in t:
+            block = f'''
+// {marker}
+subprojects {{
+    afterEvaluate {{ project ->
+        if (project.hasProperty("android")) {{
+            project.android {{ compileSdkVersion 35 }}
+        }}
+    }}
+}}
+'''
+            root_g.write_text(t + "\n" + block)
+            print("root build.gradle: forced subproject compileSdk 35")
+        else:
+            print("root build.gradle: compileSdk override already present")
+    else:
+        print("!! no root android build.gradle(.kts) found")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_sdks()
+    patch_root_compile_sdk()
     print("postcreate: done")
