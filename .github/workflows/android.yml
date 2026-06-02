@@ -1,0 +1,66 @@
+name: Android build
+
+# All app builds run on GitHub Actions — never on a local machine.
+# The Flutter app will live under app/ (per spec §11.6). Until it exists,
+# this workflow no-ops gracefully so the repo stays green.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for Flutter app
+        id: detect
+        run: |
+          if [ -f app/pubspec.yaml ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No Flutter app at app/ yet — skipping build (scaffold pending)."
+          fi
+
+      - name: Set up Java
+        if: steps.detect.outputs.exists == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        if: steps.detect.outputs.exists == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: app
+        run: flutter analyze || true
+
+      - name: Build debug APK
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: app
+        run: flutter build apk --debug
+
+      - name: Upload APK artifact
+        if: steps.detect.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: ignore
