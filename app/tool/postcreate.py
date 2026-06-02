@@ -83,11 +83,14 @@ def patch_root_compile_sdk() -> None:
         if marker not in t:
             block = f'''
 // {marker}: plugins (e.g. flutter_webrtc) need compileSdk 35.
+// Use plugins.withId (fires on plugin apply) to avoid afterEvaluate timing
+// errors caused by the root project's evaluationDependsOn(":app").
 subprojects {{
-    afterEvaluate {{
-        extensions.findByName("android")?.let {{ ext ->
-            (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(35)
-        }}
+    plugins.withId("com.android.library") {{
+        (extensions.getByName("android") as com.android.build.gradle.BaseExtension).compileSdkVersion(35)
+    }}
+    plugins.withId("com.android.application") {{
+        (extensions.getByName("android") as com.android.build.gradle.BaseExtension).compileSdkVersion(35)
     }}
 }}
 '''
