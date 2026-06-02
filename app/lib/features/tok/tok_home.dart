@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/theme.dart';
 import 'call_page.dart';
+import 'group_call.dart';
 
 /// AvaTok home — enter a room code and start a 1:1 call.
 class TokHome extends StatefulWidget {
@@ -69,7 +70,17 @@ class _TokHomeState extends State<TokHome> {
               child: FilledButton.icon(
                 onPressed: _join,
                 icon: const Icon(Icons.video_call),
-                label: const Text('Start call'),
+                label: const Text('Start 1:1 call'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => const GroupCallEntry())),
+                icon: const Icon(Icons.groups),
+                label: const Text('Group call (SFU)'),
               ),
             ),
             const Spacer(),
