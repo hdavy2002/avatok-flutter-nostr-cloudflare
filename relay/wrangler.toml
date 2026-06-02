@@ -1,0 +1,14 @@
+name = "avatok-relay"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+
+# Nostr relay (NIP-01) for AvaTalk. New infra on avatok.ai; nothing reused from
+# the old avatok app. Custom hostname relay.avatok.ai added later.
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "RelayRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayRoom"]

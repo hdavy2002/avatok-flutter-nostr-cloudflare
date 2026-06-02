@@ -65,3 +65,6 @@ npm-debug.log*
 node_modules/
 dist/
 .wrangler/
+config/google-services.json
+relay/node_modules/
+relay/package-lock.json

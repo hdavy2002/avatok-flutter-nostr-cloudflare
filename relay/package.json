@@ -1,0 +1,9 @@
+{
+  "name": "avatok-relay",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.7.1"
+  }
+}

@@ -77,6 +77,11 @@
 - Old DNS records / hostnames pointing at OLD workers/buckets are decommission
   candidates once new infra is live.
 
+## 3b. Cloudflare RealtimeKit apps
+- ♻️ `avatok-flutter` (7e5b20c0-da74-4848-9884-73af53bb3fb0) — NEW app, keep.
+- 🟡 `avaglobal` (572a14a9-2021-49f5-9fe9-843e819de5e1) — 7mo old, likely old avatok. Confirm → decommission.
+- 🟡 `avablobal` (ff1d6765-d58a-4d1d-a515-4b886186c6a1) — 7mo old, likely old avatok. Confirm → decommission.
+
 ## 4. Other vendors (verify for old-avatok footprint)
 - Bunny.net — old Stream library/pull zone for avatok video. No MCP connected.
 - Stripe — account `acct_1TPECFA05rLa7En1` "FynextLabs sandbox" (sandbox, not prod).
