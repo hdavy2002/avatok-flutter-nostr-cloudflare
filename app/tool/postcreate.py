@@ -144,8 +144,44 @@ subprojects {{
         print("!! no root android build.gradle(.kts) found")
 
 
+def patch_desugaring() -> None:
+    """Enable core library desugaring (RealtimeKit core-android requires it)."""
+    kts = APP / "android/app/build.gradle.kts"
+    g = APP / "android/app/build.gradle"
+    if kts.exists():
+        t = kts.read_text()
+        if "isCoreLibraryDesugaringEnabled" not in t:
+            if re.search(r"compileOptions\s*\{", t):
+                t = re.sub(r"(compileOptions\s*\{)",
+                           r"\1\n        isCoreLibraryDesugaringEnabled = true", t, count=1)
+            else:
+                t = re.sub(r"(android\s*\{)",
+                           r"\1\n    compileOptions {\n"
+                           r"        isCoreLibraryDesugaringEnabled = true\n"
+                           r"        sourceCompatibility = JavaVersion.VERSION_11\n"
+                           r"        targetCompatibility = JavaVersion.VERSION_11\n"
+                           r"    }", t, count=1)
+        if "desugar_jdk_libs" not in t:
+            t += ('\n\ndependencies {\n'
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                  '}\n')
+        kts.write_text(t)
+        print("desugaring enabled (build.gradle.kts)")
+    elif g.exists():
+        t = g.read_text()
+        if "coreLibraryDesugaringEnabled" not in t:
+            t = re.sub(r"(compileOptions\s*\{)",
+                       r"\1\n        coreLibraryDesugaringEnabled true", t, count=1)
+        if "desugar_jdk_libs" not in t:
+            t += ("\ndependencies {\n"
+                  "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n")
+        g.write_text(t)
+        print("desugaring enabled (build.gradle)")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_sdks()
     patch_root_compile_sdk()
+    patch_desugaring()
     print("postcreate: done")
