@@ -8,7 +8,11 @@ RealtimeKit org key) live only in Cloudflare Worker secrets / the gitignored
 - Account ID: `fd3dbf43f8e6d8bf65bd36b02eb0abb0` (hdavy2005@gmail.com)
 - Signaling Worker (temp, calls): `https://avatok-call-signaling.getmystuffme.workers.dev`
 - **Nostr relay (NIP-01):** `wss://avatok-relay.getmystuffme.workers.dev` → maps to `relay.avatok.ai` later
-- RealtimeKit app `avatok-flutter`: `7e5b20c0-da74-4848-9884-73af53bb3fb0` (for SFU group calls / AvaLive)
+- **Calls/SFU token API:** `https://avatok-calls.getmystuffme.workers.dev/join` (mints RealtimeKit participant tokens)
+- RealtimeKit app `avatok-flutter`: `7e5b20c0-da74-4848-9884-73af53bb3fb0`
+  - Presets: `group_call_host` / `group_call_participant` / `group_call_guest` (AvaTok SFU);
+    `livestream_host` / `livestream_viewer` (AvaLive)
+  - Auth: Cloudflare API token w/ Realtime permission (stored as Worker secret `CF_API_TOKEN`)
 
 ## Clerk (existing avatok.ai tenant)
 - Publishable key (public): `pk_live_Y2xlcmsuYXZhdG9rLmFpJA`

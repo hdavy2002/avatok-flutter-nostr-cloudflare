@@ -1,0 +1,14 @@
+name = "avatok-calls"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+
+# Mints Cloudflare RealtimeKit participant tokens for group calls (AvaTok SFU)
+# and livestreams (AvaLive). CF_API_TOKEN is a Worker secret (wrangler secret put).
+
+[vars]
+ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
+APP_ID = "7e5b20c0-da74-4848-9884-73af53bb3fb0"
+
+[[kv_namespaces]]
+binding = "ROOMS"
+id = "7dd03bd92252484093870d3af7cd7f83"
