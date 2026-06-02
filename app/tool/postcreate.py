@@ -40,27 +40,29 @@ def patch_manifest() -> None:
         print("manifest: permissions already present")
 
 
-def patch_min_sdk() -> None:
+def patch_sdks() -> None:
+    """Set minSdk=24, compileSdk=35, targetSdk=35.
+
+    flutter_webrtc's androidx deps (fragment 1.7.1, window 1.2.0, activity 1.8.1)
+    require compileSdk 35. Spec targets Android 15 (sdk 35) anyway.
+    """
     kts = APP / "android/app/build.gradle.kts"
     groovy = APP / "android/app/build.gradle"
     if kts.exists():
         t = kts.read_text()
-        t2 = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 24", t)
-        t2 = re.sub(r"minSdk\s*=\s*\d+", "minSdk = 24", t2)
-        if t2 != t:
-            kts.write_text(t2)
-            print("build.gradle.kts: minSdk = 24")
-        else:
-            print("build.gradle.kts: minSdk unchanged (check manually if build fails)")
+        t = re.sub(r"minSdk\s*=\s*(flutter\.minSdkVersion|\d+)", "minSdk = 24", t)
+        t = re.sub(r"compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)", "compileSdk = 35", t)
+        t = re.sub(r"targetSdk\s*=\s*(flutter\.targetSdkVersion|\d+)", "targetSdk = 35", t)
+        kts.write_text(t)
+        print("build.gradle.kts: minSdk=24, compileSdk=35, targetSdk=35")
     elif groovy.exists():
         t = groovy.read_text()
-        t2 = re.sub(r"minSdkVersion\s+flutter\.minSdkVersion", "minSdkVersion 24", t)
-        t2 = re.sub(r"minSdkVersion\s+\d+", "minSdkVersion 24", t2)
-        if t2 != t:
-            groovy.write_text(t2)
-            print("build.gradle: minSdkVersion 24")
-        else:
-            print("build.gradle: minSdk unchanged")
+        t = re.sub(r"minSdkVersion\s+(flutter\.minSdkVersion|\d+)", "minSdkVersion 24", t)
+        t = re.sub(r"compileSdkVersion?\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 35", t)
+        t = re.sub(r"compileSdk\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 35", t)
+        t = re.sub(r"targetSdkVersion\s+(flutter\.targetSdkVersion|\d+)", "targetSdkVersion 35", t)
+        groovy.write_text(t)
+        print("build.gradle: minSdk=24, compileSdk=35, targetSdk=35")
     else:
         print("!! no android app build.gradle(.kts) found")
         sys.exit(1)
@@ -68,5 +70,5 @@ def patch_min_sdk() -> None:
 
 if __name__ == "__main__":
     patch_manifest()
-    patch_min_sdk()
+    patch_sdks()
     print("postcreate: done")
