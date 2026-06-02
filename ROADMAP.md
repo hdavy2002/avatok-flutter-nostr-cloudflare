@@ -42,6 +42,10 @@ No external credentials needed.
 - Calls via NIP-100/relay + TURN, contacts/identity, opt-in recording → Bunny,
   CallKit-grade incoming UX on Android.
 
+> **Calling/SFU note:** evaluate **Cloudflare RealtimeKit**
+> (https://developers.cloudflare.com/realtime/realtimekit/) for the SFU group-call
+> path and possibly AvaLive — it may replace hand-rolled Calls SFU signaling.
+
 ## Stage 7 — AvaLive
 - **Cloudflare Stream Live** ingest (RTMPS/WebRTC) → HLS playback (needs Stream Live enabled).
 - Go-live flow, viewer list, live moderation hook (1 frame/30s → Workers AI), recording disposition.
