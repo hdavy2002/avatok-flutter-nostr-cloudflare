@@ -1,15 +1,19 @@
 name: Android build
 
 # All app builds run on GitHub Actions — never on a local machine.
-# The Flutter app will live under app/ (per spec §11.6). Until it exists,
-# this workflow no-ops gracefully so the repo stays green.
+# Builds the calling test app under app/, then publishes the APK to a
+# Release tagged "calltest-latest" so there's a stable direct download link.
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   android:
@@ -18,49 +22,58 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for Flutter app
-        id: detect
-        run: |
-          if [ -f app/pubspec.yaml ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "No Flutter app at app/ yet — skipping build (scaffold pending)."
-          fi
-
       - name: Set up Java
-        if: steps.detect.outputs.exists == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Flutter
-        if: steps.detect.outputs.exists == 'true'
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
+      - name: Generate android/ platform files
+        working-directory: app
+        run: flutter create --platforms=android --org ai.avatok --project-name avatok_call .
+
+      - name: Configure Android (permissions, minSdk)
+        working-directory: app
+        run: python3 tool/postcreate.py
+
       - name: Pub get
-        if: steps.detect.outputs.exists == 'true'
         working-directory: app
         run: flutter pub get
 
-      - name: Analyze
-        if: steps.detect.outputs.exists == 'true'
+      - name: Analyze (non-blocking)
         working-directory: app
         run: flutter analyze || true
 
       - name: Build debug APK
-        if: steps.detect.outputs.exists == 'true'
         working-directory: app
         run: flutter build apk --debug
 
-      - name: Upload APK artifact
-        if: steps.detect.outputs.exists == 'true'
+      - name: Stage APK with stable name
+        run: |
+          mkdir -p dist
+          cp app/build/app/outputs/flutter-apk/app-debug.apk dist/avatok-call.apk
+          ls -la dist
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: ignore
+          name: avatok-call-apk
+          path: dist/avatok-call.apk
+
+      - name: Publish to Release (stable link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: calltest-latest
+          name: AvaTok Call Test (latest)
+          body: |
+            Debug APK for on-device call testing. Built by CI from `app/`.
+            Install on Android (allow "install from unknown sources"), open it,
+            enter a room code, and join the same room on a second device or the
+            browser test page at the signaling URL.
+          files: dist/avatok-call.apk

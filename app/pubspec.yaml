@@ -1,0 +1,21 @@
+name: avatok_call
+description: AvaTok calling test shell (P2P WebRTC over Cloudflare signaling).
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_webrtc: ^0.12.5
+  web_socket_channel: ^3.0.1
+  permission_handler: ^11.3.1
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

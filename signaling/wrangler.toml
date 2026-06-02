@@ -1,0 +1,14 @@
+name = "avatok-call-signaling"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+
+# WebSocket room signaling for WebRTC (P2P) — aligned with spec §5 (DO per room).
+# This is the NEW app's signaling; nothing here is reused from old avatok infra.
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
