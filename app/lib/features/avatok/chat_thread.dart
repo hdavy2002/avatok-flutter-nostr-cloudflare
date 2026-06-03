@@ -14,6 +14,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
+import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
@@ -83,6 +84,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (!mounted || id == null) return;
       setState(() { _myNpub = id.npub; _myName = id.shortNpub; });
       _setupDm(id);
+    });
+    ProfileStore().load().then((p) {
+      if (mounted && p.displayName.isNotEmpty) setState(() => _myName = p.displayName);
     });
   }
 

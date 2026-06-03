@@ -8,6 +8,7 @@ import '../identity/identity.dart';
 import '../features/avalive/avalive_discovery.dart';
 import '../features/avatok/chat_list.dart';
 import '../features/explore/explore_home.dart';
+import '../features/profile/profile_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'ava_sidebar.dart';
 import 'coming_soon.dart';
@@ -65,8 +66,10 @@ class _AvaShellState extends State<AvaShell> {
       case 'library':
         _push(const ComingSoon(title: 'AvaLibrary', subtitle: 'Saved media & files', icon: Icons.folder_open, color: Color(0xFF8B5CF6)));
         return;
-      case 'wallet':
       case 'profile':
+        _push(ProfileScreen(identity: _id));
+        return;
+      case 'wallet':
       case 'billing':
       case 'payout':
       case 'invite':

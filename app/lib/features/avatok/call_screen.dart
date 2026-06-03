@@ -10,6 +10,10 @@ import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
 
+/// True while a 1:1 call is on this device — used to auto-reply "busy" to a
+/// second incoming call.
+bool gInCall = false;
+
 /// AvaTok 1:1 call — the mockup CallScreen design, wired to real WebRTC P2P
 /// over the Cloudflare signaling Worker. Both peers join the same [room].
 class CallScreen extends StatefulWidget {
@@ -17,12 +21,14 @@ class CallScreen extends StatefulWidget {
   final String title;
   final String seed;
   final bool video;
+  final bool outgoing; // true = caller (show ringback + no-answer timeout)
   const CallScreen({
     super.key,
     required this.room,
     required this.title,
     required this.seed,
     required this.video,
+    this.outgoing = true,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -45,14 +51,32 @@ class _CallScreenState extends State<CallScreen> {
   bool _muted = false;
   bool _speaker = true;
   bool _connected = false;
+  // ringing | connecting | connected | declined | busy | no-answer | ended
+  String _phase = 'connecting';
+  Timer? _ringTimeout;
 
   @override
   void initState() {
     super.initState();
+    gInCall = true;
     _video = widget.video;
     _camOn = widget.video;
     _speaker = widget.video;
+    _phase = widget.outgoing ? 'ringing' : 'connecting';
+    if (widget.outgoing) {
+      _ringTimeout = Timer(const Duration(seconds: 35), () {
+        if (mounted && !_connected) _endWith('no-answer');
+      });
+    }
     _start();
+  }
+
+  void _endWith(String phase) {
+    if (!mounted) return;
+    setState(() => _phase = phase);
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) Navigator.maybePop(context);
+    });
   }
 
   String get _room => widget.room;
@@ -96,7 +120,8 @@ class _CallScreenState extends State<CallScreen> {
     pc.onTrack = (e) {
       if (e.streams.isNotEmpty) {
         _remote.srcObject = e.streams[0];
-        if (mounted) setState(() => _connected = true);
+        _ringTimeout?.cancel();
+        if (mounted) setState(() { _connected = true; _phase = 'connected'; });
       }
     };
     _pc = pc;
@@ -131,10 +156,20 @@ class _CallScreenState extends State<CallScreen> {
         final c = d['candidate'];
         await _pc?.addCandidate(RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']));
         break;
+      case 'decline':
+        _endWith('declined');
+        break;
+      case 'busy':
+        _endWith('busy');
+        break;
       case 'peer-left':
       case 'bye':
         _remote.srcObject = null;
-        if (mounted) setState(() => _connected = false);
+        if (_connected) {
+          _endWith('ended');
+        } else if (mounted) {
+          setState(() => _connected = false);
+        }
         break;
     }
   }
@@ -180,11 +215,23 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Future<void> _end() async {
+    gInCall = false;
     _timer?.cancel();
+    _ringTimeout?.cancel();
     await _pc?.close();
     await _ws?.sink.close();
     _stream?.getTracks().forEach((t) => t.stop());
   }
+
+  String get _statusText => switch (_phase) {
+        'ringing' => 'Ringing…',
+        'connected' => 'Connected · end-to-end encrypted',
+        'declined' => 'Call declined',
+        'busy' => 'User is busy',
+        'no-answer' => 'No answer',
+        'ended' => 'Call ended',
+        _ => 'Connecting…',
+      };
 
   @override
   void dispose() {
@@ -248,7 +295,7 @@ class _CallScreenState extends State<CallScreen> {
                               style: TextStyle(color: fg, fontSize: 17, fontWeight: FontWeight.w800,
                                   shadows: light ? null : const [Shadow(color: Colors.black54, blurRadius: 6)])),
                           const SizedBox(height: 2),
-                          Text(_clock,
+                          Text(_connected ? _clock : _statusText,
                               style: TextStyle(
                                   color: light ? AvaColors.sub : Colors.white.withValues(alpha: 0.9),
                                   fontSize: 13)),
@@ -275,10 +322,15 @@ class _CallScreenState extends State<CallScreen> {
                   ),
                   const SizedBox(height: 20),
                   Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(width: 8, height: 8, decoration: const BoxDecoration(
-                        color: AvaColors.success, shape: BoxShape.circle)),
+                    Container(width: 8, height: 8, decoration: BoxDecoration(
+                        color: _connected
+                            ? AvaColors.success
+                            : (_phase == 'declined' || _phase == 'busy' || _phase == 'no-answer')
+                                ? AvaColors.danger
+                                : AvaColors.sub,
+                        shape: BoxShape.circle)),
                     const SizedBox(width: 8),
-                    Text(_connected ? 'Connected · end-to-end encrypted' : 'Connecting…',
+                    Text(_statusText,
                         style: const TextStyle(color: AvaColors.sub, fontSize: 13)),
                   ]),
                 ],

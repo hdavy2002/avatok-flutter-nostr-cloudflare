@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/config.dart';
 import '../features/avatok/call_screen.dart';
@@ -53,8 +54,30 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
 class PushService {
   static Future<void> init() async {
     await FirebaseMessaging.instance.requestPermission();
-    FirebaseMessaging.onMessage.listen((m) => _showIncoming(m.data));
+    FirebaseMessaging.onMessage.listen((m) {
+      final d = m.data;
+      // Already on a call → auto-reply "busy" instead of ringing.
+      if (d['type'] == 'call' && gInCall) {
+        _sendCallControl((d['callId'] ?? '').toString(), 'busy');
+        return;
+      }
+      _showIncoming(d);
+    });
     _listenCallkit();
+  }
+
+  /// Briefly connect to the call's signaling room to send a control message
+  /// (decline / busy) to the caller, then disconnect.
+  static void _sendCallControl(String callId, String type) {
+    if (callId.isEmpty) return;
+    try {
+      final ch = WebSocketChannel.connect(
+          Uri.parse('wss://$kSignalingHost/room/$callId?id=ctl-${DateTime.now().millisecondsSinceEpoch}'));
+      ch.sink.add(jsonEncode({'type': type}));
+      Future.delayed(const Duration(milliseconds: 800), () {
+        try { ch.sink.close(); } catch (_) {}
+      });
+    } catch (_) {/* best effort */}
   }
 
   /// React to taps on the native call UI (accept / decline / timeout).
@@ -66,6 +89,9 @@ class PushService {
           _openCall(event.body['extra']);
           break;
         case Event.actionCallDecline:
+          final extra = event.body['extra'];
+          _sendCallControl(extra is Map ? (extra['callId'] ?? '').toString() : '', 'decline');
+          break;
         case Event.actionCallEnded:
         case Event.actionCallTimeout:
           break;
@@ -97,6 +123,7 @@ class PushService {
           title: (e['fromName'] ?? 'Caller').toString(),
           seed: (e['from'] ?? 'caller').toString(),
           video: e['kind'] == 'video',
+          outgoing: false,
         ),
       ));
     } catch (_) {}
