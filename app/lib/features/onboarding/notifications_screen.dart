@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
-import '../explore/explore_home.dart';
+import '../avatok/chat_list.dart';
 
 /// "Stay in the loop" — notifications step of the sign-up flow.
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   void _done(BuildContext context) => Navigator.pushAndRemoveUntil(context,
-      MaterialPageRoute(builder: (_) => const ExploreHome()), (_) => false);
+      MaterialPageRoute(builder: (_) => const ChatListScreen()), (_) => false);
 
   @override
   Widget build(BuildContext context) {

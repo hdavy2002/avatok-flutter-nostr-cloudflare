@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/logo.dart';
 import '../../core/theme.dart';
-import '../explore/explore_home.dart';
+import '../avatok/chat_list.dart';
 import 'notifications_screen.dart';
 
 /// "Welcome back" — login. (Wires to Clerk later; for now advances the flow.)
@@ -18,7 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
 
   void _login() => Navigator.pushAndRemoveUntil(context,
-      MaterialPageRoute(builder: (_) => const ExploreHome()), (_) => false);
+      MaterialPageRoute(builder: (_) => const ChatListScreen()), (_) => false);
 
   void _signup() => Navigator.push(context,
       MaterialPageRoute(builder: (_) => const NotificationsScreen()));
