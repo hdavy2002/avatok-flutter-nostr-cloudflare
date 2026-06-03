@@ -1,0 +1,77 @@
+name: AvaConsult build
+
+# Separate paid app (RealtimeKit 1:20). Built on GitHub Actions; APK published
+# to the "consult-latest" release for a stable direct download link.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'avaconsult/**'
+      - '.github/workflows/avaconsult.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  avaconsult:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate android/ platform files
+        working-directory: avaconsult
+        run: flutter create --platforms=android --org ai.avatok --project-name avaconsult .
+
+      - name: Configure Android (RealtimeKit)
+        working-directory: avaconsult
+        run: python3 tool/postcreate.py
+
+      - name: Pub get
+        working-directory: avaconsult
+        run: flutter pub get
+
+      - name: Analyze (non-blocking)
+        working-directory: avaconsult
+        run: flutter analyze || true
+
+      - name: Build debug APK
+        working-directory: avaconsult
+        run: flutter build apk --debug
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp avaconsult/build/app/outputs/flutter-apk/app-debug.apk dist/avaconsult.apk
+          ls -la dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avaconsult-apk
+          path: dist/avaconsult.apk
+
+      - name: Publish to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: consult-latest
+          name: AvaConsult (latest)
+          body: |
+            AvaConsult — paid 1:20 group calling (RealtimeKit SFU). Debug APK for
+            on-device testing. Install, Start/Join a consult with the same room
+            code on multiple devices.
+          files: dist/avaconsult.apk
