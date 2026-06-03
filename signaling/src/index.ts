@@ -17,7 +17,15 @@
 
 export interface Env {
   ROOMS: DurableObjectNamespace;
+  TURN_KEY_ID?: string;        // secret
+  TURN_KEY_API_TOKEN?: string; // secret
 }
+
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-headers": "content-type",
+};
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -25,6 +33,47 @@ export default {
 
     if (url.pathname === "/health") {
       return new Response("ok", { headers: { "content-type": "text/plain" } });
+    }
+
+    // ICE servers for 1:1 P2P calls — Cloudflare STUN + short-lived TURN.
+    if (url.pathname === "/ice") {
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      const stunOnly = {
+        iceServers: [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }],
+      };
+      if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
+        return new Response(JSON.stringify(stunOnly), {
+          headers: { "content-type": "application/json", ...CORS },
+        });
+      }
+      try {
+        const r = await fetch(
+          `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ ttl: 86400 }),
+          },
+        );
+        const data = (await r.json()) as { iceServers?: unknown[] };
+        // Drop alternate port 53 URLs (can time out in some clients).
+        const servers = (data.iceServers || []).map((s: any) => ({
+          ...s,
+          urls: Array.isArray(s.urls)
+            ? s.urls.filter((u: string) => !u.includes(":53"))
+            : s.urls,
+        }));
+        return new Response(JSON.stringify({ iceServers: servers.length ? servers : stunOnly.iceServers }), {
+          headers: { "content-type": "application/json", ...CORS },
+        });
+      } catch {
+        return new Response(JSON.stringify(stunOnly), {
+          headers: { "content-type": "application/json", ...CORS },
+        });
+      }
     }
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return new Response(WEB_CLIENT_HTML, {

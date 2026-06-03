@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -30,6 +31,7 @@ class _CallScreenState extends State<CallScreen> {
   RTCPeerConnection? _pc;
   MediaStream? _stream;
   String? _remoteId;
+  List<Map<String, dynamic>> _ice = kIceServers;
   Timer? _timer;
   int _secs = 0;
   bool _video = true;
@@ -49,9 +51,21 @@ class _CallScreenState extends State<CallScreen> {
 
   String get _room => 'avatok-${widget.chat.seed}';
 
+  Future<void> _fetchIce() async {
+    try {
+      final r = await http.get(Uri.parse(kIceUrl)).timeout(const Duration(seconds: 5));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body) as Map<String, dynamic>;
+        final servers = (data['iceServers'] as List).cast<Map<String, dynamic>>();
+        if (servers.isNotEmpty) _ice = servers;
+      }
+    } catch (_) {/* keep STUN fallback */}
+  }
+
   Future<void> _start() async {
     await _local.initialize();
     await _remote.initialize();
+    await _fetchIce();
     _stream = await navigator.mediaDevices.getUserMedia({
       'audio': true,
       'video': widget.video ? {'facingMode': 'user'} : false,
@@ -68,7 +82,7 @@ class _CallScreenState extends State<CallScreen> {
   void _send(Map<String, dynamic> o) => _ws?.sink.add(jsonEncode(o));
 
   Future<RTCPeerConnection> _newPC() async {
-    final pc = await createPeerConnection({'iceServers': kIceServers});
+    final pc = await createPeerConnection({'iceServers': _ice});
     _stream!.getTracks().forEach((t) => pc.addTrack(t, _stream!));
     pc.onIceCandidate = (c) {
       if (_remoteId != null) _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
