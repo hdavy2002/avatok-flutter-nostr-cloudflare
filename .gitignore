@@ -68,3 +68,6 @@ dist/
 config/google-services.json
 relay/node_modules/
 relay/package-lock.json
+firebase/*adminsdk*.json
+firebase/*service-account*.json
+*-firebase-adminsdk-*.json

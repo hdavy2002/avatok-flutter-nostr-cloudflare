@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../auth/clerk_client.dart';
 import '../../core/avatar.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../avalive/live_screen.dart';
-import '../onboarding/welcome_screen.dart';
 import 'chat_thread.dart';
 import 'data.dart';
 
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
 class ChatListScreen extends StatefulWidget {
-  const ChatListScreen({super.key});
+  final ClerkClient clerk;
+  final VoidCallback onSignOut;
+  const ChatListScreen({super.key, required this.clerk, required this.onSignOut});
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
@@ -58,10 +60,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     foregroundColor: AvaColors.danger,
                     side: const BorderSide(color: Color(0xFFE0E2E6)),
                     padding: const EdgeInsets.symmetric(vertical: 14)),
-                onPressed: () {
+                onPressed: () async {
                   Navigator.pop(ctx);
-                  Navigator.pushAndRemoveUntil(context,
-                      MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
+                  await widget.clerk.signOut();
+                  widget.onSignOut();
                 },
                 icon: const Icon(Icons.logout),
                 label: const Text('Sign out'),
