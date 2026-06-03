@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -5,13 +6,16 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
+import '../../identity/identity.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -47,10 +51,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _audio = AudioPlayer();
   final _sfx = AudioPlayer();
   final _recorder = AudioRecorder();
+  final _idStore = IdentityStore();
+  String? _myNpub;
+  String? _myName;
   int _seq = 0;
   bool _hasText = false;
   bool _recording = false;
   String? _recPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _idStore.load().then((id) {
+      if (mounted && id != null) setState(() { _myNpub = id.npub; _myName = id.shortNpub; });
+    });
+  }
 
   late final List<_Msg> _msgs = [
     _Msg(_seq++, false, 'Hi! ready for our 1:1 today?', '13:20'),
@@ -86,16 +101,33 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       });
 
   // ---- calls (1:1 only; groups are messaging-only) ----
-  void _call(String kind) {
+  Future<void> _call(String kind) async {
+    final video = kind == 'video';
+    final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
+    final to = widget.chat.seed; // for real contacts this is their npub
+    // Ring the callee's phone via FCM wake (real npub contacts only).
+    if (to.startsWith('npub1')) {
+      try {
+        final res = await http.post(Uri.parse(kCallUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'to': to,
+              'from': _myNpub ?? '',
+              'fromName': _myName ?? 'AvaTOK',
+              'callId': room,
+              'kind': video ? 'video' : 'audio',
+            }));
+        if (res.statusCode == 404 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('They have no device registered yet — they need to open AvaTOK once')));
+        }
+      } catch (_) {/* still open the call screen so caller can wait */}
+    }
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => CallScreen(
-          room: 'avatok-${widget.chat.seed}',
-          title: widget.chat.name,
-          seed: widget.chat.seed,
-          video: kind == 'video',
-        ),
+        builder: (_) => CallScreen(room: room, title: widget.chat.name, seed: to, video: video),
       ),
     );
   }
