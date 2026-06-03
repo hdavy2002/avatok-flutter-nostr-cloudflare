@@ -28,7 +28,8 @@ dependencies:
   record: ^7.0.0
   path_provider: ^2.1.4
   # Native incoming-call UI (full-screen, lock-screen) + ConnectionService
-  flutter_callkit_incoming: ^3.1.1
+  # Pinned to 2.x — 3.x rewrote the CallEvent/params API.
+  flutter_callkit_incoming: ^2.5.8
 
 dev_dependencies:
   flutter_lints: ^4.0.0
