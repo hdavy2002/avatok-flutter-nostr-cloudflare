@@ -3,10 +3,13 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'auth/clerk_client.dart';
+import 'core/onboarding_store.dart';
 import 'core/theme.dart';
 import 'features/auth/sign_in_screen.dart';
-import 'features/avatok/chat_list.dart';
+import 'features/onboarding/onboarding_flow.dart';
+import 'features/onboarding/welcome_screen.dart';
 import 'push/push_service.dart';
+import 'shell/ava_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,51 +30,56 @@ class AvaTalkApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AvaTheme.light,
-      home: const RootGate(),
+      home: const RootFlow(),
     );
   }
 }
 
-/// Gates on the Clerk session: signed in → AvaTok, else → sign-in.
-class RootGate extends StatefulWidget {
-  const RootGate({super.key});
+enum _Stage { loading, welcome, signIn, onboarding, shell }
+
+class RootFlow extends StatefulWidget {
+  const RootFlow({super.key});
   @override
-  State<RootGate> createState() => _RootGateState();
+  State<RootFlow> createState() => _RootFlowState();
 }
 
-class _RootGateState extends State<RootGate> {
+class _RootFlowState extends State<RootFlow> {
   final _clerk = ClerkClient();
-  bool _loading = true;
-  bool _signedIn = false;
+  final _onb = OnboardingStore();
+  _Stage _stage = _Stage.loading;
 
   @override
   void initState() {
     super.initState();
-    _check();
+    _boot();
   }
 
-  Future<void> _check() async {
-    bool signed = false;
-    try {
-      signed = (await _clerk.currentUser()) != null;
-    } catch (_) {}
-    if (mounted) setState(() { _signedIn = signed; _loading = false; });
+  Future<void> _boot() async {
+    bool signedIn = false;
+    try { signedIn = (await _clerk.currentUser()) != null; } catch (_) {}
+    if (!signedIn) { _to(_Stage.welcome); return; }
+    _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
+  }
+
+  void _to(_Stage s) { if (mounted) setState(() => _stage = s); }
+
+  Future<void> _afterAuth() async {
+    _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator(color: AvaColors.brand)));
+    switch (_stage) {
+      case _Stage.loading:
+        return const Scaffold(body: Center(child: CircularProgressIndicator(color: AvaColors.brand)));
+      case _Stage.welcome:
+        return WelcomeScreen(onContinue: () => _to(_Stage.signIn));
+      case _Stage.signIn:
+        return SignInScreen(clerk: _clerk, onSignedIn: _afterAuth);
+      case _Stage.onboarding:
+        return OnboardingFlow(onComplete: () => _to(_Stage.shell));
+      case _Stage.shell:
+        return AvaShell(clerk: _clerk, onSignOut: () => _to(_Stage.welcome));
     }
-    if (_signedIn) {
-      return ChatListScreen(
-        clerk: _clerk,
-        onSignOut: () => setState(() => _signedIn = false),
-      );
-    }
-    return SignInScreen(
-      clerk: _clerk,
-      onSignedIn: () => setState(() => _signedIn = true),
-    );
   }
 }

@@ -159,6 +159,12 @@ class ClerkClient {
     await _storage.delete(key: 'clerk_client_token');
   }
 
+  Future<void> deleteAccount() async {
+    await _send('/me'); // DELETE /me → delete the current user
+    _clientToken = null;
+    await _storage.delete(key: 'clerk_client_token');
+  }
+
   // ---- helpers ----
 
   ClerkUser? _activeUser(Map<String, dynamic>? client) {

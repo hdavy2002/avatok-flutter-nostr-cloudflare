@@ -1,0 +1,428 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+import '../../core/apps.dart';
+import '../../core/onboarding_store.dart';
+import '../../core/theme.dart';
+import '../../identity/identity.dart';
+
+/// The 5-step sign-up flow shown after Clerk auth on a fresh account.
+class OnboardingFlow extends StatefulWidget {
+  final VoidCallback onComplete;
+  const OnboardingFlow({super.key, required this.onComplete});
+  @override
+  State<OnboardingFlow> createState() => _OnboardingFlowState();
+}
+
+class _OnboardingFlowState extends State<OnboardingFlow> {
+  static const _steps = 5;
+  int _step = 0;
+
+  final _idStore = IdentityStore();
+  final _onb = OnboardingStore();
+  Identity? _id;
+
+  bool _notifEnabled = false;
+  bool _agreedTerms = false;
+  bool _savedPub = false;
+  bool _savedPriv = false;
+  bool _revealPriv = false;
+  late Set<String> _enabled = kApps.where((a) => a.defaultOn).map((a) => a.key).toSet();
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    var id = await _idStore.load();
+    id ??= await _idStore.createAndStore();
+    if (mounted) setState(() => _id = id);
+  }
+
+  void _next() {
+    if (_step < _steps - 1) {
+      setState(() => _step++);
+    } else {
+      _finish();
+    }
+  }
+
+  Future<void> _finish() async {
+    await _onb.setEnabledApps(_enabled);
+    await _onb.setDone();
+    widget.onComplete();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            _dots(),
+            Expanded(child: _body()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dots() => Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(_steps, (i) {
+          final on = i == _step;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: on ? 22 : 7, height: 7,
+            decoration: BoxDecoration(
+                color: on ? AvaColors.brand : AvaColors.line,
+                borderRadius: BorderRadius.circular(4)),
+          );
+        }),
+      );
+
+  Widget _body() {
+    switch (_step) {
+      case 0: return _notifications();
+      case 1: return _terms();
+      case 2: return _keys();
+      case 3: return _contacts();
+      default: return _appsSetup();
+    }
+  }
+
+  // ---- Step 1: notifications ----
+  Widget _notifications() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
+      child: Column(
+        children: [
+          const Spacer(flex: 2),
+          _iconTile(Icons.notifications_none_rounded, badge: _notifEnabled),
+          const SizedBox(height: 22),
+          Text('Stay in the loop', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 32)),
+          const SizedBox(height: 12),
+          const Text('Get notified when creators you follow post, when you earn a payout, or when someone tips your work.',
+              textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+          const SizedBox(height: 28),
+          _featureRow(Icons.favorite_border, 'New followers & tips'),
+          const SizedBox(height: 12),
+          _featureRow(Icons.account_balance_wallet_outlined, 'Payouts & wallet activity'),
+          const SizedBox(height: 12),
+          _featureRow(Icons.chat_bubble_outline, 'Replies & mentions'),
+          const Spacer(flex: 3),
+          if (_notifEnabled)
+            _primary('Continue', _next)
+          else ...[
+            _primary('Allow Notifications', () async {
+              await Permission.notification.request();
+              setState(() => _notifEnabled = true);
+            }, icon: Icons.notifications_none_rounded),
+            const SizedBox(height: 8),
+            TextButton(onPressed: _next, child: const Text('Not now',
+                style: TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w600))),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ---- Step 2: terms ----
+  Widget _terms() {
+    const para = 'AvaTOK is a decentralized creator platform built on the Nostr protocol. '
+        'By using AvaTOK you acknowledge that your identity is secured by a cryptographic '
+        'key pair that you, and only you, control.';
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Terms & Conditions', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 30)),
+                const SizedBox(height: 4),
+                const Text('Please review before continuing', style: TextStyle(color: AvaColors.sub)),
+                const SizedBox(height: 20),
+                _termSection('1. Your Keys, Your Account', '$para $para'),
+                _termSection('2. Content & Ownership', '$para $para'),
+                _termSection('3. Payments & Payouts', para),
+                _termSection('4. Backups', 'You can request a backup of your account data, delivered by email. '
+                    'Media files (images and videos) are not included in account backups.'),
+              ],
+            ),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(28, 8, 28, 20),
+          decoration: const BoxDecoration(border: Border(top: BorderSide(color: AvaColors.line))),
+          child: Column(
+            children: [
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                activeColor: AvaColors.brand,
+                value: _agreedTerms,
+                onChanged: (v) => setState(() => _agreedTerms = v ?? false),
+                title: const Text('I have read and agree to the Terms & Conditions', style: TextStyle(fontSize: 14)),
+              ),
+              _primary('Continue', _agreedTerms ? _next : null),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _termSection(String title, String body) => Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 6),
+          Text(body, style: const TextStyle(color: AvaColors.sub, fontSize: 13.5, height: 1.5)),
+        ]),
+      );
+
+  // ---- Step 3: keys ----
+  Widget _keys() {
+    final id = _id;
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _iconTileSmall(Icons.vpn_key, AvaColors.brand50, AvaColors.brand),
+                const SizedBox(height: 16),
+                Text('Your keys', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 30)),
+                const SizedBox(height: 6),
+                const Text.rich(TextSpan(children: [
+                  TextSpan(text: 'On Nostr, these keys ', style: TextStyle(color: AvaColors.sub)),
+                  TextSpan(text: 'are', style: TextStyle(color: AvaColors.ink, fontWeight: FontWeight.w800)),
+                  TextSpan(text: ' your account. Save both somewhere safe.', style: TextStyle(color: AvaColors.sub)),
+                ])),
+                const SizedBox(height: 22),
+                _keyCard(
+                  accent: AvaColors.brand, bg: const Color(0xFFEFF9FB),
+                  label: 'Public key', icon: Icons.vpn_key,
+                  hint: 'npub — share this freely, it\'s your @',
+                  value: id?.npub ?? '…', saved: _savedPub, secret: false,
+                  onSave: () => setState(() => _savedPub = true),
+                ),
+                const SizedBox(height: 14),
+                _keyCard(
+                  accent: AvaColors.danger, bg: const Color(0xFFFEF2F2),
+                  label: 'Private key', icon: Icons.vpn_key,
+                  hint: 'nsec — the only way to recover your account',
+                  value: id?.nsec ?? '…', saved: _savedPriv, secret: true,
+                  onSave: () => setState(() => _savedPriv = true),
+                  warning: 'Never share this with anyone. AvaTOK can never recover it for you.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          child: _primary(
+            (_savedPub && _savedPriv) ? 'Continue' : 'Save both keys to continue',
+            (_savedPub && _savedPriv) ? _next : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _keyCard({
+    required Color accent, required Color bg, required String label, required IconData icon,
+    required String hint, required String value, required bool saved, required bool secret,
+    required VoidCallback onSave, String? warning,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.25))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, size: 16, color: accent),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: accent)),
+          const Spacer(),
+          if (saved) Row(children: const [
+            Icon(Icons.check, size: 14, color: AvaColors.success),
+            SizedBox(width: 3),
+            Text('Saved', style: TextStyle(color: AvaColors.success, fontSize: 12, fontWeight: FontWeight.w700)),
+          ]),
+        ]),
+        const SizedBox(height: 4),
+        Text(hint, style: const TextStyle(color: AvaColors.sub, fontSize: 11.5)),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+          child: Row(children: [
+            Expanded(
+              child: (secret && !_revealPriv)
+                  ? const Text('•••• •••• •••• •••• ••••', style: TextStyle(fontFamily: 'monospace', fontSize: 12))
+                  : Text(value, maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5)),
+            ),
+            if (secret)
+              GestureDetector(
+                onTap: () => setState(() => _revealPriv = !_revealPriv),
+                child: Icon(_revealPriv ? Icons.visibility_off : Icons.visibility, size: 18, color: AvaColors.sub)),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () { Clipboard.setData(ClipboardData(text: value)); },
+              child: const Icon(Icons.copy, size: 16, color: AvaColors.sub)),
+          ]),
+        ),
+        if (warning != null) ...[
+          const SizedBox(height: 8),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.lock, size: 13, color: AvaColors.danger),
+            const SizedBox(width: 6),
+            Expanded(child: Text(warning, style: const TextStyle(color: AvaColors.danger, fontSize: 11.5))),
+          ]),
+        ],
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: saved
+              ? OutlinedButton.icon(onPressed: null,
+                  icon: const Icon(Icons.check, size: 16), label: const Text('Saved'))
+              : FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: accent, padding: const EdgeInsets.symmetric(vertical: 12)),
+                  onPressed: onSave, icon: const Icon(Icons.bookmark_border, size: 16), label: const Text('Save'))),
+          const SizedBox(width: 10),
+          Expanded(child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: AvaColors.ink,
+                side: const BorderSide(color: Color(0xFFE0E2E6)), padding: const EdgeInsets.symmetric(vertical: 12)),
+            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Key emailed to you (coming soon)'))),
+            icon: const Icon(Icons.mail_outline, size: 16), label: const Text('Email it'))),
+        ]),
+      ]),
+    );
+  }
+
+  // ---- Step 4: contacts ----
+  Widget _contacts() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
+      child: Column(children: [
+        const Spacer(flex: 2),
+        Container(
+          width: 70, height: 44,
+          child: Stack(alignment: Alignment.center, children: [
+            Positioned(left: 0, child: _dot(const Color(0xFF4F8DFD))),
+            Positioned(right: 0, child: _dot(const Color(0xFFC98BF5))),
+            _dot(const Color(0xFFFF6F6F), big: true),
+          ]),
+        ),
+        const SizedBox(height: 22),
+        Text('Find people you know', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28)),
+        const SizedBox(height: 12),
+        const Text('Upload your contacts to instantly connect with friends already creating on AvaTOK. We never store your contacts.',
+            textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+        const Spacer(flex: 3),
+        _primary('Upload Contacts', () async {
+          await Permission.contacts.request();
+          // TODO: read + upload contacts in background once granted.
+          _next();
+        }, icon: Icons.upload),
+        const SizedBox(height: 8),
+        TextButton(onPressed: _next, child: const Text('Skip for now',
+            style: TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w600))),
+      ]),
+    );
+  }
+
+  Widget _dot(Color c, {bool big = false}) => Container(
+        width: big ? 30 : 24, height: big ? 30 : 24,
+        decoration: BoxDecoration(color: c, shape: BoxShape.circle));
+
+  // ---- Step 5: app selection ----
+  Widget _appsSetup() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(28, 12, 28, 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Set up your apps', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28)),
+            const SizedBox(height: 4),
+            const Text('Toggle the AvaVerse apps you want. Change these anytime.',
+                style: TextStyle(color: AvaColors.sub, fontSize: 14)),
+          ]),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            itemCount: kApps.length,
+            separatorBuilder: (_, __) => const Divider(height: 1, color: AvaColors.line),
+            itemBuilder: (c, i) {
+              final a = kApps[i];
+              final on = _enabled.contains(a.key);
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                leading: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(color: a.color, borderRadius: BorderRadius.circular(12)),
+                  child: Icon(a.icon, color: Colors.white, size: 20)),
+                title: Text(a.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(a.tagline, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
+                trailing: Switch(
+                  value: on, activeColor: Colors.white, activeTrackColor: AvaColors.brand,
+                  onChanged: (v) => setState(() => v ? _enabled.add(a.key) : _enabled.remove(a.key)),
+                ),
+              );
+            },
+          ),
+        ),
+        Padding(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), child: _primary('Done', _finish)),
+      ],
+    );
+  }
+
+  // ---- shared bits ----
+  Widget _iconTile(IconData icon, {bool badge = false}) => Stack(clipBehavior: Clip.none, children: [
+        Container(width: 96, height: 96,
+            decoration: BoxDecoration(color: AvaColors.brand50, borderRadius: BorderRadius.circular(26)),
+            child: Icon(icon, color: AvaColors.brand, size: 46)),
+        if (badge) Positioned(right: -4, top: -4, child: Container(
+            width: 26, height: 26,
+            decoration: BoxDecoration(color: AvaColors.success, shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2)),
+            child: const Icon(Icons.check, color: Colors.white, size: 15))),
+      ]);
+
+  Widget _iconTileSmall(IconData icon, Color bg, Color fg) => Container(
+      width: 56, height: 56, decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+      child: Icon(icon, color: fg, size: 26));
+
+  Widget _featureRow(IconData icon, String label) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+        child: Row(children: [
+          Icon(icon, color: AvaColors.brand, size: 22),
+          const SizedBox(width: 14),
+          Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        ]),
+      );
+
+  Widget _primary(String text, VoidCallback? onTap, {IconData? icon}) => SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: onTap,
+          icon: icon != null ? Icon(icon, size: 20) : const SizedBox.shrink(),
+          label: Text(text),
+        ),
+      );
+}
