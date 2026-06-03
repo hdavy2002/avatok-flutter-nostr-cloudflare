@@ -5,7 +5,7 @@ import '../core/apps.dart';
 import '../core/onboarding_store.dart';
 import '../core/theme.dart';
 import '../identity/identity.dart';
-import '../features/avalive/live_screen.dart';
+import '../features/avalive/avalive_discovery.dart';
 import '../features/avatok/chat_list.dart';
 import '../features/explore/explore_home.dart';
 import '../features/settings/settings_screen.dart';
@@ -57,7 +57,7 @@ class _AvaShellState extends State<AvaShell> {
         _push(ChatListScreen(clerk: widget.clerk, onSignOut: widget.onSignOut));
         return;
       case 'avalive':
-        _push(const LiveScreen());
+        _push(const AvaLiveDiscovery());
         return;
       case 'verse':
         _push(const ComingSoon(title: 'AvaVerse', subtitle: 'Your dashboard', icon: Icons.dashboard, color: Color(0xFF6C5CE7)));

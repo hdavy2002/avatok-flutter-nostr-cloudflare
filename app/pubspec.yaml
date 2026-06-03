@@ -27,6 +27,7 @@ dependencies:
   audioplayers: ^6.1.0
   record: ^7.0.0
   path_provider: ^2.1.4
+  video_player: ^2.9.2
   # NIP-44 v2 crypto (secp256k1 ECDH, ChaCha20, HMAC, HKDF) — pure Dart
   # ^4.0.0 to match bip340's transitive constraint.
   pointycastle: ^4.0.0

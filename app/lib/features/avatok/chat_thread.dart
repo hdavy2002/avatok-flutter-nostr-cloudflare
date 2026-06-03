@@ -23,6 +23,7 @@ import 'call_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
 import 'media.dart';
+import 'video_player_screen.dart';
 
 /// AvaTok conversation thread — bubbles, media (photo/video/file/voice),
 /// long-press reactions, forward / delete, calls (1:1 or group), ⋮ overflow.
@@ -70,10 +71,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   NostrClient? _nostr;
   bool _realMode = false;
   final Set<String> _seenEv = {};
+  int? _playingAudioId;
 
   @override
   void initState() {
     super.initState();
+    _audio.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _playingAudioId = null);
+    });
     _idStore.load().then((id) {
       if (!mounted || id == null) return;
       setState(() { _myNpub = id.npub; _myName = id.shortNpub; });
@@ -282,11 +287,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Future<void> _playAudio(_Msg m) async {
+    if (_playingAudioId == m.id) {
+      await _audio.stop();
+      if (mounted) setState(() => _playingAudioId = null);
+      return;
+    }
     try {
       final bytes = m.localBytes ?? (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
       if (bytes == null) return;
+      await _audio.stop();
       await _audio.play(BytesSource(bytes));
+      if (mounted) setState(() => _playingAudioId = m.id);
     } catch (_) {/* ignore */}
+  }
+
+  Future<void> _openVideo(_Msg m) async {
+    if (m.media == null && m.localBytes == null) return;
+    if (m.media != null) {
+      Navigator.push(context, MaterialPageRoute(
+          builder: (_) => VideoPlayerScreen(media: m.media!, bytes: m.localBytes)));
+    }
   }
 
   // ---- bubble long-press actions ----
@@ -653,17 +673,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         }
         return _fileChip(m, Icons.image, 'Photo');
       case MediaKind.audio:
+        final playing = _playingAudioId == m.id;
         return GestureDetector(
           onTap: () => _playAudio(m),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.play_circle_fill, color: m.me ? Colors.white : AvaColors.brand, size: 30),
+            Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                color: m.me ? Colors.white : AvaColors.brand, size: 30),
             const SizedBox(width: 8),
             Text('Voice message',
                 style: TextStyle(color: m.me ? Colors.white : AvaColors.ink, fontWeight: FontWeight.w600)),
           ]),
         );
       case MediaKind.video:
-        return _fileChip(m, Icons.play_arrow, 'Video');
+        return GestureDetector(onTap: () => _openVideo(m), child: _fileChip(m, Icons.play_circle_fill, 'Video'));
       case MediaKind.file:
         return _fileChip(m, Icons.insert_drive_file, m.text.replaceFirst('📎 ', ''));
     }

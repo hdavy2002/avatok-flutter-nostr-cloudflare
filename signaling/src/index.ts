@@ -111,6 +111,12 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+/// Hash an npub so push-token KV keys don't store raw identities at rest.
+async function npubKey(npub: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(npub));
+  return "tok:" + [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -173,7 +179,7 @@ export default {
         return new Response(JSON.stringify({ error: "npub and token required" }),
           { status: 400, headers: { "content-type": "application/json", ...CORS } });
       }
-      const key = `tok:${body.npub}`;
+      const key = await npubKey(body.npub);
       const existing = new Set<string>(JSON.parse((await env.PUSH.get(key)) || "[]"));
       existing.add(body.token);
       await env.PUSH.put(key, JSON.stringify([...existing]), { expirationTtl: 60 * 60 * 24 * 60 });
@@ -193,7 +199,7 @@ export default {
         return new Response(JSON.stringify({ error: "FCM not configured" }),
           { status: 503, headers: { "content-type": "application/json", ...CORS } });
       }
-      const tokens: string[] = JSON.parse((await env.PUSH.get(`tok:${body.to}`)) || "[]");
+      const tokens: string[] = JSON.parse((await env.PUSH.get(await npubKey(body.to))) || "[]");
       if (tokens.length === 0) {
         return new Response(JSON.stringify({ error: "callee has no registered devices" }),
           { status: 404, headers: { "content-type": "application/json", ...CORS } });

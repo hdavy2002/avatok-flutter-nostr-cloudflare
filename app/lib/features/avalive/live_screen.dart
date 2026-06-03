@@ -11,14 +11,16 @@ import '../../core/theme.dart';
 /// Host publishes via WebRTC WHIP; viewers watch via WHEP. Both reuse the
 /// flutter_webrtc stack (no second engine).
 class LiveScreen extends StatefulWidget {
-  const LiveScreen({super.key});
+  final String? initialRoom;
+  final bool autoWatch;
+  const LiveScreen({super.key, this.initialRoom, this.autoWatch = false});
   @override
   State<LiveScreen> createState() => _LiveScreenState();
 }
 
 class _LiveScreenState extends State<LiveScreen> {
   final _renderer = RTCVideoRenderer();
-  final _room = TextEditingController(text: 'avalive-demo');
+  late final TextEditingController _room;
   RTCPeerConnection? _pc;
   MediaStream? _stream;
   bool _busy = false;
@@ -33,13 +35,20 @@ class _LiveScreenState extends State<LiveScreen> {
   @override
   void initState() {
     super.initState();
+    _room = TextEditingController(text: widget.initialRoom ?? 'avalive-demo');
     _renderer.initialize();
+    if (widget.autoWatch && widget.initialRoom != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _watch());
+    }
   }
 
-  Future<Map<String, dynamic>> _live() async {
+  Future<Map<String, dynamic>> _live({bool announce = false}) async {
     final res = await http.post(Uri.parse(kLiveUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'room': _room.text.trim()}));
+        body: jsonEncode({
+          'room': _room.text.trim(),
+          if (announce) ...{'announce': true, 'title': _room.text.trim(), 'host': 'Creator'},
+        }));
     if (res.statusCode != 200) throw 'Server ${res.statusCode}: ${res.body}';
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -57,7 +66,7 @@ class _LiveScreenState extends State<LiveScreen> {
     try {
       final s = await [Permission.camera, Permission.microphone].request();
       if (!s.values.every((x) => x.isGranted)) throw 'Camera & mic permission required';
-      final live = await _live();
+      final live = await _live(announce: true);
       final whip = live['whip'] as String?;
       if (whip == null) throw 'No WHIP URL (Stream not ready)';
       _stream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': {'facingMode': 'user'}});
@@ -123,6 +132,12 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override
   void dispose() {
+    if (_mode == 'host') {
+      // Best-effort: clear our stream from discovery when the host leaves.
+      http.post(Uri.parse(kLiveEndUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'room': _room.text.trim()})).ignore();
+    }
     _pc?.close();
     _stream?.getTracks().forEach((t) => t.stop());
     _renderer.dispose();

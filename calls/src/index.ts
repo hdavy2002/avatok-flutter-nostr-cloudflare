@@ -44,11 +44,29 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
     if (url.pathname === "/health") return new Response("ok");
 
+    // AvaLive discovery — list currently-announced live streams.
+    if (url.pathname === "/live/list") {
+      const list = await env.ROOMS.list({ prefix: "livestream:" });
+      const streams: unknown[] = [];
+      for (const k of list.keys) {
+        const v = await env.ROOMS.get(k.name);
+        if (v) { try { streams.push(JSON.parse(v)); } catch {} }
+      }
+      streams.sort((a: any, b: any) => (b.startedAt || 0) - (a.startedAt || 0));
+      return json({ streams });
+    }
+    // Host ends a stream → remove from discovery.
+    if (url.pathname === "/live/end" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as { room?: string };
+      if (b.room) await env.ROOMS.delete(`livestream:${b.room.trim()}`);
+      return json({ ok: true });
+    }
+
     // AvaLive — create (or reuse) a Cloudflare Stream live input for a room,
     // return WHIP (publish) + WHEP (play) URLs. Needs the CF token to have
     // Stream:Edit permission.
     if (url.pathname === "/live" && req.method === "POST") {
-      let body: { room?: string };
+      let body: { room?: string; announce?: boolean; title?: string; host?: string };
       try { body = await req.json(); } catch { return json({ error: "invalid json" }, 400); }
       const room = (body.room || "").trim();
       if (!room) return json({ error: "room required" }, 400);
@@ -78,6 +96,13 @@ export default {
       const got = await fetch(`${base}/live_inputs/${uid}`, { headers: auth });
       const full = (await got.json()) as { result?: any };
       const r = full.result || {};
+      // Host going live → announce to the discovery list (TTL 2h; /live/end clears).
+      if (body.announce) {
+        await env.ROOMS.put(`livestream:${room}`, JSON.stringify({
+          room, title: (body.title || room).slice(0, 80),
+          host: (body.host || "Creator").slice(0, 60), startedAt: Date.now(),
+        }), { expirationTtl: 7200 });
+      }
       return json({
         inputUid: uid,
         whip: r.webRTC?.url ?? null,

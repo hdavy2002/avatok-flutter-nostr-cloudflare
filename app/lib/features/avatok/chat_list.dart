@@ -46,10 +46,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
     id ??= await _store.createAndStore();
     final contacts = await _contactsStore.load();
     if (mounted) setState(() { _id = id; _contacts = contacts; });
-    // Register this device for incoming-call wake pushes.
+    // Register this device for incoming-call wake pushes (npub hashed at rest).
     await PushService.registerToken(id.npub);
-    // Publish a minimal directory profile so others can find me by npub.
-    await Directory.registerProfile(npub: id.npub);
+    // Directory listing is opt-in: we only publish a profile when the user
+    // sets a @handle (privacy default — don't auto-index every npub).
   }
 
   Future<void> _openAddContact() async {

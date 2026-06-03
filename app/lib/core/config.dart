@@ -19,6 +19,10 @@ const String kCallsJoinUrl = 'https://avatok-calls.getmystuffme.workers.dev/join
 /// + WHEP (play) URLs.
 const String kLiveUrl = 'https://avatok-calls.getmystuffme.workers.dev/live';
 
+/// AvaLive discovery — list announced live streams / end a stream.
+const String kLiveListUrl = 'https://avatok-calls.getmystuffme.workers.dev/live/list';
+const String kLiveEndUrl = 'https://avatok-calls.getmystuffme.workers.dev/live/end';
+
 /// Endpoint that returns ICE servers (Cloudflare STUN + short-lived TURN) so
 /// 1:1 calls connect off-Wi-Fi / on cellular.
 const String kIceUrl = 'https://$kSignalingHost/ice';
