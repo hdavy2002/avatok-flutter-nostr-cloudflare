@@ -9,15 +9,21 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
-import 'data.dart';
 
 /// AvaTok 1:1 call — the mockup CallScreen design, wired to real WebRTC P2P
-/// over the Cloudflare signaling Worker. Room is derived from the contact so
-/// two devices opening the same contact connect.
+/// over the Cloudflare signaling Worker. Both peers join the same [room].
 class CallScreen extends StatefulWidget {
-  final Chat chat;
+  final String room;
+  final String title;
+  final String seed;
   final bool video;
-  const CallScreen({super.key, required this.chat, required this.video});
+  const CallScreen({
+    super.key,
+    required this.room,
+    required this.title,
+    required this.seed,
+    required this.video,
+  });
   @override
   State<CallScreen> createState() => _CallScreenState();
 }
@@ -49,7 +55,7 @@ class _CallScreenState extends State<CallScreen> {
     _start();
   }
 
-  String get _room => 'avatok-${widget.chat.seed}';
+  String get _room => widget.room;
 
   Future<void> _fetchIce() async {
     try {
@@ -238,7 +244,7 @@ class _CallScreenState extends State<CallScreen> {
                       offset: const Offset(-18, 0),
                       child: Column(
                         children: [
-                          Text(widget.chat.name,
+                          Text(widget.title,
                               style: TextStyle(color: fg, fontSize: 17, fontWeight: FontWeight.w800,
                                   shadows: light ? null : const [Shadow(color: Colors.black54, blurRadius: 6)])),
                           const SizedBox(height: 2),
@@ -265,7 +271,7 @@ class _CallScreenState extends State<CallScreen> {
                     decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
                       BoxShadow(color: const Color(0x40503C78), blurRadius: 40, offset: const Offset(0, 18)),
                     ]),
-                    child: Avatar(seed: widget.chat.seed, name: widget.chat.name, size: 132),
+                    child: Avatar(seed: widget.seed, name: widget.title, size: 132),
                   ),
                   const SizedBox(height: 20),
                   Row(mainAxisSize: MainAxisSize.min, children: [

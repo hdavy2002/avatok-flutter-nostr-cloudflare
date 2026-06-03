@@ -17,13 +17,85 @@
 
 export interface Env {
   ROOMS: DurableObjectNamespace;
+  PUSH: KVNamespace;
+  FCM_PROJECT: string;
   TURN_KEY_ID?: string;        // secret
   TURN_KEY_API_TOKEN?: string; // secret
+  FCM_CLIENT_EMAIL?: string;   // secret (service account)
+  FCM_PRIVATE_KEY?: string;    // secret (service account)
+}
+
+// ---- FCM HTTP v1 (wake-on-call) ----
+
+function b64url(input: ArrayBuffer | string): string {
+  const bytes = typeof input === "string"
+    ? new TextEncoder().encode(input)
+    : new Uint8Array(input);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  const body = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(body), (c) => c.charCodeAt(0));
+  return crypto.subtle.importKey(
+    "pkcs8",
+    der.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+}
+
+async function fcmAccessToken(env: Env): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claim = b64url(JSON.stringify({
+    iss: env.FCM_CLIENT_EMAIL,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  }));
+  const input = `${header}.${claim}`;
+  const key = await importPrivateKey(env.FCM_PRIVATE_KEY!);
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(input));
+  const jwt = `${input}.${b64url(sig)}`;
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+  const data = (await r.json()) as { access_token?: string };
+  if (!data.access_token) throw new Error("no access token");
+  return data.access_token;
+}
+
+async function sendCallPush(
+  env: Env, token: string, data: Record<string, string>,
+): Promise<number> {
+  const at = await fcmAccessToken(env);
+  const r = await fetch(
+    `https://fcm.googleapis.com/v1/projects/${env.FCM_PROJECT}/messages:send`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${at}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: { token, data, android: { priority: "high" } },
+      }),
+    },
+  );
+  return r.status;
 }
 
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
   "access-control-allow-headers": "content-type",
 };
 
@@ -79,6 +151,54 @@ export default {
       return new Response(WEB_CLIENT_HTML, {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
+    }
+
+    // Register a device's FCM token against an npub.
+    if (url.pathname === "/register" && req.method === "POST") {
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      const body = (await req.json().catch(() => ({}))) as { npub?: string; token?: string };
+      if (!body.npub || !body.token) {
+        return new Response(JSON.stringify({ error: "npub and token required" }),
+          { status: 400, headers: { "content-type": "application/json", ...CORS } });
+      }
+      const key = `tok:${body.npub}`;
+      const existing = new Set<string>(JSON.parse((await env.PUSH.get(key)) || "[]"));
+      existing.add(body.token);
+      await env.PUSH.put(key, JSON.stringify([...existing]), { expirationTtl: 60 * 60 * 24 * 60 });
+      return new Response(JSON.stringify({ ok: true, devices: existing.size }),
+        { headers: { "content-type": "application/json", ...CORS } });
+    }
+
+    // Ring a callee: send a high-priority FCM data message to wake their phone.
+    if (url.pathname === "/call" && req.method === "POST") {
+      const body = (await req.json().catch(() => ({}))) as
+        { to?: string; from?: string; callId?: string; kind?: string; fromName?: string };
+      if (!body.to || !body.callId) {
+        return new Response(JSON.stringify({ error: "to and callId required" }),
+          { status: 400, headers: { "content-type": "application/json", ...CORS } });
+      }
+      if (!env.FCM_CLIENT_EMAIL || !env.FCM_PRIVATE_KEY) {
+        return new Response(JSON.stringify({ error: "FCM not configured" }),
+          { status: 503, headers: { "content-type": "application/json", ...CORS } });
+      }
+      const tokens: string[] = JSON.parse((await env.PUSH.get(`tok:${body.to}`)) || "[]");
+      if (tokens.length === 0) {
+        return new Response(JSON.stringify({ error: "callee has no registered devices" }),
+          { status: 404, headers: { "content-type": "application/json", ...CORS } });
+      }
+      const data = {
+        type: "call",
+        callId: body.callId,
+        from: body.from ?? "",
+        fromName: body.fromName ?? "AvaTOK",
+        kind: body.kind ?? "audio",
+      };
+      const results: number[] = [];
+      for (const t of tokens) {
+        try { results.push(await sendCallPush(env, t, data)); } catch { results.push(0); }
+      }
+      return new Response(JSON.stringify({ sent: results.filter((s) => s === 200).length, results }),
+        { headers: { "content-type": "application/json", ...CORS } });
     }
 
     const m = url.pathname.match(/^\/room\/([A-Za-z0-9_-]{1,64})$/);

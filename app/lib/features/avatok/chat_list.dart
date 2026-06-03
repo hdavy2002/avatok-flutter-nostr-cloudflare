@@ -1,10 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/avatar.dart';
+import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
+import '../../push/push_service.dart';
 import '../avalive/live_screen.dart';
+import 'call_screen.dart';
 import 'chat_thread.dart';
 import 'data.dart';
 
@@ -31,6 +38,71 @@ class _ChatListScreenState extends State<ChatListScreen> {
     var id = await _store.load();
     id ??= await _store.createAndStore();
     if (mounted) setState(() => _id = id);
+    // Register this device for incoming-call wake pushes.
+    await PushService.registerToken(id.npub);
+  }
+
+  Future<void> _ringDialog() async {
+    final npubCtrl = TextEditingController();
+    bool video = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: const Text('Ring a device'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: npubCtrl,
+                decoration: const InputDecoration(hintText: 'Recipient npub'),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                const Text('Video'),
+                const Spacer(),
+                Switch(value: video, activeColor: AvaColors.brand,
+                    onChanged: (v) => setD(() => video = v)),
+              ]),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _ring(npubCtrl.text.trim(), video);
+              },
+              child: const Text('Call'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _ring(String npub, bool video) async {
+    if (npub.isEmpty) return;
+    final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
+    // Wake the callee's phone.
+    try {
+      final res = await http.post(Uri.parse(kCallUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'to': npub,
+            'from': _id?.npub ?? '',
+            'fromName': 'AvaTOK',
+            'callId': room,
+            'kind': video ? 'video' : 'audio',
+          }));
+      if (res.statusCode == 404 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('That npub has no registered devices')));
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => CallScreen(room: room, title: 'Calling…', seed: npub, video: video)));
   }
 
   void _openMenu() {
@@ -52,6 +124,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
             const SizedBox(height: 4),
             SelectableText(_id?.npub ?? 'generating…',
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _ringDialog();
+                },
+                icon: const Icon(Icons.phone_in_talk),
+                label: const Text('Ring a device (by npub)'),
+              ),
+            ),
             const Divider(height: 28),
             SizedBox(
               width: double.infinity,

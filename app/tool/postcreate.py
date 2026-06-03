@@ -19,6 +19,10 @@ PERMS = [
     "android.permission.MODIFY_AUDIO_SETTINGS",
     "android.permission.BLUETOOTH",
     "android.permission.BLUETOOTH_CONNECT",
+    # FCM wake-on-call (incoming-call full-screen notification)
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.USE_FULL_SCREEN_INTENT",
+    "android.permission.WAKE_LOCK",
 ]
 
 
@@ -101,8 +105,65 @@ subprojects {{
             print("root build.gradle: forced subproject compileSdk 35")
 
 
+def patch_firebase() -> None:
+    """Apply the google-services Gradle plugin + place google-services.json."""
+    src = APP.parent / "firebase/google-services.json"
+    dest = APP / "android/app/google-services.json"
+    if src.exists():
+        dest.write_text(src.read_text())
+        print("google-services.json placed in android/app/")
+    else:
+        print(f"!! google-services.json not found at {src}")
+
+    settings = APP / "android/settings.gradle.kts"
+    if settings.exists():
+        t = settings.read_text()
+        if "com.google.gms.google-services" not in t:
+            t = re.sub(
+                r'(id\("org\.jetbrains\.kotlin\.android"\)[^\n]*\n)',
+                r'\1    id("com.google.gms.google-services") version "4.4.2" apply false\n',
+                t, count=1)
+            settings.write_text(t)
+            print("settings.gradle.kts: google-services plugin declared")
+
+    appgradle = APP / "android/app/build.gradle.kts"
+    if appgradle.exists():
+        t = appgradle.read_text()
+        if "com.google.gms.google-services" not in t:
+            t = re.sub(
+                r'(id\("kotlin-android"\)\n)',
+                r'\1    id("com.google.gms.google-services")\n',
+                t, count=1)
+            appgradle.write_text(t)
+            print("app build.gradle.kts: google-services plugin applied")
+
+
+def patch_desugaring() -> None:
+    """flutter_local_notifications requires core library desugaring."""
+    kts = APP / "android/app/build.gradle.kts"
+    if not kts.exists():
+        return
+    t = kts.read_text()
+    if "isCoreLibraryDesugaringEnabled" not in t:
+        if re.search(r"compileOptions\s*\{", t):
+            t = re.sub(r"(compileOptions\s*\{)",
+                       r"\1\n        isCoreLibraryDesugaringEnabled = true", t, count=1)
+        else:
+            t = re.sub(r"(android\s*\{)",
+                       r"\1\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n"
+                       r"        sourceCompatibility = JavaVersion.VERSION_11\n        targetCompatibility = JavaVersion.VERSION_11\n    }",
+                       t, count=1)
+    if "desugar_jdk_libs" not in t:
+        t += ('\n\ndependencies {\n'
+              '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n')
+    kts.write_text(t)
+    print("desugaring enabled (flutter_local_notifications)")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_sdks()
     patch_root_compile_sdk()
+    patch_firebase()
+    patch_desugaring()
     print("postcreate: done")

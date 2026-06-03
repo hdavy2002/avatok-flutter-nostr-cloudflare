@@ -47,8 +47,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
       });
 
-  void _call(String kind) => Navigator.push(context,
-      MaterialPageRoute(builder: (_) => CallScreen(chat: widget.chat, video: kind == 'video')));
+  void _call(String kind) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CallScreen(
+            room: 'avatok-${widget.chat.seed}',
+            title: widget.chat.name,
+            seed: widget.chat.seed,
+            video: kind == 'video',
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {

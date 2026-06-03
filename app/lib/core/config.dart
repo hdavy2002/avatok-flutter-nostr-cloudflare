@@ -6,6 +6,9 @@ const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 /// Worker endpoint to register a device's FCM token against an npub.
 const String kRegisterUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/register';
 
+/// Worker endpoint to ring a callee (sends a high-priority FCM wake push).
+const String kCallUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/call';
+
 /// Signaling host (no scheme). Baked at deploy time.
 const String kSignalingHost = 'avatok-call-signaling.getmystuffme.workers.dev';
 

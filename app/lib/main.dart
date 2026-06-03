@@ -1,11 +1,22 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'auth/clerk_client.dart';
 import 'core/theme.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/avatok/chat_list.dart';
+import 'push/push_service.dart';
 
-void main() => runApp(const AvaTalkApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
+    await PushService.init();
+  } catch (_) {/* push unavailable; app still works */}
+  runApp(const AvaTalkApp());
+}
 
 class AvaTalkApp extends StatelessWidget {
   const AvaTalkApp({super.key});
@@ -13,6 +24,7 @@ class AvaTalkApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'AvaTOK',
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AvaTheme.light,
       home: const RootGate(),
