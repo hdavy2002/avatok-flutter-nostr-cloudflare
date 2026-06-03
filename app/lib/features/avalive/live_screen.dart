@@ -1,13 +1,15 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/config.dart';
 import '../../core/theme.dart';
 
-/// AvaLive — broadcast. (No detailed mockup; designed in the AvaTOK language.)
-/// Camera preview works now; live ingest is wired next once we pick the path
-/// (RealtimeKit-only or Cloudflare Stream Live) — kept off flutter_webrtc's
-/// stack for now to avoid the dual-WebRTC crash.
+/// AvaLive — broadcast over Cloudflare Stream Live.
+/// Host publishes via WebRTC WHIP; viewers watch via WHEP. Both reuse the
+/// flutter_webrtc stack (no second engine).
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
   @override
@@ -16,8 +18,17 @@ class LiveScreen extends StatefulWidget {
 
 class _LiveScreenState extends State<LiveScreen> {
   final _renderer = RTCVideoRenderer();
+  final _room = TextEditingController(text: 'avalive-demo');
+  RTCPeerConnection? _pc;
   MediaStream? _stream;
-  bool _preview = false;
+  bool _busy = false;
+  String _status = 'idle';
+  String? _mode; // host | viewer
+
+  static const _ice = [
+    {'urls': 'stun:stun.cloudflare.com:3478'},
+    {'urls': 'stun:stun.l.google.com:19302'},
+  ];
 
   @override
   void initState() {
@@ -25,22 +36,94 @@ class _LiveScreenState extends State<LiveScreen> {
     _renderer.initialize();
   }
 
-  Future<void> _togglePreview() async {
-    if (_preview) {
-      _stream?.getTracks().forEach((t) => t.stop());
-      _renderer.srcObject = null;
-      setState(() => _preview = false);
-      return;
+  Future<Map<String, dynamic>> _live() async {
+    final res = await http.post(Uri.parse(kLiveUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'room': _room.text.trim()}));
+    if (res.statusCode != 200) throw 'Server ${res.statusCode}: ${res.body}';
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<String> _signal(String url, String offerSdp) async {
+    final res = await http.post(Uri.parse(url),
+        headers: {'Content-Type': 'application/sdp'}, body: offerSdp);
+    if (res.statusCode >= 300) throw 'WHIP/WHEP ${res.statusCode}';
+    return res.body;
+  }
+
+  Future<void> _goLive() async {
+    await _reset();
+    setState(() { _busy = true; _mode = 'host'; _status = 'creating stream…'; });
+    try {
+      final s = await [Permission.camera, Permission.microphone].request();
+      if (!s.values.every((x) => x.isGranted)) throw 'Camera & mic permission required';
+      final live = await _live();
+      final whip = live['whip'] as String?;
+      if (whip == null) throw 'No WHIP URL (Stream not ready)';
+      _stream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': {'facingMode': 'user'}});
+      _renderer.srcObject = _stream;
+      setState(() => _status = 'connecting…');
+      final pc = await createPeerConnection({'iceServers': _ice});
+      _pc = pc;
+      _stream!.getTracks().forEach((t) => pc.addTrack(t, _stream!));
+      final offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      final answer = await _signal(whip, offer.sdp!);
+      await pc.setRemoteDescription(RTCSessionDescription(answer, 'answer'));
+      pc.onConnectionState = (st) => setState(() => _status = st.toString().split('.').last);
+      setState(() => _status = 'LIVE');
+    } catch (e) {
+      setState(() => _status = 'error: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    final s = await [Permission.camera, Permission.microphone].request();
-    if (!s.values.every((x) => x.isGranted)) return;
-    _stream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': {'facingMode': 'user'}});
-    _renderer.srcObject = _stream;
-    setState(() => _preview = true);
+  }
+
+  Future<void> _watch() async {
+    await _reset();
+    setState(() { _busy = true; _mode = 'viewer'; _status = 'finding stream…'; });
+    try {
+      final live = await _live();
+      final whep = live['whep'] as String?;
+      if (whep == null) throw 'No WHEP URL';
+      final pc = await createPeerConnection({'iceServers': _ice});
+      _pc = pc;
+      pc.onTrack = (e) {
+        if (e.streams.isNotEmpty) {
+          _renderer.srcObject = e.streams[0];
+          setState(() => _status = 'watching');
+        }
+      };
+      await pc.addTransceiver(
+          kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
+          init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
+      await pc.addTransceiver(
+          kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+          init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
+      final offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      final answer = await _signal(whep, offer.sdp!);
+      await pc.setRemoteDescription(RTCSessionDescription(answer, 'answer'));
+      setState(() => _status = 'connecting…');
+    } catch (e) {
+      setState(() => _status = 'error: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reset() async {
+    await _pc?.close();
+    _pc = null;
+    _stream?.getTracks().forEach((t) => t.stop());
+    _stream = null;
+    _renderer.srcObject = null;
+    setState(() { _mode = null; _status = 'idle'; });
   }
 
   @override
   void dispose() {
+    _pc?.close();
     _stream?.getTracks().forEach((t) => t.stop());
     _renderer.dispose();
     super.dispose();
@@ -48,6 +131,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final live = _status == 'LIVE' || _status == 'watching';
     return Scaffold(
       backgroundColor: const Color(0xFF101015),
       body: SafeArea(
@@ -63,13 +147,18 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: AvaColors.danger, borderRadius: BorderRadius.circular(8)),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.sensors, color: Colors.white, size: 14),
-                    SizedBox(width: 5),
-                    Text('AvaLive', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                  decoration: BoxDecoration(
+                      color: live ? AvaColors.danger : Colors.white24,
+                      borderRadius: BorderRadius.circular(8)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.sensors, color: Colors.white, size: 14),
+                    const SizedBox(width: 5),
+                    Text(live ? 'LIVE' : 'AvaLive',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
                   ]),
                 ),
+                const Spacer(),
+                Text(_status, style: const TextStyle(color: Colors.white54, fontSize: 12)),
               ]),
               const SizedBox(height: 12),
               Expanded(
@@ -77,40 +166,51 @@ class _LiveScreenState extends State<LiveScreen> {
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
                     color: const Color(0xFF1A1A1F),
-                    child: _preview
-                        ? RTCVideoView(_renderer, mirror: true,
+                    child: _renderer.srcObject != null
+                        ? RTCVideoView(_renderer, mirror: _mode == 'host',
                             objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                        : const Center(
-                            child: Column(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.videocam_off, color: Colors.white24, size: 46),
-                              SizedBox(height: 10),
-                              Text('Camera preview off', style: TextStyle(color: Colors.white38)),
-                            ])),
+                        : const Center(child: Icon(Icons.videocam_off, color: Colors.white24, size: 46)),
                   ),
                 ),
               ),
               const SizedBox(height: 14),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white24),
-                    padding: const EdgeInsets.symmetric(vertical: 14)),
-                onPressed: _togglePreview,
-                icon: Icon(_preview ? Icons.videocam_off : Icons.videocam),
-                label: Text(_preview ? 'Stop preview' : 'Preview camera'),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: AvaColors.danger,
-                      padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Go Live ingest wires up next (Stream Live / RealtimeKit)'))),
-                  icon: const Icon(Icons.sensors),
-                  label: const Text('Go Live'),
+              TextField(
+                controller: _room,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Stream room',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true, fillColor: const Color(0xFF1E1E25),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                 ),
               ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white24),
+                        padding: const EdgeInsets.symmetric(vertical: 14)),
+                    onPressed: _busy ? null : _watch,
+                    icon: const Icon(Icons.visibility),
+                    label: const Text('Watch'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: AvaColors.danger,
+                        padding: const EdgeInsets.symmetric(vertical: 14)),
+                    onPressed: _busy ? null : _goLive,
+                    icon: _busy
+                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.sensors),
+                    label: Text(_busy ? '…' : 'Go Live'),
+                  ),
+                ),
+              ]),
             ],
           ),
         ),

@@ -43,6 +43,49 @@ export default {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
     if (url.pathname === "/health") return new Response("ok");
+
+    // AvaLive — create (or reuse) a Cloudflare Stream live input for a room,
+    // return WHIP (publish) + WHEP (play) URLs. Needs the CF token to have
+    // Stream:Edit permission.
+    if (url.pathname === "/live" && req.method === "POST") {
+      let body: { room?: string };
+      try { body = await req.json(); } catch { return json({ error: "invalid json" }, 400); }
+      const room = (body.room || "").trim();
+      if (!room) return json({ error: "room required" }, 400);
+      const base = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/stream`;
+      const auth = { Authorization: `Bearer ${env.CF_API_TOKEN}`, "Content-Type": "application/json" };
+
+      let uid = await env.ROOMS.get(`live:${room}`);
+      if (uid) {
+        // Validate it still exists.
+        const chk = await fetch(`${base}/live_inputs/${uid}`, { headers: auth });
+        if (!chk.ok) uid = null;
+      }
+      if (!uid) {
+        const res = await fetch(`${base}/live_inputs`, {
+          method: "POST",
+          headers: auth,
+          body: JSON.stringify({ meta: { name: `avalive:${room}` }, recording: { mode: "off" } }),
+        });
+        const data = (await res.json()) as { success?: boolean; result?: { uid?: string }; errors?: unknown };
+        if (!data.success || !data.result?.uid) {
+          return json({ error: "live input create failed", detail: data }, 502);
+        }
+        uid = data.result.uid;
+        await env.ROOMS.put(`live:${room}`, uid, { expirationTtl: 86400 });
+      }
+      // Fetch full input to get WHIP/WHEP URLs.
+      const got = await fetch(`${base}/live_inputs/${uid}`, { headers: auth });
+      const full = (await got.json()) as { result?: any };
+      const r = full.result || {};
+      return json({
+        inputUid: uid,
+        whip: r.webRTC?.url ?? null,
+        whep: r.webRTCPlayback?.url ?? null,
+        hls: r.uid ? `https://customer-stream.cloudflarestream.com/${r.uid}/manifest/video.m3u8` : null,
+      });
+    }
+
     if (url.pathname !== "/join" || req.method !== "POST") {
       return json({ error: "not found" }, 404);
     }
