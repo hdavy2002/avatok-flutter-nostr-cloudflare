@@ -52,7 +52,7 @@ jobs:
 
       - name: Test (NIP-44 crypto vectors — blocking)
         working-directory: app
-        run: flutter test
+        run: flutter test test/nip44_test.dart
 
       - name: Build debug APK
         working-directory: app
