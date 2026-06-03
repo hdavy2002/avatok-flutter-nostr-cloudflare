@@ -219,6 +219,23 @@ export default {
         { headers: { "content-type": "application/json", ...CORS } });
     }
 
+    // Nudge recipients that a new (E2E) message arrived. No content is sent —
+    // just a wake so the app can show a notification.
+    if (url.pathname === "/notify" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as { to?: string[]; fromName?: string };
+      if (!Array.isArray(b.to) || b.to.length === 0) return json({ error: "to[] required" }, 400);
+      if (!env.FCM_CLIENT_EMAIL || !env.FCM_PRIVATE_KEY) return json({ error: "FCM not configured" }, 503);
+      const data = { type: "message", fromName: (b.fromName || "AvaTOK").slice(0, 60) };
+      let sent = 0;
+      for (const npub of b.to.slice(0, 64)) {
+        const tokens: string[] = JSON.parse((await env.PUSH.get(await npubKey(npub))) || "[]");
+        for (const t of tokens) {
+          try { if ((await sendCallPush(env, t, data)) === 200) sent++; } catch {/* skip */}
+        }
+      }
+      return json({ sent });
+    }
+
     // Relay a call status (declined / busy / ended) to the caller via FCM, so
     // it arrives even if the callee's app couldn't hold the signaling socket.
     if (url.pathname === "/call-status" && req.method === "POST") {

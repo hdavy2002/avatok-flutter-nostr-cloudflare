@@ -12,6 +12,9 @@ const String kCallUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/
 /// Relay a call status (declined / busy / ended) to the caller via FCM.
 const String kCallStatusUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/call-status';
 
+/// Nudge recipients that a new message arrived (content-less wake).
+const String kNotifyUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/notify';
+
 /// Signaling host (no scheme). Baked at deploy time.
 const String kSignalingHost = 'avatok-call-signaling.getmystuffme.workers.dev';
 

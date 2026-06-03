@@ -65,35 +65,75 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     } catch (_) {/* best effort */}
   }
 
-  Map<String, dynamic> _ginfo(List<String> members) =>
-      {'t': 'ginfo', 'gid': _group.id, 'name': _group.name, 'members': members};
+  bool get _amAdmin => _id != null && _group.admins.contains(_id!.pubHex);
+
+  Map<String, dynamic> _ginfo(Group g) =>
+      {'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins};
 
   Future<void> _addMember(String hex) async {
     if (_group.members.contains(hex)) return;
     setState(() => _busy = true);
-    final members = [..._group.members, hex];
-    final g2 = Group(id: _group.id, name: _group.name, members: members);
+    final g2 = Group(id: _group.id, name: _group.name, members: [..._group.members, hex], admins: _group.admins);
     await GroupStore().upsert(g2);
-    await _broadcast(members, _ginfo(members));
+    await _broadcast(g2.members, _ginfo(g2));
     if (mounted) setState(() { _group = g2; _busy = false; });
   }
 
   Future<void> _removeMember(String hex) async {
     setState(() => _busy = true);
-    final members = _group.members.where((m) => m != hex).toList();
-    final g2 = Group(id: _group.id, name: _group.name, members: members);
+    final g2 = Group(
+      id: _group.id, name: _group.name,
+      members: _group.members.where((m) => m != hex).toList(),
+      admins: _group.admins.where((m) => m != hex).toList(),
+    );
     await GroupStore().upsert(g2);
-    await _broadcast(members, _ginfo(members));        // remaining members
+    await _broadcast(g2.members, _ginfo(g2));            // remaining members
     await _broadcast([hex], {'t': 'gkick', 'gid': _group.id}); // tell the removed one
     if (mounted) setState(() { _group = g2; _busy = false; });
+  }
+
+  Future<void> _toggleAdmin(String hex) async {
+    setState(() => _busy = true);
+    final admins = _group.admins.contains(hex)
+        ? _group.admins.where((m) => m != hex).toList()
+        : [..._group.admins, hex];
+    final g2 = Group(id: _group.id, name: _group.name, members: _group.members, admins: admins);
+    await GroupStore().upsert(g2);
+    await _broadcast(g2.members, _ginfo(g2));
+    if (mounted) setState(() { _group = g2; _busy = false; });
+  }
+
+  void _memberActions(String hex) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 8),
+        ListTile(
+          leading: Icon(_group.admins.contains(hex) ? Icons.remove_moderator : Icons.add_moderator, color: AvaColors.brand),
+          title: Text(_group.admins.contains(hex) ? 'Dismiss as admin' : 'Make admin'),
+          onTap: () { Navigator.pop(ctx); _toggleAdmin(hex); },
+        ),
+        ListTile(
+          leading: const Icon(Icons.remove_circle_outline, color: AvaColors.danger),
+          title: const Text('Remove from group', style: TextStyle(color: AvaColors.danger)),
+          onTap: () { Navigator.pop(ctx); _removeMember(hex); },
+        ),
+      ])),
+    );
   }
 
   Future<void> _leave() async {
     final id = _id;
     if (id == null) return;
     setState(() => _busy = true);
-    final members = _group.members.where((m) => m != id.pubHex).toList();
-    await _broadcast(members, _ginfo(members));
+    final g2 = Group(
+      id: _group.id, name: _group.name,
+      members: _group.members.where((m) => m != id.pubHex).toList(),
+      admins: _group.admins.where((m) => m != id.pubHex).toList(),
+    );
+    await _broadcast(g2.members, _ginfo(g2));
     await GroupStore().remove(_group.id);
     if (mounted) Navigator.pop(context, true);
   }
@@ -143,22 +183,33 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         Center(child: Text(_group.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
         Center(child: Text('${_group.members.length} members', style: const TextStyle(color: AvaColors.sub))),
         const SizedBox(height: 16),
-        ListTile(
-          leading: const Icon(Icons.person_add_alt_1, color: AvaColors.brand),
-          title: const Text('Add members', style: TextStyle(fontWeight: FontWeight.w700, color: AvaColors.brand)),
-          onTap: _busy ? null : _pickToAdd,
-        ),
+        if (_amAdmin)
+          ListTile(
+            leading: const Icon(Icons.person_add_alt_1, color: AvaColors.brand),
+            title: const Text('Add members', style: TextStyle(fontWeight: FontWeight.w700, color: AvaColors.brand)),
+            onTap: _busy ? null : _pickToAdd,
+          ),
         const Divider(height: 1),
         for (final m in _group.members)
           ListTile(
             leading: Avatar(seed: m, name: _label(m), size: 42),
-            title: Text(_label(m), style: const TextStyle(fontWeight: FontWeight.w700)),
+            title: Row(children: [
+              Flexible(child: Text(_label(m), maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700))),
+              if (_group.admins.contains(m)) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(color: AvaColors.brand.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
+                  child: const Text('admin', style: TextStyle(fontSize: 10, color: AvaColors.brand, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ]),
             subtitle: m == _id?.pubHex ? const Text('You', style: TextStyle(color: AvaColors.sub, fontSize: 12)) : null,
-            trailing: (m == _id?.pubHex)
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.remove_circle_outline, color: AvaColors.danger),
-                    onPressed: _busy ? null : () => _removeMember(m)),
+            trailing: (_amAdmin && m != _id?.pubHex)
+                ? IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.sub),
+                    onPressed: _busy ? null : () => _memberActions(m))
+                : null,
           ),
         const SizedBox(height: 16),
         Padding(

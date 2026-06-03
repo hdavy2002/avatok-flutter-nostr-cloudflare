@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -19,10 +20,39 @@ final navigatorKey = GlobalKey<NavigatorState>();
 /// to the active CallScreen — reliable even when the WS path couldn't be held.
 final callStatusBus = StreamController<({String callId, String status})>.broadcast();
 
+final _local = FlutterLocalNotificationsPlugin();
+const _msgChannel = AndroidNotificationChannel(
+  'avatok_messages', 'Messages',
+  description: 'New message notifications', importance: Importance.high,
+);
+
 /// Background/terminated FCM handler — must be a top-level entry point.
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
-  await _showIncoming(message.data);
+  final d = message.data;
+  if (d['type'] == 'message') {
+    await _showMessageNotif(d);
+  } else {
+    await _showIncoming(d);
+  }
+}
+
+/// Local notification for a new (E2E) message. Content-less by design — only the
+/// sender's display name travels; the message body never leaves the devices.
+Future<void> _showMessageNotif(Map<String, dynamic> d) async {
+  final who = (d['fromName'] ?? 'AvaTOK').toString();
+  await _local.show(
+    DateTime.now().millisecondsSinceEpoch ~/ 1000 % 100000,
+    who,
+    'New message',
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _msgChannel.id, _msgChannel.name,
+        channelDescription: _msgChannel.description,
+        importance: Importance.high, priority: Priority.high,
+      ),
+    ),
+  );
 }
 
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
@@ -60,6 +90,12 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
 class PushService {
   static Future<void> init() async {
     await FirebaseMessaging.instance.requestPermission();
+    await _local.initialize(const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ));
+    await _local
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_msgChannel);
     FirebaseMessaging.onMessage.listen((m) {
       final d = m.data;
       // Server-relayed call status → update the active CallScreen.
@@ -67,6 +103,7 @@ class PushService {
         callStatusBus.add((callId: (d['callId'] ?? '').toString(), status: (d['status'] ?? '').toString()));
         return;
       }
+      if (d['type'] == 'message') return; // app is open — unread badge handles it
       // Already on a call → auto-reply "busy" instead of ringing.
       if (d['type'] == 'call' && gInCall) {
         _signalStatus((d['callId'] ?? '').toString(), 'busy', (d['from'] ?? '').toString());
@@ -75,6 +112,14 @@ class PushService {
       _showIncoming(d);
     });
     _listenCallkit();
+  }
+
+  /// Best-effort: nudge recipients that a new message arrived (content-less).
+  static void notifyMessage(List<String> npubs, String fromName) {
+    if (npubs.isEmpty) return;
+    http.post(Uri.parse(kNotifyUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'to': npubs, 'fromName': fromName})).ignore();
   }
 
   /// Tell the caller a call was declined / busy — over the WS room (fast path)

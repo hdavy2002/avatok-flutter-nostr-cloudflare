@@ -9,13 +9,17 @@ class Group {
   final String id;
   final String name;
   final List<String> members; // x-only hex pubkeys (incl. me)
-  const Group({required this.id, required this.name, required this.members});
+  final List<String> admins;  // subset of members who can manage
+  const Group({required this.id, required this.name, required this.members, this.admins = const []});
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'members': members};
+  bool isAdmin(String hex) => admins.contains(hex);
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'members': members, 'admins': admins};
   factory Group.fromJson(Map<String, dynamic> j) => Group(
         id: j['id'].toString(),
         name: (j['name'] ?? 'Group').toString(),
         members: ((j['members'] as List?) ?? []).map((e) => e.toString()).toList(),
+        admins: ((j['admins'] as List?) ?? []).map((e) => e.toString()).toList(),
       );
 
   static String newId() {

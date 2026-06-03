@@ -14,6 +14,7 @@ import 'package:record/record.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/avatar.dart';
+import '../../core/chat_state.dart';
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
@@ -24,6 +25,7 @@ import '../../nostr/ava_dm.dart';
 import '../../nostr/ava_group_dm.dart';
 import '../../nostr/nostr_client.dart';
 import '../../nostr/presence.dart';
+import '../../push/push_service.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -53,9 +55,12 @@ class _Msg {
   Uint8List? localBytes; // instant preview of self-sent media
   bool uploading;
   bool failed;
+  Map<String, dynamic>? replyTo; // {id, preview, who}
+  bool edited;
+  bool starred;
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.localBytes,
-       this.uploading = false, this.failed = false});
+       this.uploading = false, this.failed = false, this.replyTo, this.edited = false, this.starred = false});
 }
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
@@ -91,6 +96,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Timer? _typingClear;
   Timer? _myTypingOff;
 
+  // Reply / edit / star.
+  _Msg? _replyTo;
+  _Msg? _editing;
+  final _starStore = StarStore();
+  Set<String> _starred = {};
+  String? _peerNpub; // 1:1 recipient npub for message notifications
+  List<String> _memberNpubs = []; // group recipient npubs (excl me)
+  String? _convKey; // '1:<hex>' or 'g:<gid>' for read state / unread badges
+
+  void _markRead() {
+    if (_convKey != null) {
+      ReadStateStore().setRead(_convKey!, DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -105,6 +125,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     ProfileStore().load().then((p) {
       if (mounted && p.displayName.isNotEmpty) setState(() => _myName = p.displayName);
     });
+    _starStore.load().then((s) { if (mounted) setState(() => _starred = s); });
   }
 
   void _setupDm(Identity id) {
@@ -122,6 +143,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.pubHex, peerHex), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
     _presence!.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    _peerNpub = seed; // contact npub, for message notifications
+    _convKey = '1:$peerHex';
+    _markRead();
   }
 
   Future<void> _setupGroup(Identity id) async {
@@ -137,6 +161,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _gdm!.start();
     _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
+    _memberNpubs = g.members.where((m) => m != id.pubHex).map((h) => NostrKeys.npub(h)).toList();
+    _convKey = 'g:${g.id}';
+    _markRead();
   }
 
   void _onPresence(Map<String, dynamic> e) {
@@ -168,28 +195,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (!mounted) return;
     String text = '';
     ChatMedia? media;
+    Map<String, dynamic>? replyMeta;
     try {
       final env = jsonDecode(m.payload);
+      if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'gmedia') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
       } else if (env is Map && env['t'] == 'gtext') {
         text = (env['body'] ?? '').toString();
-      } else if (env is Map && env['t'] == 'ginfo') {
-        return; // membership message, not chat content
       } else {
-        return;
+        return; // ginfo/gkick etc. — not chat content
       }
+      if (env is Map && env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
     } catch (_) {
       return;
     }
     setState(() {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
-          ts: m.createdAt, evId: m.rumorId, media: media,
+          ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
+          starred: _starred.contains(m.rumorId),
           senderLabel: m.mine ? null : _shortPub(m.senderPub)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
+    _markRead();
   }
 
   String _shortPub(String hex) => hex.length > 8 ? '${hex.substring(0, 6)}…' : hex;
@@ -201,23 +231,33 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Parse our envelope: {"t":"text","body":...} or {"t":"media",...}.
     String text = m.payload;
     ChatMedia? media;
+    Map<String, dynamic>? replyMeta;
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
+      if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'media') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
       } else if (env is Map && env['t'] == 'text') {
         text = env['body'].toString();
       }
+      if (env is Map && env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
     } catch (_) {/* legacy/plain text */}
     setState(() {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
-          ts: m.createdAt, evId: m.rumorId, media: media));
+          ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
+          starred: _starred.contains(m.rumorId)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
     if (!m.mine) _presence?.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    _markRead();
+  }
+
+  void _applyEdit(String target, String body) {
+    final i = _msgs.indexWhere((x) => x.evId == target);
+    if (i >= 0 && mounted) setState(() { _msgs[i].text = body; _msgs[i].edited = true; });
   }
 
   String _fmtTime(int epochSecs) {
@@ -253,32 +293,57 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    // Editing an existing message?
+    if (_editing != null && _editing!.evId != null) {
+      final m = _editing!;
+      final target = m.evId!;
+      if (_isGroup && _gdm != null) {
+        _gdm!.send(jsonEncode({'t': 'gedit', 'gid': _group!.id, 'target': target, 'body': t}));
+      } else if (_realMode && _dm != null) {
+        _dm!.send(jsonEncode({'t': 'edit', 'target': target, 'body': t}));
+      }
+      setState(() { m.text = t; m.edited = true; _editing = null; _ctrl.clear(); _hasText = false; });
+      return;
+    }
+
+    final replyMeta = _replyTo == null
+        ? null
+        : {
+            'id': _replyTo!.evId ?? '',
+            'preview': _replyTo!.text.length > 60 ? _replyTo!.text.substring(0, 60) : _replyTo!.text,
+            'who': _replyTo!.me ? 'You' : (_replyTo!.senderLabel ?? widget.chat.name),
+          };
+
     if (_isGroup && _gdm != null) {
-      final id = _gdm!.send(jsonEncode({'t': 'gtext', 'gid': _group!.id, 'body': t}));
+      final id = _gdm!.send(jsonEncode({
+        't': 'gtext', 'gid': _group!.id, 'body': t, if (replyMeta != null) 'replyTo': replyMeta,
+      }));
       _seenEv.add(id);
       setState(() {
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id));
-        _ctrl.clear();
-        _hasText = false;
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta));
+        _ctrl.clear(); _hasText = false; _replyTo = null;
       });
       _jump();
+      PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK');
       return;
     }
     if (_realMode && _dm != null) {
-      final id = _dm!.send(jsonEncode({'t': 'text', 'body': t})); // gift-wrap + publish
+      final id = _dm!.send(jsonEncode({
+        't': 'text', 'body': t, if (replyMeta != null) 'replyTo': replyMeta,
+      }));
       _seenEv.add(id);
       setState(() {
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id));
-        _ctrl.clear();
-        _hasText = false;
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta));
+        _ctrl.clear(); _hasText = false; _replyTo = null;
       });
       _jump();
+      if (_peerNpub != null) PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK');
       return;
     }
     setState(() {
-      _msgs.add(_Msg(_seq++, true, t, 'now'));
-      _ctrl.clear();
-      _hasText = false;
+      _msgs.add(_Msg(_seq++, true, t, 'now', replyTo: replyMeta));
+      _ctrl.clear(); _hasText = false; _replyTo = null;
     });
     _jump();
   }
@@ -452,6 +517,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ),
           ]),
           const Divider(height: 24),
+          _action(ctx, Icons.reply, 'Reply', () => setState(() => _replyTo = m)),
+          _action(ctx, m.starred ? Icons.star : Icons.star_border,
+              m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
+          if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
+            _action(ctx, Icons.edit_outlined, 'Edit', () => _startEdit(m)),
           _action(ctx, Icons.forward, 'Forward', () => _forward(m)),
           _action(ctx, Icons.delete_outline, 'Delete for me', () => _deleteForMe(m)),
           _action(ctx, Icons.delete_forever, 'Delete for everyone', () => _deleteForEveryone(m), danger: true),
@@ -468,6 +538,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             style: TextStyle(fontWeight: FontWeight.w600, color: danger ? AvaColors.danger : AvaColors.ink)),
         onTap: () { Navigator.pop(ctx); onTap(); },
       );
+
+  Future<void> _toggleStar(_Msg m) async {
+    if (m.evId == null) { setState(() => m.starred = !m.starred); return; }
+    final set = await _starStore.toggle(m.evId!);
+    if (mounted) setState(() { _starred = set; m.starred = set.contains(m.evId); });
+  }
+
+  void _startEdit(_Msg m) {
+    setState(() {
+      _editing = m; _replyTo = null;
+      _ctrl.text = m.text; _hasText = m.text.trim().isNotEmpty;
+    });
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+  }
 
   static const _reactionSounds = {
     '❤️': 'heart', '👍': 'like', '😂': 'laugh', '😮': 'wow', '😢': 'sad', '👏': 'clap',
@@ -537,12 +621,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
+          if (_convKey != null)
+            _action(ctx, Icons.archive_outlined, 'Archive chat', () async {
+              await ChatFlagsStore().toggle('archived', _convKey!);
+              if (mounted) Navigator.pop(context);
+            }),
+          if (_convKey != null)
+            _action(ctx, Icons.notifications_off_outlined, 'Mute chat',
+                () => ChatFlagsStore().toggle('muted', _convKey!)),
+          if (_convKey != null && !widget.chat.group)
+            _action(ctx, Icons.block, 'Block user', () async {
+              await ChatFlagsStore().toggle('blocked', _convKey!);
+              if (mounted) Navigator.pop(context);
+            }, danger: true),
           _action(ctx, Icons.delete_sweep_outlined, 'Delete chat', () => Navigator.pop(context)),
-          _action(ctx, Icons.archive_outlined, 'Archive chat',
-              () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat archived')))),
-          _action(ctx, Icons.block, 'Block user',
-              () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.chat.name} blocked'))),
-              danger: true),
         ]),
       ),
     );
@@ -667,8 +759,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(8, 8, 12, 16),
-      child: Row(children: [
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_replyTo != null || _editing != null) _replyBanner(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 12, 16),
+          child: Row(children: [
         IconButton(icon: const Icon(Icons.add_circle_outline, color: AvaColors.brand, size: 28), onPressed: _attach),
         Expanded(
           child: Container(
@@ -690,6 +785,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: Container(width: 44, height: 44,
               decoration: const BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle),
               child: Icon(_hasText ? Icons.arrow_upward : Icons.mic, color: Colors.white, size: 22)),
+        ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _replyBanner() {
+    final isEdit = _editing != null;
+    final preview = isEdit ? _editing!.text : (_replyTo?.text ?? '');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+      child: Row(children: [
+        Container(width: 3, height: 32, color: AvaColors.brand),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(isEdit ? 'Editing' : 'Replying to ${_replyTo!.me ? "yourself" : (_replyTo!.senderLabel ?? widget.chat.name)}',
+                style: const TextStyle(color: AvaColors.brand, fontSize: 11.5, fontWeight: FontWeight.w700)),
+            Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AvaColors.sub, fontSize: 12.5)),
+          ]),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close, size: 18, color: AvaColors.sub),
+          onPressed: () => setState(() {
+            _replyTo = null;
+            if (_editing != null) { _editing = null; _ctrl.clear(); _hasText = false; }
+          }),
         ),
       ]),
     );
@@ -728,6 +852,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       child: Text(m.senderLabel!,
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.brand)),
                     ),
+                  if (m.replyTo != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+                      decoration: BoxDecoration(
+                          color: (m.me ? Colors.white : AvaColors.brand).withValues(alpha: 0.14),
+                          border: Border(left: BorderSide(color: m.me ? Colors.white : AvaColors.brand, width: 3)),
+                          borderRadius: BorderRadius.circular(6)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                        Text((m.replyTo!['who'] ?? '').toString(),
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700,
+                                color: m.me ? Colors.white : AvaColors.brand)),
+                        Text((m.replyTo!['preview'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11.5, color: m.me ? Colors.white70 : AvaColors.sub)),
+                      ]),
+                    ),
                   if (hasMedia) _mediaContent(m),
                   if (!hasMedia)
                     Text(m.text,
@@ -735,6 +875,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (m.starred) ...[
+                        Icon(Icons.star, size: 11, color: m.me ? Colors.white : const Color(0xFFE6B800)),
+                        const SizedBox(width: 3),
+                      ],
+                      if (m.edited) ...[
+                        Text('edited ', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic,
+                            color: m.me ? Colors.white60 : const Color(0xFF9AA1AC))),
+                      ],
                       Text(m.time,
                           style: TextStyle(fontSize: 10.5,
                               color: m.me ? Colors.white70 : const Color(0xFF9AA1AC))),

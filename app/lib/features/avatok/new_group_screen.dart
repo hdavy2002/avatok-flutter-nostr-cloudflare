@@ -45,12 +45,12 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
       final h = c.npub.startsWith('npub1') ? NostrKeys.npubToHex(c.npub) : null;
       if (h != null && !members.contains(h)) members.add(h);
     }
-    final g = Group(id: Group.newId(), name: _name.text.trim(), members: members);
+    final g = Group(id: Group.newId(), name: _name.text.trim(), members: members, admins: [id.pubHex]);
     await GroupStore().upsert(g);
     // Notify members (gift-wrapped) so the group appears for them too.
     try {
       final client = NostrClient(kNostrRelayUrl)..connect();
-      final ginfo = jsonEncode({'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members});
+      final ginfo = jsonEncode({'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins});
       final (gifts, _) = Nip17.wrapMany(
           senderPriv: id.privHex, senderPub: id.pubHex, recipientPubs: g.members, payload: ginfo);
       for (final gift in gifts) {

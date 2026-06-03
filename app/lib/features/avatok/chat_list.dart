@@ -7,12 +7,16 @@ import 'package:uuid/uuid.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/avatar.dart';
 import '../../core/config.dart';
+import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
+import '../../core/status_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
+import '../../identity/nostr_keys.dart';
 import '../../nostr/nip17.dart';
 import '../../nostr/nostr_client.dart';
 import '../../push/push_service.dart';
+import '../status/status_screen.dart';
 import '../avalive/live_screen.dart';
 import 'add_contact_sheet.dart';
 import 'call_screen.dart';
@@ -41,6 +45,59 @@ class _ChatListScreenState extends State<ChatListScreen> {
   NostrClient? _inbox;
   int _tab = 0; // 0 = Chats, 1 = Calls
 
+  // Unread badges + chat flags + status.
+  final _readStore = ReadStateStore();
+  final _flagsStore = ChatFlagsStore();
+  final _statusStore = StatusStore();
+  Map<String, int> _lastRead = {};
+  final Map<String, int> _unread = {};
+  final Set<String> _seenInbox = {};
+  Map<String, Set<String>> _flags = {'blocked': {}, 'archived': {}, 'muted': {}, 'pinned': {}};
+  int _statusCount = 0;
+  bool _showArchived = false;
+
+  String _keyOf(Chat c) =>
+      c.gid != null ? 'g:${c.gid}' : '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
+
+  void _openChat(Chat c) {
+    final k = _keyOf(c);
+    setState(() => _unread.remove(k));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: c)))
+        .then((_) => _readStore.load().then((m) { if (mounted) setState(() => _lastRead = m); }));
+  }
+
+  void _chatRowFlags(Chat c) {
+    final k = _keyOf(c);
+    bool has(String f) => _flags[f]!.contains(k);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 8),
+        ListTile(leading: Icon(has('pinned') ? Icons.push_pin : Icons.push_pin_outlined, color: AvaColors.brand),
+            title: Text(has('pinned') ? 'Unpin' : 'Pin to top'),
+            onTap: () { Navigator.pop(ctx); _toggleFlag('pinned', k); }),
+        ListTile(leading: Icon(has('muted') ? Icons.notifications_off : Icons.notifications_outlined, color: AvaColors.ink),
+            title: Text(has('muted') ? 'Unmute' : 'Mute'),
+            onTap: () { Navigator.pop(ctx); _toggleFlag('muted', k); }),
+        ListTile(leading: const Icon(Icons.archive_outlined, color: AvaColors.ink),
+            title: Text(has('archived') ? 'Unarchive' : 'Archive'),
+            onTap: () { Navigator.pop(ctx); _toggleFlag('archived', k); }),
+        if (c.gid == null)
+          ListTile(leading: const Icon(Icons.block, color: AvaColors.danger),
+              title: Text(has('blocked') ? 'Unblock' : 'Block', style: const TextStyle(color: AvaColors.danger)),
+              onTap: () { Navigator.pop(ctx); _toggleFlag('blocked', k); }),
+      ])),
+    );
+  }
+
+  Future<void> _toggleFlag(String flag, String key) async {
+    await _flagsStore.toggle(flag, key);
+    final flags = await _flagsStore.load();
+    if (mounted) setState(() => _flags = flags);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +115,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
     id ??= await _store.createAndStore();
     final contacts = await _contactsStore.load();
     final groups = await _groupStore.load();
-    if (mounted) setState(() { _id = id; _contacts = contacts; _groups = groups; });
+    final lastRead = await _readStore.load();
+    final flags = await _flagsStore.load();
+    final status = await _statusStore.load();
+    if (mounted) {
+      setState(() {
+        _id = id; _contacts = contacts; _groups = groups;
+        _lastRead = lastRead; _flags = flags; _statusCount = status.length;
+      });
+    }
     // Register this device for incoming-call wake pushes (npub hashed at rest).
     await PushService.registerToken(id.npub);
     _startInbox(id);
@@ -73,21 +138,41 @@ class _ChatListScreenState extends State<ChatListScreen> {
       final (_, ev) = rec;
       if (ev.kind != 1059) return;
       final u = Nip17.unwrap(id.privHex, ev);
-      if (u == null) return;
+      if (u == null || _seenInbox.contains(u.rumorId)) return;
+      _seenInbox.add(u.rumorId);
       try {
         final env = jsonDecode(u.payload);
-        if (env is Map && env['t'] == 'ginfo') {
+        if (env is! Map) return;
+        final t = env['t'];
+        if (t == 'ginfo') {
           final g = Group(
             id: env['gid'].toString(),
             name: (env['name'] ?? 'Group').toString(),
             members: ((env['members'] as List?) ?? []).map((e) => e.toString()).toList(),
+            admins: ((env['admins'] as List?) ?? []).map((e) => e.toString()).toList(),
           );
           _groupStore.upsert(g).then((list) { if (mounted) setState(() => _groups = list); });
-        } else if (env is Map && env['t'] == 'gkick' && u.senderPub != id.pubHex) {
-          // Someone removed me from a group → drop it locally.
+        } else if (t == 'gkick' && u.senderPub != id.pubHex) {
           _groupStore.remove(env['gid'].toString())
               .then((_) => _groupStore.load())
               .then((list) { if (mounted) setState(() => _groups = list); });
+        } else if (t == 'status' && u.senderPub != id.pubHex) {
+          final post = StatusPost(
+            id: u.rumorId, authorPub: u.senderPub,
+            authorName: (env['who'] ?? 'Someone').toString(),
+            kind: (env['kind'] ?? 'text').toString(),
+            text: env['text']?.toString(),
+            media: (env['media'] as Map?)?.cast<String, dynamic>(),
+            ts: u.createdAt,
+          );
+          _statusStore.add(post).then((list) { if (mounted) setState(() => _statusCount = list.length); });
+        } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
+          if (u.senderPub == id.pubHex) return; // my own message
+          final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
+          if (_flags['blocked']!.contains(key)) return;
+          if (u.createdAt > (_lastRead[key] ?? 0) && mounted) {
+            setState(() => _unread[key] = (_unread[key] ?? 0) + 1);
+          }
         }
       } catch (_) {/* ignore */}
     });
@@ -228,14 +313,27 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final contactChats = _contacts.map(_chatOf).toList();
+    final blocked = _flags['blocked']!, archived = _flags['archived']!, pinned = _flags['pinned']!;
     final groupChats = _groups
+        .where((g) => _showArchived || !archived.contains('g:${g.id}'))
         .map((g) => Chat(
             name: g.name, seed: 'group-${g.id}',
             last: 'Group · ${g.members.length} members', time: '',
-            group: true, members: g.members.length, gid: g.id))
+            group: true, members: g.members.length, gid: g.id,
+            unread: _unread['g:${g.id}'] ?? 0))
         .toList();
-    final rows = [...groupChats, ...contactChats, ...kChats];
+    final contactChats = _contacts.where((c) {
+      final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
+      return !blocked.contains(k) && (_showArchived || !archived.contains(k));
+    }).map((c) {
+      final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
+      return Chat(name: c.name, seed: c.seed, last: c.atHandle.isNotEmpty ? c.atHandle : 'Say hi 👋',
+          time: '', unread: _unread[k] ?? 0);
+    }).toList();
+    final realRows = [...groupChats, ...contactChats];
+    realRows.sort((a, b) => (pinned.contains(_keyOf(a)) ? 0 : 1) - (pinned.contains(_keyOf(b)) ? 0 : 1));
+    final archivedCount = archived.length;
+    final rows = [...realRows, ...kChats];
     final online = kChats.where((c) => c.online).toList();
     return Scaffold(
       backgroundColor: Colors.white,
@@ -311,6 +409,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
+                  _statusItem(),
                   _activeAdd(),
                   for (final c in contactChats) _activeAvatar(context, c),
                   for (final c in online) _activeAvatar(context, c),
@@ -319,9 +418,24 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
             // chats
             Expanded(
-              child: ListView.builder(
-                itemCount: rows.length,
-                itemBuilder: (c, i) => _ChatRow(chat: rows[i]),
+              child: ListView(
+                children: [
+                  if (archivedCount > 0)
+                    ListTile(
+                      leading: const Icon(Icons.archive_outlined, color: AvaColors.sub),
+                      title: Text(_showArchived ? 'Hide archived' : 'Archived ($archivedCount)',
+                          style: const TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w600)),
+                      onTap: () => setState(() => _showArchived = !_showArchived),
+                    ),
+                  for (final c in rows)
+                    _ChatRow(
+                      chat: c,
+                      pinned: pinned.contains(_keyOf(c)),
+                      muted: _flags['muted']!.contains(_keyOf(c)),
+                      onTap: () => _openChat(c),
+                      onLongPress: () => _chatRowFlags(c),
+                    ),
+                ],
               ),
             ),
           ],
@@ -341,10 +455,26 @@ class _ChatListScreenState extends State<ChatListScreen> {
         ),
       );
 
-  Chat _chatOf(Contact c) => Chat(
-        name: c.name, seed: c.seed,
-        last: c.atHandle.isNotEmpty ? c.atHandle : 'Say hi 👋',
-        time: '', online: false);
+  Widget _statusItem() => Padding(
+        padding: const EdgeInsets.only(right: 14),
+        child: GestureDetector(
+          onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
+              .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _statusCount = l.length); })),
+          child: Column(children: [
+            Stack(children: [
+              Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56),
+              if (_statusCount > 0)
+                Positioned(right: 0, top: 0, child: Container(width: 14, height: 14,
+                    decoration: BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2)))),
+              const Positioned(right: 0, bottom: 0, child: Icon(Icons.add_circle, color: AvaColors.brand, size: 18)),
+            ]),
+            const SizedBox(height: 6),
+            const Text('Status', style: TextStyle(fontSize: 11, color: AvaColors.sub, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      );
 
   Widget _activeAdd() => GestureDetector(
         onTap: _openAddContact,
@@ -370,8 +500,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget _activeAvatar(BuildContext context, Chat c) => Padding(
         padding: const EdgeInsets.only(right: 14),
         child: GestureDetector(
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: c))),
+          onTap: () => _openChat(c),
           child: Column(
             children: [
               Stack(children: [
@@ -401,13 +530,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
 class _ChatRow extends StatelessWidget {
   final Chat chat;
-  const _ChatRow({required this.chat});
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool pinned;
+  final bool muted;
+  const _ChatRow({required this.chat, this.onTap, this.onLongPress, this.pinned = false, this.muted = false});
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => Navigator.push(context,
+      onTap: onTap ?? () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat))),
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -430,9 +564,15 @@ class _ChatRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(chat.name,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5)),
+                  Row(children: [
+                    Flexible(child: Text(chat.name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5))),
+                    if (muted) const Padding(padding: EdgeInsets.only(left: 4),
+                        child: Icon(Icons.notifications_off, size: 13, color: AvaColors.sub)),
+                    if (pinned) const Padding(padding: EdgeInsets.only(left: 4),
+                        child: Icon(Icons.push_pin, size: 13, color: AvaColors.sub)),
+                  ]),
                   const SizedBox(height: 3),
                   Text(chat.last,
                       maxLines: 1, overflow: TextOverflow.ellipsis,
