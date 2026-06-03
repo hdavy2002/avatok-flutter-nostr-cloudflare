@@ -99,6 +99,13 @@ const CORS = {
   "access-control-allow-headers": "content-type",
 };
 
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...CORS },
+  });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -199,6 +206,55 @@ export default {
       }
       return new Response(JSON.stringify({ sent: results.filter((s) => s === 200).length, results }),
         { headers: { "content-type": "application/json", ...CORS } });
+    }
+
+    // ---- AvaTok public directory (NIP-05-style) ----
+    if (req.method === "OPTIONS" &&
+        ["/profile", "/resolve", "/search"].includes(url.pathname)) {
+      return new Response(null, { headers: CORS });
+    }
+
+    // Upsert a profile so others can find you by @handle / name.
+    if (url.pathname === "/profile" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as
+        { npub?: string; handle?: string; name?: string };
+      if (!b.npub) return json({ error: "npub required" }, 400);
+      const handle = (b.handle || "").trim().toLowerCase().replace(/^@/, "");
+      const prof = { npub: b.npub, handle, name: (b.name || "").trim() };
+      await env.PUSH.put(`prof:${b.npub}`, JSON.stringify(prof));
+      if (handle) await env.PUSH.put(`handle:${handle}`, b.npub);
+      // Maintain a small searchable index (cap 5000).
+      const idx: any[] = JSON.parse((await env.PUSH.get("dir:all")) || "[]");
+      const at = idx.findIndex((p) => p.npub === b.npub);
+      if (at >= 0) idx[at] = prof; else idx.unshift(prof);
+      await env.PUSH.put("dir:all", JSON.stringify(idx.slice(0, 5000)));
+      return json({ ok: true, profile: prof });
+    }
+
+    // Resolve a single identifier (@handle, handle, or npub) → profile.
+    if (url.pathname === "/resolve") {
+      const q = (url.searchParams.get("q") || "").trim();
+      if (!q) return json({ error: "q required" }, 400);
+      if (q.startsWith("npub1")) {
+        const p = JSON.parse((await env.PUSH.get(`prof:${q}`)) || "null");
+        return json({ npub: q, profile: p });
+      }
+      const handle = q.toLowerCase().replace(/^@/, "");
+      const npub = await env.PUSH.get(`handle:${handle}`);
+      if (!npub) return json({ npub: null }, 404);
+      const p = JSON.parse((await env.PUSH.get(`prof:${npub}`)) || "null");
+      return json({ npub, profile: p });
+    }
+
+    // Substring search over handle + name for the "Search site" tab.
+    if (url.pathname === "/search") {
+      const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+      if (q.length < 2) return json({ results: [] });
+      const idx: any[] = JSON.parse((await env.PUSH.get("dir:all")) || "[]");
+      const results = idx
+        .filter((p) => p.handle?.includes(q) || p.name?.toLowerCase().includes(q))
+        .slice(0, 20);
+      return json({ results });
     }
 
     const m = url.pathname.match(/^\/room\/([A-Za-z0-9_-]{1,64})$/);

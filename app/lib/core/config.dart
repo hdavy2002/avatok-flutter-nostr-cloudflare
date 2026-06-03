@@ -23,6 +23,14 @@ const String kLiveUrl = 'https://avatok-calls.getmystuffme.workers.dev/live';
 /// 1:1 calls connect off-Wi-Fi / on cellular.
 const String kIceUrl = 'https://$kSignalingHost/ice';
 
+/// AvaTok public directory (NIP-05-style) — find people by @handle / name / npub.
+const String kProfileUrl = 'https://$kSignalingHost/profile'; // POST upsert
+const String kResolveUrl = 'https://$kSignalingHost/resolve'; // GET ?q=
+const String kSearchUrl = 'https://$kSignalingHost/search';   // GET ?q=
+
+/// Invite link base — share to bring a contact in pre-connected.
+const String kInviteBase = 'https://avatok.ai/i/';
+
 /// Fallback ICE servers if /ice can't be reached.
 final List<Map<String, dynamic>> kIceServers = [
   {'urls': 'stun:stun.cloudflare.com:3478'},

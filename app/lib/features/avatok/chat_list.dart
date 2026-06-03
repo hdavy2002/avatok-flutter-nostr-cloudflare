@@ -11,9 +11,12 @@ import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../../push/push_service.dart';
 import '../avalive/live_screen.dart';
+import 'add_contact_sheet.dart';
 import 'call_screen.dart';
 import 'chat_thread.dart';
+import 'contacts.dart';
 import 'data.dart';
+import 'new_group_screen.dart';
 
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
 class ChatListScreen extends StatefulWidget {
@@ -26,7 +29,9 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   final _store = IdentityStore();
+  final _contactsStore = ContactsStore();
   Identity? _id;
+  List<Contact> _contacts = [];
 
   @override
   void initState() {
@@ -37,9 +42,24 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Future<void> _bootstrap() async {
     var id = await _store.load();
     id ??= await _store.createAndStore();
-    if (mounted) setState(() => _id = id);
+    final contacts = await _contactsStore.load();
+    if (mounted) setState(() { _id = id; _contacts = contacts; });
     // Register this device for incoming-call wake pushes.
     await PushService.registerToken(id.npub);
+    // Publish a minimal directory profile so others can find me by npub.
+    await Directory.registerProfile(npub: id.npub);
+  }
+
+  Future<void> _openAddContact() async {
+    final c = await showAddContactSheet(context);
+    if (c == null) return;
+    final list = await _contactsStore.add(c);
+    if (mounted) setState(() => _contacts = list);
+  }
+
+  Future<void> _openNewGroup() async {
+    await Navigator.push(context,
+        MaterialPageRoute(builder: (_) => NewGroupScreen(contacts: _contacts)));
   }
 
   Future<void> _ringDialog() async {
@@ -162,6 +182,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final contactChats = _contacts.map(_chatOf).toList();
+    final rows = [...contactChats, ...kChats];
     final online = kChats.where((c) => c.online).toList();
     return Scaffold(
       backgroundColor: Colors.white,
@@ -195,9 +217,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             fontWeight: FontWeight.w900,
                             letterSpacing: -0.5)),
                   ),
-                  _circleBtn(Icons.person_add_alt_1),
+                  _circleBtn(Icons.person_add_alt_1, _openAddContact),
                   const SizedBox(width: 8),
-                  _circleBtn(Icons.edit_outlined),
+                  _circleBtn(Icons.edit_outlined, _openNewGroup),
                 ],
               ),
             ),
@@ -225,6 +247,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
                   _activeAdd(),
+                  for (final c in contactChats) _activeAvatar(context, c),
                   for (final c in online) _activeAvatar(context, c),
                 ],
               ),
@@ -232,8 +255,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
             // chats
             Expanded(
               child: ListView.builder(
-                itemCount: kChats.length,
-                itemBuilder: (c, i) => _ChatRow(chat: kChats[i]),
+                itemCount: rows.length,
+                itemBuilder: (c, i) => _ChatRow(chat: rows[i]),
               ),
             ),
           ],
@@ -242,13 +265,23 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  Widget _circleBtn(IconData i) => Container(
-        width: 36, height: 36,
-        decoration: const BoxDecoration(color: AvaColors.soft, shape: BoxShape.circle),
-        child: Icon(i, size: 18, color: AvaColors.ink),
+  Widget _circleBtn(IconData i, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36, height: 36,
+          decoration: const BoxDecoration(color: AvaColors.soft, shape: BoxShape.circle),
+          child: Icon(i, size: 18, color: AvaColors.ink),
+        ),
       );
 
-  Widget _activeAdd() => Padding(
+  Chat _chatOf(Contact c) => Chat(
+        name: c.name, seed: c.seed,
+        last: c.atHandle.isNotEmpty ? c.atHandle : 'Say hi 👋',
+        time: '', online: false);
+
+  Widget _activeAdd() => GestureDetector(
+        onTap: _openAddContact,
+        child: Padding(
         padding: const EdgeInsets.only(right: 14),
         child: Column(
           children: [
@@ -264,6 +297,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             const Text('Add', style: TextStyle(fontSize: 11, color: AvaColors.sub, fontWeight: FontWeight.w600)),
           ],
         ),
+      ),
       );
 
   Widget _activeAvatar(BuildContext context, Chat c) => Padding(
