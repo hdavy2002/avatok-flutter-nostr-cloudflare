@@ -15,31 +15,19 @@ Legend: ✅ done · ★ requested now · ○ recommended · ‼ essential gap
 - **Backup** export; **Profile / @handle**, directory search, add by ID / invite
 - Onboarding, key save, settings
 
-## Requested now ★
-1. **Group roles / admin** — admin-only add/remove/rename; creator is admin; promote/demote.
-2. **Reply-to / quoted messages** — swipe or long-press → reply; quoted preview in the bubble.
-3. **Unread badges from real messages** — chat-list badge counts actual unread; clears on open.
+## Also shipped since ✅
+- Group roles/admin; reply/quote; unread badges from real messages
+- ‼ Message push notifications; ‼ real block / archive / mute + pin chats
+- Status / Stories (24h); edit + "edited"; star messages
 
-## Essential gaps ‼ (needed to feel like WhatsApp)
-- ‼ **Message push notifications** — right now only *calls* wake the phone; new **messages are silent** when the app is closed. Without this, you miss messages. (Needs a per-message FCM nudge + a notification.)
-- ‼ **Real block / archive / mute** — these are UI stubs today. Block should stop their messages; archive/mute should actually hide/silence.
-
-## Recommended next ○
-- ○ **Status / Stories** (24h ephemeral posts) — a whole WhatsApp pillar
+## Remaining ○ (not yet built)
 - ○ **Disappearing messages** (per-chat timer)
-- ○ **Edit sent message** + "Edited" label; **"Forwarded" label**
-- ○ **Star / bookmark** messages; **pin** chats & messages
-- ○ **Search** within a chat + global search
-- ○ **Per-chat mute / notification settings**
-- ○ **Mentions (@)** in groups; **group description / icon / invite link**
+- ○ **Delivered** tick (we have sent + read; add the middle state)
+- ○ **"Forwarded" label** on forwarded messages
+- ○ **Search** — within a chat + global chat search
 - ○ **Contact profile view** (their @handle, npub, shared groups) + **safety-number / QR verify**
-- ○ **Delivered** state (we have sent + read; add the middle tick)
+- ○ **Mentions (@)** in groups; **group description / icon / invite link**
 - ○ **Last seen / online** (privacy-controlled)
-- ○ **Drafts**, **wallpaper/theme**, **location share**, **contact card share**, **polls**, **GIF/stickers**
-
-## Suggested build order
-1. Reply/quote + unread badges (pure client, low risk)
-2. Group roles/admin
-3. ‼ Message push notifications (the real "messenger" unlock)
-4. Real block/archive/mute
-5. Status/Stories, then the rest of ○
+- ○ **Pin individual messages** (pin-to-top within a chat)
+- ○ **Drafts** (unsent text per chat)
+- ○ Heavier extras: **wallpaper/theme**, **location share**, **contact card share**, **polls**, **GIF/stickers**

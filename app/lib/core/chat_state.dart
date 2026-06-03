@@ -60,6 +60,48 @@ class ChatFlagsStore {
       _s.write(key: _key, value: jsonEncode(m.map((k, v) => MapEntry(k, v.toList()))));
 }
 
+/// Per-conversation key → value string maps (drafts, disappear timers, pinned).
+class _KvMapStore {
+  final String _key;
+  final _s = _store();
+  _KvMapStore(this._key);
+
+  Future<Map<String, String>> load() async {
+    final raw = await _s.read(key: _key);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return (jsonDecode(raw) as Map).map((k, v) => MapEntry(k.toString(), v.toString()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> set(String key, String? value) async {
+    final m = await load();
+    if (value == null || value.isEmpty) {
+      m.remove(key);
+    } else {
+      m[key] = value;
+    }
+    await _s.write(key: _key, value: jsonEncode(m));
+  }
+}
+
+/// Unsent draft text per conversation.
+class DraftStore extends _KvMapStore {
+  DraftStore() : super('avatok_drafts');
+}
+
+/// Disappearing-message timer (seconds, as string) per conversation. '' = off.
+class ChatTimerStore extends _KvMapStore {
+  ChatTimerStore() : super('avatok_timers');
+}
+
+/// Pinned message (JSON {id,text}) per conversation.
+class PinnedMsgStore extends _KvMapStore {
+  PinnedMsgStore() : super('avatok_pinned');
+}
+
 /// Starred (bookmarked) message ids.
 class StarStore {
   static const _key = 'avatok_stars';

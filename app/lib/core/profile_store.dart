@@ -7,7 +7,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class Profile {
   final String displayName;
   final String handle; // without '@'
-  const Profile({this.displayName = '', this.handle = ''});
+  final bool sharePresence; // last-seen / online visible to others
+  const Profile({this.displayName = '', this.handle = '', this.sharePresence = true});
 
   bool get isEmpty => displayName.isEmpty && handle.isEmpty;
   String get atHandle => handle.isEmpty ? '' : '@$handle';
@@ -30,6 +31,7 @@ class ProfileStore {
       return Profile(
         displayName: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
+        sharePresence: j['sharePresence'] != false,
       );
     } catch (_) {
       return const Profile();
@@ -38,5 +40,5 @@ class ProfileStore {
 
   Future<void> save(Profile p) => _s.write(
       key: _key,
-      value: jsonEncode({'name': p.displayName, 'handle': p.handle}));
+      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'sharePresence': p.sharePresence}));
 }

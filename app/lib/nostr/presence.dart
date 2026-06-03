@@ -43,6 +43,8 @@ class PresenceChannel {
 
   void sendTyping(bool on) => _send({'type': 'typing', 'on': on, 'who': me});
   void sendRead(int ts) => _send({'type': 'read', 'ts': ts, 'who': me});
+  void sendDelivered(int ts) => _send({'type': 'delivered', 'ts': ts, 'who': me});
+  void sendOnline() => _send({'type': 'online', 'who': me});
 
   void _send(Map<String, dynamic> o) {
     try { _ws?.sink.add(jsonEncode(o)); } catch (_) {}

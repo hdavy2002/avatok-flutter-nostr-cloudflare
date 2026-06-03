@@ -10,16 +10,22 @@ class Group {
   final String name;
   final List<String> members; // x-only hex pubkeys (incl. me)
   final List<String> admins;  // subset of members who can manage
-  const Group({required this.id, required this.name, required this.members, this.admins = const []});
+  final String description;
+  const Group({required this.id, required this.name, required this.members, this.admins = const [], this.description = ''});
 
   bool isAdmin(String hex) => admins.contains(hex);
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'members': members, 'admins': admins};
+  Group copyWith({String? name, List<String>? members, List<String>? admins, String? description}) =>
+      Group(id: id, name: name ?? this.name, members: members ?? this.members,
+          admins: admins ?? this.admins, description: description ?? this.description);
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'members': members, 'admins': admins, 'description': description};
   factory Group.fromJson(Map<String, dynamic> j) => Group(
         id: j['id'].toString(),
         name: (j['name'] ?? 'Group').toString(),
         members: ((j['members'] as List?) ?? []).map((e) => e.toString()).toList(),
         admins: ((j['admins'] as List?) ?? []).map((e) => e.toString()).toList(),
+        description: (j['description'] ?? '').toString(),
       );
 
   static String newId() {

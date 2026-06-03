@@ -31,6 +31,8 @@ dependencies:
   # NIP-44 v2 crypto (secp256k1 ECDH, ChaCha20, HMAC, HKDF) — pure Dart
   # ^4.0.0 to match bip340's transitive constraint.
   pointycastle: ^4.0.0
+  # Safety-number / contact QR code
+  qr_flutter: ^4.1.0
   # Native incoming-call UI (full-screen, lock-screen) + ConnectionService
   # Pinned to 2.x — 3.x rewrote the CallEvent/params API.
   flutter_callkit_incoming: ^2.5.8

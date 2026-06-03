@@ -23,10 +23,12 @@ import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../nostr/ava_dm.dart';
 import '../../nostr/ava_group_dm.dart';
+import '../../nostr/nip17.dart';
 import '../../nostr/nostr_client.dart';
 import '../../nostr/presence.dart';
 import '../../push/push_service.dart';
 import 'call_screen.dart';
+import 'contact_profile_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
 import 'group_info_screen.dart';
@@ -58,9 +60,12 @@ class _Msg {
   Map<String, dynamic>? replyTo; // {id, preview, who}
   bool edited;
   bool starred;
+  bool forwarded;
+  int? expireAt; // epoch secs after which the message disappears
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.localBytes,
-       this.uploading = false, this.failed = false, this.replyTo, this.edited = false, this.starred = false});
+       this.uploading = false, this.failed = false, this.replyTo, this.edited = false,
+       this.starred = false, this.forwarded = false, this.expireAt});
 }
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
@@ -104,6 +109,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String? _peerNpub; // 1:1 recipient npub for message notifications
   List<String> _memberNpubs = []; // group recipient npubs (excl me)
   String? _convKey; // '1:<hex>' or 'g:<gid>' for read state / unread badges
+  Identity? _meId;
+  int _disappearSecs = 0; // per-chat disappearing timer (0 = off)
+  int _peerDeliveredTs = 0;
+  bool _peerOnline = false;
+  bool _sharePresence = true;
+  Timer? _onlineClear;
+  Map<String, String>? _pinned; // {id, text}
+  bool _searchMode = false;
+  String _searchQuery = '';
+  Map<String, String> _memberNames = {}; // hex → name (group mentions)
 
   void _markRead() {
     if (_convKey != null) {
@@ -119,14 +134,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     });
     _idStore.load().then((id) {
       if (!mounted || id == null) return;
-      setState(() { _myNpub = id.npub; _myName = id.shortNpub; });
+      setState(() { _myNpub = id.npub; _myName = id.shortNpub; _meId = id; });
       _setupDm(id);
     });
     ProfileStore().load().then((p) {
-      if (mounted && p.displayName.isNotEmpty) setState(() => _myName = p.displayName);
+      if (!mounted) return;
+      setState(() { if (p.displayName.isNotEmpty) _myName = p.displayName; _sharePresence = p.sharePresence; });
     });
     _starStore.load().then((s) { if (mounted) setState(() => _starred = s); });
+    _pruneTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if (mounted && _msgs.any((m) => m.expireAt != null && m.expireAt! < nowS)) {
+        setState(() => _msgs.removeWhere((m) => m.expireAt != null && m.expireAt! < nowS));
+      }
+    });
   }
+
+  Timer? _pruneTimer;
 
   void _setupDm(Identity id) {
     if (widget.chat.gid != null) { _setupGroup(id); return; }
@@ -143,9 +167,32 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.pubHex, peerHex), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
     _presence!.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    if (_sharePresence) _presence!.sendOnline();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
     _markRead();
+    _loadChatExtras();
+  }
+
+  Future<void> _loadChatExtras() async {
+    final key = _convKey;
+    if (key == null) return;
+    final draft = (await DraftStore().load())[key];
+    final timer = (await ChatTimerStore().load())[key];
+    final pin = (await PinnedMsgStore().load())[key];
+    if (!mounted) return;
+    setState(() {
+      if (draft != null && draft.isNotEmpty && _ctrl.text.isEmpty) { _ctrl.text = draft; _hasText = true; }
+      _disappearSecs = int.tryParse(timer ?? '') ?? 0;
+      try { _pinned = pin != null ? (jsonDecode(pin) as Map).cast<String, String>() : null; } catch (_) {}
+    });
+    if (_isGroup) {
+      final contacts = await ContactsStore().load();
+      final names = <String, String>{};
+      for (final c in contacts) { final h = NostrKeys.npubToHex(c.npub); if (h != null) names[h] = c.name; }
+      if (_meId != null) names[_meId!.pubHex] = 'You';
+      if (mounted) setState(() => _memberNames = names);
+    }
   }
 
   Future<void> _setupGroup(Identity id) async {
@@ -164,10 +211,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _memberNpubs = g.members.where((m) => m != id.pubHex).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
     _markRead();
+    _loadChatExtras();
   }
 
   void _onPresence(Map<String, dynamic> e) {
     if (!mounted) return;
+    _markPeerOnline();
     if (e['type'] == 'typing') {
       setState(() { _peerTyping = e['on'] == true; _typingWho = e['who']?.toString(); });
       _typingClear?.cancel();
@@ -178,8 +227,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       }
     } else if (e['type'] == 'read') {
       final ts = (e['ts'] as num?)?.toInt() ?? 0;
-      if (ts > _peerReadTs) setState(() => _peerReadTs = ts);
+      if (ts > _peerReadTs) setState(() { _peerReadTs = ts; _peerDeliveredTs = ts > _peerDeliveredTs ? ts : _peerDeliveredTs; });
+    } else if (e['type'] == 'delivered') {
+      final ts = (e['ts'] as num?)?.toInt() ?? 0;
+      if (ts > _peerDeliveredTs) setState(() => _peerDeliveredTs = ts);
     }
+  }
+
+  void _markPeerOnline() {
+    if (!_peerOnline) setState(() => _peerOnline = true);
+    _onlineClear?.cancel();
+    _onlineClear = Timer(const Duration(seconds: 35), () { if (mounted) setState(() => _peerOnline = false); });
   }
 
   void _onTyping() {
@@ -211,9 +269,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } catch (_) {
       return;
     }
+    final env2 = jsonDecode(m.payload) as Map;
+    final exp = (env2['exp'] as num?)?.toInt();
+    if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return; // already gone
     setState(() {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
+          forwarded: env2['forwarded'] == true, expireAt: exp,
           starred: _starred.contains(m.rumorId),
           senderLabel: m.mine ? null : _shortPub(m.senderPub)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
@@ -232,6 +294,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     String text = m.payload;
     ChatMedia? media;
     Map<String, dynamic>? replyMeta;
+    bool forwarded = false;
+    int? exp;
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
@@ -242,12 +306,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       } else if (env is Map && env['t'] == 'text') {
         text = env['body'].toString();
       }
-      if (env is Map && env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
+      if (env is Map) {
+        if (env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
+        forwarded = env['forwarded'] == true;
+        exp = (env['exp'] as num?)?.toInt();
+      }
     } catch (_) {/* legacy/plain text */}
+    if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return;
     setState(() {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
-          starred: _starred.contains(m.rumorId)));
+          forwarded: forwarded, expireAt: exp, starred: _starred.contains(m.rumorId)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
@@ -280,11 +349,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _audio.dispose();
     _sfx.dispose();
     _recorder.dispose();
+    if (_convKey != null) DraftStore().set(_convKey!, _ctrl.text.trim());
     _dm?.stop();
     _gdm?.stop();
     _presence?.dispose();
     _typingClear?.cancel();
     _myTypingOff?.cancel();
+    _onlineClear?.cancel();
+    _pruneTimer?.cancel();
     _nostr?.dispose();
     super.dispose();
   }
@@ -293,6 +365,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final expire = _disappearSecs > 0 ? now + _disappearSecs : null;
 
     // Editing an existing message?
     if (_editing != null && _editing!.evId != null) {
@@ -317,27 +390,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
     if (_isGroup && _gdm != null) {
       final id = _gdm!.send(jsonEncode({
-        't': 'gtext', 'gid': _group!.id, 'body': t, if (replyMeta != null) 'replyTo': replyMeta,
+        't': 'gtext', 'gid': _group!.id, 'body': t,
+        if (replyMeta != null) 'replyTo': replyMeta, if (expire != null) 'exp': expire,
       }));
       _seenEv.add(id);
       setState(() {
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta));
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta, expireAt: expire));
         _ctrl.clear(); _hasText = false; _replyTo = null;
       });
       _jump();
+      if (_convKey != null) DraftStore().set(_convKey!, '');
       PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK');
       return;
     }
     if (_realMode && _dm != null) {
       final id = _dm!.send(jsonEncode({
-        't': 'text', 'body': t, if (replyMeta != null) 'replyTo': replyMeta,
+        't': 'text', 'body': t,
+        if (replyMeta != null) 'replyTo': replyMeta, if (expire != null) 'exp': expire,
       }));
       _seenEv.add(id);
       setState(() {
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta));
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta, expireAt: expire));
         _ctrl.clear(); _hasText = false; _replyTo = null;
       });
       _jump();
+      if (_convKey != null) DraftStore().set(_convKey!, '');
       if (_peerNpub != null) PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK');
       return;
     }
@@ -518,6 +595,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ]),
           const Divider(height: 24),
           _action(ctx, Icons.reply, 'Reply', () => setState(() => _replyTo = m)),
+          _action(ctx, Icons.push_pin_outlined, 'Pin message', () => _pinMessage(m)),
           _action(ctx, m.starred ? Icons.star : Icons.star_border,
               m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
           if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
@@ -551,6 +629,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _ctrl.text = m.text; _hasText = m.text.trim().isNotEmpty;
     });
     _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+  }
+
+  Future<void> _pinMessage(_Msg m) async {
+    if (_convKey == null) return;
+    final pin = {'id': m.evId ?? '${m.id}', 'text': m.text};
+    await PinnedMsgStore().set(_convKey!, jsonEncode(pin));
+    if (mounted) setState(() => _pinned = pin);
+  }
+
+  Future<void> _unpin() async {
+    if (_convKey == null) return;
+    await PinnedMsgStore().set(_convKey!, '');
+    if (mounted) setState(() => _pinned = null);
+  }
+
+  void _openInfo() {
+    if (widget.chat.group) { _openGroupInfo(); return; }
+    if (!widget.chat.seed.startsWith('npub1')) return;
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ContactProfileScreen(name: widget.chat.name, npub: widget.chat.seed, me: _meId)));
   }
 
   static const _reactionSounds = {
@@ -600,16 +698,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: Avatar(seed: c.seed, name: c.name, size: 40),
                     title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Forwarded to ${c.name}')));
-                    },
+                    onTap: () { Navigator.pop(ctx); _doForward(m, c); },
                   ),
               ]),
             ),
         ]),
       ),
     );
+  }
+
+  /// Really forward [m] to contact [c] over a one-off gift-wrap, flagged forwarded.
+  Future<void> _doForward(_Msg m, Contact c) async {
+    final id = _meId;
+    final peerHex = NostrKeys.npubToHex(c.npub);
+    if (id == null || peerHex == null) return;
+    final payload = m.media != null
+        ? {...m.media!.toEnvelope(), 'forwarded': true}
+        : {'t': 'text', 'body': m.text, 'forwarded': true};
+    try {
+      final client = NostrClient(kNostrRelayUrl)..connect();
+      final (gifts, _) = Nip17.wrapBoth(
+          senderPriv: id.privHex, senderPub: id.pubHex, peerPub: peerHex, payload: jsonEncode(payload));
+      for (final g in gifts) {
+        client.publish(g);
+      }
+      Future.delayed(const Duration(seconds: 2), client.dispose);
+      PushService.notifyMessage([c.npub], _myName ?? 'AvaTOK');
+    } catch (_) {}
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Forwarded to ${c.name}')));
   }
 
   // ---- header overflow ----
@@ -621,6 +737,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
+          if (_convKey != null)
+            _action(ctx, Icons.timer_outlined,
+                _disappearSecs == 0 ? 'Disappearing messages' : 'Disappearing: ${_disappearLabel(_disappearSecs)}',
+                _pickDisappear),
           if (_convKey != null)
             _action(ctx, Icons.archive_outlined, 'Archive chat', () async {
               await ChatFlagsStore().toggle('archived', _convKey!);
@@ -637,6 +757,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           _action(ctx, Icons.delete_sweep_outlined, 'Delete chat', () => Navigator.pop(context)),
         ]),
       ),
+    );
+  }
+
+  String _disappearLabel(int s) => s == 0 ? 'Off' : (s >= 604800 ? '1 week' : (s >= 86400 ? '1 day' : '1 hour'));
+
+  void _pickDisappear() {
+    showModalBottomSheet(
+      context: context, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Padding(padding: EdgeInsets.all(14),
+            child: Text('Disappearing messages', style: TextStyle(fontWeight: FontWeight.w800))),
+        for (final opt in [['Off', 0], ['1 hour', 3600], ['1 day', 86400], ['1 week', 604800]])
+          ListTile(
+            title: Text(opt[0] as String),
+            trailing: _disappearSecs == opt[1] ? const Icon(Icons.check, color: AvaColors.brand) : null,
+            onTap: () async {
+              final secs = opt[1] as int;
+              await ChatTimerStore().set(_convKey!, secs == 0 ? '' : '$secs');
+              if (mounted) { setState(() => _disappearSecs = secs); Navigator.pop(ctx); }
+            },
+          ),
+      ])),
     );
   }
 
@@ -688,7 +831,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               height: 56,
               color: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Row(children: [
+              child: _searchMode ? _searchBar() : Row(children: [
                 IconButton(
                   icon: const Icon(Icons.chevron_left, size: 28, color: AvaColors.ink),
                   onPressed: () => Navigator.pop(context),
@@ -697,7 +840,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: GestureDetector(
-                    onTap: c.group ? _openGroupInfo : null,
+                    onTap: _openInfo,
                     behavior: HitTestBehavior.opaque,
                     child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -708,15 +851,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       Text(
                           _peerTyping
                               ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'typing…')
-                              : (c.group ? '${c.members} members · tap to manage' : (c.online ? 'Active now' : 'Offline')),
+                              : (c.group ? '${c.members} members · tap to manage'
+                                  : (_peerOnline ? 'online' : 'tap for contact info')),
                           style: TextStyle(fontSize: 11.5,
-                              color: _peerTyping
-                                  ? AvaColors.brand
-                                  : (c.online ? AvaColors.success : const Color(0xFF8A9099)))),
+                              color: (_peerTyping || _peerOnline)
+                                  ? (_peerOnline && !_peerTyping ? AvaColors.success : AvaColors.brand)
+                                  : const Color(0xFF8A9099))),
                     ],
                   ),
                   ),
                 ),
+                IconButton(icon: const Icon(Icons.search, color: AvaColors.ink),
+                    onPressed: () => setState(() { _searchMode = true; _searchQuery = ''; })),
                 if (!c.group) ...[
                   IconButton(icon: const Icon(Icons.call, color: AvaColors.ink), onPressed: () => _call('voice')),
                   IconButton(icon: const Icon(Icons.videocam, color: AvaColors.ink), onPressed: () => _call('video')),
@@ -724,13 +870,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.ink), onPressed: _overflow),
               ]),
             ),
+            if (_pinned != null) _pinBanner(),
             Expanded(
-              child: ListView.builder(
-                controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                itemCount: _msgs.length,
-                itemBuilder: (c, i) => _bubble(_msgs[i]),
-              ),
+              child: Builder(builder: (_) {
+                final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+                var visible = _msgs.where((m) => m.expireAt == null || m.expireAt! >= nowS).toList();
+                if (_searchMode && _searchQuery.isNotEmpty) {
+                  final q = _searchQuery.toLowerCase();
+                  visible = visible.where((m) => m.text.toLowerCase().contains(q)).toList();
+                }
+                return ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  itemCount: visible.length,
+                  itemBuilder: (c, i) => _bubble(visible[i]),
+                );
+              }),
             ),
             _inputBar(),
           ],
@@ -819,6 +974,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
+  Widget _searchBar() => Row(children: [
+        IconButton(icon: const Icon(Icons.arrow_back, color: AvaColors.ink),
+            onPressed: () => setState(() { _searchMode = false; _searchQuery = ''; })),
+        Expanded(child: TextField(
+          autofocus: true,
+          onChanged: (v) => setState(() => _searchQuery = v),
+          decoration: const InputDecoration(hintText: 'Search messages', border: InputBorder.none),
+        )),
+      ]);
+
+  Widget _pinBanner() => Container(
+        color: const Color(0xFFFFF8E1),
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+        child: Row(children: [
+          const Icon(Icons.push_pin, size: 15, color: Color(0xFFE6B800)),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Pinned: ${_pinned!['text'] ?? ''}',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: AvaColors.ink))),
+          GestureDetector(onTap: _unpin, child: const Icon(Icons.close, size: 16, color: AvaColors.sub)),
+          const SizedBox(width: 8),
+        ]),
+      );
+
   Widget _bubble(_Msg m) {
     final hasMedia = m.media != null || m.localBytes != null;
     return Align(
@@ -846,6 +1024,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (m.forwarded)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 1),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.shortcut, size: 12, color: m.me ? Colors.white70 : const Color(0xFF9AA1AC)),
+                        const SizedBox(width: 3),
+                        Text('Forwarded', style: TextStyle(fontSize: 10.5, fontStyle: FontStyle.italic,
+                            color: m.me ? Colors.white70 : const Color(0xFF9AA1AC))),
+                      ]),
+                    ),
                   if (m.senderLabel != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 2),
@@ -886,13 +1074,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       Text(m.time,
                           style: TextStyle(fontSize: 10.5,
                               color: m.me ? Colors.white70 : const Color(0xFF9AA1AC))),
+                      if (m.expireAt != null) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.timer_outlined, size: 11, color: m.me ? Colors.white70 : const Color(0xFF9AA1AC)),
+                      ],
                       if (m.me && _realMode && !_isGroup && m.ts > 0) ...[
                         const SizedBox(width: 4),
-                        Icon(
-                            (_peerReadTs > 0 && m.ts <= _peerReadTs) ? Icons.done_all : Icons.done,
-                            size: 13,
-                            color: (_peerReadTs > 0 && m.ts <= _peerReadTs)
-                                ? const Color(0xFF8BE9FD) : Colors.white70),
+                        if (_peerReadTs > 0 && m.ts <= _peerReadTs)
+                          const Icon(Icons.done_all, size: 13, color: Color(0xFF8BE9FD)) // read
+                        else if (_peerDeliveredTs > 0 && m.ts <= _peerDeliveredTs)
+                          const Icon(Icons.done_all, size: 13, color: Colors.white70)    // delivered
+                        else
+                          const Icon(Icons.done, size: 13, color: Colors.white70),       // sent
                       ],
                       if (m.uploading) ...[
                         const SizedBox(width: 6),

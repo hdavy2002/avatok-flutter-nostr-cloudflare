@@ -15,6 +15,7 @@ import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../nostr/nip17.dart';
 import '../../nostr/nostr_client.dart';
+import '../../nostr/presence.dart';
 import '../../push/push_service.dart';
 import '../status/status_screen.dart';
 import '../avalive/live_screen.dart';
@@ -55,6 +56,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Map<String, Set<String>> _flags = {'blocked': {}, 'archived': {}, 'muted': {}, 'pinned': {}};
   int _statusCount = 0;
   bool _showArchived = false;
+  String _search = '';
+  Map<String, String> _drafts = {};
 
   String _keyOf(Chat c) =>
       c.gid != null ? 'g:${c.gid}' : '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
@@ -118,10 +121,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final lastRead = await _readStore.load();
     final flags = await _flagsStore.load();
     final status = await _statusStore.load();
+    final drafts = await DraftStore().load();
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
-        _lastRead = lastRead; _flags = flags; _statusCount = status.length;
+        _lastRead = lastRead; _flags = flags; _statusCount = status.length; _drafts = drafts;
       });
     }
     // Register this device for incoming-call wake pushes (npub hashed at rest).
@@ -172,6 +176,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
           if (_flags['blocked']!.contains(key)) return;
           if (u.createdAt > (_lastRead[key] ?? 0) && mounted) {
             setState(() => _unread[key] = (_unread[key] ?? 0) + 1);
+          }
+          // Send a delivered receipt for recent 1:1 messages (not history replays).
+          final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          if (env['gid'] == null && u.createdAt > nowSec - 300) {
+            final pres = PresenceChannel(PresenceChannel.roomFor1on1(id.pubHex, u.senderPub), 'inbox')..connect();
+            pres.sendDelivered(u.createdAt);
+            Future.delayed(const Duration(milliseconds: 900), pres.dispose);
           }
         }
       } catch (_) {/* ignore */}
@@ -314,11 +325,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   Widget build(BuildContext context) {
     final blocked = _flags['blocked']!, archived = _flags['archived']!, pinned = _flags['pinned']!;
+    String draftOr(String k, String fallback) =>
+        (_drafts[k] ?? '').isNotEmpty ? '✏️ ${_drafts[k]}' : fallback;
     final groupChats = _groups
         .where((g) => _showArchived || !archived.contains('g:${g.id}'))
         .map((g) => Chat(
             name: g.name, seed: 'group-${g.id}',
-            last: 'Group · ${g.members.length} members', time: '',
+            last: draftOr('g:${g.id}', 'Group · ${g.members.length} members'), time: '',
             group: true, members: g.members.length, gid: g.id,
             unread: _unread['g:${g.id}'] ?? 0))
         .toList();
@@ -327,13 +340,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
       return !blocked.contains(k) && (_showArchived || !archived.contains(k));
     }).map((c) {
       final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
-      return Chat(name: c.name, seed: c.seed, last: c.atHandle.isNotEmpty ? c.atHandle : 'Say hi 👋',
+      return Chat(name: c.name, seed: c.seed,
+          last: draftOr(k, c.atHandle.isNotEmpty ? c.atHandle : 'Say hi 👋'),
           time: '', unread: _unread[k] ?? 0);
     }).toList();
     final realRows = [...groupChats, ...contactChats];
     realRows.sort((a, b) => (pinned.contains(_keyOf(a)) ? 0 : 1) - (pinned.contains(_keyOf(b)) ? 0 : 1));
     final archivedCount = archived.length;
-    final rows = [...realRows, ...kChats];
+    var rows = [...realRows, ...kChats];
+    if (_search.isNotEmpty) rows = rows.where((c) => c.name.toLowerCase().contains(_search)).toList();
     final online = kChats.where((c) => c.online).toList();
     return Scaffold(
       backgroundColor: Colors.white,
@@ -394,11 +409,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                     color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-                child: const Row(children: [
-                  Icon(Icons.search, size: 18, color: Color(0xFF9AA1AC)),
-                  SizedBox(width: 8),
-                  Text('Search people on AvaTOK',
-                      style: TextStyle(color: Color(0xFF9AA1AC), fontSize: 14)),
+                child: Row(children: [
+                  const Icon(Icons.search, size: 18, color: Color(0xFF9AA1AC)),
+                  const SizedBox(width: 8),
+                  Expanded(child: TextField(
+                    onChanged: (v) => setState(() => _search = v.trim().toLowerCase()),
+                    decoration: const InputDecoration(
+                        hintText: 'Search chats', border: InputBorder.none, isDense: true,
+                        hintStyle: TextStyle(color: Color(0xFF9AA1AC), fontSize: 14)),
+                  )),
                 ]),
               ),
             ),

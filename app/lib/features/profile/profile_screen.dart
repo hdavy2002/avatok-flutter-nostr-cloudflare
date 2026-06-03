@@ -22,6 +22,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _handle = TextEditingController();
   bool _saving = false;
   bool _listed = false;
+  bool _sharePresence = true;
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _name.text = p.displayName;
         _handle.text = p.handle;
         _listed = !p.isEmpty;
+        _sharePresence = p.sharePresence;
       });
     });
   }
@@ -44,7 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (id == null || _saving) return;
     final handle = _handle.text.trim().toLowerCase().replaceAll('@', '');
     setState(() => _saving = true);
-    await _store.save(Profile(displayName: _name.text.trim(), handle: handle));
+    await _store.save(Profile(displayName: _name.text.trim(), handle: handle, sharePresence: _sharePresence));
     // Opt-in discovery: publish to the directory so others can find me.
     if (_name.text.trim().isNotEmpty || handle.isNotEmpty) {
       await Directory.registerProfile(npub: id.npub, handle: handle, name: _name.text.trim());
@@ -85,7 +87,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 6),
         const Text('Others can add you by @handle. Leave blank to stay unlisted.',
             style: TextStyle(color: AvaColors.sub, fontSize: 12)),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          activeColor: AvaColors.brand,
+          value: _sharePresence,
+          onChanged: (v) => setState(() => _sharePresence = v),
+          title: const Text('Share last seen / online', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          subtitle: const Text('Let contacts see when you are online', style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+        ),
+        const SizedBox(height: 8),
         if (id != null) Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),

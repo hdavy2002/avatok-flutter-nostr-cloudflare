@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
@@ -68,28 +69,28 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   bool get _amAdmin => _id != null && _group.admins.contains(_id!.pubHex);
 
   Map<String, dynamic> _ginfo(Group g) =>
-      {'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins};
+      {'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins, 'description': g.description};
+
+  Future<void> _commit(Group g2, {List<String>? extraTo, Map<String, dynamic>? extraMsg}) async {
+    await GroupStore().upsert(g2);
+    await _broadcast(g2.members, _ginfo(g2));
+    if (extraTo != null && extraMsg != null) await _broadcast(extraTo, extraMsg);
+    if (mounted) setState(() { _group = g2; _busy = false; });
+  }
 
   Future<void> _addMember(String hex) async {
     if (_group.members.contains(hex)) return;
     setState(() => _busy = true);
-    final g2 = Group(id: _group.id, name: _group.name, members: [..._group.members, hex], admins: _group.admins);
-    await GroupStore().upsert(g2);
-    await _broadcast(g2.members, _ginfo(g2));
-    if (mounted) setState(() { _group = g2; _busy = false; });
+    await _commit(_group.copyWith(members: [..._group.members, hex]));
   }
 
   Future<void> _removeMember(String hex) async {
     setState(() => _busy = true);
-    final g2 = Group(
-      id: _group.id, name: _group.name,
-      members: _group.members.where((m) => m != hex).toList(),
-      admins: _group.admins.where((m) => m != hex).toList(),
-    );
-    await GroupStore().upsert(g2);
-    await _broadcast(g2.members, _ginfo(g2));            // remaining members
-    await _broadcast([hex], {'t': 'gkick', 'gid': _group.id}); // tell the removed one
-    if (mounted) setState(() { _group = g2; _busy = false; });
+    await _commit(
+      _group.copyWith(
+        members: _group.members.where((m) => m != hex).toList(),
+        admins: _group.admins.where((m) => m != hex).toList()),
+      extraTo: [hex], extraMsg: {'t': 'gkick', 'gid': _group.id});
   }
 
   Future<void> _toggleAdmin(String hex) async {
@@ -97,10 +98,26 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final admins = _group.admins.contains(hex)
         ? _group.admins.where((m) => m != hex).toList()
         : [..._group.admins, hex];
-    final g2 = Group(id: _group.id, name: _group.name, members: _group.members, admins: admins);
-    await GroupStore().upsert(g2);
-    await _broadcast(g2.members, _ginfo(g2));
-    if (mounted) setState(() { _group = g2; _busy = false; });
+    await _commit(_group.copyWith(admins: admins));
+  }
+
+  Future<void> _editDescription() async {
+    final ctrl = TextEditingController(text: _group.description);
+    final v = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Group description'),
+        content: TextField(controller: ctrl, maxLines: 3, autofocus: true,
+            decoration: const InputDecoration(hintText: 'What is this group about?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (v == null) return;
+    setState(() => _busy = true);
+    await _commit(_group.copyWith(description: v));
   }
 
   void _memberActions(String hex) {
@@ -128,11 +145,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final id = _id;
     if (id == null) return;
     setState(() => _busy = true);
-    final g2 = Group(
-      id: _group.id, name: _group.name,
+    final g2 = _group.copyWith(
       members: _group.members.where((m) => m != id.pubHex).toList(),
-      admins: _group.admins.where((m) => m != id.pubHex).toList(),
-    );
+      admins: _group.admins.where((m) => m != id.pubHex).toList());
     await _broadcast(g2.members, _ginfo(g2));
     await GroupStore().remove(_group.id);
     if (mounted) Navigator.pop(context, true);
@@ -182,7 +197,36 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         const SizedBox(height: 10),
         Center(child: Text(_group.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
         Center(child: Text('${_group.members.length} members', style: const TextStyle(color: AvaColors.sub))),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: InkWell(
+            onTap: _amAdmin ? _editDescription : null,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                Expanded(child: Text(
+                    _group.description.isEmpty ? (_amAdmin ? 'Add a group description' : 'No description') : _group.description,
+                    style: TextStyle(color: _group.description.isEmpty ? AvaColors.sub : AvaColors.ink, fontSize: 13))),
+                if (_amAdmin) const Icon(Icons.edit_outlined, size: 16, color: AvaColors.sub),
+              ]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ListTile(
+          leading: const Icon(Icons.link, color: AvaColors.brand),
+          title: const Text('Copy invite link', style: TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: const Text('Share so others can ask to join', style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: 'https://avatok.ai/g/${_group.id}'));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite link copied')));
+          },
+        ),
+        const Divider(height: 1),
+        const SizedBox(height: 8),
         if (_amAdmin)
           ListTile(
             leading: const Icon(Icons.person_add_alt_1, color: AvaColors.brand),
