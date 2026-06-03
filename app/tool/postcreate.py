@@ -3,7 +3,8 @@
 
 Run AFTER `flutter create --platforms=android .` in CI. Idempotent.
 - Adds camera/mic/network permissions to the main AndroidManifest.xml
-- Bumps minSdk to 24 (flutter_webrtc needs >=23; spec wants 24)
+- minSdk 24, compileSdk 35, targetSdk 35 (flutter_webrtc androidx deps need 35)
+- Forces compileSdk 35 on plugin subprojects (flutter_webrtc pins a lower one)
 """
 import re
 import sys
@@ -18,23 +19,7 @@ PERMS = [
     "android.permission.MODIFY_AUDIO_SETTINGS",
     "android.permission.BLUETOOTH",
     "android.permission.BLUETOOTH_CONNECT",
-    # RealtimeKit background audio/video (group calls + livestream)
-    "android.permission.POST_NOTIFICATIONS",
-    "android.permission.FOREGROUND_SERVICE",
-    "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
-    "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-    "android.permission.FOREGROUND_SERVICE_CAMERA",
-    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
 ]
-
-# RealtimeKit KeepAlive foreground service (background audio/video).
-KEEPALIVE_SERVICE = (
-    '        <service\n'
-    '            android:name="com.cloudflare.realtimekit.ui.KeepAliveService"\n'
-    '            android:enabled="true"\n'
-    '            android:exported="false"\n'
-    '            android:foregroundServiceType="mediaPlayback|camera|microphone" />\n'
-)
 
 
 def patch_manifest() -> None:
@@ -43,174 +28,81 @@ def patch_manifest() -> None:
         print(f"!! manifest not found at {man}")
         sys.exit(1)
     text = man.read_text()
-    lines = []
-    for p in PERMS:
-        if p not in text:
-            lines.append(f'    <uses-permission android:name="{p}" />')
+    lines = [f'    <uses-permission android:name="{p}" />' for p in PERMS if p not in text]
     if lines:
         block = "\n".join(lines) + "\n"
         text = re.sub(r"(<manifest[^>]*>)", r"\1\n" + block, text, count=1)
+        man.write_text(text)
         print(f"manifest: added {len(lines)} permission(s)")
     else:
         print("manifest: permissions already present")
-    # RealtimeKit KeepAlive service inside <application>
-    if "KeepAliveService" not in text:
-        text = text.replace("</application>", KEEPALIVE_SERVICE + "    </application>", 1)
-        print("manifest: added KeepAliveService")
-    man.write_text(text)
 
 
 def patch_sdks() -> None:
-    """Set minSdk=24, compileSdk=35, targetSdk=35.
-
-    flutter_webrtc's androidx deps (fragment 1.7.1, window 1.2.0, activity 1.8.1)
-    require compileSdk 35. Spec targets Android 15 (sdk 35) anyway.
-    """
     kts = APP / "android/app/build.gradle.kts"
     groovy = APP / "android/app/build.gradle"
     if kts.exists():
         t = kts.read_text()
         t = re.sub(r"minSdk\s*=\s*(flutter\.minSdkVersion|\d+)", "minSdk = 24", t)
-        t = re.sub(r"compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)", "compileSdk = 36", t)
+        t = re.sub(r"compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)", "compileSdk = 35", t)
         t = re.sub(r"targetSdk\s*=\s*(flutter\.targetSdkVersion|\d+)", "targetSdk = 35", t)
         kts.write_text(t)
-        print("build.gradle.kts: minSdk=24, compileSdk=36, targetSdk=35")
+        print("build.gradle.kts: minSdk=24, compileSdk=35, targetSdk=35")
     elif groovy.exists():
         t = groovy.read_text()
         t = re.sub(r"minSdkVersion\s+(flutter\.minSdkVersion|\d+)", "minSdkVersion 24", t)
-        t = re.sub(r"compileSdkVersion?\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 36", t)
-        t = re.sub(r"compileSdk\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 36", t)
+        t = re.sub(r"compileSdkVersion?\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 35", t)
         t = re.sub(r"targetSdkVersion\s+(flutter\.targetSdkVersion|\d+)", "targetSdkVersion 35", t)
         groovy.write_text(t)
-        print("build.gradle: minSdk=24, compileSdk=36, targetSdk=35")
+        print("build.gradle: minSdk=24, compileSdk=35, targetSdk=35")
     else:
         print("!! no android app build.gradle(.kts) found")
         sys.exit(1)
 
 
 def patch_root_compile_sdk() -> None:
-    """Force compileSdk 35 on ALL subprojects (plugins).
-
-    flutter_webrtc's own module pins a lower compileSdk than its androidx
-    deps require, failing :flutter_webrtc:checkDebugAarMetadata. Override it
-    from the root project so every plugin module compiles against API 35.
-    """
+    """flutter_webrtc pins a low compileSdk; override every subproject to 35."""
     root_kts = APP / "android/build.gradle.kts"
     root_g = APP / "android/build.gradle"
     marker = "AVATOK_FORCE_COMPILE_SDK"
     if root_kts.exists():
         t = root_kts.read_text()
         if marker not in t:
-            block = f'''
-// {marker}: plugins (e.g. flutter_webrtc) hardcode a low compileSdk (31) in
-// their own build script body, which runs AFTER plugin apply. So override in
-// afterEvaluate (runs after the module configures itself). Skip ":app" — it is
-// already set to 35 directly, and the root's evaluationDependsOn(":app") makes
-// an afterEvaluate on :app throw "already evaluated".
+            t += f'''
+// {marker}: plugins (e.g. flutter_webrtc) pin a low compileSdk; override.
 subprojects {{
     if (name != "app") {{
         afterEvaluate {{
             extensions.findByName("android")?.let {{ ext ->
                 runCatching {{
-                    (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(36)
+                    (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(35)
                 }}
             }}
         }}
     }}
 }}
 '''
-            root_kts.write_text(t + "\n" + block)
+            root_kts.write_text(t)
             print("root build.gradle.kts: forced subproject compileSdk 35")
-        else:
-            print("root build.gradle.kts: compileSdk override already present")
     elif root_g.exists():
         t = root_g.read_text()
         if marker not in t:
-            block = f'''
+            t += f'''
 // {marker}
 subprojects {{
     afterEvaluate {{ project ->
         if (project.hasProperty("android")) {{
-            project.android {{ compileSdkVersion 36 }}
+            project.android {{ compileSdkVersion 35 }}
         }}
     }}
 }}
 '''
-            root_g.write_text(t + "\n" + block)
+            root_g.write_text(t)
             print("root build.gradle: forced subproject compileSdk 35")
-        else:
-            print("root build.gradle: compileSdk override already present")
-    else:
-        print("!! no root android build.gradle(.kts) found")
-
-
-def patch_desugaring() -> None:
-    """Enable core library desugaring (RealtimeKit core-android requires it)."""
-    kts = APP / "android/app/build.gradle.kts"
-    g = APP / "android/app/build.gradle"
-    if kts.exists():
-        t = kts.read_text()
-        if "isCoreLibraryDesugaringEnabled" not in t:
-            if re.search(r"compileOptions\s*\{", t):
-                t = re.sub(r"(compileOptions\s*\{)",
-                           r"\1\n        isCoreLibraryDesugaringEnabled = true", t, count=1)
-            else:
-                t = re.sub(r"(android\s*\{)",
-                           r"\1\n    compileOptions {\n"
-                           r"        isCoreLibraryDesugaringEnabled = true\n"
-                           r"        sourceCompatibility = JavaVersion.VERSION_11\n"
-                           r"        targetCompatibility = JavaVersion.VERSION_11\n"
-                           r"    }", t, count=1)
-        if "desugar_jdk_libs" not in t:
-            t += ('\n\ndependencies {\n'
-                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
-                  '}\n')
-        kts.write_text(t)
-        print("desugaring enabled (build.gradle.kts)")
-    elif g.exists():
-        t = g.read_text()
-        if "coreLibraryDesugaringEnabled" not in t:
-            t = re.sub(r"(compileOptions\s*\{)",
-                       r"\1\n        coreLibraryDesugaringEnabled true", t, count=1)
-        if "desugar_jdk_libs" not in t:
-            t += ("\ndependencies {\n"
-                  "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n")
-        g.write_text(t)
-        print("desugaring enabled (build.gradle)")
-
-
-def patch_dependency_conflicts() -> None:
-    """flutter_webrtc and RealtimeKit both ship a 'com.twilio.audioswitch'
-    namespace (davidliu fork vs com.twilio:audioswitch), which breaks the
-    manifest merger. Keep Twilio's original; drop the fork."""
-    kts = APP / "android/app/build.gradle.kts"
-    g = APP / "android/app/build.gradle"
-    if kts.exists():
-        t = kts.read_text()
-        if "com.github.davidliu" not in t:
-            t += (
-                '\n\nconfigurations.all {\n'
-                '    // Resolve audioswitch namespace clash (flutter_webrtc vs RealtimeKit)\n'
-                '    exclude(group = "com.github.davidliu", module = "audioswitch")\n'
-                '}\n'
-            )
-            kts.write_text(t)
-            print("excluded davidliu:audioswitch (kts)")
-    elif g.exists():
-        t = g.read_text()
-        if "com.github.davidliu" not in t:
-            t += (
-                "\nconfigurations.all {\n"
-                "    exclude group: 'com.github.davidliu', module: 'audioswitch'\n}\n"
-            )
-            g.write_text(t)
-            print("excluded davidliu:audioswitch (groovy)")
 
 
 if __name__ == "__main__":
     patch_manifest()
     patch_sdks()
     patch_root_compile_sdk()
-    patch_desugaring()
-    patch_dependency_conflicts()
     print("postcreate: done")

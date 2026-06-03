@@ -1,15 +1,13 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
-import 'package:realtimekit_ui/realtimekit_ui.dart';
 
-import '../../core/config.dart';
 import '../../core/theme.dart';
 
-/// AvaLive — broadcast. (No detailed mockup exists; designed in the AvaTOK
-/// language.) Wired to Cloudflare RealtimeKit livestream presets via avatok-calls.
+/// AvaLive — broadcast. (No detailed mockup; designed in the AvaTOK language.)
+/// Camera preview works now; live ingest is wired next once we pick the path
+/// (RealtimeKit-only or Cloudflare Stream Live) — kept off flutter_webrtc's
+/// stack for now to avoid the dual-WebRTC crash.
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
   @override
@@ -18,11 +16,8 @@ class LiveScreen extends StatefulWidget {
 
 class _LiveScreenState extends State<LiveScreen> {
   final _renderer = RTCVideoRenderer();
-  final _room = TextEditingController(text: 'avalive-demo');
   MediaStream? _stream;
   bool _preview = false;
-  bool _busy = false;
-  String? _error;
 
   @override
   void initState() {
@@ -42,25 +37,6 @@ class _LiveScreenState extends State<LiveScreen> {
     _stream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': {'facingMode': 'user'}});
     _renderer.srcObject = _stream;
     setState(() => _preview = true);
-  }
-
-  Future<void> _go(String role) async {
-    setState(() { _busy = true; _error = null; });
-    try {
-      final res = await http.post(Uri.parse(kCallsJoinUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'room': _room.text.trim(), 'name': role == 'live_host' ? 'Host' : 'Viewer', 'role': role}));
-      if (res.statusCode != 200) throw 'Server ${res.statusCode}';
-      final token = (jsonDecode(res.body) as Map<String, dynamic>)['authToken'] as String;
-      if (!mounted) return;
-      final ui = RealtimeKitUIBuilder.build(uiKitInfo: RealtimeKitUIInfo(RtkMeetingInfo(authToken: token)));
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => ui));
-      RealtimeKitUIBuilder.dispose();
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   @override
@@ -114,57 +90,25 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              TextField(
-                controller: _room,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Stream room',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true, fillColor: const Color(0xFF1E1E25),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white24),
+                    padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: _togglePreview,
+                icon: Icon(_preview ? Icons.videocam_off : Icons.videocam),
+                label: Text(_preview ? 'Stop preview' : 'Preview camera'),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 12)),
-              ],
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white24),
-                        padding: const EdgeInsets.symmetric(vertical: 14)),
-                    onPressed: _togglePreview,
-                    icon: Icon(_preview ? Icons.videocam_off : Icons.videocam),
-                    label: Text(_preview ? 'Stop' : 'Preview'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white24),
-                        padding: const EdgeInsets.symmetric(vertical: 14)),
-                    onPressed: _busy ? null : () => _go('live_viewer'),
-                    icon: const Icon(Icons.visibility),
-                    label: const Text('Watch'),
-                  ),
-                ),
-              ]),
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(backgroundColor: AvaColors.danger,
                       padding: const EdgeInsets.symmetric(vertical: 16)),
-                  onPressed: _busy ? null : () => _go('live_host'),
-                  icon: _busy
-                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.sensors),
-                  label: Text(_busy ? 'Connecting…' : 'Go Live'),
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Go Live ingest wires up next (Stream Live / RealtimeKit)'))),
+                  icon: const Icon(Icons.sensors),
+                  label: const Text('Go Live'),
                 ),
               ),
             ],
