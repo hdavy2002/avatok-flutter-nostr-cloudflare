@@ -20,46 +20,54 @@ class _SignInScreenState extends State<SignInScreen> {
   final _pass = TextEditingController();
   final _code = TextEditingController();
   _Mode _mode = _Mode.signIn;
-  String? _signUpId;
+  String? _pendingId;
+  String? _pendingKind;
   bool _obscure = true;
   bool _busy = false;
   String? _error;
 
+  void _handleStep(ClerkStep r) {
+    if (r.isComplete) { _done(); return; }
+    if (r.needsCode) {
+      setState(() {
+        _busy = false;
+        _pendingKind = r.kind;
+        _pendingId = r.id;
+        _mode = _Mode.verify;
+        _error = null;
+      });
+      return;
+    }
+    setState(() { _busy = false; _error = r.error ?? 'Authentication failed'; });
+  }
+
   Future<void> _submit() async {
     setState(() { _busy = true; _error = null; });
-    String? err;
     switch (_mode) {
       case _Mode.signIn:
-        if (_email.text.trim().isEmpty || _pass.text.isEmpty) {
-          err = 'Enter your email and password';
-        } else {
-          err = await widget.clerk.signIn(_email.text, _pass.text);
-          if (err == null) { _done(); return; }
+        if (_email.text.trim().isEmpty) {
+          setState(() { _busy = false; _error = 'Enter your email'; });
+          return;
         }
-        break;
+        _handleStep(await widget.clerk.signIn(_email.text, _pass.text));
+        return;
       case _Mode.signUp:
         if (_email.text.trim().isEmpty || _pass.text.length < 8) {
-          err = 'Enter an email and a password (8+ characters)';
-        } else {
-          final r = await widget.clerk.signUp(_email.text, _pass.text);
-          if (r.isComplete) { _done(); return; }
-          if (r.needsCode) {
-            setState(() { _busy = false; _signUpId = r.signUpId; _mode = _Mode.verify; });
-            return;
-          }
-          err = r.error ?? 'Sign-up failed';
+          setState(() { _busy = false; _error = 'Enter an email and a password (8+ characters)'; });
+          return;
         }
-        break;
+        _handleStep(await widget.clerk.signUp(_email.text, _pass.text));
+        return;
       case _Mode.verify:
         if (_code.text.trim().isEmpty) {
-          err = 'Enter the code we emailed you';
-        } else {
-          err = await widget.clerk.verifyEmailCode(_signUpId!, _code.text);
-          if (err == null) { _done(); return; }
+          setState(() { _busy = false; _error = 'Enter the code we emailed you'; });
+          return;
         }
-        break;
+        final err = await widget.clerk.verifyCode(_pendingKind!, _pendingId!, _code.text);
+        if (err == null) { _done(); return; }
+        if (mounted) setState(() { _busy = false; _error = err; });
+        return;
     }
-    if (mounted) setState(() { _busy = false; _error = err; });
   }
 
   void _done() { if (mounted) widget.onSignedIn(); }
@@ -162,7 +170,7 @@ class _SignInScreenState extends State<SignInScreen> {
         );
       case _Mode.verify:
         return TextButton(
-          onPressed: () => _switch(_Mode.signUp),
+          onPressed: () => _switch(_pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn),
           child: const Text('Back', style: TextStyle(color: AvaColors.sub)),
         );
     }

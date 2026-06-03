@@ -7,6 +7,7 @@ import '../core/config.dart';
 
 /// Minimal Clerk Frontend API (FAPI) client — native mode.
 /// Mirrors the official clerk_auth REST flow without the (broken) UI SDK.
+/// Handles password sign-in/up and falls back to email-code verification.
 class ClerkClient {
   static const _jsVersion = '4.70.0';
   static const _apiVersion = '2025-11-10';
@@ -73,7 +74,7 @@ class ClerkClient {
     }
   }
 
-  /// Active session's display name/email, or null if signed out.
+  /// Active session's user, or null if signed out.
   Future<ClerkUser?> currentUser() async {
     await _loadToken();
     if (_clientToken == null) return null;
@@ -81,55 +82,74 @@ class ClerkClient {
     return _activeUser(body['response'] as Map<String, dynamic>?);
   }
 
-  /// Email/password sign-in. Returns null on success, or an error message.
-  Future<String?> signIn(String email, String password) async {
-    // Ensure a client exists.
+  /// Sign in with email + password; falls back to email-code if needed.
+  Future<ClerkStep> signIn(String email, String password) async {
     await _send('/client', body: {});
-    final body = await _send('/client/sign_ins', body: {
-      'identifier': email.trim(),
-      'password': password,
-      'strategy': 'password',
-    });
-    final err = _firstError(body);
-    if (err != null) return err;
-    final signIn = body['response'] as Map<String, dynamic>?;
-    if (signIn?['status'] == 'complete') return null;
-    // Fall back: check the client for an active session.
-    final client = body['client'] as Map<String, dynamic>?;
-    if (_activeUser(client) != null) return null;
-    return 'Sign-in could not be completed';
+    if (password.isNotEmpty) {
+      final body = await _send('/client/sign_ins',
+          body: {'identifier': email.trim(), 'password': password});
+      final su = body['response'] as Map<String, dynamic>?;
+      if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
+        return ClerkStep.complete();
+      }
+      final err = _firstError(body);
+      if (err != null && err.toLowerCase().contains('password') &&
+          !err.toLowerCase().contains('strategy')) {
+        return ClerkStep.error(err); // genuinely wrong password
+      }
+      // otherwise fall through to email-code
+    }
+    // Identifier-only sign-in → discover email_code factor → email a code.
+    final body2 = await _send('/client/sign_ins', body: {'identifier': email.trim()});
+    final step = await _prepareSignInEmailCode(body2['response'] as Map<String, dynamic>?);
+    if (step != null) return step;
+    return ClerkStep.error(_firstError(body2) ?? 'Sign-in is not available for this account');
   }
 
-  /// Email/password sign-up. Returns a result indicating completion or that an
-  /// email verification code is required.
-  Future<ClerkSignUp> signUp(String email, String password) async {
-    await _send('/client', body: {});
-    final body = await _send('/client/sign_ups', body: {
-      'email_address': email.trim(),
-      'password': password,
+  Future<ClerkStep?> _prepareSignInEmailCode(Map<String, dynamic>? su) async {
+    if (su == null) return null;
+    final id = su['id']?.toString();
+    final factors = (su['supported_first_factors'] as List?) ?? const [];
+    Map<String, dynamic>? email;
+    for (final f in factors) {
+      if ((f as Map)['strategy'] == 'email_code') { email = f.cast<String, dynamic>(); break; }
+    }
+    if (id == null || email == null) return null;
+    await _send('/client/sign_ins/$id/prepare_first_factor', body: {
+      'strategy': 'email_code',
+      if (email['email_address_id'] != null)
+        'email_address_id': email['email_address_id'].toString(),
     });
+    return ClerkStep.needsCode('signin', id);
+  }
+
+  /// Sign up with email + password; returns a code step if verification needed.
+  Future<ClerkStep> signUp(String email, String password) async {
+    await _send('/client', body: {});
+    final body = await _send('/client/sign_ups',
+        body: {'email_address': email.trim(), 'password': password});
     final err = _firstError(body);
-    if (err != null) return ClerkSignUp.error(err);
+    if (err != null) return ClerkStep.error(err);
     final su = body['response'] as Map<String, dynamic>?;
     if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
-      return ClerkSignUp.complete();
+      return ClerkStep.complete();
     }
     final id = su?['id']?.toString();
-    if (id == null) return ClerkSignUp.error('Sign-up could not start');
-    // Ask Clerk to email a verification code.
-    await _send('/client/sign_ups/$id/prepare_verification',
-        body: {'strategy': 'email_code'});
-    return ClerkSignUp.needsCode(id);
+    if (id == null) return ClerkStep.error('Sign-up could not start');
+    await _send('/client/sign_ups/$id/prepare_verification', body: {'strategy': 'email_code'});
+    return ClerkStep.needsCode('signup', id);
   }
 
-  /// Verify the emailed code to finish sign-up. Returns null on success.
-  Future<String?> verifyEmailCode(String signUpId, String code) async {
-    final body = await _send('/client/sign_ups/$signUpId/attempt_verification',
-        body: {'strategy': 'email_code', 'code': code.trim()});
+  /// Verify an emailed code (kind = 'signin' or 'signup'). Null on success.
+  Future<String?> verifyCode(String kind, String id, String code) async {
+    final path = kind == 'signup'
+        ? '/client/sign_ups/$id/attempt_verification'
+        : '/client/sign_ins/$id/attempt_first_factor';
+    final body = await _send(path, body: {'strategy': 'email_code', 'code': code.trim()});
     final err = _firstError(body);
     if (err != null) return err;
-    final su = body['response'] as Map<String, dynamic>?;
-    if (su?['status'] == 'complete' || _activeUser(body['client']) != null) return null;
+    final r = body['response'] as Map<String, dynamic>?;
+    if (r?['status'] == 'complete' || _activeUser(body['client']) != null) return null;
     return 'Verification incomplete';
   }
 
@@ -147,8 +167,7 @@ class ClerkClient {
     for (final s in sessions) {
       final m = s as Map<String, dynamic>;
       if (m['status'] == 'active') {
-        final user = m['user'] as Map<String, dynamic>?;
-        return ClerkUser.fromJson(user);
+        return ClerkUser.fromJson(m['user'] as Map<String, dynamic>?);
       }
     }
     return null;
@@ -158,20 +177,21 @@ class ClerkClient {
     final errors = body['errors'] as List?;
     if (errors == null || errors.isEmpty) return null;
     final e = errors.first as Map<String, dynamic>;
-    return (e['long_message'] ?? e['message'] ?? 'Sign-in failed').toString();
+    return (e['long_message'] ?? e['message'] ?? 'Authentication failed').toString();
   }
 }
 
-/// Result of a sign-up attempt.
-class ClerkSignUp {
+/// A step in an auth flow: complete, needs an email code, or an error.
+class ClerkStep {
   final bool isComplete;
-  final String? signUpId; // set when an email code is required
+  final String? kind; // 'signin' | 'signup' when a code is required
+  final String? id;
   final String? error;
-  ClerkSignUp._(this.isComplete, this.signUpId, this.error);
-  factory ClerkSignUp.complete() => ClerkSignUp._(true, null, null);
-  factory ClerkSignUp.needsCode(String id) => ClerkSignUp._(false, id, null);
-  factory ClerkSignUp.error(String e) => ClerkSignUp._(false, null, e);
-  bool get needsCode => signUpId != null;
+  ClerkStep._(this.isComplete, this.kind, this.id, this.error);
+  factory ClerkStep.complete() => ClerkStep._(true, null, null, null);
+  factory ClerkStep.needsCode(String kind, String id) => ClerkStep._(false, kind, id, null);
+  factory ClerkStep.error(String e) => ClerkStep._(false, null, null, e);
+  bool get needsCode => kind != null && id != null;
 }
 
 class ClerkUser {
