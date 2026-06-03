@@ -31,6 +31,9 @@ PERMS = [
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
     "android.permission.MANAGE_OWN_CALLS",
+    # Location share
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_COARSE_LOCATION",
 ]
 
 

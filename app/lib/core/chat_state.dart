@@ -102,6 +102,11 @@ class PinnedMsgStore extends _KvMapStore {
   PinnedMsgStore() : super('avatok_pinned');
 }
 
+/// Wallpaper preset id per conversation; key 'global' is the default.
+class WallpaperStore extends _KvMapStore {
+  WallpaperStore() : super('avatok_wallpaper');
+}
+
 /// Starred (bookmarked) message ids.
 class StarStore {
   static const _key = 'avatok_stars';

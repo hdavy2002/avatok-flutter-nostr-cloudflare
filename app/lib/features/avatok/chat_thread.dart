@@ -7,14 +7,17 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
+import '../../core/wallpaper.dart';
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
@@ -62,10 +65,13 @@ class _Msg {
   bool starred;
   bool forwarded;
   int? expireAt; // epoch secs after which the message disappears
+  String? special; // 'loc' | 'card' | 'poll' | 'sticker'
+  Map<String, dynamic>? extra;
+  Map<int, int> pollVotes = {}; // option index → count (local tally)
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.localBytes,
        this.uploading = false, this.failed = false, this.replyTo, this.edited = false,
-       this.starred = false, this.forwarded = false, this.expireAt});
+       this.starred = false, this.forwarded = false, this.expireAt, this.special, this.extra});
 }
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
@@ -119,6 +125,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _searchMode = false;
   String _searchQuery = '';
   Map<String, String> _memberNames = {}; // hex → name (group mentions)
+  String _wallpaperId = 'default';
+  List<String> _mentionMatches = [];
 
   void _markRead() {
     if (_convKey != null) {
@@ -180,10 +188,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final draft = (await DraftStore().load())[key];
     final timer = (await ChatTimerStore().load())[key];
     final pin = (await PinnedMsgStore().load())[key];
+    final wp = await WallpaperStore().load();
     if (!mounted) return;
     setState(() {
       if (draft != null && draft.isNotEmpty && _ctrl.text.isEmpty) { _ctrl.text = draft; _hasText = true; }
       _disappearSecs = int.tryParse(timer ?? '') ?? 0;
+      _wallpaperId = wp[key] ?? wp['global'] ?? 'default';
       try { _pinned = pin != null ? (jsonDecode(pin) as Map).cast<String, String>() : null; } catch (_) {}
     });
     if (_isGroup) {
@@ -254,10 +264,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     String text = '';
     ChatMedia? media;
     Map<String, dynamic>? replyMeta;
+    String? special;
+    Map<String, dynamic>? extra;
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
-      if (env is Map && env['t'] == 'gmedia') {
+      if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
+      if (env is Map && const ['loc', 'card', 'poll', 'sticker'].contains(env['t'])) {
+        special = env['t'].toString(); extra = env.cast<String, dynamic>();
+        text = _specialCaption(special!, extra!);
+      } else if (env is Map && env['t'] == 'gmedia') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
       } else if (env is Map && env['t'] == 'gtext') {
@@ -275,7 +291,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     setState(() {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
-          forwarded: env2['forwarded'] == true, expireAt: exp,
+          forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
           starred: _starred.contains(m.rumorId),
           senderLabel: m.mine ? null : _shortPub(m.senderPub)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
@@ -296,11 +312,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Map<String, dynamic>? replyMeta;
     bool forwarded = false;
     int? exp;
+    String? special;
+    Map<String, dynamic>? extra;
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
-      if (env is Map && env['t'] == 'media') {
+      if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
+      if (env is Map && const ['loc', 'card', 'poll', 'sticker'].contains(env['t'])) {
+        special = env['t'].toString(); extra = env.cast<String, dynamic>();
+        text = _specialCaption(special!, extra!);
+      } else if (env is Map && env['t'] == 'media') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
       } else if (env is Map && env['t'] == 'text') {
@@ -316,7 +338,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     setState(() {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
-          forwarded: forwarded, expireAt: exp, starred: _starred.contains(m.rumorId)));
+          forwarded: forwarded, expireAt: exp, special: special, extra: extra,
+          starred: _starred.contains(m.rumorId)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
@@ -468,6 +491,181 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         MediaKind.audio => '🎙️ Voice message',
         MediaKind.file => '📎 $name',
       };
+
+  // ---- special message types: location / contact card / poll / sticker ----
+  String _specialCaption(String type, Map<String, dynamic> e) => switch (type) {
+        'loc' => '📍 Location',
+        'card' => '👤 ${e['name'] ?? 'Contact'}',
+        'poll' => '📊 ${e['q'] ?? 'Poll'}',
+        'sticker' => (e['emoji'] ?? '🙂').toString(),
+        _ => '',
+      };
+
+  void _notifyRecipients() {
+    if (_isGroup) {
+      PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK');
+    } else if (_peerNpub != null) {
+      PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK');
+    }
+  }
+
+  void _sendSpecial(String type, Map<String, dynamic> data, String caption) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final payload = {'t': type, ...data, if (_isGroup) 'gid': _group!.id};
+    String id;
+    if (_isGroup && _gdm != null) {
+      id = _gdm!.send(jsonEncode(payload));
+    } else if (_realMode && _dm != null) {
+      id = _dm!.send(jsonEncode(payload));
+    } else {
+      id = 'local-${DateTime.now().microsecondsSinceEpoch}';
+    }
+    _seenEv.add(id);
+    setState(() => _msgs.add(_Msg(_seq++, true, caption, _fmtTime(now),
+        ts: now, evId: id, special: type, extra: data)));
+    _jump();
+    _notifyRecipients();
+  }
+
+  void _applyVote(String pollId, int opt) {
+    final i = _msgs.indexWhere((x) => x.special == 'poll' && x.extra?['id'] == pollId);
+    if (i >= 0 && mounted) setState(() => _msgs[i].pollVotes[opt] = (_msgs[i].pollVotes[opt] ?? 0) + 1);
+  }
+
+  void _vote(_Msg poll, int opt) {
+    final pollId = poll.extra?['id']?.toString() ?? '';
+    setState(() => poll.pollVotes[opt] = (poll.pollVotes[opt] ?? 0) + 1);
+    final payload = {'t': 'vote', 'poll': pollId, 'opt': opt, if (_isGroup) 'gid': _group!.id};
+    if (_isGroup && _gdm != null) {
+      _gdm!.send(jsonEncode(payload));
+    } else if (_realMode && _dm != null) {
+      _dm!.send(jsonEncode(payload));
+    }
+  }
+
+  Future<void> _shareLocation() async {
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission needed')));
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      _sendSpecial('loc', {'lat': pos.latitude, 'lng': pos.longitude}, '📍 Location');
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't get location")));
+    }
+  }
+
+  Future<void> _shareContactCard() async {
+    final contacts = await ContactsStore().load();
+    if (!mounted) return;
+    showModalBottomSheet(context: context, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Share a contact', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 8),
+          ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: ListView(shrinkWrap: true, children: [
+            for (final c in contacts)
+              ListTile(contentPadding: EdgeInsets.zero, leading: Avatar(seed: c.seed, name: c.name, size: 40),
+                title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                onTap: () { Navigator.pop(ctx); _sendSpecial('card', {'name': c.name, 'npub': c.npub, 'handle': c.handle}, '👤 ${c.name}'); }),
+          ])),
+        ]))));
+  }
+
+  Future<void> _createPoll() async {
+    final q = TextEditingController();
+    final opts = [TextEditingController(), TextEditingController(), TextEditingController()];
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Create poll'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: q, decoration: const InputDecoration(hintText: 'Question')),
+        const SizedBox(height: 8),
+        for (var i = 0; i < opts.length; i++)
+          TextField(controller: opts[i], decoration: InputDecoration(hintText: 'Option ${i + 1}')),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+      ],
+    ));
+    if (ok != true) return;
+    final options = opts.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
+    if (q.text.trim().isEmpty || options.length < 2) return;
+    _sendSpecial('poll', {'id': const Uuid().v4(), 'q': q.text.trim(), 'options': options}, '📊 ${q.text.trim()}');
+  }
+
+  void _stickerPicker() {
+    const stickers = ['😀','😂','🥳','😍','😎','🤩','😭','🙏','👍','👏','🔥','❤️','🎉','💯','🚀','🌈','🍕','☕','⚡','✨'];
+    showModalBottomSheet(context: context, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.all(16),
+        child: Wrap(spacing: 10, runSpacing: 10, children: [
+          for (final s in stickers)
+            GestureDetector(onTap: () { Navigator.pop(ctx); _sendSpecial('sticker', {'emoji': s}, s); },
+                child: Text(s, style: const TextStyle(fontSize: 38))),
+        ]))));
+  }
+
+  Widget _specialContent(_Msg m) {
+    final e = m.extra ?? {};
+    final fg = m.me ? Colors.white : AvaColors.ink;
+    switch (m.special) {
+      case 'sticker':
+        return Text((e['emoji'] ?? '🙂').toString(), style: const TextStyle(fontSize: 46));
+      case 'loc':
+        return GestureDetector(
+          onTap: () => launchUrl(Uri.parse('https://maps.google.com/?q=${e['lat']},${e['lng']}'),
+              mode: LaunchMode.externalApplication),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.location_on, color: m.me ? Colors.white : AvaColors.danger),
+            const SizedBox(width: 6),
+            Text('Location · open in Maps',
+                style: TextStyle(color: m.me ? Colors.white : AvaColors.brand, fontWeight: FontWeight.w600)),
+          ]),
+        );
+      case 'card':
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Avatar(seed: (e['npub'] ?? 'c').toString(), name: (e['name'] ?? '').toString(), size: 36),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text((e['name'] ?? 'Contact').toString(), style: TextStyle(color: fg, fontWeight: FontWeight.w700)),
+            GestureDetector(onTap: () => _addSharedContact(e),
+                child: Text('Add contact', style: TextStyle(color: m.me ? Colors.white70 : AvaColors.brand, fontSize: 12))),
+          ]),
+        ]);
+      case 'poll':
+        final options = (e['options'] as List?)?.map((x) => x.toString()).toList() ?? [];
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text((e['q'] ?? 'Poll').toString(), style: TextStyle(color: fg, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          for (var i = 0; i < options.length; i++)
+            GestureDetector(onTap: () => _vote(m, i), child: Container(
+              margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                  color: (m.me ? Colors.white : AvaColors.brand).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8)),
+              child: Row(children: [
+                Expanded(child: Text(options[i], style: TextStyle(color: fg))),
+                Text('${m.pollVotes[i] ?? 0}', style: TextStyle(color: m.me ? Colors.white70 : AvaColors.sub, fontWeight: FontWeight.w700)),
+              ]),
+            )),
+        ]);
+      default:
+        return Text(m.text, style: TextStyle(color: fg, fontSize: 14.5));
+    }
+  }
+
+  Future<void> _addSharedContact(Map e) async {
+    final npub = (e['npub'] ?? '').toString();
+    if (!npub.startsWith('npub1')) return;
+    await ContactsStore().add(Contact(npub: npub, name: (e['name'] ?? 'Contact').toString(), handle: (e['handle'] ?? '').toString()));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e['name']} added')));
+  }
 
   Future<void> _sendMedia(MediaKind kind, Uint8List bytes, String ct, String name) async {
     final msg = _Msg(_seq++, true, _caption(kind, name), 'now',
@@ -742,6 +940,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 _disappearSecs == 0 ? 'Disappearing messages' : 'Disappearing: ${_disappearLabel(_disappearSecs)}',
                 _pickDisappear),
           if (_convKey != null)
+            _action(ctx, Icons.wallpaper, 'Wallpaper', _pickWallpaper),
+          if (_convKey != null)
             _action(ctx, Icons.archive_outlined, 'Archive chat', () async {
               await ChatFlagsStore().toggle('archived', _convKey!);
               if (mounted) Navigator.pop(context);
@@ -797,6 +997,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             _attachItem(ctx, Icons.photo_camera_outlined, 'Camera', const Color(0xFF00B894), () => _pickImage(ImageSource.camera)),
             _attachItem(ctx, Icons.videocam_outlined, 'Video', const Color(0xFFE17055), () => _pickVideo(ImageSource.camera)),
             _attachItem(ctx, Icons.insert_drive_file_outlined, 'File', const Color(0xFF0984E3), _pickFile),
+            _attachItem(ctx, Icons.location_on_outlined, 'Location', const Color(0xFFD63031), _shareLocation),
+            _attachItem(ctx, Icons.person_outline, 'Contact', const Color(0xFF6C5CE7), _shareContactCard),
+            _attachItem(ctx, Icons.poll_outlined, 'Poll', const Color(0xFF00B894), _createPoll),
+            _attachItem(ctx, Icons.emoji_emotions_outlined, 'Sticker', const Color(0xFFFD9644), _stickerPicker),
           ]),
         ),
       ),
@@ -872,7 +1076,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             ),
             if (_pinned != null) _pinBanner(),
             Expanded(
-              child: Builder(builder: (_) {
+              child: DecoratedBox(
+                decoration: BoxDecoration(gradient: wallpaperGradient(_wallpaperId)),
+                child: Builder(builder: (_) {
                 final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
                 var visible = _msgs.where((m) => m.expireAt == null || m.expireAt! >= nowS).toList();
                 if (_searchMode && _searchQuery.isNotEmpty) {
@@ -886,7 +1092,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   itemBuilder: (c, i) => _bubble(visible[i]),
                 );
               }),
+              ),
             ),
+            if (_mentionMatches.isNotEmpty) _mentionBar(),
             _inputBar(),
           ],
         ),
@@ -926,7 +1134,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(22)),
             child: TextField(
               controller: _ctrl,
-              onChanged: (v) { setState(() => _hasText = v.trim().isNotEmpty); _onTyping(); },
+              onChanged: _onInputChanged,
               onSubmitted: (_) => _send(),
               decoration: const InputDecoration(
                   hintText: 'Message', border: InputBorder.none, isDense: true,
@@ -983,6 +1191,68 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           decoration: const InputDecoration(hintText: 'Search messages', border: InputBorder.none),
         )),
       ]);
+
+  void _pickWallpaper() {
+    showModalBottomSheet(context: context, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Padding(padding: const EdgeInsets.all(16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Chat wallpaper', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 12),
+          Wrap(spacing: 12, runSpacing: 12, children: [
+            for (final id in kWallpaperOrder)
+              GestureDetector(
+                onTap: () async {
+                  await WallpaperStore().set(_convKey!, id == 'default' ? '' : id);
+                  if (mounted) { setState(() => _wallpaperId = id); Navigator.pop(ctx); }
+                },
+                child: Container(
+                  width: 64, height: 64,
+                  decoration: BoxDecoration(
+                      gradient: wallpaperGradient(id), borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _wallpaperId == id ? AvaColors.brand : const Color(0xFFE0E2E6),
+                          width: _wallpaperId == id ? 3 : 1)),
+                ),
+              ),
+          ]),
+        ]))));
+  }
+
+  // ---- @mentions (groups) ----
+  void _onInputChanged(String v) {
+    setState(() => _hasText = v.trim().isNotEmpty);
+    _onTyping();
+    if (_isGroup) _updateMentions(v);
+  }
+
+  void _updateMentions(String v) {
+    final m = RegExp(r'@(\w*)$').firstMatch(v);
+    if (m == null) { if (_mentionMatches.isNotEmpty) setState(() => _mentionMatches = []); return; }
+    final q = m.group(1)!.toLowerCase();
+    final names = _memberNames.values.where((n) => n != 'You' && n.toLowerCase().contains(q)).toSet().toList();
+    setState(() => _mentionMatches = names.take(6).toList());
+  }
+
+  void _insertMention(String name) {
+    final v = _ctrl.text.replaceFirst(RegExp(r'@\w*$'), '@$name ');
+    _ctrl.text = v;
+    _ctrl.selection = TextSelection.collapsed(offset: v.length);
+    setState(() { _mentionMatches = []; _hasText = v.trim().isNotEmpty; });
+  }
+
+  Widget _mentionBar() => Container(
+        color: Colors.white,
+        constraints: const BoxConstraints(maxHeight: 160),
+        child: ListView(shrinkWrap: true, children: [
+          for (final n in _mentionMatches)
+            ListTile(
+              dense: true,
+              leading: Avatar(seed: n, name: n, size: 32),
+              title: Text(n, style: const TextStyle(fontWeight: FontWeight.w600)),
+              onTap: () => _insertMention(n),
+            ),
+        ]),
+      );
 
   Widget _pinBanner() => Container(
         color: const Color(0xFFFFF8E1),
@@ -1056,10 +1326,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                             style: TextStyle(fontSize: 11.5, color: m.me ? Colors.white70 : AvaColors.sub)),
                       ]),
                     ),
-                  if (hasMedia) _mediaContent(m),
-                  if (!hasMedia)
-                    Text(m.text,
-                        style: TextStyle(color: m.me ? Colors.white : AvaColors.ink, fontSize: 14.5, height: 1.3)),
+                  if (m.special != null) _specialContent(m)
+                  else if (hasMedia) _mediaContent(m)
+                  else Text(m.text,
+                      style: TextStyle(color: m.me ? Colors.white : AvaColors.ink, fontSize: 14.5, height: 1.3)),
                   Padding(
                     padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [

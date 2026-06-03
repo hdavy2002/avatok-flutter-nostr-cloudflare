@@ -33,6 +33,9 @@ dependencies:
   pointycastle: ^4.0.0
   # Safety-number / contact QR code
   qr_flutter: ^4.1.0
+  # Location share + open-in-maps
+  geolocator: ^13.0.1
+  url_launcher: ^6.3.0
   # Native incoming-call UI (full-screen, lock-screen) + ConnectionService
   # Pinned to 2.x — 3.x rewrote the CallEvent/params API.
   flutter_callkit_incoming: ^2.5.8
