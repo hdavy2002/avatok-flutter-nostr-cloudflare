@@ -7,8 +7,10 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../core/avatar.dart';
+import '../../core/call_log_store.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
+import '../../push/push_service.dart';
 
 /// True while a 1:1 call is on this device — used to auto-reply "busy" to a
 /// second incoming call.
@@ -54,6 +56,7 @@ class _CallScreenState extends State<CallScreen> {
   // ringing | connecting | connected | declined | busy | no-answer | ended
   String _phase = 'connecting';
   Timer? _ringTimeout;
+  StreamSubscription? _statusSub;
 
   @override
   void initState() {
@@ -68,6 +71,18 @@ class _CallScreenState extends State<CallScreen> {
         if (mounted && !_connected) _endWith('no-answer');
       });
     }
+    // Server-relayed call status (declined / busy) for this call.
+    _statusSub = callStatusBus.stream.listen((e) {
+      if (e.callId == widget.room && mounted && !_connected) {
+        _endWith(e.status == 'decline' ? 'declined' : e.status);
+      }
+    });
+    // Log to call history.
+    CallLogStore().add(CallEntry(
+      name: widget.title, seed: widget.seed, video: widget.video,
+      dir: widget.outgoing ? CallDir.outgoing : CallDir.incoming,
+      ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    ));
     _start();
   }
 
@@ -235,6 +250,7 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   void dispose() {
+    _statusSub?.cancel();
     _end();
     _local.dispose();
     _remote.dispose();

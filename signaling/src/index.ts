@@ -219,6 +219,21 @@ export default {
         { headers: { "content-type": "application/json", ...CORS } });
     }
 
+    // Relay a call status (declined / busy / ended) to the caller via FCM, so
+    // it arrives even if the callee's app couldn't hold the signaling socket.
+    if (url.pathname === "/call-status" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; status?: string };
+      if (!b.to || !b.callId || !b.status) return json({ error: "to, callId, status required" }, 400);
+      if (!env.FCM_CLIENT_EMAIL || !env.FCM_PRIVATE_KEY) return json({ error: "FCM not configured" }, 503);
+      const tokens: string[] = JSON.parse((await env.PUSH.get(await npubKey(b.to))) || "[]");
+      const data = { type: "call-status", callId: b.callId, status: b.status };
+      const results: number[] = [];
+      for (const t of tokens) {
+        try { results.push(await sendCallPush(env, t, data)); } catch { results.push(0); }
+      }
+      return json({ sent: results.filter((s) => s === 200).length });
+    }
+
     // ---- AvaTok public directory (NIP-05-style) ----
     if (req.method === "OPTIONS" &&
         ["/profile", "/resolve", "/search"].includes(url.pathname)) {

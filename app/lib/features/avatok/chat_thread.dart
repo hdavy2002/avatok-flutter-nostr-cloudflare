@@ -16,9 +16,11 @@ import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
+import '../../core/group_store.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../nostr/ava_dm.dart';
+import '../../nostr/ava_group_dm.dart';
 import '../../nostr/nostr_client.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
@@ -42,13 +44,14 @@ class _Msg {
   final String time;
   final int ts; // sort key (epoch seconds; 0 for demo)
   String? evId; // rumor id (real DMs) — set after media upload too
+  final String? senderLabel; // group: who sent (null for mine / 1:1)
   String? reaction;
   ChatMedia? media;
   Uint8List? localBytes; // instant preview of self-sent media
   bool uploading;
   bool failed;
   _Msg(this.id, this.me, this.text, this.time,
-      {this.ts = 0, this.evId, this.reaction, this.media, this.localBytes,
+      {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.localBytes,
        this.uploading = false, this.failed = false});
 }
 
@@ -69,6 +72,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Real end-to-end DM (NIP-44 over the relay) for npub contacts.
   AvaDm? _dm;
+  AvaGroupDm? _gdm;
+  Group? _group;
+  bool _isGroup = false;
   NostrClient? _nostr;
   bool _realMode = false;
   final Set<String> _seenEv = {};
@@ -91,7 +97,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   void _setupDm(Identity id) {
-    if (widget.chat.group) return; // group DM (NIP-104) is a later milestone
+    if (widget.chat.gid != null) { _setupGroup(id); return; }
+    if (widget.chat.group) return; // legacy local group
     final seed = widget.chat.seed;
     final peerHex = seed.startsWith('npub1') ? NostrKeys.npubToHex(seed) : null;
     if (peerHex == null) return; // demo contact → keep local echo
@@ -103,6 +110,51 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _dm!.start();
   }
 
+  Future<void> _setupGroup(Identity id) async {
+    final g = await GroupStore().byId(widget.chat.gid!);
+    if (g == null || !mounted) return;
+    _realMode = true;
+    _isGroup = true;
+    _group = g;
+    setState(() => _msgs.clear());
+    _nostr = NostrClient(kNostrRelayUrl);
+    _gdm = AvaGroupDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, group: g);
+    _gdm!.messages.listen(_onGroupMsg);
+    _gdm!.start();
+  }
+
+  void _onGroupMsg(GroupMessage m) {
+    if (_seenEv.contains(m.rumorId)) return;
+    _seenEv.add(m.rumorId);
+    if (!mounted) return;
+    String text = '';
+    ChatMedia? media;
+    try {
+      final env = jsonDecode(m.payload);
+      if (env is Map && env['t'] == 'gmedia') {
+        media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
+        text = _caption(media.kind, media.name);
+      } else if (env is Map && env['t'] == 'gtext') {
+        text = (env['body'] ?? '').toString();
+      } else if (env is Map && env['t'] == 'ginfo') {
+        return; // membership message, not chat content
+      } else {
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+    setState(() {
+      _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
+          ts: m.createdAt, evId: m.rumorId, media: media,
+          senderLabel: m.mine ? null : _shortPub(m.senderPub)));
+      _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+    });
+    _jump();
+  }
+
+  String _shortPub(String hex) => hex.length > 8 ? '${hex.substring(0, 6)}…' : hex;
+
   void _onDm(DmMessage m) {
     if (_seenEv.contains(m.rumorId)) return;
     _seenEv.add(m.rumorId);
@@ -112,6 +164,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     ChatMedia? media;
     try {
       final env = jsonDecode(m.payload);
+      if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'media') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
@@ -148,6 +201,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _sfx.dispose();
     _recorder.dispose();
     _dm?.stop();
+    _gdm?.stop();
     _nostr?.dispose();
     super.dispose();
   }
@@ -155,8 +209,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (_isGroup && _gdm != null) {
+      final id = _gdm!.send(jsonEncode({'t': 'gtext', 'gid': _group!.id, 'body': t}));
+      _seenEv.add(id);
+      setState(() {
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id));
+        _ctrl.clear();
+        _hasText = false;
+      });
+      _jump();
+      return;
+    }
     if (_realMode && _dm != null) {
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final id = _dm!.send(jsonEncode({'t': 'text', 'body': t})); // gift-wrap + publish
       _seenEv.add(id);
       setState(() {
@@ -233,8 +298,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name);
       if (!mounted) return;
       setState(() { msg.media = m; msg.uploading = false; });
-      // Real contacts: deliver the media reference + key inside an encrypted DM.
-      if (_realMode && _dm != null) {
+      // Deliver the media reference + key inside an encrypted DM / group fan-out.
+      if (_isGroup && _gdm != null) {
+        final id = _gdm!.send(jsonEncode({...m.toEnvelope(), 't': 'gmedia', 'gid': _group!.id}));
+        msg.evId = id;
+        _seenEv.add(id);
+      } else if (_realMode && _dm != null) {
         final id = _dm!.send(jsonEncode(m.toEnvelope()));
         msg.evId = id;
         _seenEv.add(id);
@@ -592,6 +661,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (m.senderLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(m.senderLabel!,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.brand)),
+                    ),
                   if (hasMedia) _mediaContent(m),
                   if (!hasMedia)
                     Text(m.text,

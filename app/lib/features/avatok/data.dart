@@ -8,6 +8,7 @@ class Chat {
   final bool online;
   final bool group;
   final int members; // group size (0 for 1:1)
+  final String? gid; // group id (real group chats)
   const Chat({
     required this.name,
     required this.seed,
@@ -17,6 +18,7 @@ class Chat {
     this.online = false,
     this.group = false,
     this.members = 0,
+    this.gid,
   });
 }
 

@@ -1,7 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/avatar.dart';
+import '../../core/config.dart';
+import '../../core/group_store.dart';
 import '../../core/theme.dart';
+import '../../identity/identity.dart';
+import '../../identity/nostr_keys.dart';
+import '../../nostr/nip17.dart';
+import '../../nostr/nostr_client.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -24,17 +32,40 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
 
   bool get _canCreate => _name.text.trim().isNotEmpty && _picked.isNotEmpty;
 
-  void _create() {
-    final group = Chat(
-      name: _name.text.trim(),
-      seed: 'group-${_name.text.trim()}',
-      last: 'Group created · ${_picked.length + 1} members',
-      time: 'now',
-      group: true,
-      members: _picked.length + 1, // include me
+  bool _creating = false;
+
+  Future<void> _create() async {
+    if (_creating) return;
+    setState(() => _creating = true);
+    final id = await IdentityStore().load();
+    if (id == null) { setState(() => _creating = false); return; }
+    // Resolve members to x-only hex pubkeys (incl. me).
+    final members = <String>[id.pubHex];
+    for (final c in widget.contacts.where((c) => _picked.contains(c.npub))) {
+      final h = c.npub.startsWith('npub1') ? NostrKeys.npubToHex(c.npub) : null;
+      if (h != null && !members.contains(h)) members.add(h);
+    }
+    final g = Group(id: Group.newId(), name: _name.text.trim(), members: members);
+    await GroupStore().upsert(g);
+    // Notify members (gift-wrapped) so the group appears for them too.
+    try {
+      final client = NostrClient(kNostrRelayUrl)..connect();
+      final ginfo = jsonEncode({'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members});
+      final (gifts, _) = Nip17.wrapMany(
+          senderPriv: id.privHex, senderPub: id.pubHex, recipientPubs: g.members, payload: ginfo);
+      for (final gift in gifts) {
+        client.publish(gift);
+      }
+      Future.delayed(const Duration(seconds: 2), client.dispose);
+    } catch (_) {/* members can still be invited later */}
+
+    final chat = Chat(
+      name: g.name, seed: 'group-${g.id}',
+      last: 'Group created · ${g.members.length} members',
+      time: 'now', group: true, members: g.members.length, gid: g.id,
     );
-    Navigator.pushReplacement(context,
-        MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: group)));
+    if (!mounted) return;
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
   }
 
   @override

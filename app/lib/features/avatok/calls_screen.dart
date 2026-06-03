@@ -1,37 +1,37 @@
 import 'package:flutter/material.dart';
 
 import '../../core/avatar.dart';
+import '../../core/call_log_store.dart';
 import '../../core/theme.dart';
 import 'call_screen.dart';
 
-enum CallDir { incoming, outgoing, missed }
-
-class CallLog {
-  final String name;
-  final String seed;
-  final bool video;
-  final CallDir dir;
-  final String time;
-  const CallLog(this.name, this.seed, this.video, this.dir, this.time);
+/// AvaTok Calls tab — real 1:1 call history; tap to call back.
+class CallsScreen extends StatefulWidget {
+  const CallsScreen({super.key});
+  @override
+  State<CallsScreen> createState() => _CallsScreenState();
 }
 
-const _demoCalls = <CallLog>[
-  CallLog('Dr. Willow', 'willow', true, CallDir.outgoing, '13:41'),
-  CallLog('Priya Sharma', 'priya', false, CallDir.incoming, '11:58'),
-  CallLog('Alex Chen', 'alex', false, CallDir.missed, '09:14'),
-  CallLog('Maya Patel', 'maya', true, CallDir.incoming, 'Yesterday'),
-  CallLog('Arjun Mehta', 'arjun', false, CallDir.missed, 'Yesterday'),
-];
+class _CallsScreenState extends State<CallsScreen> {
+  final _store = CallLogStore();
+  List<CallEntry> _calls = [];
+  bool _loaded = false;
 
-/// AvaTok Calls tab — 1:1 call history; tap to call back.
-class CallsScreen extends StatelessWidget {
-  const CallsScreen({super.key});
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
-  void _callBack(BuildContext context, CallLog c) {
+  Future<void> _load() async {
+    final c = await _store.load();
+    if (mounted) setState(() { _calls = c; _loaded = true; });
+  }
+
+  void _callBack(CallEntry c) {
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => CallScreen(
-        room: 'avatok-${c.seed}', title: c.name, seed: c.seed, video: c.video),
-    ));
+      builder: (_) => CallScreen(room: 'avatok-${c.seed}', title: c.name, seed: c.seed, video: c.video),
+    )).then((_) => _load());
   }
 
   @override
@@ -48,31 +48,41 @@ class CallsScreen extends StatelessWidget {
               style: TextStyle(color: AvaColors.brand, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
         ),
         Expanded(
-          child: ListView.builder(
-            itemCount: _demoCalls.length,
-            itemBuilder: (_, i) {
-              final c = _demoCalls[i];
-              final missed = c.dir == CallDir.missed;
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: Avatar(seed: c.seed, name: c.name, size: 48),
-                title: Text(c.name,
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5,
-                        color: missed ? AvaColors.danger : AvaColors.ink)),
-                subtitle: Row(children: [
-                  Icon(_dirIcon(c.dir), size: 15,
-                      color: missed ? AvaColors.danger : AvaColors.sub),
-                  const SizedBox(width: 5),
-                  Text('${_dirLabel(c.dir)} · ${c.time}',
-                      style: const TextStyle(color: AvaColors.sub, fontSize: 12.5)),
-                ]),
-                trailing: IconButton(
-                  icon: Icon(c.video ? Icons.videocam : Icons.call, color: AvaColors.brand),
-                  onPressed: () => _callBack(context, c),
-                ),
-              );
-            },
-          ),
+          child: !_loaded
+              ? const Center(child: CircularProgressIndicator(color: AvaColors.brand))
+              : _calls.isEmpty
+                  ? const Center(child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No calls yet — start one from a chat',
+                          style: TextStyle(color: AvaColors.sub)),
+                    ))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.builder(
+                        itemCount: _calls.length,
+                        itemBuilder: (_, i) {
+                          final c = _calls[i];
+                          final missed = c.dir == CallDir.missed;
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            leading: Avatar(seed: c.seed, name: c.name, size: 48),
+                            title: Text(c.name,
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5,
+                                    color: missed ? AvaColors.danger : AvaColors.ink)),
+                            subtitle: Row(children: [
+                              Icon(_dirIcon(c.dir), size: 15, color: missed ? AvaColors.danger : AvaColors.sub),
+                              const SizedBox(width: 5),
+                              Text('${_dirLabel(c.dir)} · ${c.timeLabel}',
+                                  style: const TextStyle(color: AvaColors.sub, fontSize: 12.5)),
+                            ]),
+                            trailing: IconButton(
+                              icon: Icon(c.video ? Icons.videocam : Icons.call, color: AvaColors.brand),
+                              onPressed: () => _callBack(c),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
         ),
       ]),
     );

@@ -7,8 +7,11 @@ import 'package:uuid/uuid.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/avatar.dart';
 import '../../core/config.dart';
+import '../../core/group_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
+import '../../nostr/nip17.dart';
+import '../../nostr/nostr_client.dart';
 import '../../push/push_service.dart';
 import '../avalive/live_screen.dart';
 import 'add_contact_sheet.dart';
@@ -31,8 +34,11 @@ class ChatListScreen extends StatefulWidget {
 class _ChatListScreenState extends State<ChatListScreen> {
   final _store = IdentityStore();
   final _contactsStore = ContactsStore();
+  final _groupStore = GroupStore();
   Identity? _id;
   List<Contact> _contacts = [];
+  List<Group> _groups = [];
+  NostrClient? _inbox;
   int _tab = 0; // 0 = Chats, 1 = Calls
 
   @override
@@ -41,15 +47,48 @@ class _ChatListScreenState extends State<ChatListScreen> {
     _bootstrap();
   }
 
+  @override
+  void dispose() {
+    _inbox?.dispose();
+    super.dispose();
+  }
+
   Future<void> _bootstrap() async {
     var id = await _store.load();
     id ??= await _store.createAndStore();
     final contacts = await _contactsStore.load();
-    if (mounted) setState(() { _id = id; _contacts = contacts; });
+    final groups = await _groupStore.load();
+    if (mounted) setState(() { _id = id; _contacts = contacts; _groups = groups; });
     // Register this device for incoming-call wake pushes (npub hashed at rest).
     await PushService.registerToken(id.npub);
+    _startInbox(id);
     // Directory listing is opt-in: we only publish a profile when the user
     // sets a @handle (privacy default — don't auto-index every npub).
+  }
+
+  /// Global inbox: receive group invites (ginfo) even when no thread is open.
+  void _startInbox(Identity id) {
+    _inbox = NostrClient(kNostrRelayUrl)..connect();
+    _inbox!.events.listen((rec) {
+      final (_, ev) = rec;
+      if (ev.kind != 1059) return;
+      final u = Nip17.unwrap(id.privHex, ev);
+      if (u == null) return;
+      try {
+        final env = jsonDecode(u.payload);
+        if (env is Map && env['t'] == 'ginfo') {
+          final g = Group(
+            id: env['gid'].toString(),
+            name: (env['name'] ?? 'Group').toString(),
+            members: ((env['members'] as List?) ?? []).map((e) => e.toString()).toList(),
+          );
+          _groupStore.upsert(g).then((list) { if (mounted) setState(() => _groups = list); });
+        }
+      } catch (_) {/* ignore */}
+    });
+    _inbox!.subscribe('inbox', [
+      {'kinds': [1059], '#p': [id.pubHex], 'limit': 200},
+    ]);
   }
 
   Future<void> _openAddContact() async {
@@ -185,7 +224,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   Widget build(BuildContext context) {
     final contactChats = _contacts.map(_chatOf).toList();
-    final rows = [...contactChats, ...kChats];
+    final groupChats = _groups
+        .map((g) => Chat(
+            name: g.name, seed: 'group-${g.id}',
+            last: 'Group · ${g.members.length} members', time: '',
+            group: true, members: g.members.length, gid: g.id))
+        .toList();
+    final rows = [...groupChats, ...contactChats, ...kChats];
     final online = kChats.where((c) => c.online).toList();
     return Scaffold(
       backgroundColor: Colors.white,

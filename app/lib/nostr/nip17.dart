@@ -66,6 +66,41 @@ class Nip17 {
     return ([giftTo(peerPub), giftTo(senderPub)], rumorId);
   }
 
+  /// Fan-out a group message: one gift wrap per recipient (+ me), all sharing
+  /// one rumor id. Routing to the right group is done by the payload's gid.
+  static (List<NostrEvent>, String) wrapMany({
+    required String senderPriv,
+    required String senderPub,
+    required List<String> recipientPubs, // members incl. me
+    required String payload,
+  }) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final tags = [for (final r in recipientPubs) ['p', r]];
+    final rumorId = NostrEvent.idOf(senderPub, now, 14, tags, payload);
+    final rumorJson = jsonEncode({
+      'id': rumorId, 'pubkey': senderPub, 'created_at': now, 'kind': 14,
+      'tags': tags, 'content': payload, 'sig': '',
+    });
+
+    NostrEvent giftTo(String receiverHex) {
+      final seal = NostrEvent.sign(
+        privHex: senderPriv, pubHex: senderPub, kind: 13, tags: const [],
+        content: Nip44.encryptRandom(rumorJson, Nip44.conversationKey(senderPriv, receiverHex)),
+        createdAt: _randPast(),
+      );
+      final ephPriv = NostrKeys.generatePrivateKey();
+      final ephPub = NostrKeys.publicKeyFromPrivate(ephPriv);
+      return NostrEvent.sign(
+        privHex: ephPriv, pubHex: ephPub, kind: 1059, tags: [['p', receiverHex]],
+        content: Nip44.encryptRandom(jsonEncode(seal.toJson()), Nip44.conversationKey(ephPriv, receiverHex)),
+        createdAt: _randPast(),
+      );
+    }
+
+    final set = {...recipientPubs, senderPub}; // de-dupe, include self
+    return ([for (final r in set) giftTo(r)], rumorId);
+  }
+
   /// Unwrap a kind-1059 gift addressed to me. Null if not for me / invalid.
   static Unwrapped? unwrap(String myPriv, NostrEvent gift) {
     try {

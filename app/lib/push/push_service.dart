@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,11 +8,16 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/call_log_store.dart';
 import '../core/config.dart';
 import '../features/avatok/call_screen.dart';
 
 /// Global key so we can navigate to the call screen when a call is accepted.
 final navigatorKey = GlobalKey<NavigatorState>();
+
+/// Broadcasts call-status updates (declined / busy / ended) pushed by the server
+/// to the active CallScreen — reliable even when the WS path couldn't be held.
+final callStatusBus = StreamController<({String callId, String status})>.broadcast();
 
 /// Background/terminated FCM handler — must be a top-level entry point.
 @pragma('vm:entry-point')
@@ -56,9 +62,14 @@ class PushService {
     await FirebaseMessaging.instance.requestPermission();
     FirebaseMessaging.onMessage.listen((m) {
       final d = m.data;
+      // Server-relayed call status → update the active CallScreen.
+      if (d['type'] == 'call-status') {
+        callStatusBus.add((callId: (d['callId'] ?? '').toString(), status: (d['status'] ?? '').toString()));
+        return;
+      }
       // Already on a call → auto-reply "busy" instead of ringing.
       if (d['type'] == 'call' && gInCall) {
-        _sendCallControl((d['callId'] ?? '').toString(), 'busy');
+        _signalStatus((d['callId'] ?? '').toString(), 'busy', (d['from'] ?? '').toString());
         return;
       }
       _showIncoming(d);
@@ -66,18 +77,25 @@ class PushService {
     _listenCallkit();
   }
 
-  /// Briefly connect to the call's signaling room to send a control message
-  /// (decline / busy) to the caller, then disconnect.
-  static void _sendCallControl(String callId, String type) {
+  /// Tell the caller a call was declined / busy — over the WS room (fast path)
+  /// AND via the server push (works even if the socket can't be held).
+  static void _signalStatus(String callId, String status, String callerNpub) {
     if (callId.isEmpty) return;
+    // fast path: signaling room
     try {
       final ch = WebSocketChannel.connect(
           Uri.parse('wss://$kSignalingHost/room/$callId?id=ctl-${DateTime.now().millisecondsSinceEpoch}'));
-      ch.sink.add(jsonEncode({'type': type}));
+      ch.sink.add(jsonEncode({'type': status}));
       Future.delayed(const Duration(milliseconds: 800), () {
         try { ch.sink.close(); } catch (_) {}
       });
     } catch (_) {/* best effort */}
+    // durable path: server pushes the status to the caller
+    if (callerNpub.isNotEmpty) {
+      http.post(Uri.parse(kCallStatusUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'to': callerNpub, 'callId': callId, 'status': status})).ignore();
+    }
   }
 
   /// React to taps on the native call UI (accept / decline / timeout).
@@ -90,15 +108,31 @@ class PushService {
           break;
         case Event.actionCallDecline:
           final extra = event.body['extra'];
-          _sendCallControl(extra is Map ? (extra['callId'] ?? '').toString() : '', 'decline');
+          if (extra is Map) {
+            _signalStatus((extra['callId'] ?? '').toString(), 'decline', (extra['from'] ?? '').toString());
+            _logMissed(extra);
+          }
+          break;
+        case Event.actionCallTimeout:
+          final ex = event.body['extra'];
+          if (ex is Map) _logMissed(ex);
           break;
         case Event.actionCallEnded:
-        case Event.actionCallTimeout:
           break;
         default:
           break;
       }
     });
+  }
+
+  static void _logMissed(Map extra) {
+    CallLogStore().add(CallEntry(
+      name: (extra['fromName'] ?? 'Caller').toString(),
+      seed: (extra['from'] ?? 'caller').toString(),
+      video: extra['kind'] == 'video',
+      dir: CallDir.missed,
+      ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    ));
   }
 
   /// Register this device's FCM token against the user's npub.

@@ -9,6 +9,9 @@ const String kRegisterUrl = 'https://avatok-call-signaling.getmystuffme.workers.
 /// Worker endpoint to ring a callee (sends a high-priority FCM wake push).
 const String kCallUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/call';
 
+/// Relay a call status (declined / busy / ended) to the caller via FCM.
+const String kCallStatusUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/call-status';
+
 /// Signaling host (no scheme). Baked at deploy time.
 const String kSignalingHost = 'avatok-call-signaling.getmystuffme.workers.dev';
 
