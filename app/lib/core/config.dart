@@ -1,5 +1,11 @@
 /// App-wide configuration.
 
+/// Clerk publishable key (existing avatok.ai tenant) — public, ships in app.
+const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
+
+/// Worker endpoint to register a device's FCM token against an npub.
+const String kRegisterUrl = 'https://avatok-call-signaling.getmystuffme.workers.dev/register';
+
 /// Signaling host (no scheme). Baked at deploy time.
 const String kSignalingHost = 'avatok-call-signaling.getmystuffme.workers.dev';
 

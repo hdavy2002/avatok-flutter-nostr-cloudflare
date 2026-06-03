@@ -1,14 +1,63 @@
+import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/avatar.dart';
 import '../../core/theme.dart';
+import '../../identity/identity.dart';
 import '../avalive/live_screen.dart';
 import 'chat_thread.dart';
 import 'data.dart';
 
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
-class ChatListScreen extends StatelessWidget {
+class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
+  @override
+  State<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends State<ChatListScreen> {
+  final _store = IdentityStore();
+  Identity? _id;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    var id = await _store.load();
+    id ??= await _store.createAndStore();
+    if (mounted) setState(() => _id = id);
+  }
+
+  void _openMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Your identity', style: Theme.of(ctx).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            const Text('Nostr key (npub)',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.brand)),
+            const SizedBox(height: 4),
+            SelectableText(_id?.npub ?? 'generating…',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            const Divider(height: 28),
+            const Center(child: ClerkUserButton()),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +82,9 @@ class ChatListScreen extends StatelessWidget {
                   border: Border(bottom: BorderSide(color: AvaColors.line))),
               child: Row(
                 children: [
-                  const Icon(Icons.menu, size: 24),
+                  GestureDetector(
+                    onTap: _openMenu,
+                    child: const Icon(Icons.menu, size: 24)),
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text('AvaTOK',
