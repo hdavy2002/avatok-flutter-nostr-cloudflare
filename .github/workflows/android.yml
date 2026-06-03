@@ -50,13 +50,14 @@ jobs:
         run: |
           CLERK_DIR=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -type d -name "clerk_flutter-*" | head -1)
           echo "clerk dir: $CLERK_DIR"
-          if [ -n "$CLERK_DIR" ] && [ -f "$CLERK_DIR/l10n.yaml" ]; then
-            (cd "$CLERK_DIR" && flutter gen-l10n) && echo "generated clerk l10n" || echo "gen-l10n failed (continuing)"
-            ls -la "$CLERK_DIR/lib/generated" 2>/dev/null || true
-          else
-            echo "no clerk l10n.yaml found at $CLERK_DIR"
-            ls -la "$CLERK_DIR" 2>/dev/null || true
-          fi
+          [ -z "$CLERK_DIR" ] && exit 0
+          echo "=== l10n.yaml ==="; cat "$CLERK_DIR/l10n.yaml" 2>/dev/null || echo "(none)"
+          echo "=== arb files ==="; find "$CLERK_DIR" -name "*.arb" | head
+          # Strip the deprecated synthetic-package directive that breaks newer gen-l10n
+          [ -f "$CLERK_DIR/l10n.yaml" ] && sed -i '/synthetic-package/d' "$CLERK_DIR/l10n.yaml"
+          echo "=== run gen-l10n ==="
+          (cd "$CLERK_DIR" && flutter gen-l10n) || echo "GEN-L10N FAILED ^^^"
+          echo "=== generated dir ==="; ls -la "$CLERK_DIR/lib/generated" 2>/dev/null || echo "no generated dir"
 
       - name: Analyze (non-blocking)
         working-directory: app
