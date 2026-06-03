@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -6,8 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
@@ -45,12 +42,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
   final _picker = ImagePicker();
-  final _recorder = AudioRecorder();
   final _audio = AudioPlayer();
   int _seq = 0;
   bool _hasText = false;
-  bool _recording = false;
-  String? _recPath;
 
   late final List<_Msg> _msgs = [
     _Msg(_seq++, false, 'Hi! ready for our 1:1 today?', '13:20'),
@@ -64,7 +58,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void dispose() {
     _ctrl.dispose();
     _scroll.dispose();
-    _recorder.dispose();
     _audio.dispose();
     super.dispose();
   }
@@ -153,28 +146,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     await _sendMedia(MediaKind.file, f.bytes!, 'application/octet-stream', f.name);
   }
 
-  // ---- voice note record ----
-  Future<void> _toggleRecord() async {
-    if (_recording) {
-      final path = await _recorder.stop();
-      setState(() => _recording = false);
-      if (path == null) return;
-      final bytes = await File(path).readAsBytes();
-      await _sendMedia(MediaKind.audio, bytes, 'audio/mp4', 'voice.m4a');
-      return;
-    }
-    if (!await _recorder.hasPermission()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission needed for voice messages')));
-      }
-      return;
-    }
-    final dir = await getTemporaryDirectory();
-    _recPath = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await _recorder.start(const RecordConfig(), path: _recPath!);
-    setState(() => _recording = true);
-  }
+  // Voice-note recording returns next pass (recorder package conflict).
+  void _voiceComingSoon() => ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Voice messages arrive in the next update')));
 
   Future<void> _playAudio(_Msg m) async {
     try {
@@ -377,23 +351,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Widget _inputBar() {
-    if (_recording) {
-      return Container(
-        color: Colors.white,
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 20),
-        child: Row(children: [
-          const Icon(Icons.fiber_manual_record, color: AvaColors.danger, size: 16),
-          const SizedBox(width: 8),
-          const Expanded(child: Text('Recording… tap to send', style: TextStyle(color: AvaColors.ink))),
-          GestureDetector(
-            onTap: _toggleRecord,
-            child: Container(width: 44, height: 44,
-                decoration: const BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle),
-                child: const Icon(Icons.send, color: Colors.white, size: 20)),
-          ),
-        ]),
-      );
-    }
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(8, 8, 12, 16),
@@ -415,7 +372,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: _hasText ? _send : _toggleRecord,
+          onTap: _hasText ? _send : _voiceComingSoon,
           child: Container(width: 44, height: 44,
               decoration: const BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle),
               child: Icon(_hasText ? Icons.arrow_upward : Icons.mic, color: Colors.white, size: 22)),
