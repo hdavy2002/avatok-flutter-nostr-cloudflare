@@ -37,6 +37,9 @@ const String kMediaUrl = 'https://$kSignalingHost/media';
 /// AvaTok Nostr relay (NIP-01) — real message delivery + NIP-44 encrypted DMs.
 const String kNostrRelayUrl = 'wss://avatok-relay.getmystuffme.workers.dev/';
 
+/// Account backup: export your relay data → download link (media excluded).
+const String kBackupUrl = 'https://$kSignalingHost/backup';
+
 /// Kind for AvaTok 1:1 chat messages (NIP-17 chat-message kind, NIP-44 content).
 const int kDmKind = 14;
 

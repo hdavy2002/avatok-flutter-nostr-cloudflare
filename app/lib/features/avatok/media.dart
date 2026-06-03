@@ -27,6 +27,23 @@ class ChatMedia {
   });
 
   String get downloadUrl => '$kMediaUrl/$id';
+
+  /// Envelope sent inside an encrypted DM so the recipient can fetch + decrypt.
+  Map<String, dynamic> toEnvelope() => {
+        't': 'media', 'kind': kind.name, 'id': id, 'k': keyB64, 'n': nonceB64,
+        'mac': macB64, 'ct': contentType, 'name': name, 'size': size,
+      };
+
+  static ChatMedia fromEnvelope(Map<String, dynamic> j) => ChatMedia(
+        kind: MediaKind.values.byName(j['kind'].toString()),
+        id: j['id'].toString(),
+        keyB64: j['k'].toString(),
+        nonceB64: j['n'].toString(),
+        macB64: j['mac'].toString(),
+        contentType: j['ct'].toString(),
+        name: j['name'].toString(),
+        size: (j['size'] as num?)?.toInt() ?? 0,
+      );
 }
 
 /// Encrypts media client-side (AES-GCM-256) and uploads ciphertext to the Worker,

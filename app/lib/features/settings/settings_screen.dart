@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../../auth/clerk_client.dart';
+import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 
@@ -18,28 +22,79 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _revealKey = false;
 
+  bool _backingUp = false;
+
   void _backup() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Back up my account'),
         content: const Text(
-          'We will export your AvaTOK account data from the Nostr network and email you a '
-          'download link. Media files (images and videos) are not included in backups.',
+          'We will export your AvaTOK account data from the Nostr network (your posts and '
+          'your encrypted messages) and give you a download link. Media files (images, '
+          'videos, voice) are not included in backups.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Backup queued — check your email shortly')));
-            },
+            onPressed: () { Navigator.pop(ctx); _runBackup(); },
             child: const Text('Back up'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _runBackup() async {
+    final id = widget.identity;
+    if (id == null || _backingUp) return;
+    setState(() => _backingUp = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Exporting your account…')));
+    try {
+      final res = await http
+          .post(Uri.parse(kBackupUrl),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'pubkey': id.pubHex}))
+          .timeout(const Duration(seconds: 30));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final url = j['url']?.toString();
+      if (!mounted) return;
+      setState(() => _backingUp = false);
+      if (url == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Backup failed — please try again')));
+        return;
+      }
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Backup ready'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${j['size'] ?? 0} bytes exported (media excluded).'),
+            const SizedBox(height: 10),
+            SelectableText(url, style: const TextStyle(fontSize: 12, color: AvaColors.brand)),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: url));
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Download link copied')));
+              },
+              child: const Text('Copy link'),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _backingUp = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup failed — check your connection')));
+    }
   }
 
   void _delete() {

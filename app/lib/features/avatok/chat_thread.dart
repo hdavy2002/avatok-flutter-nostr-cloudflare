@@ -39,7 +39,7 @@ class _Msg {
   String text;
   final String time;
   final int ts; // sort key (epoch seconds; 0 for demo)
-  final String? evId; // relay event id (real DMs)
+  String? evId; // rumor id (real DMs) — set after media upload too
   String? reaction;
   ChatMedia? media;
   Uint8List? localBytes; // instant preview of self-sent media
@@ -95,11 +95,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   void _onDm(DmMessage m) {
-    if (_seenEv.contains(m.evId)) return;
-    _seenEv.add(m.evId);
+    if (_seenEv.contains(m.rumorId)) return;
+    _seenEv.add(m.rumorId);
     if (!mounted) return;
+    // Parse our envelope: {"t":"text","body":...} or {"t":"media",...}.
+    String text = m.payload;
+    ChatMedia? media;
+    try {
+      final env = jsonDecode(m.payload);
+      if (env is Map && env['t'] == 'media') {
+        media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
+        text = _caption(media.kind, media.name);
+      } else if (env is Map && env['t'] == 'text') {
+        text = env['body'].toString();
+      }
+    } catch (_) {/* legacy/plain text */}
     setState(() {
-      _msgs.add(_Msg(_seq++, m.mine, m.text, _fmtTime(m.createdAt), ts: m.createdAt, evId: m.evId));
+      _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
+          ts: m.createdAt, evId: m.rumorId, media: media));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
@@ -135,7 +148,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (t.isEmpty) return;
     if (_realMode && _dm != null) {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final id = _dm!.send(t); // encrypt + publish; relay echoes back
+      final id = _dm!.send(jsonEncode({'t': 'text', 'body': t})); // gift-wrap + publish
       _seenEv.add(id);
       setState(() {
         _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id));
@@ -211,6 +224,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name);
       if (!mounted) return;
       setState(() { msg.media = m; msg.uploading = false; });
+      // Real contacts: deliver the media reference + key inside an encrypted DM.
+      if (_realMode && _dm != null) {
+        final id = _dm!.send(jsonEncode(m.toEnvelope()));
+        msg.evId = id;
+        _seenEv.add(id);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() { msg.uploading = false; msg.failed = true; });
@@ -607,12 +626,32 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         (m.localBytes != null ? MediaKind.image : MediaKind.file); // best guess pre-upload
     switch (kind) {
       case MediaKind.image:
-        final bytes = m.localBytes;
-        if (bytes == null) return _fileChip(m, Icons.image, 'Photo');
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.memory(bytes, width: 220, fit: BoxFit.cover),
-        );
+        if (m.localBytes != null) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover),
+          );
+        }
+        if (m.media != null) {
+          return FutureBuilder<Uint8List>(
+            future: MediaService.downloadAndDecrypt(m.media!),
+            builder: (ctx, snap) {
+              if (snap.hasData) {
+                m.localBytes = snap.data; // cache decrypted bytes
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover),
+                );
+              }
+              if (snap.hasError) return _fileChip(m, Icons.broken_image, 'Photo');
+              return Container(
+                width: 220, height: 140, alignment: Alignment.center,
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              );
+            },
+          );
+        }
+        return _fileChip(m, Icons.image, 'Photo');
       case MediaKind.audio:
         return GestureDetector(
           onTap: () => _playAudio(m),

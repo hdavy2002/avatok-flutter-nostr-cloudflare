@@ -18,7 +18,7 @@ export default {
     if (url.pathname === "/health") {
       return new Response("ok", { headers: { "content-type": "text/plain" } });
     }
-    if (req.headers.get("Upgrade") === "websocket") {
+    if (req.headers.get("Upgrade") === "websocket" || url.pathname === "/export") {
       const id = env.RELAY.idFromName("relay-global");
       return env.RELAY.get(id).fetch(req);
     }
@@ -98,6 +98,30 @@ export class RelayRoom {
   }
 
   async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+    // Account export (Backup): a user's own events + gift wraps addressed to them.
+    if (url.pathname === "/export") {
+      const pubkey = (url.searchParams.get("pubkey") || "").toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(pubkey)) {
+        return new Response(JSON.stringify({ error: "bad pubkey" }),
+          { status: 400, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
+      }
+      const rows = this.state.storage.sql.exec(
+        `SELECT id,pubkey,created_at,kind,tags,content,sig FROM events
+         WHERE pubkey=? OR (kind=1059 AND tags LIKE ?)
+         ORDER BY created_at DESC LIMIT 10000`,
+        pubkey, `%${pubkey}%`,
+      ).toArray();
+      const events = rows.map((r: any) => ({
+        id: r.id, pubkey: r.pubkey, created_at: r.created_at, kind: r.kind,
+        tags: JSON.parse(r.tags), content: r.content, sig: r.sig,
+      }));
+      return new Response(
+        JSON.stringify({ pubkey, count: events.length, exported_at: Date.now(), events }),
+        { headers: { "content-type": "application/json", "access-control-allow-origin": "*" } },
+      );
+    }
+
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];

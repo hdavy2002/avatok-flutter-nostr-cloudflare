@@ -26,6 +26,8 @@ export interface Env {
   FCM_PRIVATE_KEY?: string;    // secret (service account)
   CALLS_APP_ID?: string;       // secret — Cloudflare Realtime (Calls) SFU app
   CALLS_APP_SECRET?: string;   // secret
+  RESEND_API_KEY?: string;     // secret — optional, emails backup download links
+  RELAY_SVC: Fetcher;          // service binding → avatok-relay (for /export)
 }
 
 // ---- FCM HTTP v1 (wake-on-call) ----
@@ -284,6 +286,48 @@ export default {
       h.set("content-type", obj.httpMetadata?.contentType || "application/octet-stream");
       h.set("cache-control", "public, max-age=31536000, immutable");
       return new Response(obj.body, { headers: h });
+    }
+
+    // ---- Account backup: export relay data → R2 → download link (+ optional email) ----
+    if (url.pathname === "/backup" && req.method === "OPTIONS") {
+      return new Response(null, { headers: CORS });
+    }
+    if (url.pathname === "/backup" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as { pubkey?: string; email?: string };
+      if (!b.pubkey || !/^[0-9a-f]{64}$/.test(b.pubkey)) {
+        return json({ error: "valid pubkey required" }, 400);
+      }
+      const exp = await env.RELAY_SVC.fetch(`https://relay/export?pubkey=${b.pubkey}`);
+      if (!exp.ok) return json({ error: "export failed", status: exp.status }, 502);
+      const data = await exp.text();
+      const key = `backups/${b.pubkey}-${Date.now()}.json`;
+      await env.MEDIA.put(key, data, { httpMetadata: { contentType: "application/json" } });
+      const link = `${url.origin}/${key}`;
+      let emailed = false;
+      if (env.RESEND_API_KEY && b.email) {
+        try {
+          const r = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: "AvaTOK <backup@avatok.ai>", to: [b.email],
+              subject: "Your AvaTOK backup is ready",
+              html: `<p>Your account export is ready.</p><p><a href="${link}">Download backup</a> — media files are not included.</p>`,
+            }),
+          });
+          emailed = r.ok;
+        } catch {/* ignore */}
+      }
+      return json({ url: link, emailed, size: data.length });
+    }
+    const bm = url.pathname.match(/^\/(backups\/[0-9a-f]{64}-\d+\.json)$/);
+    if (bm && req.method === "GET") {
+      const obj = await env.MEDIA.get(bm[1]);
+      if (!obj) return new Response("not found", { status: 404, headers: CORS });
+      return new Response(obj.body, {
+        headers: { ...CORS, "content-type": "application/json",
+          "content-disposition": 'attachment; filename="avatok-backup.json"' },
+      });
     }
 
     // ---- Group calls: proxy to Cloudflare Realtime (Calls) SFU ----

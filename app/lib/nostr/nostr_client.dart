@@ -53,15 +53,21 @@ class NostrEvent {
     required int kind,
     required List<List<String>> tags,
     required String content,
+    int? createdAt,
   }) {
-    final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final serial = jsonEncode([0, pubHex, createdAt, kind, tags, content]);
-    final id = _sha256Hex(Uint8List.fromList(utf8.encode(serial)));
+    final ts = createdAt ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final id = idOf(pubHex, ts, kind, tags, content);
     final aux = _randomHex(32);
     final sig = bip340.sign(privHex, id, aux);
     return NostrEvent(
-        id: id, pubkey: pubHex, createdAt: createdAt, kind: kind,
+        id: id, pubkey: pubHex, createdAt: ts, kind: kind,
         tags: tags, content: content, sig: sig);
+  }
+
+  /// NIP-01 event id (sha256 of the canonical serialization).
+  static String idOf(String pubHex, int createdAt, int kind, List<List<String>> tags, String content) {
+    final serial = jsonEncode([0, pubHex, createdAt, kind, tags, content]);
+    return _sha256Hex(Uint8List.fromList(utf8.encode(serial)));
   }
 
   static String _sha256Hex(Uint8List data) {

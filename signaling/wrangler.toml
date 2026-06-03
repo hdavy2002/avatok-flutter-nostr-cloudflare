@@ -17,6 +17,12 @@ id = "55337b88a02149adb3bb221a708b8862"
 binding = "MEDIA"
 bucket_name = "avatok-media"
 
+# Service binding to the relay Worker (same-account Worker→Worker via public URL
+# is blocked with error 1042; bindings are the supported path).
+[[services]]
+binding = "RELAY_SVC"
+service = "avatok-relay"
+
 # Cloudflare Realtime (Calls) SFU app for group calls — set as secrets:
 #   wrangler secret put CALLS_APP_ID
 #   wrangler secret put CALLS_APP_SECRET
