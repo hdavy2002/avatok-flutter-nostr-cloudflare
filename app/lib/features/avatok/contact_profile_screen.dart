@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:pointycastle/export.dart';
+import 'package:pointycastle/digests/sha256.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/avatar.dart';
