@@ -68,14 +68,8 @@ Press-and-hold any bubble / image / file / video → context menu:
 ## 4e. Conversation header overflow (⋮)
 Three-dots menu in the thread header: **Delete chat · Archive chat · Block user** (in addition to the voice/video call buttons).
 
-## 4f. Groups
-Create a group, add members from contacts, group messaging + media.
-
-## 4g. Group calls (REVISED — now in AvaTok, free, via SFU)
-1:1 stays P2P. **Group calls run over an SFU** (Cloudflare Realtime / Calls API on the same `flutter_webrtc` engine — not RealtimeKit, which crashes alongside it). Caps enforced in-app:
-- **Group video call: max 10 members.** If the group has more, the initiator gets: *"You've reached the max members allowed in a group video call."*
-- **Group voice call: max 25 members.** Same message if exceeded.
-(AvaConsult remains the paid path for larger 1:20+ business calls.)
+## 4f. Groups (messaging only — FINAL)
+Create a group, add members from contacts, group messaging + media. **No group calls of any kind** (no voice, no video). Calling is **1:1 only**. This keeps AvaTok off any SFU, so there are no per-minute SFU costs. (Paid group calling, if ever, lives in AvaConsult.)
 
 ## 5. Settings entry (inside AvaTok)
 Profile (display name, @handle, avatar), presence/last-seen toggle, blocked list, plus the account-level Backup / Manage keys / Delete (already in Settings).

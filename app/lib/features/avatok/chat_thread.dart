@@ -12,7 +12,6 @@ import '../../core/theme.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
-import 'group_call.dart';
 import 'media.dart';
 
 /// AvaTok conversation thread — bubbles, media (photo/video/file/voice),
@@ -77,12 +76,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
       });
 
-  // ---- calls (1:1 vs group with caps) ----
+  // ---- calls (1:1 only; groups are messaging-only) ----
   void _call(String kind) {
-    if (widget.chat.group) {
-      startGroupCall(context, widget.chat, video: kind == 'video');
-      return;
-    }
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -330,8 +325,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     ],
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.call, color: AvaColors.ink), onPressed: () => _call('voice')),
-                IconButton(icon: const Icon(Icons.videocam, color: AvaColors.ink), onPressed: () => _call('video')),
+                if (!c.group) ...[
+                  IconButton(icon: const Icon(Icons.call, color: AvaColors.ink), onPressed: () => _call('voice')),
+                  IconButton(icon: const Icon(Icons.videocam, color: AvaColors.ink), onPressed: () => _call('video')),
+                ],
                 IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.ink), onPressed: _overflow),
               ]),
             ),

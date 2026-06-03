@@ -34,14 +34,7 @@ const String kInviteBase = 'https://avatok.ai/i/';
 /// Encrypted, content-addressed chat media. POST ciphertext → {id}; GET /media/:id.
 const String kMediaUrl = 'https://$kSignalingHost/media';
 
-/// Group-call SFU (Cloudflare Realtime Calls) proxy base.
-const String kSfuBase = 'https://$kSignalingHost/sfu';
-
-/// AvaTok group-call member caps (enforced in-app).
-const int kGroupVideoMax = 10;
-const int kGroupVoiceMax = 25;
-
-/// Short-video clip cap — recording auto-stops at this length.
+/// Short-video clip cap — capture auto-stops at this length.
 const Duration kVideoClipMax = Duration(seconds: 30);
 
 /// Fallback ICE servers if /ice can't be reached.
