@@ -28,9 +28,10 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
     final group = Chat(
       name: _name.text.trim(),
       seed: 'group-${_name.text.trim()}',
-      last: 'Group created · ${_picked.length} members',
+      last: 'Group created · ${_picked.length + 1} members',
       time: 'now',
       group: true,
+      members: _picked.length + 1, // include me
     );
     Navigator.pushReplacement(context,
         MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: group)));

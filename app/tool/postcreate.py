@@ -23,6 +23,10 @@ PERMS = [
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.USE_FULL_SCREEN_INTENT",
     "android.permission.WAKE_LOCK",
+    # Chat media: pick/share images, video, audio (Android 13+ scoped media)
+    "android.permission.READ_MEDIA_IMAGES",
+    "android.permission.READ_MEDIA_VIDEO",
+    "android.permission.READ_MEDIA_AUDIO",
 ]
 
 

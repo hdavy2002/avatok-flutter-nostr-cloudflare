@@ -12,6 +12,15 @@ FCM_PROJECT = "avatok-e19ef"
 binding = "PUSH"
 id = "55337b88a02149adb3bb221a708b8862"
 
+# Encrypted, content-addressed chat media (Blossom-style). Server holds ciphertext only.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "avatok-media"
+
+# Cloudflare Realtime (Calls) SFU app for group calls — set as secrets:
+#   wrangler secret put CALLS_APP_ID
+#   wrangler secret put CALLS_APP_SECRET
+
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "Room"

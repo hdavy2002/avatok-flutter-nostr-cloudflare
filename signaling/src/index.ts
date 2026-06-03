@@ -18,11 +18,14 @@
 export interface Env {
   ROOMS: DurableObjectNamespace;
   PUSH: KVNamespace;
+  MEDIA: R2Bucket;             // encrypted, content-addressed chat media
   FCM_PROJECT: string;
   TURN_KEY_ID?: string;        // secret
   TURN_KEY_API_TOKEN?: string; // secret
   FCM_CLIENT_EMAIL?: string;   // secret (service account)
   FCM_PRIVATE_KEY?: string;    // secret (service account)
+  CALLS_APP_ID?: string;       // secret — Cloudflare Realtime (Calls) SFU app
+  CALLS_APP_SECRET?: string;   // secret
 }
 
 // ---- FCM HTTP v1 (wake-on-call) ----
@@ -255,6 +258,58 @@ export default {
         .filter((p) => p.handle?.includes(q) || p.name?.toLowerCase().includes(q))
         .slice(0, 20);
       return json({ results });
+    }
+
+    // ---- Encrypted, content-addressed chat media (Blossom-style on R2) ----
+    if (url.pathname === "/media" && req.method === "OPTIONS") {
+      return new Response(null, { headers: { ...CORS, "access-control-allow-headers": "content-type, x-content-type" } });
+    }
+    if (url.pathname === "/media" && req.method === "POST") {
+      const buf = await req.arrayBuffer();
+      if (buf.byteLength === 0) return json({ error: "empty body" }, 400);
+      if (buf.byteLength > 25 * 1024 * 1024) return json({ error: "max 25 MB" }, 413);
+      const digest = await crypto.subtle.digest("SHA-256", buf);
+      const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const ct = req.headers.get("x-content-type") || "application/octet-stream";
+      // De-dupe: only write if absent.
+      const head = await env.MEDIA.head(hash);
+      if (!head) await env.MEDIA.put(hash, buf, { httpMetadata: { contentType: ct } });
+      return json({ id: hash, size: buf.byteLength, url: `/media/${hash}` });
+    }
+    const mm = url.pathname.match(/^\/media\/([a-f0-9]{64})$/);
+    if (mm && req.method === "GET") {
+      const obj = await env.MEDIA.get(mm[1]);
+      if (!obj) return new Response("not found", { status: 404, headers: CORS });
+      const h = new Headers(CORS);
+      h.set("content-type", obj.httpMetadata?.contentType || "application/octet-stream");
+      h.set("cache-control", "public, max-age=31536000, immutable");
+      return new Response(obj.body, { headers: h });
+    }
+
+    // ---- Group calls: proxy to Cloudflare Realtime (Calls) SFU ----
+    // Client calls POST /sfu/sessions/new, /sfu/sessions/:id/tracks/new,
+    // PUT /sfu/sessions/:id/renegotiate — we inject the app credentials.
+    if (url.pathname.startsWith("/sfu/")) {
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      if (!env.CALLS_APP_ID || !env.CALLS_APP_SECRET) {
+        return json({ error: "SFU not configured",
+          hint: "set CALLS_APP_ID and CALLS_APP_SECRET (one-time Realtime app)" }, 503);
+      }
+      const base = `https://rtc.live.cloudflare.com/v1/apps/${env.CALLS_APP_ID}`;
+      const sub = url.pathname.slice("/sfu".length); // keep leading slash
+      const r = await fetch(base + sub + url.search, {
+        method: req.method,
+        headers: {
+          Authorization: `Bearer ${env.CALLS_APP_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.text(),
+      });
+      const body = await r.text();
+      return new Response(body, {
+        status: r.status,
+        headers: { "content-type": "application/json", ...CORS },
+      });
     }
 
     const m = url.pathname.match(/^\/room\/([A-Za-z0-9_-]{1,64})$/);

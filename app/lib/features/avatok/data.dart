@@ -7,6 +7,7 @@ class Chat {
   final int unread;
   final bool online;
   final bool group;
+  final int members; // group size (0 for 1:1)
   const Chat({
     required this.name,
     required this.seed,
@@ -15,6 +16,7 @@ class Chat {
     this.unread = 0,
     this.online = false,
     this.group = false,
+    this.members = 0,
   });
 }
 

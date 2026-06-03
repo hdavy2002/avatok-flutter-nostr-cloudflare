@@ -48,7 +48,8 @@ Text, voice notes, photos/short video (small media → Blossom-signed), reply, f
 
 ## 4b. Media in chat & calls
 - **Send files / images / videos** in chat — each **capped to a size two peers can move over P2P** (target cap ~16 MB; tunable).
-- **Storage (free tier included) — REVISED:** all **messages and media are stored** so chats keep full history, sync across devices, and deliver to offline peers. Media is **content-hashed via a Worker** (Blossom-style, on R2); **MLS secures transport**. *Live call audio/video streams stay pure P2P and are never recorded* — storage applies to chat content (text, voice notes, clips, images, files), not the live call.
+- **Storage (free tier included):** messages + media are **stored** for history / multi-device / offline delivery. Media is **content-hashed via a Worker → R2** (`/media` upload returns the sha256 id; `/media/:hash` downloads). The blob is **encrypted client-side before upload** so the server only ever holds ciphertext. *Live call streams stay pure P2P/SFU and are never recorded.*
+- **Encryption reality (honest):** 1:1 uses **NIP-44** real E2E (X25519 ECDH from the Nostr keys we already hold) — implementable now. **True MLS group ratcheting has no production Dart library**; it needs an FFI bind to OpenMLS (Rust) and is tracked as its own milestone. Until then groups use a sender-key scheme over the same content-hash store. Transport to the Worker is always TLS.
 - **Adaptive video:** auto-detect bandwidth and step video resolution up/down with link speed.
 - **Resilient upload:** failed or cut-off transfers get a **Retry**; retry fires an FCM push that **wakes the other side** to resume/receive.
 
@@ -67,8 +68,14 @@ Press-and-hold any bubble / image / file / video → context menu:
 ## 4e. Conversation header overflow (⋮)
 Three-dots menu in the thread header: **Delete chat · Archive chat · Block user** (in addition to the voice/video call buttons).
 
-## 4f. Groups (chat only)
-Create a group, add members from contacts, group messaging + media. **No group video calls** in AvaTok (paid group calls live in AvaConsult).
+## 4f. Groups
+Create a group, add members from contacts, group messaging + media.
+
+## 4g. Group calls (REVISED — now in AvaTok, free, via SFU)
+1:1 stays P2P. **Group calls run over an SFU** (Cloudflare Realtime / Calls API on the same `flutter_webrtc` engine — not RealtimeKit, which crashes alongside it). Caps enforced in-app:
+- **Group video call: max 10 members.** If the group has more, the initiator gets: *"You've reached the max members allowed in a group video call."*
+- **Group voice call: max 25 members.** Same message if exceeded.
+(AvaConsult remains the paid path for larger 1:20+ business calls.)
 
 ## 5. Settings entry (inside AvaTok)
 Profile (display name, @handle, avatar), presence/last-seen toggle, blocked list, plus the account-level Backup / Manage keys / Delete (already in Settings).
