@@ -65,7 +65,9 @@ jobs:
 
       - name: Build debug APK
         working-directory: app
-        run: flutter build apk --debug
+        # --no-pub: do NOT run pub get here, or it restores clerk_flutter to
+        # pristine and deletes the localizations we generated above.
+        run: flutter build apk --debug --no-pub
 
       - name: Stage APK with stable name
         run: |
