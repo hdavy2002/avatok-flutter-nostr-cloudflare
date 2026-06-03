@@ -30,6 +30,16 @@ class AvaTalkApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AvaTheme.light,
+      // Bump all text up ~18% (on top of the user's system setting) so the UI
+      // isn't tiny, while still respecting accessibility scaling.
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        final base = mq.textScaler.scale(1.0);
+        return MediaQuery(
+          data: mq.copyWith(textScaler: TextScaler.linear((base * 1.18).clamp(1.0, 2.0))),
+          child: child!,
+        );
+      },
       home: const RootFlow(),
     );
   }

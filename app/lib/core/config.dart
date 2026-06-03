@@ -41,6 +41,19 @@ const String kSearchUrl = 'https://$kSignalingHost/search';   // GET ?q=
 /// Invite link base — share to bring a contact in pre-connected.
 const String kInviteBase = 'https://avatok.ai/i/';
 
+/// Public download / join page shared in invite messages.
+const String kDownloadUrl = 'https://avatok.ai/download';
+
+/// Device address-book sync + "who's on AvaTok" matching (per-user storage).
+const String kContactsSyncUrl = 'https://$kSignalingHost/contacts/sync';   // POST
+const String kContactsMatchUrl = 'https://$kSignalingHost/contacts/match'; // POST
+const String kContactsListUrl = 'https://$kSignalingHost/contacts/list';   // GET ?owner=
+
+/// Communities — create/join/list hubs of groups + members.
+const String kCommunityUrl = 'https://$kSignalingHost/community';          // POST upsert
+const String kCommunityJoinUrl = 'https://$kSignalingHost/community/join'; // POST
+const String kCommunitiesUrl = 'https://$kSignalingHost/communities';      // GET ?member= | ?id=
+
 /// Encrypted, content-addressed chat media. POST ciphertext → {id}; GET /media/:id.
 const String kMediaUrl = 'https://$kSignalingHost/media';
 

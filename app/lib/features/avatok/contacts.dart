@@ -12,16 +12,20 @@ class Contact {
   final String npub;
   final String name;
   final String handle; // without leading '@', may be empty
-  const Contact({required this.npub, required this.name, this.handle = ''});
+  final String email;
+  const Contact({required this.npub, required this.name, this.handle = '', this.email = ''});
 
   String get seed => npub; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
+  /// Human-friendly subtitle — prefer email, fall back to @handle.
+  String get subtitle => email.isNotEmpty ? email : atHandle;
 
-  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle};
+  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email};
   factory Contact.fromJson(Map<String, dynamic> j) => Contact(
         npub: (j['npub'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
+        email: (j['email'] ?? '').toString(),
       );
 }
 
@@ -81,8 +85,9 @@ class Directory {
         npub: npub.toString(),
         name: (p?['name'] ?? '').toString().isNotEmpty
             ? p!['name'].toString()
-            : _short(npub.toString()),
+            : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(npub.toString())),
         handle: (p?['handle'] ?? '').toString(),
+        email: (p?['email'] ?? '').toString(),
       );
     } catch (_) {
       // Even with no directory hit, a raw npub is still addable.
@@ -109,8 +114,9 @@ class Directory {
                 npub: (p['npub'] ?? '').toString(),
                 name: (p['name'] ?? '').toString().isNotEmpty
                     ? p['name'].toString()
-                    : _short((p['npub'] ?? '').toString()),
+                    : ((p['email'] ?? '').toString().isNotEmpty ? p['email'].toString() : _short((p['npub'] ?? '').toString())),
                 handle: (p['handle'] ?? '').toString(),
+                email: (p['email'] ?? '').toString(),
               ))
           .where((c) => c.npub.isNotEmpty)
           .toList();
@@ -119,14 +125,14 @@ class Directory {
     }
   }
 
-  /// Publish my own profile so others can find me.
+  /// Publish my own profile so others can find me (by email / phone / handle).
   static Future<void> registerProfile(
-      {required String npub, String handle = '', String name = ''}) async {
+      {required String npub, String handle = '', String name = '', String email = '', String phone = ''}) async {
     try {
       await http
           .post(Uri.parse(kProfileUrl),
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'npub': npub, 'handle': handle, 'name': name}))
+              body: jsonEncode({'npub': npub, 'handle': handle, 'name': name, 'email': email, 'phone': phone}))
           .timeout(const Duration(seconds: 8));
     } catch (_) {/* best-effort */}
   }

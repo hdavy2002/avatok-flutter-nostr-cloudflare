@@ -47,6 +47,17 @@ class _AvaShellState extends State<AvaShell> {
 
   Future<void> _select(String dest) async {
     Navigator.pop(context); // close drawer
+    _openDest(dest);
+  }
+
+  /// Switch apps from within a pushed app (e.g. AvaTok): return to the shell, then open.
+  void _switchFromChild(String dest) {
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    if (dest == 'explore') { setState(() => _current = 'explore'); return; }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openDest(dest));
+  }
+
+  void _openDest(String dest) {
     switch (dest) {
       case 'explore':
         setState(() => _current = 'explore');
@@ -55,7 +66,7 @@ class _AvaShellState extends State<AvaShell> {
         _push(SettingsScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id));
         return;
       case 'avatok':
-        _push(ChatListScreen(clerk: widget.clerk, onSignOut: widget.onSignOut));
+        _push(ChatListScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, onSwitchApp: _switchFromChild));
         return;
       case 'avalive':
         _push(const AvaLiveDiscovery());

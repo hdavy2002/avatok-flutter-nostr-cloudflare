@@ -1,37 +1,40 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/chat_state.dart';
+import '../../core/device_contacts.dart';
+import '../../core/filter_store.dart';
 import '../../core/group_store.dart';
 import '../../core/status_store.dart';
 import '../../core/theme.dart';
+import '../../core/onboarding_store.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../nostr/nip17.dart';
 import '../../nostr/nostr_client.dart';
 import '../../nostr/presence.dart';
 import '../../push/push_service.dart';
+import '../../shell/ava_sidebar.dart';
+import '../communities/communities_tab.dart';
 import '../status/status_screen.dart';
-import '../avalive/live_screen.dart';
 import 'add_contact_sheet.dart';
-import 'call_screen.dart';
 import 'calls_screen.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
 import 'data.dart';
 import 'new_group_screen.dart';
+import 'search_screen.dart';
 
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
 class ChatListScreen extends StatefulWidget {
   final ClerkClient clerk;
   final VoidCallback onSignOut;
-  const ChatListScreen({super.key, required this.clerk, required this.onSignOut});
+  final void Function(String dest)? onSwitchApp;
+  const ChatListScreen({super.key, required this.clerk, required this.onSignOut, this.onSwitchApp});
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
@@ -44,7 +47,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   List<Contact> _contacts = [];
   List<Group> _groups = [];
   NostrClient? _inbox;
-  int _tab = 0; // 0 = Chats, 1 = Calls
+  int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Communities, 3 = Calls
 
   // Unread badges + chat flags + status.
   final _readStore = ReadStateStore();
@@ -56,8 +59,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Map<String, Set<String>> _flags = {'blocked': {}, 'archived': {}, 'muted': {}, 'pinned': {}};
   int _statusCount = 0;
   bool _showArchived = false;
-  String _search = '';
   Map<String, String> _drafts = {};
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  Set<String> _enabledApps = {};
+
+  // Chat-list filter chips: 'all' | 'fav' | 'unread' | 'groups' | 'c:<keyword>'.
+  String _filter = 'all';
+  final _filterStore = FilterStore();
+  List<ChatFilter> _customFilters = [];
 
   String _keyOf(Chat c) =>
       c.gid != null ? 'g:${c.gid}' : '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
@@ -122,14 +131,27 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final flags = await _flagsStore.load();
     final status = await _statusStore.load();
     final drafts = await DraftStore().load();
+    final enabled = await OnboardingStore().enabledApps();
+    final customFilters = await _filterStore.load();
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
         _lastRead = lastRead; _flags = flags; _statusCount = status.length; _drafts = drafts;
+        _enabledApps = enabled; _customFilters = customFilters;
       });
     }
+    // Sync the phone address book to our backend (per-user storage, reused by
+    // AvaContacts) and resolve who's already on AvaTok — best-effort, silent.
+    DeviceContactsService.syncAndMatch(id.npub);
     // Register this device for incoming-call wake pushes (npub hashed at rest).
     await PushService.registerToken(id.npub);
+    // Email is the human-facing id: publish email → npub so others find me by email.
+    try {
+      final cu = await widget.clerk.currentUser();
+      if (cu?.email != null && cu!.email!.isNotEmpty) {
+        await Directory.registerProfile(npub: id.npub, email: cu.email!, name: cu.label);
+      }
+    } catch (_) {/* not signed in / offline */}
     _startInbox(id);
     // Directory listing is opt-in: we only publish a profile when the user
     // sets a @handle (privacy default — don't auto-index every npub).
@@ -204,122 +226,63 @@ class _ChatListScreenState extends State<ChatListScreen> {
         MaterialPageRoute(builder: (_) => NewGroupScreen(contacts: _contacts)));
   }
 
-  Future<void> _ringDialog() async {
-    final npubCtrl = TextEditingController();
-    bool video = false;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: const Text('Ring a device'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: npubCtrl,
-                decoration: const InputDecoration(hintText: 'Recipient npub'),
-              ),
-              const SizedBox(height: 12),
-              Row(children: [
-                const Text('Video'),
-                const Spacer(),
-                Switch(value: video, activeColor: AvaColors.brand,
-                    onChanged: (v) => setD(() => video = v)),
-              ]),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _ring(npubCtrl.text.trim(), video);
-              },
-              child: const Text('Call'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _ring(String npub, bool video) async {
-    if (npub.isEmpty) return;
-    final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
-    // Wake the callee's phone.
-    try {
-      final res = await http.post(Uri.parse(kCallUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'to': npub,
-            'from': _id?.npub ?? '',
-            'fromName': 'AvaTOK',
-            'callId': room,
-            'kind': video ? 'video' : 'audio',
-          }));
-      if (res.statusCode == 404 && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('That npub has no registered devices')));
-      }
-    } catch (_) {}
-    if (!mounted) return;
-    Navigator.push(context, MaterialPageRoute(
-        builder: (_) => CallScreen(room: room, title: 'Calling…', seed: npub, video: video)));
-  }
-
-  void _openMenu() {
+  /// New-chat menu (the green FAB): message, group, community, or invite.
+  void _openNewChatMenu() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Your identity', style: Theme.of(ctx).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            const Text('Nostr key (npub)',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.brand)),
-            const SizedBox(height: 4),
-            SelectableText(_id?.npub ?? 'generating…',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _ringDialog();
-                },
-                icon: const Icon(Icons.phone_in_talk),
-                label: const Text('Ring a device (by npub)'),
-              ),
-            ),
-            const Divider(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                    foregroundColor: AvaColors.danger,
-                    side: const BorderSide(color: Color(0xFFE0E2E6)),
-                    padding: const EdgeInsets.symmetric(vertical: 14)),
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  await widget.clerk.signOut();
-                  widget.onSignOut();
-                },
-                icon: const Icon(Icons.logout),
-                label: const Text('Sign out'),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-        ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 8),
+        ListTile(
+          leading: const Icon(Icons.person_add_alt_1, color: AvaColors.brand),
+          title: const Text('New chat'),
+          subtitle: const Text('Add someone by email, phone or @handle'),
+          onTap: () { Navigator.pop(ctx); _openAddContact(); }),
+        ListTile(
+          leading: const Icon(Icons.groups_outlined, color: AvaColors.brand),
+          title: const Text('New group'),
+          onTap: () { Navigator.pop(ctx); _openNewGroup(); }),
+        ListTile(
+          leading: const Icon(Icons.diversity_3, color: AvaColors.brand),
+          title: const Text('New community'),
+          onTap: () { Navigator.pop(ctx); setState(() => _tab = 2); }),
+        ListTile(
+          leading: const Icon(Icons.share_outlined, color: Color(0xFF25D366)),
+          title: const Text('Invite friends to AvaTok'),
+          subtitle: const Text('Find people from your phone contacts'),
+          onTap: () { Navigator.pop(ctx); _openSearch(); }),
+        const SizedBox(height: 8),
+      ])),
+    );
+  }
+
+  void _openSearch() {
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => SearchScreen(identity: _id, contacts: _contacts, groups: _groups)))
+        .then((_) => _flagsStore.load().then((f) { if (mounted) setState(() => _flags = f); }));
+  }
+
+  /// Create a custom filter chip (the "+" chip).
+  Future<void> _addCustomFilter() async {
+    final nameCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New filter'),
+        content: TextField(controller: nameCtrl, autofocus: true,
+            decoration: const InputDecoration(hintText: 'Keyword (matches chat names)')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+        ],
       ),
     );
+    if (ok != true) return;
+    final kw = nameCtrl.text.trim();
+    if (kw.isEmpty) return;
+    final list = await _filterStore.add(ChatFilter(name: kw, query: kw.toLowerCase()));
+    if (mounted) setState(() { _customFilters = list; _filter = 'c:$kw'; });
   }
 
   @override
@@ -341,32 +304,70 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }).map((c) {
       final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
       return Chat(name: c.name, seed: c.seed,
-          last: draftOr(k, c.atHandle.isNotEmpty ? c.atHandle : 'Say hi 👋'),
+          last: draftOr(k, c.subtitle.isNotEmpty ? c.subtitle : 'Say hi 👋'),
           time: '', unread: _unread[k] ?? 0);
     }).toList();
     final realRows = [...groupChats, ...contactChats];
     realRows.sort((a, b) => (pinned.contains(_keyOf(a)) ? 0 : 1) - (pinned.contains(_keyOf(b)) ? 0 : 1));
     final archivedCount = archived.length;
-    var rows = [...realRows, ...kChats];
-    if (_search.isNotEmpty) rows = rows.where((c) => c.name.toLowerCase().contains(_search)).toList();
-    final online = kChats.where((c) => c.online).toList();
+
+    // Apply the active filter chip.
+    bool keep(Chat c) {
+      switch (_filter) {
+        case 'fav':
+          return pinned.contains(_keyOf(c));
+        case 'unread':
+          return c.unread > 0;
+        case 'groups':
+          return c.gid != null;
+        case 'all':
+          return true;
+        default:
+          if (_filter.startsWith('c:')) {
+            return c.name.toLowerCase().contains(_filter.substring(2).toLowerCase());
+          }
+          return true;
+      }
+    }
+    final rows = realRows.where(keep).toList();
+
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: Colors.white,
+      drawer: AvaSidebar(
+        enabledApps: _enabledApps,
+        name: _id?.shortNpub ?? 'Account',
+        seed: _id?.npub ?? 'avatok',
+        current: 'avatok',
+        onSelect: (d) {
+          Navigator.pop(context); // close drawer
+          if (d == 'avatok') return; // already here
+          widget.onSwitchApp?.call(d);
+        },
+        onSignOut: () { Navigator.pop(context); widget.onSignOut(); },
+      ),
       floatingActionButton: _tab == 0
           ? FloatingActionButton(
-              backgroundColor: AvaColors.danger,
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const LiveScreen())),
-              child: const Icon(Icons.sensors, color: Colors.white),
+              backgroundColor: AvaColors.brand,
+              onPressed: _openNewChatMenu,
+              child: const Icon(Icons.edit_square, color: Colors.white),
             )
           : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chats'),
           NavigationDestination(
+              icon: Badge(
+                isLabelVisible: _statusCount > 0,
+                child: const Icon(Icons.donut_large_outlined),
+              ),
+              selectedIcon: const Icon(Icons.donut_large), label: 'Updates'),
+          const NavigationDestination(
+              icon: Icon(Icons.groups_2_outlined), selectedIcon: Icon(Icons.groups_2), label: 'Communities'),
+          const NavigationDestination(
               icon: Icon(Icons.call_outlined), selectedIcon: Icon(Icons.call), label: 'Calls'),
         ],
       ),
@@ -384,7 +385,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
               child: Row(
                 children: [
                   GestureDetector(
-                    onTap: _openMenu,
+                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
                     child: const Icon(Icons.menu, size: 24)),
                   const SizedBox(width: 10),
                   const Expanded(
@@ -395,33 +396,34 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             fontWeight: FontWeight.w900,
                             letterSpacing: -0.5)),
                   ),
-                  _circleBtn(Icons.person_add_alt_1, _openAddContact),
+                  _circleBtn(Icons.search, _openSearch),
                   const SizedBox(width: 8),
-                  _circleBtn(Icons.edit_outlined, _openNewGroup),
+                  _circleBtn(Icons.person_add_alt_1, _openAddContact),
                 ],
               ),
             ),
-            // search
+            // tappable search bar → full search screen
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Container(
-                height: 42,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                    color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-                child: Row(children: [
-                  const Icon(Icons.search, size: 18, color: Color(0xFF9AA1AC)),
-                  const SizedBox(width: 8),
-                  Expanded(child: TextField(
-                    onChanged: (v) => setState(() => _search = v.trim().toLowerCase()),
-                    decoration: const InputDecoration(
-                        hintText: 'Search chats', border: InputBorder.none, isDense: true,
-                        hintStyle: TextStyle(color: Color(0xFF9AA1AC), fontSize: 14)),
-                  )),
-                ]),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: GestureDetector(
+                onTap: _openSearch,
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                      color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
+                  child: const Row(children: [
+                    Icon(Icons.search, size: 18, color: Color(0xFF9AA1AC)),
+                    SizedBox(width: 8),
+                    Text('Search by name, email or phone',
+                        style: TextStyle(color: Color(0xFF9AA1AC), fontSize: 14)),
+                  ]),
+                ),
               ),
             ),
-            // active now
+            // filter chips
+            _filterChips(),
+            // status / active-now strip
             SizedBox(
               height: 92,
               child: ListView(
@@ -431,7 +433,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   _statusItem(),
                   _activeAdd(),
                   for (final c in contactChats) _activeAvatar(context, c),
-                  for (final c in online) _activeAvatar(context, c),
                 ],
               ),
             ),
@@ -440,11 +441,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
               child: ListView(
                 children: [
                   if (archivedCount > 0)
-                    ListTile(
-                      leading: const Icon(Icons.archive_outlined, color: AvaColors.sub),
-                      title: Text(_showArchived ? 'Hide archived' : 'Archived ($archivedCount)',
-                          style: const TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w600)),
+                    InkWell(
                       onTap: () => setState(() => _showArchived = !_showArchived),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: const BoxDecoration(
+                            border: Border(bottom: BorderSide(color: AvaColors.line))),
+                        child: Row(children: [
+                          const Icon(Icons.archive_outlined, size: 22, color: AvaColors.sub),
+                          const SizedBox(width: 16),
+                          const Text('Archived',
+                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                          const Spacer(),
+                          Text(_showArchived ? 'Hide' : '$archivedCount',
+                              style: const TextStyle(color: AvaColors.brand, fontWeight: FontWeight.w700)),
+                        ]),
+                      ),
+                    ),
+                  if (rows.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 60),
+                      child: Center(child: Text(
+                          _filter == 'all' ? 'No chats yet — tap ✎ to start one' : 'Nothing here',
+                          style: const TextStyle(color: AvaColors.sub))),
                     ),
                   for (final c in rows)
                     _ChatRow(
@@ -460,8 +479,61 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ],
         ),
       ),
+        StatusScreen(identity: _id, contacts: _contacts),
+        CommunitiesTab(identity: _id, contacts: _contacts),
         const CallsScreen(),
       ]),
+    );
+  }
+
+  Widget _filterChips() {
+    Widget chip(String label, String value) {
+      final on = _filter == value;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: GestureDetector(
+          onLongPress: value.startsWith('c:')
+              ? () async {
+                  final list = await _filterStore.remove(value.substring(2));
+                  if (mounted) setState(() { _customFilters = list; if (_filter == value) _filter = 'all'; });
+                }
+              : null,
+          child: ChoiceChip(
+            label: Text(label),
+            selected: on,
+            showCheckmark: false,
+            selectedColor: AvaColors.brand,
+            backgroundColor: AvaColors.soft,
+            side: BorderSide.none,
+            labelStyle: TextStyle(color: on ? Colors.white : AvaColors.ink, fontWeight: FontWeight.w700, fontSize: 13),
+            onSelected: (_) => setState(() => _filter = value),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          chip('All', 'all'),
+          chip('Favourites', 'fav'),
+          chip('Unread', 'unread'),
+          chip('Groups', 'groups'),
+          for (final f in _customFilters) chip(f.name, 'c:${f.name}'),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ActionChip(
+              label: const Icon(Icons.add, size: 18, color: AvaColors.ink),
+              backgroundColor: AvaColors.soft,
+              side: BorderSide.none,
+              onPressed: _addCustomFilter,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

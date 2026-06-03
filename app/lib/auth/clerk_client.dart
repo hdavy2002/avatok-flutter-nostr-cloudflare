@@ -202,14 +202,15 @@ class ClerkStep {
 
 class ClerkUser {
   final String label;
-  ClerkUser(this.label);
+  final String? email;
+  ClerkUser(this.label, {this.email});
   factory ClerkUser.fromJson(Map<String, dynamic>? u) {
     if (u == null) return ClerkUser('Account');
     final first = u['first_name'];
     final emails = u['email_addresses'] as List?;
     final email = (emails != null && emails.isNotEmpty)
-        ? (emails.first as Map)['email_address']
+        ? (emails.first as Map)['email_address']?.toString()
         : null;
-    return ClerkUser((first ?? email ?? 'Account').toString());
+    return ClerkUser((first ?? email ?? 'Account').toString(), email: email);
   }
 }

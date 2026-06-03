@@ -137,7 +137,7 @@ class _StatusScreenState extends State<StatusScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink, title: const Text('Status')),
+      appBar: AppBar(backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink, title: const Text('Updates')),
       body: ListView(children: [
         ListTile(
           leading: Stack(children: [

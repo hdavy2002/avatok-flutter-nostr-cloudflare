@@ -39,6 +39,10 @@ dependencies:
   # Native incoming-call UI (full-screen, lock-screen) + ConnectionService
   # Pinned to 2.x — 3.x rewrote the CallEvent/params API.
   flutter_callkit_incoming: ^2.5.8
+  # Read the device address book (name / emails / phones) to find & invite friends.
+  flutter_contacts: ^1.1.9+2
+  # Native share sheet for the "invite a friend" message + download link.
+  share_plus: ^10.1.2
 
 dev_dependencies:
   flutter_lints: ^4.0.0

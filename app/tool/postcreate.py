@@ -34,6 +34,8 @@ PERMS = [
     # Location share
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.ACCESS_COARSE_LOCATION",
+    # Read the device address book to find/invite friends (flutter_contacts)
+    "android.permission.READ_CONTACTS",
 ]
 
 

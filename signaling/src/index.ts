@@ -117,6 +117,47 @@ async function npubKey(npub: string): Promise<string> {
   return "tok:" + [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/// Normalise a phone number to a comparable key (keep trailing 10+ digits).
+/// Strips spaces, dashes, parens and a leading +/00; collapses to last 12 digits
+/// so "+1 (415) 555-0100", "0014155550100" and "4155550100" all converge.
+function normPhone(raw: string): string {
+  let d = (raw || "").replace(/[^0-9]/g, "");
+  d = d.replace(/^00/, "");
+  if (d.length > 12) d = d.slice(-12);
+  return d;
+}
+
+/// Given device contacts [{name, emails:[], phones:[]}], return the subset that
+/// is already on AvaTok, annotated with the resolved npub + matched identifier.
+async function matchContacts(env: Env, contacts: any[]): Promise<any[]> {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  for (const c of (contacts || []).slice(0, 5000)) {
+    let npub: string | null = null;
+    let via = "";
+    for (const e of (c.emails || [])) {
+      const key = (e || "").toString().trim().toLowerCase();
+      if (!key) continue;
+      const hit = await env.PUSH.get(`email:${key}`);
+      if (hit) { npub = hit; via = key; break; }
+    }
+    if (!npub) {
+      for (const p of (c.phones || [])) {
+        const key = normPhone((p || "").toString());
+        if (key.length < 6) continue;
+        const hit = await env.PUSH.get(`phone:${key}`);
+        if (hit) { npub = hit; via = (p || "").toString(); break; }
+      }
+    }
+    if (npub && !seen.has(npub)) {
+      seen.add(npub);
+      const prof = JSON.parse((await env.PUSH.get(`prof:${npub}`)) || "null");
+      out.push({ name: c.name || prof?.name || "", npub, via, profile: prof });
+    }
+  }
+  return out;
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -257,15 +298,19 @@ export default {
       return new Response(null, { headers: CORS });
     }
 
-    // Upsert a profile so others can find you by @handle / name.
+    // Upsert a profile so others can find you by email / phone / @handle / name.
     if (url.pathname === "/profile" && req.method === "POST") {
       const b = (await req.json().catch(() => ({}))) as
-        { npub?: string; handle?: string; name?: string };
+        { npub?: string; handle?: string; name?: string; email?: string; phone?: string };
       if (!b.npub) return json({ error: "npub required" }, 400);
       const handle = (b.handle || "").trim().toLowerCase().replace(/^@/, "");
-      const prof = { npub: b.npub, handle, name: (b.name || "").trim() };
+      const email = (b.email || "").trim().toLowerCase();
+      const phone = normPhone(b.phone || "");
+      const prof = { npub: b.npub, handle, name: (b.name || "").trim(), email, phone };
       await env.PUSH.put(`prof:${b.npub}`, JSON.stringify(prof));
       if (handle) await env.PUSH.put(`handle:${handle}`, b.npub);
+      if (email) await env.PUSH.put(`email:${email}`, b.npub);
+      if (phone) await env.PUSH.put(`phone:${phone}`, b.npub);
       // Maintain a small searchable index (cap 5000).
       const idx: any[] = JSON.parse((await env.PUSH.get("dir:all")) || "[]");
       const at = idx.findIndex((p) => p.npub === b.npub);
@@ -274,13 +319,28 @@ export default {
       return json({ ok: true, profile: prof });
     }
 
-    // Resolve a single identifier (@handle, handle, or npub) → profile.
+    // Resolve a single identifier (email, @handle, handle, or npub) → profile.
     if (url.pathname === "/resolve") {
       const q = (url.searchParams.get("q") || "").trim();
       if (!q) return json({ error: "q required" }, 400);
       if (q.startsWith("npub1")) {
         const p = JSON.parse((await env.PUSH.get(`prof:${q}`)) || "null");
         return json({ npub: q, profile: p });
+      }
+      // Email lookup (primary, human-friendly id).
+      if (q.includes("@") && q.includes(".")) {
+        const npubE = await env.PUSH.get(`email:${q.toLowerCase()}`);
+        if (!npubE) return json({ npub: null }, 404);
+        const p = JSON.parse((await env.PUSH.get(`prof:${npubE}`)) || "null");
+        return json({ npub: npubE, profile: p });
+      }
+      // Phone lookup (digits / +country form).
+      if (/[0-9]/.test(q) && !q.startsWith("npub") && q.replace(/[^0-9]/g, "").length >= 6) {
+        const npubP = await env.PUSH.get(`phone:${normPhone(q)}`);
+        if (npubP) {
+          const p = JSON.parse((await env.PUSH.get(`prof:${npubP}`)) || "null");
+          return json({ npub: npubP, profile: p });
+        }
       }
       const handle = q.toLowerCase().replace(/^@/, "");
       const npub = await env.PUSH.get(`handle:${handle}`);
@@ -289,15 +349,117 @@ export default {
       return json({ npub, profile: p });
     }
 
-    // Substring search over handle + name for the "Search site" tab.
+    // Substring search over email + handle + name for the "Search site" tab.
     if (url.pathname === "/search") {
       const q = (url.searchParams.get("q") || "").trim().toLowerCase();
       if (q.length < 2) return json({ results: [] });
       const idx: any[] = JSON.parse((await env.PUSH.get("dir:all")) || "[]");
+      const qPhone = q.replace(/[^0-9]/g, "");
       const results = idx
-        .filter((p) => p.handle?.includes(q) || p.name?.toLowerCase().includes(q))
+        .filter((p) => p.email?.includes(q) || p.handle?.includes(q) ||
+          p.name?.toLowerCase().includes(q) ||
+          (qPhone.length >= 4 && p.phone?.includes(qPhone)))
         .slice(0, 20);
       return json({ results });
+    }
+
+    // ---- Device contacts: per-user storage + "who's on AvaTok" matching ----
+    if (req.method === "OPTIONS" &&
+        ["/contacts/sync", "/contacts/match", "/contacts/list"].includes(url.pathname)) {
+      return new Response(null, { headers: CORS });
+    }
+
+    // Store this user's address book (so AvaContacts can show it later).
+    // Body: { owner: npub, contacts: [{name, emails:[], phones:[]}] }
+    if (url.pathname === "/contacts/sync" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as
+        { owner?: string; contacts?: any[] };
+      if (!b.owner) return json({ error: "owner required" }, 400);
+      const contacts = Array.isArray(b.contacts) ? b.contacts.slice(0, 5000) : [];
+      await env.PUSH.put(`contacts:${b.owner}`, JSON.stringify({
+        updated: Date.now(), contacts,
+      }));
+      // Resolve which of these are already on AvaTok.
+      const matched = await matchContacts(env, contacts);
+      return json({ stored: contacts.length, matched });
+    }
+
+    // Return the matched (on-AvaTok) subset for a set of emails/phones.
+    // Body: { contacts: [{name, emails:[], phones:[]}] }  ->  { matched: [...] }
+    if (url.pathname === "/contacts/match" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as { contacts?: any[] };
+      const matched = await matchContacts(env, Array.isArray(b.contacts) ? b.contacts : []);
+      return json({ matched });
+    }
+
+    // Fetch the stored address book for an owner.
+    if (url.pathname === "/contacts/list") {
+      const owner = (url.searchParams.get("owner") || "").trim();
+      if (!owner) return json({ error: "owner required" }, 400);
+      const raw = await env.PUSH.get(`contacts:${owner}`);
+      return json(raw ? JSON.parse(raw) : { updated: 0, contacts: [] });
+    }
+
+    // ---- Communities (a community = a named hub owning member + group list) ----
+    if (req.method === "OPTIONS" &&
+        ["/community", "/community/join", "/community/post", "/communities"].includes(url.pathname)) {
+      return new Response(null, { headers: CORS });
+    }
+
+    // Create or update a community. Body: { id?, name, about, owner, members:[], groups:[] }
+    if (url.pathname === "/community" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as any;
+      if (!b.name || !b.owner) return json({ error: "name + owner required" }, 400);
+      const id = (b.id || crypto.randomUUID()).toString();
+      const existing = JSON.parse((await env.PUSH.get(`comm:${id}`)) || "null");
+      const members: string[] = Array.from(new Set([
+        ...((existing?.members) || []), b.owner, ...((b.members) || []),
+      ]));
+      const comm = {
+        id, name: (b.name || "").toString().trim(),
+        about: (b.about || "").toString().trim(),
+        owner: b.owner, members,
+        groups: b.groups || existing?.groups || [],
+        created: existing?.created || Date.now(),
+      };
+      await env.PUSH.put(`comm:${id}`, JSON.stringify(comm));
+      // Index per member so /communities can list them.
+      for (const m of members) {
+        const list: string[] = JSON.parse((await env.PUSH.get(`commidx:${m}`)) || "[]");
+        if (!list.includes(id)) { list.unshift(id); await env.PUSH.put(`commidx:${m}`, JSON.stringify(list.slice(0, 500))); }
+      }
+      return json({ ok: true, community: comm });
+    }
+
+    // Join a community. Body: { id, npub }
+    if (url.pathname === "/community/join" && req.method === "POST") {
+      const b = (await req.json().catch(() => ({}))) as { id?: string; npub?: string };
+      if (!b.id || !b.npub) return json({ error: "id + npub required" }, 400);
+      const comm = JSON.parse((await env.PUSH.get(`comm:${b.id}`)) || "null");
+      if (!comm) return json({ error: "not found" }, 404);
+      if (!comm.members.includes(b.npub)) comm.members.push(b.npub);
+      await env.PUSH.put(`comm:${b.id}`, JSON.stringify(comm));
+      const list: string[] = JSON.parse((await env.PUSH.get(`commidx:${b.npub}`)) || "[]");
+      if (!list.includes(b.id)) { list.unshift(b.id); await env.PUSH.put(`commidx:${b.npub}`, JSON.stringify(list)); }
+      return json({ ok: true, community: comm });
+    }
+
+    // List communities for a member, or one by id. ?member=npub | ?id=cid
+    if (url.pathname === "/communities") {
+      const id = url.searchParams.get("id");
+      if (id) {
+        const comm = JSON.parse((await env.PUSH.get(`comm:${id}`)) || "null");
+        return comm ? json({ community: comm }) : json({ error: "not found" }, 404);
+      }
+      const member = (url.searchParams.get("member") || "").trim();
+      if (!member) return json({ communities: [] });
+      const ids: string[] = JSON.parse((await env.PUSH.get(`commidx:${member}`)) || "[]");
+      const out: any[] = [];
+      for (const cid of ids.slice(0, 100)) {
+        const c = JSON.parse((await env.PUSH.get(`comm:${cid}`)) || "null");
+        if (c) out.push(c);
+      }
+      return json({ communities: out });
     }
 
     // ---- Encrypted, content-addressed chat media (Blossom-style on R2) ----

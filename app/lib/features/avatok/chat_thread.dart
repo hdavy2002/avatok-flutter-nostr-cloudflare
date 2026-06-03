@@ -36,6 +36,7 @@ import 'contacts.dart';
 import 'data.dart';
 import 'group_info_screen.dart';
 import 'media.dart';
+import 'media_library_screen.dart';
 import 'video_player_screen.dart';
 
 /// AvaTok conversation thread — bubbles, media (photo/video/file/voice),
@@ -357,13 +358,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  late final List<_Msg> _msgs = [
-    _Msg(_seq++, false, 'Hi! ready for our 1:1 today?', '13:20'),
-    _Msg(_seq++, true, 'Yes! just wrapped a shoot 🎬', '13:21'),
-    _Msg(_seq++, false, 'Perfect. Want to hop on a quick call?', '13:22'),
-    _Msg(_seq++, true, "Give me 2 mins and I'll call you 🙌", '13:23'),
-    _Msg(_seq++, false, 'Sounds good — talk soon 👋', '13:24'),
-  ];
+  final List<_Msg> _msgs = [];
 
   @override
   void dispose() {
@@ -935,12 +930,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
+          _action(ctx, Icons.search, 'Search',
+              () { Navigator.pop(ctx); setState(() { _searchMode = true; _searchQuery = ''; }); }),
+          _action(ctx, Icons.perm_media_outlined, 'Media, links & docs',
+              () { Navigator.pop(ctx); _openMediaLibrary(); }),
           if (_convKey != null)
             _action(ctx, Icons.timer_outlined,
                 _disappearSecs == 0 ? 'Disappearing messages' : 'Disappearing: ${_disappearLabel(_disappearSecs)}',
                 _pickDisappear),
           if (_convKey != null)
-            _action(ctx, Icons.wallpaper, 'Wallpaper', _pickWallpaper),
+            _action(ctx, Icons.wallpaper, 'Chat theme', _pickWallpaper),
           if (_convKey != null)
             _action(ctx, Icons.archive_outlined, 'Archive chat', () async {
               await ChatFlagsStore().toggle('archived', _convKey!);
@@ -958,6 +957,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]),
       ),
     );
+  }
+
+  /// Open the chat library — every photo, video, link and doc shared here.
+  void _openMediaLibrary() {
+    final media = <ChatMedia>[];
+    final docs = <ChatMedia>[];
+    final links = <LinkItem>[];
+    final linkRe = RegExp(r'(https?://[^\s]+)', caseSensitive: false);
+    for (final m in _msgs) {
+      if (m.media != null) {
+        final k = m.media!.kind;
+        if (k == MediaKind.image || k == MediaKind.video) {
+          media.add(m.media!);
+        } else {
+          docs.add(m.media!); // file + audio/voice
+        }
+      }
+      for (final match in linkRe.allMatches(m.text)) {
+        final url = match.group(1);
+        if (url != null) links.add(LinkItem(url: url, ts: m.ts, me: m.me));
+      }
+    }
+    Navigator.push(context, MaterialPageRoute(
+        builder: (_) => MediaLibraryScreen(
+            title: widget.chat.name, media: media, docs: docs, links: links)));
   }
 
   String _disappearLabel(int s) => s == 0 ? 'Off' : (s >= 604800 ? '1 week' : (s >= 86400 ? '1 day' : '1 hour'));

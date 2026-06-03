@@ -77,11 +77,14 @@ class _AddContactSheetState extends State<_AddContactSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final mq = MediaQuery.of(context);
+    // Lift the sheet clear of the keyboard AND the system nav bar so the
+    // "Add contact" button is never cut off the bottom of the screen.
+    final bottom = mq.viewInsets.bottom + mq.padding.bottom + 16;
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -110,8 +113,8 @@ class _AddContactSheetState extends State<_AddContactSheet> {
         decoration: BoxDecoration(
             color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
         child: Row(children: [
-          _tab('Add by ID', _byId, () => setState(() => _byId = true)),
-          _tab('Search site', !_byId, () => setState(() => _byId = false)),
+          _tab('Add by email', _byId, () => setState(() => _byId = true)),
+          _tab('Search', !_byId, () => setState(() => _byId = false)),
         ]),
       );
 
@@ -148,8 +151,9 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                   controller: _idCtrl,
                   onChanged: (_) => setState(() => _error = null),
                   onSubmitted: (_) => _addById(),
+                  keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                      hintText: 'Enter user ID, @handle or npub…',
+                      hintText: 'Enter email, @handle or npub…',
                       border: InputBorder.none, isDense: true,
                       contentPadding: EdgeInsets.symmetric(vertical: 14)),
                 ),
@@ -188,7 +192,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
           ),
           const SizedBox(height: 10),
           const Center(
-            child: Text("Paste a friend's AvaTOK ID, @handle, or Nostr npub.",
+            child: Text("Add a friend by the email they signed up with (or @handle / npub).",
                 style: TextStyle(color: AvaColors.sub, fontSize: 12)),
           ),
         ],
@@ -209,7 +213,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                   controller: _searchCtrl,
                   onChanged: _onSearchChanged,
                   decoration: const InputDecoration(
-                      hintText: 'Search people on AvaTOK',
+                      hintText: 'Search by email or name',
                       border: InputBorder.none, isDense: true,
                       contentPadding: EdgeInsets.symmetric(vertical: 14)),
                 ),
@@ -240,8 +244,8 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                         leading: Avatar(seed: c.seed, name: c.name, size: 40),
                         title: Text(c.name,
                             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
-                        subtitle: c.handle.isNotEmpty
-                            ? Text(c.atHandle, style: const TextStyle(color: AvaColors.sub, fontSize: 12.5))
+                        subtitle: c.subtitle.isNotEmpty
+                            ? Text(c.subtitle, style: const TextStyle(color: AvaColors.sub, fontSize: 12.5))
                             : null,
                         trailing: const Icon(Icons.add_circle, color: AvaColors.brand),
                         onTap: () => Navigator.pop(context, c),
