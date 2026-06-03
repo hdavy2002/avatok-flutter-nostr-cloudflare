@@ -46,6 +46,18 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      - name: Fix clerk_flutter localizations (missing generated files)
+        run: |
+          CLERK_DIR=$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -type d -name "clerk_flutter-*" | head -1)
+          echo "clerk dir: $CLERK_DIR"
+          if [ -n "$CLERK_DIR" ] && [ -f "$CLERK_DIR/l10n.yaml" ]; then
+            (cd "$CLERK_DIR" && flutter gen-l10n) && echo "generated clerk l10n" || echo "gen-l10n failed (continuing)"
+            ls -la "$CLERK_DIR/lib/generated" 2>/dev/null || true
+          else
+            echo "no clerk l10n.yaml found at $CLERK_DIR"
+            ls -la "$CLERK_DIR" 2>/dev/null || true
+          fi
+
       - name: Analyze (non-blocking)
         working-directory: app
         run: flutter analyze || true
