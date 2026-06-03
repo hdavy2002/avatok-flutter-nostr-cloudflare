@@ -22,9 +22,11 @@ import '../../identity/nostr_keys.dart';
 import '../../nostr/ava_dm.dart';
 import '../../nostr/ava_group_dm.dart';
 import '../../nostr/nostr_client.dart';
+import '../../nostr/presence.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
+import 'group_info_screen.dart';
 import 'media.dart';
 import 'video_player_screen.dart';
 
@@ -80,6 +82,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final Set<String> _seenEv = {};
   int? _playingAudioId;
 
+  // Presence: typing + read receipts (ephemeral, over the signaling WS).
+  PresenceChannel? _presence;
+  bool _peerTyping = false;
+  String? _typingWho;
+  int _peerReadTs = 0;
+  Timer? _typingClear;
+  Timer? _myTypingOff;
+
   @override
   void initState() {
     super.initState();
@@ -108,6 +118,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _dm = AvaDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, peerPub: peerHex);
     _dm!.messages.listen(_onDm);
     _dm!.start();
+    _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.pubHex, peerHex), id.shortNpub)..connect();
+    _presence!.events.listen(_onPresence);
+    _presence!.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
   }
 
   Future<void> _setupGroup(Identity id) async {
@@ -121,6 +134,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _gdm = AvaGroupDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, group: g);
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
+    _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortNpub)..connect();
+    _presence!.events.listen(_onPresence);
+  }
+
+  void _onPresence(Map<String, dynamic> e) {
+    if (!mounted) return;
+    if (e['type'] == 'typing') {
+      setState(() { _peerTyping = e['on'] == true; _typingWho = e['who']?.toString(); });
+      _typingClear?.cancel();
+      if (_peerTyping) {
+        _typingClear = Timer(const Duration(seconds: 5), () {
+          if (mounted) setState(() => _peerTyping = false);
+        });
+      }
+    } else if (e['type'] == 'read') {
+      final ts = (e['ts'] as num?)?.toInt() ?? 0;
+      if (ts > _peerReadTs) setState(() => _peerReadTs = ts);
+    }
+  }
+
+  void _onTyping() {
+    if (_presence == null) return;
+    _presence!.sendTyping(true);
+    _myTypingOff?.cancel();
+    _myTypingOff = Timer(const Duration(seconds: 2), () => _presence?.sendTyping(false));
   }
 
   void _onGroupMsg(GroupMessage m) {
@@ -178,6 +216,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
+    if (!m.mine) _presence?.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
   }
 
   String _fmtTime(int epochSecs) {
@@ -202,6 +241,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _recorder.dispose();
     _dm?.stop();
     _gdm?.stop();
+    _presence?.dispose();
+    _typingClear?.cancel();
+    _myTypingOff?.cancel();
     _nostr?.dispose();
     super.dispose();
   }
@@ -372,6 +414,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       await _audio.play(BytesSource(bytes));
       if (mounted) setState(() => _playingAudioId = m.id);
     } catch (_) {/* ignore */}
+  }
+
+  Future<void> _openGroupInfo() async {
+    if (widget.chat.gid == null) return;
+    final g = await GroupStore().byId(widget.chat.gid!);
+    if (g == null || !mounted) return;
+    final left = await Navigator.push<bool>(context,
+        MaterialPageRoute(builder: (_) => GroupInfoScreen(group: g)));
+    if (left == true && mounted) Navigator.pop(context); // left/deleted → close thread
   }
 
   Future<void> _openVideo(_Msg m) async {
@@ -552,16 +603,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 Avatar(seed: c.seed, name: c.name, size: 38),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
+                  child: GestureDetector(
+                    onTap: c.group ? _openGroupInfo : null,
+                    behavior: HitTestBehavior.opaque,
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                      Text(c.group ? '${c.members} members' : (c.online ? 'Active now' : 'Offline'),
+                      Text(
+                          _peerTyping
+                              ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'typing…')
+                              : (c.group ? '${c.members} members · tap to manage' : (c.online ? 'Active now' : 'Offline')),
                           style: TextStyle(fontSize: 11.5,
-                              color: c.online ? AvaColors.success : const Color(0xFF8A9099))),
+                              color: _peerTyping
+                                  ? AvaColors.brand
+                                  : (c.online ? AvaColors.success : const Color(0xFF8A9099)))),
                     ],
+                  ),
                   ),
                 ),
                 if (!c.group) ...[
@@ -615,7 +675,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(22)),
             child: TextField(
               controller: _ctrl,
-              onChanged: (v) => setState(() => _hasText = v.trim().isNotEmpty),
+              onChanged: (v) { setState(() => _hasText = v.trim().isNotEmpty); _onTyping(); },
               onSubmitted: (_) => _send(),
               decoration: const InputDecoration(
                   hintText: 'Message', border: InputBorder.none, isDense: true,
@@ -677,6 +737,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       Text(m.time,
                           style: TextStyle(fontSize: 10.5,
                               color: m.me ? Colors.white70 : const Color(0xFF9AA1AC))),
+                      if (m.me && _realMode && !_isGroup && m.ts > 0) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                            (_peerReadTs > 0 && m.ts <= _peerReadTs) ? Icons.done_all : Icons.done,
+                            size: 13,
+                            color: (_peerReadTs > 0 && m.ts <= _peerReadTs)
+                                ? const Color(0xFF8BE9FD) : Colors.white70),
+                      ],
                       if (m.uploading) ...[
                         const SizedBox(width: 6),
                         SizedBox(width: 10, height: 10,

@@ -83,6 +83,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
             members: ((env['members'] as List?) ?? []).map((e) => e.toString()).toList(),
           );
           _groupStore.upsert(g).then((list) { if (mounted) setState(() => _groups = list); });
+        } else if (env is Map && env['t'] == 'gkick' && u.senderPub != id.pubHex) {
+          // Someone removed me from a group → drop it locally.
+          _groupStore.remove(env['gid'].toString())
+              .then((_) => _groupStore.load())
+              .then((list) { if (mounted) setState(() => _groups = list); });
         }
       } catch (_) {/* ignore */}
     });

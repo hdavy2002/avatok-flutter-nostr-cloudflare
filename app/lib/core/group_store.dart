@@ -51,6 +51,12 @@ class GroupStore {
     return list;
   }
 
+  Future<void> remove(String id) async {
+    final list = await load();
+    list.removeWhere((x) => x.id == id);
+    await _s.write(key: _key, value: jsonEncode(list.map((x) => x.toJson()).toList()));
+  }
+
   Future<Group?> byId(String id) async {
     final list = await load();
     for (final g in list) {
