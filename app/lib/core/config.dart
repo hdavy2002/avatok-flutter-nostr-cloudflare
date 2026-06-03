@@ -34,6 +34,12 @@ const String kInviteBase = 'https://avatok.ai/i/';
 /// Encrypted, content-addressed chat media. POST ciphertext → {id}; GET /media/:id.
 const String kMediaUrl = 'https://$kSignalingHost/media';
 
+/// AvaTok Nostr relay (NIP-01) — real message delivery + NIP-44 encrypted DMs.
+const String kNostrRelayUrl = 'wss://avatok-relay.getmystuffme.workers.dev/';
+
+/// Kind for AvaTok 1:1 chat messages (NIP-17 chat-message kind, NIP-44 content).
+const int kDmKind = 14;
+
 /// Short-video clip cap — capture auto-stops at this length.
 const Duration kVideoClipMax = Duration(seconds: 30);
 

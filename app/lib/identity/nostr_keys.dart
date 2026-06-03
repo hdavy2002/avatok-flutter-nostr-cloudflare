@@ -22,6 +22,26 @@ class NostrKeys {
   static String npub(String pubHex) => _toNip19('npub', pubHex);
   static String nsec(String privHex) => _toNip19('nsec', privHex);
 
+  /// Decode an npub/nsec (bech32) back to 64-char hex. Returns null if invalid.
+  static String? decodeToHex(String bech, String expectedHrp) {
+    final pos = bech.lastIndexOf('1');
+    if (pos < 1 || pos + 7 > bech.length) return null;
+    final hrp = bech.substring(0, pos);
+    if (hrp != expectedHrp) return null;
+    final data = <int>[];
+    for (final c in bech.substring(pos + 1).split('')) {
+      final idx = _charset.indexOf(c);
+      if (idx == -1) return null;
+      data.add(idx);
+    }
+    if (_polymod([..._hrpExpand(hrp), ...data]) != 1) return null; // checksum
+    final bytes = _convertBits(data.sublist(0, data.length - 6), 5, 8, false);
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  /// npub → x-only pubkey hex (or null).
+  static String? npubToHex(String npub) => decodeToHex(npub, 'npub');
+
   // ---- bech32 internals ----
 
   static int _polymod(List<int> values) {

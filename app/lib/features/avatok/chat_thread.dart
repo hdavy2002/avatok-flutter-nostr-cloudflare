@@ -16,6 +16,9 @@ import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
+import '../../identity/nostr_keys.dart';
+import '../../nostr/ava_dm.dart';
+import '../../nostr/nostr_client.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -35,13 +38,16 @@ class _Msg {
   final bool me;
   String text;
   final String time;
+  final int ts; // sort key (epoch seconds; 0 for demo)
+  final String? evId; // relay event id (real DMs)
   String? reaction;
   ChatMedia? media;
   Uint8List? localBytes; // instant preview of self-sent media
   bool uploading;
   bool failed;
   _Msg(this.id, this.me, this.text, this.time,
-      {this.reaction, this.media, this.localBytes, this.uploading = false, this.failed = false});
+      {this.ts = 0, this.evId, this.reaction, this.media, this.localBytes,
+       this.uploading = false, this.failed = false});
 }
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
@@ -59,12 +65,49 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _recording = false;
   String? _recPath;
 
+  // Real end-to-end DM (NIP-44 over the relay) for npub contacts.
+  AvaDm? _dm;
+  NostrClient? _nostr;
+  bool _realMode = false;
+  final Set<String> _seenEv = {};
+
   @override
   void initState() {
     super.initState();
     _idStore.load().then((id) {
-      if (mounted && id != null) setState(() { _myNpub = id.npub; _myName = id.shortNpub; });
+      if (!mounted || id == null) return;
+      setState(() { _myNpub = id.npub; _myName = id.shortNpub; });
+      _setupDm(id);
     });
+  }
+
+  void _setupDm(Identity id) {
+    if (widget.chat.group) return; // group DM (NIP-104) is a later milestone
+    final seed = widget.chat.seed;
+    final peerHex = seed.startsWith('npub1') ? NostrKeys.npubToHex(seed) : null;
+    if (peerHex == null) return; // demo contact → keep local echo
+    _realMode = true;
+    setState(() => _msgs.clear()); // drop demo seed; history loads from relay
+    _nostr = NostrClient(kNostrRelayUrl);
+    _dm = AvaDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, peerPub: peerHex);
+    _dm!.messages.listen(_onDm);
+    _dm!.start();
+  }
+
+  void _onDm(DmMessage m) {
+    if (_seenEv.contains(m.evId)) return;
+    _seenEv.add(m.evId);
+    if (!mounted) return;
+    setState(() {
+      _msgs.add(_Msg(_seq++, m.mine, m.text, _fmtTime(m.createdAt), ts: m.createdAt, evId: m.evId));
+      _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+    });
+    _jump();
+  }
+
+  String _fmtTime(int epochSecs) {
+    final d = DateTime.fromMillisecondsSinceEpoch(epochSecs * 1000);
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
   late final List<_Msg> _msgs = [
@@ -82,12 +125,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _audio.dispose();
     _sfx.dispose();
     _recorder.dispose();
+    _dm?.stop();
+    _nostr?.dispose();
     super.dispose();
   }
 
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    if (_realMode && _dm != null) {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final id = _dm!.send(t); // encrypt + publish; relay echoes back
+      _seenEv.add(id);
+      setState(() {
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id));
+        _ctrl.clear();
+        _hasText = false;
+      });
+      _jump();
+      return;
+    }
     setState(() {
       _msgs.add(_Msg(_seq++, true, t, 'now'));
       _ctrl.clear();

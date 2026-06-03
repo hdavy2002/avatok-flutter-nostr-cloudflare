@@ -50,6 +50,10 @@ jobs:
         working-directory: app
         run: flutter analyze || true
 
+      - name: Test (NIP-44 crypto vectors — blocking)
+        working-directory: app
+        run: flutter test
+
       - name: Build debug APK
         working-directory: app
         run: flutter build apk --debug
