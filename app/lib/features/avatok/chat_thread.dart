@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -5,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
@@ -42,8 +45,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _scroll = ScrollController();
   final _picker = ImagePicker();
   final _audio = AudioPlayer();
+  final _sfx = AudioPlayer();
+  final _recorder = AudioRecorder();
   int _seq = 0;
   bool _hasText = false;
+  bool _recording = false;
+  String? _recPath;
 
   late final List<_Msg> _msgs = [
     _Msg(_seq++, false, 'Hi! ready for our 1:1 today?', '13:20'),
@@ -58,6 +65,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _ctrl.dispose();
     _scroll.dispose();
     _audio.dispose();
+    _sfx.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -141,9 +150,28 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     await _sendMedia(MediaKind.file, f.bytes!, 'application/octet-stream', f.name);
   }
 
-  // Voice-note recording returns next pass (recorder package conflict).
-  void _voiceComingSoon() => ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice messages arrive in the next update')));
+  // ---- voice note record ----
+  Future<void> _toggleRecord() async {
+    if (_recording) {
+      final path = await _recorder.stop();
+      setState(() => _recording = false);
+      if (path == null) return;
+      final bytes = await File(path).readAsBytes();
+      await _sendMedia(MediaKind.audio, bytes, 'audio/mp4', 'voice.m4a');
+      return;
+    }
+    if (!await _recorder.hasPermission()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission needed for voice messages')));
+      }
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    _recPath = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorder.start(const RecordConfig(), path: _recPath!);
+    setState(() => _recording = true);
+  }
 
   Future<void> _playAudio(_Msg m) async {
     try {
@@ -188,11 +216,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         onTap: () { Navigator.pop(ctx); onTap(); },
       );
 
+  static const _reactionSounds = {
+    '❤️': 'heart', '👍': 'like', '😂': 'laugh', '😮': 'wow', '😢': 'sad', '👏': 'clap',
+  };
+
   void _react(_Msg m, String emoji) {
-    setState(() => m.reaction = m.reaction == emoji ? null : emoji);
-    // TODO(sound-pack): play the matching reaction sound (👏 → clap). Needs a
-    // licensed short-sound pack; hooked here.
+    final adding = m.reaction != emoji;
+    setState(() => m.reaction = adding ? emoji : null);
     HapticFeedback.lightImpact();
+    if (adding) {
+      final file = _reactionSounds[emoji];
+      if (file != null) {
+        _sfx.stop();
+        _sfx.play(AssetSource('sounds/$file.wav'));
+      }
+    }
   }
 
   void _deleteForMe(_Msg m) => setState(() => _msgs.removeWhere((x) => x.id == m.id));
@@ -348,6 +386,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Widget _inputBar() {
+    if (_recording) {
+      return Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 20),
+        child: Row(children: [
+          const Icon(Icons.fiber_manual_record, color: AvaColors.danger, size: 16),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('Recording… tap to send', style: TextStyle(color: AvaColors.ink))),
+          GestureDetector(
+            onTap: _toggleRecord,
+            child: Container(width: 44, height: 44,
+                decoration: const BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle),
+                child: const Icon(Icons.send, color: Colors.white, size: 20)),
+          ),
+        ]),
+      );
+    }
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(8, 8, 12, 16),
@@ -369,7 +424,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: _hasText ? _send : _voiceComingSoon,
+          onTap: _hasText ? _send : _toggleRecord,
           child: Container(width: 44, height: 44,
               decoration: const BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle),
               child: Icon(_hasText ? Icons.arrow_upward : Icons.mic, color: Colors.white, size: 22)),

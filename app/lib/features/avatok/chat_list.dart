@@ -13,6 +13,7 @@ import '../../push/push_service.dart';
 import '../avalive/live_screen.dart';
 import 'add_contact_sheet.dart';
 import 'call_screen.dart';
+import 'calls_screen.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -32,6 +33,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   final _contactsStore = ContactsStore();
   Identity? _id;
   List<Contact> _contacts = [];
+  int _tab = 0; // 0 = Chats, 1 = Calls
 
   @override
   void initState() {
@@ -187,13 +189,26 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final online = kChats.where((c) => c.online).toList();
     return Scaffold(
       backgroundColor: Colors.white,
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AvaColors.danger,
-        onPressed: () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const LiveScreen())),
-        child: const Icon(Icons.sensors, color: Colors.white),
+      floatingActionButton: _tab == 0
+          ? FloatingActionButton(
+              backgroundColor: AvaColors.danger,
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const LiveScreen())),
+              child: const Icon(Icons.sensors, color: Colors.white),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() => _tab = i),
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chats'),
+          NavigationDestination(
+              icon: Icon(Icons.call_outlined), selectedIcon: Icon(Icons.call), label: 'Calls'),
+        ],
       ),
-      body: SafeArea(
+      body: IndexedStack(index: _tab, children: [
+        SafeArea(
         bottom: false,
         child: Column(
           children: [
@@ -262,6 +277,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ],
         ),
       ),
+        const CallsScreen(),
+      ]),
     );
   }
 

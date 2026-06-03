@@ -27,6 +27,10 @@ PERMS = [
     "android.permission.READ_MEDIA_IMAGES",
     "android.permission.READ_MEDIA_VIDEO",
     "android.permission.READ_MEDIA_AUDIO",
+    # Native incoming-call UI (flutter_callkit_incoming / ConnectionService)
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
+    "android.permission.MANAGE_OWN_CALLS",
 ]
 
 
