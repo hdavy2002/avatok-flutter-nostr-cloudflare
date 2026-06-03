@@ -8,10 +8,39 @@ class AvaColors {
   static const ink = Color(0xFF0F1115);
   static const sub = Color(0xFF737A86);
   static const line = Color(0xFFECEEF1);
-  static const soft = Color(0xFFF4F5F7);
-  static const bg = Color(0xFFE7E9EE);
+  static const soft = Color(0xFFF2F3F5);
+  static const bg = Color(0xFFFFFFFF);
   static const danger = Color(0xFFEF4444);
   static const success = Color(0xFF22C55E);
+  static const coral = Color(0xFFFF5A4D);
+
+  /// Welcome screen background gradient (vibrant teal).
+  static const welcomeGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF18D2C8), Color(0xFF0BB6AE)],
+  );
+
+  /// CREATOR DROP banner gradient (orange → pink).
+  static const dropGradient = LinearGradient(
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [Color(0xFFFFA24D), Color(0xFFFF6F8B)],
+  );
+
+  /// Diagonal gradient presets for product thumbnails.
+  static const thumbGradients = <LinearGradient>[
+    LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFF4F8DFD), Color(0xFF6FB0FF)]),
+    LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFFB06AF0), Color(0xFFD08BF5)]),
+    LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFF22D3C0), Color(0xFF4FE0CF)]),
+    LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFFFF7A59), Color(0xFFFF9E72)]),
+    LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFFFF6FA5), Color(0xFFFF9AC2)]),
+  ];
 }
 
 class AvaTheme {
