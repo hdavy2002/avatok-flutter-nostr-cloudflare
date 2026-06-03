@@ -44,14 +44,14 @@ def patch_sdks() -> None:
     if kts.exists():
         t = kts.read_text()
         t = re.sub(r"minSdk\s*=\s*(flutter\.minSdkVersion|\d+)", "minSdk = 24", t)
-        t = re.sub(r"compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)", "compileSdk = 36", t)
+        t = re.sub(r"compileSdk\s*=\s*(flutter\.compileSdkVersion|\d+)", "compileSdk = 35", t)
         t = re.sub(r"targetSdk\s*=\s*(flutter\.targetSdkVersion|\d+)", "targetSdk = 35", t)
         kts.write_text(t)
         print("build.gradle.kts: minSdk=24, compileSdk=36, targetSdk=35")
     elif groovy.exists():
         t = groovy.read_text()
         t = re.sub(r"minSdkVersion\s+(flutter\.minSdkVersion|\d+)", "minSdkVersion 24", t)
-        t = re.sub(r"compileSdkVersion?\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 36", t)
+        t = re.sub(r"compileSdkVersion?\s+(flutter\.compileSdkVersion|\d+)", "compileSdk 35", t)
         t = re.sub(r"targetSdkVersion\s+(flutter\.targetSdkVersion|\d+)", "targetSdkVersion 35", t)
         groovy.write_text(t)
         print("build.gradle: minSdk=24, compileSdk=36, targetSdk=35")
@@ -75,7 +75,7 @@ subprojects {{
         afterEvaluate {{
             extensions.findByName("android")?.let {{ ext ->
                 runCatching {{
-                    (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(36)
+                    (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(35)
                 }}
             }}
         }}

@@ -1,10 +1,10 @@
-import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/avatar.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../avalive/live_screen.dart';
+import '../onboarding/welcome_screen.dart';
 import 'chat_thread.dart';
 import 'data.dart';
 
@@ -51,7 +51,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
             SelectableText(_id?.npub ?? 'generating…',
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
             const Divider(height: 28),
-            const Center(child: ClerkUserButton()),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: AvaColors.danger,
+                    side: const BorderSide(color: Color(0xFFE0E2E6)),
+                    padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pushAndRemoveUntil(context,
+                      MaterialPageRoute(builder: (_) => const WelcomeScreen()), (_) => false);
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Sign out'),
+              ),
+            ),
             const SizedBox(height: 12),
           ],
         ),
