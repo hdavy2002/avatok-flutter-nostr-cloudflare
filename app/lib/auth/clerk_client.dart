@@ -100,6 +100,39 @@ class ClerkClient {
     return 'Sign-in could not be completed';
   }
 
+  /// Email/password sign-up. Returns a result indicating completion or that an
+  /// email verification code is required.
+  Future<ClerkSignUp> signUp(String email, String password) async {
+    await _send('/client', body: {});
+    final body = await _send('/client/sign_ups', body: {
+      'email_address': email.trim(),
+      'password': password,
+    });
+    final err = _firstError(body);
+    if (err != null) return ClerkSignUp.error(err);
+    final su = body['response'] as Map<String, dynamic>?;
+    if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
+      return ClerkSignUp.complete();
+    }
+    final id = su?['id']?.toString();
+    if (id == null) return ClerkSignUp.error('Sign-up could not start');
+    // Ask Clerk to email a verification code.
+    await _send('/client/sign_ups/$id/prepare_verification',
+        body: {'strategy': 'email_code'});
+    return ClerkSignUp.needsCode(id);
+  }
+
+  /// Verify the emailed code to finish sign-up. Returns null on success.
+  Future<String?> verifyEmailCode(String signUpId, String code) async {
+    final body = await _send('/client/sign_ups/$signUpId/attempt_verification',
+        body: {'strategy': 'email_code', 'code': code.trim()});
+    final err = _firstError(body);
+    if (err != null) return err;
+    final su = body['response'] as Map<String, dynamic>?;
+    if (su?['status'] == 'complete' || _activeUser(body['client']) != null) return null;
+    return 'Verification incomplete';
+  }
+
   Future<void> signOut() async {
     await _send('/client'); // DELETE /client → sign out all sessions
     _clientToken = null;
@@ -127,6 +160,18 @@ class ClerkClient {
     final e = errors.first as Map<String, dynamic>;
     return (e['long_message'] ?? e['message'] ?? 'Sign-in failed').toString();
   }
+}
+
+/// Result of a sign-up attempt.
+class ClerkSignUp {
+  final bool isComplete;
+  final String? signUpId; // set when an email code is required
+  final String? error;
+  ClerkSignUp._(this.isComplete, this.signUpId, this.error);
+  factory ClerkSignUp.complete() => ClerkSignUp._(true, null, null);
+  factory ClerkSignUp.needsCode(String id) => ClerkSignUp._(false, id, null);
+  factory ClerkSignUp.error(String e) => ClerkSignUp._(false, null, e);
+  bool get needsCode => signUpId != null;
 }
 
 class ClerkUser {
