@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/logo.dart';
+import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 
-enum _Mode { signIn, signUp, verify }
+enum _Mode { signIn, signUp, verify, reset, resetCode }
 
 /// AvaTOK-styled auth (sign in / sign up / email-code), backed by Clerk's FAPI.
 class SignInScreen extends StatefulWidget {
@@ -18,7 +19,9 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
+  final _phone = TextEditingController();
   final _code = TextEditingController();
+  final _newPass = TextEditingController();
   _Mode _mode = _Mode.signIn;
   String? _pendingId;
   String? _pendingKind;
@@ -56,6 +59,13 @@ class _SignInScreenState extends State<SignInScreen> {
           setState(() { _busy = false; _error = 'Enter an email and a password (8+ characters)'; });
           return;
         }
+        if (_phone.text.trim().length < 6) {
+          setState(() { _busy = false; _error = 'Enter your phone number'; });
+          return;
+        }
+        // Store the phone locally now so it persists through email verification;
+        // it's indexed to the directory on first launch (OTP verification later).
+        await ProfileStore().setPhone(_phone.text);
         _handleStep(await widget.clerk.signUp(_email.text, _pass.text));
         return;
       case _Mode.verify:
@@ -66,6 +76,27 @@ class _SignInScreenState extends State<SignInScreen> {
         final err = await widget.clerk.verifyCode(_pendingKind!, _pendingId!, _code.text);
         if (err == null) { _done(); return; }
         if (mounted) setState(() { _busy = false; _error = err; });
+        return;
+      case _Mode.reset:
+        if (_email.text.trim().isEmpty) {
+          setState(() { _busy = false; _error = 'Enter your email to reset your password'; });
+          return;
+        }
+        final step = await widget.clerk.startPasswordReset(_email.text);
+        if (step.needsCode) {
+          setState(() { _busy = false; _pendingId = step.id; _mode = _Mode.resetCode; _error = null; });
+        } else {
+          setState(() { _busy = false; _error = step.error ?? 'Could not start password reset'; });
+        }
+        return;
+      case _Mode.resetCode:
+        if (_code.text.trim().isEmpty || _newPass.text.length < 8) {
+          setState(() { _busy = false; _error = 'Enter the code and a new password (8+ characters)'; });
+          return;
+        }
+        final rErr = await widget.clerk.resetPassword(_pendingId!, _code.text, _newPass.text);
+        if (rErr == null) { _done(); return; }
+        if (mounted) setState(() { _busy = false; _error = rErr; });
         return;
     }
   }
@@ -80,6 +111,8 @@ class _SignInScreenState extends State<SignInScreen> {
       _Mode.signIn => ('Welcome back', 'Log in to your AvaTOK account', 'Log In'),
       _Mode.signUp => ('Create account', 'Join AvaTOK', 'Create account'),
       _Mode.verify => ('Verify email', 'Enter the 6-digit code we emailed you', 'Verify'),
+      _Mode.reset => ('Reset password', 'We\'ll email you a reset code', 'Send code'),
+      _Mode.resetCode => ('Set a new password', 'Enter the code we emailed + your new password', 'Reset password'),
     };
     return Scaffold(
       backgroundColor: Colors.white,
@@ -96,37 +129,75 @@ class _SignInScreenState extends State<SignInScreen> {
               const SizedBox(height: 6),
               Text(sub, style: const TextStyle(color: AvaColors.sub, fontSize: 15)),
               const SizedBox(height: 36),
-              if (_mode == _Mode.verify)
-                ...[
-                  _label('CODE'),
-                  _box(child: TextField(
-                    controller: _code, keyboardType: TextInputType.number,
-                    decoration: _bare('123456'), style: const TextStyle(fontSize: 18, letterSpacing: 4),
+              // CODE (email verify or password-reset)
+              if (_mode == _Mode.verify || _mode == _Mode.resetCode) ...[
+                _label('CODE'),
+                _box(child: TextField(
+                  controller: _code, keyboardType: TextInputType.number,
+                  decoration: _bare('123456'), style: const TextStyle(fontSize: 18, letterSpacing: 4),
+                  onSubmitted: (_) => _submit(),
+                )),
+              ],
+              // NEW PASSWORD (reset)
+              if (_mode == _Mode.resetCode) ...[
+                const SizedBox(height: 16),
+                _label('NEW PASSWORD'),
+                _box(child: Row(children: [
+                  Expanded(child: TextField(
+                    controller: _newPass, obscureText: _obscure,
+                    decoration: _bare('••••••••'), style: const TextStyle(fontSize: 16),
                     onSubmitted: (_) => _submit(),
                   )),
-                ]
-              else
-                ...[
-                  _label('EMAIL'),
-                  _box(child: TextField(
-                    controller: _email, keyboardType: TextInputType.emailAddress, autocorrect: false,
-                    decoration: _bare('you@example.com'), style: const TextStyle(fontSize: 16),
+                  _eyeToggle(),
+                ])),
+              ],
+              // EMAIL (sign in / sign up / reset request)
+              if (_mode == _Mode.signIn || _mode == _Mode.signUp || _mode == _Mode.reset) ...[
+                _label('EMAIL'),
+                _box(child: TextField(
+                  controller: _email, keyboardType: TextInputType.emailAddress, autocorrect: false,
+                  decoration: _bare('you@example.com'), style: const TextStyle(fontSize: 16),
+                  onSubmitted: (_) { if (_mode == _Mode.reset) _submit(); },
+                )),
+              ],
+              // PASSWORD (sign in / sign up)
+              if (_mode == _Mode.signIn || _mode == _Mode.signUp) ...[
+                const SizedBox(height: 16),
+                _label('PASSWORD'),
+                _box(child: Row(children: [
+                  Expanded(child: TextField(
+                    controller: _pass, obscureText: _obscure,
+                    decoration: _bare('••••••••'), style: const TextStyle(fontSize: 16),
+                    onSubmitted: (_) => _submit(),
                   )),
-                  const SizedBox(height: 16),
-                  _label('PASSWORD'),
-                  _box(child: Row(children: [
-                    Expanded(child: TextField(
-                      controller: _pass, obscureText: _obscure,
-                      decoration: _bare('••••••••'), style: const TextStyle(fontSize: 16),
-                      onSubmitted: (_) => _submit(),
-                    )),
-                    IconButton(
-                      icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                          color: AvaColors.sub, size: 20),
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                    ),
-                  ])),
-                ],
+                  _eyeToggle(),
+                ])),
+              ],
+              // PHONE (sign up only — for later OTP verification)
+              if (_mode == _Mode.signUp) ...[
+                const SizedBox(height: 16),
+                _label('PHONE'),
+                _box(child: TextField(
+                  controller: _phone, keyboardType: TextInputType.phone,
+                  decoration: _bare('+1 555 123 4567'), style: const TextStyle(fontSize: 16),
+                  onSubmitted: (_) => _submit(),
+                )),
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, top: 8),
+                  child: Text('We\'ll verify this by SMS later. Friends can find you by phone.',
+                      style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+                ),
+              ],
+              // Forgot password (sign in only)
+              if (_mode == _Mode.signIn)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => _switch(_Mode.reset),
+                    child: const Text('Forgot password?',
+                        style: TextStyle(color: AvaColors.brand, fontWeight: FontWeight.w700, fontSize: 13)),
+                  ),
+                ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
                 Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 13)),
@@ -154,6 +225,12 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+  Widget _eyeToggle() => IconButton(
+        icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            color: AvaColors.sub, size: 20),
+        onPressed: () => setState(() => _obscure = !_obscure),
+      );
+
   Widget _footerLink() {
     switch (_mode) {
       case _Mode.signIn:
@@ -172,6 +249,12 @@ class _SignInScreenState extends State<SignInScreen> {
         return TextButton(
           onPressed: () => _switch(_pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn),
           child: const Text('Back', style: TextStyle(color: AvaColors.sub)),
+        );
+      case _Mode.reset:
+      case _Mode.resetCode:
+        return TextButton(
+          onPressed: () => _switch(_Mode.signIn),
+          child: const Text('Back to log in', style: TextStyle(color: AvaColors.sub)),
         );
     }
   }

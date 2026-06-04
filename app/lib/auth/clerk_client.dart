@@ -153,6 +153,43 @@ class ClerkClient {
     return 'Verification incomplete';
   }
 
+  /// Begin a password reset: emails a reset code to [email]. Returns a
+  /// needsCode('reset', id) step, or an error.
+  Future<ClerkStep> startPasswordReset(String email) async {
+    await _send('/client', body: {});
+    final body = await _send('/client/sign_ins', body: {'identifier': email.trim()});
+    final su = body['response'] as Map<String, dynamic>?;
+    final id = su?['id']?.toString();
+    final factors = (su?['supported_first_factors'] as List?) ?? const [];
+    Map<String, dynamic>? reset;
+    for (final f in factors) {
+      if ((f as Map)['strategy'] == 'reset_password_email_code') { reset = f.cast<String, dynamic>(); break; }
+    }
+    if (id == null || reset == null) {
+      return ClerkStep.error(_firstError(body) ?? 'Password reset is not available for this account');
+    }
+    await _send('/client/sign_ins/$id/prepare_first_factor', body: {
+      'strategy': 'reset_password_email_code',
+      if (reset['email_address_id'] != null) 'email_address_id': reset['email_address_id'].toString(),
+    });
+    return ClerkStep.needsCode('reset', id);
+  }
+
+  /// Complete a password reset with the emailed [code] + a [newPassword].
+  /// Null on success (the user is signed in), else an error message.
+  Future<String?> resetPassword(String id, String code, String newPassword) async {
+    final body = await _send('/client/sign_ins/$id/attempt_first_factor',
+        body: {'strategy': 'reset_password_email_code', 'code': code.trim(), 'password': newPassword});
+    final err = _firstError(body);
+    if (err != null) return err;
+    final r = body['response'] as Map<String, dynamic>?;
+    final status = r?['status'];
+    if (status == 'complete' || status == 'needs_second_factor' || _activeUser(body['client']) != null) {
+      return null;
+    }
+    return 'Could not reset password';
+  }
+
   Future<void> signOut() async {
     await _send('/client'); // DELETE /client → sign out all sessions
     _clientToken = null;

@@ -77,6 +77,16 @@ class _RootFlowState extends State<RootFlow> {
     _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
   }
 
+  /// Full sign-out: clear any pushed screens (AvaTok/Settings/etc.), end the
+  /// Clerk session, then return to welcome. Centralised so every "Log out"
+  /// entry point behaves the same (the bug was: pushed routes stayed on top,
+  /// so logout appeared to do nothing and the session was never cleared).
+  Future<void> _signOut() async {
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    try { await _clerk.signOut(); } catch (_) {/* clear locally regardless */}
+    _to(_Stage.welcome);
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (_stage) {
@@ -89,7 +99,7 @@ class _RootFlowState extends State<RootFlow> {
       case _Stage.onboarding:
         return OnboardingFlow(onComplete: () => _to(_Stage.shell));
       case _Stage.shell:
-        return AvaShell(clerk: _clerk, onSignOut: () => _to(_Stage.welcome));
+        return AvaShell(clerk: _clerk, onSignOut: _signOut);
     }
   }
 }

@@ -9,6 +9,7 @@ import '../../core/chat_state.dart';
 import '../../core/device_contacts.dart';
 import '../../core/filter_store.dart';
 import '../../core/group_store.dart';
+import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
 import '../../core/theme.dart';
 import '../../core/onboarding_store.dart';
@@ -149,9 +150,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
     // Email is the human-facing id: publish email → npub so others find me by email.
     try {
       final cu = await widget.clerk.currentUser();
+      final prof = await ProfileStore().load();
       if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
       if (cu?.email != null && cu!.email!.isNotEmpty) {
-        await Directory.registerProfile(npub: id.npub, email: cu.email!, name: cu.label);
+        await Directory.registerProfile(
+            npub: id.npub, email: cu.email!, name: cu.label, phone: prof.phone);
       }
     } catch (_) {/* not signed in / offline */}
     _startInbox(id);

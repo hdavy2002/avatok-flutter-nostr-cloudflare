@@ -7,11 +7,19 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class Profile {
   final String displayName;
   final String handle; // without '@'
+  final String phone; // collected at sign-up (E.164-ish), used for contact matching
   final bool sharePresence; // last-seen / online visible to others
-  const Profile({this.displayName = '', this.handle = '', this.sharePresence = true});
+  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.sharePresence = true});
 
   bool get isEmpty => displayName.isEmpty && handle.isEmpty;
   String get atHandle => handle.isEmpty ? '' : '@$handle';
+
+  Profile copyWith({String? displayName, String? handle, String? phone, bool? sharePresence}) => Profile(
+        displayName: displayName ?? this.displayName,
+        handle: handle ?? this.handle,
+        phone: phone ?? this.phone,
+        sharePresence: sharePresence ?? this.sharePresence,
+      );
 }
 
 class ProfileStore {
@@ -31,6 +39,7 @@ class ProfileStore {
       return Profile(
         displayName: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
+        phone: (j['phone'] ?? '').toString(),
         sharePresence: j['sharePresence'] != false,
       );
     } catch (_) {
@@ -40,5 +49,11 @@ class ProfileStore {
 
   Future<void> save(Profile p) => _s.write(
       key: _key,
-      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'sharePresence': p.sharePresence}));
+      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'sharePresence': p.sharePresence}));
+
+  /// Persist just the phone (merging with any existing profile fields).
+  Future<void> setPhone(String phone) async {
+    final p = await load();
+    await save(p.copyWith(phone: phone.trim()));
+  }
 }
