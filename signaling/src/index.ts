@@ -127,6 +127,17 @@ function normPhone(raw: string): string {
   return d;
 }
 
+/// Candidate lookup keys for a phone number. Phone books store numbers with or
+/// without country codes, so we index/look up BOTH the normalised form and the
+/// last 10 digits (the national number) to match across those variations.
+function phoneVariants(raw: string): string[] {
+  const norm = normPhone(raw);
+  const out = new Set<string>();
+  if (norm.length >= 6) out.add(norm);
+  if (norm.length >= 10) out.add(norm.slice(-10));
+  return [...out];
+}
+
 /// Given device contacts [{name, emails:[], phones:[]}], return the subset that
 /// is already on AvaTok, annotated with the resolved npub + matched identifier.
 async function matchContacts(env: Env, contacts: any[]): Promise<any[]> {
@@ -142,11 +153,12 @@ async function matchContacts(env: Env, contacts: any[]): Promise<any[]> {
       if (hit) { npub = hit; via = key; break; }
     }
     if (!npub) {
+      outer:
       for (const p of (c.phones || [])) {
-        const key = normPhone((p || "").toString());
-        if (key.length < 6) continue;
-        const hit = await env.PUSH.get(`phone:${key}`);
-        if (hit) { npub = hit; via = (p || "").toString(); break; }
+        for (const pv of phoneVariants((p || "").toString())) {
+          const hit = await env.PUSH.get(`phone:${pv}`);
+          if (hit) { npub = hit; via = (p || "").toString(); break outer; }
+        }
       }
     }
     if (npub && !seen.has(npub)) {
@@ -310,7 +322,7 @@ export default {
       await env.PUSH.put(`prof:${b.npub}`, JSON.stringify(prof));
       if (handle) await env.PUSH.put(`handle:${handle}`, b.npub);
       if (email) await env.PUSH.put(`email:${email}`, b.npub);
-      if (phone) await env.PUSH.put(`phone:${phone}`, b.npub);
+      for (const pv of phoneVariants(b.phone || "")) await env.PUSH.put(`phone:${pv}`, b.npub);
       // Maintain a small searchable index (cap 5000).
       const idx: any[] = JSON.parse((await env.PUSH.get("dir:all")) || "[]");
       const at = idx.findIndex((p) => p.npub === b.npub);
@@ -336,10 +348,12 @@ export default {
       }
       // Phone lookup (digits / +country form).
       if (/[0-9]/.test(q) && !q.startsWith("npub") && q.replace(/[^0-9]/g, "").length >= 6) {
-        const npubP = await env.PUSH.get(`phone:${normPhone(q)}`);
-        if (npubP) {
-          const p = JSON.parse((await env.PUSH.get(`prof:${npubP}`)) || "null");
-          return json({ npub: npubP, profile: p });
+        for (const pv of phoneVariants(q)) {
+          const npubP = await env.PUSH.get(`phone:${pv}`);
+          if (npubP) {
+            const p = JSON.parse((await env.PUSH.get(`prof:${npubP}`)) || "null");
+            return json({ npub: npubP, profile: p });
+          }
         }
       }
       const handle = q.toLowerCase().replace(/^@/, "");
