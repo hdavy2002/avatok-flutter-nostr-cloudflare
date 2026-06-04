@@ -67,6 +67,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   String _filter = 'all';
   final _filterStore = FilterStore();
   List<ChatFilter> _customFilters = [];
+  String? _clerkName; // real name from Clerk → drawer header
 
   String _keyOf(Chat c) =>
       c.gid != null ? 'g:${c.gid}' : '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
@@ -148,6 +149,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     // Email is the human-facing id: publish email → npub so others find me by email.
     try {
       final cu = await widget.clerk.currentUser();
+      if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
       if (cu?.email != null && cu!.email!.isNotEmpty) {
         await Directory.registerProfile(npub: id.npub, email: cu.email!, name: cu.label);
       }
@@ -336,7 +338,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       backgroundColor: Colors.white,
       drawer: AvaSidebar(
         enabledApps: _enabledApps,
-        name: _id?.shortNpub ?? 'Account',
+        name: (_clerkName?.isNotEmpty ?? false) ? _clerkName! : (_id?.shortNpub ?? 'Account'),
         seed: _id?.npub ?? 'avatok',
         current: 'avatok',
         onSelect: (d) {

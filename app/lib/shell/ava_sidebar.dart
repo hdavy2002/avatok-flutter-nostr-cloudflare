@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/apps.dart';
 import '../core/avatar.dart';
+import '../core/device_contacts.dart';
 import '../core/logo.dart';
+import '../core/profile_store.dart';
 import '../core/theme.dart';
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
@@ -30,6 +32,20 @@ class AvaSidebar extends StatefulWidget {
 
 class _AvaSidebarState extends State<AvaSidebar> {
   bool _accountOpen = false;
+  String _displayName = '';
+  String _handle = '';
+
+  @override
+  void initState() {
+    super.initState();
+    ProfileStore().load().then((p) {
+      if (mounted) setState(() { _displayName = p.displayName; _handle = p.handle; });
+    });
+  }
+
+  /// Real display name if set, else the short npub passed in.
+  String get _name => _displayName.isNotEmpty ? _displayName : widget.name;
+  String get _sub => _handle.isNotEmpty ? '@$_handle · View public profile' : 'View public profile';
 
   @override
   Widget build(BuildContext context) {
@@ -55,21 +71,28 @@ class _AvaSidebarState extends State<AvaSidebar> {
               ),
             ]),
           ),
-          // profile
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 6, 18, 12),
-            child: Row(children: [
-              Avatar(seed: widget.seed, name: widget.name, size: 44),
-              const SizedBox(width: 12),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Text(widget.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right, size: 18, color: AvaColors.sub),
-                ]),
-                const Text('View public profile', style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+          // profile (tap → public profile)
+          InkWell(
+            onTap: () => widget.onSelect('profile'),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 6, 18, 12),
+              child: Row(children: [
+                _ringedAvatar(),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Flexible(child: Text(_name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.chevron_right, size: 18, color: AvaColors.sub),
+                    ]),
+                    Text(_sub, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
+                  ]),
+                ),
               ]),
-            ]),
+            ),
           ),
           Expanded(
             child: ListView(padding: EdgeInsets.zero, children: [
@@ -79,7 +102,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
               const Padding(padding: EdgeInsets.fromLTRB(20, 14, 20, 6),
                   child: Text('APPS', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700))),
               for (final a in apps) _appRow(a),
-              _plain('invite', 'Invite', Icons.person_add_alt_1),
+              ListTile(
+                leading: const Icon(Icons.person_add_alt_1, size: 22, color: AvaColors.brand),
+                title: const Text('Invite', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                onTap: () { Navigator.pop(context); DeviceContactsService.shareGenericInvite(); },
+              ),
               _accountSection(),
             ]),
           ),
@@ -123,10 +150,37 @@ class _AvaSidebarState extends State<AvaSidebar> {
         onTap: () => widget.onSelect(a.key),
       );
 
-  Widget _plain(String key, String name, IconData icon) => ListTile(
-        leading: Icon(icon, size: 22, color: AvaColors.ink),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        onTap: () => widget.onSelect(key),
+  /// Avatar wrapped in an Instagram-style gradient story-ring + a small badge.
+  Widget _ringedAvatar() => SizedBox(
+        width: 50, height: 50,
+        child: Stack(clipBehavior: Clip.none, children: [
+          Container(
+            width: 50, height: 50,
+            padding: const EdgeInsets.all(2.5),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: SweepGradient(colors: [
+                Color(0xFFFF6036), Color(0xFFE1306C), Color(0xFF8B5CF6),
+                Color(0xFF08C4C4), Color(0xFFFF6036),
+              ]),
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              child: Avatar(seed: widget.seed, name: _name, size: 41),
+            ),
+          ),
+          Positioned(
+            right: -1, bottom: -1,
+            child: Container(
+              width: 17, height: 17,
+              decoration: BoxDecoration(
+                color: AvaColors.brand, shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2)),
+              child: const Icon(Icons.camera_alt, size: 9, color: Colors.white),
+            ),
+          ),
+        ]),
       );
 
   Widget _accountSection() {

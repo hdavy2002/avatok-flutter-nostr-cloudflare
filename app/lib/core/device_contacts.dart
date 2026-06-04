@@ -164,11 +164,17 @@ class DeviceContactsService {
   /// Share the "join me on AvaTok" invite for [c] via the native share sheet.
   static Future<void> invite(DeviceContact c) async {
     final who = c.name.isNotEmpty ? c.name.split(' ').first : 'there';
-    final msg =
-        'Hey $who, I\'m on AvaTok now — come join me. It\'s a secure Nostr-based '
-        'messenger where you own your data, not some corporation. You can share a '
-        'photo with up to 25 people (not just 5), and it works better than what '
-        'you\'re using. Download it here: $kDownloadUrl';
-    await Share.share(msg, subject: 'Join me on AvaTok');
+    await Share.share(_inviteMessage(who), subject: 'Join me on AvaTok');
   }
+
+  /// Generic invite (no specific contact) — used by the drawer "Invite" entry.
+  static Future<void> shareGenericInvite() async {
+    await Share.share(_inviteMessage('there'), subject: 'Join me on AvaTok');
+  }
+
+  static String _inviteMessage(String who) =>
+      'Hey $who, I\'m on AvaTok now — come join me. It\'s a secure Nostr-based '
+      'messenger where you own your data, not some corporation. You can share a '
+      'photo with up to 25 people (not just 5), and it works better than what '
+      'you\'re using. Download it here: $kDownloadUrl';
 }
