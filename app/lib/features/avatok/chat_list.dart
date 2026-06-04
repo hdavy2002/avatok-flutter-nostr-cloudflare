@@ -102,8 +102,17 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ListTile(leading: const Icon(Icons.block, color: AvaColors.danger),
               title: Text(has('blocked') ? 'Unblock' : 'Block', style: const TextStyle(color: AvaColors.danger)),
               onTap: () { Navigator.pop(ctx); _toggleFlag('blocked', k); }),
+        if (c.gid == null)
+          ListTile(leading: const Icon(Icons.person_remove_outlined, color: AvaColors.danger),
+              title: const Text('Remove contact', style: TextStyle(color: AvaColors.danger)),
+              onTap: () { Navigator.pop(ctx); _removeContact(c); }),
       ])),
     );
+  }
+
+  Future<void> _removeContact(Chat c) async {
+    final list = await _contactsStore.remove(c.seed); // Contact.seed == npub
+    if (mounted) setState(() => _contacts = list);
   }
 
   Future<void> _toggleFlag(String flag, String key) async {
@@ -221,9 +230,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Future<void> _openAddContact() async {
     final c = await showAddContactSheet(context);
-    if (c == null) return;
+    if (c == null || !mounted) return;
+    // Don't let someone add their own account (e.g. their other email).
+    if (c.npub.isEmpty || c.npub == _id?.npub) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("That's your own account — you can't add yourself")));
+      return;
+    }
     final list = await _contactsStore.add(c);
-    if (mounted) setState(() => _contacts = list);
+    if (mounted) {
+      setState(() => _contacts = list);
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Added ${c.name.isNotEmpty ? c.name : c.subtitle}')));
+    }
   }
 
   Future<void> _openNewGroup() async {

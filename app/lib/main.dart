@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'auth/clerk_client.dart';
 import 'core/onboarding_store.dart';
 import 'core/theme.dart';
+import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
@@ -66,7 +67,11 @@ class _RootFlowState extends State<RootFlow> {
 
   Future<void> _boot() async {
     bool signedIn = false;
-    try { signedIn = (await _clerk.currentUser()) != null; } catch (_) {}
+    try {
+      final cu = await _clerk.currentUser();
+      AccountScope.id = cu?.id; // scope the Nostr identity to this account
+      signedIn = cu != null;
+    } catch (_) {}
     if (!signedIn) { _to(_Stage.welcome); return; }
     _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
   }
@@ -74,6 +79,7 @@ class _RootFlowState extends State<RootFlow> {
   void _to(_Stage s) { if (mounted) setState(() => _stage = s); }
 
   Future<void> _afterAuth() async {
+    try { AccountScope.id = (await _clerk.currentUser())?.id; } catch (_) {}
     _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
   }
 
@@ -84,6 +90,7 @@ class _RootFlowState extends State<RootFlow> {
   Future<void> _signOut() async {
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
     try { await _clerk.signOut(); } catch (_) {/* clear locally regardless */}
+    AccountScope.id = null;
     _to(_Stage.welcome);
   }
 

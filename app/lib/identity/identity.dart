@@ -21,10 +21,19 @@ class Identity {
       npub.length > 16 ? '${npub.substring(0, 10)}…${npub.substring(npub.length - 6)}' : npub;
 }
 
+/// Holds the signed-in Clerk account id so each account gets its OWN Nostr
+/// identity on a shared device. Set right after auth; cleared on sign-out.
+/// (Before this, all accounts on one device shared a single npub, which made
+/// adding another account's email resolve to your own npub.)
+class AccountScope {
+  static String? id;
+}
+
 /// Persists the nsec in platform secure storage (Keychain / EncryptedSharedPreferences).
-/// nsec NEVER leaves the device in plaintext (spec §10).
+/// nsec NEVER leaves the device in plaintext (spec §10). The key is namespaced
+/// per Clerk account so two accounts on one phone don't share an identity.
 class IdentityStore {
-  static const _key = 'ava_nostr_priv';
+  static const _legacyKey = 'ava_nostr_priv';
   final FlutterSecureStorage _storage;
 
   IdentityStore([FlutterSecureStorage? s])
@@ -33,8 +42,22 @@ class IdentityStore {
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
 
+  String get _key =>
+      (AccountScope.id == null || AccountScope.id!.isEmpty) ? _legacyKey : 'ava_nostr_priv_${AccountScope.id}';
+
   Future<Identity?> load() async {
-    final priv = await _storage.read(key: _key);
+    final key = _key;
+    var priv = await _storage.read(key: key);
+    // One-time migration: the first account to log in after this change claims
+    // the pre-namespacing identity, so the existing user keeps their key/npub.
+    if ((priv == null || priv.isEmpty) && key != _legacyKey) {
+      final legacy = await _storage.read(key: _legacyKey);
+      if (legacy != null && legacy.isNotEmpty) {
+        await _storage.write(key: key, value: legacy);
+        await _storage.delete(key: _legacyKey);
+        priv = legacy;
+      }
+    }
     if (priv == null || priv.isEmpty) return null;
     return Identity.fromPrivateKey(priv);
   }

@@ -238,9 +238,10 @@ class ClerkStep {
 }
 
 class ClerkUser {
+  final String id; // Clerk user id (e.g. user_abc123) — stable per account
   final String label;
   final String? email;
-  ClerkUser(this.label, {this.email});
+  ClerkUser(this.label, {this.id = '', this.email});
   factory ClerkUser.fromJson(Map<String, dynamic>? u) {
     if (u == null) return ClerkUser('Account');
     final first = u['first_name'];
@@ -248,6 +249,7 @@ class ClerkUser {
     final email = (emails != null && emails.isNotEmpty)
         ? (emails.first as Map)['email_address']?.toString()
         : null;
-    return ClerkUser((first ?? email ?? 'Account').toString(), email: email);
+    return ClerkUser((first ?? email ?? 'Account').toString(),
+        id: (u['id'] ?? '').toString(), email: email);
   }
 }
