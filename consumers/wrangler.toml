@@ -118,9 +118,15 @@ max_batch_size = 20
 max_batch_timeout = 5
 max_retries = 3
 
-# Cron — lightweight cleanup every 6h (heavy work would dispatch to a queue).
+# Calendar reminders re-enqueue to the push queue (Phase 3). This Worker is both a
+# producer (cron reminders) and consumer (push-notifications) of this queue.
+[[queues.producers]]
+binding = "Q_PUSH"
+queue = "push-notifications"
+
+# Cron — reminders every 15m; heavy cleanup on the 6h tick (handler gates by cron).
 [triggers]
-crons = ["0 */6 * * *"]
+crons = ["*/15 * * * *", "0 */6 * * *"]
 
 # Secrets (wrangler secret put):
 #   FCM_SERVICE_ACCOUNT  — Firebase service-account JSON (Android push)

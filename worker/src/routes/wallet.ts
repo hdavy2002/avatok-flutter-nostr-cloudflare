@@ -21,11 +21,40 @@ const MIN_TOPUP = 100, MAX_TOPUP = 50_000; // §10.1 free-form 100..50,000
 function walletStub(env: Env, npub: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(npub));
 }
-async function walletOp(env: Env, npub: string, op: object): Promise<{ status: number; body: any }> {
+export async function walletOp(env: Env, npub: string, op: object): Promise<{ status: number; body: any }> {
   const r = await walletStub(env, npub).fetch("https://wallet/op", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(op),
   });
   return { status: r.status, body: await r.json().catch(() => ({})) };
+}
+
+/** Look up an app's commission rate (0..1); 0.20 default. */
+export async function commissionRate(env: Env, app: string): Promise<number> {
+  const r = await env.DB_WALLET.prepare("SELECT rate FROM commission_rates WHERE app_name=?1").bind(app).first<{ rate: number }>();
+  return r?.rate ?? 0.20;
+}
+
+/**
+ * Atomic coin transfer used by AvaOLX + AvaCalendar: debit buyer, credit seller
+ * (minus `commissionOverride` if given, else the app rate) into a 7-day hold.
+ * Returns { ok, status, buyerBalance, sellerNet, commission } or an error body.
+ */
+export async function transferCoins(
+  env: Env,
+  buyer: string,
+  seller: string,
+  amount: number,
+  app: string,
+  ref: string,
+  commissionOverride?: number,
+): Promise<{ ok: boolean; status: number; body: any; sellerNet: number; commission: number }> {
+  const debit = await walletOp(env, buyer, { op: "spend", npub: buyer, amount, app_name: app, counterparty_npub: seller, ref });
+  if (debit.status !== 200) return { ok: false, status: debit.status, body: debit.body, sellerNet: 0, commission: 0 };
+  const rate = commissionOverride ?? await commissionRate(env, app);
+  const commission = Math.round(amount * rate);
+  const sellerNet = amount - commission;
+  await walletOp(env, seller, { op: "earn", npub: seller, amount: sellerNet, commission, app_name: app, counterparty_npub: buyer, ref });
+  return { ok: true, status: 200, body: debit.body, sellerNet, commission };
 }
 
 function topupEnabled(env: Env): boolean {
@@ -176,11 +205,6 @@ export async function walletLive(req: Request, env: Env): Promise<Response> {
   const auth = await authenticate(req, env);
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
   return walletStub(env, auth.npub).fetch("https://wallet/ws", req);
-}
-
-async function commissionRate(env: Env, app: string): Promise<number> {
-  const r = await env.DB_WALLET.prepare("SELECT rate FROM commission_rates WHERE app_name=?1").bind(app).first<{ rate: number }>();
-  return r?.rate ?? 0.20; // sane default
 }
 
 // Stripe webhook signature (HMAC-SHA256 over `${t}.${payload}`).

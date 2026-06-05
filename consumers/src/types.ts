@@ -10,6 +10,7 @@ export interface Env {
   AGENT_AUDIO?: R2Bucket;             // agent TTS cache (delete cascade; Phase 8)
   TOKENS: KVNamespace;
   AI: Ai;
+  Q_PUSH?: Queue;                     // calendar reminders re-enqueue to push (Phase 3)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
   ANALYTICS?: AnalyticsEngineDataset; // operational metrics (writeDataPoint)
   FCM_PROJECT: string;

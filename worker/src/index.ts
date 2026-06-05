@@ -14,6 +14,7 @@ import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion } from "./routes/account";
 import { idSession, idResult, idStatus } from "./routes/id";
 import { walletTopup, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive } from "./routes/wallet";
+import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents } from "./routes/calendar";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 
 export { CallRoom } from "./do/call_room";
@@ -86,6 +87,15 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
       if (p === "/api/wallet/earnings" && req.method === "GET") return await walletEarnings(req, env);
       if (p === "/api/wallet/live" && req.headers.get("Upgrade") === "websocket") return await walletLive(req, env);
+
+      // --- AvaCalendar (Phase 3) ---
+      if (p === "/api/calendar/slots" && req.method === "POST") return await createSlot(req, env);
+      if (p === "/api/calendar/slots" && req.method === "GET") return await listSlots(req, env);
+      const cs = p.match(/^\/api\/calendar\/slots\/([A-Za-z0-9-]{1,64})$/);
+      if (cs && req.method === "DELETE") return await cancelSlot(req, env, cs[1]);
+      if (p === "/api/calendar/book" && req.method === "POST") return await bookSlot(req, env);
+      if (p === "/api/calendar/cancel" && req.method === "POST") return await cancelBooking(req, env);
+      if (p === "/api/calendar/events" && req.method === "GET") return await listEvents(req, env);
 
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);

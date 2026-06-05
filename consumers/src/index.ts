@@ -32,8 +32,11 @@ export default {
     try { env.ANALYTICS?.writeDataPoint({ blobs: ["queue", batch.queue], doubles: [ok, fail], indexes: ["queue"] }); } catch { /* best-effort */ }
   },
 
-  // Cron — lightweight cleanup (heavy work would re-queue). Runs every 6h.
-  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+  // Cron — reminders every 15m (lightweight); heavy cleanup only on the 6h tick.
+  async scheduled(event: ScheduledController, env: Env): Promise<void> {
+    await calendarReminders(env);
+    if ((event as any).cron && (event as any).cron !== "0 */6 * * *") return; // 15m tick: reminders only
+
     const dayAgo = Date.now() - 86_400_000;
     // Public uploads stuck 'pending' >24h (failed/lost moderation) → reject.
     const r1 = await env.DB_MEDIA.prepare(
@@ -73,6 +76,30 @@ export default {
     } catch { /* best-effort */ }
   },
 };
+
+// --- AvaCalendar reminders (§10.2): 1h + 30m before start, deduped by flags ---
+async function calendarReminders(env: Env): Promise<void> {
+  if (!env.Q_PUSH) return;
+  const now = Date.now();
+  const h1Lo = now + 30 * 60_000, h1Hi = now + 60 * 60_000;   // 1h band
+  const m30Hi = now + 30 * 60_000;                             // 30m band (now..30m)
+  try {
+    const due60 = await env.DB_META.prepare(
+      "SELECT id, owner_npub, title, start_at FROM calendar_events WHERE status='confirmed' AND reminded_60=0 AND start_at>?1 AND start_at<=?2 LIMIT 100",
+    ).bind(h1Lo, h1Hi).all();
+    for (const e of (due60.results ?? []) as any[]) {
+      try { await env.Q_PUSH.send({ kind: "notify", to: e.owner_npub, fromName: "Reminder", title: "In ~1 hour", body: e.title, data: { deeplink: "/calendar" } }); } catch { /* best-effort */ }
+      await env.DB_META.prepare("UPDATE calendar_events SET reminded_60=1 WHERE id=?1").bind(e.id).run();
+    }
+    const due30 = await env.DB_META.prepare(
+      "SELECT id, owner_npub, title, start_at FROM calendar_events WHERE status='confirmed' AND reminded_30=0 AND start_at>?1 AND start_at<=?2 LIMIT 100",
+    ).bind(now, m30Hi).all();
+    for (const e of (due30.results ?? []) as any[]) {
+      try { await env.Q_PUSH.send({ kind: "notify", to: e.owner_npub, fromName: "Reminder", title: "Starting soon", body: e.title, data: { deeplink: "/calendar" } }); } catch { /* best-effort */ }
+      await env.DB_META.prepare("UPDATE calendar_events SET reminded_30=1, reminded_60=1 WHERE id=?1").bind(e.id).run();
+    }
+  } catch { /* tables may not exist pre-Phase-3 */ }
+}
 
 // --- email consumer (Brevo / Sendinblue transactional API) ---
 // Parses an optional "Name <addr@host>" sender into Brevo's {name,email} shape.
