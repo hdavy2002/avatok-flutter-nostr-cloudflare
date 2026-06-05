@@ -13,10 +13,13 @@ import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion } from "./routes/account";
 import { idSession, idResult, idStatus } from "./routes/id";
+import { walletTopup, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive } from "./routes/wallet";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 
 export { CallRoom } from "./do/call_room";
 export { UserBrain } from "./do/user_brain";
+export { WalletDO } from "./do/wallet";
+export { StreamSessionDO } from "./do/stream_session";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -74,6 +77,15 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/id/session" && req.method === "POST") return await idSession(req, env);
       if (p === "/api/id/result" && req.method === "POST") return await idResult(req, env);
       if (p === "/api/id/status" && req.method === "GET") return await idStatus(req, env);
+
+      // --- AvaWallet (Phase 2; balance authority = WalletDO) ---
+      if (p === "/api/wallet/topup" && req.method === "POST") return await walletTopup(req, env);
+      if (p === "/webhooks/stripe" && req.method === "POST") return await stripeWebhook(req, env);
+      if (p === "/api/wallet/spend" && req.method === "POST") return await walletSpend(req, env);
+      if (p === "/api/wallet/balance" && req.method === "GET") return await walletBalance(req, env);
+      if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
+      if (p === "/api/wallet/earnings" && req.method === "GET") return await walletEarnings(req, env);
+      if (p === "/api/wallet/live" && req.headers.get("Upgrade") === "websocket") return await walletLive(req, env);
 
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);

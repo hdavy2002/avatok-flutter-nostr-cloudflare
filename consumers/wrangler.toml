@@ -35,6 +35,12 @@ binding = "DB_RELAY"
 database_name = "avatok-relay"
 database_id = "8ce3ca0d-d668-4bb4-94ea-7c8a458a0667"
 
+# Wallet audit trail — wallet-transactions consumer writes the ledger + mirrors.
+[[d1_databases]]
+binding = "DB_WALLET"
+database_name = "avatok-wallet"
+database_id = "63d7181c-0539-4ff2-8690-4ff9bb785457"
+
 # Read image bytes to scan; delete on rejection. Also the delete cascade wipes
 # the user's per-prefix blobs.
 [[r2_buckets]]
@@ -103,6 +109,13 @@ max_retries = 3
 queue = "account-deletions"
 max_batch_size = 1
 max_batch_timeout = 10
+max_retries = 3
+
+# Wallet audit trail (Phase 2). WalletDO → D1 ledger + mirrors. Idempotent on id.
+[[queues.consumers]]
+queue = "wallet-transactions"
+max_batch_size = 20
+max_batch_timeout = 5
 max_retries = 3
 
 # Cron — lightweight cleanup every 6h (heavy work would dispatch to a queue).

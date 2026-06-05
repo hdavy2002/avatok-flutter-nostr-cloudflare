@@ -55,6 +55,14 @@ export interface Env {
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).
 export interface DeletionMsg { npub: string; clerk_user_id?: string | null; scheduled_at?: number; pubkey_hex?: string; }
 
+// Wallet audit message (producer: WalletDO). Writes the D1 ledger + mirrors.
+export interface WalletTxMsg {
+  npub: string; id: string; ts?: number;
+  type: "topup" | "spend" | "earn" | "hold_release" | "refund" | "gift" | "payout";
+  amount: number; balance_after?: number; app_name?: string;
+  counterparty_npub?: string | null; commission?: number; ref?: string | null; hold_until?: number;
+}
+
 // Queue message shapes (producers: avatok-api, avatok-relay)
 // type: "image" (R2 blob scan) | "stream_recording" (Cloudflare Stream recording,
 // scan is a follow-up — handler no-ops gracefully when hash is empty).

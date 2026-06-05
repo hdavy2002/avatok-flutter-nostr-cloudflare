@@ -6,6 +6,7 @@ export interface Env {
   DB_MODERATION: D1Database;
   DB_RELAY: D1Database;  // read-only here (/backup export)
   DB_BRAIN: D1Database;  // AvaBrain knowledge graph + memory
+  DB_WALLET: D1Database; // AvaWallet audit trail (balance authority is WalletDO)
 
   // R2 — writes only; reads go to blossom.avatok.ai (public bucket)
   BLOBS: R2Bucket;
@@ -21,6 +22,7 @@ export interface Env {
   Q_ANALYTICS: Queue;
   Q_BRAIN: Queue;
   Q_DELETE: Queue;   // account-deletions (30-day-grace 15-store cascade, Phase 1)
+  Q_WALLET: Queue;   // wallet-transactions (DO → D1 audit trail, Phase 2)
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;
@@ -41,6 +43,10 @@ export interface Env {
   CALL_ROOMS: DurableObjectNamespace;
   // Durable Object — per-user AvaBrain reasoning
   USER_BRAIN: DurableObjectNamespace;
+  // Durable Object — per-user atomic coin balance (Phase 2)
+  WALLET_DO: DurableObjectNamespace;
+  // Durable Object — per-stream gift aggregation (Phase 2)
+  STREAM_SESSION_DO: DurableObjectNamespace;
   // Cross-script — relay's per-user inbox DO (realtime in-app notifications)
   RELAY: DurableObjectNamespace;
 
@@ -75,4 +81,10 @@ export interface Env {
 
   // Clerk Backend API (account deletion cascade, Phase 1). Gated.
   CLERK_SECRET_KEY?: string;
+
+  // AvaWallet (Phase 2). Real money-in flag-gated OFF pending legal (§10.1).
+  WALLET_TOPUP_ENABLED?: string;   // "1" enables Stripe top-up (set ONLY after legal)
+  WALLET_RETURN_URL?: string;      // Checkout success/cancel return base
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
 }

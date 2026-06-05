@@ -1,9 +1,10 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
-import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg } from "./types";
+import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg } from "./types";
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
 import { handleBrain } from "./brain";
 import { handleDeletion } from "./deletion";
+import { handleWalletTx } from "./wallet";
 
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
@@ -20,6 +21,7 @@ export default {
           case "email": await sendEmail(msg.body as EmailMsg, env); break;
           case "brain-events": await handleBrain(msg.body as BrainMsg, env); break;
           case "account-deletions": await handleDeletion(msg.body as DeletionMsg, env); break;
+          case "wallet-transactions": await handleWalletTx(msg.body as WalletTxMsg, env); break;
         }
         msg.ack(); ok++;
       } catch (e) {
@@ -50,6 +52,10 @@ export default {
     const now = Date.now();
     await env.DB_BRAIN.prepare("DELETE FROM brain_events WHERE expires_at < ?1").bind(now).run();
     await env.DB_BRAIN.prepare("DELETE FROM brain_facts WHERE expires_at IS NOT NULL AND expires_at < ?1").bind(now).run();
+
+    // Wallet (Phase 2): mark matured earning holds released in the D1 mirror.
+    // (WalletDO releases authoritatively via its own alarm; this keeps D1 tidy.)
+    try { if (env.DB_WALLET) await env.DB_WALLET.prepare("UPDATE earning_holds SET released=1 WHERE released=0 AND available_at<=?1").bind(now).run(); } catch { /* table may not exist */ }
 
     // Backstop (§10.5): process matured deletion requests whose enqueue was lost.
     // The row is self-contained (carries clerk_user_id + pubkey_hex).
