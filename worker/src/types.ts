@@ -24,6 +24,7 @@ export interface Env {
   Q_BRAIN: Queue;
   Q_DELETE: Queue;   // account-deletions (30-day-grace 15-store cascade, Phase 1)
   Q_WALLET: Queue;   // wallet-transactions (DO → D1 audit trail, Phase 2)
+  Q_AGENT: Queue;    // agent-tasks (agent conversations + per-app hooks, Phase 7)
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;
@@ -48,6 +49,10 @@ export interface Env {
   WALLET_DO: DurableObjectNamespace;
   // Durable Object — per-stream gift aggregation (Phase 2)
   STREAM_SESSION_DO: DurableObjectNamespace;
+  // Durable Object — per-user agent coordinator (rate-limit + neuron budget, Phase 7)
+  AGENT_DO: DurableObjectNamespace;
+  // Durable Object — per agent↔agent conversation (turn loop, Phase 7)
+  CONVERSATION_DO: DurableObjectNamespace;
   // Cross-script — relay's per-user inbox DO (realtime in-app notifications)
   RELAY: DurableObjectNamespace;
 

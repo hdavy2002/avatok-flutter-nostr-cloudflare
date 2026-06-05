@@ -13,6 +13,7 @@ export interface Env {
   AI: Ai;
   Q_PUSH?: Queue;                     // calendar reminders re-enqueue to push (Phase 3)
   Q_ANALYTICS?: Queue;                // lifecycle events (e.g. account_deleted) → PostHog
+  CONVERSATION_DO?: DurableObjectNamespace; // cross-script → avatok-api ConversationDO (Phase 7)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
   ANALYTICS?: AnalyticsEngineDataset; // operational metrics (writeDataPoint)
   FCM_PROJECT: string;
@@ -57,6 +58,10 @@ export interface Env {
 
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).
 export interface DeletionMsg { npub: string; clerk_user_id?: string | null; scheduled_at?: number; pubkey_hex?: string; }
+
+// Agent task message (producer: avatok-api /api/agent/*). 'converse' runs a
+// ConversationDO turn loop; 'task' is a per-app hook (Phase 8).
+export interface AgentMsg { type: "converse" | "task"; conversation_id?: string; npub: string; app: string; peer_npub?: string; kind?: string; payload?: Record<string, unknown>; }
 
 // Wallet audit message (producer: WalletDO). Writes the D1 ledger + mirrors.
 export interface WalletTxMsg {

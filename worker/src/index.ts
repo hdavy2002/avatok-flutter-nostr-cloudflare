@@ -17,12 +17,15 @@ import { walletTopup, stripeWebhook, walletSpend, walletBalance, walletTransacti
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents } from "./routes/calendar";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
 import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxBuy, olxRefund, olxDownloads, olxDownloadFile } from "./routes/olx";
+import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 
 export { CallRoom } from "./do/call_room";
 export { UserBrain } from "./do/user_brain";
 export { WalletDO } from "./do/wallet";
 export { StreamSessionDO } from "./do/stream_session";
+export { AgentDO } from "./do/agent";
+export { ConversationDO } from "./do/conversation";
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -120,6 +123,17 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (olm && req.method === "GET") return await olxGet(req, env, olm[1]);
       if (olm && req.method === "PUT") return await olxUpdate(req, env, olm[1]);
       if (olm && req.method === "DELETE") return await olxDelete(req, env, olm[1]);
+
+      // --- AvaBrain Agentic layer (Phase 7) ---
+      if (p === "/api/agent/personas" && req.method === "GET") return await listPersonas(req, env);
+      const ap = p.match(/^\/api\/agent\/personas\/([a-z0-9]{1,32})$/);
+      if (ap && req.method === "PUT") return await upsertPersona(req, env, ap[1]);
+      if (p === "/api/agent/converse" && req.method === "POST") return await converse(req, env);
+      if (p === "/api/agent/inbox" && req.method === "GET") return await getInbox(req, env);
+      const ai = p.match(/^\/api\/agent\/inbox\/([A-Za-z0-9-]{1,64})$/);
+      if (ai && req.method === "GET") return await getInboxItem(req, env, ai[1]);
+      if (p === "/api/agent/approve" && req.method === "POST") return await approveInbox(req, env);
+      if (p === "/api/agent/task" && req.method === "POST") return await agentTask(req, env);
 
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);

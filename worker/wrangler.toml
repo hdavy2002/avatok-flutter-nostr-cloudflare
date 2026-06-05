@@ -110,6 +110,10 @@ queue = "account-deletions"
 binding = "Q_WALLET"           # wallet-transactions (WalletDO → D1 audit trail, Phase 2)
 queue = "wallet-transactions"
 
+[[queues.producers]]
+binding = "Q_AGENT"            # agent-tasks (agent conversations + per-app hooks, Phase 7)
+queue = "agent-tasks"
+
 # ---------------------------------------------------------------------------
 # Workers AI — image moderation on the /upload/public path only.
 # ---------------------------------------------------------------------------
@@ -180,6 +184,16 @@ class_name = "WalletDO"
 name = "STREAM_SESSION_DO"
 class_name = "StreamSessionDO"
 
+# Per-user agent coordinator (rate-limit 5/app/day + per-user neuron budget).
+[[durable_objects.bindings]]
+name = "AGENT_DO"
+class_name = "AgentDO"
+
+# Per agent↔agent conversation (turn loop; self-destructs after 30 days).
+[[durable_objects.bindings]]
+name = "CONVERSATION_DO"
+class_name = "ConversationDO"
+
 # Cross-script binding to the relay's per-user inbox DO, so the API can push a
 # realtime in-app notification down the user's already-open socket.
 [[durable_objects.bindings]]
@@ -198,6 +212,10 @@ new_sqlite_classes = ["UserBrain"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["WalletDO", "StreamSessionDO"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["AgentDO", "ConversationDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)

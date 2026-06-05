@@ -123,6 +123,20 @@ max_batch_size = 20
 max_batch_timeout = 5
 max_retries = 3
 
+# Agent tasks (Phase 7). Triggers the ConversationDO turn loop. Small batches; each
+# message runs several Gemma/llama-guard calls inside the DO.
+[[queues.consumers]]
+queue = "agent-tasks"
+max_batch_size = 2
+max_batch_timeout = 5
+max_retries = 3
+
+# Cross-script DO binding → avatok-api's ConversationDO (run the agent turn loop).
+[[durable_objects.bindings]]
+name = "CONVERSATION_DO"
+class_name = "ConversationDO"
+script_name = "avatok-api"
+
 # Calendar reminders re-enqueue to the push queue (Phase 3). This Worker is both a
 # producer (cron reminders) and consumer (push-notifications) of this queue.
 [[queues.producers]]
