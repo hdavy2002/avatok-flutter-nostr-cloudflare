@@ -1,14 +1,14 @@
 {
-  "name": "abertalk-marketing",
+  "name": "avatok-marketing",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Ab3rTalk / AvaTalk Network marketing site (brand domain abertalk.ai). No backend.",
+  "description": "AvaTalk Network marketing site (avatok.ai). No backend.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "wrangler pages deploy dist --project-name=abertalk"
+    "deploy": "wrangler pages deploy dist --project-name=avatok-web"
   },
   "dependencies": {
     "react": "^18.3.1",

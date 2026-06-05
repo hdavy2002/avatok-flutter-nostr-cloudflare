@@ -1,8 +1,8 @@
-# AbrTalk marketing site
+# AvaTalk marketing site
 
-Static React (Vite) marketing site for the **brand domain `abertalk.ai`**. No
-backend — all product infrastructure lives on `avatok.ai` and is never referenced
-here (per spec §1 domain rule).
+Static React (Vite) marketing site for **avatok.ai** (the public landing page).
+No backend — product infrastructure lives on `avatok.ai` subdomains (`blossom.`,
+relay, api) and Workers; this page never calls them.
 
 ## Develop
 ```
@@ -10,18 +10,16 @@ cd marketing
 npm install
 npm run dev        # local
 npm run build      # → dist/
-npm run deploy     # wrangler pages deploy dist --project-name=abertalk
+npm run deploy     # wrangler pages deploy dist --project-name=avatok-web
 ```
 
 ## Deployed
-- Cloudflare Pages project: **abertalk**
-- Live: https://abertalk.pages.dev  (latest deploy printed by wrangler)
+- Cloudflare Pages project: **avatok-web**
+- Live: https://avatok-web.pages.dev  (latest deploy printed by wrangler)
 
 ## Custom domain (manual, one-time)
-`abertalk.ai` is a brand domain. To attach it:
-1. Add `abertalk.ai` as a zone in this Cloudflare account (or use an external
-   registrar pointing NS to Cloudflare).
-2. Pages → project **abertalk** → Custom domains → add `abertalk.ai` + `www`.
-3. Cloudflare provisions the cert automatically.
-
-Do **not** put any API/infra hostnames on this domain — those stay on `avatok.ai`.
+The site should serve from **avatok.ai** (apex) and **www.avatok.ai**. The
+`avatok.ai` zone already exists in this Cloudflare account.
+1. Pages → project **avatok-web** → Custom domains → add `avatok.ai` and `www.avatok.ai`.
+2. Cloudflare provisions the cert automatically. (Infra subdomains like
+   `blossom.avatok.ai` are unaffected — only the apex/`www` route to Pages.)

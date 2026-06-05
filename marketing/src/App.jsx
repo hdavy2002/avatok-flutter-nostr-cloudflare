@@ -1,6 +1,6 @@
-// AbrTalk / AvaTalk Network — marketing site. Brand domain (abertalk.ai) ONLY.
-// No backend, no API calls — purely static (Cloudflare Pages). All infrastructure
-// lives on avatok.ai; nothing here ever touches it.
+// AvaTalk Network — marketing site on avatok.ai. No backend, no API calls — purely
+// static (Cloudflare Pages). Product infrastructure lives on avatok.ai subdomains
+// (blossom., relay, api); this is the public landing page.
 import { useState } from "react";
 
 const PILLARS = [
@@ -31,7 +31,7 @@ function Nav() {
   return (
     <header className="nav">
       <div className="wrap">
-        <a className="logo" href="#top"><span className="dot" /> Ab.rTalk</a>
+        <a className="logo" href="#top"><span className="dot" /> AvaTalk</a>
         <nav>
           <a href="#features">Features</a>
           <a href="#apps">Apps</a>
@@ -63,7 +63,7 @@ export default function App() {
 
       <section id="features">
         <div className="wrap">
-          <h2>Why AbrTalk</h2>
+          <h2>Why AvaTalk</h2>
           <p className="sub">Six things no single app gives you today.</p>
           <div className="pillars">
             {PILLARS.map((p) => (
@@ -117,7 +117,7 @@ export default function App() {
 
       <footer>
         <div className="wrap">
-          <div><strong>Ab.rTalk</strong> — the AvaTalk Network</div>
+          <div><strong>AvaTalk</strong> — one identity, every social format</div>
           <div>
             <a href="#features">Features</a>
             <a href="#apps">Apps</a>
@@ -160,7 +160,7 @@ function Legal({ kind, onBack }) {
           </>
         )}
       </section>
-      <footer><div className="wrap"><div>© 2026 Ab.rTalk</div></div></footer>
+      <footer><div className="wrap"><div>© 2026 AvaTalk</div></div></footer>
     </div>
   );
 }
