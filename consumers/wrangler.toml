@@ -57,6 +57,11 @@ bucket_name = "avatok-verification"
 binding = "DIGITAL"
 bucket_name = "avatok-digital"
 
+# Agent TTS cache — delete cascade wipes a user's agent audio.
+[[r2_buckets]]
+binding = "AGENT_AUDIO"
+bucket_name = "avatok-agent-audio"
+
 # FCM access-token cache (ephemeral) — Rulebook-allowed KV use.
 [[kv_namespaces]]
 binding = "TOKENS"

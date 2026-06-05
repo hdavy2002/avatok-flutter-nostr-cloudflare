@@ -18,6 +18,7 @@ import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents 
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
 import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxBuy, olxRefund, olxDownloads, olxDownloadFile } from "./routes/olx";
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
+import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 
 export { CallRoom } from "./do/call_room";
@@ -134,6 +135,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (ai && req.method === "GET") return await getInboxItem(req, env, ai[1]);
       if (p === "/api/agent/approve" && req.method === "POST") return await approveInbox(req, env);
       if (p === "/api/agent/task" && req.method === "POST") return await agentTask(req, env);
+      if (p === "/api/agent/tts" && req.method === "POST") return await agentTts(req, env);
+      const aa = p.match(/^\/api\/agent\/audio\/([A-Za-z0-9-]{1,64})$/);
+      if (aa && req.method === "GET") return await agentAudio(req, env, aa[1]);
 
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);

@@ -12,6 +12,7 @@ export interface Env {
   BLOBS: R2Bucket;
   VERIFICATION: R2Bucket;
   DIGITAL: R2Bucket;     // avatok-digital — PRIVATE; OLX digital goods (signed reads)
+  AGENT_AUDIO: R2Bucket; // avatok-agent-audio — lazy agent-conversation TTS cache
 
   // KV — ephemeral tokens ONLY (Golden Rule 5)
   TOKENS: KVNamespace;

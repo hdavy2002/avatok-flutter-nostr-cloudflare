@@ -70,6 +70,10 @@ bucket_name = "avatok-verification"
 binding = "DIGITAL"            # avatok-digital — PRIVATE; OLX digital goods (signed download URLs)
 bucket_name = "avatok-digital"
 
+[[r2_buckets]]
+binding = "AGENT_AUDIO"        # avatok-agent-audio — lazy agent-conversation TTS cache (Phase 8)
+bucket_name = "avatok-agent-audio"
+
 # ---------------------------------------------------------------------------
 # KV — ephemeral tokens ONLY (Golden Rule 5). 5 allowed uses, nothing else.
 # upload tokens / rate-limit counters / NIP-05 cache / feature flags / CSRF.
