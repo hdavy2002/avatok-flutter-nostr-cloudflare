@@ -80,7 +80,8 @@ export class WalletDO {
     if (cur.balance < amount) return json({ error: "insufficient balance", balance: cur.balance }, 402);
     const balance = cur.balance - amount;
     this.setBal(balance, cur.held);
-    await this.audit(npub, { type: "spend", amount: -amount, balance_after: balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, ref: b.ref });
+    const txType = b.type === "payout" || b.type === "refund" ? b.type : "spend";
+    await this.audit(npub, { type: txType, amount: -amount, balance_after: balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, ref: b.ref });
     this.broadcast();
     return json({ ok: true, balance, held: cur.held });
   }

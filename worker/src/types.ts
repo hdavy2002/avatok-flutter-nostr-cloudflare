@@ -87,4 +87,10 @@ export interface Env {
   WALLET_RETURN_URL?: string;      // Checkout success/cancel return base
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+
+  // AvaPayout (Phase 4). Production transfers flag-gated OFF pending legal (§10.3).
+  PAYOUT_ENABLED?: string;         // "1" enables Wise transfers (ONLY after legal)
+  WISE_API_KEY?: string;
+  WISE_PROFILE_ID?: string;
+  WISE_ENV?: string;               // "production" | (default sandbox)
 }

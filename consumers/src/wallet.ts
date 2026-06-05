@@ -24,7 +24,7 @@ export async function handleWalletTx(msg: WalletTxMsg, env: Env): Promise<void> 
   }
 
   // Balance mirror (eventually-consistent; DO is the source of truth).
-  if (typeof msg.balance_after === "number" && (msg.type === "topup" || msg.type === "spend" || msg.type === "refund")) {
+  if (typeof msg.balance_after === "number" && (msg.type === "topup" || msg.type === "spend" || msg.type === "refund" || msg.type === "payout")) {
     await env.DB_WALLET.prepare(
       "INSERT INTO wallet_balances (npub, balance, updated_at) VALUES (?1,?2,?3) ON CONFLICT(npub) DO UPDATE SET balance=?2, updated_at=?3",
     ).bind(msg.npub, msg.balance_after, now).run();

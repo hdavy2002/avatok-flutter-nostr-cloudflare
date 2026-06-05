@@ -15,6 +15,7 @@ import { deleteAccount, cancelDeletion } from "./routes/account";
 import { idSession, idResult, idStatus } from "./routes/id";
 import { walletTopup, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive } from "./routes/wallet";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents } from "./routes/calendar";
+import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 
 export { CallRoom } from "./do/call_room";
@@ -96,6 +97,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/calendar/book" && req.method === "POST") return await bookSlot(req, env);
       if (p === "/api/calendar/cancel" && req.method === "POST") return await cancelBooking(req, env);
       if (p === "/api/calendar/events" && req.method === "GET") return await listEvents(req, env);
+
+      // --- AvaPayout (Phase 4; production transfers flag-gated pending legal) ---
+      if (p === "/api/payout/setup" && req.method === "POST") return await payoutSetup(req, env);
+      if (p === "/api/payout/accounts" && req.method === "GET") return await payoutAccounts(req, env);
+      if (p === "/api/payout/request" && req.method === "POST") return await payoutRequest(req, env);
+      if (p === "/api/payout/status" && req.method === "GET") return await payoutStatus(req, env);
+      if (p === "/webhooks/wise" && req.method === "POST") return await wiseWebhook(req, env);
 
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);
