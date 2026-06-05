@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-06-05)
 
 ## Corpus Check
-- 136 files · ~234,601 words
+- 136 files · ~234,961 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -263,12 +263,12 @@ Nodes (0):
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `dart:convert` connect `Community 3` to `Community 0`, `Community 2`, `Community 4`, `Community 6`, `Community 9`?**
-  _High betweenness centrality (0.189) - this node is a cross-community bridge._
 - **Why does `package:flutter/material.dart` connect `Community 2` to `Community 0`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 12`, `Community 13`, `Community 14`, `Community 17`, `Community 22`?**
-  _High betweenness centrality (0.178) - this node is a cross-community bridge._
+  _High betweenness centrality (0.200) - this node is a cross-community bridge._
+- **Why does `dart:convert` connect `Community 3` to `Community 0`, `Community 2`, `Community 4`, `Community 6`, `Community 9`?**
+  _High betweenness centrality (0.191) - this node is a cross-community bridge._
 - **Why does `Text` connect `Community 5` to `Community 1`, `Community 21`, `Community 7`?**
-  _High betweenness centrality (0.174) - this node is a cross-community bridge._
+  _High betweenness centrality (0.178) - this node is a cross-community bridge._
 - **Are the 98 inferred relationships involving `json()` (e.g. with `getAccessToken()` and `csamGate()`) actually correct?**
   _`json()` has 98 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 66 inferred relationships involving `dispatch()` (e.g. with `preflight()` and `json()`) actually correct?**
