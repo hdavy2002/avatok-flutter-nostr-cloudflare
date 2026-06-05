@@ -129,6 +129,11 @@ max_retries = 3
 binding = "Q_PUSH"
 queue = "push-notifications"
 
+# Lifecycle events (account_deleted) → analytics batch. Producer + consumer here.
+[[queues.producers]]
+binding = "Q_ANALYTICS"
+queue = "analytics"
+
 # Cron — reminders every 15m; heavy cleanup on the 6h tick (handler gates by cron).
 [triggers]
 crons = ["*/15 * * * *", "0 */6 * * *"]

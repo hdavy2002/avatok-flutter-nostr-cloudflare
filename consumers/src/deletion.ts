@@ -182,4 +182,8 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   await env.DB_META.prepare("UPDATE deletion_requests SET status='done', processed_at=?2, stores_done=?3 WHERE npub=?1")
     .bind(npub, Date.now(), JSON.stringify(done)).run();
   try { env.ANALYTICS?.writeDataPoint({ blobs: ["account_deletion", npub.slice(0, 16)], doubles: [done.length], indexes: ["account_deletion"] }); } catch { /* best-effort */ }
+  // Lifecycle PostHog event (5 required fields).
+  try {
+    await env.Q_ANALYTICS?.send({ event: "account_deleted", npub, ts: Date.now(), props: { stores: done.length, trace_id: crypto.randomUUID(), app_name: "platform", app_version: "server", service_name: "avatok-consumers" } });
+  } catch { /* best-effort */ }
 }

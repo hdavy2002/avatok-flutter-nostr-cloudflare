@@ -12,6 +12,7 @@ export interface Env {
   TOKENS: KVNamespace;
   AI: Ai;
   Q_PUSH?: Queue;                     // calendar reminders re-enqueue to push (Phase 3)
+  Q_ANALYTICS?: Queue;                // lifecycle events (e.g. account_deleted) → PostHog
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
   ANALYTICS?: AnalyticsEngineDataset; // operational metrics (writeDataPoint)
   FCM_PROJECT: string;
