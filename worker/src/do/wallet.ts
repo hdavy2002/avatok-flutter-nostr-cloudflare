@@ -55,6 +55,7 @@ export class WalletDO {
       case "credit": return this.credit(npub, body);
       case "spend": return this.spend(npub, body);
       case "earn": return this.earn(npub, body);
+      case "debit_hold": return this.debitHold(npub, body); // refund clawback within hold
       case "release": { const released = this.releaseMatured(); return json({ released, ...this.bal() }); }
       default: return json({ error: "unknown op" }, 400);
     }
@@ -101,6 +102,21 @@ export class WalletDO {
     await this.audit(npub, { type: "earn", amount, balance_after: cur.balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, commission: Math.trunc(Number(b.commission || 0)), ref: b.ref, hold_until: availableAt });
     this.broadcast();
     return json({ ok: true, balance: cur.balance, held, available_at: availableAt });
+  }
+
+  // Claw back from the held pool (refund of a still-held earning). Removes matching
+  // unreleased holds first; floors at 0.
+  private async debitHold(npub: string, b: any): Promise<Response> {
+    const amount = Math.trunc(Number(b.amount));
+    if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
+    const cur = this.bal();
+    const take = Math.min(amount, cur.held);
+    this.setBal(cur.balance, cur.held - take);
+    // Drop newest unreleased holds covering `take` (best-effort bookkeeping).
+    this.sql.exec("DELETE FROM holds WHERE id IN (SELECT id FROM holds WHERE released=0 ORDER BY available_at DESC LIMIT 50)");
+    await this.audit(npub, { type: "refund", amount: -take, balance_after: cur.balance, app_name: b.app_name, ref: b.ref });
+    this.broadcast();
+    return json({ ok: true, clawed: take, balance: cur.balance, held: cur.held - take });
   }
 
   private releaseMatured(): number {

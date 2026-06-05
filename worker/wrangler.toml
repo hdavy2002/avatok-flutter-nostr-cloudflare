@@ -66,6 +66,10 @@ bucket_name = "avatok-blobs"
 binding = "VERIFICATION"       # avatok-verification — LOCKED, no public access, presigned only
 bucket_name = "avatok-verification"
 
+[[r2_buckets]]
+binding = "DIGITAL"            # avatok-digital — PRIVATE; OLX digital goods (signed download URLs)
+bucket_name = "avatok-digital"
+
 # ---------------------------------------------------------------------------
 # KV — ephemeral tokens ONLY (Golden Rule 5). 5 allowed uses, nothing else.
 # upload tokens / rate-limit counters / NIP-05 cache / feature flags / CSRF.

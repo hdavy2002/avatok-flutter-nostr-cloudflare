@@ -16,6 +16,7 @@ import { idSession, idResult, idStatus } from "./routes/id";
 import { walletTopup, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive } from "./routes/wallet";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents } from "./routes/calendar";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
+import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxBuy, olxRefund, olxDownloads, olxDownloadFile } from "./routes/olx";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 
 export { CallRoom } from "./do/call_room";
@@ -104,6 +105,21 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/payout/request" && req.method === "POST") return await payoutRequest(req, env);
       if (p === "/api/payout/status" && req.method === "GET") return await payoutStatus(req, env);
       if (p === "/webhooks/wise" && req.method === "POST") return await wiseWebhook(req, env);
+
+      // --- AvaOLX (Phase 5; browse open, list/sell Tier-2) ---
+      if (p === "/api/olx/listings" && req.method === "POST") return await olxCreate(req, env);
+      if (p === "/api/olx/listings" && req.method === "GET") return await olxBrowse(req, env);
+      if (p === "/api/olx/buy" && req.method === "POST") return await olxBuy(req, env);
+      if (p === "/api/olx/refund" && req.method === "POST") return await olxRefund(req, env);
+      if (p === "/api/olx/downloads" && req.method === "GET") return await olxDownloads(req, env);
+      const odl = p.match(/^\/api\/olx\/downloads\/([A-Za-z0-9-]{1,64})\/file$/);
+      if (odl && req.method === "GET") return await olxDownloadFile(req, env, odl[1]);
+      const olf = p.match(/^\/api\/olx\/listings\/([A-Za-z0-9-]{1,64})\/file$/);
+      if (olf && req.method === "POST") return await olxUploadFile(req, env, olf[1]);
+      const olm = p.match(/^\/api\/olx\/listings\/([A-Za-z0-9-]{1,64})$/);
+      if (olm && req.method === "GET") return await olxGet(req, env, olm[1]);
+      if (olm && req.method === "PUT") return await olxUpdate(req, env, olm[1]);
+      if (olm && req.method === "DELETE") return await olxDelete(req, env, olm[1]);
 
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);

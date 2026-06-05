@@ -109,6 +109,9 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     done.push("r2_verification");
   }
 
+  // 6b. R2 digital goods (OLX seller files) — guarded.
+  if (env.DIGITAL) { try { await deleteR2Prefix(env.DIGITAL, `u/${npub}/`); done.push("r2_digital"); } catch { /* best-effort */ } }
+
   // 7. R2 agent-audio (Phase 8) — guarded.
   if (env.AGENT_AUDIO) { try { await deleteR2Prefix(env.AGENT_AUDIO, `u/${npub}/`); done.push("r2_agent_audio"); } catch { /* best-effort */ } }
 

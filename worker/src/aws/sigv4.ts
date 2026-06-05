@@ -124,3 +124,55 @@ export async function signRequest(p: SignParams): Promise<SignedRequest> {
 
   return { url: p.url, method: p.method.toUpperCase(), headers: outHeaders, body };
 }
+
+export interface PresignParams {
+  url: string;            // full https URL to the object
+  region: string;         // R2: "auto"
+  service: string;        // R2: "s3"
+  accessKeyId: string;
+  secretAccessKey: string;
+  expiresSec?: number;    // default 300
+  now?: Date;
+}
+
+/**
+ * SigV4 query-string presigned GET URL (e.g. R2 S3 API). The returned URL is
+ * directly fetchable by the client for `expiresSec` seconds — no Authorization
+ * header needed. Used by AvaOLX to hand out time-limited digital-download links.
+ */
+export async function presignGetUrl(p: PresignParams): Promise<string> {
+  const u = new URL(p.url);
+  const now = p.now ?? new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const expires = String(p.expiresSec ?? 300);
+  const credentialScope = `${dateStamp}/${p.region}/${p.service}/aws4_request`;
+  const signedHeaders = "host";
+
+  // Query params must be sorted; values URL-encoded.
+  const q = new URLSearchParams();
+  q.set("X-Amz-Algorithm", "AWS4-HMAC-SHA256");
+  q.set("X-Amz-Credential", `${p.accessKeyId}/${credentialScope}`);
+  q.set("X-Amz-Date", amzDate);
+  q.set("X-Amz-Expires", expires);
+  q.set("X-Amz-SignedHeaders", signedHeaders);
+  // URLSearchParams sorts deterministically only if we build the canonical string ourselves.
+  const canonicalQuery = [...q.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+
+  const canonicalRequest = [
+    "GET",
+    u.pathname,
+    canonicalQuery,
+    `host:${u.host}\n`,
+    signedHeaders,
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, await sha256Hex(canonicalRequest)].join("\n");
+  const kSigning = await signingKey(p.secretAccessKey, dateStamp, p.region, p.service);
+  const signature = toHex(await hmac(kSigning, stringToSign));
+  return `${u.origin}${u.pathname}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}

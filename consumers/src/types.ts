@@ -7,6 +7,7 @@ export interface Env {
   DB_WALLET?: D1Database;             // wallet (delete cascade; Phase 2)
   BLOBS: R2Bucket;
   VERIFICATION?: R2Bucket;            // locked selfie videos (delete cascade)
+  DIGITAL?: R2Bucket;                 // OLX digital goods (delete cascade; Phase 5)
   AGENT_AUDIO?: R2Bucket;             // agent TTS cache (delete cascade; Phase 8)
   TOKENS: KVNamespace;
   AI: Ai;

@@ -52,6 +52,11 @@ bucket_name = "avatok-blobs"
 binding = "VERIFICATION"
 bucket_name = "avatok-verification"
 
+# Private OLX digital goods — delete cascade wipes a seller's product files.
+[[r2_buckets]]
+binding = "DIGITAL"
+bucket_name = "avatok-digital"
+
 # FCM access-token cache (ephemeral) — Rulebook-allowed KV use.
 [[kv_namespaces]]
 binding = "TOKENS"

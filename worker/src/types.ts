@@ -11,6 +11,7 @@ export interface Env {
   // R2 — writes only; reads go to blossom.avatok.ai (public bucket)
   BLOBS: R2Bucket;
   VERIFICATION: R2Bucket;
+  DIGITAL: R2Bucket;     // avatok-digital — PRIVATE; OLX digital goods (signed reads)
 
   // KV — ephemeral tokens ONLY (Golden Rule 5)
   TOKENS: KVNamespace;
@@ -93,4 +94,10 @@ export interface Env {
   WISE_API_KEY?: string;
   WISE_PROFILE_ID?: string;
   WISE_ENV?: string;               // "production" | (default sandbox)
+
+  // R2 S3 API creds for presigned digital-download URLs (Phase 5). Unset → the
+  // OLX download route streams bytes through the Worker as a fallback.
+  R2_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
 }
