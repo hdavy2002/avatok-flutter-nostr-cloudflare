@@ -72,6 +72,15 @@ const String kBackupUrl = 'https://$kSignalingHost/api/backup';
 /// AvaBrain — the per-user AI memory/reasoning layer. All dual-auth (NIP-98 + Clerk).
 const String kBrainBase = 'https://$kSignalingHost/api/brain';
 
+// ── Platform + agentic API bases (v5.2 Phases 1-8) ──────────────────────────
+const String kApiBase = 'https://$kSignalingHost/api';
+const String kIdBase = '$kApiBase/id';            // AvaID verification (Phase 1)
+const String kWalletBase = '$kApiBase/wallet';    // AvaWallet (Phase 2)
+const String kCalendarBase = '$kApiBase/calendar';// AvaCalendar (Phase 3)
+const String kPayoutBase = '$kApiBase/payout';    // AvaPayout (Phase 4)
+const String kOlxBase = '$kApiBase/olx';          // AvaOLX (Phase 5)
+const String kAgentBase = '$kApiBase/agent';      // AvaBrain agentic layer (Phase 7-8)
+
 /// Right-to-erasure: server-side cascade delete of all the user's media + data. (NIP-98 + Clerk)
 const String kAccountDeleteUrl = 'https://$kSignalingHost/api/account/delete';
 

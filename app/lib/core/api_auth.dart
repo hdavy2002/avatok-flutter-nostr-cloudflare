@@ -86,6 +86,29 @@ class ApiAuth {
     return http.get(Uri.parse(url), headers: headers).timeout(timeout);
   }
 
+  /// Signed PUT with a JSON body (e.g. agent persona, OLX listing edit).
+  static Future<http.Response> putJson(String url, Object jsonBody,
+      {Duration timeout = const Duration(seconds: 12)}) async {
+    final bodyStr = jsonEncode(jsonBody);
+    final bytes = utf8.encode(bodyStr);
+    final headers = await _headers('PUT', url, body: bytes, base: {'Content-Type': 'application/json'});
+    return http.put(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout);
+  }
+
+  /// Signed DELETE.
+  static Future<http.Response> deleteSigned(String url,
+      {Duration timeout = const Duration(seconds: 8)}) async {
+    final headers = await _headers('DELETE', url);
+    return http.delete(Uri.parse(url), headers: headers).timeout(timeout);
+  }
+
+  /// Signed GET that returns raw bytes (e.g. agent TTS audio stream).
+  static Future<http.Response> getBytes(String url,
+      {Duration timeout = const Duration(seconds: 30)}) async {
+    final headers = await _headers('GET', url);
+    return http.get(Uri.parse(url), headers: headers).timeout(timeout);
+  }
+
   // ---- internals ----
   static String _sha256Hex(List<int> data) {
     final d = SHA256Digest().process(Uint8List.fromList(data));
