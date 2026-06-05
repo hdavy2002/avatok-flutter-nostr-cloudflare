@@ -11,7 +11,8 @@ import * as api from "./routes/api";
 import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getIce } from "./routes/media";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
-import { deleteAccount } from "./routes/account";
+import { deleteAccount, cancelDeletion } from "./routes/account";
+import { idSession, idResult, idStatus } from "./routes/id";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 
 export { CallRoom } from "./do/call_room";
@@ -69,8 +70,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- backup ---
       if (p === "/api/backup" && req.method === "POST") return await api.backup(req, env);
 
-      // --- account deletion (right-to-erasure; deletes media + all D1 rows) ---
+      // --- AvaID (Tier-2 verification, dual auth) ---
+      if (p === "/api/id/session" && req.method === "POST") return await idSession(req, env);
+      if (p === "/api/id/result" && req.method === "POST") return await idResult(req, env);
+      if (p === "/api/id/status" && req.method === "GET") return await idStatus(req, env);
+
+      // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);
+      if (p === "/api/account/delete/cancel" && req.method === "POST") return await cancelDeletion(req, env);
 
       // --- in-app notifications feed ---
       if (p === "/api/notifications" && req.method === "GET") return await listNotifications(req, env);

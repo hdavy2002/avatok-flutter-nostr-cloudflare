@@ -29,10 +29,22 @@ binding = "DB_BRAIN"
 database_name = "avatok-brain"
 database_id = "f5bfb712-5151-4e9f-b47a-20d76465f205"
 
-# Read image bytes to scan; delete on rejection.
+# Relay events — account-deletion cascade wipes a user's nostr_events + tags.
+[[d1_databases]]
+binding = "DB_RELAY"
+database_name = "avatok-relay"
+database_id = "8ce3ca0d-d668-4bb4-94ea-7c8a458a0667"
+
+# Read image bytes to scan; delete on rejection. Also the delete cascade wipes
+# the user's per-prefix blobs.
 [[r2_buckets]]
 binding = "BLOBS"
 bucket_name = "avatok-blobs"
+
+# Locked verification bucket — delete cascade wipes selfie videos.
+[[r2_buckets]]
+binding = "VERIFICATION"
+bucket_name = "avatok-verification"
 
 # FCM access-token cache (ephemeral) — Rulebook-allowed KV use.
 [[kv_namespaces]]
@@ -84,6 +96,13 @@ max_retries = 2
 queue = "brain-events"
 max_batch_size = 5
 max_batch_timeout = 5
+max_retries = 3
+
+# Account-deletion cascade (§10.5). Small batches; each message wipes 15 stores.
+[[queues.consumers]]
+queue = "account-deletions"
+max_batch_size = 1
+max_batch_timeout = 10
 max_retries = 3
 
 # Cron — lightweight cleanup every 6h (heavy work would dispatch to a queue).

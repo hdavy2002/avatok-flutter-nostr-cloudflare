@@ -20,6 +20,7 @@ export interface Env {
   Q_EMAIL: Queue;
   Q_ANALYTICS: Queue;
   Q_BRAIN: Queue;
+  Q_DELETE: Queue;   // account-deletions (30-day-grace 15-store cascade, Phase 1)
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;
@@ -65,4 +66,13 @@ export interface Env {
   BUNNY_LIBRARY_ID?: string;
   // Cloudflare Stream webhook HMAC secret (AvaLive). Gated.
   STREAM_WEBHOOK_SECRET?: string;
+
+  // AvaID — AWS Rekognition Face Liveness (Phase 1). Flag-gated: unset → 503.
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  AWS_SESSION_TOKEN?: string;
+  AWS_REGION?: string;
+
+  // Clerk Backend API (account deletion cascade, Phase 1). Gated.
+  CLERK_SECRET_KEY?: string;
 }

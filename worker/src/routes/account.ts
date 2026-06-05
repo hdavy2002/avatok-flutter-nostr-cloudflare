@@ -1,109 +1,56 @@
-// POST /api/account/delete — right-to-erasure. Dual-auth (NIP-98 + Clerk); the
-// caller can only delete THEIR OWN account. Removes the user's media (R2, per-user
-// prefix), Bunny videos (their collection), all D1 rows across meta/media/brain,
-// their relay events, and verification docs. Content-level moderation records
-// (sha256 blocklist, scan cache) are kept — they're not personal identifiers and
-// dropping them would un-ban known-bad content.
+// Account lifecycle (Phase 1, §10.5). Right-to-erasure with a 30-day grace window.
+//   POST /api/account/delete        → schedule deletion (grace = now+30d), enqueue
+//   POST /api/account/delete/cancel  → cancel during the grace window
+// The actual 15-store cascade runs in the account-deletions queue consumer
+// (avatok-consumers/src/deletion.ts) so it can take its time and retry. We enqueue
+// immediately AND record a deletion_requests row; the cron also sweeps matured rows
+// as a safety net if the enqueue is ever lost.
 import type { Env } from "../types";
 import { json } from "../util";
-import { authenticate, isErr } from "../auth";
-import { deleteUserVideos } from "../bunny";
+import { authenticate, isErr, setVerifiedCache } from "../auth";
+import { metaDb } from "../db/shard";
+import { track } from "../hooks";
+
+const GRACE_MS = 30 * 86_400_000; // 30-day grace (§10.5)
 
 export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   const auth = await authenticate(req, env);
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
   const npub = auth.npub;
-  const pubkeyHex = auth.pubkeyHex;
-  const counts: Record<string, number> = {};
+  const now = Date.now();
+  const scheduled = now + GRACE_MS;
 
-  // 1. R2 media — everything under the user's folder (public/, dm/, backups/).
-  counts.r2_media = await deleteR2Prefix(env.BLOBS, `u/${npub}/`);
-  // Verification bucket is also per-user-prefixed → prefix wipe (belt-and-suspenders
-  // alongside the row-key delete below).
-  if (env.VERIFICATION) { try { counts.r2_verification = await deleteR2Prefix(env.VERIFICATION, `u/${npub}/`); } catch { /* best-effort */ } }
+  const link = await env.DB_META.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1")
+    .bind(npub).first<{ clerk_user_id: string }>();
+  const clerkId = link?.clerk_user_id ?? auth.clerkUserId ?? null;
 
-  // 1b. Vectorize — vector ids are derived from the user's entities
-  // (`<npub>:ent:<entityId>`), so we read entity ids (still present here) and
-  // deleteByIds (batched 1000). No orphans; no separate vector-id table needed.
-  if (env.VECTOR_INDEX) {
-    try {
-      const er = await env.DB_BRAIN.prepare("SELECT id FROM brain_entities WHERE npub=?1").bind(npub).all();
-      const ids = (er.results ?? []).map((r: any) => `${npub}:ent:${r.id}`);
-      for (let i = 0; i < ids.length; i += 1000) await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000));
-      counts.vectors = ids.length;
-    } catch { /* best-effort */ }
-  }
+  await metaDb(env).prepare(
+    `INSERT INTO deletion_requests (npub, clerk_user_id, pubkey_hex, requested_at, scheduled_at, status)
+     VALUES (?1,?2,?3,?4,?5,'pending')
+     ON CONFLICT(npub) DO UPDATE SET status='pending', clerk_user_id=?2, pubkey_hex=?3, requested_at=?4, scheduled_at=?5, processed_at=NULL`,
+  ).bind(npub, clerkId, auth.pubkeyHex, now, scheduled).run();
 
-  // 2. Verification docs (separate locked bucket) — keyed off the user's rows.
-  const link = await env.DB_META.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(npub).first<{ clerk_user_id: string }>();
-  const clerkId = link?.clerk_user_id ?? null;
-  if (clerkId) {
-    const vr = await env.DB_META.prepare(
-      "SELECT document_front_key, document_back_key, selfie_key, liveness_video_key FROM verification_requests WHERE clerk_user_id=?1",
-    ).bind(clerkId).all();
-    const keys = (vr.results ?? []).flatMap((r: any) => [r.document_front_key, r.document_back_key, r.selfie_key, r.liveness_video_key]).filter(Boolean) as string[];
-    if (keys.length && env.VERIFICATION) { try { await env.VERIFICATION.delete(keys); } catch { /* best-effort */ } }
-    counts.verification_blobs = keys.length;
-  }
+  // Drop the Tier-2 cache during grace (re-granted on cancel via re-verify path).
+  // The pending state is the deletion_requests row itself (account_status is keyed
+  // by clerk_user_id, not npub, so we don't write a soft-suspend row here).
+  await setVerifiedCache(env, npub, false);
 
-  // 3. Bunny videos (their collection).
-  counts.bunny_videos = await deleteUserVideos(env, npub);
+  // Enqueue for the cascade consumer; it honors scheduled_at (re-delays if early).
+  try { await env.Q_DELETE.send({ npub, clerk_user_id: clerkId, pubkey_hex: auth.pubkeyHex, scheduled_at: scheduled }); } catch { /* cron sweep is the backstop */ }
 
-  // 4. Relay events authored by the user (+ their tag rows).
-  await env.DB_RELAY.batch([
-    env.DB_RELAY.prepare("DELETE FROM nostr_tags WHERE event_id IN (SELECT id FROM nostr_events WHERE pubkey=?1)").bind(pubkeyHex),
-    env.DB_RELAY.prepare("DELETE FROM nostr_events WHERE pubkey=?1").bind(pubkeyHex),
-  ]);
-
-  // 5. AvaBrain memory.
-  await env.DB_BRAIN.batch([
-    env.DB_BRAIN.prepare("DELETE FROM brain_entities WHERE npub=?1").bind(npub),
-    env.DB_BRAIN.prepare("DELETE FROM brain_relationships WHERE npub=?1").bind(npub),
-    env.DB_BRAIN.prepare("DELETE FROM brain_facts WHERE npub=?1").bind(npub),
-    env.DB_BRAIN.prepare("DELETE FROM brain_daily_summaries WHERE npub=?1").bind(npub),
-    env.DB_BRAIN.prepare("DELETE FROM brain_events WHERE npub=?1").bind(npub),
-  ]);
-
-  // 6. Media metadata (FTS/triggers n/a here).
-  await env.DB_MEDIA.batch([
-    env.DB_MEDIA.prepare("DELETE FROM user_media WHERE npub=?1").bind(npub),
-    env.DB_MEDIA.prepare("DELETE FROM user_media_hashes WHERE npub=?1").bind(npub),
-  ]);
-
-  // 7. Identity / social / settings (profiles delete also clears profiles_fts via trigger).
-  const meta = [
-    "DELETE FROM profiles WHERE npub=?1",
-    "DELETE FROM contact_phone_index WHERE npub=?1",
-    "DELETE FROM follows WHERE npub=?1 OR follows_npub=?1",
-    "DELETE FROM blocks WHERE npub=?1 OR blocked_npub=?1",
-    "DELETE FROM mutes WHERE npub=?1 OR muted_npub=?1",
-    "DELETE FROM user_settings WHERE npub=?1",
-    "DELETE FROM push_tokens WHERE npub=?1",
-    "DELETE FROM community_members WHERE npub=?1",
-    "DELETE FROM communities WHERE owner_npub=?1",
-    "DELETE FROM account_strikes WHERE npub=?1",
-    "DELETE FROM account_status WHERE npub=?1",
-    "DELETE FROM live_streams WHERE npub=?1",
-    "DELETE FROM notifications WHERE npub=?1",
-    "DELETE FROM clerk_nostr_link WHERE npub=?1",
-  ].map((q) => env.DB_META.prepare(q).bind(npub));
-  if (clerkId) meta.push(env.DB_META.prepare("DELETE FROM verification_requests WHERE clerk_user_id=?1").bind(clerkId));
-  await env.DB_META.batch(meta);
-
-  // 8. User's own moderation reports (keep reports filed AGAINST others for safety).
-  try { await env.DB_MODERATION.prepare("DELETE FROM user_reports WHERE reporter_npub=?1").bind(npub).run(); } catch { /* table optional */ }
-
-  return json({ deleted: true, npub, counts });
+  track(env, npub, "account_deletion_requested", "platform", { scheduled_at: scheduled });
+  return json({ scheduled: true, npub, grace_ends_at: scheduled, cancellable: true });
 }
 
-async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<number> {
-  let cursor: string | undefined;
-  let n = 0;
-  do {
-    const list = await bucket.list({ prefix, cursor, limit: 1000 });
-    const keys = list.objects.map((o) => o.key);
-    if (keys.length) { await bucket.delete(keys); n += keys.length; }
-    cursor = list.truncated ? list.cursor : undefined;
-  } while (cursor);
-  return n;
+export async function cancelDeletion(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const row = await env.DB_META.prepare("SELECT status FROM deletion_requests WHERE npub=?1")
+    .bind(auth.npub).first<{ status: string }>();
+  if (!row || row.status !== "pending") return json({ error: "no cancellable deletion request" }, 404);
+
+  await metaDb(env).prepare("UPDATE deletion_requests SET status='cancelled', processed_at=?2 WHERE npub=?1")
+    .bind(auth.npub, Date.now()).run();
+  track(env, auth.npub, "account_deletion_cancelled", "platform", {});
+  return json({ cancelled: true });
 }

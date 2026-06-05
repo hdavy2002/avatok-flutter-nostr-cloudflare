@@ -1,8 +1,9 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
-import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg } from "./types";
+import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg } from "./types";
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
 import { handleBrain } from "./brain";
+import { handleDeletion } from "./deletion";
 
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
@@ -18,6 +19,7 @@ export default {
           case "push-notifications": await handlePush(msg.body as PushMsg, env); break;
           case "email": await sendEmail(msg.body as EmailMsg, env); break;
           case "brain-events": await handleBrain(msg.body as BrainMsg, env); break;
+          case "account-deletions": await handleDeletion(msg.body as DeletionMsg, env); break;
         }
         msg.ack(); ok++;
       } catch (e) {
@@ -48,6 +50,18 @@ export default {
     const now = Date.now();
     await env.DB_BRAIN.prepare("DELETE FROM brain_events WHERE expires_at < ?1").bind(now).run();
     await env.DB_BRAIN.prepare("DELETE FROM brain_facts WHERE expires_at IS NOT NULL AND expires_at < ?1").bind(now).run();
+
+    // Backstop (§10.5): process matured deletion requests whose enqueue was lost.
+    // The row is self-contained (carries clerk_user_id + pubkey_hex).
+    try {
+      const due = await env.DB_META.prepare(
+        "SELECT npub, clerk_user_id, pubkey_hex FROM deletion_requests WHERE status='pending' AND scheduled_at < ?1 LIMIT 20",
+      ).bind(now).all();
+      for (const r of (due.results ?? []) as any[]) {
+        try { await handleDeletion({ npub: r.npub, clerk_user_id: r.clerk_user_id, pubkey_hex: r.pubkey_hex }, env); }
+        catch (e) { console.error("[deletion-backstop]", String(e)); }
+      }
+    } catch { /* table may not exist pre-Phase-1 */ }
     try {
       env.ANALYTICS?.writeDataPoint({ blobs: ["cron"], doubles: [r1.meta?.changes ?? 0, r2.meta?.changes ?? 0, r3.meta?.changes ?? 0], indexes: ["cron"] });
     } catch { /* best-effort */ }

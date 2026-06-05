@@ -91,6 +91,10 @@ queue = "analytics"
 binding = "Q_BRAIN"            # AvaBrain background extraction (public content only)
 queue = "brain-events"
 
+[[queues.producers]]
+binding = "Q_DELETE"           # account-deletions (30-day-grace 15-store cascade, Phase 1)
+queue = "account-deletions"
+
 # ---------------------------------------------------------------------------
 # Workers AI — image moderation on the /upload/public path only.
 # ---------------------------------------------------------------------------

@@ -3,7 +3,11 @@ export interface Env {
   DB_MEDIA: D1Database;
   DB_MODERATION: D1Database;
   DB_BRAIN: D1Database;               // AvaBrain knowledge graph + memory
+  DB_RELAY?: D1Database;              // nostr_events + nostr_tags (delete cascade)
+  DB_WALLET?: D1Database;             // wallet (delete cascade; Phase 2)
   BLOBS: R2Bucket;
+  VERIFICATION?: R2Bucket;            // locked selfie videos (delete cascade)
+  AGENT_AUDIO?: R2Bucket;             // agent TTS cache (delete cascade; Phase 8)
   TOKENS: KVNamespace;
   AI: Ai;
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
@@ -36,7 +40,20 @@ export interface Env {
   CSAM_API_KEY?: string;
   CSAM_REPORT_URL?: string;      // where confirmed-CSAM reports are POSTed (NCMEC-filing service)
   CSAM_REPORT_KEY?: string;
+  // Bunny.net Stream (delete cascade removes a user's video collection).
+  BUNNY_API_KEY?: string;
+  BUNNY_LIBRARY_ID?: string;
+  // Clerk Backend API (delete cascade removes the Clerk user). Gated.
+  CLERK_SECRET_KEY?: string;
+  // PostHog person deletion (delete cascade; uses personal key). Gated.
+  POSTHOG_PERSONAL_API_KEY?: string;
+  POSTHOG_PROJECT_ID?: string;
+  // Stripe customer deletion (delete cascade; Phase 2). Gated.
+  STRIPE_SECRET_KEY?: string;
 }
+
+// Account-deletion cascade message (producer: avatok-api /api/account/delete).
+export interface DeletionMsg { npub: string; clerk_user_id?: string | null; scheduled_at?: number; pubkey_hex?: string; }
 
 // Queue message shapes (producers: avatok-api, avatok-relay)
 // type: "image" (R2 blob scan) | "stream_recording" (Cloudflare Stream recording,
