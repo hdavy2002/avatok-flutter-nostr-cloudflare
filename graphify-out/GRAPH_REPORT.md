@@ -1,11 +1,11 @@
 # Graph Report - .  (2026-06-05)
 
 ## Corpus Check
-- 133 files · ~234,306 words
+- 136 files · ~234,601 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1294 nodes · 2369 edges · 36 communities detected
+- 1297 nodes · 2369 edges · 39 communities detected
 - Extraction: 73% EXTRACTED · 27% INFERRED · 0% AMBIGUOUS · INFERRED: 628 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -46,6 +46,9 @@
 - [[_COMMUNITY_Community 33|Community 33]]
 - [[_COMMUNITY_Community 34|Community 34]]
 - [[_COMMUNITY_Community 35|Community 35]]
+- [[_COMMUNITY_Community 36|Community 36]]
+- [[_COMMUNITY_Community 37|Community 37]]
+- [[_COMMUNITY_Community 38|Community 38]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `json()` - 102 edges
@@ -217,6 +220,18 @@ Nodes (0):
 Cohesion: 1.0
 Nodes (0): 
 
+### Community 36 - "Community 36"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 37 - "Community 37"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 38 - "Community 38"
+Cohesion: 1.0
+Nodes (0): 
+
 ## Knowledge Gaps
 - **710 isolated node(s):** `JoinScreen`, `_JoinScreenState`, `build`, `Scaffold`, `Text` (+705 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -232,22 +247,28 @@ Nodes (0):
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 32`** (1 nodes): `vite.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 33`** (1 nodes): `vite.config.js.timestamp-1780664465180-4dff0f5b6b203.mjs`
+- **Thin community `Community 33`** (1 nodes): `vite.config.js.timestamp-1780664850851-482a9c9884f59.mjs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 34`** (1 nodes): `main.jsx`
+- **Thin community `Community 34`** (1 nodes): `vite.config.js.timestamp-1780664874983-004bcc2b04cbd.mjs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 35`** (1 nodes): `types.ts`
+- **Thin community `Community 35`** (1 nodes): `vite.config.js.timestamp-1780664863624-256281764a18f.mjs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 36`** (1 nodes): `vite.config.js.timestamp-1780664465180-4dff0f5b6b203.mjs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 37`** (1 nodes): `main.jsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 38`** (1 nodes): `types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `dart:convert` connect `Community 3` to `Community 0`, `Community 2`, `Community 4`, `Community 6`, `Community 9`?**
-  _High betweenness centrality (0.224) - this node is a cross-community bridge._
+  _High betweenness centrality (0.189) - this node is a cross-community bridge._
 - **Why does `package:flutter/material.dart` connect `Community 2` to `Community 0`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 12`, `Community 13`, `Community 14`, `Community 17`, `Community 22`?**
-  _High betweenness centrality (0.181) - this node is a cross-community bridge._
+  _High betweenness centrality (0.178) - this node is a cross-community bridge._
 - **Why does `Text` connect `Community 5` to `Community 1`, `Community 21`, `Community 7`?**
-  _High betweenness centrality (0.176) - this node is a cross-community bridge._
+  _High betweenness centrality (0.174) - this node is a cross-community bridge._
 - **Are the 98 inferred relationships involving `json()` (e.g. with `getAccessToken()` and `csamGate()`) actually correct?**
   _`json()` has 98 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 66 inferred relationships involving `dispatch()` (e.g. with `preflight()` and `json()`) actually correct?**

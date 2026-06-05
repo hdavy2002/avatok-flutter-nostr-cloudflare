@@ -8320,12 +8320,39 @@
       "norm_label": "vite.config.js"
     },
     {
+      "label": "vite.config.js.timestamp-1780664850851-482a9c9884f59.mjs",
+      "file_type": "code",
+      "source_file": "marketing/vite.config.js.timestamp-1780664850851-482a9c9884f59.mjs",
+      "source_location": "L1",
+      "id": "marketing_vite_config_js_timestamp_1780664850851_482a9c9884f59_mjs",
+      "community": 33,
+      "norm_label": "vite.config.js.timestamp-1780664850851-482a9c9884f59.mjs"
+    },
+    {
+      "label": "vite.config.js.timestamp-1780664874983-004bcc2b04cbd.mjs",
+      "file_type": "code",
+      "source_file": "marketing/vite.config.js.timestamp-1780664874983-004bcc2b04cbd.mjs",
+      "source_location": "L1",
+      "id": "marketing_vite_config_js_timestamp_1780664874983_004bcc2b04cbd_mjs",
+      "community": 34,
+      "norm_label": "vite.config.js.timestamp-1780664874983-004bcc2b04cbd.mjs"
+    },
+    {
+      "label": "vite.config.js.timestamp-1780664863624-256281764a18f.mjs",
+      "file_type": "code",
+      "source_file": "marketing/vite.config.js.timestamp-1780664863624-256281764a18f.mjs",
+      "source_location": "L1",
+      "id": "marketing_vite_config_js_timestamp_1780664863624_256281764a18f_mjs",
+      "community": 35,
+      "norm_label": "vite.config.js.timestamp-1780664863624-256281764a18f.mjs"
+    },
+    {
       "label": "vite.config.js.timestamp-1780664465180-4dff0f5b6b203.mjs",
       "file_type": "code",
       "source_file": "marketing/vite.config.js.timestamp-1780664465180-4dff0f5b6b203.mjs",
       "source_location": "L1",
       "id": "marketing_vite_config_js_timestamp_1780664465180_4dff0f5b6b203_mjs",
-      "community": 33,
+      "community": 36,
       "norm_label": "vite.config.js.timestamp-1780664465180-4dff0f5b6b203.mjs"
     },
     {
@@ -8334,7 +8361,7 @@
       "source_file": "marketing/src/main.jsx",
       "source_location": "L1",
       "id": "marketing_src_main_jsx",
-      "community": 34,
+      "community": 37,
       "norm_label": "main.jsx"
     },
     {
@@ -8919,7 +8946,7 @@
       "source_file": "worker/src/types.ts",
       "source_location": "L1",
       "id": "worker_src_types_ts",
-      "community": 35,
+      "community": 38,
       "norm_label": "types.ts"
     },
     {

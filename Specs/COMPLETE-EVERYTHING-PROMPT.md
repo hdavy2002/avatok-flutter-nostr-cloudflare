@@ -6,6 +6,18 @@
 
 ---
 
+## DAVY'S DECISIONS (2026-06-05) — READ FIRST
+
+1. **All credentials are provided. Do NOT wait on or ask for any key.** They are in `secrets/` (`credentials.local.md` = Clerk publishable+secret+issuer `clerk.avatok.ai`+JWKS, Bunny library 553793 + write/read keys, TURN key ID + token, RealtimeKit org+key+auth header; `firebase-service-account.json`; `cf_token`) plus Brevo and Clerk available via MCP. Read those files first.
+
+2. **Skip the AvaID selfie/liveness (AWS Rekognition) for now.** Build the verified-tier gate (`requireVerified()`) and the delete cascade, but STUB the verification step so a tier can be granted manually for testing. Do NOT block on AWS, do NOT wire AWS SigV4/Rekognition, do NOT build the liveness UI yet — that comes later.
+
+3. **Defer (build plumbing, keep OFF in production):** Play Store app-signing keystore, Stripe (payments / wallet top-up), Wise (creator payouts). Wallet/payout infrastructure can be built, but real money must stay switched off until legal review clears.
+
+> **NOTE — verify before acting.** This prompt was written for the backend "last 10%." The repo has since advanced: email is already on **Brevo** (not Resend — Block 2 likely done), moderation already uses **Gemma 4 vision + Llama Guard + a CSAM gate** (not resnet/OpenAI — Blocks 1D/3 are superseded; do NOT reintroduce OpenAI), the **compat layer is already removed** (Block 6 likely done), and **wallet / calendar / payout / OLX / agent routes already exist in `worker/src/`**. Before executing any block, check the current code/deploy state with the Cloudflare MCP and skip anything already complete.
+
+---
+
 ## Context for the AI
 
 You have access to these MCPs — USE THEM:
