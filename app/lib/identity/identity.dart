@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../core/api_auth.dart';
 import 'nostr_keys.dart';
 
 /// A user's Nostr identity, derived from their private key.
@@ -59,20 +60,29 @@ class IdentityStore {
       }
     }
     if (priv == null || priv.isEmpty) return null;
-    return Identity.fromPrivateKey(priv);
+    final id = Identity.fromPrivateKey(priv);
+    ApiAuth.identity = id; // keep the NIP-98 signer in sync
+    return id;
   }
 
   Future<Identity> createAndStore() async {
     final priv = NostrKeys.generatePrivateKey();
     await _storage.write(key: _key, value: priv);
-    return Identity.fromPrivateKey(priv);
+    final id = Identity.fromPrivateKey(priv);
+    ApiAuth.identity = id;
+    return id;
   }
 
   /// Import an existing nsec/hex private key (paste flow, optional).
   Future<Identity> importPrivateKey(String privHex) async {
     await _storage.write(key: _key, value: privHex);
-    return Identity.fromPrivateKey(privHex);
+    final id = Identity.fromPrivateKey(privHex);
+    ApiAuth.identity = id;
+    return id;
   }
 
-  Future<void> clear() => _storage.delete(key: _key);
+  Future<void> clear() {
+    ApiAuth.identity = null; // stop signing once the account is cleared
+    return _storage.delete(key: _key);
+  }
 }

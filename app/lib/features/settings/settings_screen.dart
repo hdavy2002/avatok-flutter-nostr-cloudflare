@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 
 import '../../auth/clerk_client.dart';
+import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
@@ -52,11 +52,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Exporting your account…')));
     try {
-      final res = await http
-          .post(Uri.parse(kBackupUrl),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'pubkey': id.pubHex}))
-          .timeout(const Duration(seconds: 30));
+      // pubkey derived server-side from the NIP-98 signature.
+      final res = await ApiAuth.postJson(kBackupUrl, const {},
+          timeout: const Duration(seconds: 30));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final url = j['url']?.toString();
       if (!mounted) return;
@@ -112,6 +110,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: FilledButton.styleFrom(backgroundColor: AvaColors.danger),
             onPressed: () async {
               Navigator.pop(ctx);
+              // Purge server-side data FIRST (needs the Nostr key + Clerk session
+              // that we still have here), then delete the Clerk account, then sign out.
+              try { await ApiAuth.postJson(kAccountDeleteUrl, const {}, timeout: const Duration(seconds: 30)); } catch (_) {}
               try { await widget.clerk.deleteAccount(); } catch (_) {}
               widget.onSignOut();
             },

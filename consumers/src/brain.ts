@@ -1,0 +1,166 @@
+// AvaBrain background extraction (Q_BRAIN consumer). Runs ONLY on public,
+// server-visible content (the relay/API never enqueue DM ciphertext). For each
+// event: store a short-TTL raw copy, extract entities/relationships/facts with an
+// 8B model (never 70B on this hot path), upsert idempotently (dedupe by name+type),
+// embed a summary into Vectorize (npub-scoped), mark processed.
+import type { Env, BrainMsg } from "./types";
+import { aiText } from "./ai";
+
+const RAW_TTL_MS = 30 * 86_400_000; // 30 days
+
+export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
+  const npub = msg.npub;
+  if (!npub) return;
+  const now = Date.now();
+  const eventId = crypto.randomUUID();
+
+  // 1. Short-TTL raw copy (catch-up buffer, not permanent source of truth).
+  await env.DB_BRAIN.prepare(
+    `INSERT INTO brain_events (id, npub, event_type, source_app, payload, processed, trace_id, created_at, expires_at)
+     VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8)`,
+  ).bind(eventId, npub, msg.event_type, msg.source_app, JSON.stringify(msg.payload ?? {}), msg.traceId ?? null, now, now + RAW_TTL_MS).run();
+
+  // 2. Extract structured memory (8B, JSON).
+  const extracted = await extract(env, msg);
+
+  // 3. Upsert entities (dedupe by npub+name+type) → name→id map.
+  const idByName = new Map<string, string>();
+  for (const e of extracted.entities) {
+    if (!e.name) continue;
+    const id = await upsertEntity(env, npub, e, now);
+    idByName.set(e.name.toLowerCase(), id);
+  }
+
+  // 4. Upsert relationships (resolve names → ids; skip if either side unknown).
+  for (const r of extracted.relationships) {
+    const from = idByName.get((r.from || "").toLowerCase());
+    const to = idByName.get((r.to || "").toLowerCase());
+    if (!from || !to || !r.relationship) continue;
+    await upsertRelationship(env, npub, from, to, r.relationship, r.context ?? null, now);
+  }
+
+  // 5. Insert facts (scope=public — server-derived).
+  for (const f of extracted.facts) {
+    if (!f.content) continue;
+    await env.DB_BRAIN.prepare(
+      `INSERT INTO brain_facts (id, npub, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,'public',?5,?6,?7,?8,?8)`,
+    ).bind(crypto.randomUUID(), npub, f.fact_type || "insight", f.content, msg.source_app, eventId, clamp(f.confidence ?? 0.8), now).run();
+  }
+
+  // 6. (Embeddings are done per-ENTITY in upsertEntity — one bounded vector per
+  //    person/project/place, updated in place — NOT one per event. This keeps both
+  //    Vectorize and D1 bounded by entity count, and vector ids are derivable from
+  //    the entity rows, so no separate vector-id table is needed.)
+
+  // 7. Mark processed.
+  await env.DB_BRAIN.prepare("UPDATE brain_events SET processed=1 WHERE id=?1").bind(eventId).run();
+}
+
+// ---- extraction ----
+interface Extracted {
+  summary?: string;
+  entities: Array<{ name: string; entity_type?: string; summary?: string }>;
+  relationships: Array<{ from: string; to: string; relationship: string; context?: string }>;
+  facts: Array<{ fact_type?: string; content: string; confidence?: number }>;
+}
+
+async function extract(env: Env, msg: BrainMsg): Promise<Extracted> {
+  const model = env.BRAIN_EXTRACT_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  const sys =
+    "You extract structured memory from a single app event. Return ONLY minified JSON: " +
+    `{"summary":string,"entities":[{"name":string,"entity_type":"person|project|company|place|task|goal|interest|event|community","summary":string}],` +
+    `"relationships":[{"from":string,"to":string,"relationship":string,"context":string}],` +
+    `"facts":[{"fact_type":"preference|habit|goal|deadline|decision|reminder|insight","content":string,"confidence":number}]}. ` +
+    "Use [] when nothing applies. Do not invent details not present in the event.";
+  const started = Date.now();
+  try {
+    // Single user message (sys + data): portable across models incl. Gemma 4,
+    // whose chat template doesn't take a separate system role. max_tokens leaves
+    // room for thinking-mode before the JSON. Parsed via aiText (choices/content).
+    const out = (await env.AI.run(model as any, {
+      messages: [
+        { role: "user", content: `${sys}\n\nEvent type: ${msg.event_type}\nApp: ${msg.source_app}\nData: ${JSON.stringify(msg.payload).slice(0, 4000)}` },
+      ],
+      max_tokens: 1024,
+      temperature: 0,
+    })) as unknown;
+    try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_extract", model], doubles: [Date.now() - started, 1], indexes: ["brain"] }); } catch { /* noop */ }
+    return parseExtracted(aiText(out));
+  } catch {
+    return { entities: [], relationships: [], facts: [] };
+  }
+}
+
+function parseExtracted(text: string): Extracted {
+  const base: Extracted = { entities: [], relationships: [], facts: [] };
+  const m = text.match(/\{[\s\S]*\}/); // first JSON object
+  if (!m) return base;
+  try {
+    const j = JSON.parse(m[0]);
+    return {
+      summary: typeof j.summary === "string" ? j.summary : undefined,
+      entities: Array.isArray(j.entities) ? j.entities : [],
+      relationships: Array.isArray(j.relationships) ? j.relationships : [],
+      facts: Array.isArray(j.facts) ? j.facts : [],
+    };
+  } catch { return base; }
+}
+
+// ---- idempotent upserts ----
+async function upsertEntity(env: Env, npub: string, e: { name: string; entity_type?: string; summary?: string }, now: number): Promise<string> {
+  const type = e.entity_type || "person";
+  const existing = await env.DB_BRAIN.prepare(
+    "SELECT id, importance, summary FROM brain_entities WHERE npub=?1 AND name=?2 AND entity_type=?3",
+  ).bind(npub, e.name, type).first<{ id: string; importance: number; summary: string | null }>();
+  let id: string;
+  let needsEmbed = false;
+  if (existing) {
+    id = existing.id;
+    const imp = Math.min(1, (existing.importance ?? 0.5) + 0.05); // interaction bump
+    await env.DB_BRAIN.prepare(
+      "UPDATE brain_entities SET summary=COALESCE(?2,summary), importance=?3, last_seen=?4, updated_at=?4 WHERE id=?1",
+    ).bind(id, e.summary ?? null, imp, now).run();
+    needsEmbed = !!e.summary && e.summary !== existing.summary; // re-embed only on real change
+  } else {
+    id = crypto.randomUUID();
+    await env.DB_BRAIN.prepare(
+      `INSERT INTO brain_entities (id, npub, entity_type, name, summary, metadata, scope, importance, first_seen, last_seen, updated_at)
+       VALUES (?1,?2,?3,?4,?5,NULL,'public',0.5,?6,?6,?6)`,
+    ).bind(id, npub, type, e.name, e.summary ?? null, now).run();
+    needsEmbed = true;
+  }
+  // One vector PER ENTITY, deterministic id, updated in place (overwrite — no growth).
+  // The id is derivable from the entity row, so deletion needs no separate map.
+  if (needsEmbed && env.VECTOR_INDEX) {
+    try {
+      const values = await embed(env, `${e.name}. ${e.summary ?? ""}`.slice(0, 512));
+      if (values) await env.VECTOR_INDEX.upsert([{ id: `${npub}:ent:${id}`, values, metadata: { npub, name: e.name, summary: (e.summary ?? "").slice(0, 480) } }]);
+    } catch { /* embedding best-effort */ }
+  }
+  return id;
+}
+
+async function upsertRelationship(env: Env, npub: string, from: string, to: string, rel: string, context: string | null, now: number): Promise<void> {
+  const existing = await env.DB_BRAIN.prepare(
+    "SELECT id, strength FROM brain_relationships WHERE npub=?1 AND from_entity_id=?2 AND to_entity_id=?3 AND relationship=?4",
+  ).bind(npub, from, to, rel).first<{ id: string; strength: number }>();
+  if (existing) {
+    await env.DB_BRAIN.prepare(
+      "UPDATE brain_relationships SET strength=?2, context=COALESCE(?3,context), last_seen=?4 WHERE id=?1",
+    ).bind(existing.id, Math.min(1, (existing.strength ?? 0.5) + 0.05), context, now).run();
+    return;
+  }
+  await env.DB_BRAIN.prepare(
+    `INSERT INTO brain_relationships (id, npub, from_entity_id, to_entity_id, relationship, strength, context, first_seen, last_seen)
+     VALUES (?1,?2,?3,?4,?5,0.5,?6,?7,?7)`,
+  ).bind(crypto.randomUUID(), npub, from, to, rel, context, now).run();
+}
+
+async function embed(env: Env, text: string): Promise<number[] | null> {
+  const model = env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5";
+  const out = (await env.AI.run(model as any, { text })) as unknown as { data?: number[][] };
+  return out.data?.[0] ?? null;
+}
+
+function clamp(n: number): number { return Math.max(0, Math.min(1, Number(n) || 0)); }

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/api_auth.dart';
 import '../../core/config.dart';
 
 enum MediaKind { image, video, audio, file }
@@ -26,7 +27,7 @@ class ChatMedia {
     required this.contentType, required this.name, required this.size,
   });
 
-  String get downloadUrl => '$kMediaUrl/$id';
+  String get downloadUrl => '$kBlossomBaseUrl/$id';
 
   /// Envelope sent inside an encrypted DM so the recipient can fetch + decrypt.
   Map<String, dynamic> toEnvelope() => {
@@ -62,18 +63,20 @@ class MediaService {
     final box = await _aes.encrypt(bytes, secretKey: secretKey, nonce: nonce);
     final keyBytes = await secretKey.extractBytes();
 
-    final res = await http
-        .post(Uri.parse(kMediaUrl),
-            headers: {'x-content-type': contentType},
-            body: Uint8List.fromList(box.cipherText))
-        .timeout(const Duration(seconds: 60));
+    final res = await ApiAuth.postBytes(
+      kUploadPrivateUrl,
+      box.cipherText,
+      extraHeaders: {'x-content-type': contentType},
+      timeout: const Duration(seconds: 60),
+    );
     if (res.statusCode != 200) {
       throw MediaUploadException('upload failed (${res.statusCode})');
     }
     final j = jsonDecode(res.body) as Map<String, dynamic>;
     return ChatMedia(
       kind: kind,
-      id: j['id'].toString(),
+      // `key` is the per-user R2 path (u/<npub>/<hash>); downloadUrl is built from it.
+      id: (j['key'] ?? j['hash'] ?? j['id']).toString(),
       keyB64: base64Encode(keyBytes),
       nonceB64: base64Encode(nonce),
       macB64: base64Encode(box.mac.bytes),

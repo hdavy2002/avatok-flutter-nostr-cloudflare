@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 
+import 'api_auth.dart';
 import 'config.dart';
 
 /// One entry from the user's phone address book, optionally matched to an
@@ -128,11 +128,10 @@ class DeviceContactsService {
     }
     final matchedByKey = <String, String>{}; // email/phone(lower) -> npub
     try {
-      final res = await http
-          .post(Uri.parse(kContactsSyncUrl),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'owner': ownerNpub, 'contacts': device.map((c) => c.toWire()).toList()}))
-          .timeout(const Duration(seconds: 12));
+      // owner derived server-side from the NIP-98 signature; no longer in body.
+      final res = await ApiAuth.postJson(kContactsSyncUrl,
+          {'contacts': device.map((c) => c.toWire()).toList()},
+          timeout: const Duration(seconds: 12));
       if (res.statusCode == 200) {
         final j = jsonDecode(res.body) as Map<String, dynamic>;
         for (final m in ((j['matched'] as List?) ?? [])) {

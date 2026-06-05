@@ -1,0 +1,118 @@
+name = "avatok-consumers"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Async layer (Phase 4): consumes all 4 queues + runs cron cleanup. Producers are
+# avatok-api (moderation/push/email/analytics) and avatok-relay (push).
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB_META"
+database_name = "avatok-meta"
+database_id = "c4ec8c0e-e1ac-4a1d-8e41-636f4007871b"
+
+[[d1_databases]]
+binding = "DB_MEDIA"
+database_name = "avatok-media-meta"
+database_id = "79dc846e-8d9c-416a-8927-39c7aebdc400"
+
+[[d1_databases]]
+binding = "DB_MODERATION"
+database_name = "avatok-moderation"
+database_id = "770d5709-2974-447e-b4e8-8c43f22df997"
+
+[[d1_databases]]
+binding = "DB_BRAIN"
+database_name = "avatok-brain"
+database_id = "f5bfb712-5151-4e9f-b47a-20d76465f205"
+
+# Read image bytes to scan; delete on rejection.
+[[r2_buckets]]
+binding = "BLOBS"
+bucket_name = "avatok-blobs"
+
+# FCM access-token cache (ephemeral) — Rulebook-allowed KV use.
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "ab462ef0fdad44d08fd11263577b31f5"
+
+# Workers AI — image moderation classifier + brain extraction/embeddings.
+[ai]
+binding = "AI"
+
+# Vectorize — semantic memory for AvaBrain (384-dim, matches avatok-semantic).
+[[vectorize]]
+binding = "VECTOR_INDEX"
+index_name = "avatok-semantic"
+
+# Analytics Engine — operational metrics (AI scan cost/latency, push success, cron).
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "avatok_metrics"
+
+# --- Queue consumers (one Worker, dispatch on batch.queue) ---
+[[queues.consumers]]
+queue = "moderation"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[queues.consumers]]
+queue = "push-notifications"
+max_batch_size = 10
+max_batch_timeout = 2
+max_retries = 5
+
+[[queues.consumers]]
+queue = "email"
+max_batch_size = 10
+max_batch_timeout = 10
+max_retries = 3
+
+[[queues.consumers]]
+queue = "analytics"
+max_batch_size = 50
+max_batch_timeout = 15
+max_retries = 2
+
+# AvaBrain background extraction (8B LLM + embeddings). Small batches keep LLM
+# latency per message bounded; retries are cheap (idempotent upserts).
+[[queues.consumers]]
+queue = "brain-events"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 3
+
+# Cron — lightweight cleanup every 6h (heavy work would dispatch to a queue).
+[triggers]
+crons = ["0 */6 * * *"]
+
+# Secrets (wrangler secret put):
+#   FCM_SERVICE_ACCOUNT  — Firebase service-account JSON (Android push)
+#   BREVO_API_KEY        — transactional email (Brevo; replaced Resend)
+#   POSTHOG_API_KEY      — analytics capture (+ POSTHOG_HOST var)
+#   APNS_KEY_ID / APNS_TEAM_ID / APNS_PRIVATE_KEY / APNS_BUNDLE_ID  — iOS push
+#                          (gated: unset → APNs tokens skipped, Android-first)
+#   NSFW_API_URL / NSFW_API_KEY        — cheap external NSFW classifier first-pass
+#                          (unset → all image scans go to Gemma 4)
+#   CSAM_API_URL / CSAM_API_KEY        — CSAM matcher (PhotoDNA/Thorn). Unset → CSAM
+#                          gate bypassed. Also load NCMEC/PhotoDNA sha256 lists into
+#                          the csam_hashes table (DB_MODERATION) to activate the
+#                          cheap exact-hash gate. (run migrations/csam_hashes.sql)
+#   CSAM_REPORT_URL / CSAM_REPORT_KEY  — NCMEC-filing service for confirmed CSAM
+
+[vars]
+FCM_PROJECT = "avatok-e19ef"
+# Image moderation: Gemma 4 26B-A4B (MoE: 26B total / ~4B active per token → ~4B-
+# class cost, far higher quality; native vision + thinking) rates NSFW + violence
+# via prompt+parse. Text moderation: Llama Guard binary safe/unsafe classifier
+# (purpose-built; kept). All on Workers AI; no OpenAI anywhere. Swappable.
+MODERATION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+MODERATION_MODEL_TYPE = "vision"   # "vision" | "classifier" (swap to a cheap NSFW classifier for lowest cost at scale)
+TEXT_MODERATION_MODEL = "@cf/meta/llama-guard-3-8b"
+POSTHOG_HOST = "https://us.i.posthog.com"
+BRAIN_EXTRACT_MODEL = "@cf/google/gemma-4-26b-a4b-it"       # MoE 26B/4B-active background extraction
+BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matches avatok-semantic (embeddings stay on bge)

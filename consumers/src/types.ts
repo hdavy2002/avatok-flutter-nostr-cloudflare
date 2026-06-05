@@ -1,0 +1,56 @@
+export interface Env {
+  DB_META: D1Database;
+  DB_MEDIA: D1Database;
+  DB_MODERATION: D1Database;
+  DB_BRAIN: D1Database;               // AvaBrain knowledge graph + memory
+  BLOBS: R2Bucket;
+  TOKENS: KVNamespace;
+  AI: Ai;
+  VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
+  ANALYTICS?: AnalyticsEngineDataset; // operational metrics (writeDataPoint)
+  FCM_PROJECT: string;
+  BRAIN_EXTRACT_MODEL?: string;
+  BRAIN_EMBED_MODEL?: string;
+  MODERATION_MODEL: string;        // image moderation model
+  MODERATION_MODEL_TYPE?: string;  // "vision" (LLM, parse text) | "classifier" (label+score)
+  TEXT_MODERATION_MODEL?: string;  // text safety classifier (Llama Guard default)
+  POSTHOG_HOST: string;
+  // secrets
+  FCM_SERVICE_ACCOUNT?: string;
+  BREVO_API_KEY?: string;        // transactional email (replaces Resend)
+  POSTHOG_API_KEY?: string;
+  // APNs (iOS push) — gated; if unset, APNs tokens are skipped (Android-first).
+  APNS_KEY_ID?: string;
+  APNS_TEAM_ID?: string;
+  APNS_PRIVATE_KEY?: string;     // p8 PEM contents
+  APNS_BUNDLE_ID?: string;       // app bundle id (apns-topic); defaults below
+  APNS_PRODUCTION?: string;      // "1" → api.push.apple.com, else sandbox
+  // Cheap NSFW first-pass classifier (external; Sightengine/Hive/self-hosted).
+  // Unset → all image scans go straight to Gemma 4. Set → classifier first,
+  // Gemma only for the ambiguous middle band.
+  NSFW_API_URL?: string;
+  NSFW_API_KEY?: string;
+  // CSAM hash-match gate (PhotoDNA / Thorn Safer / NCMEC). Unset → bypassed.
+  // Set → runs before AI; fail-closed on error. See csam.ts.
+  CSAM_API_URL?: string;
+  CSAM_API_KEY?: string;
+  CSAM_REPORT_URL?: string;      // where confirmed-CSAM reports are POSTed (NCMEC-filing service)
+  CSAM_REPORT_KEY?: string;
+}
+
+// Queue message shapes (producers: avatok-api, avatok-relay)
+// type: "image" (R2 blob scan) | "stream_recording" (Cloudflare Stream recording,
+// scan is a follow-up — handler no-ops gracefully when hash is empty).
+export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; npub: string; media_id: string; r2_key: string; uid?: string; }
+export interface PushMsg {
+  kind: "call" | "notify" | "call-status" | "relay-event";
+  to?: string; to_npub?: string | null; from?: string; from_pubkey?: string;
+  callType?: string; room?: string | null; status?: string;
+  fromName?: string; callId?: string;
+  title?: string | null; body?: string | null; data?: Record<string, unknown> | null;
+  event_kind?: number; event_id?: string; ts?: number;
+}
+export interface EmailMsg { to: string; subject: string; html: string; from?: string; }
+export interface AnalyticsMsg { event: string; npub?: string; props?: Record<string, unknown>; ts?: number; }
+// AvaBrain: PUBLIC content only (server never gets DM plaintext). payload is JSON.
+export interface BrainMsg { npub: string; event_type: string; source_app: string; payload: Record<string, unknown>; traceId?: string; ts?: number; }

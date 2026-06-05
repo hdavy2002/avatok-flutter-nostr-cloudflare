@@ -1,0 +1,116 @@
+// AvaTok API Worker — route-based dispatch (one Worker, not one-per-app).
+//
+// Single HARDENED contract: every mutation requires a NIP-98 signature (+ Clerk
+// JWT when CLERK_JWKS_URL is set). The caller's identity comes from the
+// signature, never the body. Public reads (resolve/search/communities/ice) are
+// unauthenticated and cached. The old compat layer (identity-in-body, no auth)
+// has been removed — the Flutter app signs NIP-98 and calls /api/*.
+import type { Env } from "./types";
+import { json, preflight } from "./util";
+import * as api from "./routes/api";
+import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getIce } from "./routes/media";
+import { streamWebhook } from "./routes/stream";
+import { brain } from "./routes/brain";
+import { deleteAccount } from "./routes/account";
+import { listNotifications, unreadCount, markRead } from "./routes/notifications";
+
+export { CallRoom } from "./do/call_room";
+export { UserBrain } from "./do/user_brain";
+
+export default {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const t0 = Date.now();
+    const traceId = req.headers.get("x-trace-id") || crypto.randomUUID();
+    const res = await dispatch(req, env, ctx);
+    // Operational metric: route, method, trace, latency, status (Analytics Engine).
+    try { env.ANALYTICS?.writeDataPoint({ blobs: [new URL(req.url).pathname.slice(0, 64), req.method, traceId], doubles: [Date.now() - t0, res.status], indexes: ["api"] }); } catch { /* best-effort */ }
+    return res;
+  },
+};
+
+async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (req.method === "OPTIONS") return preflight();
+    const url = new URL(req.url);
+    const p = url.pathname;
+
+    if (p === "/health") return json({ ok: true, service: "avatok-api", ts: Date.now() });
+
+    // Group-call signaling → CallRoom DO (thin router, no logic).
+    const room = p.match(/^\/(?:api\/)?room\/([A-Za-z0-9_-]{1,64})$/);
+    if (room) return env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(room[1])).fetch(req);
+
+    try {
+      // --- directory ---
+      if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
+      if (p === "/api/resolve" && req.method === "GET") return await cached(req, ctx, () => api.resolve(req, env), 60);
+      if (p === "/api/search" && req.method === "GET") return await cached(req, ctx, () => api.search(req, env), 60);
+
+      // --- push / calls ---
+      if (p === "/api/register" && req.method === "POST") return await api.register(req, env);
+      if (p === "/api/call" && req.method === "POST") return await api.call(req, env);
+      if (p === "/api/notify" && req.method === "POST") return await api.notify(req, env);
+      if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);
+
+      // --- contacts ---
+      if (p === "/api/contacts/sync" && req.method === "POST") return await api.contactsSync(req, env);
+      if (p === "/api/contacts/match" && req.method === "POST") return await api.contactsMatch(req, env);
+      if (p === "/api/contacts/list" && req.method === "GET") return api.contactsList();
+
+      // --- communities ---
+      if (p === "/api/community" && req.method === "POST") return await api.communityUpsert(req, env);
+      if (p === "/api/community/join" && req.method === "POST") return await api.communityJoin(req, env);
+      if (p === "/api/communities" && req.method === "GET") return await api.communities(req, env);
+
+      // --- media (NIP-98) ---
+      if (p === "/upload/public" && req.method === "POST") return await uploadPublic(req, env, ctx);
+      if (p === "/upload/private" && req.method === "POST") return await uploadPrivate(req, env);
+      if (p === "/api/library" && req.method === "GET") return await getLibrary(req, env);
+
+      // --- backup ---
+      if (p === "/api/backup" && req.method === "POST") return await api.backup(req, env);
+
+      // --- account deletion (right-to-erasure; deletes media + all D1 rows) ---
+      if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);
+
+      // --- in-app notifications feed ---
+      if (p === "/api/notifications" && req.method === "GET") return await listNotifications(req, env);
+      if (p === "/api/notifications/unread" && req.method === "GET") return await unreadCount(req, env);
+      if (p === "/api/notifications/read" && req.method === "POST") return await markRead(req, env);
+
+      // --- AvaBrain (dual auth; routes to the caller's UserBrain DO) ---
+      const bm = p.match(/^\/api\/brain\/([a-z]+)$/);
+      if (bm) {
+        const op = bm[1];
+        const readOp = op === "entities" || op === "timeline";
+        if ((readOp && req.method === "GET") || (!readOp && req.method === "POST") || (op === "forget" && req.method === "DELETE")) {
+          return await brain(req, env, op);
+        }
+      }
+
+      // --- ICE (public read) ---
+      if (p === "/api/ice" || p === "/ice") return await getIce(env);
+
+      // --- Stream webhook (Cloudflare Stream Live events) ---
+      if (p === "/webhooks/stream" && req.method === "POST") return await streamWebhook(req, env, ctx);
+
+      // --- permanent redirect for any cached/shared legacy media URLs ---
+      if (/^\/media\/[a-f0-9]{64}$/.test(p) && req.method === "GET") return mediaRedirect(p, env);
+    } catch (e: any) {
+      return json({ error: "internal", detail: String(e?.message ?? e) }, 500);
+    }
+    return json({ error: "not found", path: p }, 404);
+}
+
+// Cache API wrapper for public GET reads (Rulebook: Cache API before KV/D1).
+async function cached(req: Request, ctx: ExecutionContext, build: () => Promise<Response>, ttl: number): Promise<Response> {
+  const cache = caches.default;
+  const hit = await cache.match(req);
+  if (hit) return hit;
+  const res = await build();
+  if (res.status === 200) {
+    const toCache = new Response(res.clone().body, res);
+    toCache.headers.set("cache-control", `public, max-age=${ttl}`);
+    ctx.waitUntil(cache.put(req, toCache));
+  }
+  return res;
+}

@@ -1,10 +1,40 @@
 name = "avatok-relay"
 main = "src/index.ts"
 compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
 
-# Nostr relay (NIP-01) for AvaTalk. New infra on avatok.ai; nothing reused from
-# the old avatok app. Custom hostname relay.avatok.ai added later.
+# Nostr relay (NIP-01/09/11/17/25/42/100) for AvaTalk. Phase 3 re-platform:
+# events persist to D1 DB_RELAY (not DO SQLite); the DO holds only WebSocket
+# connections + live subscriptions; NIP-42 gates private kinds; onEventSaved
+# enqueues Q_PUSH. Custom hostname relay.avatok.ai added later.
 
+[observability]
+enabled = true
+
+# Event store (Phase 1b: avatok-relay, nostr_events + nostr_tags).
+[[d1_databases]]
+binding = "DB_RELAY"
+database_name = "avatok-relay"
+database_id = "8ce3ca0d-d668-4bb4-94ea-7c8a458a0667"
+
+# onEventSaved push bridge → consumer Worker (Phase 4) delivers FCM/APNs.
+[[queues.producers]]
+binding = "Q_PUSH"
+queue = "push-notifications"
+
+# AvaBrain background extraction — PUBLIC kinds only (never DM ciphertext).
+[[queues.producers]]
+binding = "Q_BRAIN"
+queue = "brain-events"
+
+# Analytics Engine — operational metrics (events per kind).
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "avatok_metrics"
+
+# DO holds connections + subscriptions only. Class name kept as RelayRoom to
+# match the existing migration (no rename migration needed); it now persists to
+# D1 instead of its own SQLite.
 [[durable_objects.bindings]]
 name = "RELAY"
 class_name = "RelayRoom"

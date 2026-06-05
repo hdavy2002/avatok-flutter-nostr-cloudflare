@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_auth.dart';
 import 'config.dart';
 
 /// A community = a named hub owning a member list and one or more channels
@@ -86,10 +87,8 @@ class CommunityStore {
   /// Push a community to the backend so members on other devices can list it.
   static Future<Community?> publish(Community c) async {
     try {
-      final res = await http
-          .post(Uri.parse(kCommunityUrl),
-              headers: {'Content-Type': 'application/json'}, body: jsonEncode(c.toJson()))
-          .timeout(const Duration(seconds: 10));
+      final res = await ApiAuth.postJson(kCommunityUrl, c.toJson(),
+          timeout: const Duration(seconds: 10));
       if (res.statusCode != 200) return null;
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final cj = (j['community'] as Map?)?.cast<String, dynamic>();
@@ -102,11 +101,9 @@ class CommunityStore {
   /// Join an existing community by id.
   static Future<Community?> join(String id, String npub) async {
     try {
-      final res = await http
-          .post(Uri.parse(kCommunityJoinUrl),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'id': id, 'npub': npub}))
-          .timeout(const Duration(seconds: 10));
+      // npub derived server-side from the NIP-98 signature.
+      final res = await ApiAuth.postJson(kCommunityJoinUrl, {'id': id},
+          timeout: const Duration(seconds: 10));
       if (res.statusCode != 200) return null;
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final cj = (j['community'] as Map?)?.cast<String, dynamic>();

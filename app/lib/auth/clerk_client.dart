@@ -15,6 +15,8 @@ class ClerkClient {
   final FlutterSecureStorage _storage;
   final String _domain;
   String? _clientToken;
+  String? _sessionJwt;       // short-lived Clerk session JWT (verifiable via JWKS)
+  int _sessionJwtExpiry = 0; // epoch seconds when the cached JWT should be refreshed
 
   ClerkClient([FlutterSecureStorage? s])
       : _storage = s ??
@@ -80,6 +82,36 @@ class ClerkClient {
     if (_clientToken == null) return null;
     final body = await _send('/client', get: true);
     return _activeUser(body['response'] as Map<String, dynamic>?);
+  }
+
+  /// Mint a short-lived Clerk SESSION JWT (RS256, ~60 s) for the active session.
+  /// This is what the Worker verifies against the JWKS endpoint — NOT the FAPI
+  /// client token. Cached ~50 s. Returns null when signed out / unavailable, so
+  /// the API helper simply omits the Bearer header (NIP-98 still gates).
+  Future<String?> sessionToken() async {
+    await _loadToken();
+    if (_clientToken == null) return null;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (_sessionJwt != null && now < _sessionJwtExpiry) return _sessionJwt;
+    final sid = await _activeSessionId();
+    if (sid == null) return null;
+    // POST /v1/client/sessions/{sid}/tokens → { jwt: "<RS256 session token>" }
+    final body = await _send('/client/sessions/$sid/tokens', body: {});
+    final jwt = (body['jwt'] ?? (body['response'] as Map<String, dynamic>?)?['jwt'])?.toString();
+    if (jwt == null || jwt.isEmpty) return null;
+    _sessionJwt = jwt;
+    _sessionJwtExpiry = now + 50; // refresh before the ~60 s TTL elapses
+    return jwt;
+  }
+
+  Future<String?> _activeSessionId() async {
+    final body = await _send('/client', get: true);
+    final client = body['response'] as Map<String, dynamic>?;
+    for (final s in (client?['sessions'] as List?) ?? const []) {
+      final m = s as Map<String, dynamic>;
+      if (m['status'] == 'active') return m['id']?.toString();
+    }
+    return null;
   }
 
   /// Sign in with email + password; falls back to email-code if needed.
@@ -193,12 +225,16 @@ class ClerkClient {
   Future<void> signOut() async {
     await _send('/client'); // DELETE /client → sign out all sessions
     _clientToken = null;
+    _sessionJwt = null;
+    _sessionJwtExpiry = 0;
     await _storage.delete(key: 'clerk_client_token');
   }
 
   Future<void> deleteAccount() async {
     await _send('/me'); // DELETE /me → delete the current user
     _clientToken = null;
+    _sessionJwt = null;
+    _sessionJwtExpiry = 0;
     await _storage.delete(key: 'clerk_client_token');
   }
 

@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'auth/clerk_client.dart';
+import 'core/api_auth.dart';
 import 'core/onboarding_store.dart';
 import 'core/theme.dart';
 import 'identity/identity.dart';
@@ -62,6 +63,9 @@ class _RootFlowState extends State<RootFlow> {
   @override
   void initState() {
     super.initState();
+    // Dual auth: every signed API call carries NIP-98 (key ownership) + a Clerk
+    // session JWT (verified account). The Worker requires both on mutations.
+    ApiAuth.clerkBearer = _clerk.sessionToken;
     _boot();
   }
 

@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/api_auth.dart';
 import '../core/call_log_store.dart';
 import '../core/config.dart';
 import '../features/avatok/call_screen.dart';
@@ -117,9 +117,7 @@ class PushService {
   /// Best-effort: nudge recipients that a new message arrived (content-less).
   static void notifyMessage(List<String> npubs, String fromName) {
     if (npubs.isEmpty) return;
-    http.post(Uri.parse(kNotifyUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'to': npubs, 'fromName': fromName})).ignore();
+    ApiAuth.postJson(kNotifyUrl, {'to': npubs, 'fromName': fromName}).ignore();
   }
 
   /// Tell the caller a call was declined / busy — over the WS room (fast path)
@@ -137,9 +135,7 @@ class PushService {
     } catch (_) {/* best effort */}
     // durable path: server pushes the status to the caller
     if (callerNpub.isNotEmpty) {
-      http.post(Uri.parse(kCallStatusUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'to': callerNpub, 'callId': callId, 'status': status})).ignore();
+      ApiAuth.postJson(kCallStatusUrl, {'to': callerNpub, 'callId': callId, 'status': status}).ignore();
     }
   }
 
@@ -185,11 +181,8 @@ class PushService {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
-      await http.post(
-        Uri.parse(kRegisterUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'npub': npub, 'token': token}),
-      );
+      // npub derived server-side from the NIP-98 signature; platform defaults to 'fcm'.
+      await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
     } catch (_) {/* offline / not configured */}
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/api_auth.dart';
 import '../../core/config.dart';
 
 /// A saved AvaTok contact (resolved to a Nostr npub).
@@ -129,11 +130,9 @@ class Directory {
   static Future<void> registerProfile(
       {required String npub, String handle = '', String name = '', String email = '', String phone = ''}) async {
     try {
-      await http
-          .post(Uri.parse(kProfileUrl),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'npub': npub, 'handle': handle, 'name': name, 'email': email, 'phone': phone}))
-          .timeout(const Duration(seconds: 8));
+      // npub is derived server-side from the NIP-98 signature; no longer in body.
+      await ApiAuth.postJson(kProfileUrl,
+          {'handle': handle, 'name': name, 'email': email, 'phone': phone});
     } catch (_) {/* best-effort */}
   }
 

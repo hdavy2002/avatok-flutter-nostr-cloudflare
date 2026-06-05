@@ -8,13 +8,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
@@ -455,15 +455,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Ring the callee's phone via FCM wake (real npub contacts only).
     if (to.startsWith('npub1')) {
       try {
-        final res = await http.post(Uri.parse(kCallUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'to': to,
-              'from': _myNpub ?? '',
-              'fromName': _myName ?? 'AvaTOK',
-              'callId': room,
-              'kind': video ? 'video' : 'audio',
-            }));
+        // 'from' is derived server-side from the NIP-98 signature.
+        final res = await ApiAuth.postJson(kCallUrl, {
+          'to': to,
+          'fromName': _myName ?? 'AvaTOK',
+          'callId': room,
+          'kind': video ? 'video' : 'audio',
+        });
         if (res.statusCode == 404 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('They have no device registered yet — they need to open AvaTOK once')));

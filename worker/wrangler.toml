@@ -1,0 +1,180 @@
+# AvaTok API Worker — Rulebook-compliant backend (replaces the KV monolith).
+# Golden Rules: D1 is the database; KV is ephemeral tokens only; R2 reads bypass
+# the Worker (public bucket); Queues handle all async work; Service Bindings for
+# Worker→Worker. See BACKEND_REBUILD_PLAN.md.
+#
+# database_id values are filled in after `wrangler d1 create` (Phase 1b).
+
+name = "avatok-api"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worker in path)
+FCM_PROJECT = "avatok-e19ef"
+BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"  # Gemma 4 26B-A4B MoE (~4B-class cost, thinking-mode reasoning)
+BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matches avatok-semantic
+POSTHOG_QUERY_HOST = "https://us.posthog.com"               # investigate() reads (personal key)
+POSTHOG_PROJECT_ID = "139917"
+
+# ---------------------------------------------------------------------------
+# D1 — the database (Golden Rule 1). Four logical databases at launch.
+# Relay starts single; sharding router (src/db/shard.ts) can fan to 16 later.
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB_META"            # identity, profiles, contacts (hashed), follows, blocks, mutes, settings, push tokens, communities, strikes, verification
+database_name = "avatok-meta"
+database_id = "c4ec8c0e-e1ac-4a1d-8e41-636f4007871b"
+
+[[d1_databases]]
+binding = "DB_MEDIA"           # user_media metadata + perceptual hashes (AvaLibrary)
+database_name = "avatok-media-meta"
+database_id = "79dc846e-8d9c-416a-8927-39c7aebdc400"
+
+[[d1_databases]]
+binding = "DB_MODERATION"      # blocked hashes, moderation_results cache, user_reports
+database_name = "avatok-moderation"
+database_id = "770d5709-2974-447e-b4e8-8c43f22df997"
+
+[[d1_databases]]
+binding = "DB_RELAY"           # nostr_events + nostr_tags (single; time-shard near 5GB)
+database_name = "avatok-relay"
+database_id = "8ce3ca0d-d668-4bb4-94ea-7c8a458a0667"
+
+[[d1_databases]]
+binding = "DB_BRAIN"           # AvaBrain knowledge graph + memory (own DB — event log is high-volume)
+database_name = "avatok-brain"
+database_id = "f5bfb712-5151-4e9f-b47a-20d76465f205"
+
+# ---------------------------------------------------------------------------
+# R2 — blobs. READS are served from blossom.avatok.ai (public bucket + Cache
+# Everything), NEVER through this Worker. The Worker only handles WRITES.
+# ---------------------------------------------------------------------------
+[[r2_buckets]]
+binding = "BLOBS"              # avatok-blobs — public bucket, key = sha256
+bucket_name = "avatok-blobs"
+
+[[r2_buckets]]
+binding = "VERIFICATION"       # avatok-verification — LOCKED, no public access, presigned only
+bucket_name = "avatok-verification"
+
+# ---------------------------------------------------------------------------
+# KV — ephemeral tokens ONLY (Golden Rule 5). 5 allowed uses, nothing else.
+# upload tokens / rate-limit counters / NIP-05 cache / feature flags / CSRF.
+# ---------------------------------------------------------------------------
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "ab462ef0fdad44d08fd11263577b31f5"
+
+# ---------------------------------------------------------------------------
+# Queues — all async work (moderation, push, email). Consumers are separate
+# Workers (see Phase 4). Never block a request on slow tasks.
+# ---------------------------------------------------------------------------
+[[queues.producers]]
+binding = "Q_MODERATION"
+queue = "moderation"
+
+[[queues.producers]]
+binding = "Q_PUSH"
+queue = "push-notifications"
+
+[[queues.producers]]
+binding = "Q_EMAIL"
+queue = "email"
+
+[[queues.producers]]
+binding = "Q_ANALYTICS"        # PostHog event batching — never call PostHog sync from a Worker
+queue = "analytics"
+
+[[queues.producers]]
+binding = "Q_BRAIN"            # AvaBrain background extraction (public content only)
+queue = "brain-events"
+
+# ---------------------------------------------------------------------------
+# Workers AI — image moderation on the /upload/public path only.
+# ---------------------------------------------------------------------------
+[ai]
+binding = "AI"
+
+# ---------------------------------------------------------------------------
+# Observability — Workers Logs (7-day retention, included in paid plan).
+# ---------------------------------------------------------------------------
+[observability]
+enabled = true
+
+# ---------------------------------------------------------------------------
+# Analytics Engine — operational metrics (API latency, relay throughput, queue
+# depth). Complements PostHog (product analytics). Dataset auto-creates on first
+# writeDataPoint — no provisioning step. $0.25/million writes.
+# ---------------------------------------------------------------------------
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "avatok_metrics"
+
+# ---------------------------------------------------------------------------
+# Vectorize — semantic search (AvaDate match, AvaExplore search, AvaNews recs,
+# AvaLibrary discovery, AvaAgent memory). Wire now, populate Phase 4.
+# Create: wrangler vectorize create avatok-semantic --dimensions=384 --metric=cosine
+# (384 dims = bge-small-en-v1.5 via Workers AI)
+# ---------------------------------------------------------------------------
+[[vectorize]]
+binding = "VECTOR_INDEX"
+index_name = "avatok-semantic"
+
+# ---------------------------------------------------------------------------
+# Browser Rendering — headless Chrome for link previews / OG images.
+# Cache results in Cache API (same URL = same preview). No external service.
+# ---------------------------------------------------------------------------
+[browser]
+binding = "BROWSER"
+
+# ---------------------------------------------------------------------------
+# Service binding to the relay router (Worker→Worker, free, not a request).
+# ENABLED IN PHASE 3 once the relay Worker is deployed. Commented so the API
+# Worker deploys standalone in Phase 2.
+# ---------------------------------------------------------------------------
+# [[services]]
+# binding = "RELAY_SVC"
+# service = "avatok-relay"
+
+# ---------------------------------------------------------------------------
+# Durable Object — group call rooms (SFU signaling). 1:1 calls stay P2P.
+# WebSocket Hibernation so idle rooms cost ~nothing.
+# ---------------------------------------------------------------------------
+[[durable_objects.bindings]]
+name = "CALL_ROOMS"
+class_name = "CallRoom"
+
+# Per-user reasoning DO (AvaBrain). Keyed by npub; idles to nothing between asks.
+[[durable_objects.bindings]]
+name = "USER_BRAIN"
+class_name = "UserBrain"
+
+# Cross-script binding to the relay's per-user inbox DO, so the API can push a
+# realtime in-app notification down the user's already-open socket.
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "RelayRoom"
+script_name = "avatok-relay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CallRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UserBrain"]
+
+# Brain reasoning + observability config (vars; secrets set via wrangler):
+#   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
+#   POSTHOG_QUERY_HOST    — https://us.posthog.com (investigate reads)
+#   POSTHOG_PROJECT_ID    — 139917
+# Secret: POSTHOG_PERSONAL_API_KEY (phx_…) — gated; investigate no-ops if unset.
+
+# Secrets (set via `wrangler secret put`, never committed):
+#   CLERK_JWKS_URL, CLERK_ISSUER       — Clerk JWT verification (opt-in)
+#   TURN_KEY_ID, TURN_KEY_API_TOKEN    — Cloudflare Realtime TURN credentials
+#   BUNNY_API_KEY, BUNNY_LIBRARY_ID    — Bunny.net Stream video uploads
+#   STREAM_WEBHOOK_SECRET              — Cloudflare Stream webhook HMAC (AvaLive)
+# (Text/image moderation runs on Workers AI in avatok-consumers — no OpenAI.)
