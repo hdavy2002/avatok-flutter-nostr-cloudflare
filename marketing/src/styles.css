@@ -602,6 +602,36 @@
     .hero-art { height: 440px; }
   }
 
+  /* readability: larger body + mono labels on tablet & mobile (mockup UI text left as-is) */
+  @media (max-width: 1024px) {
+    body { font-size: 19.5px; }
+    .lede { font-size: 20px; }
+    .intro { font-size: 19px; }
+    .gs-sub { font-size: 20px; }
+    .gs-card .kick { font-size: 16.5px; }
+    .sec-kicker { font-size: 17px; letter-spacing: 0.10em; }
+    .pill-tag { font-size: 18px; }
+    .sticker { font-size: 15px; }
+    .sec-foot { font-size: 16px; }
+    .dl-label { font-size: 16px; }
+    .dl-note { font-size: 15px; }
+    .cmp-card .ct { font-size: 15px; }
+    .cmp-card p { font-size: 17px; }
+    .foot-col a { font-size: 17px; }
+    .foot-col h4 { font-size: 20px; }
+    .foot-desc { font-size: 16.5px; }
+    .foot-bottom { font-size: 15.5px; }
+    .foot-made { font-size: 16px; }
+    .signup input { font-size: 17px; }
+  }
+  @media (max-width: 600px) {
+    body { font-size: 19px; }
+    .lede, .intro, .gs-sub { font-size: 18.5px; }
+    .sec-kicker { font-size: 16px; }
+    .qa .ans { font-size: 17px; }
+    .foot-col a { font-size: 16.5px; }
+  }
+
   /* reveal */
   .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .6s ease; }
   .reveal.in { opacity: 1; transform: none; }
