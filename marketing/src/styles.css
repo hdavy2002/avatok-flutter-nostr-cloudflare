@@ -281,6 +281,24 @@
   .foot-social { display: flex; gap: 12px; margin-top: 22px; }
   .foot-social a { width: 46px; height: 46px; border-radius: 13px; border: 2.5px solid var(--ink); background: var(--card); display: grid; place-items: center; font-size: 21px; box-shadow: var(--shadow-sm); transition: transform .12s ease, box-shadow .12s ease, background .15s ease; }
   .foot-social a:hover { transform: translate(-2px,-2px); box-shadow: 4px 5px 0 var(--ink); background: var(--lime); }
+  .foot-social a.soc { position: relative; color: var(--ink); }
+  .foot-social a.soc svg { width: 21px; height: 21px; display: block; }
+  .foot-social a.soc.tw:hover, .foot-social a.soc.in:hover, .foot-social a.soc.fb:hover { background: var(--blue); }
+  .foot-social a.soc.yt:hover, .foot-social a.soc.ig:hover { background: var(--coral); color: #fff; }
+  .foot-social a.soc::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 9px); left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    background: var(--ink); color: var(--paper);
+    font-family: 'Space Mono', monospace; font-weight: 700; font-size: 12px; letter-spacing: 0.02em;
+    padding: 5px 10px; border-radius: 8px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity .15s ease, transform .15s ease; z-index: 5;
+  }
+  .foot-social a.soc::before {
+    content: ""; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: var(--ink); opacity: 0; transition: opacity .15s ease;
+  }
+  .foot-social a.soc:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .foot-social a.soc:hover::before { opacity: 1; }
   .foot-col { display: flex; flex-direction: column; gap: 12px; }
   .foot-col h4 { font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 21px; letter-spacing: -0.01em; color: var(--ink); margin: 0 0 6px; text-transform: none; }
   .foot-col a { font-weight: 700; font-size: 17px; color: var(--ink-soft); }
