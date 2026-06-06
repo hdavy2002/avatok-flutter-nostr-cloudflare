@@ -92,12 +92,12 @@ export default {
         return json({ error: "upstream_unreachable" }, 502);
       }
 
-      // 201 = newly created -> send the welcome email. 204 = already existed (don't re-email).
-      if (res.status === 201) {
+      // Any successful add/update (201 created, or 204 updated/added-to-list) sends the
+      // welcome email — so existing Brevo contacts who join the waitlist get it too.
+      if (res.ok || res.status === 204) {
         const mail = await sendWelcome(env, email);
         return json({ ok: true, mail });
       }
-      if (res.ok || res.status === 204) return json({ ok: true, mail: "skipped_existing" });
 
       let data = {};
       try { data = await res.json(); } catch {}
