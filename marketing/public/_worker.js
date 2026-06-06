@@ -31,8 +31,8 @@ function welcomeHtml() {
 
 async function sendWelcome(env, email) {
   const sender = {
-    name: env.BREVO_SENDER_NAME || "avaTOK",
-    email: env.BREVO_SENDER_EMAIL || "hdavy2002@gmail.com",
+    name: env.BREVO_SENDER_NAME || "AvaTOK Joinlist",
+    email: env.BREVO_SENDER_EMAIL || "hello@avatok.ai",
   };
   try {
     const r = await fetch("https://api.brevo.com/v3/smtp/email", {
