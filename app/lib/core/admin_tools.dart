@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'account_storage.dart';
+
 /// The product a signed-in account belongs to. Drives which management tools
 /// appear in the sidebar. For now this is stored locally (preview); later it
 /// will come from the server (Clerk `publicMetadata.account_kind` / tenant role).
@@ -100,7 +102,8 @@ class AccountKindStore {
             );
 
   Future<AccountKind> load() async =>
-      AccountKindX.fromWire(await _s.read(key: _k));
+      AccountKindX.fromWire(await readScoped(_s, _k));
 
-  Future<void> set(AccountKind kind) => _s.write(key: _k, value: kind.wire);
+  Future<void> set(AccountKind kind) =>
+      _s.write(key: scopedKey(_k), value: kind.wire);
 }

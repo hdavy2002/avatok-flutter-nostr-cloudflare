@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/admin_tools.dart';
 import '../../core/apps.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/profile_store.dart';
@@ -11,7 +12,9 @@ import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../avatok/contacts.dart';
 
-/// The 5-step sign-up flow shown after Clerk auth on a fresh account.
+/// The sign-up flow shown after Clerk auth on a fresh account. Starts by asking
+/// what kind of account this is (Single / Parent / Enterprise) — that choice
+/// unlocks the matching management tools in the sidebar.
 class OnboardingFlow extends StatefulWidget {
   final VoidCallback onComplete;
   const OnboardingFlow({super.key, required this.onComplete});
@@ -20,13 +23,17 @@ class OnboardingFlow extends StatefulWidget {
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> {
-  static const _steps = 6;
+  static const _steps = 7;
   int _step = 0;
 
   final _idStore = IdentityStore();
   final _onb = OnboardingStore();
   final _profileStore = ProfileStore();
+  final _kindStore = AccountKindStore();
   Identity? _id;
+
+  // ---- account-type step (Single / Parent / Enterprise) ----
+  AccountKind? _selectedKind;
 
   bool _notifEnabled = false;
   bool _agreedTerms = false;
@@ -110,6 +117,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   Future<void> _finish() async {
+    await _kindStore.set(_selectedKind ?? AccountKind.personal);
     await _onb.setEnabledApps(_enabled);
     await _onb.setDone();
     widget.onComplete();
@@ -148,13 +156,117 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Widget _body() {
     switch (_step) {
-      case 0: return _notifications();
-      case 1: return _terms();
-      case 2: return _keys();
-      case 3: return _profileStep();
-      case 4: return _contacts();
+      case 0: return _accountType();
+      case 1: return _notifications();
+      case 2: return _terms();
+      case 3: return _keys();
+      case 4: return _profileStep();
+      case 5: return _contacts();
       default: return _appsSetup();
     }
+  }
+
+  // ---- Step 1: account type — required, drives the sidebar tools ----
+  Widget _accountType() {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _iconTileSmall(Icons.workspace_premium_outlined, AvaColors.brand50, AvaColors.brand),
+                const SizedBox(height: 16),
+                Text('How will you use AvaTOK?',
+                    style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28)),
+                const SizedBox(height: 6),
+                const Text(
+                    'This sets up your account. Parent and Business accounts unlock extra '
+                    'management tools in the sidebar. You can change this later in Settings.',
+                    style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+                const SizedBox(height: 22),
+                _kindCard(
+                  kind: AccountKind.personal,
+                  icon: Icons.person_outline,
+                  color: AvaColors.brand,
+                  title: 'Just me',
+                  sub: 'A personal account with all the standard AvaVerse apps.',
+                ),
+                const SizedBox(height: 12),
+                _kindCard(
+                  kind: AccountKind.parent,
+                  icon: Icons.family_restroom,
+                  color: const Color(0xFF7C5CFC),
+                  title: 'Parent / family',
+                  sub: 'Create and manage accounts for your kids — app controls, '
+                      'contact approvals, screen time and safety alerts.',
+                ),
+                const SizedBox(height: 12),
+                _kindCard(
+                  kind: AccountKind.enterprise,
+                  icon: Icons.apartment,
+                  color: const Color(0xFF0A66C2),
+                  title: 'Business / enterprise',
+                  sub: 'Provision accounts for your team — employees, teams & roles, '
+                      'app grants, billing and an audit log.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          child: _primary('Continue', _selectedKind != null ? _next : null),
+        ),
+      ],
+    );
+  }
+
+  Widget _kindCard({
+    required AccountKind kind,
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String sub,
+  }) {
+    final selected = _selectedKind == kind;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedKind = kind),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.06) : AvaColors.soft,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? color : Colors.transparent,
+            width: 1.6,
+          ),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 42, height: 42,
+            decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 4),
+              Text(sub, style: const TextStyle(color: AvaColors.sub, fontSize: 12.5, height: 1.4)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+            color: selected ? color : AvaColors.line,
+            size: 22,
+          ),
+        ]),
+      ),
+    );
   }
 
   // ---- Step 4: profile (handle + display name) — required ----

@@ -54,6 +54,17 @@ jobs:
         working-directory: app
         run: flutter test test/nip44_test.dart test/nip17_test.dart
 
+      # Sign every debug build with the SAME committed debug keystore so a new
+      # APK installs over an existing one (Android refuses updates when the
+      # signing certificate changes). Without this, `flutter create` lets AGP
+      # auto-generate a fresh, random debug keystore on each CI run, so every
+      # build had a different signature and required uninstalling first.
+      - name: Pin stable debug keystore
+        run: |
+          mkdir -p ~/.android
+          base64 -d app/android-keystore/debug.keystore.base64 > ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -i sha || true
+
       - name: Build debug APK
         working-directory: app
         run: flutter build apk --debug

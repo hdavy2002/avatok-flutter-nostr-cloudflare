@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'account_storage.dart';
+
 /// The user's public profile (display name + @handle). Stored locally; published
 /// to the directory only when the user opts in by saving a handle.
 class Profile {
@@ -32,7 +34,7 @@ class ProfileStore {
             );
 
   Future<Profile> load() async {
-    final raw = await _s.read(key: _key);
+    final raw = await readScoped(_s, _key);
     if (raw == null || raw.isEmpty) return const Profile();
     try {
       final j = jsonDecode(raw) as Map<String, dynamic>;
@@ -48,7 +50,7 @@ class ProfileStore {
   }
 
   Future<void> save(Profile p) => _s.write(
-      key: _key,
+      key: scopedKey(_key),
       value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'sharePresence': p.sharePresence}));
 
   /// Persist just the phone (merging with any existing profile fields).
