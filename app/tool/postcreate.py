@@ -193,9 +193,9 @@ subprojects {{
     if (name == "posthog_flutter") {{
         afterEvaluate {{
             tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {{
-                kotlinOptions {{
-                    languageVersion = "2.0"
-                    apiVersion = "2.0"
+                compilerOptions {{
+                    languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+                    apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
                 }}
             }}
         }}
