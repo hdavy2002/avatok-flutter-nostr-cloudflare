@@ -9,6 +9,7 @@ import 'core/onboarding_store.dart';
 import 'core/theme.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
+import 'features/auth/restore_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
 import 'push/push_service.dart';
@@ -48,7 +49,7 @@ class AvaTalkApp extends StatelessWidget {
   }
 }
 
-enum _Stage { loading, welcome, signIn, onboarding, shell }
+enum _Stage { loading, welcome, signIn, onboarding, restore, shell }
 
 class RootFlow extends StatefulWidget {
   const RootFlow({super.key});
@@ -59,7 +60,9 @@ class RootFlow extends StatefulWidget {
 class _RootFlowState extends State<RootFlow> {
   final _clerk = ClerkClient();
   final _onb = OnboardingStore();
+  final _idStore = IdentityStore();
   _Stage _stage = _Stage.loading;
+  RestoreState? _restoreState;
 
   @override
   void initState() {
@@ -78,20 +81,45 @@ class _RootFlowState extends State<RootFlow> {
       signedIn = cu != null;
     } catch (_) {}
     if (!signedIn) { _to(_Stage.welcome); return; }
-    // Returning user on a fresh install: pull their key + profile back from the
-    // server (keyed by Clerk account) so they skip onboarding.
-    try { await AccountRestore.tryRestore(); } catch (_) {}
-    _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
+    await _route();
   }
 
   void _to(_Stage s) { if (mounted) setState(() => _stage = s); }
 
   Future<void> _afterAuth() async {
     try { AccountScope.id = (await _clerk.currentUser())?.id; } catch (_) {}
-    // Restore identity + profile from the server before deciding where to land —
-    // an existing account with a claimed handle goes straight to the shell.
-    try { await AccountRestore.tryRestore(); } catch (_) {}
-    _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
+    await _route();
+  }
+
+  /// Decide where a signed-in user lands. The key safety rule: a user the server
+  /// already knows (existing account) is NEVER sent to onboarding — they're
+  /// restored automatically or shown the recovery screen — so they can't
+  /// accidentally create a second handle and think their data vanished.
+  Future<void> _route() async {
+    // Already have this account's key on this device → normal path.
+    Identity? local;
+    try { local = await _idStore.load(); } catch (_) {}
+    if (local != null) {
+      _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
+      return;
+    }
+    // Fresh install / new device → ask the server who this account is.
+    RestoreState st;
+    try { st = await AccountRestore.restoreFromServer(); }
+    catch (_) { st = const RestoreState(RestoreOutcome.unavailable); }
+    switch (st.outcome) {
+      case RestoreOutcome.restored:
+        _to(_Stage.shell);
+        return;
+      case RestoreOutcome.newUser:
+        _to(_Stage.onboarding);
+        return;
+      case RestoreOutcome.needsRecovery:
+      case RestoreOutcome.unavailable:
+        setState(() => _restoreState = st);
+        _to(_Stage.restore);
+        return;
+    }
   }
 
   /// Full sign-out: clear any pushed screens (AvaTok/Settings/etc.), end the
@@ -117,6 +145,13 @@ class _RootFlowState extends State<RootFlow> {
         return SignInScreen(clerk: _clerk, onSignedIn: _afterAuth);
       case _Stage.onboarding:
         return OnboardingFlow(onComplete: () => _to(_Stage.shell));
+      case _Stage.restore:
+        return RestoreScreen(
+          state: _restoreState ?? const RestoreState(RestoreOutcome.unavailable),
+          onRestored: () => _to(_Stage.shell),
+          onRetry: () { _to(_Stage.loading); _route(); },
+          onSignOut: _signOut,
+        );
       case _Stage.shell:
         return AvaShell(clerk: _clerk, onSignOut: _signOut);
     }
