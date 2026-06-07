@@ -58,6 +58,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
   int _phoneAttempts = 0;
   int _phoneResends = 0;
   String? _phoneError;
+  bool _phoneSkipped = false; // phone is optional — user can skip if SMS can't be sent
 
   // ---- email (backend OTP) ----
   final _emailCtrl = TextEditingController();
@@ -85,7 +86,10 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
     super.dispose();
   }
 
-  bool get _ready => _ageGroup != null && _gender != null && _phoneVerified && _emailVerified;
+  // Email is required; phone is optional (verified OR explicitly skipped) so a
+  // user is never trapped when SMS can't be delivered for technical reasons.
+  bool get _ready =>
+      _ageGroup != null && _gender != null && _emailVerified && (_phoneVerified || _phoneSkipped);
 
   // ───────────────────────── phone ─────────────────────────
 
@@ -394,14 +398,21 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
             width: double.infinity,
             child: FilledButton(
               onPressed: _ready
-                  ? () => widget.onComplete(VerifyData(
+                  ? () {
+                      if (!_phoneVerified) {
+                        Analytics.capture('phone_verification_skipped',
+                            {'after_error': _phoneError != null});
+                      }
+                      widget.onComplete(VerifyData(
                         ageGroup: _ageGroup!,
                         gender: _gender!,
-                        phone: _phoneCtrl.text.trim(),
+                        // Only persist the number if it was actually verified.
+                        phone: _phoneVerified ? _phoneCtrl.text.trim() : '',
                         phoneVerified: _phoneVerified,
                         email: _emailCtrl.text.trim(),
                         emailVerified: _emailVerified,
-                      ))
+                      ));
+                    }
                   : null,
               child: const Text('Continue'),
             ),
@@ -413,7 +424,20 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
 
   Widget _phoneSection() {
     if (_phoneVerified) return _verifiedRow(_phoneCtrl.text.trim());
+    if (_phoneSkipped) {
+      return Row(children: [
+        const Icon(Icons.schedule, size: 18, color: AvaColors.sub),
+        const SizedBox(width: 8),
+        const Expanded(
+            child: Text('Skipped — you can verify your phone later in Settings.',
+                style: TextStyle(color: AvaColors.sub))),
+        TextButton(onPressed: () => setState(() => _phoneSkipped = false), child: const Text('Undo')),
+      ]);
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Optional — verify now, or add it later in Settings.',
+          style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+      const SizedBox(height: 8),
       _field(
         controller: _phoneCtrl,
         hint: '+234 800 000 0000',
@@ -446,6 +470,22 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         ]),
       ],
       if (_phoneError != null) _errorText(_phoneError!),
+      const SizedBox(height: 4),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+          onPressed: () {
+            Analytics.capture('phone_verification_skip_tapped', {'after_error': _phoneError != null});
+            setState(() {
+              _phoneSkipped = true;
+              _phoneError = null;
+            });
+          },
+          child: Text(_phoneError != null ? 'Skip phone verification →' : 'Skip for now',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+        ),
+      ),
     ]);
   }
 
