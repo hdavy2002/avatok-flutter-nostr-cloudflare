@@ -115,12 +115,21 @@ export async function authenticate(req: Request, env: Env): Promise<AuthCtx | Au
   const npub = hexToNpub(nip.pubkeyHex);
   if (!npub) return { error: "bad pubkey", status: 401 };
 
-  const clerk = await verifyClerk(env, req.headers.get("authorization"));
+  const bearer = req.headers.get("authorization");
+  const clerk = await verifyClerk(env, bearer);
   let clerkUserId: string | null = null;
   let clerkVerified = false;
-  if ("error" in clerk) return { error: "clerk: " + clerk.error, status: 401 };
-  if ("clerkUserId" in clerk) { clerkUserId = clerk.clerkUserId; clerkVerified = true; }
-  else console.warn("CLERK_JWKS_URL unset — NIP-98 only; account auth not enforced");
+  if ("error" in clerk) {
+    // Only reject when a bearer was actually presented but failed to verify.
+    // A missing bearer falls back to NIP-98-only so enabling CLERK_JWKS_URL is
+    // non-breaking for any call that doesn't (yet) carry a session token; the
+    // account just isn't linked on that request.
+    if (bearer) return { error: "clerk: " + clerk.error, status: 401 };
+  } else if ("clerkUserId" in clerk) {
+    clerkUserId = clerk.clerkUserId; clerkVerified = true;
+  } else {
+    console.warn("CLERK_JWKS_URL unset — NIP-98 only; account auth not enforced");
+  }
 
   const db = metaSession(env); // replica reads (one session for both lookups)
   let tier: AuthCtx["tier"] = "unknown";

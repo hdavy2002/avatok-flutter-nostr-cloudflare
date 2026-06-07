@@ -186,11 +186,17 @@ class Directory {
   /// Returns whether the upsert succeeded plus the HTTP status (409 = handle
   /// taken) so callers like onboarding can react; other callers can ignore it.
   static Future<({bool ok, int status})> registerProfile(
-      {required String npub, String handle = '', String name = '', String email = '', String phone = ''}) async {
+      {required String npub, String handle = '', String name = '', String email = '', String phone = '',
+       String? encryptedNsecBackup, String? backupMethod}) async {
     try {
       // npub is derived server-side from the NIP-98 signature; no longer in body.
-      final res = await ApiAuth.postJson(kProfileUrl,
-          {'handle': handle, 'name': name, 'email': email, 'phone': phone});
+      // encrypted_nsec_backup (optional) links this key to the Clerk account so
+      // the user can restore it after reinstalling / on another device.
+      final res = await ApiAuth.postJson(kProfileUrl, {
+        'handle': handle, 'name': name, 'email': email, 'phone': phone,
+        if (encryptedNsecBackup != null) 'encrypted_nsec_backup': encryptedNsecBackup,
+        if (backupMethod != null) 'backup_method': backupMethod,
+      });
       return (ok: res.statusCode == 200, status: res.statusCode);
     } catch (_) {
       return (ok: false, status: 0); // best-effort for non-onboarding callers

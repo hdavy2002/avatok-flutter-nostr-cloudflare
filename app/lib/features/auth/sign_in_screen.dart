@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../auth/clerk_client.dart';
+import '../../core/account_restore.dart';
 import '../../core/logo.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
@@ -52,6 +53,9 @@ class _SignInScreenState extends State<SignInScreen> {
           setState(() { _busy = false; _error = 'Enter your email'; });
           return;
         }
+        // Keep the password in memory so a fresh install can decrypt this
+        // account's server-side key backup and restore the same identity.
+        AuthSession.lastPassword = _pass.text;
         _handleStep(await widget.clerk.signIn(_email.text, _pass.text));
         return;
       case _Mode.signUp:
@@ -66,6 +70,9 @@ class _SignInScreenState extends State<SignInScreen> {
         // Store the phone locally now so it persists through email verification;
         // it's indexed to the directory on first launch (OTP verification later).
         await ProfileStore().setPhone(_phone.text);
+        // Remember the password to encrypt this account's Nostr key backup at
+        // the end of onboarding (so it can be restored on another device).
+        AuthSession.lastPassword = _pass.text;
         _handleStep(await widget.clerk.signUp(_email.text, _pass.text));
         return;
       case _Mode.verify:
@@ -95,7 +102,7 @@ class _SignInScreenState extends State<SignInScreen> {
           return;
         }
         final rErr = await widget.clerk.resetPassword(_pendingId!, _code.text, _newPass.text);
-        if (rErr == null) { _done(); return; }
+        if (rErr == null) { AuthSession.lastPassword = _newPass.text; _done(); return; }
         if (mounted) setState(() { _busy = false; _error = rErr; });
         return;
     }

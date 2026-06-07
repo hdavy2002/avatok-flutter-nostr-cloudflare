@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
 import '../../core/apps.dart';
+import '../../core/key_backup.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
@@ -95,8 +97,20 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     // Persist locally first (merge with any phone captured earlier).
     final existing = await _profileStore.load();
     await _profileStore.save(existing.copyWith(displayName: name, handle: handle));
-    // Publish to the directory so the handle + name are immediately searchable.
-    final r = await Directory.registerProfile(npub: id.npub, handle: handle, name: name);
+    // Encrypt this account's Nostr key with the password the user signed up with
+    // so it can be restored on another device (server stores only ciphertext).
+    String? encBackup;
+    final pw = AuthSession.lastPassword;
+    if (pw != null && pw.isNotEmpty) {
+      try { encBackup = await KeyBackup.encryptSecret(id.privHex, pw); } catch (_) { encBackup = null; }
+    }
+    // Publish to the directory so the handle + name are immediately searchable,
+    // and (when present) link the key backup to the Clerk account.
+    final r = await Directory.registerProfile(
+      npub: id.npub, handle: handle, name: name,
+      encryptedNsecBackup: encBackup,
+      backupMethod: encBackup != null ? KeyBackup.method : null,
+    );
     if (!mounted) return;
     setState(() => _savingProfile = false);
     if (r.ok) { _next(); return; }

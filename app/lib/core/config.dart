@@ -35,6 +35,7 @@ const String kIceUrl = 'https://$kSignalingHost/api/ice';
 
 /// AvaTok public directory (NIP-05-style) — find people by @handle / name / npub.
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)
+const String kMeUrl = 'https://$kSignalingHost/api/me'; // GET — restore my account by Clerk session
 const String kResolveUrl = 'https://$kSignalingHost/api/resolve'; // GET ?q= (public)
 const String kSearchUrl = 'https://$kSignalingHost/api/search';   // GET ?q= (public)
 const String kHandleCheckUrl = 'https://$kSignalingHost/api/handle/check'; // GET ?q= (public)

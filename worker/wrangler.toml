@@ -19,6 +19,11 @@ POSTHOG_QUERY_HOST = "https://us.posthog.com"               # investigate() read
 POSTHOG_PROJECT_ID = "139917"
 WALLET_TOPUP_ENABLED = "0"                                  # ⚠️ real money-in OFF pending legal (§10.1)
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
+# Clerk JWT verification (public values, not secrets). Enabling these lets the
+# Worker read the signed-in Clerk user id, which links the account to its Nostr
+# key (clerk_nostr_link) and powers cross-device restore via GET /api/me.
+CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
+CLERK_ISSUER = "https://clerk.avatok.ai"
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.

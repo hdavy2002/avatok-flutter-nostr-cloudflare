@@ -12,7 +12,7 @@
 import type { Env } from "../types";
 import { json, sha256Hex, normalizePhone, chunk } from "../util";
 import { metaSession, relaySession } from "../db/shard";
-import { authenticate, isErr } from "../auth";
+import { authenticate, isErr, verifyClerk } from "../auth";
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
@@ -90,7 +90,10 @@ export async function handleCheck(req: Request, env: Env): Promise<Response> {
 export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   const auth = await authenticate(req, env);
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
-  const b = (await req.json().catch(() => ({}))) as { handle?: string; name?: string; email?: string; phone?: string };
+  const b = (await req.json().catch(() => ({}))) as {
+    handle?: string; name?: string; email?: string; phone?: string;
+    encrypted_nsec_backup?: string; backup_method?: string;
+  };
   const handle = normalizeHandle(b.handle || "") || null;
   const name = (b.name || "").trim() || null;
   const email = (b.email || "").trim().toLowerCase();
@@ -121,7 +124,64 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
     const ph = await sha256Hex(normalizePhone(b.phone));
     await db.prepare("INSERT OR REPLACE INTO contact_phone_index (phone_hash, npub, updated_at) VALUES (?1,?2,?3)").bind(ph, auth.npub, now).run();
   }
+
+  // Link this Nostr identity to the signed-in Clerk account (the cross-device,
+  // cross-reinstall master id) and store the optional encrypted private-key
+  // backup. This is what makes "log in on a new phone → get my account back"
+  // work: GET /api/me later looks the account up by clerk_user_id, not npub.
+  // Only possible when Clerk JWT verification is enabled (CLERK_JWKS_URL set).
+  const encBackup = (b.encrypted_nsec_backup || "").trim() || null;
+  const backupMethod = (b.backup_method || "").trim() || null;
+  if (auth.clerkUserId) {
+    try {
+      await db.prepare(
+        `INSERT INTO clerk_nostr_link
+           (clerk_user_id, npub, encrypted_nsec_backup, backup_encryption_method, tier, created_at, last_seen_at)
+         VALUES (?1,?2,?3,?4,'basic',?5,?5)
+         ON CONFLICT(clerk_user_id) DO UPDATE SET
+           npub=excluded.npub,
+           encrypted_nsec_backup=COALESCE(excluded.encrypted_nsec_backup, clerk_nostr_link.encrypted_nsec_backup),
+           backup_encryption_method=COALESCE(excluded.backup_encryption_method, clerk_nostr_link.backup_encryption_method),
+           last_seen_at=excluded.last_seen_at`,
+      ).bind(auth.clerkUserId, auth.npub, encBackup, backupMethod, now).run();
+    } catch (e) {
+      // npub is UNIQUE: another Clerk account already owns this key. Don't fail
+      // the profile save over it — just skip the link.
+      if (!String((e as Error)?.message || "").includes("UNIQUE")) throw e;
+    }
+  }
+
   return json({ ok: true, profile: { npub: auth.npub, handle, name, email: b.email || "", phone: b.phone || "" } });
+}
+
+// GET /api/me — restore endpoint. Authenticated by the Clerk session JWT ALONE
+// (no NIP-98): a freshly-installed device has no Nostr key yet — recovering it is
+// the whole point. Looks the account up by clerk_user_id and returns the linked
+// npub, public profile, and the encrypted key backup so the client can restore
+// the same identity (and therefore the same handle, contacts and messages).
+export async function me(req: Request, env: Env): Promise<Response> {
+  const clerk = await verifyClerk(env, req.headers.get("authorization"));
+  if ("skipped" in clerk) return json({ found: false, clerk_enabled: false });
+  if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
+  const db = metaSession(env);
+  const link = await db.prepare(
+    "SELECT npub, encrypted_nsec_backup, backup_encryption_method FROM clerk_nostr_link WHERE clerk_user_id=?1",
+  ).bind(clerk.clerkUserId).first<{ npub: string; encrypted_nsec_backup: string | null; backup_encryption_method: string | null }>();
+  if (!link) return json({ found: false, clerk_enabled: true });
+  const prof = await db.prepare(
+    "SELECT handle, display_name FROM profiles WHERE npub=?1",
+  ).bind(link.npub).first<{ handle: string | null; display_name: string | null }>();
+  // Best-effort touch of last_seen_at; never block the response on it.
+  try { await db.prepare("UPDATE clerk_nostr_link SET last_seen_at=?2 WHERE clerk_user_id=?1").bind(clerk.clerkUserId, Date.now()).run(); } catch { /* noop */ }
+  return json({
+    found: true,
+    clerk_enabled: true,
+    npub: link.npub,
+    handle: prof?.handle ?? null,
+    display_name: prof?.display_name ?? null,
+    encrypted_nsec_backup: link.encrypted_nsec_backup,
+    backup_method: link.backup_encryption_method,
+  });
 }
 
 function profOut(r: any) {

@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'auth/clerk_client.dart';
+import 'core/account_restore.dart';
 import 'core/api_auth.dart';
 import 'core/onboarding_store.dart';
 import 'core/theme.dart';
@@ -77,6 +78,9 @@ class _RootFlowState extends State<RootFlow> {
       signedIn = cu != null;
     } catch (_) {}
     if (!signedIn) { _to(_Stage.welcome); return; }
+    // Returning user on a fresh install: pull their key + profile back from the
+    // server (keyed by Clerk account) so they skip onboarding.
+    try { await AccountRestore.tryRestore(); } catch (_) {}
     _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
   }
 
@@ -84,6 +88,9 @@ class _RootFlowState extends State<RootFlow> {
 
   Future<void> _afterAuth() async {
     try { AccountScope.id = (await _clerk.currentUser())?.id; } catch (_) {}
+    // Restore identity + profile from the server before deciding where to land —
+    // an existing account with a claimed handle goes straight to the shell.
+    try { await AccountRestore.tryRestore(); } catch (_) {}
     _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
   }
 
@@ -95,6 +102,7 @@ class _RootFlowState extends State<RootFlow> {
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
     try { await _clerk.signOut(); } catch (_) {/* clear locally regardless */}
     AccountScope.id = null;
+    AuthSession.lastPassword = null;
     _to(_Stage.welcome);
   }
 
