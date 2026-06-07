@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/admin_tools.dart';
 import '../core/apps.dart';
 import '../core/avatar.dart';
 import '../core/device_contacts.dart';
@@ -12,6 +13,7 @@ import '../core/theme.dart';
 /// 'billing' | 'payout' | 'invite' | or an app key.
 class AvaSidebar extends StatefulWidget {
   final Set<String> enabledApps;
+  final AccountKind accountKind;
   final String name;
   final String seed;
   final String current;
@@ -20,6 +22,7 @@ class AvaSidebar extends StatefulWidget {
   const AvaSidebar({
     super.key,
     required this.enabledApps,
+    this.accountKind = AccountKind.personal,
     required this.name,
     required this.seed,
     required this.current,
@@ -99,6 +102,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
               _special('explore', 'AvaExplore', 'Marketplace', Icons.storefront, AvaColors.brand),
               _special('verse', 'AvaVerse', 'Your dashboard', Icons.dashboard, const Color(0xFF6C5CE7)),
               _special('library', 'AvaLibrary', 'Saved media & files', Icons.folder_open, const Color(0xFF8B5CF6)),
+              // Role-based management tools (Parent / Enterprise).
+              ..._managementSection(),
               const Padding(padding: EdgeInsets.fromLTRB(20, 14, 20, 6),
                   child: Text('APPS', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700))),
               for (final a in apps) _appRow(a),
@@ -139,6 +144,31 @@ class _AvaSidebarState extends State<AvaSidebar> {
       ),
     );
   }
+
+  /// Parent/Enterprise tool group — empty for personal accounts.
+  List<Widget> _managementSection() {
+    final tools = toolsFor(widget.accountKind);
+    if (tools.isEmpty) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+        child: Text(headerFor(widget.accountKind),
+            style: const TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700)),
+      ),
+      for (final t in tools) _toolRow(t),
+    ];
+  }
+
+  Widget _toolRow(AdminTool t) => ListTile(
+        dense: true,
+        leading: Container(width: 30, height: 30,
+            decoration: BoxDecoration(color: t.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(9)),
+            child: Icon(t.icon, color: t.color, size: 16)),
+        title: Text(t.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        subtitle: Text(t.tagline, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AvaColors.sub, fontSize: 11.5)),
+        onTap: () => widget.onSelect(t.key),
+      );
 
   Widget _appRow(AppDef a) => ListTile(
         dense: true,

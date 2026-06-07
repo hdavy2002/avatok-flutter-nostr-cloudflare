@@ -13,6 +13,7 @@ import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
 import '../../core/theme.dart';
 import '../../core/onboarding_store.dart';
+import '../../core/admin_tools.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../nostr/nip17.dart';
@@ -63,6 +64,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Map<String, String> _drafts = {};
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Set<String> _enabledApps = {};
+  AccountKind _accountKind = AccountKind.personal;
 
   // Chat-list filter chips: 'all' | 'fav' | 'unread' | 'groups' | 'c:<keyword>'.
   String _filter = 'all';
@@ -143,12 +145,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final status = await _statusStore.load();
     final drafts = await DraftStore().load();
     final enabled = await OnboardingStore().enabledApps();
+    final kind = await AccountKindStore().load();
     final customFilters = await _filterStore.load();
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
         _lastRead = lastRead; _flags = flags; _statusCount = status.length; _drafts = drafts;
-        _enabledApps = enabled; _customFilters = customFilters;
+        _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
       });
     }
     // Sync the phone address book to our backend (per-user storage, reused by
@@ -360,6 +363,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       backgroundColor: Colors.white,
       drawer: AvaSidebar(
         enabledApps: _enabledApps,
+        accountKind: _accountKind,
         name: (_clerkName?.isNotEmpty ?? false) ? _clerkName! : (_id?.shortNpub ?? 'Account'),
         seed: _id?.npub ?? 'avatok',
         current: 'avatok',

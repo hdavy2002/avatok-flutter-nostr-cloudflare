@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../auth/clerk_client.dart';
+import '../../core/admin_tools.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
@@ -23,6 +24,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _revealKey = false;
 
   bool _backingUp = false;
+
+  final _kindStore = AccountKindStore();
+  AccountKind _kind = AccountKind.personal;
+
+  @override
+  void initState() {
+    super.initState();
+    _kindStore.load().then((k) { if (mounted) setState(() => _kind = k); });
+  }
+
+  Future<void> _setKind(AccountKind k) async {
+    await _kindStore.set(k);
+    if (mounted) setState(() => _kind = k);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account type updated — reopen the sidebar to see its tools')));
+    }
+  }
 
   void _backup() {
     showDialog(
@@ -133,6 +152,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Settings'),
       ),
       body: ListView(padding: const EdgeInsets.all(20), children: [
+        _section('Account type (preview)'),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Switch product to preview its sidebar tools. Temporary — '
+                'real registration will set this later.',
+                style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+            const SizedBox(height: 10),
+            SegmentedButton<AccountKind>(
+              segments: const [
+                ButtonSegment(value: AccountKind.personal, label: Text('Personal')),
+                ButtonSegment(value: AccountKind.parent, label: Text('Parent')),
+                ButtonSegment(value: AccountKind.enterprise, label: Text('Enterprise')),
+              ],
+              selected: {_kind},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => _setKind(s.first),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 20),
         _section('Backup'),
         _tile(Icons.cloud_upload_outlined, 'Back up account',
             'Email yourself a download of your account (media excluded)', _backup),

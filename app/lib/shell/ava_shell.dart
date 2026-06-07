@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../auth/clerk_client.dart';
+import '../core/admin_tools.dart';
 import '../core/apps.dart';
 import '../core/onboarding_store.dart';
 import '../core/theme.dart';
@@ -26,8 +27,10 @@ class _AvaShellState extends State<AvaShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _onb = OnboardingStore();
   final _idStore = IdentityStore();
+  final _kindStore = AccountKindStore();
 
   Set<String> _enabled = {};
+  AccountKind _kind = AccountKind.personal;
   Identity? _id;
   String _current = 'explore';
 
@@ -40,7 +43,8 @@ class _AvaShellState extends State<AvaShell> {
   Future<void> _load() async {
     final apps = await _onb.enabledApps();
     final id = await _idStore.load();
-    if (mounted) setState(() { _enabled = apps; _id = id; });
+    final kind = await _kindStore.load();
+    if (mounted) setState(() { _enabled = apps; _id = id; _kind = kind; });
   }
 
   void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
@@ -63,7 +67,9 @@ class _AvaShellState extends State<AvaShell> {
         setState(() => _current = 'explore');
         return;
       case 'settings':
-        _push(SettingsScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id));
+        // Reload on return — the preview switcher may have changed the account kind.
+        _push(SettingsScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id))
+            .then((_) => _load());
         return;
       case 'avatok':
         _push(ChatListScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, onSwitchApp: _switchFromChild));
@@ -87,12 +93,18 @@ class _AvaShellState extends State<AvaShell> {
         _push(ComingSoon(title: dest[0].toUpperCase() + dest.substring(1), subtitle: 'Coming soon', icon: Icons.bolt, color: AvaColors.brand));
         return;
       default:
+        // Parent/Enterprise management tools (dummy → coming soon for now).
+        final tool = adminToolByKey(dest);
+        if (tool != null) {
+          _push(ComingSoon(title: tool.name, subtitle: tool.tagline, icon: tool.icon, color: tool.color));
+          return;
+        }
         final a = appByKey(dest);
         _push(ComingSoon(title: a.name, subtitle: a.tagline, icon: a.icon, color: a.color));
     }
   }
 
-  void _push(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
+  Future<void> _push(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +113,7 @@ class _AvaShellState extends State<AvaShell> {
       drawerEnableOpenDragGesture: true,
       drawer: AvaSidebar(
         enabledApps: _enabled,
+        accountKind: _kind,
         name: _id?.shortNpub ?? 'Account',
         seed: _id?.npub ?? 'avatok',
         current: _current,
