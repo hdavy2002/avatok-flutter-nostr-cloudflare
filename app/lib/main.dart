@@ -9,6 +9,7 @@ import 'core/api_auth.dart';
 import 'core/onboarding_store.dart';
 import 'core/prefs_sync.dart';
 import 'core/theme.dart';
+import 'firebase_options.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
@@ -20,13 +21,21 @@ import 'shell/ava_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Product analytics + error tracking (best-effort) — init FIRST so we can
+  // capture a Firebase init failure instead of silently swallowing it.
+  await Analytics.init();
+  // Initialize Firebase from EXPLICIT options (not the google-services resource
+  // lookup, which was failing in CI and broke phone OTP with core/no-app).
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e, st) {
+    Analytics.captureException(e, st, screen: 'startup_firebase_init');
+  }
+  // Push is separate: a messaging failure must not block the app.
+  try {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
     await PushService.init();
   } catch (_) {/* push unavailable; app still works */}
-  // Product analytics + error tracking (best-effort).
-  await Analytics.init();
   // Route every uncaught error to PostHog as a $exception so crashes are queryable.
   final priorOnError = FlutterError.onError;
   FlutterError.onError = (details) {
