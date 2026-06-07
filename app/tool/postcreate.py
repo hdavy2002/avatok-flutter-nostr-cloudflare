@@ -7,8 +7,11 @@ Run AFTER `flutter create --platforms=android .` in CI. Idempotent.
 - Forces compileSdk 35 on plugin subprojects (flutter_webrtc pins a lower one)
 """
 import re
+import shutil
 import sys
 from pathlib import Path
+
+APP_LABEL = "AvaTOK"  # home-screen name
 
 APP = Path(__file__).resolve().parents[1]  # app/
 PERMS = [
@@ -49,10 +52,33 @@ def patch_manifest() -> None:
     if lines:
         block = "\n".join(lines) + "\n"
         text = re.sub(r"(<manifest[^>]*>)", r"\1\n" + block, text, count=1)
-        man.write_text(text)
         print(f"manifest: added {len(lines)} permission(s)")
     else:
         print("manifest: permissions already present")
+    # Home-screen app name.
+    new = re.sub(r'android:label="[^"]*"', f'android:label="{APP_LABEL}"', text, count=1)
+    if new != text:
+        text = new
+        print(f'manifest: android:label="{APP_LABEL}"')
+    # Use the round icon variant where the launcher supports it.
+    if "android:roundIcon" not in text:
+        text = re.sub(r'(android:icon="@mipmap/ic_launcher")',
+                      r'\1\n        android:roundIcon="@mipmap/ic_launcher_round"', text, count=1)
+        print("manifest: android:roundIcon set")
+    man.write_text(text)
+
+
+def patch_launcher_icon() -> None:
+    """Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/
+    into the freshly-generated android res tree (flutter create ships a default
+    icon each run, so we overlay ours every build)."""
+    src = APP / "android-res"
+    dest = APP / "android/app/src/main/res"
+    if not src.exists():
+        print(f"!! android-res not found at {src}")
+        return
+    shutil.copytree(src, dest, dirs_exist_ok=True)
+    print("launcher icon: AvaTOK mipmaps + adaptive icon installed")
 
 
 def patch_sdks() -> None:
@@ -208,6 +234,7 @@ subprojects {{
 
 if __name__ == "__main__":
     patch_manifest()
+    patch_launcher_icon()
     patch_sdks()
     patch_root_compile_sdk()
     patch_firebase()
