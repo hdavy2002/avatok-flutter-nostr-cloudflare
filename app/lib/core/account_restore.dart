@@ -5,6 +5,7 @@ import 'api_auth.dart';
 import 'config.dart';
 import 'key_backup.dart';
 import 'onboarding_store.dart';
+import 'prefs_sync.dart';
 import 'profile_store.dart';
 import '../identity/identity.dart';
 import '../identity/nostr_keys.dart';
@@ -155,6 +156,9 @@ class AccountRestore {
     if (accountKind != null) {
       await AccountKindStore().set(AccountKindX.fromWire(accountKind));
     }
+    // Pull the rest of the user's prefs (enabled apps, filters, stars, flags…)
+    // so the device is fully set up before we show the dashboard.
+    await PrefsSync.pull();
     await OnboardingStore().setDone();
   }
 }

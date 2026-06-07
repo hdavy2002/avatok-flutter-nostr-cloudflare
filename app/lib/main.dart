@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import 'auth/clerk_client.dart';
 import 'core/account_restore.dart';
+import 'core/analytics.dart';
 import 'core/api_auth.dart';
 import 'core/onboarding_store.dart';
+import 'core/prefs_sync.dart';
 import 'core/theme.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
@@ -23,6 +25,18 @@ void main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
     await PushService.init();
   } catch (_) {/* push unavailable; app still works */}
+  // Product analytics + error tracking (best-effort).
+  await Analytics.init();
+  // Route every uncaught error to PostHog as a $exception so crashes are queryable.
+  final priorOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    priorOnError?.call(details);
+    Analytics.captureException(details.exception, details.stack);
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    Analytics.captureException(error, stack);
+    return false; // let the platform continue its default handling too
+  };
   runApp(const AvaTalkApp());
 }
 
@@ -33,6 +47,7 @@ class AvaTalkApp extends StatelessWidget {
     return MaterialApp(
       title: 'AvaTOK',
       navigatorKey: navigatorKey,
+      navigatorObservers: [Analytics.observer], // auto $screen on every route
       debugShowCheckedModeBanner: false,
       theme: AvaTheme.light,
       // Bump all text up ~18% (on top of the user's system setting) so the UI
@@ -58,7 +73,7 @@ class RootFlow extends StatefulWidget {
   State<RootFlow> createState() => _RootFlowState();
 }
 
-class _RootFlowState extends State<RootFlow> {
+class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
   final _clerk = ClerkClient();
   final _onb = OnboardingStore();
   final _idStore = IdentityStore();
@@ -68,10 +83,26 @@ class _RootFlowState extends State<RootFlow> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Dual auth: every signed API call carries NIP-98 (key ownership) + a Clerk
     // session JWT (verified account). The Worker requires both on mutations.
     ApiAuth.clerkBearer = _clerk.sessionToken;
     _boot();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back up the user's prefs to the cross-device vault whenever the app goes
+    // to the background — captures any settings/app-toggle/filter changes.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (ApiAuth.identity != null) PrefsSync.push();
+    }
   }
 
   Future<void> _boot() async {

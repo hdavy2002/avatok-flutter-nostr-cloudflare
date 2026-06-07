@@ -78,6 +78,17 @@ const String kBrainBase = 'https://$kSignalingHost/api/brain';
 // ── Platform + agentic API bases (v5.2 Phases 1-8) ──────────────────────────
 const String kApiBase = 'https://$kSignalingHost/api';
 const String kIdBase = '$kApiBase/id';            // AvaID verification (Phase 1)
+
+// ── Onboarding verification (age/gender + phone OTP + email OTP) ─────────────
+// Phone OTP is handled client-side by Firebase Auth; these are the email-OTP
+// + phone-confirm endpoints the Worker must expose (email sent via Brevo).
+const String kEmailOtpStartUrl = '$kIdBase/email/start';   // POST {email}
+const String kEmailOtpVerifyUrl = '$kIdBase/email/verify'; // POST {email, code}
+const String kPhoneConfirmUrl = '$kIdBase/phone/confirm';  // POST {phone}
+// Future: video / liveness verification (events piped now; endpoints later).
+const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {session_id}
+const String kLivenessResultUrl = '$kIdBase/liveness/result'; // POST {session_id}
+
 const String kWalletBase = '$kApiBase/wallet';    // AvaWallet (Phase 2)
 const String kCalendarBase = '$kApiBase/calendar';// AvaCalendar (Phase 3)
 const String kPayoutBase = '$kApiBase/payout';    // AvaPayout (Phase 4)

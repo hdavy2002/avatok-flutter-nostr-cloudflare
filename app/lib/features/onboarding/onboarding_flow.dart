@@ -6,13 +6,16 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
+import '../../core/analytics.dart';
 import '../../core/apps.dart';
 import '../../core/key_backup.dart';
 import '../../core/onboarding_store.dart';
+import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../avatok/contacts.dart';
+import 'verify_identity_step.dart';
 
 /// The sign-up flow shown after Clerk auth on a fresh account. Starts by asking
 /// what kind of account this is (Single / Parent / Enterprise) — that choice
@@ -25,8 +28,15 @@ class OnboardingFlow extends StatefulWidget {
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> {
-  static const _steps = 7;
+  static const _steps = 8;
+  static const _stepNames = [
+    'account_kind', 'notifications', 'terms', 'keys', 'profile', 'verify_identity', 'contacts', 'apps'
+  ];
   int _step = 0;
+
+  // ---- verification step (age / gender / phone / email) ----
+  String? _ageGroup;
+  String? _gender;
 
   final _idStore = IdentityStore();
   final _onb = OnboardingStore();
@@ -72,6 +82,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     var id = await _idStore.load();
     id ??= await _idStore.createAndStore();
     if (mounted) setState(() => _id = id);
+    // Attach this person's whole onboarding journey to their npub.
+    Analytics.identify(id.npub);
+    Analytics.capture('onboarding_started', const {});
+    Analytics.capture('onboarding_step_viewed', {'step_index': 0, 'step_name': _stepNames[0]});
   }
 
   void _onHandleChanged(String v) {
@@ -124,17 +138,34 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   void _next() {
+    Analytics.capture('onboarding_step_completed', {'step_index': _step, 'step_name': _stepNames[_step]});
     if (_step < _steps - 1) {
       setState(() => _step++);
+      Analytics.capture('onboarding_step_viewed', {'step_index': _step, 'step_name': _stepNames[_step]});
     } else {
       _finish();
     }
   }
 
   Future<void> _finish() async {
-    await _kindStore.set(_selectedKind ?? AccountKind.personal);
+    final kind = _selectedKind ?? AccountKind.personal;
+    await _kindStore.set(kind);
     await _onb.setEnabledApps(_enabled);
     await _onb.setDone();
+    PrefsSync.push(); // back up the new user's prefs to the cross-device vault
+    final id = _id;
+    if (id != null) {
+      // Person properties so every chart can break down by account type, age, gender.
+      Analytics.identify(id.npub, properties: {
+        'account_kind': kind.wire,
+        if (_ageGroup != null) 'age_group': _ageGroup!,
+        if (_gender != null) 'gender': _gender!,
+      });
+    }
+    Analytics.capture('onboarding_completed', {
+      'account_kind': kind.wire,
+      'apps_enabled': _enabled.toList(),
+    });
     widget.onComplete();
   }
 
@@ -176,10 +207,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 2: return _terms();
       case 3: return _keys();
       case 4: return _profileStep();
-      case 5: return _contacts();
+      case 5: return _verifyStep();
+      case 6: return _contacts();
       default: return _appsSetup();
     }
   }
+
+  // ---- Step 6: verify identity (age / gender / phone OTP / email OTP) ----
+  Widget _verifyStep() => VerifyIdentityStep(
+        onComplete: (data) {
+          _ageGroup = data.ageGroup;
+          _gender = data.gender;
+          if (data.phone.isNotEmpty) _profileStore.setPhone(data.phone);
+          _next();
+        },
+      );
 
   // ---- Step 1: account type — required, drives the sidebar tools ----
   Widget _accountType() {
@@ -247,7 +289,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }) {
     final selected = _selectedKind == kind;
     return GestureDetector(
-      onTap: () => setState(() => _selectedKind = kind),
+      onTap: () {
+        setState(() => _selectedKind = kind);
+        Analytics.capture('onboarding_account_kind_selected', {'account_kind': kind.wire});
+      },
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
