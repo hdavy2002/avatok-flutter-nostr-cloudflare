@@ -22,6 +22,7 @@ import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 import '../../core/group_store.dart';
+import '../../core/message_store.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../nostr/ava_dm.dart';
@@ -83,6 +84,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _sfx = AudioPlayer();
   final _recorder = AudioRecorder();
   final _idStore = IdentityStore();
+  final _msgStore = MessageStore();
+  Timer? _persistTimer;
   String? _myNpub;
   String? _myName;
   int _seq = 0;
@@ -181,6 +184,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _convKey = '1:$peerHex';
     _markRead();
     _loadChatExtras();
+    _loadCachedMessages();
   }
 
   Future<void> _loadChatExtras() async {
@@ -223,6 +227,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _convKey = 'g:${g.id}';
     _markRead();
     _loadChatExtras();
+    _loadCachedMessages();
   }
 
   void _onPresence(Map<String, dynamic> e) {
@@ -299,6 +304,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     });
     _jump();
     _markRead();
+    _schedulePersist();
   }
 
   String _shortPub(String hex) => hex.length > 8 ? '${hex.substring(0, 6)}…' : hex;
@@ -346,11 +352,79 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _jump();
     if (!m.mine) _presence?.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     _markRead();
+    _schedulePersist();
   }
 
   void _applyEdit(String target, String body) {
     final i = _msgs.indexWhere((x) => x.evId == target);
-    if (i >= 0 && mounted) setState(() { _msgs[i].text = body; _msgs[i].edited = true; });
+    if (i >= 0 && mounted) { setState(() { _msgs[i].text = body; _msgs[i].edited = true; }); _schedulePersist(); }
+  }
+
+  // ---- local message persistence ----
+  // The relay doesn't re-deliver your OWN sent DMs on resubscribe, so cache the
+  // thread locally and reload it on open. (Media messages aren't cached.)
+  Future<void> _loadCachedMessages() async {
+    final key = _convKey;
+    if (key == null) return;
+    final cached = await _msgStore.load(key);
+    if (cached.isEmpty || !mounted) return;
+    final loaded = <_Msg>[];
+    for (final j in cached) {
+      final ev = j['evId'] as String?;
+      if (ev != null) {
+        if (_seenEv.contains(ev)) continue;
+        _seenEv.add(ev);
+      }
+      final ts = (j['ts'] as num?)?.toInt() ?? 0;
+      loaded.add(_Msg(
+        _seq++, j['me'] == true, (j['text'] ?? '').toString(),
+        _fmtTime(ts == 0 ? DateTime.now().millisecondsSinceEpoch ~/ 1000 : ts),
+        ts: ts, evId: ev,
+        special: j['special'] as String?,
+        extra: (j['extra'] as Map?)?.cast<String, dynamic>(),
+        replyTo: (j['replyTo'] as Map?)?.cast<String, dynamic>(),
+        edited: j['edited'] == true,
+        forwarded: j['forwarded'] == true,
+        expireAt: (j['expireAt'] as num?)?.toInt(),
+        senderLabel: j['senderLabel'] as String?,
+        reaction: j['reaction'] as String?,
+        starred: j['starred'] == true,
+      ));
+    }
+    if (loaded.isEmpty || !mounted) return;
+    setState(() {
+      _msgs.addAll(loaded);
+      _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+    });
+    _jump();
+  }
+
+  void _schedulePersist() {
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(milliseconds: 400), _persistNow);
+  }
+
+  Future<void> _persistNow() async {
+    final key = _convKey;
+    if (key == null) return;
+    final out = <Map<String, dynamic>>[];
+    for (final m in _msgs) {
+      if (m.media != null) continue; // media bytes/refs not cached
+      out.add({
+        'me': m.me, 'text': m.text, 'ts': m.ts,
+        if (m.evId != null) 'evId': m.evId,
+        if (m.special != null) 'special': m.special,
+        if (m.extra != null) 'extra': m.extra,
+        if (m.replyTo != null) 'replyTo': m.replyTo,
+        if (m.edited) 'edited': true,
+        if (m.forwarded) 'forwarded': true,
+        if (m.expireAt != null) 'expireAt': m.expireAt,
+        if (m.senderLabel != null) 'senderLabel': m.senderLabel,
+        if (m.reaction != null) 'reaction': m.reaction,
+        if (m.starred) 'starred': true,
+      });
+    }
+    await _msgStore.save(key, out);
   }
 
   String _fmtTime(int epochSecs) {
@@ -375,6 +449,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _myTypingOff?.cancel();
     _onlineClear?.cancel();
     _pruneTimer?.cancel();
+    _persistTimer?.cancel();
+    _persistNow(); // flush any pending message-cache write on exit
     _nostr?.dispose();
     super.dispose();
   }
@@ -395,6 +471,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _dm!.send(jsonEncode({'t': 'edit', 'target': target, 'body': t}));
       }
       setState(() { m.text = t; m.edited = true; _editing = null; _ctrl.clear(); _hasText = false; });
+      _schedulePersist();
       return;
     }
 
@@ -418,6 +495,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       });
       _jump();
       if (_convKey != null) DraftStore().set(_convKey!, '');
+      _schedulePersist();
       PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK');
       return;
     }
@@ -433,6 +511,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       });
       _jump();
       if (_convKey != null) DraftStore().set(_convKey!, '');
+      _schedulePersist();
       if (_peerNpub != null) PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK');
       return;
     }
@@ -441,6 +520,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _ctrl.clear(); _hasText = false; _replyTo = null;
     });
     _jump();
+    _schedulePersist();
   }
 
   void _jump() => WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -517,6 +597,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     setState(() => _msgs.add(_Msg(_seq++, true, caption, _fmtTime(now),
         ts: now, evId: id, special: type, extra: data)));
     _jump();
+    _schedulePersist();
     _notifyRecipients();
   }
 
@@ -801,7 +882,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Widget _action(BuildContext ctx, IconData icon, String label, VoidCallback onTap, {bool danger = false}) =>
       ListTile(
-        contentPadding: EdgeInsets.zero,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
         leading: Icon(icon, color: danger ? AvaColors.danger : AvaColors.ink),
         title: Text(label,
             style: TextStyle(fontWeight: FontWeight.w600, color: danger ? AvaColors.danger : AvaColors.ink)),
@@ -1056,7 +1137,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Container(
               height: 56,
               color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.only(left: 4, right: 10),
               child: _searchMode ? _searchBar() : Row(children: [
                 IconButton(
                   icon: const Icon(Icons.chevron_left, size: 28, color: AvaColors.ink),
@@ -1117,7 +1198,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ),
             ),
             if (_mentionMatches.isNotEmpty) _mentionBar(),
-            _inputBar(),
+            SafeArea(top: false, child: _inputBar()),
           ],
         ),
       ),
@@ -1128,7 +1209,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_recording) {
       return Container(
         color: Colors.white,
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 20),
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 10),
         child: Row(children: [
           const Icon(Icons.fiber_manual_record, color: AvaColors.danger, size: 16),
           const SizedBox(width: 8),
@@ -1147,7 +1228,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_replyTo != null || _editing != null) _replyBanner(),
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 12, 16),
+          padding: const EdgeInsets.fromLTRB(8, 8, 12, 10),
           child: Row(children: [
         IconButton(icon: const Icon(Icons.add_circle_outline, color: AvaColors.brand, size: 28), onPressed: _attach),
         Expanded(

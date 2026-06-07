@@ -6,6 +6,7 @@ import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../avatok/contacts.dart';
+import 'phone_verify_card.dart';
 
 /// Set your public display name + @handle. Saving publishes you to the AvaTok
 /// directory (opt-in discovery) and makes your @handle resolvable.
@@ -96,6 +97,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           title: const Text('Share last seen / online', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           subtitle: const Text('Let contacts see when you are online', style: TextStyle(color: AvaColors.sub, fontSize: 12)),
         ),
+        const SizedBox(height: 16),
+        const PhoneVerifyCard(),
         const SizedBox(height: 8),
         if (id != null) Container(
           padding: const EdgeInsets.all(14),
