@@ -2,6 +2,37 @@
 
 ---
 
+## Graphiti memory — CANONICAL group_id (READ THIS FIRST)
+
+<!-- pre-push hook fallback marker — DO NOT REMOVE. The git pre-push hook greps
+     CLAUDE.md for a quoted group id when ~/.graphiti-projects.tsv lacks an entry,
+     so the auto-logged push episode lands in the right group. Keep the line below.
+     group_id: "proj_avaflutterapp" -->
+
+**This project's Graphiti group_id is `proj_avaflutterapp`. Always pass it explicitly on EVERY graphiti-memory call — both reads and writes. No exceptions.**
+
+- Writes: `add_memory(..., group_id="proj_avaflutterapp")`
+- Reads/searches: `search_memory_facts`, `search_nodes`, `get_episodes` → `group_ids: ["proj_avaflutterapp"]`
+
+Rules:
+
+- NEVER omit `group_id`. If you omit it, the Graphiti server falls back to its CLI
+  default or **auto-generates a brand-new random group_id**, which silently scatters
+  this project's data into a new empty partition. That is the root cause of "my
+  graphiti is empty / new project name every session." Treat a missing group_id as a bug.
+- NEVER use `personal` (or any other name) for this project. The account-wide preference
+  "use group_id 'personal' if none specified" is OVERRIDDEN here — this project always
+  uses `proj_avaflutterapp`.
+- All existing project history (AvaTalk/AvaTok phases, backend, frontend, go-live items)
+  already lives under `proj_avaflutterapp`. Do not create variant names like
+  `avatok`, `avatok-2-flutter`, `avaflutterapp`, etc.
+
+At the start of a task, pull context with `search_nodes`/`search_memory_facts` scoped to
+`group_ids: ["proj_avaflutterapp"]`. When the user shares durable facts/decisions, save
+them with `add_memory(group_id="proj_avaflutterapp")`.
+
+---
+
 ## Code search (graphify-avatok-2-flutter)
 
 This project has a graphify knowledge graph at `graphify-out/graph.json`. The
