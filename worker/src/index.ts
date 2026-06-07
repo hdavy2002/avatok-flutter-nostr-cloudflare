@@ -54,6 +54,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);
+      if (p === "/api/vault" && req.method === "POST") return await api.vaultPut(req, env);
+      if (p === "/api/vault" && req.method === "GET") return await api.vaultGet(req, env);
       if (p === "/api/resolve" && req.method === "GET") return await cached(req, ctx, () => api.resolve(req, env), 60);
       if (p === "/api/search" && req.method === "GET") return await cached(req, ctx, () => api.search(req, env), 60);
       if (p === "/api/handle/check" && req.method === "GET") return await cached(req, ctx, () => api.handleCheck(req, env), 10);

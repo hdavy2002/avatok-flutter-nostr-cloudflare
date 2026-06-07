@@ -139,6 +139,7 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     "DELETE FROM agent_personas WHERE npub=?1",
     "DELETE FROM agent_conversations WHERE npub=?1",
     "DELETE FROM agent_inbox WHERE npub=?1",
+    "DELETE FROM user_vault WHERE npub=?1",
     "DELETE FROM clerk_nostr_link WHERE npub=?1",
     "DELETE FROM account_status WHERE npub=?1",
   ];

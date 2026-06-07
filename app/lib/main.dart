@@ -10,6 +10,7 @@ import 'core/theme.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
+import 'features/avatok/contacts.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
 import 'push/push_service.dart';
@@ -100,7 +101,9 @@ class _RootFlowState extends State<RootFlow> {
     Identity? local;
     try { local = await _idStore.load(); } catch (_) {}
     if (local != null) {
-      _to(await _onb.isDone() ? _Stage.shell : _Stage.onboarding);
+      final done = await _onb.isDone();
+      if (done) ContactsStore().pullAndMerge(); // sync contacts from the vault
+      _to(done ? _Stage.shell : _Stage.onboarding);
       return;
     }
     // Fresh install / new device → ask the server who this account is.
@@ -109,6 +112,7 @@ class _RootFlowState extends State<RootFlow> {
     catch (_) { st = const RestoreState(RestoreOutcome.unavailable); }
     switch (st.outcome) {
       case RestoreOutcome.restored:
+        ContactsStore().pullAndMerge(); // bring the user's contacts to this device
         _to(_Stage.shell);
         return;
       case RestoreOutcome.newUser:

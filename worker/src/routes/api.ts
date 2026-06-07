@@ -204,6 +204,40 @@ export async function me(req: Request, env: Env): Promise<Response> {
   });
 }
 
+// ---- encrypted per-user vault: /api/vault (auth) ----
+// Stores opaque, client-encrypted blobs keyed by (npub, kind) — e.g. the user's
+// contact list — so they sync across devices. The server never sees plaintext:
+// the blob is encrypted with a key derived from the user's Nostr private key,
+// which only the user's devices hold. Wiped on account deletion.
+const VAULT_KINDS = new Set(["contacts", "settings", "apps"]);
+const VAULT_MAX = 600_000; // ~0.6 MB ciphertext cap per blob
+
+export async function vaultPut(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const b = (await req.json().catch(() => ({}))) as { kind?: string; blob?: string };
+  const kind = (b.kind || "").trim().toLowerCase();
+  const blob = typeof b.blob === "string" ? b.blob : "";
+  if (!VAULT_KINDS.has(kind)) return json({ error: "bad kind" }, 400);
+  if (!blob || blob.length > VAULT_MAX) return json({ error: "blob missing or too large" }, 400);
+  await metaSession(env).prepare(
+    `INSERT INTO user_vault (npub, kind, blob, updated_at) VALUES (?1,?2,?3,?4)
+     ON CONFLICT(npub, kind) DO UPDATE SET blob=?3, updated_at=?4`,
+  ).bind(auth.npub, kind, blob, Date.now()).run();
+  return json({ ok: true });
+}
+
+export async function vaultGet(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const kind = (new URL(req.url).searchParams.get("kind") || "").trim().toLowerCase();
+  if (!VAULT_KINDS.has(kind)) return json({ error: "bad kind" }, 400);
+  const r = await metaSession(env).prepare(
+    "SELECT blob, updated_at FROM user_vault WHERE npub=?1 AND kind=?2",
+  ).bind(auth.npub, kind).first<{ blob: string; updated_at: number }>();
+  return json({ blob: r?.blob ?? null, updated_at: r?.updated_at ?? 0 });
+}
+
 function profOut(r: any) {
   return r ? { npub: r.npub, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url } : null;
 }

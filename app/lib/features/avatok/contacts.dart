@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
+import '../../core/vault.dart';
 
 /// A saved AvaTok contact (resolved to a Nostr npub).
 @immutable
@@ -56,6 +57,7 @@ class ContactsStore {
     cs.removeWhere((x) => x.npub == c.npub);
     cs.insert(0, c);
     await _save(cs);
+    _syncUp(cs); // push encrypted copy to the cross-device vault (best-effort)
     return cs;
   }
 
@@ -63,7 +65,51 @@ class ContactsStore {
     final cs = await load();
     cs.removeWhere((x) => x.npub == npub);
     await _save(cs);
+    _syncUp(cs);
     return cs;
+  }
+
+  /// Encrypt the contact list with the user's key and upload it so it follows
+  /// the user to any device. Best-effort; never throws.
+  Future<void> _syncUp(List<Contact> cs) async {
+    final id = ApiAuth.identity;
+    if (id == null) return;
+    try {
+      final blob = await Vault.encrypt(
+          jsonEncode(cs.map((c) => c.toJson()).toList()), id.privHex);
+      await Vault.put('contacts', blob);
+    } catch (_) {/* best-effort */}
+  }
+
+  /// Pull the encrypted contact list from the vault (on login / new device) and
+  /// merge it with anything saved locally (union by npub). On any failure the
+  /// local list is left untouched. Returns the resulting list.
+  Future<List<Contact>> pullAndMerge() async {
+    final id = ApiAuth.identity;
+    final local = await load();
+    if (id == null) return local;
+    final blob = await Vault.get('contacts');
+    if (blob == null) return local;
+    final plain = await Vault.decrypt(blob, id.privHex);
+    if (plain == null) return local;
+    List<Contact> remote;
+    try {
+      remote = (jsonDecode(plain) as List)
+          .cast<Map<String, dynamic>>()
+          .map(Contact.fromJson)
+          .toList();
+    } catch (_) {
+      return local;
+    }
+    final byNpub = <String, Contact>{for (final c in local) c.npub: c};
+    for (final c in remote) {
+      byNpub[c.npub] = c;
+    }
+    final merged = byNpub.values.where((c) => c.npub.isNotEmpty).toList();
+    await _save(merged);
+    // If the merge added anything the server didn't have, push the superset back.
+    if (merged.length != remote.length) _syncUp(merged);
+    return merged;
   }
 }
 

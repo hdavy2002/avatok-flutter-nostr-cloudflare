@@ -80,6 +80,18 @@ CREATE TABLE IF NOT EXISTS user_settings (
   updated_at    INTEGER NOT NULL
 );
 
+-- Encrypted per-user vault: opaque client-encrypted blobs keyed by (npub, kind),
+-- e.g. the contact list, so they sync across devices. The server never sees
+-- plaintext — the blob is encrypted with a key derived from the user's Nostr
+-- private key. Wiped on account deletion.
+CREATE TABLE IF NOT EXISTS user_vault (
+  npub        TEXT NOT NULL,
+  kind        TEXT NOT NULL,            -- 'contacts'|'settings'|'apps'
+  blob        TEXT NOT NULL,            -- client-encrypted (AES-GCM) ciphertext
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (npub, kind)
+);
+
 -- Push tokens — D1, not KV (Rulebook wins over stale spec §11.3). User-confirmed.
 CREATE TABLE IF NOT EXISTS push_tokens (
   npub        TEXT NOT NULL,
