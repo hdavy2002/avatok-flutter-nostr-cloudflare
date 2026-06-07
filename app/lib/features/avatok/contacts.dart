@@ -206,15 +206,20 @@ class Directory {
   /// endpoint is unreachable (e.g. not yet deployed), a well-formatted handle is
   /// soft-allowed — the database's UNIQUE constraint still rejects duplicates on
   /// save, so correctness never depends on the check succeeding.
-  static Future<({bool ok, String? message})> checkHandle(String handle) async {
+  static Future<({bool ok, String? message})> checkHandle(String handle, {String? npub}) async {
     final h = handle.trim().toLowerCase().replaceAll('@', '');
     if (h.isEmpty) return (ok: false, message: null);
     if (!isValidHandle(h)) {
       return (ok: false, message: '3–20 characters: letters, numbers or _, starting with a letter.');
     }
     try {
+      // Pass our own npub so a handle we already own reads as available (yours)
+      // rather than "taken" — fixes being blocked by your own handle on re-onboard.
+      final mine = (npub != null && npub.isNotEmpty)
+          ? '&npub=${Uri.encodeQueryComponent(npub)}'
+          : '';
       final r = await http
-          .get(Uri.parse('$kHandleCheckUrl?q=${Uri.encodeQueryComponent(h)}'))
+          .get(Uri.parse('$kHandleCheckUrl?q=${Uri.encodeQueryComponent(h)}$mine'))
           .timeout(const Duration(seconds: 6));
       if (r.statusCode != 200) return (ok: true, message: null); // soft-allow; server enforces on save
       final j = jsonDecode(r.body) as Map<String, dynamic>;

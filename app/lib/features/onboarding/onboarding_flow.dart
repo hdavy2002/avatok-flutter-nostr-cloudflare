@@ -93,7 +93,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     setState(() { _handleAvail = null; _handleMsg = null; _checkingHandle = v.trim().isNotEmpty; });
     if (v.trim().isEmpty) { setState(() => _checkingHandle = false); return; }
     _handleDebounce = Timer(const Duration(milliseconds: 400), () async {
-      final res = await Directory.checkHandle(_handleCtrl.text);
+      final res = await Directory.checkHandle(_handleCtrl.text, npub: _id?.npub);
       if (!mounted) return;
       setState(() { _checkingHandle = false; _handleAvail = res.ok; _handleMsg = res.message; });
     });

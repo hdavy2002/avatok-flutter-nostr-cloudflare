@@ -79,17 +79,31 @@ export function normalizeHandle(h: string): string {
 // GET /api/handle/check?q=<handle> — public. Reports whether a handle is validly
 // formatted and still free. (Reveals nothing /api/resolve doesn't already.)
 export async function handleCheck(req: Request, env: Env): Promise<Response> {
-  const handle = normalizeHandle(new URL(req.url).searchParams.get("q") || "");
+  const url = new URL(req.url);
+  const handle = normalizeHandle(url.searchParams.get("q") || "");
+  // Caller's own npub (optional) — lets us report a handle the caller ALREADY
+  // owns as available, instead of "taken", so they aren't blocked by their own
+  // handle when re-running onboarding. Advisory only; profileUpsert is the gate.
+  const npub = (url.searchParams.get("npub") || "").trim();
   if (!HANDLE_RE.test(handle)) {
     return json({ handle, valid: false, available: false, reason: "3–20 characters: letters, numbers or _, starting with a letter." });
   }
   const db = metaSession(env);
   const r = await db.prepare("SELECT npub FROM profiles WHERE handle=?1").bind(handle).first<{ npub: string }>();
   if (!r) return json({ handle, valid: true, available: true, reclaimable: false });
-  // Taken — but if the owning key is an ORPHANED pre-backup identity (no Clerk
-  // link, so the private key is lost), the account that proves it can reclaim it.
-  // Report available:true in that case so older clients (which only read
-  // `available`) let the user proceed; profileUpsert does the actual transfer.
+  // Already yours (same key) → keep it.
+  if (npub && r.npub === npub) return json({ handle, valid: true, available: true, reclaimable: false, mine: true });
+  // Owned by you on a different key (same Clerk account) → reclaimable.
+  if (npub) {
+    const callerClerk = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(npub).first<{ clerk_user_id: string }>();
+    const ownerClerk = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(r.npub).first<{ clerk_user_id: string }>();
+    if (callerClerk?.clerk_user_id && ownerClerk?.clerk_user_id === callerClerk.clerk_user_id) {
+      return json({ handle, valid: true, available: true, reclaimable: true, mine: true });
+    }
+    // Taken by someone else: orphaned (keyless, no Clerk link) handles are reclaimable.
+    return json({ handle, valid: true, available: !ownerClerk, reclaimable: !ownerClerk });
+  }
+  // No npub supplied (older client): orphaned handles are reclaimable.
   const link = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(r.npub).first<{ clerk_user_id: string }>();
   const reclaimable = !link;
   return json({ handle, valid: true, available: reclaimable, reclaimable });
