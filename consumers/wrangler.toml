@@ -180,6 +180,6 @@ FCM_PROJECT = "avatok-e19ef"
 MODERATION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 MODERATION_MODEL_TYPE = "vision"   # "vision" | "classifier" (swap to a cheap NSFW classifier for lowest cost at scale)
 TEXT_MODERATION_MODEL = "@cf/meta/llama-guard-3-8b"
-POSTHOG_HOST = "https://us.i.posthog.com"
+POSTHOG_HOST = "https://eu.i.posthog.com"
 BRAIN_EXTRACT_MODEL = "@cf/google/gemma-4-26b-a4b-it"       # MoE 26B/4B-active background extraction
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matches avatok-semantic (embeddings stay on bge)

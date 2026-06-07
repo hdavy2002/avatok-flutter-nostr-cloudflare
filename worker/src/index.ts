@@ -12,7 +12,7 @@ import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getIce } from "
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion } from "./routes/account";
-import { idSession, idResult, idStatus } from "./routes/id";
+import { idSession, idResult, idStatus, idEmailStart, idEmailVerify, idPhoneConfirm } from "./routes/id";
 import { walletTopup, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive } from "./routes/wallet";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents } from "./routes/calendar";
 import { payoutSetup, payoutAccounts, payoutRequest, payoutStatus, wiseWebhook } from "./routes/payout";
@@ -88,6 +88,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/id/session" && req.method === "POST") return await idSession(req, env);
       if (p === "/api/id/result" && req.method === "POST") return await idResult(req, env);
       if (p === "/api/id/status" && req.method === "GET") return await idStatus(req, env);
+      // Onboarding contact verification — phone (Firebase OTP) + email (server OTP).
+      if (p === "/api/id/email/start" && req.method === "POST") return await idEmailStart(req, env);
+      if (p === "/api/id/email/verify" && req.method === "POST") return await idEmailVerify(req, env);
+      if (p === "/api/id/phone/confirm" && req.method === "POST") return await idPhoneConfirm(req, env);
 
       // --- AvaWallet (Phase 2; balance authority = WalletDO) ---
       if (p === "/api/wallet/topup" && req.method === "POST") return await walletTopup(req, env);

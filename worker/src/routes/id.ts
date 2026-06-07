@@ -8,7 +8,7 @@
 // Dual auth on all (NIP-98 + Clerk). Rekognition is flag-gated (src/aws/rekognition
 // .ts): unset AWS creds → 503 "verification unavailable", everything else still works.
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, sha256Hex, normalizePhone } from "../util";
 import { authenticate, isErr, setVerifiedCache } from "../auth";
 import { metaDb, metaSession } from "../db/shard";
 import { createLivenessSession, getLivenessResults, rekognitionConfigured } from "../aws/rekognition";
@@ -137,4 +137,156 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
     tier: auth.tier,
     rekognition_configured: rekognitionConfigured(env),
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding contact verification: phone (Firebase OTP) + email (server OTP).
+// Phone OTP itself is done client-side by Firebase; /phone/confirm records that
+// the authenticated npub confirmed a number. Email OTP is fully server-issued:
+// /email/start mints a 6-digit code, stores only its hash in KV (10-min TTL),
+// and emails it via Q_EMAIL → Brevo; /email/verify checks it. All dual-auth.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OTP_TTL_S = 600;            // 10 minutes
+const OTP_MAX_VERIFY_ATTEMPTS = 5;
+const OTP_MAX_SENDS_PER_HOUR = 5;
+
+function sixDigitCode(): string {
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return String(100000 + (buf[0] % 900000));
+}
+
+function emailOtpHtml(code: string): string {
+  return `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px">
+    <h2 style="color:#0F1115;margin:0 0 8px">Verify your email</h2>
+    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in AvaTOK to finish setting up your account. It expires in 10 minutes.</p>
+    <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#08C4C4;text-align:center;padding:16px;background:#E2FCFC;border-radius:12px">${code}</div>
+    <p style="color:#9AA1AC;font-size:12px;margin:20px 0 0">If you didn't request this, you can safely ignore this email.</p>
+  </div>`;
+}
+
+// POST /api/id/email/start  { email }
+export async function idEmailStart(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+
+  const b = (await req.json().catch(() => ({}))) as { email?: string };
+  const email = String(b.email || "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "valid email required" }, 400);
+
+  // Rate-limit sends per identity (defends against spamming an inbox).
+  const sendKey = `otp:email:sends:${auth.npub}`;
+  const sends = Number((await env.TOKENS.get(sendKey)) || "0");
+  if (sends >= OTP_MAX_SENDS_PER_HOUR) {
+    track(env, auth.npub, "email_verification_failed", "avaid", { reason: "rate_limited" });
+    return json({ error: "too many requests — please wait a bit and try again" }, 429);
+  }
+
+  const code = sixDigitCode();
+  const exp = Date.now() + OTP_TTL_S * 1000;
+  const hash = await sha256Hex(`${auth.npub}:${email}:${code}`); // never store the code itself
+  await env.TOKENS.put(
+    `otp:email:${auth.npub}`,
+    JSON.stringify({ hash, email, exp, attempts: 0 }),
+    { expirationTtl: OTP_TTL_S },
+  );
+  await env.TOKENS.put(sendKey, String(sends + 1), { expirationTtl: 3600 });
+
+  try {
+    await env.Q_EMAIL.send({
+      to: email,
+      subject: "Your AvaTOK verification code",
+      html: emailOtpHtml(code),
+      from: "AvaTOK <noreply@avatok.ai>",
+    });
+  } catch {
+    metric(env, "email_otp_enqueue_error", [1]);
+    return json({ error: "could not send the email — please try again" }, 502);
+  }
+
+  track(env, auth.npub, "email_verification_sent", "avaid", {});
+  metric(env, "email_otp_sent", [1]);
+  return json({ ok: true });
+}
+
+// POST /api/id/email/verify  { email, code }
+export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+
+  const b = (await req.json().catch(() => ({}))) as { email?: string; code?: string };
+  const email = String(b.email || "").trim().toLowerCase();
+  const code = String(b.code || "").trim();
+  if (!email || !code) return json({ error: "email and code required" }, 400);
+
+  const key = `otp:email:${auth.npub}`;
+  const raw = await env.TOKENS.get(key);
+  if (!raw) return json({ error: "code expired — request a new one" }, 400);
+
+  let rec: { hash: string; email: string; exp: number; attempts: number };
+  try {
+    rec = JSON.parse(raw);
+  } catch {
+    await env.TOKENS.delete(key);
+    return json({ error: "code expired — request a new one" }, 400);
+  }
+  if (Date.now() > rec.exp) {
+    await env.TOKENS.delete(key);
+    return json({ error: "code expired — request a new one" }, 400);
+  }
+  if (rec.attempts >= OTP_MAX_VERIFY_ATTEMPTS) {
+    await env.TOKENS.delete(key);
+    return json({ error: "too many attempts — request a new code" }, 429);
+  }
+
+  const given = await sha256Hex(`${auth.npub}:${email}:${code}`);
+  if (given !== rec.hash || email !== rec.email) {
+    const ttl = Math.max(1, Math.ceil((rec.exp - Date.now()) / 1000));
+    await env.TOKENS.put(key, JSON.stringify({ ...rec, attempts: rec.attempts + 1 }), { expirationTtl: ttl });
+    track(env, auth.npub, "email_verification_failed", "avaid", { reason: "invalid_code", attempt: rec.attempts + 1 });
+    return json({ error: "incorrect or expired code" }, 400);
+  }
+
+  const now = Date.now();
+  const emailHash = await sha256Hex(email);
+  await metaDb(env).prepare(
+    `INSERT INTO contact_verification (npub, email_verified, email_hash, email_verified_at, updated_at)
+     VALUES (?1, 1, ?2, ?3, ?3)
+     ON CONFLICT(npub) DO UPDATE SET email_verified=1, email_hash=?2, email_verified_at=?3, updated_at=?3`,
+  ).bind(auth.npub, emailHash, now).run();
+  // Link the verified email to the directory profile too (same hashing as profileUpsert).
+  try {
+    await metaDb(env).prepare("UPDATE profiles SET email_hash=?2, updated_at=?3 WHERE npub=?1")
+      .bind(auth.npub, emailHash, now).run();
+  } catch { /* profile row may not exist yet; contact_verification is the source of truth */ }
+  await env.TOKENS.delete(key);
+
+  track(env, auth.npub, "email_verified", "avaid", {});
+  metric(env, "email_otp_verified", [1]);
+  return json({ ok: true, verified: true });
+}
+
+// POST /api/id/phone/confirm  { phone }
+// Records that this npub completed Firebase phone OTP. (Hardening option: also
+// accept a Firebase ID token here and verify it server-side before trusting it.)
+export async function idPhoneConfirm(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+
+  const b = (await req.json().catch(() => ({}))) as { phone?: string };
+  const phone = normalizePhone(String(b.phone || ""));
+  if (phone.replace(/\D/g, "").length < 8) return json({ error: "valid phone required" }, 400);
+
+  const now = Date.now();
+  const phoneHash = await sha256Hex(phone); // store hash only — never the raw number
+  await metaDb(env).prepare(
+    `INSERT INTO contact_verification (npub, phone_verified, phone_hash, phone_verified_at, updated_at)
+     VALUES (?1, 1, ?2, ?3, ?3)
+     ON CONFLICT(npub) DO UPDATE SET phone_verified=1, phone_hash=?2, phone_verified_at=?3, updated_at=?3`,
+  ).bind(auth.npub, phoneHash, now).run();
+
+  track(env, auth.npub, "phone_verification_completed", "avaid", {});
+  metric(env, "phone_confirmed", [1]);
+  return json({ ok: true, verified: true });
 }
