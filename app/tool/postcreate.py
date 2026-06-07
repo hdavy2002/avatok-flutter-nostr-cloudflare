@@ -173,10 +173,44 @@ def patch_desugaring() -> None:
     print("desugaring enabled (flutter_local_notifications)")
 
 
+def patch_kotlin_langver() -> None:
+    """posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin
+    2.x compiler rejects ('Language version 1.6 is no longer supported; use 2.0
+    or greater'). Force a supported version for that subproject so the app builds
+    without dropping analytics."""
+    root_kts = APP / "android/build.gradle.kts"
+    if not root_kts.exists():
+        return
+    t = root_kts.read_text()
+    marker = "AVATOK_KOTLIN_LANGVER"
+    if marker in t:
+        return
+    t += f'''
+// {marker}: some plugins (e.g. posthog_flutter) pin Kotlin languageVersion 1.6,
+// which the bundled Kotlin 2.x compiler rejects. Force a supported version on the
+// affected subproject(s).
+subprojects {{
+    if (name == "posthog_flutter") {{
+        afterEvaluate {{
+            tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {{
+                kotlinOptions {{
+                    languageVersion = "2.0"
+                    apiVersion = "2.0"
+                }}
+            }}
+        }}
+    }}
+}}
+'''
+    root_kts.write_text(t)
+    print("root build.gradle.kts: forced posthog_flutter Kotlin languageVersion 2.0")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_sdks()
     patch_root_compile_sdk()
     patch_firebase()
     patch_desugaring()
+    patch_kotlin_langver()
     print("postcreate: done")
