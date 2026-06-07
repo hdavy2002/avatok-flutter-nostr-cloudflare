@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/apps.dart';
 import '../../core/onboarding_store.dart';
+import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
+import '../avatok/contacts.dart';
 
 /// The 5-step sign-up flow shown after Clerk auth on a fresh account.
 class OnboardingFlow extends StatefulWidget {
@@ -16,11 +20,12 @@ class OnboardingFlow extends StatefulWidget {
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> {
-  static const _steps = 5;
+  static const _steps = 6;
   int _step = 0;
 
   final _idStore = IdentityStore();
   final _onb = OnboardingStore();
+  final _profileStore = ProfileStore();
   Identity? _id;
 
   bool _notifEnabled = false;
@@ -30,16 +35,70 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   bool _revealPriv = false;
   late Set<String> _enabled = kApps.where((a) => a.defaultOn).map((a) => a.key).toSet();
 
+  // ---- profile step (handle + display name) ----
+  final _handleCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  Timer? _handleDebounce;
+  // null = not yet checked; true/false = available or not. _handleMsg explains a false.
+  bool? _handleAvail;
+  bool _checkingHandle = false;
+  String? _handleMsg;
+  bool _savingProfile = false;
+
   @override
   void initState() {
     super.initState();
     _bootstrap();
   }
 
+  @override
+  void dispose() {
+    _handleDebounce?.cancel();
+    _handleCtrl.dispose();
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _bootstrap() async {
     var id = await _idStore.load();
     id ??= await _idStore.createAndStore();
     if (mounted) setState(() => _id = id);
+  }
+
+  void _onHandleChanged(String v) {
+    _handleDebounce?.cancel();
+    setState(() { _handleAvail = null; _handleMsg = null; _checkingHandle = v.trim().isNotEmpty; });
+    if (v.trim().isEmpty) { setState(() => _checkingHandle = false); return; }
+    _handleDebounce = Timer(const Duration(milliseconds: 400), () async {
+      final res = await Directory.checkHandle(_handleCtrl.text);
+      if (!mounted) return;
+      setState(() { _checkingHandle = false; _handleAvail = res.ok; _handleMsg = res.message; });
+    });
+  }
+
+  bool get _profileReady =>
+      _nameCtrl.text.trim().isNotEmpty && _handleAvail == true && !_checkingHandle && !_savingProfile;
+
+  Future<void> _saveProfileAndNext() async {
+    final id = _id;
+    if (id == null || !_profileReady) return;
+    setState(() => _savingProfile = true);
+    final handle = _handleCtrl.text.trim().toLowerCase().replaceAll('@', '');
+    final name = _nameCtrl.text.trim();
+    // Persist locally first (merge with any phone captured earlier).
+    final existing = await _profileStore.load();
+    await _profileStore.save(existing.copyWith(displayName: name, handle: handle));
+    // Publish to the directory so the handle + name are immediately searchable.
+    final r = await Directory.registerProfile(npub: id.npub, handle: handle, name: name);
+    if (!mounted) return;
+    setState(() => _savingProfile = false);
+    if (r.ok) { _next(); return; }
+    if (r.status == 409) {
+      setState(() { _handleAvail = false; _handleMsg = 'That handle was just taken — pick another'; });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save your handle — check your connection and try again')));
+    }
   }
 
   void _next() {
@@ -92,9 +151,117 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 0: return _notifications();
       case 1: return _terms();
       case 2: return _keys();
-      case 3: return _contacts();
+      case 3: return _profileStep();
+      case 4: return _contacts();
       default: return _appsSetup();
     }
+  }
+
+  // ---- Step 4: profile (handle + display name) — required ----
+  Widget _profileStep() {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _iconTileSmall(Icons.alternate_email, AvaColors.brand50, AvaColors.brand),
+                const SizedBox(height: 16),
+                Text('Claim your handle', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 30)),
+                const SizedBox(height: 6),
+                const Text('Your @handle is how people find and tag you. Names repeat — a handle is uniquely yours.',
+                    style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+                const SizedBox(height: 24),
+                const Text('Display name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 8),
+                _field(
+                  controller: _nameCtrl,
+                  hint: 'e.g. Jordan Rivers',
+                  icon: Icons.person_outline,
+                  onChanged: (_) => setState(() {}),
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 18),
+                const Text('Handle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 8),
+                _field(
+                  controller: _handleCtrl,
+                  hint: 'yourname',
+                  icon: Icons.alternate_email,
+                  onChanged: _onHandleChanged,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+                    LengthLimitingTextInputFormatter(20),
+                  ],
+                  trailing: _handleTrailing(),
+                ),
+                const SizedBox(height: 8),
+                if (_handleMsg != null)
+                  Text(_handleMsg!, style: TextStyle(
+                      color: _handleAvail == true ? AvaColors.success : AvaColors.danger, fontSize: 12.5))
+                else if (_handleAvail == true)
+                  Text('@${_handleCtrl.text.trim().toLowerCase()} is available',
+                      style: const TextStyle(color: AvaColors.success, fontSize: 12.5))
+                else
+                  const Text('3–20 characters: letters, numbers or _, starting with a letter.',
+                      style: TextStyle(color: AvaColors.sub, fontSize: 12.5)),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          child: _primary(
+            _savingProfile ? 'Saving…' : 'Continue',
+            _profileReady ? _saveProfileAndNext : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget? _handleTrailing() {
+    if (_checkingHandle) {
+      return const SizedBox(width: 18, height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2, color: AvaColors.sub));
+    }
+    if (_handleAvail == true) return const Icon(Icons.check_circle, size: 20, color: AvaColors.success);
+    if (_handleAvail == false) return const Icon(Icons.cancel, size: 20, color: AvaColors.danger);
+    return null;
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    required ValueChanged<String> onChanged,
+    Widget? trailing,
+    List<TextInputFormatter>? inputFormatters,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
+      child: Row(children: [
+        Icon(icon, size: 18, color: const Color(0xFF9AA1AC)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            onChanged: onChanged,
+            inputFormatters: inputFormatters,
+            textCapitalization: textCapitalization,
+            decoration: InputDecoration(
+                hintText: hint, border: InputBorder.none, isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                hintStyle: const TextStyle(color: Color(0xFF9AA1AC))),
+          ),
+        ),
+        if (trailing != null) ...[const SizedBox(width: 8), trailing],
+      ]),
+    );
   }
 
   // ---- Step 1: notifications ----
@@ -313,7 +480,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     );
   }
 
-  // ---- Step 4: contacts ----
+  // ---- Step 5: contacts ----
   Widget _contacts() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
@@ -349,7 +516,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         width: big ? 30 : 24, height: big ? 30 : 24,
         decoration: BoxDecoration(color: c, shape: BoxShape.circle));
 
-  // ---- Step 5: app selection ----
+  // ---- Step 6: app selection ----
   Widget _appsSetup() {
     return Column(
       children: [

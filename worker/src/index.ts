@@ -55,6 +55,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
       if (p === "/api/resolve" && req.method === "GET") return await cached(req, ctx, () => api.resolve(req, env), 60);
       if (p === "/api/search" && req.method === "GET") return await cached(req, ctx, () => api.search(req, env), 60);
+      if (p === "/api/handle/check" && req.method === "GET") return await cached(req, ctx, () => api.handleCheck(req, env), 10);
 
       // --- push / calls ---
       if (p === "/api/register" && req.method === "POST") return await api.register(req, env);

@@ -99,10 +99,30 @@ class Directory {
     }
   }
 
-  /// Search the public directory by handle/name (>= 2 chars).
+  /// True when `q` is a complete email address. Email is a user's unique,
+  /// privacy-preserving id: it's only stored server-side as a one-way hash, so
+  /// it can never be substring-searched — but a *complete* email resolves 1:1
+  /// to exactly one registered account via [resolve].
+  static bool isCompleteEmail(String q) {
+    final at = q.indexOf('@');
+    if (at <= 0 || q.contains(' ')) return false;
+    final dot = q.indexOf('.', at + 2); // need at least one char between @ and .
+    return dot > at && dot < q.length - 1; // and at least one char after the dot
+  }
+
+  /// Search the public directory.
+  ///
+  /// Names collide (many "John"s), so email is the reliable way to find a
+  /// specific person. A complete email is resolved exactly (hash-based, stays
+  /// private); anything else (name / @handle / partial text) uses the FTS index.
   static Future<List<Contact>> search(String query) async {
     final q = query.trim();
     if (q.length < 2) return [];
+    // Complete email → exact, privacy-preserving lookup (FTS never indexes email).
+    if (isCompleteEmail(q)) {
+      final c = await resolve(q);
+      return c == null ? <Contact>[] : <Contact>[c];
+    }
     try {
       final r = await http
           .get(Uri.parse('$kSearchUrl?q=${Uri.encodeQueryComponent(q)}'))
@@ -126,14 +146,55 @@ class Directory {
     }
   }
 
+  /// Handle format: 3–20 chars, lowercase letters/digits/underscore, starts with
+  /// a letter. Kept in sync with the worker's HANDLE_RE.
+  static final RegExp _handleRe = RegExp(r'^[a-z][a-z0-9_]{2,19}$');
+  static bool isValidHandle(String handle) =>
+      _handleRe.hasMatch(handle.trim().toLowerCase().replaceAll('@', ''));
+
+  /// Check whether `handle` is validly formatted and still free.
+  /// `ok` is true when the handle can be claimed; `message` explains a false.
+  ///
+  /// Resilient by design: format is validated locally first, then the live
+  /// availability endpoint is consulted for real-time "taken" detection. If that
+  /// endpoint is unreachable (e.g. not yet deployed), a well-formatted handle is
+  /// soft-allowed — the database's UNIQUE constraint still rejects duplicates on
+  /// save, so correctness never depends on the check succeeding.
+  static Future<({bool ok, String? message})> checkHandle(String handle) async {
+    final h = handle.trim().toLowerCase().replaceAll('@', '');
+    if (h.isEmpty) return (ok: false, message: null);
+    if (!isValidHandle(h)) {
+      return (ok: false, message: '3–20 characters: letters, numbers or _, starting with a letter.');
+    }
+    try {
+      final r = await http
+          .get(Uri.parse('$kHandleCheckUrl?q=${Uri.encodeQueryComponent(h)}'))
+          .timeout(const Duration(seconds: 6));
+      if (r.statusCode != 200) return (ok: true, message: null); // soft-allow; server enforces on save
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (j['valid'] != true) {
+        return (ok: false, message: (j['reason'] ?? 'Invalid handle').toString());
+      }
+      if (j['available'] != true) return (ok: false, message: 'That handle is taken');
+      return (ok: true, message: null);
+    } catch (_) {
+      return (ok: true, message: null); // offline / endpoint missing → soft-allow
+    }
+  }
+
   /// Publish my own profile so others can find me (by email / phone / handle).
-  static Future<void> registerProfile(
+  /// Returns whether the upsert succeeded plus the HTTP status (409 = handle
+  /// taken) so callers like onboarding can react; other callers can ignore it.
+  static Future<({bool ok, int status})> registerProfile(
       {required String npub, String handle = '', String name = '', String email = '', String phone = ''}) async {
     try {
       // npub is derived server-side from the NIP-98 signature; no longer in body.
-      await ApiAuth.postJson(kProfileUrl,
+      final res = await ApiAuth.postJson(kProfileUrl,
           {'handle': handle, 'name': name, 'email': email, 'phone': phone});
-    } catch (_) {/* best-effort */}
+      return (ok: res.statusCode == 200, status: res.statusCode);
+    } catch (_) {
+      return (ok: false, status: 0); // best-effort for non-onboarding callers
+    }
   }
 
   static String _short(String npub) =>

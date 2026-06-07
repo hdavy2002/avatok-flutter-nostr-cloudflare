@@ -37,6 +37,7 @@ const String kIceUrl = 'https://$kSignalingHost/api/ice';
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)
 const String kResolveUrl = 'https://$kSignalingHost/api/resolve'; // GET ?q= (public)
 const String kSearchUrl = 'https://$kSignalingHost/api/search';   // GET ?q= (public)
+const String kHandleCheckUrl = 'https://$kSignalingHost/api/handle/check'; // GET ?q= (public)
 
 /// Invite link base — share to bring a contact in pre-connected.
 const String kInviteBase = 'https://avatok.ai/i/';

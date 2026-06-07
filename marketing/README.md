@@ -1,4 +1,4 @@
-# AvaTalk marketing site
+# avaTOK marketing site
 
 Static React (Vite) marketing site for **avatok.ai** (the public landing page).
 No backend — product infrastructure lives on `avatok.ai` subdomains (`blossom.`,

@@ -213,7 +213,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                   controller: _searchCtrl,
                   onChanged: _onSearchChanged,
                   decoration: const InputDecoration(
-                      hintText: 'Search by email or name',
+                      hintText: 'Search name, @handle or full email',
                       border: InputBorder.none, isDense: true,
                       contentPadding: EdgeInsets.symmetric(vertical: 14)),
                 ),
@@ -229,7 +229,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                     child: Center(
                       child: Text(
                           _searchCtrl.text.trim().length < 2
-                              ? 'Type a name or @handle to search'
+                              ? 'Type a name, @handle, or full email'
                               : 'No matches yet',
                           style: const TextStyle(color: AvaColors.sub, fontSize: 13)),
                     ),

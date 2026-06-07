@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 110" role="img" aria-label="AvaTOK">
+  <!-- Teal "A" — two thick rounded strokes meeting at a rounded apex. -->
+  <path
+    d="M 22 95 L 60 15 L 98 95"
+    fill="none"
+    stroke="#1FB5B0"
+    stroke-width="22"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Coral dot sitting where an A's crossbar would normally be. -->
+  <circle cx="60" cy="78" r="8" fill="#FF5350" />
+</svg>

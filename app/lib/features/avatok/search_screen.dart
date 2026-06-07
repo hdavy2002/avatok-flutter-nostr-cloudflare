@@ -201,7 +201,9 @@ class _SearchScreenState extends State<SearchScreen> {
                     contactHits.isEmpty && groupHits.isEmpty && onAvatok.isEmpty &&
                     _directory.isEmpty && invitable.isEmpty && !_searchingDir)
                   const Padding(padding: EdgeInsets.all(28),
-                      child: Center(child: Text('No matches', style: TextStyle(color: AvaColors.sub)))),
+                      child: Center(child: Text(
+                          'No matches.\nTo find someone by email, type their full email address.',
+                          textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub)))),
                 if (_q.isEmpty && _device.isEmpty)
                   const Padding(padding: EdgeInsets.all(28),
                       child: Center(child: Text('Search your contacts, the directory and your phone book',

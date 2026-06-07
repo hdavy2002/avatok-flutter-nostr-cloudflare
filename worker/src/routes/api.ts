@@ -67,22 +67,56 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
   return json({ sent: 1 });
 }
 
-// ---- directory: /api/profile (auth) /api/resolve /api/search (public) ----
+// ---- directory: /api/profile (auth) /api/resolve /api/search /api/handle/check (public) ----
+
+// Handle = NIP-05 local part: 3–20 chars, lowercase letters/digits/underscore,
+// must start with a letter. Kept in sync with the client-side validator.
+const HANDLE_RE = /^[a-z][a-z0-9_]{2,19}$/;
+export function normalizeHandle(h: string): string {
+  return (h || "").trim().toLowerCase().replace(/^@/, "");
+}
+
+// GET /api/handle/check?q=<handle> — public. Reports whether a handle is validly
+// formatted and still free. (Reveals nothing /api/resolve doesn't already.)
+export async function handleCheck(req: Request, env: Env): Promise<Response> {
+  const handle = normalizeHandle(new URL(req.url).searchParams.get("q") || "");
+  if (!HANDLE_RE.test(handle)) {
+    return json({ handle, valid: false, available: false, reason: "3–20 characters: letters, numbers or _, starting with a letter." });
+  }
+  const r = await metaSession(env).prepare("SELECT npub FROM profiles WHERE handle=?1").bind(handle).first<{ npub: string }>();
+  return json({ handle, valid: true, available: !r });
+}
+
 export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   const auth = await authenticate(req, env);
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
   const b = (await req.json().catch(() => ({}))) as { handle?: string; name?: string; email?: string; phone?: string };
-  const handle = (b.handle || "").trim().toLowerCase().replace(/^@/, "") || null;
+  const handle = normalizeHandle(b.handle || "") || null;
   const name = (b.name || "").trim() || null;
   const email = (b.email || "").trim().toLowerCase();
   const emailHash = email ? await sha256Hex(email) : null;
   const now = Date.now();
   const db = metaSession(env);
-  await db.prepare(
-    `INSERT INTO profiles (npub, handle, display_name, avatar_url, email_hash, updated_at)
-     VALUES (?1,?2,?3,NULL,?4,?5)
-     ON CONFLICT(npub) DO UPDATE SET handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name), email_hash=COALESCE(?4,email_hash), updated_at=?5`,
-  ).bind(auth.npub, handle, name, emailHash, now).run();
+  // Validate + enforce handle uniqueness with a clean, actionable error rather
+  // than leaking a raw D1 UNIQUE-constraint 500 (which the client swallowed).
+  if (handle !== null) {
+    if (!HANDLE_RE.test(handle)) {
+      return json({ error: "invalid_handle", reason: "3–20 characters: letters, numbers or _, starting with a letter." }, 400);
+    }
+    const taken = await db.prepare("SELECT npub FROM profiles WHERE handle=?1 AND npub<>?2").bind(handle, auth.npub).first<{ npub: string }>();
+    if (taken) return json({ error: "handle_taken" }, 409);
+  }
+  try {
+    await db.prepare(
+      `INSERT INTO profiles (npub, handle, display_name, avatar_url, email_hash, updated_at)
+       VALUES (?1,?2,?3,NULL,?4,?5)
+       ON CONFLICT(npub) DO UPDATE SET handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name), email_hash=COALESCE(?4,email_hash), updated_at=?5`,
+    ).bind(auth.npub, handle, name, emailHash, now).run();
+  } catch (e) {
+    // Lost a race for the handle between the check above and the write.
+    if (String((e as Error)?.message || "").includes("UNIQUE")) return json({ error: "handle_taken" }, 409);
+    throw e;
+  }
   if (b.phone) {
     const ph = await sha256Hex(normalizePhone(b.phone));
     await db.prepare("INSERT OR REPLACE INTO contact_phone_index (phone_hash, npub, updated_at) VALUES (?1,?2,?3)").bind(ph, auth.npub, now).run();
