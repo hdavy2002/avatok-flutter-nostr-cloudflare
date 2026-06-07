@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'admin_tools.dart';
 import 'api_auth.dart';
 import 'config.dart';
 import 'key_backup.dart';
@@ -23,6 +24,7 @@ class MeResult {
   final String? displayName;
   final String? encBackup;
   final String? backupMethod;
+  final String? accountKind;
   const MeResult({
     required this.found,
     required this.clerkEnabled,
@@ -31,6 +33,7 @@ class MeResult {
     this.displayName,
     this.encBackup,
     this.backupMethod,
+    this.accountKind,
   });
 }
 
@@ -53,6 +56,7 @@ class AccountRestore {
         displayName: (j['display_name'] ?? '').toString().isEmpty ? null : j['display_name'].toString(),
         encBackup: (j['encrypted_nsec_backup'] ?? '').toString().isEmpty ? null : j['encrypted_nsec_backup'].toString(),
         backupMethod: j['backup_method']?.toString(),
+        accountKind: (j['account_kind'] ?? '').toString().isEmpty ? null : j['account_kind'].toString(),
       );
     } catch (_) {
       return null; // offline / endpoint missing → caller falls back to onboarding
@@ -85,6 +89,11 @@ class AccountRestore {
       displayName: me.displayName ?? cur.displayName,
       handle: me.handle ?? cur.handle,
     ));
+
+    // Restore the Single/Parent/Enterprise choice so the right sidebar tools show.
+    if (me.accountKind != null) {
+      await AccountKindStore().set(AccountKindX.fromWire(me.accountKind));
+    }
 
     // A returning user with a claimed handle skips onboarding entirely.
     if ((me.handle ?? '').isNotEmpty) {

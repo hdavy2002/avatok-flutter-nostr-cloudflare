@@ -83,8 +83,16 @@ export async function handleCheck(req: Request, env: Env): Promise<Response> {
   if (!HANDLE_RE.test(handle)) {
     return json({ handle, valid: false, available: false, reason: "3–20 characters: letters, numbers or _, starting with a letter." });
   }
-  const r = await metaSession(env).prepare("SELECT npub FROM profiles WHERE handle=?1").bind(handle).first<{ npub: string }>();
-  return json({ handle, valid: true, available: !r });
+  const db = metaSession(env);
+  const r = await db.prepare("SELECT npub FROM profiles WHERE handle=?1").bind(handle).first<{ npub: string }>();
+  if (!r) return json({ handle, valid: true, available: true, reclaimable: false });
+  // Taken — but if the owning key is an ORPHANED pre-backup identity (no Clerk
+  // link, so the private key is lost), the account that proves it can reclaim it.
+  // Report available:true in that case so older clients (which only read
+  // `available`) let the user proceed; profileUpsert does the actual transfer.
+  const link = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(r.npub).first<{ clerk_user_id: string }>();
+  const reclaimable = !link;
+  return json({ handle, valid: true, available: reclaimable, reclaimable });
 }
 
 export async function profileUpsert(req: Request, env: Env): Promise<Response> {
@@ -92,7 +100,7 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
   const b = (await req.json().catch(() => ({}))) as {
     handle?: string; name?: string; email?: string; phone?: string;
-    encrypted_nsec_backup?: string; backup_method?: string;
+    encrypted_nsec_backup?: string; backup_method?: string; account_kind?: string;
   };
   const handle = normalizeHandle(b.handle || "") || null;
   const name = (b.name || "").trim() || null;
@@ -107,7 +115,16 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
       return json({ error: "invalid_handle", reason: "3–20 characters: letters, numbers or _, starting with a letter." }, 400);
     }
     const taken = await db.prepare("SELECT npub FROM profiles WHERE handle=?1 AND npub<>?2").bind(handle, auth.npub).first<{ npub: string }>();
-    if (taken) return json({ error: "handle_taken" }, 409);
+    if (taken) {
+      // Reclaim: a handle can be taken over only when its current owner key is
+      // NOT linked to a (different) Clerk account — i.e. an orphaned pre-backup
+      // identity whose private key is lost. Handles owned by a live account are
+      // protected. Free the handle from the old owner so the INSERT can claim it.
+      const ownerLink = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(taken.npub).first<{ clerk_user_id: string }>();
+      const mine = ownerLink && auth.clerkUserId && ownerLink.clerk_user_id === auth.clerkUserId;
+      if (ownerLink && !mine) return json({ error: "handle_taken" }, 409);
+      await db.prepare("UPDATE profiles SET handle=NULL, updated_at=?2 WHERE npub=?1").bind(taken.npub, now).run();
+    }
   }
   try {
     await db.prepare(
@@ -132,18 +149,20 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   // Only possible when Clerk JWT verification is enabled (CLERK_JWKS_URL set).
   const encBackup = (b.encrypted_nsec_backup || "").trim() || null;
   const backupMethod = (b.backup_method || "").trim() || null;
+  const accountKind = (b.account_kind || "").trim() || null;
   if (auth.clerkUserId) {
     try {
       await db.prepare(
         `INSERT INTO clerk_nostr_link
-           (clerk_user_id, npub, encrypted_nsec_backup, backup_encryption_method, tier, created_at, last_seen_at)
-         VALUES (?1,?2,?3,?4,'basic',?5,?5)
+           (clerk_user_id, npub, encrypted_nsec_backup, backup_encryption_method, account_kind, tier, created_at, last_seen_at)
+         VALUES (?1,?2,?3,?4,?5,'basic',?6,?6)
          ON CONFLICT(clerk_user_id) DO UPDATE SET
            npub=excluded.npub,
            encrypted_nsec_backup=COALESCE(excluded.encrypted_nsec_backup, clerk_nostr_link.encrypted_nsec_backup),
            backup_encryption_method=COALESCE(excluded.backup_encryption_method, clerk_nostr_link.backup_encryption_method),
+           account_kind=COALESCE(excluded.account_kind, clerk_nostr_link.account_kind),
            last_seen_at=excluded.last_seen_at`,
-      ).bind(auth.clerkUserId, auth.npub, encBackup, backupMethod, now).run();
+      ).bind(auth.clerkUserId, auth.npub, encBackup, backupMethod, accountKind, now).run();
     } catch (e) {
       // npub is UNIQUE: another Clerk account already owns this key. Don't fail
       // the profile save over it — just skip the link.
@@ -165,8 +184,8 @@ export async function me(req: Request, env: Env): Promise<Response> {
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
   const db = metaSession(env);
   const link = await db.prepare(
-    "SELECT npub, encrypted_nsec_backup, backup_encryption_method FROM clerk_nostr_link WHERE clerk_user_id=?1",
-  ).bind(clerk.clerkUserId).first<{ npub: string; encrypted_nsec_backup: string | null; backup_encryption_method: string | null }>();
+    "SELECT npub, encrypted_nsec_backup, backup_encryption_method, account_kind FROM clerk_nostr_link WHERE clerk_user_id=?1",
+  ).bind(clerk.clerkUserId).first<{ npub: string; encrypted_nsec_backup: string | null; backup_encryption_method: string | null; account_kind: string | null }>();
   if (!link) return json({ found: false, clerk_enabled: true });
   const prof = await db.prepare(
     "SELECT handle, display_name FROM profiles WHERE npub=?1",
@@ -181,6 +200,7 @@ export async function me(req: Request, env: Env): Promise<Response> {
     display_name: prof?.display_name ?? null,
     encrypted_nsec_backup: link.encrypted_nsec_backup,
     backup_method: link.backup_encryption_method,
+    account_kind: link.account_kind,
   });
 }
 

@@ -110,6 +110,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       npub: id.npub, handle: handle, name: name,
       encryptedNsecBackup: encBackup,
       backupMethod: encBackup != null ? KeyBackup.method : null,
+      accountKind: _selectedKind?.wire,
     );
     if (!mounted) return;
     setState(() => _savingProfile = false);

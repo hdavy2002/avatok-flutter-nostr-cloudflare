@@ -175,6 +175,11 @@ class Directory {
       if (j['valid'] != true) {
         return (ok: false, message: (j['reason'] ?? 'Invalid handle').toString());
       }
+      // A handle owned by an orphaned (pre-backup, keyless) identity can be
+      // reclaimed by the account proving it — treat that as claimable.
+      if (j['reclaimable'] == true) {
+        return (ok: true, message: 'This is your existing handle — reclaiming it');
+      }
       if (j['available'] != true) return (ok: false, message: 'That handle is taken');
       return (ok: true, message: null);
     } catch (_) {
@@ -187,15 +192,18 @@ class Directory {
   /// taken) so callers like onboarding can react; other callers can ignore it.
   static Future<({bool ok, int status})> registerProfile(
       {required String npub, String handle = '', String name = '', String email = '', String phone = '',
-       String? encryptedNsecBackup, String? backupMethod}) async {
+       String? encryptedNsecBackup, String? backupMethod, String? accountKind}) async {
     try {
       // npub is derived server-side from the NIP-98 signature; no longer in body.
       // encrypted_nsec_backup (optional) links this key to the Clerk account so
       // the user can restore it after reinstalling / on another device.
+      // account_kind persists the Single/Parent/Enterprise choice server-side
+      // so it restores cross-device too.
       final res = await ApiAuth.postJson(kProfileUrl, {
         'handle': handle, 'name': name, 'email': email, 'phone': phone,
         if (encryptedNsecBackup != null) 'encrypted_nsec_backup': encryptedNsecBackup,
         if (backupMethod != null) 'backup_method': backupMethod,
+        if (accountKind != null) 'account_kind': accountKind,
       });
       return (ok: res.statusCode == 200, status: res.statusCode);
     } catch (_) {

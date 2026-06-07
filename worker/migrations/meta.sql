@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS clerk_nostr_link (
   encrypted_nsec_backup  TEXT,                       -- NIP-49, only if user opted in
   backup_encryption_method TEXT,
   tier                   TEXT NOT NULL DEFAULT 'basic', -- 'basic'|'verified'|'suspended'
+  account_kind           TEXT,                       -- 'personal'|'parent'|'enterprise' (restored cross-device)
   created_at             INTEGER NOT NULL,
   last_seen_at           INTEGER
 );
