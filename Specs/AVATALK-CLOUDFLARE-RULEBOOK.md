@@ -16,7 +16,8 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 | 1.0 | 2026-06-04 | Initial release. 20 services cataloged. |
 | 1.1 | 2026-06-04 | Single DB_RELAY (not 16 shards — author-sharding breaks feeds + DM retrieval). 4 databases at launch (not 18 — split at 2GB). Two upload paths (public scan / private skip for E2EE media). NIP-42 AUTH scoped to private kinds only. Push tokens → D1 (spec §11.3 KV reference is stale). Phone discovery kept (spec "no phone directory" is stale). nostr_tags flattened index model. blocks/mutes tables added to DB_META. Reviewed/validated against live schema. Domain corrected to avatok.ai. |
 | 1.2 | 2026-06-08 | Added CLIENT/FRONTEND STANDARDS section: (a) MANDATORY per-account scoping of ALL local user state (one phone is shared by a parent + child accounts; a global key leaks data across accounts), (b) the image/media caching pipeline (Cloudflare AVIF/q60 transform + on-device cache for public images; per-account decrypted cache for private DM media). Golden Rules 11–12 added. |
-| 1.3 | 2026-06-08 | Added STORAGE, DEDUP-DISPLAY & AVABRAIN CONSENT standards (Golden Rules 13–15): one universal per-account storage pool (AvaLibrary/AvaStorage) shared by all apps — 5 GB free, then AvaCoins/GB/month from the wallet, read-only (never delete) on empty wallet; one real copy of any file (content-addressed) shown in many places via shortcuts, counted once, cached locally + Cloudflare; AvaBrain learns ONLY what the user explicitly permits (default OFF, granular per-capability consent toggles per app, per-app guardrail prompts, private content read on-device only). |
+| 1.3 | 2026-06-08 | Added STORAGE, DEDUP-DISPLAY & AVABRAIN CONSENT standards (Golden Rules 13–15): one universal per-account storage pool (AvaLibrary/AvaStorage) shared by all apps — 5 GB free, then AvaCoins/GB/month from the wallet, read-only (never delete) on empty wallet; one real copy of any file (content-addressed) shown in many places via shortcuts, counted once, cached locally + Cloudflare; AvaBrain consent model + per-app guardrail toggles + on-device-only for private content. |
+| 1.4 | 2026-06-08 | AvaBrain default changed to ON (opt-out): master switch in the main app Settings (default ON) + per-app/per-capability guardrail toggles (default ON); user can turn any off. The on-device-only guarantee for private/E2E content is unconditional regardless of toggle. Apps must wire their toggles into the main Settings + the ingestion pipeline. |
 
 ---
 
@@ -36,7 +37,7 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 12. **Images & media are cached: public images via Cloudflare AVIF/q60 transform + on-device disk cache; private DM media via a per-account on-device decrypted cache. Never re-download on reopen.**
 13. **One universal storage pool per account.** Every app shares the SAME AvaLibrary/AvaStorage quota — 5 GB free, then AvaCoins/GB/month deducted from the AvaWallet. Over quota with an empty wallet = read-only (view/download), NEVER delete the user's files.
 14. **One real copy of any file; show it in many places via shortcuts.** Files are content-addressed → store ONE physical copy; "adding" a file to another folder is a shortcut (counted against storage ONCE). Cache it on-device AND via Cloudflare so we don't re-fetch.
-15. **AvaBrain learns ONLY what the user explicitly permits.** Default OFF. Granular per-capability consent toggles per app (e.g. "read my DMs", "index my files"); each app ships guardrail system prompts scoped to its function; private/E2E content is read ON-DEVICE only — never decrypted server-side.
+15. **AvaBrain is ON by default; the user can turn it down (opt-out).** A master switch in the main app Settings (default ON) + per-app/per-capability guardrail toggles (default ON) let the user disable any capability anytime. Each app ships guardrail system prompts scoped to its function. UNCONDITIONAL guarantee regardless of toggle: private/E2E content is read ON-DEVICE only — never decrypted server-side. Wire every app's toggles into the main Settings AND the ingestion pipeline (a turned-off toggle = no ingestion).
 
 ---
 
@@ -584,14 +585,20 @@ the UI is instant, then reconcile with the relay/server in the background.
 AvaBrain is the AI memory/RAG layer. It must learn ONLY what the user has
 explicitly allowed — for EVERY app, now and future.
 
-- **Default OFF.** Nothing private is fed to AvaBrain until the user opts in.
-- **Global switch + granular per-capability toggles.** Settings has a master
-  "Let AvaBrain learn from my private content" switch, plus per-app/per-capability
-  toggles — e.g. "read my AvaTok DMs", "keep a tab on my files", "learn from my
-  notes". Each app defines its own toggles in terms of its own functionality.
+- **Default ON (opt-out).** AvaBrain is enabled by default so it's useful out of
+  the box; the user can turn it down anytime. (The privacy guarantee below holds
+  regardless.)
+- **Master switch (main Settings) + granular per-capability toggles.** The main
+  app Settings has a master "AvaBrain" switch (default ON), plus per-app/
+  per-capability toggles (default ON) — e.g. "read my AvaTok DMs", "keep a tab on
+  my files", "learn from my notes". Each app defines its own toggles in terms of
+  its own functionality, and **registers them into the main Settings**. A toggle
+  that's off = that source is NOT ingested.
 - **Per-app guardrail prompts.** Every app ships system prompts that scope what
   AvaBrain may do with that app's data (its lane), so the AI stays on-task and
   within the user's grant.
+- **Wire toggles to the pipeline.** Ingestion (Q_BRAIN producers / on-device
+  extractors) MUST check the relevant toggle before learning from anything.
 - **Public vs private boundary (hard line):** public content may be processed
   server-side; **private/E2E content (DMs, private files) is read ON-DEVICE only**
   — the client extracts/derives, and only non-reversible derived data (a summary
@@ -611,7 +618,9 @@ explicitly allowed — for EVERY app, now and future.
 ❌ Per-app or separate storage quotas → ONE universal per-account pool (AvaLibrary/AvaStorage)
 ❌ Storing a second physical copy when a file is "copied" to another folder → shortcut, counted once
 ❌ Deleting a user's files because their wallet is empty → read-only until top-up
-❌ Feeding private/DM content to AvaBrain server-side, or by default → on-device + explicit opt-in only
+❌ Feeding private/DM content to AvaBrain SERVER-SIDE → read on-device only (default-ON is fine; the processing location is not)
+❌ Ingesting into AvaBrain without checking the user's toggle → gate every ingest on the (default-ON) consent toggle
+❌ Per-app AvaBrain settings that don't surface in the main Settings → register every toggle in the main app Settings
 ❌ `KV.get()`/`KV.put()` for app data → D1
 ❌ Proxying R2 reads through a Worker → R2 public bucket
 ❌ Auth in relay router Worker → Auth in DO via NIP-42

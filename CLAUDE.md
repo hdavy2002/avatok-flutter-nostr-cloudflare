@@ -72,6 +72,7 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
    pool shared by all apps (AvaLibrary/AvaStorage): 5 GB free, then AvaCoins/GB/month
    (default 20) from the AvaWallet; empty wallet over quota = read-only, NEVER delete.
    Files are content-addressed → ONE real copy; "add to folder" is a shortcut counted
-   once; cache on-device + Cloudflare. AvaBrain learns ONLY what the user opts into
-   (default OFF; global switch + granular per-app toggles; private/E2E content read
-   on-device only, never server-side). Full detail in the rulebook.
+   once; cache on-device + Cloudflare. AvaBrain is ON by default (opt-out): a master
+   switch in the main Settings + per-app guardrail toggles (all default ON), each
+   registered into the main Settings and checked by the ingestion pipeline; private/
+   E2E content is read on-device only regardless of toggle. Full detail in the rulebook.
