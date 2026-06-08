@@ -121,9 +121,17 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
     }
   }
 
+  Future<void> _newFolder() async {
+    final name = await _promptName(context, 'New folder');
+    if (name == null || name.isEmpty) return;
+    await LibraryApi.createFolder(app: 'avalibrary', name: name);
+    _load();
+  }
+
   Future<void> _add() async {
-    // No folder context at the cross-app root → uploads land in the AvaLibrary app.
-    final did = await showAddSheet(context, app: 'avalibrary', folderId: null);
+    // No folder context at the cross-app root → a new folder (and any uploads)
+    // land in the AvaLibrary app itself.
+    final did = await showAddSheet(context, app: 'avalibrary', folderId: null, onNewFolder: _newFolder);
     if (did) _load();
   }
 

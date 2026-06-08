@@ -93,6 +93,16 @@ class NostrClient {
   final _notifs = StreamController<Map<String, dynamic>>.broadcast();
   bool _connected = false;
 
+  // NIP-42: the relay sends an AUTH challenge on connect and REFUSES to store or
+  // serve private kinds (DM gift-wraps kind 1059, call signaling, etc.) until the
+  // socket proves key ownership with a signed kind-22242 event. Without this,
+  // every DM publish is silently dropped ("auth-required") and no gift wraps are
+  // ever delivered. We answer the challenge, and queue any EVENT/REQ frames sent
+  // before AUTH completes, flushing them once the relay accepts our auth.
+  bool _authed = false;
+  String? _authEventId;
+  final List<List<dynamic>> _queue = [];
+
   NostrClient(this.relayUrl);
 
   Stream<(String, NostrEvent)> get events => _events.stream;
@@ -106,10 +116,15 @@ class NostrClient {
     // Per-user inbox DO routing: tell the relay which user's DO to connect to.
     // The pubkey is a routing hint only — NIP-42 still proves ownership server-side.
     var url = relayUrl;
-    final pub = ApiAuth.identity?.pubHex;
+    final id = ApiAuth.identity;
+    final pub = id?.pubHex;
     if (pub != null && pub.isNotEmpty && !url.contains('pubkey=')) {
       url += (url.contains('?') ? '&' : '?') + 'pubkey=$pub';
     }
+    // With no signed-in identity we can't NIP-42 auth (and only public reads make
+    // sense); let frames through immediately. With an identity, hold frames until
+    // we've answered the relay's challenge.
+    _authed = id == null;
     _ch = WebSocketChannel.connect(Uri.parse(url));
     _connected = true;
     _ch!.stream.listen(_onMessage, onError: (_) => _connected = false, onDone: () => _connected = false);
@@ -128,8 +143,36 @@ class NostrClient {
         case 'NOTIF':
           _notifs.add((d[1] as Map).cast<String, dynamic>());
           break;
+        case 'AUTH':
+          // NIP-42 challenge → answer with a signed kind-22242 event.
+          _authenticate(d[1].toString());
+          break;
+        case 'OK':
+          // ["OK", <event-id>, <accepted>, <message>]. When the relay accepts our
+          // auth event, mark the socket authed and flush anything we queued.
+          if (!_authed && _authEventId != null &&
+              d.length > 2 && d[1].toString() == _authEventId && d[2] == true) {
+            _authed = true;
+            _flushQueue();
+          }
+          break;
       }
     } catch (_) {/* ignore malformed */}
+  }
+
+  /// NIP-42: sign a kind-22242 event echoing the relay's challenge and send it.
+  void _authenticate(String challenge) {
+    final id = ApiAuth.identity;
+    if (id == null) return; // can't prove ownership; public reads only
+    final ev = NostrEvent.sign(
+      privHex: id.privHex,
+      pubHex: id.pubHex,
+      kind: 22242,
+      tags: [['relay', relayUrl], ['challenge', challenge]],
+      content: '',
+    );
+    _authEventId = ev.id;
+    _sendNow(['AUTH', ev.toJson()]); // bypass the queue — this IS the unlock
   }
 
   void publish(NostrEvent e) => _send(['EVENT', e.toJson()]);
@@ -137,7 +180,21 @@ class NostrClient {
       _send(['REQ', subId, ...filters]);
   void closeSub(String subId) => _send(['CLOSE', subId]);
 
+  /// Queue until the socket is NIP-42 authed, then send in order.
   void _send(List<dynamic> o) {
+    if (!_authed) { _queue.add(o); return; }
+    _sendNow(o);
+  }
+
+  void _flushQueue() {
+    final pending = List<List<dynamic>>.of(_queue);
+    _queue.clear();
+    for (final o in pending) {
+      _sendNow(o);
+    }
+  }
+
+  void _sendNow(List<dynamic> o) {
     try { _ch?.sink.add(jsonEncode(o)); } catch (_) {}
   }
 

@@ -114,7 +114,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
             color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
         child: Row(children: [
           _tab('Add by email', _byId, () => setState(() => _byId = true)),
-          _tab('Search', !_byId, () => setState(() => _byId = false)),
+          _tab('Search by handle', !_byId, () => setState(() => _byId = false)),
         ]),
       );
 
@@ -153,7 +153,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                   onSubmitted: (_) => _addById(),
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                      hintText: 'Enter email, @handle or npub…',
+                      hintText: 'e.g. username@domain.com',
                       border: InputBorder.none, isDense: true,
                       contentPadding: EdgeInsets.symmetric(vertical: 14)),
                 ),
@@ -192,8 +192,8 @@ class _AddContactSheetState extends State<_AddContactSheet> {
           ),
           const SizedBox(height: 10),
           const Center(
-            child: Text("Add a friend by the email they signed up with (or @handle / npub).",
-                style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+            child: Text("Add a friend by the email they signed up with. To find them by @handle, use Search by handle.",
+                style: TextStyle(color: AvaColors.sub, fontSize: 12), textAlign: TextAlign.center),
           ),
         ],
       );
@@ -213,7 +213,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                   controller: _searchCtrl,
                   onChanged: _onSearchChanged,
                   decoration: const InputDecoration(
-                      hintText: 'Search name, @handle or full email',
+                      hintText: 'e.g. @handle_name',
                       border: InputBorder.none, isDense: true,
                       contentPadding: EdgeInsets.symmetric(vertical: 14)),
                 ),
@@ -229,7 +229,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                     child: Center(
                       child: Text(
                           _searchCtrl.text.trim().length < 2
-                              ? 'Type a name, @handle, or full email'
+                              ? 'e.g. @handle_name'
                               : 'No matches yet',
                           style: const TextStyle(color: AvaColors.sub, fontSize: 13)),
                     ),

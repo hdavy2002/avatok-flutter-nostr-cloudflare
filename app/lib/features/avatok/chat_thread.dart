@@ -78,6 +78,7 @@ class _Msg {
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _ctrl = TextEditingController();
+  final _composerFocus = FocusNode(); // keep the keyboard up after each send
   final _scroll = ScrollController();
   final _picker = ImagePicker();
   final _audio = AudioPlayer();
@@ -449,6 +450,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void dispose() {
     _ctrl.dispose();
+    _composerFocus.dispose();
     _scroll.dispose();
     _audio.dispose();
     _sfx.dispose();
@@ -470,6 +472,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    // Tapping the send button steals focus from the field; grab it back so the
+    // keyboard stays up and the user can keep typing without re-tapping the box.
+    _composerFocus.requestFocus();
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final expire = _disappearSecs > 0 ? now + _disappearSecs : null;
 
@@ -1249,6 +1254,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(22)),
             child: TextField(
               controller: _ctrl,
+              focusNode: _composerFocus,
               onChanged: _onInputChanged,
               onSubmitted: (_) => _send(),
               decoration: const InputDecoration(

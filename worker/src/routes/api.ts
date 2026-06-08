@@ -268,7 +268,11 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
 
   if (q.startsWith("npub1")) return json({ npub: q, profile: profOut(await fetchProf(q)) });
   if (q.includes("@") && q.includes(".")) {
-    const r = await db.prepare("SELECT npub FROM profiles WHERE email_hash=?1").bind(await sha256Hex(q.toLowerCase())).first<{ npub: string }>();
+    // One email can have accumulated several profile rows across re-onboards (each
+    // new Nostr key re-stamps the same email_hash). Resolve to the NEWEST one — the
+    // current device key — so DMs never gift-wrap to a dead identity that no device
+    // is listening on. (.first() returned an arbitrary/oldest row before.)
+    const r = await db.prepare("SELECT npub FROM profiles WHERE email_hash=?1 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(q.toLowerCase())).first<{ npub: string }>();
     if (!r) return json({ npub: null }, 404);
     return json({ npub: r.npub, profile: profOut(await fetchProf(r.npub)) });
   }
