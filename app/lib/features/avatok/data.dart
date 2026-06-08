@@ -9,6 +9,7 @@ class Chat {
   final bool group;
   final int members; // group size (0 for 1:1)
   final String? gid; // group id (real group chats)
+  final String avatarUrl; // contact's photo ('' = initials)
   const Chat({
     required this.name,
     required this.seed,
@@ -19,6 +20,7 @@ class Chat {
     this.group = false,
     this.members = 0,
     this.gid,
+    this.avatarUrl = '',
   });
 }
 

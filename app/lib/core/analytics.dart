@@ -13,7 +13,7 @@ import 'package:posthog_flutter/posthog_flutter.dart';
 class Analytics {
   static const _apiKey = 'phc_hmYMsHQEYjQU4bYXNdqA4VZVsfHEIkBQdQL0Kv7FIc5';
   static const _host = 'https://eu.i.posthog.com'; // EU ingestion — must match project region
-  static const appVersion = '0.1.14+15'; // keep in sync with pubspec version
+  static const appVersion = '0.1.15+16'; // keep in sync with pubspec version
 
   static bool _ready = false;
 

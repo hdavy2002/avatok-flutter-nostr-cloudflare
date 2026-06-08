@@ -246,7 +246,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final archived = _flags['archived']!.contains(k);
     final muted = _flags['muted']!.contains(k);
     return ListTile(
-      leading: Avatar(seed: c.seed, name: c.name, size: 46),
+      leading: Avatar(seed: c.seed, name: c.name, size: 46, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
       title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AvaColors.sub)),
       trailing: _badges(blocked: blocked, archived: archived, muted: muted),

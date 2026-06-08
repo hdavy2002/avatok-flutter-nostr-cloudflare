@@ -330,7 +330,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       return !blocked.contains(k) && (_showArchived || !archived.contains(k));
     }).map((c) {
       final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
-      return Chat(name: c.name, seed: c.seed,
+      return Chat(name: c.name, seed: c.seed, avatarUrl: c.avatarUrl,
           last: draftOr(k, c.subtitle.isNotEmpty ? c.subtitle : 'Say hi 👋'),
           time: '', unread: _unread[k] ?? 0);
     }).toList();
@@ -623,7 +623,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           child: Column(
             children: [
               Stack(children: [
-                Avatar(seed: c.seed, name: c.name, size: 56),
+                Avatar(seed: c.seed, name: c.name, size: 56, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                 Positioned(
                   bottom: 2, right: 2,
                   child: Container(
@@ -666,7 +666,7 @@ class _ChatRow extends StatelessWidget {
         child: Row(
           children: [
             Stack(children: [
-              Avatar(seed: chat.seed, name: chat.name, size: 54),
+              Avatar(seed: chat.seed, name: chat.name, size: 54, avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl),
               if (chat.online)
                 Positioned(
                   bottom: 1, right: 1,

@@ -16,19 +16,21 @@ class Contact {
   final String name;
   final String handle; // without leading '@', may be empty
   final String email;
-  const Contact({required this.npub, required this.name, this.handle = '', this.email = ''});
+  final String avatarUrl; // canonical blossom URL of their photo ('' = initials)
+  const Contact({required this.npub, required this.name, this.handle = '', this.email = '', this.avatarUrl = ''});
 
   String get seed => npub; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
   /// Human-friendly subtitle — prefer email, fall back to @handle.
   String get subtitle => email.isNotEmpty ? email : atHandle;
 
-  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email};
+  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl};
   factory Contact.fromJson(Map<String, dynamic> j) => Contact(
         npub: (j['npub'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
         email: (j['email'] ?? '').toString(),
+        avatarUrl: (j['avatarUrl'] ?? '').toString(),
       );
 }
 
@@ -141,6 +143,7 @@ class Directory {
             : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(npub.toString())),
         handle: (p?['handle'] ?? '').toString(),
         email: (p?['email'] ?? '').toString(),
+        avatarUrl: (p?['avatar_url'] ?? j['avatar_url'] ?? '').toString(),
       );
     } catch (_) {
       // Even with no directory hit, a raw npub is still addable.
@@ -190,6 +193,7 @@ class Directory {
                     : ((p['email'] ?? '').toString().isNotEmpty ? p['email'].toString() : _short((p['npub'] ?? '').toString())),
                 handle: (p['handle'] ?? '').toString(),
                 email: (p['email'] ?? '').toString(),
+                avatarUrl: (p['avatar_url'] ?? '').toString(),
               ))
           .where((c) => c.npub.isNotEmpty)
           .toList();

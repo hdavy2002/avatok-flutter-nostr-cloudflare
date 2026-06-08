@@ -1143,7 +1143,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   icon: const Icon(Icons.chevron_left, size: 28, color: AvaColors.ink),
                   onPressed: () => Navigator.pop(context),
                 ),
-                Avatar(seed: c.seed, name: c.name, size: 38),
+                Avatar(seed: c.seed, name: c.name, size: 38, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                 const SizedBox(width: 10),
                 Expanded(
                   child: GestureDetector(

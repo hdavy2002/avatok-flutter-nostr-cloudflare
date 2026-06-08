@@ -241,7 +241,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                       final c = _results[i];
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: Avatar(seed: c.seed, name: c.name, size: 40),
+                        leading: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                         title: Text(c.name,
                             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
                         subtitle: c.subtitle.isNotEmpty
