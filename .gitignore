@@ -71,3 +71,7 @@ relay/package-lock.json
 firebase/*adminsdk*.json
 firebase/*service-account*.json
 *-firebase-adminsdk-*.json
+
+# AvaChat graft: un-deletable leftover from restricted-mount submodule attempt
+external/_stale_nostr_dart/
+**/__pycache__/

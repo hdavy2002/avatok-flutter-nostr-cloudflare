@@ -1,0 +1,12 @@
+[submodule "external/0xchat-app-main"]
+	path = external/0xchat-app-main
+	url = https://github.com/0xchat-app/0xchat-app-main.git
+	shallow = true
+[submodule "external/0xchat-core"]
+	path = external/0xchat-core
+	url = https://github.com/0xchat-app/0xchat-core.git
+	shallow = true
+[submodule "external/nostr-dart"]
+	path = external/nostr-dart
+	url = https://github.com/0xchat-app/nostr-dart.git
+	shallow = true

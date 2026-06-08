@@ -1,0 +1,29 @@
+name: avachat
+description: >
+  AvaChat × 0xchat integration layer. Repoints the 0xchat Nostr client onto the
+  AvaTalk Cloudflare backend (relay, identity, calls, wallet, brain) without
+  patching 0xchat source. Consumed by the 0xchat entrypoint via
+  AvaChatBootstrap.init().
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+# LGPL note: chatcore (0xchat-core) and nostr_core_dart (nostr-dart) are LGPL-3.0
+# and are consumed UNMODIFIED as path/git dependencies (kept in external/ as
+# submodules). All AvaChat-proprietary code lives here, separately. Fixes to the
+# LGPL libs are contributed upstream. See external/README.md and INTEGRATION.md.
+dependencies:
+  flutter:
+    sdk: flutter
+  # 0xchat protocol/business engine (submodule, materialized in CI).
+  chatcore:
+    path: ../external/0xchat-core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:

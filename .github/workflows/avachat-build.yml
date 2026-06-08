@@ -1,0 +1,53 @@
+# AvaChat × 0xchat — CI build / verification loop.
+#
+# This is the compile-and-verify gate the integration relies on (the dev
+# environment that authored the graft has no Flutter toolchain). It materializes
+# the 0xchat submodules, applies the one-line bootstrap injection, and builds.
+#
+# Runs only on the integration branch / PRs into it — it does NOT touch the
+# existing avatok APK pipeline.
+name: avachat-build
+
+on:
+  push:
+    branches: [feat/avachat-0xchat-graft]
+  pull_request:
+    branches: [feat/avachat-0xchat-graft]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      # Belt-and-suspenders: ensure 0xchat submodules are materialized + pinned.
+      - name: Init 0xchat submodules
+        run: git submodule update --init --recursive --depth 1
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.3' # 0xchat-app-main requires 3.29.3
+
+      - name: Inject AvaChat bootstrap into 0xchat entrypoint
+        run: bash avachat/integration/inject_bootstrap.sh
+
+      - name: avachat — pub get + analyze
+        working-directory: avachat
+        run: |
+          flutter pub get
+          flutter analyze || true   # adapters carry TODO(build) seams; do not fail yet
+
+      - name: 0xchat app — pub get
+        working-directory: external/0xchat-app-main
+        run: |
+          sh ox_pub_get.sh || flutter pub get
+
+      - name: 0xchat app — build (Android, debug)
+        working-directory: external/0xchat-app-main
+        run: flutter build apk --debug
