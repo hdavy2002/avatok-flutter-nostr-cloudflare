@@ -62,6 +62,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
   int _statusCount = 0;
   bool _showArchived = false;
   Map<String, String> _drafts = {};
+  final _previewStore = ChatPreviewStore();
+  Map<String, ({String text, int ts, bool me})> _previews = {};
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Set<String> _enabledApps = {};
   AccountKind _accountKind = AccountKind.personal;
@@ -75,11 +77,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
   String _keyOf(Chat c) =>
       c.gid != null ? 'g:${c.gid}' : '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
 
+  /// Chat-list timestamp: HH:mm today, 'Yesterday', else d/m.
+  String _fmtListTime(int epochSecs) {
+    final now = DateTime.now();
+    final d = DateTime.fromMillisecondsSinceEpoch(epochSecs * 1000);
+    final today = DateTime(now.year, now.month, now.day);
+    final that = DateTime(d.year, d.month, d.day);
+    final days = today.difference(that).inDays;
+    if (days <= 0) return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    if (days == 1) return 'Yesterday';
+    return '${d.day}/${d.month}';
+  }
+
   void _openChat(Chat c) {
     final k = _keyOf(c);
     setState(() => _unread.remove(k));
     Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: c)))
-        .then((_) => _readStore.load().then((m) { if (mounted) setState(() => _lastRead = m); }));
+        .then((_) async {
+      // Refresh read-state AND the last-message preview so the row reflects what
+      // was just said in the thread we returned from.
+      final read = await _readStore.load();
+      final previews = await _previewStore.load();
+      if (mounted) setState(() { _lastRead = read; _previews = previews; });
+    });
   }
 
   void _chatRowFlags(Chat c) {
@@ -144,6 +164,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final flags = await _flagsStore.load();
     final status = await _statusStore.load();
     final drafts = await DraftStore().load();
+    final previews = await _previewStore.load();
     final enabled = await OnboardingStore().enabledApps();
     final kind = await AccountKindStore().load();
     final customFilters = await _filterStore.load();
@@ -151,6 +172,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
         _lastRead = lastRead; _flags = flags; _statusCount = status.length; _drafts = drafts;
+        _previews = previews;
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
       });
     }
@@ -220,6 +242,17 @@ class _ChatListScreenState extends State<ChatListScreen> {
           if (u.createdAt > (_lastRead[key] ?? 0) && mounted) {
             setState(() => _unread[key] = (_unread[key] ?? 0) + 1);
           }
+          // Surface the message in the chat list even when its thread isn't open:
+          // record the preview (drives the subtitle + recency order) and, for a
+          // 1:1 from someone not yet in contacts, materialise a chat row so the
+          // message can't silently vanish ("No chats yet" despite a delivery).
+          // Skip stale history replays we already reflect to avoid storage churn.
+          if (u.createdAt >= (_previews[key]?.ts ?? 0)) {
+            _previewStore.record(key, _previewFor(env), u.createdAt, false).then((_) {
+              if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
+            });
+          }
+          if (env['gid'] == null) _ensureContact(NostrKeys.npub(u.senderPub));
           // Send a delivered receipt for recent 1:1 messages (not history replays).
           final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           if (env['gid'] == null && u.createdAt > nowSec - 300) {
@@ -233,6 +266,42 @@ class _ChatListScreenState extends State<ChatListScreen> {
     _inbox!.subscribe('inbox', [
       {'kinds': [1059], '#p': [id.pubHex], 'limit': 200},
     ]);
+  }
+
+  /// A short, content-free-ish preview line for an incoming message envelope.
+  String _previewFor(Map env) {
+    final t = env['t'];
+    if (t == 'text' || t == 'gtext') return (env['body'] ?? '').toString();
+    if (t == 'media' || t == 'gmedia') {
+      switch ((env['kind'] ?? '').toString()) {
+        case 'image': return '📷 Photo';
+        case 'video': return '🎬 Video';
+        case 'audio': return '🎙️ Voice message';
+        default: return '📎 ${env['name'] ?? 'File'}';
+      }
+    }
+    return 'New message';
+  }
+
+  /// Make sure a 1:1 sender has a chat row. Adds a lightweight placeholder
+  /// immediately (so the message appears at once), then enriches name/avatar
+  /// from the directory in the background. No-op if already a contact / me.
+  final Set<String> _autoAdding = {}; // npubs currently being auto-added (dedupe)
+  Future<void> _ensureContact(String npub) async {
+    if (npub.isEmpty || npub == _id?.npub) return;
+    if (_contacts.any((c) => c.npub == npub) || !_autoAdding.add(npub)) return;
+    final placeholder = Contact(
+        npub: npub,
+        name: npub.length > 14 ? '${npub.substring(0, 10)}…${npub.substring(npub.length - 4)}' : npub);
+    var list = await _contactsStore.add(placeholder);
+    if (mounted) setState(() => _contacts = list);
+    try {
+      final resolved = await Directory.resolve(npub);
+      if (resolved != null && resolved.npub == npub) {
+        list = await _contactsStore.add(resolved); // de-dupes on npub
+        if (mounted) setState(() => _contacts = list);
+      }
+    } catch (_) {/* placeholder stands */}
   }
 
   Future<void> _openAddContact() async {
@@ -321,11 +390,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final blocked = _flags['blocked']!, archived = _flags['archived']!, pinned = _flags['pinned']!;
     String draftOr(String k, String fallback) =>
         (_drafts[k] ?? '').isNotEmpty ? '✏️ ${_drafts[k]}' : fallback;
+    // Real last message wins over the static subtitle; a draft still trumps both.
+    String previewOr(String k, String fallback) {
+      final pv = _previews[k];
+      if (pv != null && pv.text.isNotEmpty) return pv.me ? 'You: ${pv.text}' : pv.text;
+      return fallback;
+    }
+    String timeOf(String k) {
+      final pv = _previews[k];
+      return pv != null && pv.ts > 0 ? _fmtListTime(pv.ts) : '';
+    }
     final groupChats = _groups
         .where((g) => _showArchived || !archived.contains('g:${g.id}'))
         .map((g) => Chat(
             name: g.name, seed: 'group-${g.id}',
-            last: draftOr('g:${g.id}', 'Group · ${g.members.length} members'), time: '',
+            last: draftOr('g:${g.id}', previewOr('g:${g.id}', 'Group · ${g.members.length} members')),
+            time: timeOf('g:${g.id}'),
             group: true, members: g.members.length, gid: g.id,
             unread: _unread['g:${g.id}'] ?? 0))
         .toList();
@@ -335,11 +415,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }).map((c) {
       final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
       return Chat(name: c.name, seed: c.seed, avatarUrl: c.avatarUrl,
-          last: draftOr(k, c.subtitle.isNotEmpty ? c.subtitle : 'Say hi 👋'),
-          time: '', unread: _unread[k] ?? 0);
+          last: draftOr(k, previewOr(k, c.subtitle.isNotEmpty ? c.subtitle : 'Say hi 👋')),
+          time: timeOf(k), unread: _unread[k] ?? 0);
     }).toList();
     final realRows = [...groupChats, ...contactChats];
-    realRows.sort((a, b) => (pinned.contains(_keyOf(a)) ? 0 : 1) - (pinned.contains(_keyOf(b)) ? 0 : 1));
+    // Pinned chats first, then most-recently-active by last-message time.
+    int tsOf(Chat c) => _previews[_keyOf(c)]?.ts ?? 0;
+    realRows.sort((a, b) {
+      final pa = pinned.contains(_keyOf(a)) ? 1 : 0;
+      final pb = pinned.contains(_keyOf(b)) ? 1 : 0;
+      if (pa != pb) return pb - pa;
+      return tsOf(b).compareTo(tsOf(a));
+    });
     final archivedCount = archived.length;
 
     // Apply the active filter chip.

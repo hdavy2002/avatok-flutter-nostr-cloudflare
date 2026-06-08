@@ -36,6 +36,50 @@ class ReadStateStore {
   }
 }
 
+/// Per-conversation last-message preview: a short snippet of the most recent
+/// line, its timestamp, and whether I sent it. Drives the chat-list subtitle
+/// (the "Say hi" placeholder is only used when a conversation has no messages
+/// yet) and recency ordering. Account-scoped like everything else here.
+/// Key: '1:<peerHex>' for DMs, 'g:<gid>' for groups.
+class ChatPreviewStore {
+  static const _key = 'avatok_previews';
+  final _s = _store();
+
+  Future<Map<String, ({String text, int ts, bool me})>> load() async {
+    final raw = await _s.read(key: scopedKey(_key));
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final j = jsonDecode(raw) as Map;
+      return j.map((k, v) {
+        final m = (v as Map);
+        return MapEntry(k.toString(), (
+          text: (m['t'] ?? '').toString(),
+          ts: (m['ts'] as num?)?.toInt() ?? 0,
+          me: m['me'] == true,
+        ));
+      });
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Record [text] as the latest line for [convKey]. Out-of-order relay replays
+  /// (older events arriving after newer ones) never clobber a fresher preview.
+  Future<void> record(String convKey, String text, int ts, bool me) async {
+    if (text.isEmpty) return;
+    final raw = await _s.read(key: scopedKey(_key));
+    Map<String, dynamic> j = {};
+    if (raw != null && raw.isNotEmpty) {
+      try { j = (jsonDecode(raw) as Map).cast<String, dynamic>(); } catch (_) {}
+    }
+    final cur = j[convKey];
+    final curTs = cur is Map ? ((cur['ts'] as num?)?.toInt() ?? 0) : 0;
+    if (ts < curTs) return;
+    j[convKey] = {'t': text, 'ts': ts, 'me': me};
+    await _s.write(key: scopedKey(_key), value: jsonEncode(j));
+  }
+}
+
 /// Block / archive / mute / pin flags, each a set of conversation keys.
 class ChatFlagsStore {
   static const _key = 'avatok_chatflags';

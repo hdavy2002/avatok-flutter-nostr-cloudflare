@@ -427,6 +427,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       });
     }
     await _msgStore.save(key, out);
+    // Keep the chat-list preview + ordering in sync with the latest line here,
+    // for both messages I sent and ones I received while this thread was open.
+    if (_msgs.isNotEmpty) {
+      final last = _msgs.reduce((a, b) => b.ts >= a.ts ? b : a);
+      final preview = last.text.isNotEmpty
+          ? last.text
+          : (last.media != null ? _caption(last.media!.kind, last.media!.name) : '');
+      final ts = last.ts == 0 ? DateTime.now().millisecondsSinceEpoch ~/ 1000 : last.ts;
+      if (preview.isNotEmpty) await ChatPreviewStore().record(key, preview, ts, last.me);
+    }
   }
 
   String _fmtTime(int epochSecs) {
