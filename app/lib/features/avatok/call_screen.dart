@@ -24,6 +24,7 @@ class CallScreen extends StatefulWidget {
   final String seed;
   final bool video;
   final bool outgoing; // true = caller (show ringback + no-answer timeout)
+  final String avatarUrl; // peer's photo ('' = initials)
   const CallScreen({
     super.key,
     required this.room,
@@ -31,6 +32,7 @@ class CallScreen extends StatefulWidget {
     required this.seed,
     required this.video,
     this.outgoing = true,
+    this.avatarUrl = '',
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -334,7 +336,7 @@ class _CallScreenState extends State<CallScreen> {
                     decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
                       BoxShadow(color: const Color(0x40503C78), blurRadius: 40, offset: const Offset(0, 18)),
                     ]),
-                    child: Avatar(seed: widget.seed, name: widget.title, size: 132),
+                    child: Avatar(seed: widget.seed, name: widget.title, size: 132, avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
                   ),
                   const SizedBox(height: 20),
                   Row(mainAxisSize: MainAxisSize.min, children: [

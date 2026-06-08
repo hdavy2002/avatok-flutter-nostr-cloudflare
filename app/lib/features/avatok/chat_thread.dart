@@ -552,7 +552,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => CallScreen(room: room, title: widget.chat.name, seed: to, video: video),
+        builder: (_) => CallScreen(room: room, title: widget.chat.name, seed: to, video: video, avatarUrl: widget.chat.avatarUrl),
       ),
     );
   }

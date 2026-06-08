@@ -159,8 +159,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
         title: const Text('Profile'),
       ),
-      // Bottom padding clears the system nav bar so the Update button is never chopped.
-      body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + MediaQuery.of(context).padding.bottom), children: [
+      // Generous bottom padding (plus the system nav-bar inset) so the Update
+      // button always sits comfortably above the nav bar — never chopped.
+      body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 40 + MediaQuery.of(context).padding.bottom), children: [
         Center(
           child: GestureDetector(
             onTap: _photoBusy ? null : _editPhoto,

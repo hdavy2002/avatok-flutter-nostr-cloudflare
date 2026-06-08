@@ -27,6 +27,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   late Group _group;
   Identity? _id;
   final Map<String, String> _names = {}; // hex → display name
+  final Map<String, String> _avatars = {}; // hex → photo URL (from contacts)
   List<Contact> _contacts = [];
   bool _busy = false;
 
@@ -41,12 +42,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final id = await IdentityStore().load();
     final contacts = await ContactsStore().load();
     final names = <String, String>{};
+    final avatars = <String, String>{};
     for (final c in contacts) {
       final h = c.npub.startsWith('npub1') ? NostrKeys.npubToHex(c.npub) : null;
-      if (h != null) names[h] = c.name;
+      if (h != null) { names[h] = c.name; if (c.avatarUrl.isNotEmpty) avatars[h] = c.avatarUrl; }
     }
     if (id != null) names[id.pubHex] = 'You';
-    if (mounted) setState(() { _id = id; _contacts = contacts; _names.addAll(names); });
+    if (mounted) setState(() { _id = id; _contacts = contacts; _names.addAll(names); _avatars.addAll(avatars); });
   }
 
   String _label(String hex) => _names[hex] ?? '${hex.substring(0, 6)}…';
@@ -175,7 +177,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
               for (final c in candidates)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Avatar(seed: c.seed, name: c.name, size: 40),
+                  leading: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
                   title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                   trailing: const Icon(Icons.add_circle, color: AvaColors.brand),
                   onTap: () { Navigator.pop(ctx); _addMember(NostrKeys.npubToHex(c.npub)!); },
@@ -236,7 +238,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         const Divider(height: 1),
         for (final m in _group.members)
           ListTile(
-            leading: Avatar(seed: m, name: _label(m), size: 42),
+            leading: Avatar(seed: m, name: _label(m), size: 42, avatarUrl: _avatars[m]),
             title: Row(children: [
               Flexible(child: Text(_label(m), maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700))),

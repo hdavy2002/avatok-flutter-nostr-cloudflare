@@ -154,6 +154,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
       });
     }
+    // Backfill profile photos for contacts saved before avatars existed — silent.
+    _contactsStore.refreshMissingAvatars().then((list) {
+      if (mounted) setState(() => _contacts = list);
+    });
     // Sync the phone address book to our backend (per-user storage, reused by
     // AvaContacts) and resolve who's already on AvaTok — best-effort, silent.
     DeviceContactsService.syncAndMatch(id.npub);

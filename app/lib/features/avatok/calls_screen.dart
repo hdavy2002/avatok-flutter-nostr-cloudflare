@@ -4,6 +4,7 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/theme.dart';
 import 'call_screen.dart';
+import 'contacts.dart';
 
 /// AvaTok Calls tab — real 1:1 call history; tap to call back.
 class CallsScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class CallsScreen extends StatefulWidget {
 class _CallsScreenState extends State<CallsScreen> {
   final _store = CallLogStore();
   List<CallEntry> _calls = [];
+  Map<String, String> _avatars = {}; // npub → photo URL (from contacts)
   bool _loaded = false;
 
   @override
@@ -25,12 +27,14 @@ class _CallsScreenState extends State<CallsScreen> {
 
   Future<void> _load() async {
     final c = await _store.load();
-    if (mounted) setState(() { _calls = c; _loaded = true; });
+    final contacts = await ContactsStore().load();
+    final avatars = {for (final x in contacts) if (x.avatarUrl.isNotEmpty) x.npub: x.avatarUrl};
+    if (mounted) setState(() { _calls = c; _avatars = avatars; _loaded = true; });
   }
 
   void _callBack(CallEntry c) {
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => CallScreen(room: 'avatok-${c.seed}', title: c.name, seed: c.seed, video: c.video),
+      builder: (_) => CallScreen(room: 'avatok-${c.seed}', title: c.name, seed: c.seed, video: c.video, avatarUrl: _avatars[c.seed] ?? ''),
     )).then((_) => _load());
   }
 
@@ -65,7 +69,7 @@ class _CallsScreenState extends State<CallsScreen> {
                           final missed = c.dir == CallDir.missed;
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            leading: Avatar(seed: c.seed, name: c.name, size: 48),
+                            leading: Avatar(seed: c.seed, name: c.name, size: 48, avatarUrl: _avatars[c.seed]),
                             title: Text(c.name,
                                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5,
                                     color: missed ? AvaColors.danger : AvaColors.ink)),

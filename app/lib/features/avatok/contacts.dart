@@ -119,6 +119,25 @@ class ContactsStore {
     if (merged.length != remote.length) _syncUp(merged);
     return merged;
   }
+
+  /// Backfill profile photos for contacts saved before avatarUrl existed (or
+  /// whose photo changed): resolve each one missing an avatar from the directory
+  /// and persist. Best-effort, runs in the background. Returns the updated list.
+  Future<List<Contact>> refreshMissingAvatars() async {
+    final cs = await load();
+    var changed = false;
+    for (var i = 0; i < cs.length; i++) {
+      final c = cs[i];
+      if (c.avatarUrl.isNotEmpty || c.npub.isEmpty) continue;
+      final r = await Directory.resolve(c.npub);
+      if (r != null && r.avatarUrl.isNotEmpty) {
+        cs[i] = Contact(npub: c.npub, name: c.name, handle: c.handle, email: c.email, avatarUrl: r.avatarUrl);
+        changed = true;
+      }
+    }
+    if (changed) await _save(cs);
+    return cs;
+  }
 }
 
 /// Thin client for the AvaTok directory Worker (handle/npub resolve + search).
