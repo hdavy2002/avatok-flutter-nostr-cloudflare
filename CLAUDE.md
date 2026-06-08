@@ -67,3 +67,11 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
    on-device (`app/lib/core/avatar_cache.dart`; `Avatar` widget). Private DM media:
    cache the DECRYPTED bytes on-device per account (`MediaService.downloadAndDecrypt`
    → `…/media/<AccountScope.id>/<hash>`). Never re-download on reopen; load local-first.
+
+3. **Universal storage, dedup display & AvaBrain consent.** ONE per-account storage
+   pool shared by all apps (AvaLibrary/AvaStorage): 5 GB free, then AvaCoins/GB/month
+   (default 20) from the AvaWallet; empty wallet over quota = read-only, NEVER delete.
+   Files are content-addressed → ONE real copy; "add to folder" is a shortcut counted
+   once; cache on-device + Cloudflare. AvaBrain learns ONLY what the user opts into
+   (default OFF; global switch + granular per-app toggles; private/E2E content read
+   on-device only, never server-side). Full detail in the rulebook.

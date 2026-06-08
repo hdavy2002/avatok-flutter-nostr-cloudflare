@@ -16,6 +16,7 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 | 1.0 | 2026-06-04 | Initial release. 20 services cataloged. |
 | 1.1 | 2026-06-04 | Single DB_RELAY (not 16 shards — author-sharding breaks feeds + DM retrieval). 4 databases at launch (not 18 — split at 2GB). Two upload paths (public scan / private skip for E2EE media). NIP-42 AUTH scoped to private kinds only. Push tokens → D1 (spec §11.3 KV reference is stale). Phone discovery kept (spec "no phone directory" is stale). nostr_tags flattened index model. blocks/mutes tables added to DB_META. Reviewed/validated against live schema. Domain corrected to avatok.ai. |
 | 1.2 | 2026-06-08 | Added CLIENT/FRONTEND STANDARDS section: (a) MANDATORY per-account scoping of ALL local user state (one phone is shared by a parent + child accounts; a global key leaks data across accounts), (b) the image/media caching pipeline (Cloudflare AVIF/q60 transform + on-device cache for public images; per-account decrypted cache for private DM media). Golden Rules 11–12 added. |
+| 1.3 | 2026-06-08 | Added STORAGE, DEDUP-DISPLAY & AVABRAIN CONSENT standards (Golden Rules 13–15): one universal per-account storage pool (AvaLibrary/AvaStorage) shared by all apps — 5 GB free, then AvaCoins/GB/month from the wallet, read-only (never delete) on empty wallet; one real copy of any file (content-addressed) shown in many places via shortcuts, counted once, cached locally + Cloudflare; AvaBrain learns ONLY what the user explicitly permits (default OFF, granular per-capability consent toggles per app, per-app guardrail prompts, private content read on-device only). |
 
 ---
 
@@ -33,6 +34,9 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 10. **NIP-42 AUTH gates private kinds only. Public kinds stay open for federation.**
 11. **ALL per-user local state is account-scoped. One phone is shared by a parent + each child — a global storage key leaks data across accounts. Scope every key.**
 12. **Images & media are cached: public images via Cloudflare AVIF/q60 transform + on-device disk cache; private DM media via a per-account on-device decrypted cache. Never re-download on reopen.**
+13. **One universal storage pool per account.** Every app shares the SAME AvaLibrary/AvaStorage quota — 5 GB free, then AvaCoins/GB/month deducted from the AvaWallet. Over quota with an empty wallet = read-only (view/download), NEVER delete the user's files.
+14. **One real copy of any file; show it in many places via shortcuts.** Files are content-addressed → store ONE physical copy; "adding" a file to another folder is a shortcut (counted against storage ONCE). Cache it on-device AND via Cloudflare so we don't re-fetch.
+15. **AvaBrain learns ONLY what the user explicitly permits.** Default OFF. Granular per-capability consent toggles per app (e.g. "read my DMs", "index my files"); each app ships guardrail system prompts scoped to its function; private/E2E content is read ON-DEVICE only — never decrypted server-side.
 
 ---
 
@@ -552,6 +556,51 @@ must never re-download or re-decrypt.
 **Text messages / contacts**: load local-first from the (account-scoped) cache so
 the UI is instant, then reconcile with the relay/server in the background.
 
+### 3. Universal storage + dedup display (AvaLibrary / AvaStorage)
+
+- **One storage pool per account, shared by EVERY app.** A user's files from
+  AvaTok, AvaDoc, AvaGram, … all count against a single quota. AvaLibrary is the
+  file manager (root folder per app → category folders); AvaStorage is the
+  quota/usage view (coloured bars per type, total used, space left).
+- **Quota & billing:** **5 GB free** per account (configurable default), then
+  **AvaCoins per GB per month** (default **20 AvaCoins/GB/month**; 1 AvaCoin =
+  $0.01) deducted from the **AvaWallet**. Storage is one of several AvaCoin sinks
+  (alongside dating, gifts, etc.).
+- **Empty wallet over quota = READ-ONLY, never delete.** The user can still view
+  and download; they just can't add more until they top up. We do not delete a
+  paying-then-lapsed user's files.
+- **One real copy; shortcuts everywhere.** Files are content-addressed, so identical
+  content is stored ONCE. Putting a file in another folder is a **shortcut** ("Add
+  to folder"), not a duplicate — it shows in both places but is **counted against
+  storage only once**. A file's bytes are freed only when it's removed from ALL
+  folders / emptied from trash. Editing a shared file changes it everywhere (it's
+  the same file) — label the action accordingly.
+- **Cache on-device AND at Cloudflare.** Public files: CF `/cdn-cgi/image` AVIF/q60
+  + on-device cache. Private: per-account decrypted on-device cache. Goal: a file
+  is fetched from origin at most once per device.
+
+### 4. AvaBrain consent & guardrails (privacy-first AI)
+
+AvaBrain is the AI memory/RAG layer. It must learn ONLY what the user has
+explicitly allowed — for EVERY app, now and future.
+
+- **Default OFF.** Nothing private is fed to AvaBrain until the user opts in.
+- **Global switch + granular per-capability toggles.** Settings has a master
+  "Let AvaBrain learn from my private content" switch, plus per-app/per-capability
+  toggles — e.g. "read my AvaTok DMs", "keep a tab on my files", "learn from my
+  notes". Each app defines its own toggles in terms of its own functionality.
+- **Per-app guardrail prompts.** Every app ships system prompts that scope what
+  AvaBrain may do with that app's data (its lane), so the AI stays on-task and
+  within the user's grant.
+- **Public vs private boundary (hard line):** public content may be processed
+  server-side; **private/E2E content (DMs, private files) is read ON-DEVICE only**
+  — the client extracts/derives, and only non-reversible derived data (a summary
+  or the embedding vector) is sent to the brain. Plaintext and keys never leave
+  the device. (See Golden Rule 9/10 + the E2E rule.)
+- **Revocable & forgettable.** Turning a toggle off stops new ingestion; the user
+  can purge what AvaBrain learned from a source. Account deletion purges brain
+  vectors/facts too.
+
 ---
 
 ## BANNED PATTERNS
@@ -559,6 +608,10 @@ the UI is instant, then reconcile with the relay/server in the background.
 ❌ Raw/global storage key for per-user data → `scopedKey(...)` / `AccountScope.id` (cross-account leak)
 ❌ Re-downloading the same image/media on every screen entry → on-device cache (CF-AVIF for public, decrypted per-account for DM)
 ❌ Serving raw full-size images to the client → Cloudflare `/cdn-cgi/image` AVIF/q60 transform
+❌ Per-app or separate storage quotas → ONE universal per-account pool (AvaLibrary/AvaStorage)
+❌ Storing a second physical copy when a file is "copied" to another folder → shortcut, counted once
+❌ Deleting a user's files because their wallet is empty → read-only until top-up
+❌ Feeding private/DM content to AvaBrain server-side, or by default → on-device + explicit opt-in only
 ❌ `KV.get()`/`KV.put()` for app data → D1
 ❌ Proxying R2 reads through a Worker → R2 public bucket
 ❌ Auth in relay router Worker → Auth in DO via NIP-42
