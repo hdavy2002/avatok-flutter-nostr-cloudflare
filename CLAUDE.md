@@ -50,6 +50,15 @@ literal text / string search (TODOs, error messages, arbitrary tokens).
 
 ## Engineering rulebook (READ — applies to every app)
 
+**AvaTOK product rule — calls are 1:1 ONLY.** AvaTOK is a peer-to-peer 1:1
+audio/video calling app. **Group calls are NOT allowed** (group/conference calling
+lives in AvaConsult). Never add a group-call entry point. Enforcement is layered and
+must stay intact: call buttons appear in 1:1 threads only (never group chats), the
+client `_call()` guards against any `group`/`gid`, and the `CallRoom` DO caps a room
+at 2 peers (a 3rd is refused with `busy`). Group chats keep FULL messaging (text,
+media, voice notes, stickers, polls, location, contact cards) — they simply can't
+start a call.
+
 The full rulebook is **`Specs/AVATALK-CLOUDFLARE-RULEBOOK.md`** — read it before
 building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 

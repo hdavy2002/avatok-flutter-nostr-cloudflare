@@ -18,6 +18,7 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 | 1.2 | 2026-06-08 | Added CLIENT/FRONTEND STANDARDS section: (a) MANDATORY per-account scoping of ALL local user state (one phone is shared by a parent + child accounts; a global key leaks data across accounts), (b) the image/media caching pipeline (Cloudflare AVIF/q60 transform + on-device cache for public images; per-account decrypted cache for private DM media). Golden Rules 11–12 added. |
 | 1.3 | 2026-06-08 | Added STORAGE, DEDUP-DISPLAY & AVABRAIN CONSENT standards (Golden Rules 13–15): one universal per-account storage pool (AvaLibrary/AvaStorage) shared by all apps — 5 GB free, then AvaCoins/GB/month from the wallet, read-only (never delete) on empty wallet; one real copy of any file (content-addressed) shown in many places via shortcuts, counted once, cached locally + Cloudflare; AvaBrain consent model + per-app guardrail toggles + on-device-only for private content. |
 | 1.4 | 2026-06-08 | AvaBrain default changed to ON (opt-out): master switch in the main app Settings (default ON) + per-app/per-capability guardrail toggles (default ON); user can turn any off. The on-device-only guarantee for private/E2E content is unconditional regardless of toggle. Apps must wire their toggles into the main Settings + the ingestion pipeline. |
+| 1.5 | 2026-06-08 | AvaTOK calls are 1:1 only — group calls are NOT allowed in AvaTOK (group calling lives in AvaConsult). Enforced at three layers: call buttons shown in 1:1 threads only, client `_call()` guards against groups, and the `CallRoom` DO caps a room at 2 peers (3rd peer refused with `busy`). Group chats keep full messaging/media; they just can't start a call. See Calls section. |
 
 ---
 
@@ -286,6 +287,15 @@ WRITES — two paths:
 - 1:1 = P2P first (STUN free). TURN on NAT failure (~15%).
 - Group = SFU. One CallRoom DO per active call.
 - 1,000 GB covers ~12K MAU.
+
+**AvaTOK app rule (calls are 1:1 only):** AvaTOK is a peer-to-peer 1:1 audio/video
+calling app. **Group calls are NOT allowed in AvaTOK** — group/conference calling
+lives only in **AvaConsult** (Cloudflare RealtimeKit SFU). Enforcement is layered:
+the call UI only exposes call buttons in 1:1 threads (never in group chats), the
+client guards `_call()` against any group/`gid`, and the **`CallRoom` DO caps a
+room at 2 peers** — a third socket is refused with `busy`. Group chats keep full
+messaging (text, media, voice notes, stickers, polls, location, contact cards) —
+the only thing a group can't do is start a call.
 
 ---
 

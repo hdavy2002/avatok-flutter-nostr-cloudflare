@@ -546,6 +546,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // ---- calls (1:1 only; groups are messaging-only) ----
   Future<void> _call(String kind) async {
+    // STANDARD RULE: AvaTOK calls are 1:1 only. Group chats never call (the call
+    // buttons aren't shown for groups; guard here so no path can open a group call).
+    if (widget.chat.group || widget.chat.gid != null) return;
     final video = kind == 'video';
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
     final to = widget.chat.seed; // for real contacts this is their npub

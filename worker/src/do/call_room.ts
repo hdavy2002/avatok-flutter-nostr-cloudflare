@@ -29,6 +29,19 @@ export class CallRoom {
     const url = new URL(req.url);
     const peerId = (url.searchParams.get("id") || crypto.randomUUID()).slice(0, 64);
 
+    // STANDARD RULE: AvaTOK calls are strictly 1:1 (P2P). Never allow a third
+    // participant — there are no group calls in AvaTOK (group calling lives in
+    // AvaConsult). Refuse the join with a 'busy' so the extra caller ends cleanly.
+    if (this.state.getWebSockets().length >= 2) {
+      const reject = new WebSocketPair();
+      reject[1].accept();
+      try {
+        reject[1].send(JSON.stringify({ type: "busy", reason: "AvaTOK calls are 1:1 only" }));
+        reject[1].close(1000, "room full (1:1 only)");
+      } catch { /* ignore */ }
+      return new Response(null, { status: 101, webSocket: reject[0] });
+    }
+
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     // Hibernation: the runtime manages the socket; the peer id rides in the tag
