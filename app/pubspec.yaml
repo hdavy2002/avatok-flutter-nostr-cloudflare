@@ -7,6 +7,8 @@ environment:
   sdk: '>=3.6.0 <4.0.0'
 
 dependencies:
+  nostr_core_dart:
+    path: ../external/0xchat-app-main/packages/nostr-dart
   flutter:
     sdk: flutter
   flutter_webrtc: ^0.12.5
@@ -59,4 +61,5 @@ flutter:
     - assets/sounds/
 
 dependency_overrides:
+  pointycastle: 4.0.0
   record: 6.2.1

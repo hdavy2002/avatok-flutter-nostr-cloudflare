@@ -232,6 +232,58 @@ subprojects {{
     print("root build.gradle.kts: forced posthog_flutter Kotlin languageVersion 2.0")
 
 
+def patch_kotlin_version() -> None:
+    """Flutter 3.29.3's android template pins Kotlin Gradle plugin 1.8.22, but
+    posthog_flutter (and the 0xchat engine) ship Kotlin 2.1 stdlib. Bump to
+    2.1.10 so they compile. (No-op on newer templates that already use 2.x.)"""
+    settings = APP / "android/settings.gradle.kts"
+    if not settings.exists():
+        return
+    t = settings.read_text()
+    if 'org.jetbrains.kotlin.android") version "1.8.22"' in t:
+        t = t.replace('id("org.jetbrains.kotlin.android") version "1.8.22"',
+                      'id("org.jetbrains.kotlin.android") version "2.1.10"')
+        settings.write_text(t)
+        print("settings.gradle.kts: Kotlin plugin -> 2.1.10")
+
+
+def patch_jvm_target() -> None:
+    """Align Java + Kotlin JVM target to 17 across plugin subprojects to avoid
+    'Inconsistent JVM-target' errors (e.g. nostr_core_dart, the chat engine)."""
+    root_kts = APP / "android/build.gradle.kts"
+    if not root_kts.exists():
+        return
+    t = root_kts.read_text()
+    marker = "AVATOK_JVM_TARGET"
+    if marker in t:
+        return
+    t += '''
+// AVATOK_JVM_TARGET: align Java + Kotlin JVM target to 17 across plugin
+// subprojects to avoid "Inconsistent JVM-target" (e.g. nostr_core_dart).
+subprojects {
+    if (name != "app") {
+        afterEvaluate {
+            extensions.findByName("android")?.let { ext ->
+                runCatching {
+                    (ext as com.android.build.gradle.BaseExtension).compileOptions.apply {
+                        sourceCompatibility = JavaVersion.VERSION_17
+                        targetCompatibility = JavaVersion.VERSION_17
+                    }
+                }
+            }
+            tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                compilerOptions {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+                }
+            }
+        }
+    }
+}
+'''
+    root_kts.write_text(t)
+    print("root build.gradle.kts: JVM target aligned to 17")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_launcher_icon()
@@ -239,5 +291,7 @@ if __name__ == "__main__":
     patch_root_compile_sdk()
     patch_firebase()
     patch_desugaring()
+    patch_kotlin_version()
     patch_kotlin_langver()
+    patch_jvm_target()
     print("postcreate: done")
