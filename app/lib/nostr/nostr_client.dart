@@ -94,14 +94,31 @@ class NostrClient {
   bool _connected = false;
 
   // NIP-42: the relay sends an AUTH challenge on connect and REFUSES to store or
-  // serve private kinds (DM gift-wraps kind 1059, call signaling, etc.) until the
-  // socket proves key ownership with a signed kind-22242 event. Without this,
-  // every DM publish is silently dropped ("auth-required") and no gift wraps are
-  // ever delivered. We answer the challenge, and queue any EVENT/REQ frames sent
-  // before AUTH completes, flushing them once the relay accepts our auth.
-  bool _authed = false;
+  // serve PRIVATE kinds (DM gift-wraps 1059, seals, call signaling, DM relay
+  // lists) until the socket proves key ownership with a signed kind-22242 event.
+  //
+  // BUG THIS FIXES: previously, when there was no identity at connect we marked
+  // the socket "authed" and let private EVENTs through UNauthed. The relay
+  // silently dropped them ("auth-required"), so DMs looked sent but never
+  // landed — exactly the "send but never arrive" symptom. Now private frames are
+  // gated on a REAL NIP-42 success (`_socketAuthed`), queued until then, and
+  // every publish result (accepted/rejected) is surfaced so the UI can never
+  // show a false "sent".
+  static const Set<int> privateKinds = {13, 14, 1059, 25050, 10050, 10443};
+  bool _socketAuthed = false; // true ONLY after the relay accepts our AUTH
+  bool _hasIdentity = false;  // can we NIP-42 auth at all?
   String? _authEventId;
-  final List<List<dynamic>> _queue = [];
+  final List<List<dynamic>> _privateQueue = []; // private frames awaiting AUTH
+
+  /// Per-publish relay result: ["OK", id, accepted, message]. Lets the UI mark a
+  /// message delivered/failed instead of optimistically assuming it sent.
+  final _publishC =
+      StreamController<({String id, bool accepted, String message})>.broadcast();
+  Stream<({String id, bool accepted, String message})> get publishResults =>
+      _publishC.stream;
+
+  /// True once this socket has completed NIP-42 auth (private writes allowed).
+  bool get isAuthed => _socketAuthed;
 
   NostrClient(this.relayUrl);
 
@@ -121,10 +138,11 @@ class NostrClient {
     if (pub != null && pub.isNotEmpty && !url.contains('pubkey=')) {
       url += (url.contains('?') ? '&' : '?') + 'pubkey=$pub';
     }
-    // With no signed-in identity we can't NIP-42 auth (and only public reads make
-    // sense); let frames through immediately. With an identity, hold frames until
-    // we've answered the relay's challenge.
-    _authed = id == null;
+    // Reset auth state for this (re)connection. Public reads flow immediately
+    // (the sink buffers until the socket opens); PRIVATE writes/reads wait for a
+    // real NIP-42 success — we NEVER send them in "public mode".
+    _socketAuthed = false;
+    _hasIdentity = id != null;
     _ch = WebSocketChannel.connect(Uri.parse(url));
     _connected = true;
     _ch!.stream.listen(_onMessage, onError: (_) => _connected = false, onDone: () => _connected = false);
@@ -148,13 +166,17 @@ class NostrClient {
           _authenticate(d[1].toString());
           break;
         case 'OK':
-          // ["OK", <event-id>, <accepted>, <message>]. When the relay accepts our
-          // auth event, mark the socket authed and flush anything we queued.
-          if (!_authed && _authEventId != null &&
-              d.length > 2 && d[1].toString() == _authEventId && d[2] == true) {
-            _authed = true;
-            _flushQueue();
+          // ["OK", <event-id>, <accepted>, <message>].
+          final okId = d.length > 1 ? d[1].toString() : '';
+          final accepted = d.length > 2 && d[2] == true;
+          final okMsg = d.length > 3 ? d[3].toString() : '';
+          if (okId.isNotEmpty && okId == _authEventId) {
+            // Our NIP-42 auth result. On success, unlock + flush private frames.
+            if (accepted && !_socketAuthed) { _socketAuthed = true; _flushPrivate(); }
+            break;
           }
+          // A published event's result — surface so the UI marks it sent/failed.
+          _publishC.add((id: okId, accepted: accepted, message: okMsg));
           break;
       }
     } catch (_) {/* ignore malformed */}
@@ -175,23 +197,38 @@ class NostrClient {
     _sendNow(['AUTH', ev.toJson()]); // bypass the queue — this IS the unlock
   }
 
-  void publish(NostrEvent e) => _send(['EVENT', e.toJson()]);
-  void subscribe(String subId, List<Map<String, dynamic>> filters) =>
-      _send(['REQ', subId, ...filters]);
+  void publish(NostrEvent e) =>
+      _send(['EVENT', e.toJson()], private: privateKinds.contains(e.kind));
+  void subscribe(String subId, List<Map<String, dynamic>> filters) => _send(
+        ['REQ', subId, ...filters],
+        private: filters.any(
+            (f) => ((f['kinds'] as List?) ?? const []).any((k) => privateKinds.contains(k))),
+      );
   void closeSub(String subId) => _send(['CLOSE', subId]);
 
-  /// Queue until the socket is NIP-42 authed, then send in order.
-  void _send(List<dynamic> o) {
-    if (!_authed) { _queue.add(o); return; }
+  /// Public frames go out immediately (the WebSocket sink buffers until the
+  /// socket opens). PRIVATE frames are held until a real NIP-42 auth — never
+  /// sent in "public mode", which the relay rejects as auth-required.
+  void _send(List<dynamic> o, {bool private = false}) {
+    if (private && !_socketAuthed) {
+      // No identity → we can never NIP-42 auth, so this private write would be
+      // dropped by the relay. Surface it as a failed publish so the UI shows
+      // "not sent" instead of a false "sent", rather than queueing forever.
+      if (!_hasIdentity) {
+        final id = (o.length > 1 && o[1] is Map) ? ((o[1] as Map)['id']?.toString() ?? '') : '';
+        if (id.isNotEmpty) _publishC.add((id: id, accepted: false, message: 'no-identity'));
+        return;
+      }
+      _privateQueue.add(o);
+      return;
+    }
     _sendNow(o);
   }
 
-  void _flushQueue() {
-    final pending = List<List<dynamic>>.of(_queue);
-    _queue.clear();
-    for (final o in pending) {
-      _sendNow(o);
-    }
+  void _flushPrivate() {
+    final pending = List<List<dynamic>>.of(_privateQueue);
+    _privateQueue.clear();
+    for (final o in pending) { _sendNow(o); }
   }
 
   void _sendNow(List<dynamic> o) {
@@ -203,6 +240,7 @@ class NostrClient {
     _events.close();
     _eose.close();
     _notifs.close();
+    try { _publishC.close(); } catch (_) {}
     _connected = false;
   }
 }
