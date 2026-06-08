@@ -249,7 +249,7 @@ class Directory {
   /// taken) so callers like onboarding can react; other callers can ignore it.
   static Future<({bool ok, int status})> registerProfile(
       {required String npub, String handle = '', String name = '', String email = '', String phone = '',
-       String? encryptedNsecBackup, String? backupMethod, String? accountKind}) async {
+       String? encryptedNsecBackup, String? backupMethod, String? accountKind, String? avatarUrl}) async {
     try {
       // npub is derived server-side from the NIP-98 signature; no longer in body.
       // encrypted_nsec_backup (optional) links this key to the Clerk account so
@@ -261,10 +261,25 @@ class Directory {
         if (encryptedNsecBackup != null) 'encrypted_nsec_backup': encryptedNsecBackup,
         if (backupMethod != null) 'backup_method': backupMethod,
         if (accountKind != null) 'account_kind': accountKind,
+        if (avatarUrl != null) 'avatar_url': avatarUrl, // '' clears the photo
       });
       return (ok: res.statusCode == 200, status: res.statusCode);
     } catch (_) {
       return (ok: false, status: 0); // best-effort for non-onboarding callers
+    }
+  }
+
+  /// Upload a profile photo (plaintext PNG) to the public bucket; returns the
+  /// canonical blossom URL (served + CF-transformed at display time), or null.
+  static Future<String?> uploadAvatar(Uint8List bytes) async {
+    try {
+      final res = await ApiAuth.postBytes(kUploadPublicUrl, bytes,
+          extraHeaders: {'x-content-type': 'image/png'}, timeout: const Duration(seconds: 45));
+      if (res.statusCode != 200) return null;
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      return (j['url'] ?? '').toString().isEmpty ? null : j['url'].toString();
+    } catch (_) {
+      return null;
     }
   }
 

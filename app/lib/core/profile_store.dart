@@ -10,16 +10,18 @@ class Profile {
   final String displayName;
   final String handle; // without '@'
   final String phone; // collected at sign-up (E.164-ish), used for contact matching
+  final String avatarUrl; // canonical blossom URL of the profile photo ('' = none)
   final bool sharePresence; // last-seen / online visible to others
-  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.sharePresence = true});
+  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.avatarUrl = '', this.sharePresence = true});
 
   bool get isEmpty => displayName.isEmpty && handle.isEmpty;
   String get atHandle => handle.isEmpty ? '' : '@$handle';
 
-  Profile copyWith({String? displayName, String? handle, String? phone, bool? sharePresence}) => Profile(
+  Profile copyWith({String? displayName, String? handle, String? phone, String? avatarUrl, bool? sharePresence}) => Profile(
         displayName: displayName ?? this.displayName,
         handle: handle ?? this.handle,
         phone: phone ?? this.phone,
+        avatarUrl: avatarUrl ?? this.avatarUrl,
         sharePresence: sharePresence ?? this.sharePresence,
       );
 }
@@ -42,6 +44,7 @@ class ProfileStore {
         displayName: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
         phone: (j['phone'] ?? '').toString(),
+        avatarUrl: (j['avatarUrl'] ?? '').toString(),
         sharePresence: j['sharePresence'] != false,
       );
     } catch (_) {
@@ -51,7 +54,7 @@ class ProfileStore {
 
   Future<void> save(Profile p) => _s.write(
       key: scopedKey(_key),
-      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'sharePresence': p.sharePresence}));
+      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'avatarUrl': p.avatarUrl, 'sharePresence': p.sharePresence}));
 
   /// Persist just the phone (merging with any existing profile fields).
   Future<void> setPhone(String phone) async {

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/avatar.dart';
+import '../../core/avatar_cache.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../avatok/contacts.dart';
+import 'avatar_crop_screen.dart';
 import 'phone_verify_card.dart';
 
 /// Set your public display name + @handle. Saving publishes you to the AvaTok
@@ -19,11 +22,14 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _store = ProfileStore();
+  final _picker = ImagePicker();
   final _name = TextEditingController();
   final _handle = TextEditingController();
   bool _saving = false;
   bool _listed = false;
   bool _sharePresence = true;
+  String _avatarUrl = '';
+  bool _photoBusy = false;
 
   @override
   void initState() {
@@ -35,6 +41,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _handle.text = p.handle;
         _listed = !p.isEmpty;
         _sharePresence = p.sharePresence;
+        _avatarUrl = p.avatarUrl;
       });
     });
   }
@@ -47,15 +54,100 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (id == null || _saving) return;
     final handle = _handle.text.trim().toLowerCase().replaceAll('@', '');
     setState(() => _saving = true);
-    await _store.save(Profile(displayName: _name.text.trim(), handle: handle, sharePresence: _sharePresence));
+    final existing = await _store.load();
+    await _store.save(existing.copyWith(displayName: _name.text.trim(), handle: handle, sharePresence: _sharePresence));
     // Opt-in discovery: publish to the directory so others can find me.
     if (_name.text.trim().isNotEmpty || handle.isNotEmpty) {
-      await Directory.registerProfile(npub: id.npub, handle: handle, name: _name.text.trim());
+      await Directory.registerProfile(npub: id.npub, handle: handle, name: _name.text.trim(), avatarUrl: _avatarUrl);
     }
     if (!mounted) return;
     setState(() { _saving = false; _listed = true; });
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile saved — people can now find you')));
+  }
+
+  // ---- profile photo ----
+  Future<void> _editPhoto() async {
+    final hasPhoto = _avatarUrl.isNotEmpty;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 8),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          leading: const Icon(Icons.photo_camera_outlined, color: AvaColors.ink),
+          title: const Text('Take photo'),
+          onTap: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); },
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          leading: const Icon(Icons.photo_library_outlined, color: AvaColors.ink),
+          title: const Text('Choose from gallery'),
+          onTap: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.gallery); },
+        ),
+        if (hasPhoto)
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            leading: const Icon(Icons.delete_outline, color: AvaColors.danger),
+            title: const Text('Remove photo', style: TextStyle(color: AvaColors.danger)),
+            onTap: () { Navigator.pop(ctx); _removePhoto(); },
+          ),
+        const SizedBox(height: 8),
+      ])),
+    );
+  }
+
+  Future<void> _pickAndCrop(ImageSource source) async {
+    try {
+      final x = await _picker.pickImage(source: source, maxWidth: 1600, imageQuality: 92);
+      if (x == null) return;
+      final bytes = await x.readAsBytes();
+      if (!mounted) return;
+      final cropped = await Navigator.push<Uint8List?>(
+          context, MaterialPageRoute(builder: (_) => AvatarCropScreen(imageBytes: bytes)));
+      if (cropped == null || !mounted) return;
+      await _uploadAvatar(cropped);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't open that image — try another.")));
+    }
+  }
+
+  String get _cleanHandle => _handle.text.trim().toLowerCase().replaceAll('@', '');
+
+  Future<void> _uploadAvatar(Uint8List bytes) async {
+    final id = widget.identity;
+    if (id == null) return;
+    setState(() => _photoBusy = true);
+    final url = await Directory.uploadAvatar(bytes);
+    if (url == null) {
+      if (mounted) {
+        setState(() => _photoBusy = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed — please try again.')));
+      }
+      return;
+    }
+    await AvatarCache.putBytes(url, 192, bytes); // instant display (avatar requests ~192px)
+    final p = await _store.load();
+    await _store.save(p.copyWith(avatarUrl: url));
+    await Directory.registerProfile(npub: id.npub, handle: _cleanHandle, name: _name.text.trim(), avatarUrl: url);
+    if (!mounted) return;
+    setState(() { _avatarUrl = url; _photoBusy = false; });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo updated')));
+  }
+
+  Future<void> _removePhoto() async {
+    final id = widget.identity;
+    if (id == null) return;
+    setState(() => _photoBusy = true);
+    final p = await _store.load();
+    await _store.save(p.copyWith(avatarUrl: ''));
+    await Directory.registerProfile(npub: id.npub, handle: _cleanHandle, name: _name.text.trim(), avatarUrl: '');
+    if (!mounted) return;
+    setState(() { _avatarUrl = ''; _photoBusy = false; });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo removed')));
   }
 
   @override
@@ -69,7 +161,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       // Bottom padding clears the system nav bar so the Update button is never chopped.
       body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + MediaQuery.of(context).padding.bottom), children: [
-        Center(child: Avatar(seed: id?.npub ?? 'me', name: _name.text.isEmpty ? 'You' : _name.text, size: 88)),
+        Center(
+          child: GestureDetector(
+            onTap: _photoBusy ? null : _editPhoto,
+            child: Stack(clipBehavior: Clip.none, children: [
+              Avatar(
+                seed: id?.npub ?? 'me',
+                name: _name.text.isEmpty ? 'You' : _name.text,
+                size: 96,
+                avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl,
+              ),
+              if (_photoBusy)
+                const Positioned.fill(
+                  child: CircleAvatar(backgroundColor: Colors.black45,
+                      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))),
+                ),
+              Positioned(
+                right: -2, bottom: -2,
+                child: Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2)),
+                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 17),
+                ),
+              ),
+            ]),
+          ),
+        ),
         const SizedBox(height: 20),
         const Text('Display name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
         const SizedBox(height: 6),

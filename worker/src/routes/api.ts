@@ -115,9 +115,12 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as {
     handle?: string; name?: string; email?: string; phone?: string;
     encrypted_nsec_backup?: string; backup_method?: string; account_kind?: string;
+    avatar_url?: string;
   };
   const handle = normalizeHandle(b.handle || "") || null;
   const name = (b.name || "").trim() || null;
+  // avatar_url: undefined => leave unchanged; "" => clear; a string => set.
+  const avatarUrl = typeof b.avatar_url === "string" ? b.avatar_url.trim() : null;
   const email = (b.email || "").trim().toLowerCase();
   const emailHash = email ? await sha256Hex(email) : null;
   const now = Date.now();
@@ -143,9 +146,9 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   try {
     await db.prepare(
       `INSERT INTO profiles (npub, handle, display_name, avatar_url, email_hash, updated_at)
-       VALUES (?1,?2,?3,NULL,?4,?5)
-       ON CONFLICT(npub) DO UPDATE SET handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name), email_hash=COALESCE(?4,email_hash), updated_at=?5`,
-    ).bind(auth.npub, handle, name, emailHash, now).run();
+       VALUES (?1,?2,?3,?6,?4,?5)
+       ON CONFLICT(npub) DO UPDATE SET handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name), avatar_url=COALESCE(?6,avatar_url), email_hash=COALESCE(?4,email_hash), updated_at=?5`,
+    ).bind(auth.npub, handle, name, emailHash, now, avatarUrl).run();
   } catch (e) {
     // Lost a race for the handle between the check above and the write.
     if (String((e as Error)?.message || "").includes("UNIQUE")) return json({ error: "handle_taken" }, 409);
@@ -202,8 +205,8 @@ export async function me(req: Request, env: Env): Promise<Response> {
   ).bind(clerk.clerkUserId).first<{ npub: string; encrypted_nsec_backup: string | null; backup_encryption_method: string | null; account_kind: string | null }>();
   if (!link) return json({ found: false, clerk_enabled: true });
   const prof = await db.prepare(
-    "SELECT handle, display_name FROM profiles WHERE npub=?1",
-  ).bind(link.npub).first<{ handle: string | null; display_name: string | null }>();
+    "SELECT handle, display_name, avatar_url FROM profiles WHERE npub=?1",
+  ).bind(link.npub).first<{ handle: string | null; display_name: string | null; avatar_url: string | null }>();
   // Best-effort touch of last_seen_at; never block the response on it.
   try { await db.prepare("UPDATE clerk_nostr_link SET last_seen_at=?2 WHERE clerk_user_id=?1").bind(clerk.clerkUserId, Date.now()).run(); } catch { /* noop */ }
   return json({
@@ -212,6 +215,7 @@ export async function me(req: Request, env: Env): Promise<Response> {
     npub: link.npub,
     handle: prof?.handle ?? null,
     display_name: prof?.display_name ?? null,
+    avatar_url: prof?.avatar_url ?? null,
     encrypted_nsec_backup: link.encrypted_nsec_backup,
     backup_method: link.backup_encryption_method,
     account_kind: link.account_kind,
