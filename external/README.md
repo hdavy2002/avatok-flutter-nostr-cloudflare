@@ -7,8 +7,12 @@ from the LGPL libraries (see the licensing note in the proposal).
 | Submodule | Upstream | License | Pinned commit |
 |---|---|---|---|
 | `external/0xchat-app-main` | 0xchat-app/0xchat-app-main | MIT | `0a674a3` |
-| `external/0xchat-core` | 0xchat-app/0xchat-core | LGPL-3.0 | `76675e7` |
-| `external/nostr-dart` (pkg `nostr_core_dart`) | 0xchat-app/nostr-dart | LGPL-3.0 | `41fe8f7` |
+
+Only the app is vendored as a submodule. **0xchat-core ships inside it** at
+`external/0xchat-app-main/packages/0xchat-core` (in-repo git subtree, LGPL-3.0),
+and **nostr-dart / cashu-dart / nostr-mls** are app-main's own submodules under
+`packages/` (materialized by `--recursive`). `avachat` depends on the `chatcore`
+copy at `packages/0xchat-core` so there is exactly one in the build.
 
 ## Materialize them
 

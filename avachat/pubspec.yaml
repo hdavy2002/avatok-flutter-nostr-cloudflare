@@ -17,9 +17,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # 0xchat protocol/business engine (submodule, materialized in CI).
+  # 0xchat protocol/business engine. Use the canonical copy that ships INSIDE
+  # 0xchat-app-main (packages/0xchat-core is an in-repo subtree), so there is
+  # exactly one `chatcore` in the build and the version solver doesn't conflict.
   chatcore:
-    path: ../external/0xchat-core
+    path: ../external/0xchat-app-main/packages/0xchat-core
 
 dev_dependencies:
   flutter_test:

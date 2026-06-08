@@ -25,9 +25,12 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      # Belt-and-suspenders: ensure 0xchat submodules are materialized + pinned.
-      - name: Init 0xchat submodules
-        run: git submodule update --init --recursive --depth 1
+      # 0xchat-app-main carries 0xchat-core in-repo (subtree) and pulls
+      # nostr-dart / cashu-dart / nostr-mls as its OWN submodules.
+      - name: Init 0xchat app submodules (recursive)
+        run: |
+          git submodule update --init --recursive --depth 1
+          cd external/0xchat-app-main && git submodule update --init --recursive
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -37,17 +40,24 @@ jobs:
       - name: Inject AvaChat bootstrap into 0xchat entrypoint
         run: bash avachat/integration/inject_bootstrap.sh
 
-      - name: avachat — pub get + analyze
+      - name: 0xchat app — pub get (its own script, run with bash)
+        working-directory: external/0xchat-app-main
+        run: bash ox_pub_get.sh
+
+      - name: avachat — analyze
         working-directory: avachat
         run: |
           flutter pub get
           flutter analyze || true   # adapters carry TODO(build) seams; do not fail yet
 
-      - name: 0xchat app — pub get
-        working-directory: external/0xchat-app-main
-        run: |
-          sh ox_pub_get.sh || flutter pub get
-
       - name: 0xchat app — build (Android, debug)
         working-directory: external/0xchat-app-main
         run: flutter build apk --debug
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: avachat-debug-apk
+          path: external/0xchat-app-main/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: warn
