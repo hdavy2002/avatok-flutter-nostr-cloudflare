@@ -176,6 +176,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _nostr = NostrClient(kNostrRelayUrl);
     _dm = AvaDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, peerPub: peerHex);
     _dm!.messages.listen(_onDm);
+    _dm!.sendStatus.listen(_onSendStatus);
     _dm!.start();
     _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.pubHex, peerHex), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
@@ -310,6 +311,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   String _shortPub(String hex) => hex.length > 8 ? '${hex.substring(0, 6)}…' : hex;
+
+  // The relay accepted/rejected one of our sends → flag the bubble accordingly.
+  void _onSendStatus(({String rumorId, bool ok, String message}) s) {
+    if (!mounted) return;
+    final idx = _msgs.indexWhere((m) => m.evId == s.rumorId);
+    if (idx < 0) return;
+    setState(() => _msgs[idx].failed = !s.ok);
+  }
 
   void _onDm(DmMessage m) {
     if (_seenEv.contains(m.rumorId)) return;
@@ -1494,6 +1503,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                             if (m.localBytes != null) {
                               final kind = m.media?.kind ?? MediaKind.file;
                               _upload(m, m.localBytes!, kind, 'application/octet-stream', m.text);
+                            } else if (_realMode && _dm != null && m.media == null && m.special == null) {
+                              // Resend a failed text message; track the new wrap.
+                              final newId = _dm!.send(jsonEncode({'t': 'text', 'body': m.text,
+                                  if (m.replyTo != null) 'replyTo': m.replyTo, if (m.expireAt != null) 'exp': m.expireAt}));
+                              setState(() { m.evId = newId; m.failed = false; _seenEv.add(newId); });
                             }
                           },
                           child: Row(mainAxisSize: MainAxisSize.min, children: [

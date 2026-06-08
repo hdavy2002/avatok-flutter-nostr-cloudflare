@@ -7,6 +7,7 @@ import '../core/device_contacts.dart';
 import '../core/logo.dart';
 import '../core/profile_store.dart';
 import '../core/theme.dart';
+import '../features/diagnostics/log_page.dart';
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
 /// 'explore' | 'verse' | 'library' | 'settings' | 'wallet' | 'profile' |
@@ -111,6 +112,15 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 leading: const Icon(Icons.person_add_alt_1, size: 22, color: AvaColors.brand),
                 title: const Text('Invite', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                 onTap: () { Navigator.pop(context); DeviceContactsService.shareGenericInvite(); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.bug_report_outlined, size: 22, color: AvaColors.sub),
+                title: const Text('Diagnostics', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                subtitle: const Text('App logs — copy & share', style: TextStyle(color: AvaColors.sub, fontSize: 11.5)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
+                },
               ),
               _accountSection(),
             ]),

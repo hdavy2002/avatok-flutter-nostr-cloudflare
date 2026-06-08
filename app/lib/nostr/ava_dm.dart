@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../core/ava_log.dart';
 import 'nip17.dart';
 import 'nostr_client.dart';
 
@@ -22,15 +23,33 @@ class AvaDm {
   final String peerPub; // hex (x-only)
   final String _subId;
   StreamSubscription? _sub;
+  StreamSubscription? _pubSub;
   final _controller = StreamController<DmMessage>.broadcast();
+
+  // Map each published gift-wrap event id back to its rumor id, so a relay
+  // OK/rejection can be reported against the message the user sees.
+  final Map<String, String> _giftToRumor = {};
+  final _statusC = StreamController<({String rumorId, bool ok, String message})>.broadcast();
 
   AvaDm({required this.client, required this.myPriv, required this.myPub, required this.peerPub})
       : _subId = 'gw-${peerPub.substring(0, 8)}';
 
   Stream<DmMessage> get messages => _controller.stream;
 
+  /// Delivery status of our own sends (the relay accepted/rejected the wrap).
+  Stream<({String rumorId, bool ok, String message})> get sendStatus => _statusC.stream;
+
   void start() {
     client.connect();
+    // Relay accept/reject of our gift wraps → per-message send status.
+    _pubSub = client.publishResults.listen((r) {
+      final rid = _giftToRumor[r.id];
+      if (rid == null) return;
+      if (!r.accepted) {
+        AvaLog.I.log('dm', 'send FAILED rumor=${rid.substring(0, 8)}: ${r.message}');
+      }
+      if (!_statusC.isClosed) _statusC.add((rumorId: rid, ok: r.accepted, message: r.message));
+    });
     _sub = client.events.listen((rec) {
       final (subId, ev) = rec;
       if (subId != _subId || ev.kind != 1059) return;
@@ -54,14 +73,18 @@ class AvaDm {
     final (gifts, rumorId) = Nip17.wrapBoth(
         senderPriv: myPriv, senderPub: myPub, peerPub: peerPub, payload: payload);
     for (final g in gifts) {
+      _giftToRumor[g.id] = rumorId;
       client.publish(g);
     }
+    AvaLog.I.log('dm', 'send rumor=${rumorId.substring(0, 8)} (${gifts.length} wraps), authed=${client.isAuthed}');
     return rumorId;
   }
 
   void stop() {
     try { client.closeSub(_subId); } catch (_) {}
     _sub?.cancel();
+    _pubSub?.cancel();
     _controller.close();
+    if (!_statusC.isClosed) _statusC.close();
   }
 }

@@ -8,6 +8,7 @@ import 'package:pointycastle/export.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/api_auth.dart';
+import '../core/ava_log.dart';
 
 /// A signed Nostr event (NIP-01).
 class NostrEvent {
@@ -143,9 +144,12 @@ class NostrClient {
     // real NIP-42 success — we NEVER send them in "public mode".
     _socketAuthed = false;
     _hasIdentity = id != null;
+    AvaLog.I.log('relay', 'connect (hasIdentity=$_hasIdentity)');
     _ch = WebSocketChannel.connect(Uri.parse(url));
     _connected = true;
-    _ch!.stream.listen(_onMessage, onError: (_) => _connected = false, onDone: () => _connected = false);
+    _ch!.stream.listen(_onMessage,
+        onError: (e) { _connected = false; AvaLog.I.log('relay', 'socket error: $e'); },
+        onDone: () { _connected = false; AvaLog.I.log('relay', 'socket closed'); });
   }
 
   void _onMessage(dynamic raw) {
@@ -172,10 +176,16 @@ class NostrClient {
           final okMsg = d.length > 3 ? d[3].toString() : '';
           if (okId.isNotEmpty && okId == _authEventId) {
             // Our NIP-42 auth result. On success, unlock + flush private frames.
-            if (accepted && !_socketAuthed) { _socketAuthed = true; _flushPrivate(); }
+            AvaLog.I.log('relay', 'AUTH ${accepted ? "accepted ✓" : "REJECTED ✗ ($okMsg)"}');
+            if (accepted && !_socketAuthed) {
+              _socketAuthed = true;
+              AvaLog.I.log('relay', 'flushing ${_privateQueue.length} queued private frame(s)');
+              _flushPrivate();
+            }
             break;
           }
           // A published event's result — surface so the UI marks it sent/failed.
+          if (!accepted) AvaLog.I.log('relay', 'publish REJECTED ${okId.length >= 8 ? okId.substring(0, 8) : okId}: $okMsg');
           _publishC.add((id: okId, accepted: accepted, message: okMsg));
           break;
       }
@@ -215,10 +225,12 @@ class NostrClient {
       // dropped by the relay. Surface it as a failed publish so the UI shows
       // "not sent" instead of a false "sent", rather than queueing forever.
       if (!_hasIdentity) {
+        AvaLog.I.log('relay', 'DROP private ${o[0]} — no identity to NIP-42 auth');
         final id = (o.length > 1 && o[1] is Map) ? ((o[1] as Map)['id']?.toString() ?? '') : '';
         if (id.isNotEmpty) _publishC.add((id: id, accepted: false, message: 'no-identity'));
         return;
       }
+      AvaLog.I.log('relay', 'queue private ${o[0]} until auth');
       _privateQueue.add(o);
       return;
     }
