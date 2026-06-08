@@ -1,38 +1,53 @@
 #!/usr/bin/env bash
-# Injects the AvaChat bootstrap into the 0xchat entrypoint WITHOUT committing a
-# change into the 0xchat submodule. CI runs this after checkout; locally a dev
-# can run it once. Idempotent.
+# Makes 0xchat-app-main build against AvaChat, WITHOUT committing changes into the
+# 0xchat submodule. CI and local builds run this after checkout. Idempotent.
+# Uses python3 (portable; macOS BSD sed/perl mangle multi-line inserts).
 #
-# It:
-#   1. adds `avachat` as a path dependency in 0xchat-app-main/pubspec.yaml
-#   2. inserts `await AvaChatBootstrap.init();` before the first runApp(...) in
-#      0xchat-app-main/lib/main.dart, plus the import.
-#
-# If 0xchat upstream changes its entrypoint, adjust the markers below.
+# Applies four edits to external/0xchat-app-main:
+#   1. lib/main.dart        — import avachat + `await AvaChatBootstrap.init();`
+#   2. pubspec.yaml         — add `avachat` path dependency
+#   3. pubspec.yaml         — pin image_gallery_saver_plus 4.0.1 (5.0.0 needs Dart 3.10;
+#                             Flutter 3.29.3 ships Dart 3.7.2)
+#   4. android/app/build.gradle — abiFilters 'arm64-v8a' (single-ABI APK)
 set -euo pipefail
 
-APP=external/0xchat-app-main
-MAIN="$APP/lib/main.dart"
-PUBSPEC="$APP/pubspec.yaml"
+APP="${1:-external/0xchat-app-main}"
 
-if ! grep -q "AvaChatBootstrap.init" "$MAIN"; then
-  # import
-  sed -i "1i import 'package:avachat/avachat.dart';" "$MAIN"
-  # call before the first runApp(
-  sed -i "0,/runApp(/s//await AvaChatBootstrap.init();\n  runApp(/" "$MAIN"
-  echo "injected bootstrap into $MAIN"
-else
-  echo "bootstrap already present in $MAIN"
-fi
+python3 - "$APP" <<'PY'
+import sys, io, os
+app = sys.argv[1]
+def read(p): return open(p, encoding="utf-8").read()
+def write(p, s): open(p, "w", encoding="utf-8").write(s)
 
-if ! grep -q "avachat:" "$PUBSPEC"; then
-  # add under dependencies: (path to our integration package)
-  awk '
-    /^dependencies:/ && !done {
-      print; print "  avachat:"; print "    path: ../../avachat"; done=1; next
-    } { print }
-  ' "$PUBSPEC" > "$PUBSPEC.tmp" && mv "$PUBSPEC.tmp" "$PUBSPEC"
-  echo "added avachat path dependency to $PUBSPEC"
-else
-  echo "avachat dependency already present in $PUBSPEC"
-fi
+# 1 + 2: main.dart
+main = os.path.join(app, "lib/main.dart")
+s = read(main)
+if "package:avachat/avachat.dart" not in s:
+    s = s.replace("import 'dart:async';",
+                  "import 'dart:async';\nimport 'package:avachat/avachat.dart';", 1)
+if "AvaChatBootstrap.init" not in s:
+    s = s.replace("void main() async {",
+                  "void main() async {\n  await AvaChatBootstrap.init();", 1)
+write(main, s)
+
+# pubspec.yaml: avachat dep + image override
+pub = os.path.join(app, "pubspec.yaml")
+lines = read(pub).split("\n")
+out, has_dep, has_ovr = [], "avachat" in read(pub), "image_gallery_saver_plus: 4.0.1" in read(pub)
+for ln in lines:
+    out.append(ln)
+    if ln.rstrip() == "dependencies:" and not has_dep:
+        out += ["  avachat:", "    path: ../../avachat"]; has_dep = True
+    elif ln.rstrip() == "dependency_overrides:" and not has_ovr:
+        out += ["  image_gallery_saver_plus: 4.0.1"]; has_ovr = True
+write(pub, "\n".join(out))
+
+# 4: build.gradle abiFilters
+g = os.path.join(app, "android/app/build.gradle")
+gs = read(g)
+if "abiFilters 'arm64-v8a'" not in gs:
+    gs = gs.replace("    multiDexEnabled true\n",
+        "    multiDexEnabled true\n    ndk {\n      abiFilters 'arm64-v8a'\n    }\n", 1)
+    write(g, gs)
+print("inject: done")
+PY

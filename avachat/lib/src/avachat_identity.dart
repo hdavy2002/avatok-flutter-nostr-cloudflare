@@ -45,6 +45,10 @@ class AvaChatIdentity {
   /// Host app injects its real scope/storage exactly once at startup.
   void bindScope(AvaChatSecureScope scope) => _scope = scope;
 
+  /// True once a per-account scope is bound. Bootstrap checks this so a
+  /// not-yet-wired host (plain 0xchat) starts without crashing.
+  bool get hasScope => _scope != null;
+
   // Per-account-scoped storage key for this account's Nostr secret key.
   String _nsecKey(String accountId) => 'avachat.nsec::$accountId';
 

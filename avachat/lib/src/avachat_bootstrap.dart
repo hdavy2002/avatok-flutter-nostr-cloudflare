@@ -25,15 +25,34 @@ import 'avachat_brain.dart';
 class AvaChatBootstrap {
   static bool _done = false;
 
-  /// Call once, before 0xchat's runApp(). Idempotent.
+  /// Call once, before 0xchat's runApp(). Idempotent and crash-safe: the only
+  /// critical step is repointing relays (always succeeds). The AvaChat-specific
+  /// layers (Clerk identity, TURN, brain) are additive and not yet wired into
+  /// 0xchat's UI, so they are best-effort — a missing scope must NOT crash the
+  /// app. Until those seams are bound, the app runs as 0xchat (nsec login +
+  /// gift-wrap DMs) over the AvaTok relay.
   static Future<void> init() async {
     if (_done) return;
     _done = true;
 
-    _repointRelays();
-    await AvaChatIdentity.instance.restoreOrProvision();
-    await AvaChatCalls.instance.configureIceServers();
-    AvaChatBrain.instance.attach(); // subscribes to decrypted DM stream on-device
+    // Critical: point the whole client at our relay.
+    try {
+      _repointRelays();
+    } catch (_) {/* never block app start */}
+
+    // Additive layers — only run if the host app has bound the required
+    // adapters; swallow errors so startup is never blocked.
+    if (AvaChatIdentity.instance.hasScope) {
+      try {
+        await AvaChatIdentity.instance.restoreOrProvision();
+      } catch (_) {}
+    }
+    try {
+      await AvaChatCalls.instance.configureIceServers();
+    } catch (_) {}
+    try {
+      AvaChatBrain.instance.attach();
+    } catch (_) {}
   }
 
   /// Collapse every 0xchat relay kind onto our single authenticated relay.
