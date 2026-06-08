@@ -110,19 +110,41 @@ async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
   } catch { /* table optional */ }
 }
 
-// Image → short caption (and any legible text). Cloudflare vision model.
+// Image → caption + OCR + chart/UI/document understanding, via GEMMA 4 vision
+// (multimodal, 256K ctx, OCR/doc/chart/UI/detection). Unified onto Gemma 4 so
+// the whole AvaBrain pipeline runs on ONE model. Bytes are passed as a base64
+// data URL in the OpenAI-style messages format Gemma 4 accepts on Workers AI.
 async function captionImage(env: Env, key: string): Promise<string> {
   const obj = await env.BLOBS.get(key);
   if (!obj) return "";
-  const bytes = [...new Uint8Array(await obj.arrayBuffer())];
+  const buf = await obj.arrayBuffer();
+  const mime = obj.httpMetadata?.contentType || "image/jpeg";
+  const dataUrl = `data:${mime};base64,${bytesToBase64(new Uint8Array(buf))}`;
+  const model = env.BRAIN_VISION_MODEL || env.BRAIN_EXTRACT_MODEL || "@cf/google/gemma-4-26b-a4b-it";
   try {
-    const out = (await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf" as any, {
-      image: bytes,
-      prompt: "Describe this image in one sentence, and transcribe any visible text.",
-      max_tokens: 256,
+    const out = (await env.AI.run(model as any, {
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "Describe this image in one or two sentences. Transcribe any visible text verbatim. If it is a document, chart, screenshot, or UI, summarise its content and key data/labels." },
+          { type: "image_url", image_url: { url: dataUrl } },
+        ],
+      }],
+      max_tokens: 512,
+      temperature: 0,
     })) as any;
-    return (out?.description || out?.response || aiText(out) || "").toString().slice(0, 2000);
+    return (aiText(out) || "").toString().slice(0, 2000);
   } catch { return ""; }
+}
+
+// base64-encode bytes in chunks (avoids call-stack limits on large buffers).
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
 }
 
 // Document → markdown/text. Uses the AI binding's document-to-markdown conversion

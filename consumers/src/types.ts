@@ -19,6 +19,7 @@ export interface Env {
   FCM_PROJECT: string;
   BRAIN_EXTRACT_MODEL?: string;
   BRAIN_EMBED_MODEL?: string;
+  BRAIN_VISION_MODEL?: string;     // Gemma 4 multimodal — image caption/OCR/doc/chart/UI
   MODERATION_MODEL: string;        // image moderation model
   MODERATION_MODEL_TYPE?: string;  // "vision" (LLM, parse text) | "classifier" (label+score)
   TEXT_MODERATION_MODEL?: string;  // text safety classifier (Llama Guard default)
