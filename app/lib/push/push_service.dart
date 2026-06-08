@@ -32,10 +32,20 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   final d = message.data;
   if (d['type'] == 'message') {
     await _showMessageNotif(d);
+  } else if (d['type'] == 'call-status') {
+    // Caller cancelled / call ended before we answered → stop ringing.
+    final callId = (d['callId'] ?? '').toString();
+    if (callId.isNotEmpty && _terminalCallStatus((d['status'] ?? '').toString())) {
+      await FlutterCallkitIncoming.endCall(callId);
+    }
   } else {
     await _showIncoming(d);
   }
 }
+
+/// A call-status that means the call is over and any incoming ring should stop.
+bool _terminalCallStatus(String s) =>
+    s == 'cancel' || s == 'ended' || s == 'missed' || s == 'no-answer';
 
 /// Local notification for a new (E2E) message. Content-less by design — only the
 /// sender's display name travels; the message body never leaves the devices.
@@ -100,7 +110,13 @@ class PushService {
       final d = m.data;
       // Server-relayed call status → update the active CallScreen.
       if (d['type'] == 'call-status') {
-        callStatusBus.add((callId: (d['callId'] ?? '').toString(), status: (d['status'] ?? '').toString()));
+        final callId = (d['callId'] ?? '').toString();
+        final status = (d['status'] ?? '').toString();
+        callStatusBus.add((callId: callId, status: status));
+        // If we're the callee still ringing, dismiss the incoming-call UI.
+        if (callId.isNotEmpty && _terminalCallStatus(status)) {
+          FlutterCallkitIncoming.endCall(callId);
+        }
         return;
       }
       if (d['type'] == 'message') return; // app is open — unread badge handles it

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/config.dart';
@@ -59,6 +60,11 @@ class _CallScreenState extends State<CallScreen> {
   String _phase = 'connecting';
   Timer? _ringTimeout;
   StreamSubscription? _statusSub;
+  // ICE candidates that arrive before the remote description is set must be
+  // buffered — addCandidate throws otherwise and the dropped candidate is often
+  // the very one that would have connected the call (esp. over cellular/TURN).
+  final List<RTCIceCandidate> _pendingCandidates = [];
+  bool _remoteSet = false;
 
   @override
   void initState() {
@@ -113,11 +119,24 @@ class _CallScreenState extends State<CallScreen> {
     await _local.initialize();
     await _remote.initialize();
     await _fetchIce();
-    _stream = await navigator.mediaDevices.getUserMedia({
-      'audio': true,
-      'video': widget.video ? {'facingMode': 'user'} : false,
-    });
+    try {
+      _stream = await navigator.mediaDevices.getUserMedia({
+        'audio': true,
+        'video': widget.video ? {'facingMode': 'user'} : false,
+      });
+    } catch (_) {
+      // Mic/cam permission denied or device busy — don't hang on "Connecting…".
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Microphone permission is needed to make a call')));
+      }
+      _endWith('ended');
+      return;
+    }
     _local.srcObject = _stream;
+    // Route audio output: speaker for video, earpiece for voice. The in-call
+    // speaker button toggles this for real (previously it did nothing).
+    try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _secs++);
     });
@@ -141,8 +160,28 @@ class _CallScreenState extends State<CallScreen> {
         if (mounted) setState(() { _connected = true; _phase = 'connected'; });
       }
     };
+    pc.onConnectionState = (s) {
+      // End cleanly if an established call's transport fails (network dropped).
+      if (mounted && _connected &&
+          (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+           s == RTCPeerConnectionState.RTCPeerConnectionStateClosed)) {
+        _endWith('ended');
+      }
+    };
     _pc = pc;
     return pc;
+  }
+
+  /// Apply any ICE candidates that arrived before the remote description existed.
+  Future<void> _flushCandidates() async {
+    _remoteSet = true;
+    final pc = _pc;
+    if (pc == null) return;
+    final pending = List<RTCIceCandidate>.of(_pendingCandidates);
+    _pendingCandidates.clear();
+    for (final c in pending) {
+      try { await pc.addCandidate(c); } catch (_) {}
+    }
   }
 
   Future<void> _onSignal(dynamic raw) async {
@@ -162,16 +201,24 @@ class _CallScreenState extends State<CallScreen> {
         _remoteId = d['from'] as String;
         final pc = _pc ?? await _newPC();
         await pc.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+        await _flushCandidates();
         final ans = await pc.createAnswer();
         await pc.setLocalDescription(ans);
         _send({'type': 'answer', 'to': _remoteId, 'sdp': ans.toMap()});
         break;
       case 'answer':
         await _pc?.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+        await _flushCandidates();
         break;
       case 'candidate':
         final c = d['candidate'];
-        await _pc?.addCandidate(RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']));
+        final cand = RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']);
+        // Buffer until the remote description is set, else addCandidate throws.
+        if (_pc == null || !_remoteSet) {
+          _pendingCandidates.add(cand);
+        } else {
+          await _pc!.addCandidate(cand);
+        }
         break;
       case 'decline':
         _endWith('declined');
@@ -201,6 +248,20 @@ class _CallScreenState extends State<CallScreen> {
     _muted = !_muted;
     _stream?.getAudioTracks().forEach((t) => t.enabled = !_muted);
     setState(() {});
+  }
+
+  void _toggleSpeaker() {
+    setState(() => _speaker = !_speaker);
+    Helper.setSpeakerphoneOn(_speaker); // earpiece ⇆ loudspeaker
+  }
+
+  /// Caller gave up before the callee answered → push a 'cancel' so their phone
+  /// stops ringing (the WS 'bye' can't reach a callee who never joined the room).
+  void _notifyCalleeCanceled() {
+    if (!widget.seed.startsWith('npub1')) return;
+    ApiAuth.postJson(kCallStatusUrl, {
+      'to': widget.seed, 'callId': widget.room, 'status': 'cancel',
+    }).ignore();
   }
 
   void _toggleCam() {
@@ -233,6 +294,8 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _end() async {
     gInCall = false;
+    // Outgoing call torn down before it connected → tell the callee to stop ringing.
+    if (widget.outgoing && !_connected) _notifyCalleeCanceled();
     _timer?.cancel();
     _ringTimeout?.cancel();
     await _pc?.close();
@@ -370,7 +433,7 @@ class _CallScreenState extends State<CallScreen> {
                   _btn(Icons.chat_bubble_outline, light, onTap: () {}),
                   const SizedBox(width: 14),
                   _btn(_speaker ? Icons.volume_up : Icons.volume_off, light,
-                      active: _speaker, onTap: () => setState(() => _speaker = !_speaker)),
+                      active: _speaker, onTap: _toggleSpeaker),
                   const SizedBox(width: 14),
                   GestureDetector(
                     onTap: _hangup,
