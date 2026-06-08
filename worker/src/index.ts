@@ -8,7 +8,7 @@
 import type { Env } from "./types";
 import { json, preflight } from "./util";
 import * as api from "./routes/api";
-import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, getStorage, getIce } from "./routes/media";
+import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, libraryFolderMove, libraryFolderCopy, getStorage, getIce } from "./routes/media";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion } from "./routes/account";
@@ -81,6 +81,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/upload/private" && req.method === "POST") return await uploadPrivate(req, env);
       if (p === "/api/library" && req.method === "GET") return await getLibrary(req, env);
       if (p === "/api/library/tree" && req.method === "GET") return await getLibraryTree(req, env);
+      if (p === "/api/library/folders/move" && req.method === "POST") return await libraryFolderMove(req, env);
+      if (p === "/api/library/folders/copy" && req.method === "POST") return await libraryFolderCopy(req, env);
       if (p === "/api/library/folders") return await libraryFolders(req, env);
       if (p === "/api/library/move" && req.method === "POST") return await libraryMove(req, env);
       if (p === "/api/library/copy" && req.method === "POST") return await libraryCopy(req, env);

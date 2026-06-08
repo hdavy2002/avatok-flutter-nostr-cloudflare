@@ -1,4 +1,6 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/avatar_cache.dart';
@@ -35,6 +37,60 @@ String _fmtBytes(int b) {
   return '${v.toStringAsFixed(v >= 10 || i == 0 ? 0 : 1)} ${u[i]}';
 }
 
+final ImagePicker _imgPicker = ImagePicker();
+
+/// Crude mime from a file name extension — the server re-derives the category,
+/// this just gives it a good hint and keeps the Library entry tidy.
+String _mimeFromName(String name, {String fallback = 'application/octet-stream'}) {
+  final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+  const m = {
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+    'webp': 'image/webp', 'heic': 'image/heic', 'bmp': 'image/bmp',
+    'mp4': 'video/mp4', 'mov': 'video/quicktime', 'webm': 'video/webm', 'mkv': 'video/x-matroska',
+    'mp3': 'audio/mpeg', 'm4a': 'audio/aac', 'aac': 'audio/aac', 'wav': 'audio/wav', 'ogg': 'audio/ogg',
+    'pdf': 'application/pdf', 'txt': 'text/plain', 'csv': 'text/csv', 'md': 'text/markdown',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'zip': 'application/zip',
+  };
+  return m[ext] ?? fallback;
+}
+
+/// Destination apps for move/copy: everything that already has files in the
+/// Library, plus AvaLibrary itself as a neutral home. Self-contained (reads the
+/// cached tree) so any screen can offer "move anywhere".
+Future<List<String>> _destApps() async {
+  final t = await LibraryApi.cachedTree();
+  final s = <String>{'avalibrary'};
+  if (t != null) s.addAll(t.apps.map((a) => a.app));
+  return s.toList();
+}
+
+/// A search box styled to the app. Calls [onChanged] live.
+class _SearchBar extends StatelessWidget {
+  final String hint;
+  final ValueChanged<String> onChanged;
+  const _SearchBar({required this.hint, required this.onChanged});
+  @override
+  Widget build(BuildContext context) => TextField(
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: const Icon(Icons.search, color: AvaColors.sub),
+          filled: true,
+          fillColor: AvaColors.soft,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        ),
+      );
+}
+
 /// AvaLibrary — the global, cross-app file manager. App roots → category folders
 /// (+ user folders) → files. Local-first: paints the cached tree, then refreshes.
 class AvaLibraryScreen extends StatefulWidget {
@@ -46,6 +102,7 @@ class AvaLibraryScreen extends StatefulWidget {
 class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
   LibraryTree? _tree;
   bool _loading = true;
+  String _query = '';
 
   @override
   void initState() {
@@ -64,40 +121,64 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
     }
   }
 
+  Future<void> _add() async {
+    // No folder context at the cross-app root → uploads land in the AvaLibrary app.
+    final did = await showAddSheet(context, app: 'avalibrary', folderId: null);
+    if (did) _load();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final apps = _tree?.apps ?? const [];
+    final all = _tree?.apps ?? const <AppNode>[];
+    final apps = _query.isEmpty
+        ? all
+        : all.where((a) => appByKey(a.app).name.toLowerCase().contains(_query.toLowerCase())).toList();
     return Scaffold(
       backgroundColor: AvaColors.bg,
       appBar: AppBar(
         backgroundColor: AvaColors.bg, elevation: 0, foregroundColor: AvaColors.ink,
         title: const Text('AvaLibrary', style: TextStyle(fontWeight: FontWeight.w800)),
       ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AvaColors.brand,
+        onPressed: _add,
+        child: const Icon(Icons.add),
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading && _tree == null
             ? const Center(child: CircularProgressIndicator())
-            : apps.isEmpty
-                ? _empty()
-                : ListView(padding: const EdgeInsets.all(16), children: [
-                    const Text('Your files across every AvaVerse app.',
-                        style: TextStyle(color: AvaColors.sub, fontSize: 13)),
-                    const SizedBox(height: 14),
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                _SearchBar(hint: 'Search apps', onChanged: (v) => setState(() => _query = v)),
+                const SizedBox(height: 14),
+                if (all.isEmpty)
+                  _emptyBody()
+                else ...[
+                  const Text('Your files across every AvaVerse app.',
+                      style: TextStyle(color: AvaColors.sub, fontSize: 13)),
+                  const SizedBox(height: 14),
+                  if (apps.isEmpty)
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: Text('No apps match.', style: TextStyle(color: AvaColors.sub))))
+                  else
                     for (final a in apps) _appCard(a),
-                  ]),
+                ],
+              ]),
       ),
     );
   }
 
-  Widget _empty() => ListView(children: const [
-        SizedBox(height: 120),
-        Icon(Icons.folder_open, size: 64, color: AvaColors.line),
-        SizedBox(height: 12),
-        Center(child: Text('No files yet', style: TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w700))),
-        SizedBox(height: 4),
-        Center(child: Text('Send or receive a file in any app and it lands here.',
-            style: TextStyle(color: AvaColors.sub, fontSize: 12))),
-      ]);
+  Widget _emptyBody() => const Padding(
+        padding: EdgeInsets.only(top: 80),
+        child: Column(children: [
+          Icon(Icons.folder_open, size: 64, color: AvaColors.line),
+          SizedBox(height: 12),
+          Center(child: Text('No files yet', style: TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w700))),
+          SizedBox(height: 4),
+          Center(child: Text('Tap + to upload, or send/receive a file in any app.',
+              style: TextStyle(color: AvaColors.sub, fontSize: 12), textAlign: TextAlign.center)),
+        ]),
+      );
 
   Widget _appCard(AppNode a) {
     final def = appByKey(a.app);
@@ -134,18 +215,26 @@ class _AppView extends StatefulWidget {
 
 class _AppViewState extends State<_AppView> {
   late List<LibraryFolder> _folders;
+  late Map<String, int> _byCategory;
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
     _folders = List.of(widget.tree.foldersByApp[widget.app] ?? const []);
-    _refreshFolders();
+    _byCategory = Map.of(widget.node.byCategory);
+    _refresh();
   }
 
-  Future<void> _refreshFolders() async {
+  Future<void> _refresh() async {
     try {
       final f = await LibraryApi.folders(widget.app);
       if (mounted) setState(() => _folders = f);
+    } catch (_) {}
+    try {
+      final t = await LibraryApi.tree();
+      final node = t.apps.where((a) => a.app == widget.app).cast<AppNode?>().firstWhere((_) => true, orElse: () => null);
+      if (node != null && mounted) setState(() => _byCategory = Map.of(node.byCategory));
     } catch (_) {}
   }
 
@@ -153,12 +242,22 @@ class _AppViewState extends State<_AppView> {
     final name = await _promptName(context, 'New folder');
     if (name == null || name.isEmpty) return;
     await LibraryApi.createFolder(app: widget.app, name: name);
-    _refreshFolders();
+    _refresh();
+  }
+
+  Future<void> _add() async {
+    final did = await showAddSheet(context, app: widget.app, folderId: null, onNewFolder: _newFolder);
+    if (did) _refresh();
   }
 
   @override
   Widget build(BuildContext context) {
     final def = appByKey(widget.app);
+    final q = _query.toLowerCase();
+    final folders = q.isEmpty ? _folders : _folders.where((f) => f.name.toLowerCase().contains(q)).toList();
+    final cats = q.isEmpty
+        ? _cats
+        : _cats.where((c) => c.label.toLowerCase().contains(q)).toList();
     return Scaffold(
       backgroundColor: AvaColors.bg,
       appBar: AppBar(
@@ -167,32 +266,37 @@ class _AppViewState extends State<_AppView> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AvaColors.brand,
-        onPressed: _newFolder,
-        icon: const Icon(Icons.create_new_folder_outlined),
-        label: const Text('New folder'),
+        onPressed: _add,
+        icon: const Icon(Icons.add),
+        label: const Text('Add'),
       ),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('CATEGORIES', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        for (final c in _cats)
-          if ((widget.node.byCategory[c.key] ?? 0) > 0) _row(
-            icon: c.icon, color: c.color, title: c.label,
-            sub: '${widget.node.byCategory[c.key]} item${widget.node.byCategory[c.key] == 1 ? '' : 's'}',
-            onTap: () => _openView(category: c.key, title: c.label),
-          ),
-        const SizedBox(height: 18),
-        Row(children: [
-          const Text('FOLDERS', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
+        _SearchBar(hint: 'Search in ${def.name}', onChanged: (v) => setState(() => _query = v)),
+        const SizedBox(height: 14),
+        if (cats.any((c) => (_byCategory[c.key] ?? 0) > 0)) ...[
+          const Text('CATEGORIES', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (final c in cats)
+            if ((_byCategory[c.key] ?? 0) > 0) _row(
+              icon: c.icon, color: c.color, title: c.label,
+              sub: '${_byCategory[c.key]} item${_byCategory[c.key] == 1 ? '' : 's'}',
+              onTap: () => _openView(category: c.key, title: c.label),
+            ),
+          const SizedBox(height: 18),
+        ],
+        Row(children: const [
+          Text('FOLDERS', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 8),
-        if (_folders.isEmpty)
-          const Padding(padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('No folders yet — tap “New folder”.', style: TextStyle(color: AvaColors.sub, fontSize: 12)))
+        if (folders.isEmpty)
+          Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(_query.isEmpty ? 'No folders yet — tap Add › New folder.' : 'No folders match.',
+                  style: const TextStyle(color: AvaColors.sub, fontSize: 12)))
         else
-          for (final f in _folders) _row(
+          for (final f in folders) _row(
             icon: Icons.folder, color: AvaColors.brand, title: f.name, sub: 'Folder',
             onTap: () => _openView(folder: f.id, title: f.name),
-            onLong: () => _folderMenu(f),
+            menu: () => _folderMenu(f),
           ),
         const SizedBox(height: 80),
       ]),
@@ -202,29 +306,48 @@ class _AppViewState extends State<_AppView> {
   void _openView({String? category, String? folder, required String title}) {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => _FolderView(app: widget.app, category: category, folderId: folder, title: title, folders: _folders),
-    )).then((_) => _refreshFolders());
+    )).then((_) => _refresh());
   }
 
   Future<void> _folderMenu(LibraryFolder f) async {
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+            child: Row(children: [const Icon(Icons.folder, color: AvaColors.brand), const SizedBox(width: 10),
+              Expanded(child: Text(f.name, style: const TextStyle(fontWeight: FontWeight.w800)))])),
+        const Divider(height: 1),
         ListTile(leading: const Icon(Icons.drive_file_rename_outline), title: const Text('Rename'), onTap: () => Navigator.pop(context, 'rename')),
+        ListTile(leading: const Icon(Icons.drive_file_move_outline), title: const Text('Move to…'), onTap: () => Navigator.pop(context, 'move')),
+        ListTile(leading: const Icon(Icons.copy_all_outlined), title: const Text('Copy to…'),
+            subtitle: const Text('Duplicates the folder and its files (shortcuts)'), onTap: () => Navigator.pop(context, 'copy')),
         ListTile(leading: const Icon(Icons.delete_outline, color: AvaColors.danger),
             title: const Text('Delete folder', style: TextStyle(color: AvaColors.danger)),
             subtitle: const Text('Files move back to their category'), onTap: () => Navigator.pop(context, 'delete')),
       ])),
     );
+    if (!mounted || action == null) return;
     if (action == 'rename') {
       final name = await _promptName(context, 'Rename folder', initial: f.name);
-      if (name != null && name.isNotEmpty) { await LibraryApi.renameFolder(f.id, name); _refreshFolders(); }
+      if (name != null && name.isNotEmpty) { await LibraryApi.renameFolder(f.id, name); _refresh(); }
     } else if (action == 'delete') {
       await LibraryApi.deleteFolder(f.id);
-      _refreshFolders();
+      _refresh();
+    } else if (action == 'move' || action == 'copy') {
+      final dest = await _pickDestination(context, title: action == 'move' ? 'Move folder to' : 'Copy folder to', excludeFolderId: f.id);
+      if (dest == null) return;
+      if (action == 'move') {
+        await LibraryApi.moveFolder(f.id, app: dest.app, parentId: dest.folder);
+      } else {
+        await LibraryApi.copyFolder(f.id, app: dest.app, parentId: dest.folder);
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(action == 'move' ? 'Folder moved' : 'Folder copied')));
+      _refresh();
     }
   }
 
-  Widget _row({required IconData icon, required Color color, required String title, required String sub, required VoidCallback onTap, VoidCallback? onLong}) =>
+  Widget _row({required IconData icon, required Color color, required String title, required String sub, required VoidCallback onTap, VoidCallback? menu}) =>
       Container(
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
@@ -232,8 +355,10 @@ class _AppViewState extends State<_AppView> {
           leading: Icon(icon, color: color),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AvaColors.ink)),
           subtitle: Text(sub, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-          trailing: const Icon(Icons.chevron_right, color: AvaColors.sub),
-          onTap: onTap, onLongPress: onLong,
+          trailing: menu == null
+              ? const Icon(Icons.chevron_right, color: AvaColors.sub)
+              : IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.sub), onPressed: menu),
+          onTap: onTap,
         ),
       );
 }
@@ -257,6 +382,8 @@ class _FolderViewState extends State<_FolderView> {
   bool _fetching = false;
   int? _cursor;
   bool _more = true;
+  String _query = '';
+  String? _typeFilter;
 
   @override
   void initState() {
@@ -288,34 +415,91 @@ class _FolderViewState extends State<_FolderView> {
     await _load();
   }
 
+  Future<void> _add() async {
+    // Inside a user folder → drop the upload right into it. In a category bucket
+    // → app root (the server files it by detected type).
+    final did = await showAddSheet(context, app: widget.app, folderId: widget.folderId);
+    if (did) _refresh();
+  }
+
+  List<LibraryItem> get _visible {
+    final q = _query.toLowerCase();
+    return _items.where((m) {
+      if (_typeFilter != null && m.category != _typeFilter) return false;
+      if (q.isNotEmpty && !m.name.toLowerCase().contains(q)) return false;
+      return true;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isGrid = widget.category == 'image' || widget.category == 'video';
+    final isFolder = widget.folderId != null;
+    final visible = _visible;
+    final filtering = _query.isNotEmpty || _typeFilter != null;
     return Scaffold(
       backgroundColor: AvaColors.bg,
       appBar: AppBar(
         backgroundColor: AvaColors.bg, elevation: 0, foregroundColor: AvaColors.ink,
         title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w800)),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? const Center(child: Text('Empty', style: TextStyle(color: AvaColors.sub)))
-              : RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: isGrid ? _grid() : _list(),
-                ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AvaColors.brand,
+        onPressed: _add,
+        child: const Icon(Icons.add),
+      ),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: _SearchBar(hint: 'Search files', onChanged: (v) => setState(() => _query = v)),
+        ),
+        if (isFolder) _typeChips(),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : visible.isEmpty
+                  ? Center(child: Text(filtering ? 'No matches' : 'Empty', style: const TextStyle(color: AvaColors.sub)))
+                  : RefreshIndicator(
+                      onRefresh: _refresh,
+                      child: isGrid ? _grid(visible, filtering) : _list(visible, filtering),
+                    ),
+        ),
+      ]),
     );
   }
 
-  Widget _grid() => GridView.builder(
+  Widget _typeChips() => SizedBox(
+        height: 44,
+        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+          _chip('All', null),
+          for (final c in _cats) _chip(c.label, c.key),
+        ]),
+      );
+
+  Widget _chip(String label, String? key) {
+    final on = _typeFilter == key;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: on,
+        onSelected: (_) => setState(() => _typeFilter = key),
+        selectedColor: AvaColors.brand.withOpacity(0.18),
+        labelStyle: TextStyle(color: on ? AvaColors.brand : AvaColors.sub, fontWeight: FontWeight.w700, fontSize: 12.5),
+        backgroundColor: AvaColors.soft,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide.none),
+      ),
+    );
+  }
+
+  Widget _grid(List<LibraryItem> visible, bool filtering) => GridView.builder(
         padding: const EdgeInsets.all(12),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
-        itemCount: _items.length + (_more ? 1 : 0),
+        itemCount: visible.length + (!filtering && _more ? 1 : 0),
         itemBuilder: (_, i) {
-          if (i >= _items.length) { _load(); return const Center(child: CircularProgressIndicator()); }
-          final m = _items[i];
+          if (i >= visible.length) { _load(); return const Center(child: CircularProgressIndicator()); }
+          final m = visible[i];
           return GestureDetector(
             onTap: () => _open(m),
             onLongPress: () => _itemMenu(m),
@@ -327,12 +511,12 @@ class _FolderViewState extends State<_FolderView> {
         },
       );
 
-  Widget _list() => ListView.builder(
+  Widget _list(List<LibraryItem> visible, bool filtering) => ListView.builder(
         padding: const EdgeInsets.all(12),
-        itemCount: _items.length + (_more ? 1 : 0),
+        itemCount: visible.length + (!filtering && _more ? 1 : 0),
         itemBuilder: (_, i) {
-          if (i >= _items.length) { _load(); return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())); }
-          final m = _items[i];
+          if (i >= visible.length) { _load(); return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())); }
+          final m = visible[i];
           final c = _catOf(m.category);
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
@@ -382,8 +566,8 @@ class _FolderViewState extends State<_FolderView> {
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.drive_file_move_outline), title: const Text('Move to folder'), onTap: () => Navigator.pop(context, 'move')),
-        ListTile(leading: const Icon(Icons.copy_all_outlined), title: const Text('Copy to folder'),
+        ListTile(leading: const Icon(Icons.drive_file_move_outline), title: const Text('Move to…'), onTap: () => Navigator.pop(context, 'move')),
+        ListTile(leading: const Icon(Icons.copy_all_outlined), title: const Text('Copy to…'),
             subtitle: const Text("Shortcut — doesn't use extra storage"), onTap: () => Navigator.pop(context, 'copy')),
         if (m.isPrivate)
           ListTile(leading: const Icon(Icons.psychology_outlined, color: AvaColors.brand),
@@ -394,6 +578,7 @@ class _FolderViewState extends State<_FolderView> {
             title: const Text('Delete', style: TextStyle(color: AvaColors.danger)), onTap: () => Navigator.pop(context, 'delete')),
       ])),
     );
+    if (!mounted || action == null) return;
     if (action == 'brain') {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reading on-device…')));
       try {
@@ -406,34 +591,133 @@ class _FolderViewState extends State<_FolderView> {
       await LibraryApi.delete(m.id);
       setState(() => _items.removeWhere((x) => x.id == m.id));
     } else if (action == 'move' || action == 'copy') {
-      final dest = await _pickFolder();
-      if (dest == _kCancel) return;
+      final dest = await _pickDestination(context, title: action == 'move' ? 'Move file to' : 'Copy file to');
+      if (dest == null) return;
       if (action == 'move') {
-        await LibraryApi.move(m.id, dest);
-        if (widget.folderId != dest) setState(() => _items.removeWhere((x) => x.id == m.id));
+        await LibraryApi.move(m.id, dest.folder, app: dest.app);
+        // It left this view if it changed app or folder.
+        if (dest.app != widget.app || widget.folderId != dest.folder) {
+          setState(() => _items.removeWhere((x) => x.id == m.id));
+        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Moved')));
       } else {
-        await LibraryApi.copy(m.id, dest);
+        await LibraryApi.copy(m.id, dest.folder, app: dest.app);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied (shortcut — counted once)')));
       }
     }
   }
+}
 
-  static const _kCancel = ' cancel';
+/// A destination chosen in the picker: an app + an optional folder (null = app root).
+typedef _Dest = ({String app, String? folder});
 
-  /// Returns folder id, null (= app root / system folder), or _kCancel.
-  Future<String?> _pickFolder() async {
-    return showModalBottomSheet<String?>(
-      context: context,
-      builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Padding(padding: EdgeInsets.all(14), child: Text('Choose destination', style: TextStyle(fontWeight: FontWeight.w800))),
-        ListTile(leading: const Icon(Icons.home_outlined), title: const Text('App root (its category)'), onTap: () => Navigator.pop(context, null)),
-        for (final f in widget.folders)
-          ListTile(leading: const Icon(Icons.folder, color: AvaColors.brand), title: Text(f.name), onTap: () => Navigator.pop(context, f.id)),
-        const Divider(height: 1),
-        ListTile(title: const Text('Cancel', style: TextStyle(color: AvaColors.sub)), onTap: () => Navigator.pop(context, _kCancel)),
+/// Two-step destination picker covering the whole Library: pick an app, then a
+/// folder within it (or its root). Returns null if cancelled. [excludeFolderId]
+/// hides a folder (so you can't move/copy it into itself).
+Future<_Dest?> _pickDestination(BuildContext context, {required String title, String? excludeFolderId}) async {
+  final apps = await _destApps();
+  if (!context.mounted) return null;
+  final app = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Padding(padding: const EdgeInsets.all(16), child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+      const Divider(height: 1),
+      Flexible(child: ListView(shrinkWrap: true, children: [
+        for (final a in apps)
+          ListTile(
+            leading: Icon(appByKey(a).icon, color: appByKey(a).color),
+            title: Text(appByKey(a).name, style: const TextStyle(fontWeight: FontWeight.w700)),
+            trailing: const Icon(Icons.chevron_right, color: AvaColors.sub),
+            onTap: () => Navigator.pop(context, a),
+          ),
       ])),
-    );
+    ])),
+  );
+  if (app == null || !context.mounted) return null;
+
+  List<LibraryFolder> folders = [];
+  try { folders = await LibraryApi.folders(app); } catch (_) {}
+  folders = folders.where((f) => f.id != excludeFolderId).toList();
+  if (!context.mounted) return null;
+
+  const kRoot = '__root__';
+  final folder = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Padding(padding: const EdgeInsets.all(16),
+          child: Text('${appByKey(app).name} — choose folder', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+      const Divider(height: 1),
+      Flexible(child: ListView(shrinkWrap: true, children: [
+        ListTile(leading: const Icon(Icons.home_outlined), title: const Text('App root (its category)'), onTap: () => Navigator.pop(context, kRoot)),
+        for (final f in folders)
+          ListTile(leading: const Icon(Icons.folder, color: AvaColors.brand), title: Text(f.name), onTap: () => Navigator.pop(context, f.id)),
+      ])),
+    ])),
+  );
+  if (folder == null) return null;
+  return (app: app, folder: folder == kRoot ? null : folder);
+}
+
+/// The "+" add sheet: optional New folder + upload paths (photo / camera / file).
+/// Performs the chosen upload and returns true if anything was uploaded.
+Future<bool> showAddSheet(BuildContext context, {required String app, String? folderId, Future<void> Function()? onNewFolder}) async {
+  final action = await showModalBottomSheet<String>(
+    context: context,
+    builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const SizedBox(height: 6),
+      if (onNewFolder != null)
+        ListTile(leading: const Icon(Icons.create_new_folder_outlined, color: AvaColors.brand), title: const Text('New folder'), onTap: () => Navigator.pop(context, 'folder')),
+      ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Upload photo'), onTap: () => Navigator.pop(context, 'photo')),
+      ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take photo'), onTap: () => Navigator.pop(context, 'camera')),
+      ListTile(leading: const Icon(Icons.upload_file_outlined), title: const Text('Upload file'), onTap: () => Navigator.pop(context, 'file')),
+      const SizedBox(height: 6),
+    ])),
+  );
+  if (action == null || !context.mounted) return false;
+  if (action == 'folder') { await onNewFolder?.call(); return false; }
+
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(const SnackBar(content: Text('Uploading…')));
+  try {
+    final n = await _pickAndUpload(action, app: app, folderId: folderId);
+    if (n > 0) {
+      messenger.showSnackBar(SnackBar(content: Text('Uploaded $n file${n == 1 ? '' : 's'}')));
+      return true;
+    }
+    messenger.hideCurrentSnackBar();
+    return false;
+  } catch (_) {
+    messenger.showSnackBar(const SnackBar(content: Text('Upload failed — please try again.')));
+    return false;
   }
+}
+
+/// Picks media/files for the given source and uploads them. Returns the count
+/// uploaded. Throws on hard failure.
+Future<int> _pickAndUpload(String kind, {required String app, String? folderId}) async {
+  if (kind == 'file') {
+    final res = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
+    if (res == null || res.files.isEmpty) return 0;
+    var n = 0;
+    for (final f in res.files) {
+      final bytes = f.bytes;
+      if (bytes == null) continue;
+      await LibraryApi.uploadFile(
+        bytes: bytes, mime: _mimeFromName(f.name), name: f.name, app: app, folderId: folderId);
+      n++;
+    }
+    return n;
+  }
+  final source = kind == 'camera' ? ImageSource.camera : ImageSource.gallery;
+  final x = await _imgPicker.pickImage(source: source, maxWidth: 2400, imageQuality: 90);
+  if (x == null) return 0;
+  final bytes = await x.readAsBytes();
+  final name = x.name.isNotEmpty ? x.name : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+  await LibraryApi.uploadFile(
+    bytes: bytes, mime: _mimeFromName(name, fallback: 'image/jpeg'), name: name, app: app, folderId: folderId);
+  return 1;
 }
 
 /// Shared little name prompt dialog.

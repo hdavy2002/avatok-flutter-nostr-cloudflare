@@ -161,15 +161,47 @@ class LibraryApi {
 
   static Future<void> deleteFolder(String id) => ApiAuth.deleteSigned('$kLibraryFoldersUrl?id=$id');
 
-  static Future<void> move(String id, String? folderId) =>
-      ApiAuth.postJson(kLibraryMoveUrl, {'id': id, 'folder_id': folderId});
+  /// Move a FILE. [folderId] null = the app's category root. [app] (optional)
+  /// re-homes it under another app root — files can move anywhere in AvaLibrary.
+  static Future<void> move(String id, String? folderId, {String? app}) =>
+      ApiAuth.postJson(kLibraryMoveUrl, {'id': id, 'folder_id': folderId, if (app != null) 'app': app});
 
-  static Future<String?> copy(String id, String? folderId) async {
-    final r = await ApiAuth.postJson(kLibraryCopyUrl, {'id': id, 'folder_id': folderId});
+  /// Copy a FILE as a shortcut (same content key — no extra storage).
+  static Future<String?> copy(String id, String? folderId, {String? app}) async {
+    final r = await ApiAuth.postJson(kLibraryCopyUrl, {'id': id, 'folder_id': folderId, if (app != null) 'app': app});
+    return (jsonDecode(r.body) as Map<String, dynamic>)['id']?.toString();
+  }
+
+  /// Move a FOLDER (with everything in it). [parentId] null = top level of [app].
+  static Future<void> moveFolder(String id, {String? app, String? parentId}) =>
+      ApiAuth.postJson(kLibraryFolderMoveUrl, {'id': id, if (app != null) 'app': app, 'parent_id': parentId});
+
+  /// Copy a FOLDER and its whole subtree (files duplicated as shortcuts).
+  static Future<String?> copyFolder(String id, {String? app, String? parentId}) async {
+    final r = await ApiAuth.postJson(kLibraryFolderCopyUrl, {'id': id, if (app != null) 'app': app, 'parent_id': parentId});
     return (jsonDecode(r.body) as Map<String, dynamic>)['id']?.toString();
   }
 
   static Future<void> delete(String id) => ApiAuth.postJson(kLibraryDeleteUrl, {'id': id});
+
+  /// Upload a (public) file/photo into AvaLibrary, optionally straight into a
+  /// folder. Returns the new media id (or null). Bytes go to the public bucket;
+  /// the server records the AvaLibrary entry + runs moderation/brain ingestion.
+  static Future<String?> uploadFile({
+    required List<int> bytes, required String mime, required String name,
+    String app = 'avalibrary', String? folderId,
+  }) async {
+    final r = await ApiAuth.postBytes(kUploadPublicUrl, bytes, extraHeaders: {
+      'x-content-type': mime,
+      'x-file-name': name,
+      'x-app': app,
+      if (folderId != null) 'x-folder': folderId,
+    }, timeout: const Duration(seconds: 90));
+    if (r.statusCode != 200) {
+      throw Exception('upload failed (${r.statusCode})');
+    }
+    return (jsonDecode(r.body) as Map<String, dynamic>)['id']?.toString();
+  }
 
   /// Record a RECEIVED DM file so it appears in the recipient's Library too. The
   /// decryption material is encrypted to the recipient ([encBlob]) — the server

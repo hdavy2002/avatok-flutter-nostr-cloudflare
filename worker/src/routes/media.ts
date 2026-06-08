@@ -20,6 +20,8 @@ export async function uploadPublic(req: Request, env: Env, ctx: ExecutionContext
   const ct = req.headers.get("x-content-type") || req.headers.get("content-type") || "application/octet-stream";
   const fileName = req.headers.get("x-file-name") || defaultName(ct, hash);
   const app = (req.headers.get("x-app") || "avatweet").toLowerCase();
+  // Optional: drop the upload straight into a user folder (AvaLibrary "+ Upload").
+  const folderId = req.headers.get("x-folder") || null;
 
   // Cheap synchronous blocklist gate (known-bad sha256 — content-level, cross-user).
   const blocked = await moderationSession(env)
@@ -28,13 +30,14 @@ export async function uploadPublic(req: Request, env: Env, ctx: ExecutionContext
 
   const mdb = mediaSession(env);
   const existing = await mdb.prepare("SELECT id, moderation_status FROM user_media WHERE key=?1").bind(r2Key).first<any>();
+  let id: string | undefined = existing?.id;
   if (!existing) {
     await env.BLOBS.put(r2Key, bytes, { httpMetadata: { contentType: ct } });
-    const id = crypto.randomUUID();
+    id = crypto.randomUUID();
     await mdb.prepare(
-      `INSERT INTO user_media (id, npub, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
-       VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,'pending',?10,?11,'sent')`,
-    ).bind(id, auth.npub, mediaType(ct), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(ct), fileName).run();
+      `INSERT INTO user_media (id, npub, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, folder_id)
+       VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,'pending',?10,?11,'sent',?12)`,
+    ).bind(id, auth.npub, mediaType(ct), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(ct), fileName, folderId).run();
     // async moderation — content hash for scan/blocklist, r2_key for fetch/delete.
     ctx.waitUntil(env.Q_MODERATION.send({ type: "image", hash, npub: auth.npub, media_id: id, r2_key: r2Key }));
     // AvaBrain learns from public uploads (metadata only — no DM media here).
@@ -42,8 +45,11 @@ export async function uploadPublic(req: Request, env: Env, ctx: ExecutionContext
     // AvaBrain CONTENT ingestion of the public file itself (caption/OCR/text → embed),
     // gated on the user's consent toggles. Private uploads never reach this path.
     ctx.waitUntil(maybeEmitLibraryBrain(env, auth.npub, app, { media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName, category: categoryOf(ct), visibility: "public" }));
+  } else if (folderId) {
+    // Re-upload of identical content while sitting in a folder → place it there.
+    await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND npub=?2").bind(existing.id, auth.npub, folderId).run();
   }
-  return json({ hash, key: r2Key, url, status: "pending" });
+  return json({ hash, key: r2Key, url, status: "pending", id });
 }
 
 // POST /upload/private — client-side AES-GCM ciphertext (DM attachments).
@@ -204,20 +210,28 @@ export async function libraryFolders(req: Request, env: Env): Promise<Response> 
   return json({ error: "method" }, 405);
 }
 
-// POST /api/library/move {id, folder_id|null} — place a file in a user folder
-// (or back to its system folder when folder_id is null).
+// POST /api/library/move {id, folder_id|null, app?} — place a file in a user
+// folder (or back to its system folder when folder_id is null). Passing `app`
+// moves it across app roots too (AvaLibrary lets files move anywhere).
 export async function libraryMove(req: Request, env: Env): Promise<Response> {
   const auth = await authenticate(req, env);
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
-  await mediaSession(env).prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND npub=?2")
-    .bind(b.id, auth.npub, b.folder_id ?? null).run();
+  const mdb = mediaSession(env);
+  if (b.app) {
+    await mdb.prepare("UPDATE user_media SET folder_id=?3, original_app=?4 WHERE id=?1 AND npub=?2")
+      .bind(b.id, auth.npub, b.folder_id ?? null, String(b.app).toLowerCase()).run();
+  } else {
+    await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND npub=?2")
+      .bind(b.id, auth.npub, b.folder_id ?? null).run();
+  }
   return json({ ok: true });
 }
 
-// POST /api/library/copy {id, folder_id} — a shortcut: a NEW row pointing at the
-// SAME content-addressed key. Storage counts distinct keys, so this is free bytes.
+// POST /api/library/copy {id, folder_id, app?} — a shortcut: a NEW row pointing at
+// the SAME content-addressed key. Storage counts distinct keys, so this is free
+// bytes. Passing `app` lands the copy under another app root.
 export async function libraryCopy(req: Request, env: Env): Promise<Response> {
   const auth = await authenticate(req, env);
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
@@ -227,14 +241,102 @@ export async function libraryCopy(req: Request, env: Env): Promise<Response> {
   const src = await mdb.prepare(`SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE id=?1 AND npub=?2`)
     .bind(b.id, auth.npub).first<any>();
   if (!src) return json({ error: "not found" }, 404);
+  const id = await copyMediaRow(mdb, auth.npub, src, b.folder_id ?? null, b.app ? String(b.app).toLowerCase() : src.original_app);
+  return json({ id });
+}
+
+// Insert a duplicate of a media row (same content key → free storage) into a
+// target folder/app. Shared by file-copy and folder-copy.
+async function copyMediaRow(mdb: any, npub: string, src: any, folderId: string | null, app: string): Promise<string> {
   const id = crypto.randomUUID();
   await mdb.prepare(
     `INSERT INTO user_media (id, npub, media_type, storage, visibility, encrypted, key, display_url, thumbnail_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, folder_id, source_kind, enc_blob)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)`,
-  ).bind(id, auth.npub, src.media_type, src.storage, src.visibility, src.encrypted, src.key, src.display_url, src.thumbnail_url ?? null,
-    src.mime_type, src.size_bytes, src.original_app, Date.now(), src.moderation_status, src.category, src.file_name,
-    b.folder_id ?? null, src.source_kind, src.enc_blob ?? null).run();
-  return json({ id });
+  ).bind(id, npub, src.media_type, src.storage, src.visibility, src.encrypted, src.key, src.display_url, src.thumbnail_url ?? null,
+    src.mime_type, src.size_bytes, app, Date.now(), src.moderation_status, src.category, src.file_name,
+    folderId, src.source_kind, src.enc_blob ?? null).run();
+  return id;
+}
+
+// Walk up the parent chain from `start` to check whether `ancestorId` is an
+// ancestor (used to block moving/copying a folder into its own subtree).
+async function isInSubtree(mdb: any, npub: string, start: string | null, ancestorId: string): Promise<boolean> {
+  let cur = start;
+  let hops = 0;
+  while (cur && hops < 64) {
+    if (cur === ancestorId) return true;
+    const row = await mdb.prepare("SELECT parent_id FROM library_folders WHERE id=?1 AND npub=?2").bind(cur, npub).first();
+    cur = (row as any)?.parent_id ?? null;
+    hops++;
+  }
+  return false;
+}
+
+// POST /api/library/folders/move {id, app?, parent_id?} — re-home a whole folder:
+// nest it under another folder (parent_id) and/or move it to another app root.
+// Files inside travel with the folder; when the app changes they're re-stamped so
+// the tree's per-app counts stay honest.
+export async function libraryFolderMove(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  if (!b.id) return json({ error: "id required" }, 400);
+  const mdb = mediaSession(env);
+  const folder = await mdb.prepare("SELECT id, app, parent_id FROM library_folders WHERE id=?1 AND npub=?2").bind(b.id, auth.npub).first<any>();
+  if (!folder) return json({ error: "not found" }, 404);
+  const newApp = b.app ? String(b.app).toLowerCase() : folder.app;
+  const newParent = b.parent_id === undefined ? folder.parent_id : (b.parent_id ?? null);
+  if (newParent && (newParent === b.id || await isInSubtree(mdb, auth.npub, newParent, b.id))) {
+    return json({ error: "cannot move a folder into itself" }, 400);
+  }
+  const stmts = [
+    mdb.prepare("UPDATE library_folders SET app=?3, parent_id=?4 WHERE id=?1 AND npub=?2").bind(b.id, auth.npub, newApp, newParent),
+  ];
+  if (newApp !== folder.app) {
+    stmts.push(mdb.prepare("UPDATE user_media SET original_app=?3 WHERE npub=?1 AND folder_id=?2").bind(auth.npub, b.id, newApp));
+  }
+  await mdb.batch(stmts);
+  return json({ ok: true, id: b.id, app: newApp, parent_id: newParent });
+}
+
+// POST /api/library/folders/copy {id, app?, parent_id?} — duplicate a folder and
+// everything inside it (recursively). Files are copied as shortcuts (same content
+// key → no extra storage). Returns the new top-level folder id.
+export async function libraryFolderCopy(req: Request, env: Env): Promise<Response> {
+  const auth = await authenticate(req, env);
+  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  if (!b.id) return json({ error: "id required" }, 400);
+  const mdb = mediaSession(env);
+  const folder = await mdb.prepare("SELECT id, app, parent_id FROM library_folders WHERE id=?1 AND npub=?2").bind(b.id, auth.npub).first<any>();
+  if (!folder) return json({ error: "not found" }, 404);
+  const destApp = b.app ? String(b.app).toLowerCase() : folder.app;
+  const destParent = b.parent_id ?? null;
+  if (destParent && (destParent === b.id || await isInSubtree(mdb, auth.npub, destParent, b.id))) {
+    return json({ error: "cannot copy a folder into itself" }, 400);
+  }
+  const newId = await copyFolderRec(mdb, auth.npub, b.id, destApp, destParent);
+  return json({ id: newId });
+}
+
+// Recursively duplicate a folder subtree (folder rows + their non-deleted files).
+async function copyFolderRec(mdb: any, npub: string, srcId: string, destApp: string, destParent: string | null): Promise<string | null> {
+  const src = (await mdb.prepare("SELECT id, name FROM library_folders WHERE id=?1 AND npub=?2").bind(srcId, npub).first()) as any;
+  if (!src) return null;
+  const newId = crypto.randomUUID();
+  await mdb.prepare("INSERT INTO library_folders (id, npub, app, name, parent_id, created_at) VALUES (?1,?2,?3,?4,?5,?6)")
+    .bind(newId, npub, destApp, src.name, destParent, Date.now()).run();
+  const files = await mdb.prepare(
+    `SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE npub=?1 AND folder_id=?2 AND deleted_at IS NULL`,
+  ).bind(npub, srcId).all();
+  for (const f of (files.results ?? []) as any[]) {
+    await copyMediaRow(mdb, npub, f, newId, destApp);
+  }
+  const kids = await mdb.prepare("SELECT id FROM library_folders WHERE npub=?1 AND parent_id=?2").bind(npub, srcId).all();
+  for (const k of (kids.results ?? []) as any[]) {
+    await copyFolderRec(mdb, npub, k.id, destApp, newId);
+  }
+  return newId;
 }
 
 // POST /api/library/delete {id} — soft delete (storage recomputes; hard-delete of
