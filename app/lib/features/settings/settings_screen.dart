@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/admin_tools.dart';
 import '../../core/api_auth.dart';
+import '../../core/brain_consent.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
@@ -28,10 +29,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _kindStore = AccountKindStore();
   AccountKind _kind = AccountKind.personal;
 
+  Map<String, bool> _brain = {};
+
   @override
   void initState() {
     super.initState();
     _kindStore.load().then((k) { if (mounted) setState(() => _kind = k); });
+    BrainConsent.pull().then((_) => BrainConsent.all()).then((m) { if (mounted) setState(() => _brain = m); });
+  }
+
+  Future<void> _setBrain(String key, bool v) async {
+    setState(() => _brain[key] = v);
+    await BrainConsent.set(key, v);
   }
 
   Future<void> _setKind(AccountKind k) async {
@@ -172,6 +181,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onSelectionChanged: (s) => _setKind(s.first),
             ),
           ]),
+        ),
+        const SizedBox(height: 20),
+        _section('AvaBrain'),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+          child: Column(children: [
+            for (final c in kBrainCapabilities)
+              if (c.master || (_brain['master'] ?? true)) SwitchListTile(
+                activeColor: AvaColors.brand,
+                value: _brain[c.key] ?? true,
+                onChanged: (v) => _setBrain(c.key, v),
+                title: Text(c.title, style: TextStyle(fontWeight: c.master ? FontWeight.w800 : FontWeight.w700, color: AvaColors.ink)),
+                subtitle: Text(c.subtitle, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
+              ),
+          ]),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(top: 8, left: 6, right: 6),
+          child: Text('Private and end-to-end-encrypted content is only ever read on your device — '
+              'AvaBrain never sees your message keys or plaintext on our servers.',
+              style: TextStyle(color: AvaColors.sub, fontSize: 11)),
         ),
         const SizedBox(height: 20),
         _section('Backup'),

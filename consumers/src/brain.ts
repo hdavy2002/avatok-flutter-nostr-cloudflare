@@ -11,6 +11,15 @@ const RAW_TTL_MS = 30 * 86_400_000; // 30 days
 export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
   const npub = msg.npub;
   if (!npub) return;
+
+  // AvaLibrary FILE content ingestion (public files only). Separate path: we
+  // extract caption/OCR/text from the actual bytes and embed retrievable,
+  // media_id-tagged chunks — not the entity/fact extraction below.
+  if (msg.event_type === "library_file_added") {
+    await ingestLibraryFile(msg, env);
+    return;
+  }
+
   const now = Date.now();
   const eventId = crypto.randomUUID();
 
@@ -55,6 +64,101 @@ export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
 
   // 7. Mark processed.
   await env.DB_BRAIN.prepare("UPDATE brain_events SET processed=1 WHERE id=?1").bind(eventId).run();
+}
+
+// ---- AvaLibrary file content ingestion (PUBLIC only) ----
+// payload: { media_id, key, mime, size, name, category, visibility }. The bytes
+// live in R2 (BLOBS, key = r2 path). We caption images, OCR/markdown documents,
+// chunk the text, and embed each chunk into avatok-semantic tagged with media_id
+// so AvaBrain can retrieve and deep-link the exact file. Private files NEVER reach
+// here (the producer gates on visibility + consent; we re-check both as defense).
+async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
+  const npub = msg.npub;
+  const p = (msg.payload ?? {}) as any;
+  if (p.visibility && p.visibility !== "public") return;        // server ingests public only
+  if (!(await consentAllows(env, npub, msg.source_app))) return; // opted out since enqueue
+  if (!env.VECTOR_INDEX || !p.key || !p.media_id) return;
+
+  const category = String(p.category || "other");
+  const name = String(p.name || "file");
+  let text = "";
+  try {
+    if (category === "image") {
+      text = await captionImage(env, p.key);
+    } else if (category === "document") {
+      text = await extractDocument(env, p.key, String(p.mime || ""), name);
+    }
+    // audio/video transcription (Whisper) is a later phase; index the name for now.
+  } catch { /* extraction best-effort */ }
+
+  const base = `${name}. ${text}`.trim().slice(0, 8000);
+  const chunks = chunkText(base, 480).slice(0, 8); // bounded vectors per file
+  const md = { npub, media_id: String(p.media_id), app: msg.source_app, folder: p.folder ?? null, category, name, type: "library", summary: base.slice(0, 480) };
+  const vectors = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const values = await embed(env, chunks[i]);
+    if (values) vectors.push({ id: `${npub}:lib:${p.media_id}:${i}`, values, metadata: { ...md, summary: chunks[i].slice(0, 480) } });
+  }
+  if (vectors.length) { try { await env.VECTOR_INDEX.upsert(vectors); } catch { /* best-effort */ } }
+
+  // A retrievable fact so /api/brain ask surfaces it even before a vector hit.
+  try {
+    await env.DB_BRAIN.prepare(
+      `INSERT INTO brain_facts (id, npub, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
+       VALUES (?1,?2,'file',?3,'public',?4,?5,0.7,?6,?6)`,
+    ).bind(crypto.randomUUID(), npub, `File "${name}" (${category}): ${base.slice(0, 300)}`, msg.source_app, String(p.media_id), Date.now()).run();
+  } catch { /* table optional */ }
+}
+
+// Image → short caption (and any legible text). Cloudflare vision model.
+async function captionImage(env: Env, key: string): Promise<string> {
+  const obj = await env.BLOBS.get(key);
+  if (!obj) return "";
+  const bytes = [...new Uint8Array(await obj.arrayBuffer())];
+  try {
+    const out = (await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf" as any, {
+      image: bytes,
+      prompt: "Describe this image in one sentence, and transcribe any visible text.",
+      max_tokens: 256,
+    })) as any;
+    return (out?.description || out?.response || aiText(out) || "").toString().slice(0, 2000);
+  } catch { return ""; }
+}
+
+// Document → markdown/text. Uses the AI binding's document-to-markdown conversion
+// (handles pdf/docx/etc); falls back to UTF-8 decode for text/markdown.
+async function extractDocument(env: Env, key: string, mime: string, name: string): Promise<string> {
+  const obj = await env.BLOBS.get(key);
+  if (!obj) return "";
+  const buf = await obj.arrayBuffer();
+  if (mime.startsWith("text/") || name.endsWith(".md") || name.endsWith(".txt")) {
+    try { return new TextDecoder().decode(buf).slice(0, 8000); } catch { return ""; }
+  }
+  try {
+    const blob = new Blob([buf], { type: mime || "application/octet-stream" });
+    const md = await (env.AI as any).toMarkdown?.([{ name, blob }]);
+    const first = Array.isArray(md) ? md[0] : md;
+    return (first?.data || first?.markdown || "").toString().slice(0, 8000);
+  } catch { return ""; }
+}
+
+function chunkText(s: string, size: number): string[] {
+  const t = s.replace(/\s+/g, " ").trim();
+  if (!t) return [];
+  const out: string[] = [];
+  for (let i = 0; i < t.length; i += size) out.push(t.slice(i, i + size));
+  return out;
+}
+
+// Consent re-check in the consumer (defense in depth; default ON when absent).
+async function consentAllows(env: Env, npub: string, app: string): Promise<boolean> {
+  try {
+    const rs = await env.DB_BRAIN.prepare(
+      "SELECT capability, enabled FROM brain_consent WHERE npub=?1 AND capability IN ('master',?2)",
+    ).bind(npub, `${app}_files`).all();
+    for (const r of (rs.results ?? []) as any[]) if (Number(r.enabled) === 0) return false;
+    return true;
+  } catch { return true; }
 }
 
 // ---- extraction ----

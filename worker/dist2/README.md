@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "avatok-api" generated at 2026-06-07T10:40:33.116Z.

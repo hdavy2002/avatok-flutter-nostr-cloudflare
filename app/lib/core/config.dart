@@ -62,6 +62,14 @@ const String kCommunitiesUrl = 'https://$kSignalingHost/api/communities';      /
 const String kUploadPrivateUrl = 'https://$kSignalingHost/upload/private'; // DM ciphertext
 const String kUploadPublicUrl = 'https://$kSignalingHost/upload/public';   // public posts
 const String kLibraryUrl = 'https://$kSignalingHost/api/library';          // GET (NIP-98)
+const String kLibraryTreeUrl = 'https://$kSignalingHost/api/library/tree';      // GET nav skeleton
+const String kLibraryFoldersUrl = 'https://$kSignalingHost/api/library/folders'; // GET/POST/PATCH/DELETE
+const String kLibraryMoveUrl = 'https://$kSignalingHost/api/library/move';      // POST {id, folder_id}
+const String kLibraryCopyUrl = 'https://$kSignalingHost/api/library/copy';      // POST {id, folder_id}
+const String kLibraryDeleteUrl = 'https://$kSignalingHost/api/library/delete';  // POST {id}
+const String kLibraryRecordUrl = 'https://$kSignalingHost/api/library/record';  // POST received entry
+const String kStorageUrl = 'https://$kSignalingHost/api/storage';               // GET accounting
+const String kBrainConsentUrl = 'https://$kSignalingHost/api/brain/consent';    // GET/POST toggles
 
 /// Public R2 read host (no Worker in the path) — content-addressed by sha256.
 const String kBlossomBaseUrl = 'https://blossom.avatok.ai';

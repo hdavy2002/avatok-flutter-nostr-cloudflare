@@ -78,7 +78,16 @@ export class UserBrain {
       // Vectors are per-entity; metadata carries name+summary, so no D1 round-trip.
       const res = await this.env.VECTOR_INDEX.query(vec, { topK: 6, filter: { npub }, returnMetadata: true } as any);
       return (res.matches ?? [])
-        .map((m: any) => [m.metadata?.name, m.metadata?.summary].filter(Boolean).join(": "))
+        .map((m: any) => {
+          const md = m.metadata ?? {};
+          // Library file vectors carry media_id → cite as a deep-linkable file so
+          // the answer can open it in AvaLibrary. Entity vectors stay name: summary.
+          if (md.media_id) {
+            const where = [md.app, md.category].filter(Boolean).join("/");
+            return `File "${md.name ?? "file"}"${where ? ` (${where})` : ""}: ${md.summary ?? ""} [file:${md.media_id}]`;
+          }
+          return [md.name, md.summary].filter(Boolean).join(": ");
+        })
         .filter((s: string) => s);
     } catch { return []; }
   }

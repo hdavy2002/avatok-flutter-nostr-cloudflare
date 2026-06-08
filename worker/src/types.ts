@@ -89,6 +89,9 @@ export interface Env {
   // Clerk Backend API (account deletion cascade, Phase 1). Gated.
   CLERK_SECRET_KEY?: string;
 
+  // AvaStorage (universal per-account pool). Free quota in GB (default 5).
+  STORAGE_FREE_GB?: string;
+
   // AvaWallet (Phase 2). Real money-in flag-gated OFF pending legal (§10.1).
   WALLET_TOPUP_ENABLED?: string;   // "1" enables Stripe top-up (set ONLY after legal)
   WALLET_RETURN_URL?: string;      // Checkout success/cancel return base

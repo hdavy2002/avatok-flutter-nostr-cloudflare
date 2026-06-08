@@ -8,6 +8,8 @@ import '../core/theme.dart';
 import '../identity/identity.dart';
 import '../features/avalive/avalive_discovery.dart';
 import '../features/avatok/chat_list.dart';
+import '../features/library/avalibrary_screen.dart';
+import '../features/library/avastorage_screen.dart';
 import '../features/explore/explore_home.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -81,7 +83,12 @@ class _AvaShellState extends State<AvaShell> {
         _push(const ComingSoon(title: 'AvaVerse', subtitle: 'Your dashboard', icon: Icons.dashboard, color: Color(0xFF6C5CE7)));
         return;
       case 'library':
-        _push(const ComingSoon(title: 'AvaLibrary', subtitle: 'Saved media & files', icon: Icons.folder_open, color: Color(0xFF8B5CF6)));
+      case 'avalibrary':
+        _push(const AvaLibraryScreen());
+        return;
+      case 'avastorage':
+      case 'storage':
+        _push(const AvaStorageScreen());
         return;
       case 'profile':
         _push(ProfileScreen(identity: _id));

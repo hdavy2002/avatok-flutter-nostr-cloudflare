@@ -18,6 +18,8 @@ class AppDef {
 const kApps = <AppDef>[
   AppDef('avatok', 'AvaTOK', 'Messages & calls', Icons.chat_bubble, Color(0xFF08C4C4), built: true),
   AppDef('avalive', 'AvaLive', 'Live streaming', Icons.sensors, Color(0xFFFF3B30), built: true),
+  AppDef('avalibrary', 'AvaLibrary', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6), built: true),
+  AppDef('avastorage', 'AvaStorage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9), built: true),
   AppDef('avaai', 'AvaAI', 'AI assistant', Icons.auto_awesome, Color(0xFF22C9C0)),
   AppDef('avaagent', 'AvaAgent', 'Build AI agents', Icons.bolt, Color(0xFF6C5CE7)),
   AppDef('avavoice', 'AvaVoice', 'AI voice agents', Icons.mic, Color(0xFFA06AF0)),

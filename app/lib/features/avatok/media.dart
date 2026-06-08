@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
+import '../../core/library_api.dart';
+import '../../core/vault.dart';
 import '../../identity/identity.dart';
 
 enum MediaKind { image, video, audio, file }
@@ -69,7 +71,14 @@ class MediaService {
     final res = await ApiAuth.postBytes(
       kUploadPrivateUrl,
       box.cipherText,
-      extraHeaders: {'x-content-type': contentType},
+      // The bytes are opaque ciphertext; these headers let the server categorise
+      // the sender's AvaLibrary entry (never used to scan — it can't read them).
+      extraHeaders: {
+        'x-content-type': contentType,
+        'x-real-mime': contentType,
+        'x-file-name': name,
+        'x-app': 'avatok',
+      },
       timeout: const Duration(seconds: 60),
     );
     if (res.statusCode != 200) {
@@ -110,6 +119,27 @@ class MediaService {
     final bytes = Uint8List.fromList(clear);
     await _cacheWrite(m.id, bytes);
     return bytes;
+  }
+
+  /// Records a RECEIVED DM attachment into the recipient's AvaLibrary so it shows
+  /// up cross-device, scoped to their account. The per-blob AES key is encrypted
+  /// to the recipient via the Vault (key derived from THEIR Nostr key) before it
+  /// leaves the device — the server only ever stores ciphertext, never plaintext
+  /// keys (E2E boundary preserved). Best-effort: failure never blocks the chat.
+  static Future<void> recordReceived(ChatMedia m, {String app = 'avatok'}) async {
+    try {
+      final id = ApiAuth.identity;
+      String? encBlob;
+      if (id != null) {
+        // Wrap just the decryption material (key/nonce/mac) — not the bytes.
+        final material = jsonEncode({'k': m.keyB64, 'n': m.nonceB64, 'mac': m.macB64});
+        encBlob = await Vault.encrypt(material, id.privHex);
+      }
+      await LibraryApi.record(
+        key: m.id, mime: m.contentType, size: m.size, name: m.name,
+        app: app, encBlob: encBlob, displayUrl: m.downloadUrl,
+      );
+    } catch (_) {/* best-effort — local view still works */}
   }
 
   // ---- per-account on-disk media cache ----

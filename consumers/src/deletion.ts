@@ -47,6 +47,11 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     const er = await env.DB_BRAIN.prepare("SELECT id FROM brain_entities WHERE npub=?1").bind(npub).all();
     vectorIds = (er.results ?? []).map((r: any) => `${npub}:ent:${r.id}`);
   } catch { /* table may be empty */ }
+  // AvaLibrary file vectors: `${npub}:lib:${media_id}:${i}` (i = chunk, bounded ≤8).
+  try {
+    const lr = await env.DB_MEDIA.prepare("SELECT DISTINCT id FROM user_media WHERE npub=?1").bind(npub).all();
+    for (const r of (lr.results ?? []) as any[]) for (let i = 0; i < 8; i++) vectorIds.push(`${npub}:lib:${r.id}:${i}`);
+  } catch { /* table may be empty */ }
   // Verification selfie keys (locked R2).
   let verifKeys: string[] = [];
   try {
@@ -62,6 +67,8 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     env.DB_BRAIN.prepare("DELETE FROM brain_daily_summaries WHERE npub=?1").bind(npub),
     env.DB_BRAIN.prepare("DELETE FROM brain_events WHERE npub=?1").bind(npub),
   ]); done.push("db_brain");
+  // AvaBrain consent toggles.
+  try { await env.DB_BRAIN.prepare("DELETE FROM brain_consent WHERE npub=?1").bind(npub).run(); done.push("db_brain_consent"); } catch { /* table optional */ }
 
   // 2. DB_WALLET (Phase 2) — guarded.
   if (env.DB_WALLET) {
@@ -90,6 +97,8 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     env.DB_MEDIA.prepare("DELETE FROM user_media WHERE npub=?1").bind(npub),
     env.DB_MEDIA.prepare("DELETE FROM user_media_hashes WHERE npub=?1").bind(npub),
   ]); done.push("db_media");
+  // AvaLibrary user folders.
+  try { await env.DB_MEDIA.prepare("DELETE FROM library_folders WHERE npub=?1").bind(npub).run(); done.push("db_media_folders"); } catch { /* table optional */ }
   // OLX (Phase 5) — guarded.
   try {
     await env.DB_MEDIA.batch([

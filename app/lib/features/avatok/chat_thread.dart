@@ -282,6 +282,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       } else if (env is Map && env['t'] == 'gmedia') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
+        if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
       } else if (env is Map && env['t'] == 'gtext') {
         text = (env['body'] ?? '').toString();
       } else {
@@ -332,6 +333,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       } else if (env is Map && env['t'] == 'media') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
+        if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
       } else if (env is Map && env['t'] == 'text') {
         text = env['body'].toString();
       }

@@ -8,7 +8,7 @@
 import type { Env } from "./types";
 import { json, preflight } from "./util";
 import * as api from "./routes/api";
-import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getIce } from "./routes/media";
+import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getLibraryTree, libraryFolders, libraryMove, libraryCopy, libraryDelete, libraryRecord, getStorage, getIce } from "./routes/media";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion } from "./routes/account";
@@ -80,6 +80,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/upload/public" && req.method === "POST") return await uploadPublic(req, env, ctx);
       if (p === "/upload/private" && req.method === "POST") return await uploadPrivate(req, env);
       if (p === "/api/library" && req.method === "GET") return await getLibrary(req, env);
+      if (p === "/api/library/tree" && req.method === "GET") return await getLibraryTree(req, env);
+      if (p === "/api/library/folders") return await libraryFolders(req, env);
+      if (p === "/api/library/move" && req.method === "POST") return await libraryMove(req, env);
+      if (p === "/api/library/copy" && req.method === "POST") return await libraryCopy(req, env);
+      if (p === "/api/library/delete" && req.method === "POST") return await libraryDelete(req, env);
+      if (p === "/api/library/record" && req.method === "POST") return await libraryRecord(req, env, ctx);
+      if (p === "/api/storage" && req.method === "GET") return await getStorage(req, env);
 
       // --- backup ---
       if (p === "/api/backup" && req.method === "POST") return await api.backup(req, env);
@@ -161,6 +168,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (bm) {
         const op = bm[1];
         const readOp = op === "entities" || op === "timeline";
+        if (op === "consent" && (req.method === "GET" || req.method === "POST")) return await brain(req, env, op);
         if ((readOp && req.method === "GET") || (!readOp && req.method === "POST") || (op === "forget" && req.method === "DELETE")) {
           return await brain(req, env, op);
         }
