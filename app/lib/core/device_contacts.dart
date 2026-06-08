@@ -5,6 +5,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'account_storage.dart';
 import 'api_auth.dart';
 import 'config.dart';
 
@@ -103,7 +104,7 @@ class DeviceContactsService {
 
   /// Load the last-synced address book from local cache (instant, offline).
   static Future<List<DeviceContact>> cached() async {
-    final raw = await _store.read(key: _cacheKey);
+    final raw = await _store.read(key: scopedKey(_cacheKey));
     if (raw == null || raw.isEmpty) return [];
     try {
       return (jsonDecode(raw) as List)
@@ -116,7 +117,7 @@ class DeviceContactsService {
   }
 
   static Future<void> _saveCache(List<DeviceContact> cs) =>
-      _store.write(key: _cacheKey, value: jsonEncode(cs.map((c) => c.toJson()).toList()));
+      _store.write(key: scopedKey(_cacheKey), value: jsonEncode(cs.map((c) => c.toJson()).toList()));
 
   /// Read the phone, upload to the backend for [ownerNpub], annotate each
   /// contact with its resolved npub (if on AvaTok), cache, and return.

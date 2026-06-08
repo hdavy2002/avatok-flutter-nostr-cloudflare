@@ -15,6 +15,7 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 |---|---|---|
 | 1.0 | 2026-06-04 | Initial release. 20 services cataloged. |
 | 1.1 | 2026-06-04 | Single DB_RELAY (not 16 shards — author-sharding breaks feeds + DM retrieval). 4 databases at launch (not 18 — split at 2GB). Two upload paths (public scan / private skip for E2EE media). NIP-42 AUTH scoped to private kinds only. Push tokens → D1 (spec §11.3 KV reference is stale). Phone discovery kept (spec "no phone directory" is stale). nostr_tags flattened index model. blocks/mutes tables added to DB_META. Reviewed/validated against live schema. Domain corrected to avatok.ai. |
+| 1.2 | 2026-06-08 | Added CLIENT/FRONTEND STANDARDS section: (a) MANDATORY per-account scoping of ALL local user state (one phone is shared by a parent + child accounts; a global key leaks data across accounts), (b) the image/media caching pipeline (Cloudflare AVIF/q60 transform + on-device cache for public images; per-account decrypted cache for private DM media). Golden Rules 11–12 added. |
 
 ---
 
@@ -30,6 +31,8 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 8. **Service Bindings for internal communication. Never HTTP between Workers.**
 9. **Two upload paths: public media gets scanned; private DM media (ciphertext) skips the scan.**
 10. **NIP-42 AUTH gates private kinds only. Public kinds stay open for federation.**
+11. **ALL per-user local state is account-scoped. One phone is shared by a parent + each child — a global storage key leaks data across accounts. Scope every key.**
+12. **Images & media are cached: public images via Cloudflare AVIF/q60 transform + on-device disk cache; private DM media via a per-account on-device decrypted cache. Never re-download on reopen.**
 
 ---
 
@@ -505,8 +508,57 @@ Every new app follows this pattern:
 
 ---
 
+## CLIENT / FRONTEND STANDARDS (all Flutter apps)
+
+These are MANDATORY for every AvaVerse client app. They exist because **one phone
+is routinely shared by multiple accounts** (a parent and each of their children),
+and because re-downloading media on every screen entry is slow and expensive.
+
+### 1. Per-account scoping (no cross-account data leaks)
+
+- **Every** piece of per-user local state — secure storage, SharedPreferences,
+  and on-disk file caches — MUST be namespaced to the active account.
+- Use `scopedKey(base)` / `readScoped(...)` (`app/lib/core/account_storage.dart`)
+  for key/value stores, or a per-account subdirectory using `AccountScope.id` for
+  file caches. `AccountScope.id` is set on login and tracks the active Clerk account.
+- **Never** read/write a raw constant key for user data. A global key = a data leak
+  the moment a second account logs in on the same device.
+- **Only** device-level, account-agnostic values may stay global (e.g. the Clerk
+  *client* token, which represents the device's Clerk client, not a user).
+- New accounts start empty and restore their own data from the per-npub server
+  vault (`/api/vault`, encrypted) via `pullAndMerge` — never inherit another
+  account's local data.
+- Checklist when adding ANY new store: does it hold user data? → it MUST go through
+  `scopedKey`/`AccountScope`. There is no "I'll scope it later."
+
+### 2. Image & media caching pipeline
+
+**Public images** (avatars, public posts, thumbnails):
+1. Upload plaintext to `/upload/public` → canonical blossom URL
+   (`https://blossom.avatok.ai/u/<npub>/public/<sha256>`).
+2. **Serve** through Cloudflare Image Transformations (enabled on the zone):
+   `https://blossom.avatok.ai/cdn-cgi/image/format=avif,quality=60,width=N,fit=cover/<path>`.
+3. **Cache** the transformed bytes on-device (content-addressed → immutable →
+   cache forever). Helper: `app/lib/core/avatar_cache.dart` (`AvatarCache`).
+   The `Avatar` widget renders cached photos with an initials fallback.
+
+**Private / E2E DM media** (images, voice, video, files): ciphertext is
+content-addressed on R2 and CANNOT be CF-transformed. Instead cache the
+**decrypted** bytes on-device, **per account**
+(`getApplicationSupportDirectory()/media/<AccountScope.id>/<hash>`). Implemented in
+`MediaService.downloadAndDecrypt`. Reopening a chat or returning from another app
+must never re-download or re-decrypt.
+
+**Text messages / contacts**: load local-first from the (account-scoped) cache so
+the UI is instant, then reconcile with the relay/server in the background.
+
+---
+
 ## BANNED PATTERNS
 
+❌ Raw/global storage key for per-user data → `scopedKey(...)` / `AccountScope.id` (cross-account leak)
+❌ Re-downloading the same image/media on every screen entry → on-device cache (CF-AVIF for public, decrypted per-account for DM)
+❌ Serving raw full-size images to the client → Cloudflare `/cdn-cgi/image` AVIF/q60 transform
 ❌ `KV.get()`/`KV.put()` for app data → D1
 ❌ Proxying R2 reads through a Worker → R2 public bucket
 ❌ Auth in relay router Worker → Auth in DO via NIP-42

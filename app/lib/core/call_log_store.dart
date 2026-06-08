@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'account_storage.dart';
+
 enum CallDir { incoming, outgoing, missed }
 
 class CallEntry {
@@ -43,7 +45,7 @@ class CallLogStore {
             );
 
   Future<List<CallEntry>> load() async {
-    final raw = await _s.read(key: _key);
+    final raw = await _s.read(key: scopedKey(_key));
     if (raw == null || raw.isEmpty) return [];
     try {
       return (jsonDecode(raw) as List)
@@ -59,6 +61,6 @@ class CallLogStore {
     final list = await load();
     list.insert(0, e);
     final capped = list.take(100).toList();
-    await _s.write(key: _key, value: jsonEncode(capped.map((x) => x.toJson()).toList()));
+    await _s.write(key: scopedKey(_key), value: jsonEncode(capped.map((x) => x.toJson()).toList()));
   }
 }

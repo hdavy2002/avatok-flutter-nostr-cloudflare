@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'account_storage.dart';
 import 'api_auth.dart';
 import 'config.dart';
 
@@ -57,7 +58,7 @@ class CommunityStore {
             );
 
   Future<List<Community>> load() async {
-    final raw = await _s.read(key: _key);
+    final raw = await _s.read(key: scopedKey(_key));
     if (raw == null || raw.isEmpty) return [];
     try {
       return (jsonDecode(raw) as List).cast<Map<String, dynamic>>().map(Community.fromJson).toList();
@@ -67,7 +68,7 @@ class CommunityStore {
   }
 
   Future<List<Community>> _saveAll(List<Community> list) async {
-    await _s.write(key: _key, value: jsonEncode(list.map((x) => x.toJson()).toList()));
+    await _s.write(key: scopedKey(_key), value: jsonEncode(list.map((x) => x.toJson()).toList()));
     return list;
   }
 

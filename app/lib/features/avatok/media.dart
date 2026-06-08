@@ -1,11 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
+import '../../identity/identity.dart';
 
 enum MediaKind { image, video, audio, file }
 
@@ -87,7 +90,13 @@ class MediaService {
   }
 
   /// Fetches ciphertext by hash and decrypts back to plaintext bytes.
+  /// Local-first: decrypted media is content-addressed (immutable), so we cache
+  /// the plaintext on disk (per-account) — reopening a chat or returning from
+  /// another app never re-downloads or re-decrypts. This is the standard for all
+  /// chat media (images, voice, video, files) across every AvaVerse app.
   static Future<Uint8List> downloadAndDecrypt(ChatMedia m) async {
+    final cached = await _cacheRead(m.id);
+    if (cached != null) return cached;
     final res = await http.get(Uri.parse(m.downloadUrl)).timeout(const Duration(seconds: 60));
     if (res.statusCode != 200) {
       throw MediaUploadException('download failed (${res.statusCode})');
@@ -97,9 +106,36 @@ class MediaService {
       nonce: base64Decode(m.nonceB64),
       mac: Mac(base64Decode(m.macB64)),
     );
-    final clear = await _aes.decrypt(box,
-        secretKey: SecretKey(base64Decode(m.keyB64)));
-    return Uint8List.fromList(clear);
+    final clear = await _aes.decrypt(box, secretKey: SecretKey(base64Decode(m.keyB64)));
+    final bytes = Uint8List.fromList(clear);
+    await _cacheWrite(m.id, bytes);
+    return bytes;
+  }
+
+  // ---- per-account on-disk media cache ----
+  static Future<Directory> _cacheDir() async {
+    final base = await getApplicationSupportDirectory();
+    final scope = AccountScope.id == null || AccountScope.id!.isEmpty ? 'default' : AccountScope.id!;
+    final d = Directory('${base.path}/media/$scope');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  static String _cacheName(String id) => id.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+
+  static Future<Uint8List?> _cacheRead(String id) async {
+    try {
+      final f = File('${(await _cacheDir()).path}/${_cacheName(id)}');
+      if (await f.exists() && await f.length() > 0) return await f.readAsBytes();
+    } catch (_) {/* miss */}
+    return null;
+  }
+
+  static Future<void> _cacheWrite(String id, Uint8List bytes) async {
+    try {
+      final f = File('${(await _cacheDir()).path}/${_cacheName(id)}');
+      await f.writeAsBytes(bytes, flush: true);
+    } catch (_) {/* best-effort */}
   }
 }
 

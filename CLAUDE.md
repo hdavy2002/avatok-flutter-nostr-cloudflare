@@ -45,3 +45,25 @@ Do NOT call any other `graphify-*` MCP — those belong to different projects.
 Prefer graphify over grep for structural questions: "what calls X", "what imports Y",
 architecture and call-flow questions, "find code related to Z". Stick with grep for
 literal text / string search (TODOs, error messages, arbitrary tokens).
+
+---
+
+## Engineering rulebook (READ — applies to every app)
+
+The full rulebook is **`Specs/AVATALK-CLOUDFLARE-RULEBOOK.md`** — read it before
+building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
+
+1. **Per-account scoping is MANDATORY.** One phone is shared by a parent + each
+   child account, so ALL per-user local state (secure storage, prefs, file caches)
+   MUST be namespaced with `scopedKey(...)` / `readScoped(...)`
+   (`app/lib/core/account_storage.dart`) or a per-account subdir using
+   `AccountScope.id`. A raw global key = data leaking across accounts. Only
+   device-level values (e.g. the Clerk client token) stay global. When adding ANY
+   new store, scope it from the start.
+
+2. **Image/media caching pipeline.** Public images (avatars, posts): upload to
+   `/upload/public`, serve via Cloudflare
+   `/cdn-cgi/image/format=avif,quality=60,width=N,fit=cover/<path>`, and cache
+   on-device (`app/lib/core/avatar_cache.dart`; `Avatar` widget). Private DM media:
+   cache the DECRYPTED bytes on-device per account (`MediaService.downloadAndDecrypt`
+   → `…/media/<AccountScope.id>/<hash>`). Never re-download on reopen; load local-first.

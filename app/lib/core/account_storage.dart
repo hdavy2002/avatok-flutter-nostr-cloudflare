@@ -12,6 +12,15 @@ import '../identity/identity.dart';
 /// The bug this fixes: onboarding-done, profile and account-kind used to be
 /// stored under a single global key, so a second account signing in on the same
 /// phone skipped onboarding (no handle prompt) and saw the first user's profile.
+// ┌──────────────────────────────────────────────────────────────────────────┐
+// │ STANDARD (all AvaVerse apps): ALL per-user local state MUST be account-     │
+// │ scoped. One phone is routinely shared by multiple accounts (a parent and    │
+// │ each child), so any store keyed by a single global key leaks data between   │
+// │ accounts. Rule: every FlutterSecureStorage/SharedPreferences/file-cache key │
+// │ goes through scopedKey(...) (or a per-account subdir using AccountScope.id). │
+// │ Never read/write a raw constant key for user data. The ONLY exceptions are  │
+// │ device-level, account-agnostic values (e.g. the Clerk client token).        │
+// └──────────────────────────────────────────────────────────────────────────┘
 String scopedKey(String base) =>
     (AccountScope.id == null || AccountScope.id!.isEmpty)
         ? base

@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'account_storage.dart';
+
 /// A group: stable id, name, and member pubkeys (hex, x-only). Messages are
 /// fan-out gift-wrapped to every member (NIP-17), routed locally by [id].
 class Group {
@@ -44,7 +46,7 @@ class GroupStore {
             );
 
   Future<List<Group>> load() async {
-    final raw = await _s.read(key: _key);
+    final raw = await _s.read(key: scopedKey(_key));
     if (raw == null || raw.isEmpty) return [];
     try {
       return (jsonDecode(raw) as List).cast<Map<String, dynamic>>().map(Group.fromJson).toList();
@@ -57,14 +59,14 @@ class GroupStore {
     final list = await load();
     list.removeWhere((x) => x.id == g.id);
     list.insert(0, g);
-    await _s.write(key: _key, value: jsonEncode(list.map((x) => x.toJson()).toList()));
+    await _s.write(key: scopedKey(_key), value: jsonEncode(list.map((x) => x.toJson()).toList()));
     return list;
   }
 
   Future<void> remove(String id) async {
     final list = await load();
     list.removeWhere((x) => x.id == id);
-    await _s.write(key: _key, value: jsonEncode(list.map((x) => x.toJson()).toList()));
+    await _s.write(key: scopedKey(_key), value: jsonEncode(list.map((x) => x.toJson()).toList()));
   }
 
   Future<Group?> byId(String id) async {

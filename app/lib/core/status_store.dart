@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'account_storage.dart';
+
 /// A received/own status post (24h ephemeral).
 class StatusPost {
   final String id;        // rumor id
@@ -39,7 +41,7 @@ class StatusStore {
   );
 
   Future<List<StatusPost>> load() async {
-    final raw = await _s.read(key: _key);
+    final raw = await _s.read(key: scopedKey(_key));
     if (raw == null || raw.isEmpty) return [];
     try {
       final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>().map(StatusPost.fromJson).toList();
@@ -60,5 +62,5 @@ class StatusStore {
   }
 
   Future<void> _save(List<StatusPost> list) =>
-      _s.write(key: _key, value: jsonEncode(list.map((p) => p.toJson()).toList()));
+      _s.write(key: scopedKey(_key), value: jsonEncode(list.map((p) => p.toJson()).toList()));
 }
