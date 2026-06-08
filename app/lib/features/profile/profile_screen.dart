@@ -67,7 +67,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
         title: const Text('Profile'),
       ),
-      body: ListView(padding: const EdgeInsets.all(20), children: [
+      // Bottom padding clears the system nav bar so the Update button is never chopped.
+      body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + MediaQuery.of(context).padding.bottom), children: [
         Center(child: Avatar(seed: id?.npub ?? 'me', name: _name.text.isEmpty ? 'You' : _name.text, size: 88)),
         const SizedBox(height: 20),
         const Text('Display name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
