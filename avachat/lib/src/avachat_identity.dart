@@ -1,38 +1,30 @@
-// AvaChat identity adapter (Phase 1).
+// AvaChat identity adapter (Phase: identity).
 //
-// 0xchat assumes "the user IS their nsec." AvaTalk assumes "the user is a Clerk
-// account that OWNS a per-account-scoped Nostr keypair." This adapter bridges
-// the two: it provisions/loads the keypair through Clerk, stores it under a
-// per-account-scoped key (parent + each child share one phone — a raw global
-// key would leak identities across accounts), and logs 0xchat in with it.
+// Bridges 0xchat's "you are your nsec" model to AvaTalk's "a Clerk account owns a
+// per-account-scoped Nostr key." On first run we mint a keypair, store it under a
+// per-account-scoped secure key, and log 0xchat in with it — so the user lands
+// straight in chat with a stable identity, no raw-nsec screen. Clerk linkage is
+// additive (the backend gates on NIP-98 alone until Clerk JWKS is set).
 //
-// Real 0xchat-core APIs used (confirmed @ 76675e7):
-//   Account.sharedInstance.loginWithPriKey(privHex)  -> Future<UserDBISAR?>
-//   Account.generateNewKeychain()                    -> Keychain (private/public)
-//   Account.sharedInstance.logout()
-//
-// Storage MUST be namespaced. In the AvaTok app this is scopedKey()/AccountScope
-// (app/lib/core/account_storage.dart). Here we depend on a thin interface so the
-// adapter stays decoupled; the app wires the concrete implementation.
+// Real APIs used (verified against the vendored 0xchat @ 0a674a3):
+//   Account.generateNewKeychain()                 -> Keychain(.private/.public)
+//   Keychain.getPublicKey(privHex)                -> pubHex
+//   Account.sharedInstance.loginWithPriKey(priv)  -> Future<UserDBISAR?>
+//   OXUserInfoManager.sharedInstance.{isLogin, currentUserInfo, initDB,
+//     handleSwitchFailures, loginSuccess}
 
 import 'package:chatcore/chat-core.dart';
+import 'package:nostr_core_dart/nostr.dart';
+import 'package:ox_common/utils/ox_userinfo_manager.dart';
 
 import 'avachat_config.dart';
 
-/// Minimal contract the host app implements with its real per-account scope +
-/// secure storage (flutter_secure_storage in AvaTok). Keeps this library free
-/// of platform plugins so it builds/tests headless.
+/// Contract the host implements with real per-account scope + secure storage.
+/// (DeviceSecureScope is the concrete flutter_secure_storage implementation.)
 abstract class AvaChatSecureScope {
-  /// Stable id of the CURRENTLY ACTIVE account (parent or a specific child).
   String get accountId;
-
-  /// Read a per-account-scoped secret. Returns null if absent.
   Future<String?> read(String scopedKey);
-
-  /// Write a per-account-scoped secret.
   Future<void> write(String scopedKey, String value);
-
-  /// Clerk session JWT for the active account (for control-plane calls).
   Future<String?> clerkJwt();
 }
 
@@ -42,55 +34,62 @@ class AvaChatIdentity {
 
   AvaChatSecureScope? _scope;
 
-  /// Host app injects its real scope/storage exactly once at startup.
   void bindScope(AvaChatSecureScope scope) => _scope = scope;
-
-  /// True once a per-account scope is bound. Bootstrap checks this so a
-  /// not-yet-wired host (plain 0xchat) starts without crashing.
   bool get hasScope => _scope != null;
 
-  // Per-account-scoped storage key for this account's Nostr secret key.
   String _nsecKey(String accountId) => 'avachat.nsec::$accountId';
 
-  /// Load the account's keypair (or mint+link one on first run) and log 0xchat
-  /// in with it. Called from AvaChatBootstrap.init().
-  Future<UserDBISAR?> restoreOrProvision() async {
-    final scope = _scope;
-    if (scope == null) {
-      // Fail loud: shipping without a bound scope would risk a global key.
-      throw StateError(
-          'AvaChatIdentity.bindScope() must be called before init(); '
-          'per-account scoping is mandatory.');
-    }
+  /// The active account's private key (hex), or null if not provisioned/loaded.
+  String? activePrivHex;
 
+  /// Ensure a key exists for the active account; mint + persist on first run.
+  /// Returns the private key hex.
+  Future<String> _loadOrMintKey() async {
+    final scope = _scope!;
     final key = _nsecKey(scope.accountId);
-    var privHex = await scope.read(key);
-
-    if (privHex == null || privHex.isEmpty) {
-      // First login on this account → mint a keypair, persist scoped, and link
-      // it to the Clerk account server-side so it survives reinstall.
+    var priv = await scope.read(key);
+    if (priv == null || priv.isEmpty) {
       final kc = Account.generateNewKeychain();
-      privHex = kc.private;
-      await scope.write(key, privHex);
-      await _linkKeyToClerk(scope, kc.public);
+      priv = kc.private;
+      await scope.write(key, priv);
     }
-
-    return Account.sharedInstance.loginWithPriKey(privHex);
+    activePrivHex = priv;
+    return priv;
   }
 
-  /// Register pubkey ↔ Clerk handle in our control plane (clerk_nostr_link).
-  /// Mutation → NIP-98 signed + Clerk JWT (see AvaChatTransport).
-  Future<void> _linkKeyToClerk(AvaChatSecureScope scope, String pubHex) async {
-    // TODO(build): POST $apiBase/api/identity/link {pubkey} with Clerk JWT +
-    // NIP-98 header via AvaChatTransport.signedPost. Endpoint exists as
-    // worker/src/routes/identity.ts. No-op-safe if already linked.
+  /// Called AFTER 0xchat's AppInitializer has run (DB ready). If 0xchat already
+  /// auto-restored a session, do nothing. Otherwise provision the scoped key and
+  /// complete a real 0xchat login with it. Crash-safe.
+  Future<void> ensureLoggedIn() async {
+    try {
+      if (_scope == null) return;
+      final mgr = OXUserInfoManager.sharedInstance;
+      if (mgr.isLogin) {
+        // Keep our cached key in sync for NIP-98 signing of REST calls.
+        activePrivHex ??= await _scope!.read(_nsecKey(_scope!.accountId));
+        return;
+      }
+
+      final priv = await _loadOrMintKey();
+      final pubkey = Keychain.getPublicKey(priv);
+      final currentUserPubKey = mgr.currentUserInfo?.pubKey ?? '';
+
+      await mgr.initDB(pubkey);
+      var userDB = await Account.sharedInstance.loginWithPriKey(priv);
+      userDB = await mgr.handleSwitchFailures(userDB, currentUserPubKey);
+      if (userDB == null) return;
+      await mgr.loginSuccess(userDB);
+
+      await _linkKeyToClerk(pubkey);
+    } catch (_) {
+      // Never block app start; user can still use 0xchat's own login screen.
+    }
   }
 
-  /// Switch active account (parent <-> child): log out 0xchat, then re-provision
-  /// under the new scope. The host app updates AccountScope BEFORE calling this.
-  Future<void> switchAccount() async {
-    await Account.sharedInstance.logout();
-    await restoreOrProvision();
+  /// Register pubkey <-> Clerk handle in our control plane (best-effort).
+  Future<void> _linkKeyToClerk(String pubHex) async {
+    // TODO(next): POST $apiBase/api/identity/link via AvaChatTransport (NIP-98 +
+    // optional Clerk bearer). No-op-safe if already linked.
   }
 
   String get apiBase => AvaChatConfig.apiBase;

@@ -3,29 +3,34 @@ description: >
   AvaChat × 0xchat integration layer. Repoints the 0xchat Nostr client onto the
   AvaTalk Cloudflare backend (relay, identity, calls, wallet, brain) without
   patching 0xchat source. Consumed by the 0xchat entrypoint via
-  AvaChatBootstrap.init().
+  AvaChatBootstrap.init() + AvaChatIdentity.ensureLoggedIn().
 publish_to: 'none'
 version: 0.1.0
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
 
-# LGPL note: chatcore (0xchat-core) and nostr_core_dart (nostr-dart) are LGPL-3.0
-# and are consumed UNMODIFIED as path/git dependencies (kept in external/ as
-# submodules). All AvaChat-proprietary code lives here, separately. Fixes to the
-# LGPL libs are contributed upstream. See external/README.md and INTEGRATION.md.
+# LGPL note: chatcore / nostr_core_dart / ox_common ship inside 0xchat-app-main
+# (LGPL/MIT) and are consumed UNMODIFIED as path dependencies. All AvaChat code
+# lives here, separately. See ../LICENSES.md.
 dependencies:
   flutter:
     sdk: flutter
-  # 0xchat protocol/business engine. Use the canonical copy that ships INSIDE
-  # 0xchat-app-main (packages/0xchat-core is an in-repo subtree), so there is
-  # exactly one `chatcore` in the build and the version solver doesn't conflict.
+  # 0xchat engine + base framework (the canonical copies inside the app).
   chatcore:
     path: ../external/0xchat-app-main/packages/0xchat-core
+  nostr_core_dart:
+    path: ../external/0xchat-app-main/packages/nostr-dart
+  ox_common:
+    path: ../external/0xchat-app-main/packages/base_framework/ox_common
+  # AvaChat-owned plumbing.
+  flutter_secure_storage: ^9.0.0
+  bip340: ^0.3.0
+  crypto: ^3.0.0
+  http: ^1.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
 
 flutter:

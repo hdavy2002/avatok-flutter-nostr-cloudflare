@@ -19,8 +19,8 @@ import 'package:chatcore/chat-core.dart';
 
 import 'avachat_config.dart';
 import 'avachat_identity.dart';
-import 'avachat_calls.dart';
-import 'avachat_brain.dart';
+import 'avachat_secure_scope.dart';
+import 'avachat_transport.dart';
 
 class AvaChatBootstrap {
   static bool _done = false;
@@ -40,18 +40,13 @@ class AvaChatBootstrap {
       _repointRelays();
     } catch (_) {/* never block app start */}
 
-    // Additive layers — only run if the host app has bound the required
-    // adapters; swallow errors so startup is never blocked.
-    if (AvaChatIdentity.instance.hasScope) {
-      try {
-        await AvaChatIdentity.instance.restoreOrProvision();
-      } catch (_) {}
-    }
+    // Bind the concrete per-account secure storage so identity + transport can
+    // provision/sign. Actual login happens in ensureLoggedIn() AFTER 0xchat's
+    // AppInitializer (DB must be ready) — see the second injection in main().
     try {
-      await AvaChatCalls.instance.configureIceServers();
-    } catch (_) {}
-    try {
-      AvaChatBrain.instance.attach();
+      final scope = DeviceSecureScope();
+      AvaChatIdentity.instance.bindScope(scope);
+      AvaChatBootstrapScopeRef.scope = scope;
     } catch (_) {}
   }
 

@@ -8,6 +8,7 @@ library avachat;
 export 'src/avachat_config.dart';
 export 'src/avachat_bootstrap.dart';
 export 'src/avachat_identity.dart';
+export 'src/avachat_secure_scope.dart';
 export 'src/avachat_transport.dart';
 export 'src/avachat_calls.dart';
 export 'src/avachat_wallet.dart';
