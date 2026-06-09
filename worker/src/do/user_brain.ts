@@ -1,7 +1,7 @@
-// UserBrain — per-user reasoning DO (keyed by npub). Reached via stub.fetch from
-// the /api/brain/* routes with a JSON body { op, npub, ... }. Reads the user's
+// UserBrain — per-user reasoning DO (keyed by uid). Reached via stub.fetch from
+// the /api/brain/* routes with a JSON body { op, uid, ... }. Reads the user's
 // knowledge graph from DB_BRAIN, recalls semantically-similar memories from
-// Vectorize (npub-scoped), and answers with Gemma 4 26B-A4B (MoE: ~4B-class cost,
+// Vectorize (uid-scoped), and answers with Gemma 4 26B-A4B (MoE: ~4B-class cost,
 // native thinking-mode for better reasoning). Importance is decayed LAZILY at read
 // time. It holds no in-memory state, so it idles to nothing between requests.
 import type { Env } from "../types";
@@ -16,16 +16,16 @@ export class UserBrain {
   async fetch(req: Request): Promise<Response> {
     let body: any = {};
     try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
-    const npub: string = body.npub;
-    if (!npub) return json({ error: "npub required" }, 400);
+    const uid: string = body.uid;
+    if (!uid) return json({ error: "uid required" }, 400);
     switch (body.op) {
-      case "ask": return json({ answer: await this.ask(npub, String(body.question || "")) });
-      case "briefing": return json({ briefing: await this.briefing(npub) });
-      case "remember": return json(await this.remember(npub, body.facts || [], body.entities || []));
-      case "investigate": return json({ diagnosis: await this.investigate(npub, String(body.complaint || "")) });
-      case "forget": return json(await this.forget(npub, String(body.entity_id || "")));
-      case "entities": return json({ entities: await this.topEntities(npub, 50) });
-      case "timeline": return json({ events: await this.timeline(npub) });
+      case "ask": return json({ answer: await this.ask(uid, String(body.question || "")) });
+      case "briefing": return json({ briefing: await this.briefing(uid) });
+      case "remember": return json(await this.remember(uid, body.facts || [], body.entities || []));
+      case "investigate": return json({ diagnosis: await this.investigate(uid, String(body.complaint || "")) });
+      case "forget": return json(await this.forget(uid, String(body.entity_id || "")));
+      case "entities": return json({ entities: await this.topEntities(uid, 50) });
+      case "timeline": return json({ events: await this.timeline(uid) });
       default: return json({ error: "unknown op" }, 400);
     }
   }
@@ -36,47 +36,47 @@ export class UserBrain {
     return importance * Math.pow(DECAY_PER_DAY, days);
   }
 
-  private async topEntities(npub: string, limit: number): Promise<any[]> {
+  private async topEntities(uid: string, limit: number): Promise<any[]> {
     // Pull a generous slice by raw importance, then re-rank by decayed importance.
     const rs = await this.env.DB_BRAIN.prepare(
-      "SELECT id, entity_type, name, summary, importance, last_seen FROM brain_entities WHERE npub=?1 ORDER BY importance DESC LIMIT 200",
-    ).bind(npub).all();
+      "SELECT id, entity_type, name, summary, importance, last_seen FROM brain_entities WHERE uid=?1 ORDER BY importance DESC LIMIT 200",
+    ).bind(uid).all();
     return (rs.results ?? [])
       .map((r: any) => ({ ...r, eff: this.effImportance(r.importance, r.last_seen) }))
       .sort((a, b) => b.eff - a.eff)
       .slice(0, limit);
   }
 
-  private async recentFacts(npub: string, limit: number): Promise<any[]> {
+  private async recentFacts(uid: string, limit: number): Promise<any[]> {
     const rs = await this.env.DB_BRAIN.prepare(
-      "SELECT fact_type, content, scope, confidence, updated_at FROM brain_facts WHERE npub=?1 ORDER BY updated_at DESC LIMIT ?2",
-    ).bind(npub, limit).all();
+      "SELECT fact_type, content, scope, confidence, updated_at FROM brain_facts WHERE uid=?1 ORDER BY updated_at DESC LIMIT ?2",
+    ).bind(uid, limit).all();
     return (rs.results ?? []) as any[];
   }
 
-  private async recentSummaries(npub: string, limit: number): Promise<any[]> {
+  private async recentSummaries(uid: string, limit: number): Promise<any[]> {
     const rs = await this.env.DB_BRAIN.prepare(
-      "SELECT date, summary FROM brain_daily_summaries WHERE npub=?1 ORDER BY date DESC LIMIT ?2",
-    ).bind(npub, limit).all();
+      "SELECT date, summary FROM brain_daily_summaries WHERE uid=?1 ORDER BY date DESC LIMIT ?2",
+    ).bind(uid, limit).all();
     return (rs.results ?? []) as any[];
   }
 
-  private async timeline(npub: string): Promise<any[]> {
+  private async timeline(uid: string): Promise<any[]> {
     const rs = await this.env.DB_BRAIN.prepare(
-      "SELECT event_type, source_app, created_at FROM brain_events WHERE npub=?1 ORDER BY created_at DESC LIMIT 50",
-    ).bind(npub).all();
+      "SELECT event_type, source_app, created_at FROM brain_events WHERE uid=?1 ORDER BY created_at DESC LIMIT 50",
+    ).bind(uid).all();
     return (rs.results ?? []) as any[];
   }
 
-  // ---- semantic recall (npub-scoped) ----
-  private async vectorRecall(npub: string, query: string): Promise<string[]> {
+  // ---- semantic recall (uid-scoped) ----
+  private async vectorRecall(uid: string, query: string): Promise<string[]> {
     if (!this.env.VECTOR_INDEX) return [];
     try {
       const emb = (await this.env.AI.run((this.env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5") as any, { text: query })) as any;
       const vec: number[] | undefined = emb.data?.[0];
       if (!vec) return [];
       // Vectors are per-entity; metadata carries name+summary, so no D1 round-trip.
-      const res = await this.env.VECTOR_INDEX.query(vec, { topK: 6, filter: { npub }, returnMetadata: true } as any);
+      const res = await this.env.VECTOR_INDEX.query(vec, { topK: 6, filter: { uid }, returnMetadata: true } as any);
       return (res.matches ?? [])
         .map((m: any) => {
           const md = m.metadata ?? {};
@@ -93,10 +93,10 @@ export class UserBrain {
   }
 
   // ---- ops ----
-  private async ask(npub: string, question: string): Promise<string> {
+  private async ask(uid: string, question: string): Promise<string> {
     if (!question) return "Ask me something about your world.";
     const [entities, facts, summaries, recalls] = await Promise.all([
-      this.topEntities(npub, 25), this.recentFacts(npub, 30), this.recentSummaries(npub, 5), this.vectorRecall(npub, question),
+      this.topEntities(uid, 25), this.recentFacts(uid, 30), this.recentSummaries(uid, 5), this.vectorRecall(uid, question),
     ]);
     const context = JSON.stringify({
       entities: entities.map((e) => ({ name: e.name, type: e.entity_type, summary: e.summary })),
@@ -110,9 +110,9 @@ export class UserBrain {
     );
   }
 
-  private async briefing(npub: string): Promise<string> {
+  private async briefing(uid: string): Promise<string> {
     const [facts, summaries, entities] = await Promise.all([
-      this.recentFacts(npub, 40), this.recentSummaries(npub, 3), this.topEntities(npub, 15),
+      this.recentFacts(uid, 40), this.recentSummaries(uid, 3), this.topEntities(uid, 15),
     ]);
     const context = JSON.stringify({ facts: facts.map((f) => f.content), recent_days: summaries, key_people_projects: entities.map((e) => e.name) }).slice(0, 12_000);
     return this.reason(
@@ -121,7 +121,7 @@ export class UserBrain {
     );
   }
 
-  private async remember(npub: string, facts: any[], entities: any[]): Promise<{ stored: number }> {
+  private async remember(uid: string, facts: any[], entities: any[]): Promise<{ stored: number }> {
     const now = Date.now();
     let stored = 0;
     // Client-synced (e.g. DM-derived) memory — stored as scope='private'.
@@ -129,9 +129,9 @@ export class UserBrain {
       const content = String(f.content || f).trim();
       if (!content) continue;
       await this.env.DB_BRAIN.prepare(
-        `INSERT INTO brain_facts (id, npub, fact_type, content, scope, source_app, confidence, expires_at, created_at, updated_at)
+        `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, confidence, expires_at, created_at, updated_at)
          VALUES (?1,?2,?3,?4,'private',?5,?6,?7,?8,?8)`,
-      ).bind(crypto.randomUUID(), npub, String(f.fact_type || "insight"), content, String(f.source_app || "client"), 0.9, f.expires_at ?? null, now).run();
+      ).bind(crypto.randomUUID(), uid, String(f.fact_type || "insight"), content, String(f.source_app || "client"), 0.9, f.expires_at ?? null, now).run();
       stored++;
     }
     for (const e of Array.isArray(entities) ? entities.slice(0, 50) : []) {
@@ -139,38 +139,38 @@ export class UserBrain {
       if (!name) continue;
       const type = String(e.entity_type || "person");
       const existing = await this.env.DB_BRAIN.prepare(
-        "SELECT id, importance FROM brain_entities WHERE npub=?1 AND name=?2 AND entity_type=?3",
-      ).bind(npub, name, type).first<{ id: string; importance: number }>();
+        "SELECT id, importance FROM brain_entities WHERE uid=?1 AND name=?2 AND entity_type=?3",
+      ).bind(uid, name, type).first<{ id: string; importance: number }>();
       if (existing) {
         await this.env.DB_BRAIN.prepare("UPDATE brain_entities SET importance=?2, last_seen=?3, updated_at=?3 WHERE id=?1")
           .bind(existing.id, Math.min(1, (existing.importance ?? 0.5) + 0.05), now).run();
       } else {
         await this.env.DB_BRAIN.prepare(
-          `INSERT INTO brain_entities (id, npub, entity_type, name, summary, metadata, scope, importance, first_seen, last_seen, updated_at)
+          `INSERT INTO brain_entities (id, uid, entity_type, name, summary, metadata, scope, importance, first_seen, last_seen, updated_at)
            VALUES (?1,?2,?3,?4,?5,NULL,'private',0.6,?6,?6,?6)`,
-        ).bind(crypto.randomUUID(), npub, type, name, e.summary ?? null, now).run();
+        ).bind(crypto.randomUUID(), uid, type, name, e.summary ?? null, now).run();
       }
       stored++;
     }
     return { stored };
   }
 
-  private async forget(npub: string, entityId: string): Promise<{ ok: boolean }> {
+  private async forget(uid: string, entityId: string): Promise<{ ok: boolean }> {
     if (!entityId) return { ok: false };
     await this.env.DB_BRAIN.batch([
-      this.env.DB_BRAIN.prepare("DELETE FROM brain_entities WHERE id=?1 AND npub=?2").bind(entityId, npub),
-      this.env.DB_BRAIN.prepare("DELETE FROM brain_relationships WHERE npub=?2 AND (from_entity_id=?1 OR to_entity_id=?1)").bind(entityId, npub),
+      this.env.DB_BRAIN.prepare("DELETE FROM brain_entities WHERE id=?1 AND uid=?2").bind(entityId, uid),
+      this.env.DB_BRAIN.prepare("DELETE FROM brain_relationships WHERE uid=?2 AND (from_entity_id=?1 OR to_entity_id=?1)").bind(entityId, uid),
     ]);
     return { ok: true };
   }
 
-  private async investigate(npub: string, complaint: string): Promise<string> {
+  private async investigate(uid: string, complaint: string): Promise<string> {
     const key = this.env.POSTHOG_PERSONAL_API_KEY;
     if (!key) return "Diagnostics are temporarily unavailable.";
     const host = this.env.POSTHOG_QUERY_HOST || "https://us.posthog.com";
     const project = this.env.POSTHOG_PROJECT_ID || "";
-    // npub is a safe charset (npub1… / hex); inline guarded.
-    const safeNpub = npub.replace(/[^a-z0-9]/gi, "");
+    // uid is a safe charset (npub1… / hex); inline guarded.
+    const safeNpub = uid.replace(/[^a-z0-9]/gi, "");
     const hogql = `SELECT event, timestamp, properties FROM events WHERE distinct_id = '${safeNpub}' AND timestamp > now() - INTERVAL 1 DAY ORDER BY timestamp DESC LIMIT 100`;
     let events = "[]";
     try {

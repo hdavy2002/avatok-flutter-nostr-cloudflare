@@ -1,6 +1,6 @@
 // AgentDO — per-user agent coordinator (§20). Enforces two guardrails in its own
 // SQLite (atomic): (1) max 5 agent conversations per app per day (§20.9 / §27.25);
-// (2) a per-user DAILY neuron budget circuit-breaker (§6.4 / §20.9). Keyed by npub.
+// (2) a per-user DAILY neuron budget circuit-breaker (§6.4 / §20.9). Keyed by uid.
 import type { Env } from "../types";
 import { json } from "../util";
 

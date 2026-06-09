@@ -2,7 +2,7 @@
 import type { Env } from "../types";
 import { json, sha256Hex, normalizePhone } from "../util";
 import { metaDb } from "../db/shard";
-import { authenticate, isErr } from "../auth";
+import { requireUser, isFail } from "../authz";
 
 // POST /contacts/match  (and /contacts/sync alias)
 // Body: { phones: ["+91...", ...] }  → which are on AvaTok, via hashed lookup.
@@ -10,8 +10,8 @@ import { authenticate, isErr } from "../auth";
 // is a deferred product feature). Forward index contact_phone_index is populated
 // by /profile when a user opts to be discoverable.
 export async function postContactsMatch(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const phones: string[] = Array.isArray(b.phones) ? b.phones.slice(0, 1000) : [];
   if (!phones.length) return json({ matches: [] });
@@ -20,9 +20,9 @@ export async function postContactsMatch(req: Request, env: Env): Promise<Respons
   // batched WHERE phone_hash IN (...) — the Rulebook-prescribed pattern.
   const placeholders = hashes.map((_, i) => `?${i + 1}`).join(",");
   const rs = await metaDb(env).prepare(
-    `SELECT cpi.phone_hash, cpi.npub, p.handle, p.display_name, p.avatar_url
+    `SELECT cpi.phone_hash, cpi.uid, p.handle, p.display_name, p.avatar_url
      FROM contact_phone_index cpi
-     LEFT JOIN profiles p ON p.npub = cpi.npub
+     LEFT JOIN users p ON p.uid = cpi.uid
      WHERE cpi.phone_hash IN (${placeholders})`,
   ).bind(...hashes).all();
   // Map results back to input index so the client knows which contact matched.
@@ -40,8 +40,8 @@ export async function getContactsList(_req: Request, _env: Env): Promise<Respons
 
 // POST /community  { name, description?, avatar_url?, id? }
 export async function postCommunity(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.name) return json({ error: "name required" }, 400);
   const id = String(b.id || crypto.randomUUID());
@@ -50,26 +50,26 @@ export async function postCommunity(req: Request, env: Env): Promise<Response> {
     `INSERT INTO communities (id, name, description, avatar_url, owner_npub, created_at)
      VALUES (?1,?2,?3,?4,?5,?6)
      ON CONFLICT(id) DO UPDATE SET name=?2, description=?3, avatar_url=?4`,
-  ).bind(id, b.name, b.description ?? null, b.avatar_url ?? null, auth.npub, now).run();
+  ).bind(id, b.name, b.description ?? null, b.avatar_url ?? null, ctx.uid, now).run();
   await metaDb(env).prepare(
-    `INSERT OR IGNORE INTO community_members (community_id, npub, role, joined_at) VALUES (?1,?2,'owner',?3)`,
-  ).bind(id, auth.npub, now).run();
+    `INSERT OR IGNORE INTO community_members (community_id, uid, role, joined_at) VALUES (?1,?2,'owner',?3)`,
+  ).bind(id, ctx.uid, now).run();
   return json({ ok: true, id });
 }
 
 // POST /community/join  { id }
 export async function joinCommunity(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
   await metaDb(env).prepare(
-    `INSERT OR IGNORE INTO community_members (community_id, npub, role, joined_at) VALUES (?1,?2,'member',?3)`,
-  ).bind(String(b.id), auth.npub, Date.now()).run();
+    `INSERT OR IGNORE INTO community_members (community_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)`,
+  ).bind(String(b.id), ctx.uid, Date.now()).run();
   return json({ ok: true });
 }
 
-// GET /communities?id=<id>  |  ?member=<npub>
+// GET /communities?id=<id>  |  ?member=<uid>
 export async function getCommunities(req: Request, env: Env): Promise<Response> {
   const sp = new URL(req.url).searchParams;
   const id = sp.get("id");
@@ -78,14 +78,14 @@ export async function getCommunities(req: Request, env: Env): Promise<Response> 
   if (id) {
     const c = await db.prepare("SELECT * FROM communities WHERE id=?1").bind(id).first();
     if (!c) return json({ found: false });
-    const m = await db.prepare("SELECT npub, role FROM community_members WHERE community_id=?1").bind(id).all();
+    const m = await db.prepare("SELECT uid, role FROM community_members WHERE community_id=?1").bind(id).all();
     return json({ found: true, community: c, members: m.results ?? [] });
   }
   if (member) {
     const rs = await db.prepare(
       `SELECT c.* FROM communities c
        JOIN community_members m ON m.community_id = c.id
-       WHERE m.npub = ?1 ORDER BY c.created_at DESC`,
+       WHERE m.uid = ?1 ORDER BY c.created_at DESC`,
     ).bind(member).all();
     return json({ communities: rs.results ?? [] });
   }

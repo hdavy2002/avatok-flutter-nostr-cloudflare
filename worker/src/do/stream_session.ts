@@ -61,7 +61,7 @@ export class StreamSessionDO {
     await stub.fetch("https://wallet/op", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ op: "earn", npub: creator, amount: net, commission, app_name: "avalive", ref: "stream-gifts" }),
+      body: JSON.stringify({ op: "earn", uid: creator, amount: net, commission, app_name: "avalive", ref: "stream-gifts" }),
     });
     this.sql.exec("UPDATE meta SET pending=0 WHERE k=1");
   }

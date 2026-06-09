@@ -7,11 +7,11 @@ import type { Env } from "./types";
 const SERVICE = "avatok-api";
 
 /** PostHog product/analytics event (batched via Q_ANALYTICS → consumer /batch).
- *  Every event carries the 5 required fields (§27.11): trace_id, user_id (npub),
+ *  Every event carries the 5 required fields (§27.11): trace_id, user_id (uid),
  *  app_name, app_version, service_name. */
 export function track(
   env: Env,
-  npub: string,
+  uid: string,
   event: string,
   app_name: string,
   props: Record<string, unknown> = {},
@@ -20,7 +20,7 @@ export function track(
   try {
     void env.Q_ANALYTICS.send({
       event,
-      npub,
+      uid,
       ts: Date.now(),
       props: {
         ...props,
@@ -42,11 +42,11 @@ export function metric(env: Env, name: string, doubles: number[], blobs: string[
  *  platform facts only — never DM plaintext. Scope defaults to 'public'. */
 export function brainFact(
   env: Env,
-  npub: string,
+  uid: string,
   event_type: string,
   source_app: string,
   payload: Record<string, unknown>,
   scope: "public" | "private" | string = "public",
 ): void {
-  try { void env.Q_BRAIN.send({ npub, event_type, source_app, scope, payload }); } catch { /* best-effort */ }
+  try { void env.Q_BRAIN.send({ uid, event_type, source_app, scope, payload }); } catch { /* best-effort */ }
 }

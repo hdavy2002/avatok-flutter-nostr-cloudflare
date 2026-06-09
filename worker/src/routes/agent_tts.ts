@@ -1,13 +1,13 @@
 // Lazy TTS for agent conversations (Phase 8, §20.5). Audio is synthesized ONLY when
 // a user taps "Listen" — never ahead of time (~90% fewer TTS calls). Each message is
-// voiced with its speaker's stable per-npub voice (Aura-2, 40 voices from Phase 0),
+// voiced with its speaker's stable per-uid voice (Aura-2, 40 voices from Phase 0),
 // the per-message MP3s are concatenated, and the result is cached in R2
 // avatok-agent-audio keyed by conversation_id — so BOTH parties reuse one render.
 //   POST /api/agent/tts            { conversation_id } → synthesize-or-cache, returns audio path
 //   GET  /api/agent/audio/:cid     → stream the cached render (must be a party)
 import type { Env } from "../types";
 import { json } from "../util";
-import { authenticate, isErr } from "../auth";
+import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track, metric } from "../hooks";
 
@@ -15,8 +15,8 @@ const TTS_MODEL = "@cf/deepgram/aura-2-en";
 // 40 valid Aura-2 voice IDs (captured in Phase 0 probe).
 const VOICES = ["amalthea","andromeda","apollo","arcas","aries","asteria","athena","atlas","aurora","callista","cora","cordelia","delia","draco","electra","harmonia","helena","hera","hermes","hyperion","iris","janus","juno","jupiter","luna","mars","minerva","neptune","odysseus","ophelia","orion","orpheus","pandora","phoebe","pluto","saturn","thalia","theia","vesta","zeus"];
 
-function voiceFor(npub: string): string {
-  let h = 0; for (let i = 0; i < npub.length; i++) h = (h * 31 + npub.charCodeAt(i)) >>> 0;
+function voiceFor(uid: string): string {
+  let h = 0; for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
   return VOICES[h % VOICES.length];
 }
 const audioKey = (cid: string) => `conv/${cid}.mp3`;
@@ -38,32 +38,32 @@ async function toBytes(out: any): Promise<Uint8Array | null> {
 }
 
 async function loadConversation(env: Env, cid: string) {
-  return metaDb(env).prepare("SELECT npub, peer_npub, transcript, status FROM agent_conversations WHERE id=?1").bind(cid).first<any>();
+  return metaDb(env).prepare("SELECT uid, peer_npub, transcript, status FROM agent_conversations WHERE id=?1").bind(cid).first<any>();
 }
-function isParty(c: any, npub: string): boolean { return c && (c.npub === npub || c.peer_npub === npub); }
+function isParty(c: any, uid: string): boolean { return c && (c.uid === uid || c.peer_npub === uid); }
 
 // POST /api/agent/tts { conversation_id }
 export async function agentTts(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const cid = String(b.conversation_id || "");
   const c = await loadConversation(env, cid);
-  if (!isParty(c, auth.npub)) return json({ error: "not found" }, 404);
+  if (!isParty(c, ctx.uid)) return json({ error: "not found" }, 404);
 
   const key = audioKey(cid);
   // Cached? Reuse (the whole point of lazy TTS — synthesize once, reuse for both).
   if (await env.AGENT_AUDIO.head(key)) {
-    track(env, auth.npub, "agent_tts_cache_hit", "avabrain", { conversation_id: cid });
+    track(env, ctx.uid, "agent_tts_cache_hit", "avabrain", { conversation_id: cid });
     return json({ ready: true, cached: true, audio_path: `/api/agent/audio/${cid}` });
   }
 
   const transcript: { speaker: string; content: string }[] = c.transcript ? JSON.parse(c.transcript) : [];
   if (!transcript.length) return json({ error: "no transcript to voice" }, 409);
 
-  // Voices are tied to the npub, not the relative speaker, so the render is identical
-  // for both parties. transcript speaker 'you' = conversation owner (c.npub).
-  const voiceYou = voiceFor(c.npub), voiceThem = voiceFor(c.peer_npub);
+  // Voices are tied to the uid, not the relative speaker, so the render is identical
+  // for both parties. transcript speaker 'you' = conversation owner (c.uid).
+  const voiceYou = voiceFor(c.uid), voiceThem = voiceFor(c.peer_npub);
   const parts: Uint8Array[] = [];
   let calls = 0;
   for (const m of transcript) {
@@ -82,17 +82,17 @@ export async function agentTts(req: Request, env: Env): Promise<Response> {
   let off = 0; for (const p of parts) { stitched.set(p, off); off += p.length; }
 
   await env.AGENT_AUDIO.put(key, stitched, { httpMetadata: { contentType: "audio/mpeg" } });
-  track(env, auth.npub, "agent_tts_synthesized", "avabrain", { conversation_id: cid, segments: calls });
+  track(env, ctx.uid, "agent_tts_synthesized", "avabrain", { conversation_id: cid, segments: calls });
   metric(env, "agent_tts", [calls, total]);
   return json({ ready: true, cached: false, segments: calls, audio_path: `/api/agent/audio/${cid}` });
 }
 
 // GET /api/agent/audio/:cid — stream the cached render (party-only).
 export async function agentAudio(req: Request, env: Env, cid: string): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const c = await loadConversation(env, cid);
-  if (!isParty(c, auth.npub)) return json({ error: "not found" }, 404);
+  if (!isParty(c, ctx.uid)) return json({ error: "not found" }, 404);
   const obj = await env.AGENT_AUDIO.get(audioKey(cid));
   if (!obj) return json({ error: "not synthesized yet", hint: "POST /api/agent/tts first" }, 404);
   return new Response(obj.body, { headers: { "content-type": "audio/mpeg", "cache-control": "private, max-age=86400" } });

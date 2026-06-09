@@ -9,7 +9,8 @@
 // .ts): unset AWS creds → 503 "verification unavailable", everything else still works.
 import type { Env } from "../types";
 import { json, sha256Hex, normalizePhone } from "../util";
-import { authenticate, isErr, setVerifiedCache } from "../auth";
+import { setVerifiedCache } from "../auth";
+import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
 import { createLivenessSession, getLivenessResults, rekognitionConfigured } from "../aws/rekognition";
 import { track, metric, brainFact } from "../hooks";
@@ -19,20 +20,20 @@ const MIN_CONFIDENCE = 90;        // §10.4 auto-approve threshold
 const MAX_ATTEMPTS_24H = 3;       // §10.4 retry cap
 const DAY = 86_400_000;
 
-async function attemptsLast24h(env: Env, npub: string): Promise<number> {
+async function attemptsLast24h(env: Env, uid: string): Promise<number> {
   const row = await metaSession(env)
-    .prepare("SELECT COUNT(*) AS n FROM verification_attempts WHERE npub=?1 AND created_at > ?2")
-    .bind(npub, Date.now() - DAY).first<{ n: number }>();
+    .prepare("SELECT COUNT(*) AS n FROM verification_attempts WHERE uid=?1 AND created_at > ?2")
+    .bind(uid, Date.now() - DAY).first<{ n: number }>();
   return row?.n ?? 0;
 }
 
 // POST /api/id/session
 export async function idSession(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!rekognitionConfigured(env)) return json({ error: "verification unavailable", reason: "aws_unconfigured" }, 503);
 
-  if (await attemptsLast24h(env, auth.npub) >= MAX_ATTEMPTS_24H) {
+  if (await attemptsLast24h(env, ctx.uid) >= MAX_ATTEMPTS_24H) {
     return json({ error: "too many attempts", retry_after_hours: 24 }, 429);
   }
 
@@ -47,24 +48,24 @@ export async function idSession(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
   await metaDb(env).batch([
     metaDb(env).prepare(
-      `INSERT INTO verification_status (npub, status, method, session_id, updated_at)
+      `INSERT INTO verification_status (uid, status, method, session_id, updated_at)
        VALUES (?1,'pending','rekognition_liveness',?2,?3)
-       ON CONFLICT(npub) DO UPDATE SET status='pending', session_id=?2, updated_at=?3`,
-    ).bind(auth.npub, session.SessionId, now),
+       ON CONFLICT(uid) DO UPDATE SET status='pending', session_id=?2, updated_at=?3`,
+    ).bind(ctx.uid, session.SessionId, now),
     metaDb(env).prepare(
-      "INSERT INTO verification_attempts (npub, session_id, result, created_at) VALUES (?1,?2,'pending',?3)",
-    ).bind(auth.npub, session.SessionId, now),
+      "INSERT INTO verification_attempts (uid, session_id, result, created_at) VALUES (?1,?2,'pending',?3)",
+    ).bind(ctx.uid, session.SessionId, now),
   ]);
 
-  track(env, auth.npub, "id_session_started", "avaid", { session_id: session.SessionId });
+  track(env, ctx.uid, "id_session_started", "avaid", { session_id: session.SessionId });
   metric(env, "avaid_session", [1]);
   return json({ session_id: session.SessionId });
 }
 
 // POST /api/id/result  { session_id }
 export async function idResult(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!rekognitionConfigured(env)) return json({ error: "verification unavailable", reason: "aws_unconfigured" }, 503);
 
   const b = (await req.json().catch(() => ({}))) as any;
@@ -73,8 +74,8 @@ export async function idResult(req: Request, env: Env): Promise<Response> {
 
   // The session must belong to this caller (anti-replay: bind to the row we wrote).
   const owned = await metaSession(env)
-    .prepare("SELECT 1 AS ok FROM verification_status WHERE npub=?1 AND session_id=?2")
-    .bind(auth.npub, sessionId).first<{ ok: number }>();
+    .prepare("SELECT 1 AS ok FROM verification_status WHERE uid=?1 AND session_id=?2")
+    .bind(ctx.uid, sessionId).first<{ ok: number }>();
   if (!owned) return json({ error: "session not found for this account" }, 404);
 
   let result: { Status: string; Confidence?: number };
@@ -89,52 +90,52 @@ export async function idResult(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
 
   await env.DB_META.prepare(
-    "UPDATE verification_attempts SET result=?1, confidence=?2 WHERE npub=?3 AND session_id=?4",
-  ).bind(passed ? "pass" : "fail", confidence, auth.npub, sessionId).run();
+    "UPDATE verification_attempts SET result=?1, confidence=?2 WHERE uid=?3 AND session_id=?4",
+  ).bind(passed ? "pass" : "fail", confidence, ctx.uid, sessionId).run();
 
   if (!passed) {
     await metaDb(env).prepare(
-      "UPDATE verification_status SET status='rejected', confidence=?2, updated_at=?3 WHERE npub=?1",
-    ).bind(auth.npub, confidence, now).run();
-    track(env, auth.npub, "id_verification_failed", "avaid", { confidence, status: result.Status });
-    const remaining = Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, auth.npub)));
+      "UPDATE verification_status SET status='rejected', confidence=?2, updated_at=?3 WHERE uid=?1",
+    ).bind(ctx.uid, confidence, now).run();
+    track(env, ctx.uid, "id_verification_failed", "avaid", { confidence, status: result.Status });
+    const remaining = Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, ctx.uid)));
     return json({ verified: false, confidence, status: result.Status, attempts_remaining: remaining });
   }
 
   // PASS → verified. Flip status + tier, cache in KV, learn it, notify.
   await metaDb(env).batch([
     metaDb(env).prepare(
-      "UPDATE verification_status SET status='verified', confidence=?2, verified_at=?3, updated_at=?3 WHERE npub=?1",
-    ).bind(auth.npub, confidence, now),
+      "UPDATE verification_status SET status='verified', confidence=?2, verified_at=?3, updated_at=?3 WHERE uid=?1",
+    ).bind(ctx.uid, confidence, now),
     metaDb(env).prepare(
-      `INSERT INTO clerk_nostr_link (npub, clerk_user_id, tier, created_at)
-       VALUES (?1, ?2, 'verified', ?3)
-       ON CONFLICT(npub) DO UPDATE SET tier='verified'`,
-    ).bind(auth.npub, auth.clerkUserId ?? "", now),
+      `INSERT INTO kyc_status (uid, status, provider, verified_at, updated_at)
+       VALUES (?1, 'verified', 'rekognition_liveness', ?2, ?2)
+       ON CONFLICT(uid) DO UPDATE SET status='verified', verified_at=?2, updated_at=?2`,
+    ).bind(ctx.uid, now),
   ]);
-  await setVerifiedCache(env, auth.npub, true);
+  await setVerifiedCache(env, ctx.uid, true);
 
-  brainFact(env, auth.npub, "identity_verified", "avaid", { method: "rekognition_liveness", confidence, at: now });
-  track(env, auth.npub, "id_verified", "avaid", { confidence });
+  brainFact(env, ctx.uid, "identity_verified", "avaid", { method: "rekognition_liveness", confidence, at: now });
+  track(env, ctx.uid, "id_verified", "avaid", { confidence });
   metric(env, "avaid_verified", [1, confidence]);
-  try { await notifyUser(env, auth.npub, { type: "system", title: "You're verified ✓", body: "Tier-2 apps are now unlocked.", data: { deeplink: "/profile" } }); } catch { /* best-effort */ }
+  try { await notifyUser(env, ctx.uid, { type: "system", title: "You're verified ✓", body: "Tier-2 apps are now unlocked.", data: { deeplink: "/profile" } }); } catch { /* best-effort */ }
 
   return json({ verified: true, confidence, tier: "verified" });
 }
 
 // GET /api/id/status
 export async function idStatus(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const row = await metaSession(env)
-    .prepare("SELECT status, confidence, verified_at FROM verification_status WHERE npub=?1")
-    .bind(auth.npub).first<{ status: string; confidence: number | null; verified_at: number | null }>();
+    .prepare("SELECT status, confidence, verified_at FROM verification_status WHERE uid=?1")
+    .bind(ctx.uid).first<{ status: string; confidence: number | null; verified_at: number | null }>();
   return json({
-    npub: auth.npub,
+    uid: ctx.uid,
     status: row?.status ?? "unverified",
     confidence: row?.confidence ?? null,
     verified_at: row?.verified_at ?? null,
-    tier: auth.tier,
+    tier: (row?.status === "verified" ? "verified" : "basic"),
     rekognition_configured: rekognitionConfigured(env),
   });
 }
@@ -142,7 +143,7 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Onboarding contact verification: phone (Firebase OTP) + email (server OTP).
 // Phone OTP itself is done client-side by Firebase; /phone/confirm records that
-// the authenticated npub confirmed a number. Email OTP is fully server-issued:
+// the authenticated uid confirmed a number. Email OTP is fully server-issued:
 // /email/start mints a 6-digit code, stores only its hash in KV (10-min TTL),
 // and emails it via Q_EMAIL → Brevo; /email/verify checks it. All dual-auth.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,26 +169,26 @@ function emailOtpHtml(code: string): string {
 
 // POST /api/id/email/start  { email }
 export async function idEmailStart(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
 
   const b = (await req.json().catch(() => ({}))) as { email?: string };
   const email = String(b.email || "").trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "valid email required" }, 400);
 
   // Rate-limit sends per identity (defends against spamming an inbox).
-  const sendKey = `otp:email:sends:${auth.npub}`;
+  const sendKey = `otp:email:sends:${ctx.uid}`;
   const sends = Number((await env.TOKENS.get(sendKey)) || "0");
   if (sends >= OTP_MAX_SENDS_PER_HOUR) {
-    track(env, auth.npub, "email_verification_failed", "avaid", { reason: "rate_limited" });
+    track(env, ctx.uid, "email_verification_failed", "avaid", { reason: "rate_limited" });
     return json({ error: "too many requests — please wait a bit and try again" }, 429);
   }
 
   const code = sixDigitCode();
   const exp = Date.now() + OTP_TTL_S * 1000;
-  const hash = await sha256Hex(`${auth.npub}:${email}:${code}`); // never store the code itself
+  const hash = await sha256Hex(`${ctx.uid}:${email}:${code}`); // never store the code itself
   await env.TOKENS.put(
-    `otp:email:${auth.npub}`,
+    `otp:email:${ctx.uid}`,
     JSON.stringify({ hash, email, exp, attempts: 0 }),
     { expirationTtl: OTP_TTL_S },
   );
@@ -205,22 +206,22 @@ export async function idEmailStart(req: Request, env: Env): Promise<Response> {
     return json({ error: "could not send the email — please try again" }, 502);
   }
 
-  track(env, auth.npub, "email_verification_sent", "avaid", {});
+  track(env, ctx.uid, "email_verification_sent", "avaid", {});
   metric(env, "email_otp_sent", [1]);
   return json({ ok: true });
 }
 
 // POST /api/id/email/verify  { email, code }
 export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
 
   const b = (await req.json().catch(() => ({}))) as { email?: string; code?: string };
   const email = String(b.email || "").trim().toLowerCase();
   const code = String(b.code || "").trim();
   if (!email || !code) return json({ error: "email and code required" }, 400);
 
-  const key = `otp:email:${auth.npub}`;
+  const key = `otp:email:${ctx.uid}`;
   const raw = await env.TOKENS.get(key);
   if (!raw) return json({ error: "code expired — request a new one" }, 400);
 
@@ -240,39 +241,39 @@ export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
     return json({ error: "too many attempts — request a new code" }, 429);
   }
 
-  const given = await sha256Hex(`${auth.npub}:${email}:${code}`);
+  const given = await sha256Hex(`${ctx.uid}:${email}:${code}`);
   if (given !== rec.hash || email !== rec.email) {
     const ttl = Math.max(1, Math.ceil((rec.exp - Date.now()) / 1000));
     await env.TOKENS.put(key, JSON.stringify({ ...rec, attempts: rec.attempts + 1 }), { expirationTtl: ttl });
-    track(env, auth.npub, "email_verification_failed", "avaid", { reason: "invalid_code", attempt: rec.attempts + 1 });
+    track(env, ctx.uid, "email_verification_failed", "avaid", { reason: "invalid_code", attempt: rec.attempts + 1 });
     return json({ error: "incorrect or expired code" }, 400);
   }
 
   const now = Date.now();
   const emailHash = await sha256Hex(email);
   await metaDb(env).prepare(
-    `INSERT INTO contact_verification (npub, email_verified, email_hash, email_verified_at, updated_at)
+    `INSERT INTO contact_verification (uid, email_verified, email_hash, email_verified_at, updated_at)
      VALUES (?1, 1, ?2, ?3, ?3)
-     ON CONFLICT(npub) DO UPDATE SET email_verified=1, email_hash=?2, email_verified_at=?3, updated_at=?3`,
-  ).bind(auth.npub, emailHash, now).run();
+     ON CONFLICT(uid) DO UPDATE SET email_verified=1, email_hash=?2, email_verified_at=?3, updated_at=?3`,
+  ).bind(ctx.uid, emailHash, now).run();
   // Link the verified email to the directory profile too (same hashing as profileUpsert).
   try {
-    await metaDb(env).prepare("UPDATE profiles SET email_hash=?2, updated_at=?3 WHERE npub=?1")
-      .bind(auth.npub, emailHash, now).run();
+    await metaDb(env).prepare("UPDATE users SET email_hash=?2, updated_at=?3 WHERE uid=?1")
+      .bind(ctx.uid, emailHash, now).run();
   } catch { /* profile row may not exist yet; contact_verification is the source of truth */ }
   await env.TOKENS.delete(key);
 
-  track(env, auth.npub, "email_verified", "avaid", {});
+  track(env, ctx.uid, "email_verified", "avaid", {});
   metric(env, "email_otp_verified", [1]);
   return json({ ok: true, verified: true });
 }
 
 // POST /api/id/phone/confirm  { phone }
-// Records that this npub completed Firebase phone OTP. (Hardening option: also
+// Records that this uid completed Firebase phone OTP. (Hardening option: also
 // accept a Firebase ID token here and verify it server-side before trusting it.)
 export async function idPhoneConfirm(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
 
   const b = (await req.json().catch(() => ({}))) as { phone?: string };
   const phone = normalizePhone(String(b.phone || ""));
@@ -281,12 +282,12 @@ export async function idPhoneConfirm(req: Request, env: Env): Promise<Response> 
   const now = Date.now();
   const phoneHash = await sha256Hex(phone); // store hash only — never the raw number
   await metaDb(env).prepare(
-    `INSERT INTO contact_verification (npub, phone_verified, phone_hash, phone_verified_at, updated_at)
+    `INSERT INTO contact_verification (uid, phone_verified, phone_hash, phone_verified_at, updated_at)
      VALUES (?1, 1, ?2, ?3, ?3)
-     ON CONFLICT(npub) DO UPDATE SET phone_verified=1, phone_hash=?2, phone_verified_at=?3, updated_at=?3`,
-  ).bind(auth.npub, phoneHash, now).run();
+     ON CONFLICT(uid) DO UPDATE SET phone_verified=1, phone_hash=?2, phone_verified_at=?3, updated_at=?3`,
+  ).bind(ctx.uid, phoneHash, now).run();
 
-  track(env, auth.npub, "phone_verification_completed", "avaid", {});
+  track(env, ctx.uid, "phone_verification_completed", "avaid", {});
   metric(env, "phone_confirmed", [1]);
   return json({ ok: true, verified: true });
 }

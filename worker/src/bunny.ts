@@ -1,5 +1,5 @@
 // Bunny.net Stream helper — per-user organization + deletion.
-// Each user's videos live in their OWN Bunny "collection" (folder), keyed by npub
+// Each user's videos live in their OWN Bunny "collection" (folder), keyed by uid
 // in bunny_collections (DB_META). The actual video-upload flow (TUS/resumable) is
 // a future client feature; it must call ensureUserCollection() so every video is
 // filed under the right user. deleteUserVideos() removes everything on account delete.
@@ -17,28 +17,28 @@ function headers(env: Env): Record<string, string> {
 }
 
 /** Get (or create) the user's Bunny collection GUID. Returns null if unconfigured. */
-export async function ensureUserCollection(env: Env, npub: string): Promise<string | null> {
+export async function ensureUserCollection(env: Env, uid: string): Promise<string | null> {
   if (!configured(env)) return null;
-  const row = await metaDb(env).prepare("SELECT collection_id FROM bunny_collections WHERE npub=?1").bind(npub).first<{ collection_id: string }>();
+  const row = await metaDb(env).prepare("SELECT collection_id FROM bunny_collections WHERE uid=?1").bind(uid).first<{ collection_id: string }>();
   if (row?.collection_id) return row.collection_id;
   try {
     const res = await fetch(`${BASE}/library/${env.BUNNY_LIBRARY_ID}/collections`, {
-      method: "POST", headers: headers(env), body: JSON.stringify({ name: npub }),
+      method: "POST", headers: headers(env), body: JSON.stringify({ name: uid }),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as any;
     const id = data.guid || data.Guid;
     if (!id) return null;
-    await metaDb(env).prepare("INSERT OR REPLACE INTO bunny_collections (npub, collection_id, created_at) VALUES (?1,?2,?3)")
-      .bind(npub, id, Date.now()).run();
+    await metaDb(env).prepare("INSERT OR REPLACE INTO bunny_collections (uid, collection_id, created_at) VALUES (?1,?2,?3)")
+      .bind(uid, id, Date.now()).run();
     return id;
   } catch { return null; }
 }
 
 /** Delete every video in the user's collection, then the collection + the mapping. */
-export async function deleteUserVideos(env: Env, npub: string): Promise<number> {
+export async function deleteUserVideos(env: Env, uid: string): Promise<number> {
   if (!configured(env)) return 0;
-  const row = await metaDb(env).prepare("SELECT collection_id FROM bunny_collections WHERE npub=?1").bind(npub).first<{ collection_id: string }>();
+  const row = await metaDb(env).prepare("SELECT collection_id FROM bunny_collections WHERE uid=?1").bind(uid).first<{ collection_id: string }>();
   const lib = env.BUNNY_LIBRARY_ID;
   let deleted = 0;
   if (row?.collection_id) {
@@ -60,7 +60,7 @@ export async function deleteUserVideos(env: Env, npub: string): Promise<number> 
       // Delete the (now-empty) collection.
       try { await fetch(`${BASE}/library/${lib}/collections/${row.collection_id}`, { method: "DELETE", headers: headers(env) }); } catch { /* noop */ }
     } catch { /* best-effort */ }
-    await metaDb(env).prepare("DELETE FROM bunny_collections WHERE npub=?1").bind(npub).run();
+    await metaDb(env).prepare("DELETE FROM bunny_collections WHERE uid=?1").bind(uid).run();
   }
   return deleted;
 }

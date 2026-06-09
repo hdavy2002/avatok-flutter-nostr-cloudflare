@@ -25,26 +25,28 @@ export async function streamWebhook(req: Request, env: Env, ctx: ExecutionContex
   let body: any = {};
   try { body = JSON.parse(raw); } catch { return json({ error: "bad json" }, 400); }
 
-  const uid: string = body.uid || body.data?.uid || "";
+  const uid: string = body.uid || body.data?.uid || "";              // Cloudflare Stream id
   const liveInput: string = body.liveInput || body.live_input || body.data?.live_input || "";
   const state: string = body.status?.state || body.status?.current?.state || body.state || "";
   const readyToStream: boolean = body.readyToStream === true || state === "ready";
-  const npub: string = body.meta?.npub || body.meta?.creator || "";
+  const creatorUid: string = body.meta?.creator || body.meta?.uid || ""; // owner (Clerk uid)
 
   // Persist lifecycle (best-effort; table is additive — see migrations/stream.sql).
+  // live_streams.npub holds the creator's uid VALUE — the column keeps its name to
+  // avoid colliding with Cloudflare Stream's own `uid` (= the stream id) column.
   try {
     await env.DB_META.prepare(
       `INSERT INTO live_streams (uid, live_input, npub, state, updated_at)
        VALUES (?1,?2,?3,?4,?5)
        ON CONFLICT(uid) DO UPDATE SET state=?4, updated_at=?5, live_input=COALESCE(?2,live_input), npub=COALESCE(NULLIF(?3,''),npub)`,
-    ).bind(uid || liveInput || crypto.randomUUID(), liveInput, npub, state || (readyToStream ? "ready" : "unknown"), Date.now()).run();
+    ).bind(uid || liveInput || crypto.randomUUID(), liveInput, creatorUid, state || (readyToStream ? "ready" : "unknown"), Date.now()).run();
   } catch (e) {
     console.warn("live_streams write skipped (run migrations/stream.sql):", String(e));
   }
 
   // Recording ready → queue post-stream content scan.
-  if (readyToStream && uid) {
-    ctx.waitUntil(env.Q_MODERATION.send({ type: "stream_recording", uid, npub, media_id: uid, hash: "", r2_key: "" }));
+  if (readyToStream && creatorUid) {
+    ctx.waitUntil(env.Q_MODERATION.send({ type: "stream_recording", uid: creatorUid, media_id: uid, hash: "", r2_key: "" }));
   }
 
   return json({ ok: true });
