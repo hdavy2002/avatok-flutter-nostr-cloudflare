@@ -1,71 +1,66 @@
-// Hardened API contract (replaces the compat layer). Every mutation requires a
-// valid NIP-98 signature; the CALLER'S identity comes from that signature
-// (auth.npub / auth.pubkeyHex), never from the request body — so a client can
-// only write its own profile, register its own device, call as itself, etc.
-// Clerk JWT is additionally verified when CLERK_JWKS_URL is set (see auth.ts).
-// Public reads (resolve / search / communities / ice) are unauthenticated and
-// cached upstream.
+// Hardened API contract (Cloudflare-native; Nostr deprecated). Identity is the
+// Clerk user id (uid), verified from the Clerk JWT at the edge via requireUser —
+// the caller can only act as themselves. The directory lives in the `users`
+// table (uid PK). Public reads (resolve / search / handle/check / communities)
+// are unauthenticated and cached upstream.
 //
-// D1 reads use the Sessions API (one session per DB per request) so they route
-// to the nearest read replica; writes go to primary and the session bookmark
-// keeps read-after-write consistent within the request.
+// D1 reads use the Sessions API (one session per DB per request) → nearest
+// replica with read-after-write consistency within the request.
 import type { Env } from "../types";
 import { json, sha256Hex, normalizePhone, chunk } from "../util";
-import { metaSession, relaySession } from "../db/shard";
-import { authenticate, isErr, verifyClerk } from "../auth";
+import { metaSession } from "../db/shard";
+import { requireUser, isFail } from "../authz";
+import { verifyClerk } from "../auth";
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { token?: string; platform?: string };
   if (!b.token) return json({ error: "token required" }, 400);
   const platform = b.platform === "apns" ? "apns" : "fcm";
   const db = metaSession(env);
   await db.prepare(
-    "INSERT OR REPLACE INTO push_tokens (npub, platform, token, updated_at) VALUES (?1,?2,?3,?4)",
-  ).bind(auth.npub, platform, b.token, Date.now()).run();
-  const c = await db.prepare("SELECT count(*) AS n FROM push_tokens WHERE npub=?1").bind(auth.npub).first<{ n: number }>();
+    "INSERT OR REPLACE INTO push_tokens_v2 (uid, platform, token, updated_at) VALUES (?1,?2,?3,?4)",
+  ).bind(ctx.uid, platform, b.token, Date.now()).run();
+  const c = await db.prepare("SELECT count(*) AS n FROM push_tokens_v2 WHERE uid=?1").bind(ctx.uid).first<{ n: number }>();
   return json({ ok: true, devices: c?.n ?? 1 });
 }
 
-async function tokenCount(db: D1Database | D1DatabaseSession, npub: string): Promise<number> {
-  const c = await db.prepare("SELECT count(*) AS n FROM push_tokens WHERE npub=?1").bind(npub).first<{ n: number }>();
+async function tokenCount(db: D1Database | D1DatabaseSession, uid: string): Promise<number> {
+  const c = await db.prepare("SELECT count(*) AS n FROM push_tokens_v2 WHERE uid=?1").bind(uid).first<{ n: number }>();
   return c?.n ?? 0;
 }
 
 export async function call(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string };
   if (!b.to || !b.callId) return json({ error: "to and callId required" }, 400);
-  // Read the callee's device count from the PRIMARY (plain prepare), NOT an
-  // unconstrained replica session: read replication (mode=auto) let this gate
-  // intermittently see a stale replica with 0 tokens and false-404 a call to a
-  // registered device ("no registered devices"). The push consumer (fcm.ts)
-  // already reads the primary; this aligns the gate with it.
+  // Read the callee's device count from the PRIMARY (plain prepare), not an
+  // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
   const n = await tokenCount(env.DB_META, b.to);
   if (n === 0) return json({ error: "callee has no registered devices" }, 404);
-  await env.Q_PUSH.send({ kind: "call", to: b.to, from: auth.npub, fromName: b.fromName ?? "AvaTOK", callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
+  await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: b.fromName ?? "AvaTOK", callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
   return json({ sent: n });
 }
 
 export async function notify(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string[]; fromName?: string };
   if (!Array.isArray(b.to) || !b.to.length) return json({ error: "to[] required" }, 400);
   let queued = 0;
-  for (const npub of b.to.slice(0, 64)) {
-    await env.Q_PUSH.send({ kind: "notify", to: npub, fromName: (b.fromName || "AvaTOK").slice(0, 60), ts: Date.now() });
+  for (const uid of b.to.slice(0, 64)) {
+    await env.Q_PUSH.send({ kind: "notify", to: uid, fromName: (b.fromName || "AvaTOK").slice(0, 60), ts: Date.now() });
     queued++;
   }
   return json({ sent: queued });
 }
 
 export async function callStatus(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; status?: string };
   if (!b.to || !b.callId || !b.status) return json({ error: "to, callId, status required" }, 400);
   await env.Q_PUSH.send({ kind: "call-status", to: b.to, callId: b.callId, status: b.status, ts: Date.now() });
@@ -74,237 +69,150 @@ export async function callStatus(req: Request, env: Env): Promise<Response> {
 
 // ---- directory: /api/profile (auth) /api/resolve /api/search /api/handle/check (public) ----
 
-// Handle = NIP-05 local part: 3–20 chars, lowercase letters/digits/underscore,
-// must start with a letter. Kept in sync with the client-side validator.
+// Handle = 3–20 chars, lowercase letters/digits/underscore, starts with a letter.
 const HANDLE_RE = /^[a-z][a-z0-9_]{2,19}$/;
 export function normalizeHandle(h: string): string {
   return (h || "").trim().toLowerCase().replace(/^@/, "");
 }
 
-// GET /api/handle/check?q=<handle> — public. Reports whether a handle is validly
-// formatted and still free. (Reveals nothing /api/resolve doesn't already.)
+// GET /api/handle/check?q=<handle>&uid=<caller?> — public. A handle owned by the
+// caller's own uid reads as available ("mine"); owned by anyone else → taken.
 export async function handleCheck(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const handle = normalizeHandle(url.searchParams.get("q") || "");
-  // Caller's own npub (optional) — lets us report a handle the caller ALREADY
-  // owns as available, instead of "taken", so they aren't blocked by their own
-  // handle when re-running onboarding. Advisory only; profileUpsert is the gate.
-  const npub = (url.searchParams.get("npub") || "").trim();
+  const uid = (url.searchParams.get("uid") || "").trim();
   if (!HANDLE_RE.test(handle)) {
     return json({ handle, valid: false, available: false, reason: "3–20 characters: letters, numbers or _, starting with a letter." });
   }
-  const db = metaSession(env);
-  const r = await db.prepare("SELECT npub FROM profiles WHERE handle=?1").bind(handle).first<{ npub: string }>();
-  if (!r) return json({ handle, valid: true, available: true, reclaimable: false });
-  // Already yours (same key) → keep it.
-  if (npub && r.npub === npub) return json({ handle, valid: true, available: true, reclaimable: false, mine: true });
-  // Owned by you on a different key (same Clerk account) → reclaimable.
-  if (npub) {
-    const callerClerk = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(npub).first<{ clerk_user_id: string }>();
-    const ownerClerk = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(r.npub).first<{ clerk_user_id: string }>();
-    if (callerClerk?.clerk_user_id && ownerClerk?.clerk_user_id === callerClerk.clerk_user_id) {
-      return json({ handle, valid: true, available: true, reclaimable: true, mine: true });
-    }
-    // Taken by someone else: orphaned (keyless, no Clerk link) handles are reclaimable.
-    return json({ handle, valid: true, available: !ownerClerk, reclaimable: !ownerClerk });
-  }
-  // No npub supplied (older client): orphaned handles are reclaimable.
-  const link = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(r.npub).first<{ clerk_user_id: string }>();
-  const reclaimable = !link;
-  return json({ handle, valid: true, available: reclaimable, reclaimable });
+  const r = await metaSession(env).prepare("SELECT uid FROM users WHERE handle=?1").bind(handle).first<{ uid: string }>();
+  if (!r) return json({ handle, valid: true, available: true });
+  if (uid && r.uid === uid) return json({ handle, valid: true, available: true, mine: true });
+  return json({ handle, valid: true, available: false });
 }
 
 export async function profileUpsert(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as {
     handle?: string; name?: string; email?: string; phone?: string;
-    encrypted_nsec_backup?: string; backup_method?: string; account_kind?: string;
-    avatar_url?: string;
+    account_kind?: string; avatar_url?: string;
   };
   const handle = normalizeHandle(b.handle || "") || null;
   const name = (b.name || "").trim() || null;
-  // avatar_url: undefined => leave unchanged; "" => clear; a string => set.
   const avatarUrl = typeof b.avatar_url === "string" ? b.avatar_url.trim() : null;
   const email = (b.email || "").trim().toLowerCase();
   const emailHash = email ? await sha256Hex(email) : null;
+  const phoneHash = b.phone ? await sha256Hex(normalizePhone(b.phone)) : null;
   const now = Date.now();
   const db = metaSession(env);
-  // Validate + enforce handle uniqueness with a clean, actionable error rather
-  // than leaking a raw D1 UNIQUE-constraint 500 (which the client swallowed).
   if (handle !== null) {
     if (!HANDLE_RE.test(handle)) {
       return json({ error: "invalid_handle", reason: "3–20 characters: letters, numbers or _, starting with a letter." }, 400);
     }
-    const taken = await db.prepare("SELECT npub FROM profiles WHERE handle=?1 AND npub<>?2").bind(handle, auth.npub).first<{ npub: string }>();
-    if (taken) {
-      // Reclaim: a handle can be taken over only when its current owner key is
-      // NOT linked to a (different) Clerk account — i.e. an orphaned pre-backup
-      // identity whose private key is lost. Handles owned by a live account are
-      // protected. Free the handle from the old owner so the INSERT can claim it.
-      const ownerLink = await db.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1").bind(taken.npub).first<{ clerk_user_id: string }>();
-      const mine = ownerLink && auth.clerkUserId && ownerLink.clerk_user_id === auth.clerkUserId;
-      if (ownerLink && !mine) return json({ error: "handle_taken" }, 409);
-      await db.prepare("UPDATE profiles SET handle=NULL, updated_at=?2 WHERE npub=?1").bind(taken.npub, now).run();
-    }
+    // Owned by a DIFFERENT account → taken. (No keypair reclaim — uid IS the account.)
+    const taken = await db.prepare("SELECT uid FROM users WHERE handle=?1 AND uid<>?2").bind(handle, ctx.uid).first<{ uid: string }>();
+    if (taken) return json({ error: "handle_taken" }, 409);
   }
   try {
     await db.prepare(
-      `INSERT INTO profiles (npub, handle, display_name, avatar_url, email_hash, updated_at)
-       VALUES (?1,?2,?3,?6,?4,?5)
-       ON CONFLICT(npub) DO UPDATE SET handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name), avatar_url=COALESCE(?6,avatar_url), email_hash=COALESCE(?4,email_hash), updated_at=?5`,
-    ).bind(auth.npub, handle, name, emailHash, now, avatarUrl).run();
+      `INSERT INTO users (uid, handle, display_name, avatar_url, email_hash, phone_hash, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?7)
+       ON CONFLICT(uid) DO UPDATE SET
+         handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name),
+         avatar_url=COALESCE(?4,avatar_url), email_hash=COALESCE(?5,email_hash),
+         phone_hash=COALESCE(?6,phone_hash), updated_at=?7`,
+    ).bind(ctx.uid, handle, name, avatarUrl, emailHash, phoneHash, now).run();
   } catch (e) {
-    // Lost a race for the handle between the check above and the write.
     if (String((e as Error)?.message || "").includes("UNIQUE")) return json({ error: "handle_taken" }, 409);
     throw e;
   }
-  if (b.phone) {
-    const ph = await sha256Hex(normalizePhone(b.phone));
-    await db.prepare("INSERT OR REPLACE INTO contact_phone_index (phone_hash, npub, updated_at) VALUES (?1,?2,?3)").bind(ph, auth.npub, now).run();
-  }
-
-  // Link this Nostr identity to the signed-in Clerk account (the cross-device,
-  // cross-reinstall master id) and store the optional encrypted private-key
-  // backup. This is what makes "log in on a new phone → get my account back"
-  // work: GET /api/me later looks the account up by clerk_user_id, not npub.
-  // Only possible when Clerk JWT verification is enabled (CLERK_JWKS_URL set).
-  const encBackup = (b.encrypted_nsec_backup || "").trim() || null;
-  const backupMethod = (b.backup_method || "").trim() || null;
-  const accountKind = (b.account_kind || "").trim() || null;
-  if (auth.clerkUserId) {
-    try {
-      await db.prepare(
-        `INSERT INTO clerk_nostr_link
-           (clerk_user_id, npub, encrypted_nsec_backup, backup_encryption_method, account_kind, tier, created_at, last_seen_at)
-         VALUES (?1,?2,?3,?4,?5,'basic',?6,?6)
-         ON CONFLICT(clerk_user_id) DO UPDATE SET
-           npub=excluded.npub,
-           encrypted_nsec_backup=COALESCE(excluded.encrypted_nsec_backup, clerk_nostr_link.encrypted_nsec_backup),
-           backup_encryption_method=COALESCE(excluded.backup_encryption_method, clerk_nostr_link.backup_encryption_method),
-           account_kind=COALESCE(excluded.account_kind, clerk_nostr_link.account_kind),
-           last_seen_at=excluded.last_seen_at`,
-      ).bind(auth.clerkUserId, auth.npub, encBackup, backupMethod, accountKind, now).run();
-    } catch (e) {
-      // npub is UNIQUE: another Clerk account already owns this key. Don't fail
-      // the profile save over it — just skip the link.
-      if (!String((e as Error)?.message || "").includes("UNIQUE")) throw e;
-    }
-  }
-
-  return json({ ok: true, profile: { npub: auth.npub, handle, name, email: b.email || "", phone: b.phone || "" } });
+  return json({ ok: true, profile: { uid: ctx.uid, handle, name, email: b.email || "", phone: b.phone || "" } });
 }
 
-// GET /api/me — restore endpoint. Authenticated by the Clerk session JWT ALONE
-// (no NIP-98): a freshly-installed device has no Nostr key yet — recovering it is
-// the whole point. Looks the account up by clerk_user_id and returns the linked
-// npub, public profile, and the encrypted key backup so the client can restore
-// the same identity (and therefore the same handle, contacts and messages).
+// GET /api/me — restore endpoint. Authenticated by the Clerk JWT. Looks the
+// account up by uid and returns the public profile so a fresh install rehydrates.
 export async function me(req: Request, env: Env): Promise<Response> {
   const clerk = await verifyClerk(env, req.headers.get("authorization"));
   if ("skipped" in clerk) return json({ found: false, clerk_enabled: false });
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
-  const db = metaSession(env);
-  const link = await db.prepare(
-    "SELECT npub, encrypted_nsec_backup, backup_encryption_method, account_kind FROM clerk_nostr_link WHERE clerk_user_id=?1",
-  ).bind(clerk.clerkUserId).first<{ npub: string; encrypted_nsec_backup: string | null; backup_encryption_method: string | null; account_kind: string | null }>();
-  if (!link) return json({ found: false, clerk_enabled: true });
-  const prof = await db.prepare(
-    "SELECT handle, display_name, avatar_url FROM profiles WHERE npub=?1",
-  ).bind(link.npub).first<{ handle: string | null; display_name: string | null; avatar_url: string | null }>();
-  // Best-effort touch of last_seen_at; never block the response on it.
-  try { await db.prepare("UPDATE clerk_nostr_link SET last_seen_at=?2 WHERE clerk_user_id=?1").bind(clerk.clerkUserId, Date.now()).run(); } catch { /* noop */ }
+  const uid = clerk.clerkUserId;
+  const prof = await metaSession(env).prepare(
+    "SELECT handle, display_name, avatar_url FROM users WHERE uid=?1",
+  ).bind(uid).first<{ handle: string | null; display_name: string | null; avatar_url: string | null }>();
+  if (!prof) return json({ found: false, clerk_enabled: true, uid });
   return json({
-    found: true,
-    clerk_enabled: true,
-    npub: link.npub,
-    handle: prof?.handle ?? null,
-    display_name: prof?.display_name ?? null,
-    avatar_url: prof?.avatar_url ?? null,
-    encrypted_nsec_backup: link.encrypted_nsec_backup,
-    backup_method: link.backup_encryption_method,
-    account_kind: link.account_kind,
+    found: true, clerk_enabled: true, uid,
+    handle: prof.handle ?? null, display_name: prof.display_name ?? null, avatar_url: prof.avatar_url ?? null,
   });
 }
 
-// ---- encrypted per-user vault: /api/vault (auth) ----
-// Stores opaque, client-encrypted blobs keyed by (npub, kind) — e.g. the user's
-// contact list — so they sync across devices. The server never sees plaintext:
-// the blob is encrypted with a key derived from the user's Nostr private key,
-// which only the user's devices hold. Wiped on account deletion.
+// ---- encrypted per-user vault: /api/vault (auth) — uid-keyed opaque blobs ----
 const VAULT_KINDS = new Set(["contacts", "settings", "apps"]);
-const VAULT_MAX = 600_000; // ~0.6 MB ciphertext cap per blob
+const VAULT_MAX = 600_000;
 
 export async function vaultPut(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { kind?: string; blob?: string };
   const kind = (b.kind || "").trim().toLowerCase();
   const blob = typeof b.blob === "string" ? b.blob : "";
   if (!VAULT_KINDS.has(kind)) return json({ error: "bad kind" }, 400);
   if (!blob || blob.length > VAULT_MAX) return json({ error: "blob missing or too large" }, 400);
   await metaSession(env).prepare(
-    `INSERT INTO user_vault (npub, kind, blob, updated_at) VALUES (?1,?2,?3,?4)
-     ON CONFLICT(npub, kind) DO UPDATE SET blob=?3, updated_at=?4`,
-  ).bind(auth.npub, kind, blob, Date.now()).run();
+    `INSERT INTO user_vault (uid, kind, blob, updated_at) VALUES (?1,?2,?3,?4)
+     ON CONFLICT(uid, kind) DO UPDATE SET blob=?3, updated_at=?4`,
+  ).bind(ctx.uid, kind, blob, Date.now()).run();
   return json({ ok: true });
 }
 
 export async function vaultGet(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const kind = (new URL(req.url).searchParams.get("kind") || "").trim().toLowerCase();
   if (!VAULT_KINDS.has(kind)) return json({ error: "bad kind" }, 400);
   const r = await metaSession(env).prepare(
-    "SELECT blob, updated_at FROM user_vault WHERE npub=?1 AND kind=?2",
-  ).bind(auth.npub, kind).first<{ blob: string; updated_at: number }>();
+    "SELECT blob, updated_at FROM user_vault WHERE uid=?1 AND kind=?2",
+  ).bind(ctx.uid, kind).first<{ blob: string; updated_at: number }>();
   return json({ blob: r?.blob ?? null, updated_at: r?.updated_at ?? 0 });
 }
 
 function profOut(r: any) {
-  return r ? { npub: r.npub, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url } : null;
+  return r ? { uid: r.uid, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url } : null;
 }
 
+// Resolve a query (uid / @handle / email / phone) → the target's uid + profile.
 export async function resolve(req: Request, env: Env): Promise<Response> {
   const q = (new URL(req.url).searchParams.get("q") || "").trim();
   if (!q) return json({ error: "q required" }, 400);
   const db = metaSession(env);
-  const fetchProf = (npub: string) => db.prepare("SELECT npub,handle,display_name,avatar_url FROM profiles WHERE npub=?1").bind(npub).first();
+  const fetchProf = (uid: string) => db.prepare("SELECT uid,handle,display_name,avatar_url FROM users WHERE uid=?1").bind(uid).first();
 
-  if (q.startsWith("npub1")) return json({ npub: q, profile: profOut(await fetchProf(q)) });
+  if (q.startsWith("user_")) return json({ uid: q, profile: profOut(await fetchProf(q)) });
   if (q.includes("@") && q.includes(".")) {
-    // One email can have accumulated several profile rows across re-onboards (each
-    // new Nostr key re-stamps the same email_hash). Resolve to the NEWEST one — the
-    // current device key — so DMs never gift-wrap to a dead identity that no device
-    // is listening on. (.first() returned an arbitrary/oldest row before.)
-    const r = await db.prepare("SELECT npub FROM profiles WHERE email_hash=?1 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(q.toLowerCase())).first<{ npub: string }>();
-    if (!r) return json({ npub: null }, 404);
-    return json({ npub: r.npub, profile: profOut(await fetchProf(r.npub)) });
+    const r = await db.prepare("SELECT uid FROM users WHERE email_hash=?1 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(q.toLowerCase())).first<{ uid: string }>();
+    if (!r) return json({ uid: null }, 404);
+    return json({ uid: r.uid, profile: profOut(await fetchProf(r.uid)) });
   }
   if (/[0-9]/.test(q) && q.replace(/[^0-9]/g, "").length >= 6) {
-    const r = await db.prepare("SELECT npub FROM contact_phone_index WHERE phone_hash=?1").bind(await sha256Hex(normalizePhone(q))).first<{ npub: string }>();
-    if (r) return json({ npub: r.npub, profile: profOut(await fetchProf(r.npub)) });
+    const r = await db.prepare("SELECT uid FROM users WHERE phone_hash=?1 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(normalizePhone(q))).first<{ uid: string }>();
+    if (r) return json({ uid: r.uid, profile: profOut(await fetchProf(r.uid)) });
   }
   const handle = q.toLowerCase().replace(/^@/, "");
-  const r = await db.prepare("SELECT npub FROM profiles WHERE handle=?1").bind(handle).first<{ npub: string }>();
-  if (!r) return json({ npub: null }, 404);
-  return json({ npub: r.npub, profile: profOut(await fetchProf(r.npub)) });
+  const r = await db.prepare("SELECT uid FROM users WHERE handle=?1").bind(handle).first<{ uid: string }>();
+  if (!r) return json({ uid: null }, 404);
+  return json({ uid: r.uid, profile: profOut(await fetchProf(r.uid)) });
 }
 
+// Directory search by handle / display name (prefix LIKE; index-backed on handle).
 export async function search(req: Request, env: Env): Promise<Response> {
   const q = (new URL(req.url).searchParams.get("q") || "").trim().toLowerCase();
   if (q.length < 2) return json({ results: [] });
-  // FTS5 prefix match (index-backed, no table scan). Sanitize to bare tokens and
-  // append `*` for prefix search: "da ro" → `da* ro*`.
-  const terms = q.split(/[^a-z0-9]+/).filter((t) => t.length >= 2).slice(0, 6);
-  if (!terms.length) return json({ results: [] });
-  const matchExpr = terms.map((t) => `${t}*`).join(" ");
+  const like = q.replace(/[%_]/g, "") + "%";
   const rs = await metaSession(env).prepare(
-    `SELECT p.npub, p.handle, p.display_name, p.avatar_url
-     FROM profiles_fts f JOIN profiles p ON p.rowid = f.rowid
-     WHERE profiles_fts MATCH ?1 LIMIT 20`,
-  ).bind(matchExpr).all();
-  return json({ results: (rs.results ?? []).map((r: any) => ({ npub: r.npub, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url })) });
+    `SELECT uid, handle, display_name, avatar_url FROM users
+      WHERE handle LIKE ?1 OR lower(display_name) LIKE ?1 LIMIT 20`,
+  ).bind(like).all();
+  return json({ results: (rs.results ?? []).map((r: any) => ({ uid: r.uid, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url })) });
 }
 
 // ---- contacts: /api/contacts/sync /api/contacts/match (auth) /list ----
@@ -319,41 +227,38 @@ async function matchContacts(db: D1DatabaseSession, contacts: RawContact[]): Pro
   }
   const matched: any[] = [];
   const seen = new Set<string>();
-  // Chunk IN(...) into batches of ≤90 — D1 caps bound params at 100 per query.
   for (const hs of chunk([...phoneHashes.keys()])) {
     const rs = await db.prepare(
-      `SELECT cpi.phone_hash AS h, cpi.npub, p.handle, p.display_name FROM contact_phone_index cpi
-       LEFT JOIN profiles p ON p.npub=cpi.npub WHERE cpi.phone_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
+      `SELECT phone_hash AS h, uid, handle, display_name FROM users WHERE phone_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
     ).bind(...hs).all();
     for (const r of (rs.results ?? []) as any[]) {
-      if (seen.has(r.npub)) continue; seen.add(r.npub);
-      matched.push({ name: phoneHashes.get(r.h)?.name ?? "", npub: r.npub, handle: r.handle, display_name: r.display_name });
+      if (seen.has(r.uid)) continue; seen.add(r.uid);
+      matched.push({ name: phoneHashes.get(r.h)?.name ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name });
     }
   }
   for (const hs of chunk([...emailHashes.keys()])) {
     const rs = await db.prepare(
-      `SELECT email_hash AS h, npub, handle, display_name FROM profiles WHERE email_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
+      `SELECT email_hash AS h, uid, handle, display_name FROM users WHERE email_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
     ).bind(...hs).all();
     for (const r of (rs.results ?? []) as any[]) {
-      if (seen.has(r.npub)) continue; seen.add(r.npub);
-      matched.push({ name: emailHashes.get(r.h)?.name ?? "", npub: r.npub, handle: r.handle, display_name: r.display_name });
+      if (seen.has(r.uid)) continue; seen.add(r.uid);
+      matched.push({ name: emailHashes.get(r.h)?.name ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name });
     }
   }
   return matched;
 }
 
 export async function contactsSync(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { contacts?: RawContact[] };
   const contacts = Array.isArray(b.contacts) ? b.contacts.slice(0, 5000) : [];
-  // Stateless: we do NOT store the caller's address book (privacy). Just match.
   return json({ stored: contacts.length, matched: await matchContacts(metaSession(env), contacts) });
 }
 
 export async function contactsMatch(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { contacts?: RawContact[] };
   return json({ matched: await matchContacts(metaSession(env), Array.isArray(b.contacts) ? b.contacts : []) });
 }
@@ -364,44 +269,44 @@ export function contactsList(): Response {
 
 // ---- communities: /api/community /api/community/join (auth) /communities (public) ----
 export async function communityUpsert(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.name) return json({ error: "name required" }, 400);
-  const owner = auth.npub;
+  const owner = ctx.uid;
   const id = String(b.id || crypto.randomUUID());
   const now = Date.now();
   const db = metaSession(env);
   await db.prepare(
-    `INSERT INTO communities (id, name, description, avatar_url, owner_npub, created_at)
+    `INSERT INTO communities (id, name, description, avatar_url, owner_uid, created_at)
      VALUES (?1,?2,?3,NULL,?4,?5) ON CONFLICT(id) DO UPDATE SET name=?2, description=?3`,
   ).bind(id, String(b.name).trim(), String(b.about || "").trim(), owner, now).run();
   const members: string[] = Array.from(new Set([owner, ...((b.members) || [])]));
   for (const m of members) {
-    await db.prepare("INSERT OR IGNORE INTO community_members (community_id, npub, role, joined_at) VALUES (?1,?2,?3,?4)")
+    await db.prepare("INSERT OR IGNORE INTO community_members (community_id, uid, role, joined_at) VALUES (?1,?2,?3,?4)")
       .bind(id, m, m === owner ? "owner" : "member", now).run();
   }
   return json({ ok: true, community: await communityObj(db, id) });
 }
 
 export async function communityJoin(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { id?: string };
   if (!b.id) return json({ error: "id required" }, 400);
   const db = metaSession(env);
   const exists = await db.prepare("SELECT 1 FROM communities WHERE id=?1").bind(b.id).first();
   if (!exists) return json({ error: "not found" }, 404);
-  await db.prepare("INSERT OR IGNORE INTO community_members (community_id, npub, role, joined_at) VALUES (?1,?2,'member',?3)")
-    .bind(b.id, auth.npub, Date.now()).run();
+  await db.prepare("INSERT OR IGNORE INTO community_members (community_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)")
+    .bind(b.id, ctx.uid, Date.now()).run();
   return json({ ok: true, community: await communityObj(db, b.id) });
 }
 
 async function communityObj(db: D1DatabaseSession, id: string): Promise<any> {
-  const c = await db.prepare("SELECT id,name,description,owner_npub,created_at FROM communities WHERE id=?1").bind(id).first<any>();
+  const c = await db.prepare("SELECT id,name,description,owner_uid,created_at FROM communities WHERE id=?1").bind(id).first<any>();
   if (!c) return null;
-  const m = await db.prepare("SELECT npub FROM community_members WHERE community_id=?1").bind(id).all();
-  return { id: c.id, name: c.name, about: c.description, owner: c.owner_npub, created: c.created_at, members: (m.results ?? []).map((x: any) => x.npub), groups: [] };
+  const m = await db.prepare("SELECT uid FROM community_members WHERE community_id=?1").bind(id).all();
+  return { id: c.id, name: c.name, about: c.description, owner: c.owner_uid, created: c.created_at, members: (m.results ?? []).map((x: any) => x.uid), groups: [] };
 }
 
 export async function communities(req: Request, env: Env): Promise<Response> {
@@ -411,27 +316,16 @@ export async function communities(req: Request, env: Env): Promise<Response> {
   if (id) { const c = await communityObj(db, id); return c ? json({ community: c }) : json({ error: "not found" }, 404); }
   const member = (sp.get("member") || "").trim();
   if (!member) return json({ communities: [] });
-  const ids = await db.prepare("SELECT community_id FROM community_members WHERE npub=?1 LIMIT 100").bind(member).all();
+  const ids = await db.prepare("SELECT community_id FROM community_members WHERE uid=?1 LIMIT 100").bind(member).all();
   const out: any[] = [];
   for (const r of (ids.results ?? []) as any[]) { const c = await communityObj(db, r.community_id); if (c) out.push(c); }
   return json({ communities: out });
 }
 
-// ---- backup: POST /api/backup → export the caller's relay data → R2 link ----
+// ---- backup: deprecated with the relay. Message history now lives in InboxDO;
+// a uid-scoped export will be re-added off the InboxDO sync log if needed. ----
 export async function backup(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
-  const pubkey = auth.pubkeyHex;
-  if (!env.DB_RELAY) return json({ error: "relay db not bound" }, 503);
-  const rs = await relaySession(env).prepare(
-    `SELECT DISTINCT e.id,e.pubkey,e.created_at,e.kind,e.tags,e.content,e.sig FROM nostr_events e
-     LEFT JOIN nostr_tags t ON t.event_id=e.id
-     WHERE e.deleted=0 AND (e.pubkey=?1 OR (e.kind=1059 AND t.tag='p' AND t.value=?1))
-     ORDER BY e.created_at DESC LIMIT 10000`,
-  ).bind(pubkey).all();
-  const events = (rs.results ?? []).map((r: any) => ({ id: r.id, pubkey: r.pubkey, created_at: r.created_at, kind: r.kind, tags: JSON.parse(r.tags), content: r.content, sig: r.sig }));
-  const key = `u/${auth.npub}/backups/${Date.now()}.json`; // under the user's folder → caught by erasure
-  const data = JSON.stringify({ pubkey, count: events.length, exported_at: Date.now(), events });
-  await env.BLOBS.put(key, data, { httpMetadata: { contentType: "application/json" } });
-  return json({ url: `${env.BLOSSOM_BASE_URL}/${key}`, size: data.length, count: events.length });
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  return json({ error: "backup deprecated — relay removed; history lives in your InboxDO" }, 501);
 }
