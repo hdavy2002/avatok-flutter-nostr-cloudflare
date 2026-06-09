@@ -77,7 +77,10 @@ const String kBrainConsentUrl = 'https://$kSignalingHost/api/brain/consent';    
 const String kBlossomBaseUrl = 'https://blossom.avatok.ai';
 
 /// AvaTok Nostr relay (NIP-01) — real message delivery + NIP-44 encrypted DMs.
-const String kNostrRelayUrl = 'wss://avatok-relay.getmystuffme.workers.dev/';
+/// First-party apex-zone host (not *.workers.dev): the long workers.dev name was
+/// intermittently failing DNS on mobile (errno 7) during wifi/LTE transitions,
+/// dropping the persistent relay socket. relay.avatok.ai is far more resilient.
+const String kNostrRelayUrl = 'wss://relay.avatok.ai/';
 
 /// Account backup: export your relay data → download link (media excluded). (NIP-98)
 const String kBackupUrl = 'https://$kSignalingHost/api/backup';

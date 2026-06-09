@@ -3,10 +3,23 @@ main = "src/index.ts"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Stable custom domain (avatok.ai zone) instead of the *.workers.dev hostname.
+# PostHog diag showed repeated 'Failed host lookup … workers.dev (errno 7)' on
+# mobile — the device's DNS dropping the long workers.dev name during wifi/LTE
+# transitions, breaking the persistent relay socket. A first-party apex-zone
+# host (relay.avatok.ai, like blossom.avatok.ai) is far more DNS-resilient.
+# Workers Custom Domain auto-provisions the proxied DNS record + SSL.
+routes = [
+  { pattern = "relay.avatok.ai", custom_domain = true }
+]
+# Keep the old *.workers.dev hostname alive too, so phones still on the previous
+# build keep connecting during the rollover (the new build uses relay.avatok.ai).
+workers_dev = true
+
 # Nostr relay (NIP-01/09/11/17/25/42/100) for AvaTalk. Phase 3 re-platform:
 # events persist to D1 DB_RELAY (not DO SQLite); the DO holds only WebSocket
 # connections + live subscriptions; NIP-42 gates private kinds; onEventSaved
-# enqueues Q_PUSH. Custom hostname relay.avatok.ai added later.
+# enqueues Q_PUSH.
 
 [observability]
 enabled = true
