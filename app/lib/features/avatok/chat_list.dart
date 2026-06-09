@@ -199,6 +199,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   }
 
   Future<void> _bootstrap() async {
+    final bootT0 = DateTime.now(); // measure how long the local reads actually take
     // Kick EVERY local read off concurrently. These were 11 sequential awaits,
     // which on a slower phone (Samsung secure-storage/disk reads) serialised into
     // a ~10-second BLANK chat list on every cold start. They're independent, so
@@ -244,7 +245,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // the local cache isn't surviving restarts (the blank-list bug). Compare in
     // PostHog against the relay re-sync that follows.
     AvaLog.I.log('cache',
-        'cold-start scope=${AccountScope.id ?? "null"} contacts=${contacts.length} previews=${previews.length} groups=${groups.length}');
+        'cold-start scope=${AccountScope.id ?? "null"} contacts=${contacts.length} previews=${previews.length} groups=${groups.length} loadMs=${DateTime.now().difference(bootT0).inMilliseconds}');
     // Backfill profile photos for contacts saved before avatars existed — silent.
     _contactsStore.refreshMissingAvatars().then((list) {
       if (mounted) setState(() => _contacts = list);
