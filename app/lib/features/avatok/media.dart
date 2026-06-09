@@ -7,10 +7,13 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/api_auth.dart';
+import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/library_api.dart';
 import '../../core/vault.dart';
 import '../../identity/identity.dart';
+
+String _short(String s) => s.length <= 14 ? s : '${s.substring(0, 8)}…${s.substring(s.length - 4)}';
 
 enum MediaKind { image, video, audio, file }
 
@@ -82,9 +85,11 @@ class MediaService {
       timeout: const Duration(seconds: 60),
     );
     if (res.statusCode != 200) {
+      AvaLog.I.log('media', 'UPLOAD FAILED kind=${kind.name} ${bytes.length}B -> HTTP ${res.statusCode}');
       throw MediaUploadException('upload failed (${res.statusCode})');
     }
     final j = jsonDecode(res.body) as Map<String, dynamic>;
+    AvaLog.I.log('media', 'upload ok kind=${kind.name} ${bytes.length}B key=${_short((j['key'] ?? j['hash'] ?? '').toString())}');
     return ChatMedia(
       kind: kind,
       // `key` is the per-user R2 path (u/<npub>/<hash>); downloadUrl is built from it.
@@ -105,20 +110,40 @@ class MediaService {
   /// chat media (images, voice, video, files) across every AvaVerse app.
   static Future<Uint8List> downloadAndDecrypt(ChatMedia m) async {
     final cached = await _cacheRead(m.id);
-    if (cached != null) return cached;
-    final res = await http.get(Uri.parse(m.downloadUrl)).timeout(const Duration(seconds: 60));
+    if (cached != null) {
+      AvaLog.I.log('media', 'download cache-HIT kind=${m.kind.name} key=${_short(m.id)} ${cached.length}B');
+      return cached;
+    }
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    http.Response res;
+    try {
+      res = await http.get(Uri.parse(m.downloadUrl)).timeout(const Duration(seconds: 60));
+    } catch (e) {
+      AvaLog.I.log('media', 'download ERROR kind=${m.kind.name} key=${_short(m.id)}: $e');
+      rethrow;
+    }
     if (res.statusCode != 200) {
+      AvaLog.I.log('media', 'download FAILED kind=${m.kind.name} key=${_short(m.id)} -> HTTP ${res.statusCode}');
       throw MediaUploadException('download failed (${res.statusCode})');
     }
-    final box = SecretBox(
-      res.bodyBytes,
-      nonce: base64Decode(m.nonceB64),
-      mac: Mac(base64Decode(m.macB64)),
-    );
-    final clear = await _aes.decrypt(box, secretKey: SecretKey(base64Decode(m.keyB64)));
-    final bytes = Uint8List.fromList(clear);
-    await _cacheWrite(m.id, bytes);
-    return bytes;
+    try {
+      final box = SecretBox(
+        res.bodyBytes,
+        nonce: base64Decode(m.nonceB64),
+        mac: Mac(base64Decode(m.macB64)),
+      );
+      final clear = await _aes.decrypt(box, secretKey: SecretKey(base64Decode(m.keyB64)));
+      final bytes = Uint8List.fromList(clear);
+      await _cacheWrite(m.id, bytes);
+      final ms = DateTime.now().millisecondsSinceEpoch - t0;
+      AvaLog.I.log('media', 'download+decrypt ok kind=${m.kind.name} key=${_short(m.id)} ${res.bodyBytes.length}B->${bytes.length}B ${ms}ms');
+      return bytes;
+    } catch (e) {
+      // A MAC/key mismatch means the envelope and the ciphertext disagree — the
+      // recipient would see "nothing happens". Surface it instead of swallowing.
+      AvaLog.I.log('media', 'DECRYPT FAILED kind=${m.kind.name} key=${_short(m.id)} ${res.bodyBytes.length}B: $e');
+      rethrow;
+    }
   }
 
   /// Records a RECEIVED DM attachment into the recipient's AvaLibrary so it shows
@@ -139,7 +164,9 @@ class MediaService {
         key: m.id, mime: m.contentType, size: m.size, name: m.name,
         app: app, encBlob: encBlob, displayUrl: m.downloadUrl,
       );
-    } catch (_) {/* best-effort — local view still works */}
+    } catch (e) {/* best-effort — local view still works */
+      AvaLog.I.log('media', 'recordReceived failed key=${_short(m.id)}: $e');
+    }
   }
 
   // ---- per-account on-disk media cache ----

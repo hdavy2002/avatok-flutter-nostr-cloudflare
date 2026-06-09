@@ -10,9 +10,10 @@ import 'account_storage.dart';
 /// their sent messages every time they leave and re-open a chat. We persist a
 /// compact, JSON-safe view of each message and reload it on open.
 ///
-/// Media/voice payloads are NOT cached (the bytes/refs aren't serialized here);
-/// text, location/contact/poll/sticker cards and their metadata are. Capped to
-/// the most recent [_cap] messages per chat.
+/// We persist a compact JSON view: text, media ENVELOPES (refs/keys only — the
+/// decrypted bytes live in MediaService's on-disk cache), location/contact/poll/
+/// sticker cards and their metadata. Capped to the most recent [_cap] messages
+/// per chat.
 class MessageStore {
   static const _prefix = 'avatok_msgs_';
   static const _cap = 300;

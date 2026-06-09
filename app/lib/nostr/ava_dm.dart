@@ -40,8 +40,20 @@ class AvaDm {
   /// Delivery status of our own sends (the relay accepted/rejected the wrap).
   Stream<({String rumorId, bool ok, String message})> get sendStatus => _statusC.stream;
 
+  int _wrapsReplayed = 0; // gift wraps the relay sent for this sub since (re)connect
+  int _decryptedForConv = 0; // of those, how many actually belong to this conversation
+
   void start() {
     client.connect();
+    // Quantify the cold-start re-sync: how many wraps the relay replays each open
+    // and how many were actually for this conversation (the rest are decrypt cost
+    // we'd love to avoid). Cross-check this in PostHog against load time.
+    client.eose.listen((sub) {
+      if (sub != _subId) return;
+      AvaLog.I.log('sync', 'EOSE conv=${peerPub.substring(0, 8)} replayed=$_wrapsReplayed mine/peer=$_decryptedForConv');
+      _wrapsReplayed = 0;
+      _decryptedForConv = 0;
+    });
     // Relay accept/reject of our gift wraps → per-message send status.
     _pubSub = client.publishResults.listen((r) {
       final rid = _giftToRumor[r.id];
@@ -54,11 +66,13 @@ class AvaDm {
     _sub = client.events.listen((rec) {
       final (subId, ev) = rec;
       if (subId != _subId || ev.kind != 1059) return;
+      _wrapsReplayed++;
       final u = Nip17.unwrap(myPriv, ev);
       if (u == null) return;
       final fromPeer = u.senderPub == peerPub && u.recipientPub == myPub;
       final fromMe = u.senderPub == myPub && u.recipientPub == peerPub;
       if (!fromPeer && !fromMe) return; // different conversation
+      _decryptedForConv++;
       _controller.add(DmMessage(
           rumorId: u.rumorId, mine: fromMe, payload: u.payload, createdAt: u.createdAt));
     });

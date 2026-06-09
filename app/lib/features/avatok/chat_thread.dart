@@ -383,6 +383,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       } else if (env is Map && env['t'] == 'media') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
+        final keyShort = media.id.length > 12 ? media.id.substring(media.id.length - 8) : media.id;
+        AvaLog.I.log('media', 'recv dm media kind=${media.kind.name} ${media.size}B key=…$keyShort mine=${m.mine}');
         if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
       } else if (env is Map && env['t'] == 'text') {
         text = env['body'].toString();
@@ -450,10 +452,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _seenEv.add(ev);
       }
       final ts = (j['ts'] as num?)?.toInt() ?? 0;
+      // Media messages ARE cached now (the envelope/refs — never the bytes; the
+      // decrypted bytes live in MediaService's on-disk cache). So on reopen the
+      // image/voice bubble reappears instantly and loads local-first, instead of
+      // waiting on a full relay re-sync + re-download.
+      ChatMedia? media;
+      final mj = j['media'];
+      if (mj is Map) { try { media = ChatMedia.fromEnvelope(mj.cast<String, dynamic>()); } catch (_) {} }
       loaded.add(_Msg(
         _seq++, j['me'] == true, (j['text'] ?? '').toString(),
         _fmtTime(ts == 0 ? DateTime.now().millisecondsSinceEpoch ~/ 1000 : ts),
-        ts: ts, evId: ev,
+        ts: ts, evId: ev, media: media,
         sent: j['me'] == true, // my persisted history was already accepted by the relay
         special: j['special'] as String?,
         extra: (j['extra'] as Map?)?.cast<String, dynamic>(),
@@ -484,10 +493,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (key == null) return;
     final out = <Map<String, dynamic>>[];
     for (final m in _msgs) {
-      if (m.media != null) continue; // media bytes/refs not cached
+      if (m.uploading || m.failed) continue; // in-flight/failed: not durable yet
       out.add({
         'me': m.me, 'text': m.text, 'ts': m.ts,
         if (m.evId != null) 'evId': m.evId,
+        if (m.media != null) 'media': m.media!.toEnvelope(), // refs only — bytes are in MediaService's disk cache
         if (m.special != null) 'special': m.special,
         if (m.extra != null) 'extra': m.extra,
         if (m.replyTo != null) 'replyTo': m.replyTo,
@@ -851,18 +861,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name);
       if (!mounted) return;
       setState(() { msg.media = m; msg.uploading = false; });
+      final keyShort = m.id.length > 12 ? m.id.substring(m.id.length - 8) : m.id;
       // Deliver the media reference + key inside an encrypted DM / group fan-out.
       if (_isGroup && _gdm != null) {
         final id = _gdm!.send(jsonEncode({...m.toEnvelope(), 't': 'gmedia', 'gid': _group!.id}));
         msg.evId = id;
         _seenEv.add(id);
+        AvaLog.I.log('media', 'sent gmedia kind=${kind.name} ${bytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
       } else if (_realMode && _dm != null) {
         final id = _dm!.send(jsonEncode(m.toEnvelope()));
         msg.evId = id;
         _seenEv.add(id);
+        AvaLog.I.log('media', 'sent dm media kind=${kind.name} ${bytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
       }
-    } catch (_) {
+      _schedulePersist(); // cache the media message so it survives reopen
+    } catch (e) {
       if (!mounted) return;
+      AvaLog.I.log('media', 'send media FAILED kind=${kind.name}: $e');
       setState(() { msg.uploading = false; msg.failed = true; });
     }
   }
