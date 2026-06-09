@@ -2,6 +2,21 @@
 
 ---
 
+## ⚠️ ARCHITECTURE PIVOT — NOSTR IS DEPRECATED (2026-06-09)
+
+**The Nostr/relay/E2E-gift-wrap messaging design is NULLED going forward.** AvaVerse
+is now a Cloudflare-native, **server-readable** architecture (per-user `InboxDO` with
+hibernatable WebSocket + DO-local SQLite; server is router; device stays local-first).
+Canonical: **`Specs/AVAVERSE-CLOUDFLARE-NATIVE-ARCH.md`** and handover
+**`Specs/HANDOVER-2026-06-09-cloudflare-native-pivot.md`**. Where the Nostr "Engineering
+rulebook" below or `Specs/AVATALK-CLOUDFLARE-RULEBOOK.md` conflict with the new arch,
+**the new arch wins** (those files are pending rewrite). Do NOT re-introduce Nostr
+(NIP-17/44/59, gift-wrap, keypairs, NIP-42/98, the relay Worker). Do NOT make a single
+central D1 the high-write message store — messages live in DO-local SQLite per user.
+Still valid: the AvaTok **1:1-only calls** product rule, and per-account scoping.
+
+---
+
 ## Graphiti memory — CANONICAL group_id (READ THIS FIRST)
 
 <!-- pre-push hook fallback marker — DO NOT REMOVE. The git pre-push hook greps
