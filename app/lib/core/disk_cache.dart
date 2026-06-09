@@ -17,20 +17,25 @@ import 'ava_log.dart';
 /// app-private files, which are already sandboxed per-app by Android and which we
 /// additionally scope per account here. (The media cache already works this way.)
 class DiskCache {
-  // Cache the support-dir path AND the per-scope cache dir. getApplicationSupport-
-  // Directory() is a native platform-channel round-trip; the chat list does ~10
-  // reads on cold start and each was re-calling it (+ a mkdir check) → ~1s+ of
-  // the cold-start "list loading". Resolve + create once, reuse thereafter.
-  static String? _basePath;
+  // getApplicationSupportDirectory() is a native platform-channel round-trip. The
+  // chat list fires ~10 reads CONCURRENTLY on cold start; with a plain `??=` each
+  // one passes the null check before the first await resolves, so all ~10 made
+  // the native call (a race) → most of the ~850ms "list loading". Cache the
+  // FUTURE instead: the first caller kicks off the single lookup, the rest await
+  // the same future. Plus cache the per-scope dir path.
+  static Future<String>? _baseFut;
+  static Future<String> _baseDir() =>
+      _baseFut ??= getApplicationSupportDirectory().then((d) => d.path);
+
   static String? _scopeDirScope;
   static String? _scopeDirPath;
 
   static Future<String> _scopeDir() async {
-    _basePath ??= (await getApplicationSupportDirectory()).path;
+    final base = await _baseDir();
     final scope =
         (AccountScope.id == null || AccountScope.id!.isEmpty) ? 'default' : AccountScope.id!;
     if (_scopeDirPath != null && _scopeDirScope == scope) return _scopeDirPath!;
-    final dir = Directory('$_basePath/cache/$scope');
+    final dir = Directory('$base/cache/$scope');
     if (!await dir.exists()) await dir.create(recursive: true);
     _scopeDirScope = scope;
     _scopeDirPath = dir.path;
@@ -75,8 +80,8 @@ class DiskCache {
   // can render the local session instantly before any network auth check. Not
   // account-scoped by design (it's how we recover WHICH account to scope to). ──
   static Future<File> _globalFile(String name) async {
-    _basePath ??= (await getApplicationSupportDirectory()).path;
-    final dir = Directory('$_basePath/cache/_global');
+    final base = await _baseDir();
+    final dir = Directory('$base/cache/_global');
     if (!await dir.exists()) await dir.create(recursive: true);
     final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
     return File('${dir.path}/$safe.json');
