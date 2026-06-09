@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import '../core/ava_log.dart';
 import '../core/config.dart';
+import '../core/db.dart';
 import 'ava_dm.dart' show DmMessage;
 import 'nip17.dart';
 import 'nostr_client.dart';
@@ -63,7 +66,30 @@ class RelayHub {
     if (list.any((m) => m.rumorId == u.rumorId)) return; // dedup by rumor id
     list.add(DmMessage(
         rumorId: u.rumorId, mine: u.senderPub == _pub, payload: u.payload, createdAt: u.createdAt));
+
+    // Persist into the local SQLite DB (the source of truth — Phase 3 reads from
+    // it reactively). Group messages route by gid; receipts are control-only so
+    // they're not stored. INSERT OR IGNORE means the relay re-streaming old wraps
+    // on every launch is a no-op — no re-download, no re-render.
+    try {
+      var convKey = '1:$peer';
+      final env = jsonDecode(u.payload);
+      if (env is Map) {
+        if (env['t'] == 'receipt') return; // status, not a stored message
+        if (env['gid'] != null) convKey = 'g:${env['gid']}';
+      }
+      Db.I.upsertMessage(MessagesCompanion.insert(
+        rumorId: u.rumorId,
+        convKey: convKey,
+        mine: u.senderPub == _pub,
+        payload: u.payload,
+        createdAt: u.createdAt,
+      ));
+      if (!_dbLogged) { _dbLogged = true; AvaLog.I.log('db', 'sqlite: storing messages locally ✓'); }
+    } catch (_) {/* best-effort; in-memory store already holds it */}
   }
+
+  bool _dbLogged = false;
 
   /// Messages for a conversation seen this session (instant, in-memory).
   List<DmMessage> messagesFor(String convKey) => List.of(_byConv[convKey] ?? const []);

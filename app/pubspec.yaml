@@ -55,11 +55,21 @@ dependencies:
   flutter_contacts: ^1.1.9+2
   # Native share sheet for the "invite a friend" message + download link.
   share_plus: ^10.1.2
+  # Local-first SQLite database (the WhatsApp model): on-device source of truth
+  # for chats/messages/contacts with reactive queries (the UI watches the DB, so
+  # navigation/cold-start read locally — instant — and the network only syncs new
+  # rows in). sqlite3_flutter_libs bundles SQLite so FTS5 (+ future vector) work
+  # the same on every device; with split-per-ABI it adds ~1.5MB.
+  drift: ^2.16.0
+  sqlite3_flutter_libs: ^0.5.18
 
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_test:
     sdk: flutter
+  # drift code generation (run via build_runner; CI regenerates on every build).
+  drift_dev: ^2.16.0
+  build_runner: ^2.4.6
 
 flutter:
   uses-material-design: true

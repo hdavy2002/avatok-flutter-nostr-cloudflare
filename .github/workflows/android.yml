@@ -46,6 +46,10 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      - name: Generate code (drift / build_runner)
+        working-directory: app
+        run: dart run build_runner build
+
       - name: Analyze (non-blocking)
         working-directory: app
         run: flutter analyze || true
