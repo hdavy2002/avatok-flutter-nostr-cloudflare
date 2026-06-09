@@ -6,6 +6,7 @@ Run AFTER `flutter create --platforms=android .` in CI. Idempotent.
 - minSdk 24, compileSdk 35, targetSdk 35 (flutter_webrtc androidx deps need 35)
 - Forces compileSdk 35 on plugin subprojects (flutter_webrtc pins a lower one)
 """
+import base64
 import re
 import shutil
 import sys
@@ -253,6 +254,65 @@ subprojects {{
     print("root build.gradle.kts: forced posthog_flutter Kotlin languageVersion 2.0")
 
 
+def patch_signing() -> None:
+    """Sign EVERY build (CI and local) with the SAME committed debug keystore so a
+    new APK installs straight over the previous one.
+
+    Relying on AGP's auto-generated ~/.android/debug.keystore produced a DIFFERENT
+    signature on each build (verified: the shipped APK's cert did NOT match the
+    committed keystore), which is exactly why every install hit "package conflicts
+    with an existing package" and forced an uninstall. We decode the committed
+    keystore into android/app/ and point an EXPLICIT signingConfig at it with the
+    standard debug credentials, so the signature is identical on every build."""
+    b64 = APP / "android-keystore/debug.keystore.base64"
+    if not b64.exists():
+        print("!! debug.keystore.base64 not found — signing NOT pinned")
+        return
+    ks = APP / "android/app/avatok-debug.keystore"
+    ks.write_bytes(base64.b64decode(b64.read_text()))
+
+    kts = APP / "android/app/build.gradle.kts"
+    groovy = APP / "android/app/build.gradle"
+    if kts.exists():
+        t = kts.read_text()
+        if "avatok-debug.keystore" in t:
+            print("signing: already pinned"); return
+        block = (
+            '    signingConfigs {\n'
+            '        getByName("debug") {\n'
+            '            storeFile = file("avatok-debug.keystore")\n'
+            '            storePassword = "android"\n'
+            '            keyAlias = "androiddebugkey"\n'
+            '            keyPassword = "android"\n'
+            '        }\n'
+            '    }\n'
+        )
+        t2 = re.sub(r"(android\s*\{\s*\n)", r"\1" + block, t, count=1)
+        if t2 == t:
+            print("!! could not inject signingConfigs into build.gradle.kts"); sys.exit(1)
+        kts.write_text(t2)
+        print("signing: pinned committed debug keystore (build.gradle.kts)")
+    elif groovy.exists():
+        t = groovy.read_text()
+        if "avatok-debug.keystore" in t:
+            print("signing: already pinned"); return
+        block = (
+            '    signingConfigs {\n'
+            '        debug {\n'
+            '            storeFile file("avatok-debug.keystore")\n'
+            '            storePassword "android"\n'
+            '            keyAlias "androiddebugkey"\n'
+            '            keyPassword "android"\n'
+            '        }\n'
+            '    }\n'
+        )
+        t2 = re.sub(r"(android\s*\{\s*\n)", r"\1" + block, t, count=1)
+        if t2 == t:
+            print("!! could not inject signingConfigs into build.gradle"); sys.exit(1)
+        groovy.write_text(t2)
+        print("signing: pinned committed debug keystore (build.gradle)")
+
+
 if __name__ == "__main__":
     patch_manifest()
     patch_launcher_icon()
@@ -261,4 +321,5 @@ if __name__ == "__main__":
     patch_firebase()
     patch_desugaring()
     patch_kotlin_langver()
+    patch_signing()
     print("postcreate: done")

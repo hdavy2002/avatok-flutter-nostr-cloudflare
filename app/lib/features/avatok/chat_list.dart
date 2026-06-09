@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/avatar.dart';
 import '../../core/analytics.dart';
+import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/chat_state.dart';
 import '../../core/device_contacts.dart';
@@ -192,6 +193,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
       });
     }
+    // Cold-start cache health: if these are 0 for a user who clearly has chats,
+    // the local cache isn't surviving restarts (the blank-list bug). Compare in
+    // PostHog against the relay re-sync that follows.
+    AvaLog.I.log('cache',
+        'cold-start scope=${AccountScope.id ?? "null"} contacts=${contacts.length} previews=${previews.length} groups=${groups.length}');
     // Backfill profile photos for contacts saved before avatars existed — silent.
     _contactsStore.refreshMissingAvatars().then((list) {
       if (mounted) setState(() => _contacts = list);

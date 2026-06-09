@@ -1,24 +1,22 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'disk_cache.dart';
 
-import 'account_storage.dart';
-
-// All keys below are wrapped in scopedKey(...) so each Clerk account on the same
-// device (e.g. a parent and their children) keeps its OWN read-state, flags,
-// drafts, timers, pins, wallpaper and stars. See account_storage.dart.
-FlutterSecureStorage _store() => const FlutterSecureStorage(
-      aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    );
+// All chat-state caches below are BULK, non-secret, per-account data, stored as
+// plain per-account files via [DiskCache] — NOT flutter_secure_storage. Secure
+// storage's Android encryptedSharedPreferences backend is unreliable on some
+// OEMs (notably Samsung): after a restart it can throw or return empty, which
+// silently WIPED these caches every cold start (blank chat list + full relay
+// re-sync). DiskCache scopes each file per Clerk account, so a parent and their
+// children on one phone still keep separate read-state, flags, drafts, etc.
 
 /// Per-conversation last-read timestamp (drives unread badges).
 /// Key: '1:<peerHex>' for DMs, 'g:<gid>' for groups.
 class ReadStateStore {
   static const _key = 'avatok_readstate';
-  final _s = _store();
 
   Future<Map<String, int>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     if (raw == null || raw.isEmpty) return {};
     try {
       return (jsonDecode(raw) as Map).map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
@@ -31,22 +29,19 @@ class ReadStateStore {
     final m = await load();
     if ((m[key] ?? 0) < ts) {
       m[key] = ts;
-      await _s.write(key: scopedKey(_key), value: jsonEncode(m));
+      await DiskCache.write(_key, jsonEncode(m));
     }
   }
 }
 
 /// Per-conversation last-message preview: a short snippet of the most recent
-/// line, its timestamp, and whether I sent it. Drives the chat-list subtitle
-/// (the "Say hi" placeholder is only used when a conversation has no messages
-/// yet) and recency ordering. Account-scoped like everything else here.
-/// Key: '1:<peerHex>' for DMs, 'g:<gid>' for groups.
+/// line, its timestamp, and whether I sent it. Drives the chat-list subtitle and
+/// recency ordering. Key: '1:<peerHex>' for DMs, 'g:<gid>' for groups.
 class ChatPreviewStore {
   static const _key = 'avatok_previews';
-  final _s = _store();
 
   Future<Map<String, ({String text, int ts, bool me})>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     if (raw == null || raw.isEmpty) return {};
     try {
       final j = jsonDecode(raw) as Map;
@@ -67,7 +62,7 @@ class ChatPreviewStore {
   /// (older events arriving after newer ones) never clobber a fresher preview.
   Future<void> record(String convKey, String text, int ts, bool me) async {
     if (text.isEmpty) return;
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     Map<String, dynamic> j = {};
     if (raw != null && raw.isNotEmpty) {
       try { j = (jsonDecode(raw) as Map).cast<String, dynamic>(); } catch (_) {}
@@ -76,20 +71,19 @@ class ChatPreviewStore {
     final curTs = cur is Map ? ((cur['ts'] as num?)?.toInt() ?? 0) : 0;
     if (ts < curTs) return;
     j[convKey] = {'t': text, 'ts': ts, 'me': me};
-    await _s.write(key: scopedKey(_key), value: jsonEncode(j));
+    await DiskCache.write(_key, jsonEncode(j));
   }
 }
 
 /// Per-conversation PEER receipt high-water marks for MY messages: the newest
 /// message timestamp the peer has had DELIVERED to their device, and READ.
-/// Persisted (account-scoped) so the WhatsApp-style ticks survive app restarts
-/// and backfill when receipts arrive while a thread is closed. Key: '1:<peerHex>'.
+/// Persisted so the WhatsApp-style ticks survive app restarts and backfill when
+/// receipts arrive while a thread is closed. Key: '1:<peerHex>'.
 class ReceiptStore {
   static const _key = 'avatok_receipts';
-  final _s = _store();
 
   Future<({int delivered, int read})> get(String convKey) async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     if (raw == null || raw.isEmpty) return (delivered: 0, read: 0);
     try {
       final v = (jsonDecode(raw) as Map)[convKey];
@@ -100,10 +94,10 @@ class ReceiptStore {
     return (delivered: 0, read: 0);
   }
 
-  /// Merge a high-water mark — monotonic (never goes backwards); a 'read' ts
-  /// also implies 'delivered'. Returns the merged (delivered, read).
+  /// Merge a high-water mark — monotonic (never goes backwards); a 'read' ts also
+  /// implies 'delivered'. Returns the merged (delivered, read).
   Future<({int delivered, int read})> bump(String convKey, {int delivered = 0, int read = 0}) async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     Map<String, dynamic> j = {};
     if (raw != null && raw.isNotEmpty) {
       try { j = (jsonDecode(raw) as Map).cast<String, dynamic>(); } catch (_) {}
@@ -116,7 +110,7 @@ class ReceiptStore {
     if (newR > newD) newD = newR; // read implies delivered
     if (newD == curD && newR == curR) return (delivered: curD, read: curR);
     j[convKey] = {'d': newD, 'r': newR};
-    await _s.write(key: scopedKey(_key), value: jsonEncode(j));
+    await DiskCache.write(_key, jsonEncode(j));
     return (delivered: newD, read: newR);
   }
 }
@@ -124,10 +118,9 @@ class ReceiptStore {
 /// Block / archive / mute / pin flags, each a set of conversation keys.
 class ChatFlagsStore {
   static const _key = 'avatok_chatflags';
-  final _s = _store();
 
   Future<Map<String, Set<String>>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     final out = {'blocked': <String>{}, 'archived': <String>{}, 'muted': <String>{}, 'pinned': <String>{}};
     if (raw == null || raw.isEmpty) return out;
     try {
@@ -147,17 +140,16 @@ class ChatFlagsStore {
   }
 
   Future<void> _save(Map<String, Set<String>> m) =>
-      _s.write(key: scopedKey(_key), value: jsonEncode(m.map((k, v) => MapEntry(k, v.toList()))));
+      DiskCache.write(_key, jsonEncode(m.map((k, v) => MapEntry(k, v.toList()))));
 }
 
 /// Per-conversation key → value string maps (drafts, disappear timers, pinned).
 class _KvMapStore {
   final String _key;
-  final _s = _store();
   _KvMapStore(this._key);
 
   Future<Map<String, String>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     if (raw == null || raw.isEmpty) return {};
     try {
       return (jsonDecode(raw) as Map).map((k, v) => MapEntry(k.toString(), v.toString()));
@@ -173,7 +165,7 @@ class _KvMapStore {
     } else {
       m[key] = value;
     }
-    await _s.write(key: scopedKey(_key), value: jsonEncode(m));
+    await DiskCache.write(_key, jsonEncode(m));
   }
 }
 
@@ -200,10 +192,9 @@ class WallpaperStore extends _KvMapStore {
 /// Starred (bookmarked) message ids.
 class StarStore {
   static const _key = 'avatok_stars';
-  final _s = _store();
 
   Future<Set<String>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     if (raw == null || raw.isEmpty) return {};
     try {
       return (jsonDecode(raw) as List).map((e) => e.toString()).toSet();
@@ -215,7 +206,7 @@ class StarStore {
   Future<Set<String>> toggle(String id) async {
     final set = await load();
     set.contains(id) ? set.remove(id) : set.add(id);
-    await _s.write(key: scopedKey(_key), value: jsonEncode(set.toList()));
+    await DiskCache.write(_key, jsonEncode(set.toList()));
     return set;
   }
 }

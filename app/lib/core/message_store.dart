@@ -1,38 +1,34 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
-import 'account_storage.dart';
+import 'disk_cache.dart';
 
 /// Local cache of a chat's messages, keyed by conversation key ('1:<peerHex>'
-/// or 'g:<groupId>'), namespaced per Clerk account. The Nostr relay does not
-/// re-deliver your OWN sent DMs on resubscribe, so without this a user loses
-/// their sent messages every time they leave and re-open a chat. We persist a
-/// compact, JSON-safe view of each message and reload it on open.
+/// or 'g:<groupId>'). Stored as a plain per-account file via [DiskCache] (NOT
+/// flutter_secure_storage, whose Android backend is unreliable on some OEMs and
+/// was wiping this cache on restart → the chat re-downloaded its whole history
+/// from the relay every open).
 ///
 /// We persist a compact JSON view: text, media ENVELOPES (refs/keys only — the
 /// decrypted bytes live in MediaService's on-disk cache), location/contact/poll/
-/// sticker cards and their metadata. Capped to the most recent [_cap] messages
-/// per chat.
+/// sticker cards and their metadata. Capped to the most recent [_cap] messages.
 class MessageStore {
   static const _prefix = 'avatok_msgs_';
   static const _cap = 300;
 
-  final FlutterSecureStorage _s;
-  MessageStore([FlutterSecureStorage? s])
-      : _s = s ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
-
-  String _key(String convKey) => '$_prefix$convKey';
+  String _name(String convKey) => '$_prefix$convKey';
 
   Future<List<Map<String, dynamic>>> load(String convKey) async {
-    final raw = await readScoped(_s, _key(convKey));
+    final raw = await DiskCache.read(_name(convKey));
     if (raw == null || raw.isEmpty) return const [];
     try {
       final list = jsonDecode(raw) as List;
-      return list.map((e) => (e as Map).cast<String, dynamic>()).toList();
+      return list
+          .map((e) => (e as Map).cast<String, dynamic>())
+          // Defensive: a receipt is a control-message, never a bubble. An older
+          // build cached some as raw JSON ({"t":"receipt",...}); drop them so they
+          // don't reappear as grey JSON messages after the user updates.
+          .where((m) => !(m['text'] ?? '').toString().contains('"t":"receipt"'))
+          .toList();
     } catch (_) {
       return const [];
     }
@@ -40,11 +36,8 @@ class MessageStore {
 
   Future<void> save(String convKey, List<Map<String, dynamic>> msgs) async {
     final capped = msgs.length > _cap ? msgs.sublist(msgs.length - _cap) : msgs;
-    try {
-      await _s.write(key: scopedKey(_key(convKey)), value: jsonEncode(capped));
-    } catch (_) {/* best-effort cache */}
+    await DiskCache.write(_name(convKey), jsonEncode(capped));
   }
 
-  Future<void> clear(String convKey) =>
-      _s.delete(key: scopedKey(_key(convKey)));
+  Future<void> clear(String convKey) => DiskCache.delete(_name(convKey));
 }

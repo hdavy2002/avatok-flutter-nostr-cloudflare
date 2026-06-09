@@ -1,12 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-import '../../core/account_storage.dart';
 import '../../core/api_auth.dart';
+import '../../core/ava_log.dart';
 import '../../core/config.dart';
+import '../../core/disk_cache.dart';
 import '../../core/vault.dart';
 
 /// A saved AvaTok contact (resolved to a Nostr npub).
@@ -36,13 +36,9 @@ class Contact {
 
 /// Persists the user's contact list locally (not secret, but reuse secure store).
 class ContactsStore {
+  // Bulk cache → on-disk per-account file (NOT secure storage, which is flaky on
+  // some OEMs and was silently returning empty after restart → blank chat list).
   static const _key = 'avatok_contacts';
-  final FlutterSecureStorage _s;
-  ContactsStore([FlutterSecureStorage? s])
-      : _s = s ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
 
   // Account-scoped: each logged-in Clerk account keeps its OWN contact list.
   // Previously this used a single global key, so contacts leaked between
@@ -50,14 +46,19 @@ class ContactsStore {
   // another). A fresh account starts empty and is restored from its own vault
   // via [pullAndMerge].
   Future<List<Contact>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     if (raw == null || raw.isEmpty) return [];
-    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    return list.map(Contact.fromJson).toList();
+    try {
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      return list.map(Contact.fromJson).toList();
+    } catch (e) {
+      AvaLog.I.log('cache', 'contacts decode failed: $e');
+      return [];
+    }
   }
 
   Future<void> _save(List<Contact> cs) =>
-      _s.write(key: scopedKey(_key), value: jsonEncode(cs.map((c) => c.toJson()).toList()));
+      DiskCache.write(_key, jsonEncode(cs.map((c) => c.toJson()).toList()));
 
   /// Add (or update) a contact; de-dupes on npub. Returns the new list.
   Future<List<Contact>> add(Contact c) async {

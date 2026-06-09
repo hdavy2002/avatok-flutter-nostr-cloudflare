@@ -494,6 +494,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final out = <Map<String, dynamic>>[];
     for (final m in _msgs) {
       if (m.uploading || m.failed) continue; // in-flight/failed: not durable yet
+      if (m.text.contains('"t":"receipt"')) continue; // never cache a stray receipt
       out.add({
         'me': m.me, 'text': m.text, 'ts': m.ts,
         if (m.evId != null) 'evId': m.evId,
