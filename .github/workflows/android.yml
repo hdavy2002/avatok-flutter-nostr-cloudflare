@@ -54,9 +54,11 @@ jobs:
         working-directory: app
         run: flutter analyze || true
 
-      - name: Test (NIP-44 vectors + NIP-17 gift-wrap — blocking)
+      # Cloudflare-native pivot: Nostr gift-wrap (NIP-17) is deprecated — messages
+      # are server-routed plaintext now, so the gift-wrap roundtrip test is retired.
+      - name: Test (compile gate)
         working-directory: app
-        run: flutter test test/nip44_test.dart test/nip17_test.dart
+        run: flutter test test/nip44_test.dart
 
       # Sign every debug build with the SAME committed debug keystore so a new
       # APK installs over an existing one (Android refuses updates when the
