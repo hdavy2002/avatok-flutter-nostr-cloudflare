@@ -25,6 +25,12 @@ import 'shell/ava_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // RAM budget (Scale proposal Phase 1): cap the global decoded-image cache.
+  // Flutter's default is 1000 images / 100MB with no upper bound enforcement on
+  // some paths; avatar grids + media threads on cheap phones benefit from a hard
+  // ceiling. Disk caches (avatar_cache/media) make re-decodes cheap.
+  PaintingBinding.instance.imageCache.maximumSize = 300;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 64 << 20; // 64 MB
   // Product analytics + error tracking (best-effort) — init FIRST so we can
   // capture a Firebase init failure instead of silently swallowing it.
   await Analytics.init();
@@ -115,6 +121,13 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // to the background — captures any settings/app-toggle/filter changes.
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       if (ApiAuth.identity != null) PrefsSync.push();
+    }
+    // RAM budget: release decoded images when backgrounded — the OS is most
+    // likely to kill us for memory exactly then, and the disk caches mean
+    // re-decode on resume is cheap.
+    if (state == AppLifecycleState.paused) {
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
     }
   }
 

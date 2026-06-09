@@ -7,8 +7,8 @@ import '../core/api_auth.dart';
 import '../core/config.dart';
 import '../core/db.dart';
 import '../identity/identity.dart';
-import 'nostr_client.dart';
-import 'relay_hub.dart';
+import 'legacy_stubs.dart';
+import 'sync_hub.dart';
 
 /// A delivered 1:1 message (payload is our app envelope JSON: text or media).
 class DmMessage {
@@ -21,7 +21,7 @@ class DmMessage {
 
 /// 1:1 messaging over the Cloudflare-native backend (Nostr deprecated). Sends go
 /// out over HTTP (POST /api/msg/send); incoming + live messages arrive via the
-/// shared InboxDO socket in [RelayHub], filtered to this conversation. [peerPub]
+/// shared InboxDO socket in [SyncHub], filtered to this conversation. [peerPub]
 /// now carries the peer's Clerk uid (addressing id). [client]/[myPriv]/[myPub]
 /// are legacy params kept for call-site compatibility and ignored.
 class AvaDm {
@@ -43,7 +43,7 @@ class AvaDm {
 
   void start() {
     final myConv = '1:$peerPub';
-    _sub = RelayHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
+    _sub = SyncHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
       if (!_controller.isClosed) _controller.add(e.toDm());
     });
   }

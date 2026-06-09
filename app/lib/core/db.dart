@@ -106,7 +106,7 @@ class AppDb extends _$AppDb {
     });
   }
 
-  // ── writes (used now by RelayHub; reactive reads land in Phase 3) ──
+  // ── writes (used now by SyncHub; reactive reads land in Phase 3) ──
   /// Store a message; re-streamed duplicates are silently ignored.
   Future<void> upsertMessage(MessagesCompanion m) =>
       into(messages).insert(m, mode: InsertMode.insertOrIgnore);

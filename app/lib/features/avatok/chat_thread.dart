@@ -20,6 +20,7 @@ import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
 import '../../core/config.dart';
+import '../../core/ice_cache.dart';
 import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 import '../../core/group_store.dart';
@@ -27,12 +28,11 @@ import '../../core/message_store.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../core/db.dart';
-import '../../nostr/ava_dm.dart';
-import '../../nostr/ava_group_dm.dart';
-import '../../nostr/nip17.dart';
-import '../../nostr/nostr_client.dart';
-import '../../nostr/presence.dart';
-import '../../nostr/relay_hub.dart';
+import '../../sync/dm.dart';
+import '../../sync/group_dm.dart';
+import '../../sync/legacy_stubs.dart';
+import '../../sync/presence.dart';
+import '../../sync/sync_hub.dart';
 import '../../push/push_service.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
@@ -177,7 +177,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (peerHex == null) return; // demo contact → keep local echo
     _realMode = true;
     setState(() => _msgs.clear()); // drop demo seed; history loads from relay
-    _nostr = RelayHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
+    _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _dm = AvaDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, peerPub: peerHex);
     _dm!.messages.listen(_onDm);
     _dm!.sendStatus.listen(_onSendStatus);
@@ -189,7 +189,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
     // Seed instantly from the shared hub's in-memory store (this session).
-    for (final m in RelayHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
+    for (final m in SyncHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
     // Durable history from the local SQLite DB — the source of truth. Covers
     // messages received in PAST sessions while this thread was closed (the hub
     // stored them in the DB even though no open thread cached them). _onDm dedups
@@ -244,7 +244,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _isGroup = true;
     _group = g;
     setState(() => _msgs.clear());
-    _nostr = RelayHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
+    _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _gdm = AvaGroupDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, group: g);
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
@@ -566,7 +566,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _pruneTimer?.cancel();
     _persistTimer?.cancel();
     _persistNow(); // flush any pending message-cache write on exit
-    // NOTE: do NOT dispose _nostr — it's the shared RelayHub client owned by the
+    // NOTE: do NOT dispose _nostr — it's the shared SyncHub client owned by the
     // whole app. _dm.stop()/_gdm.stop() above already cancel this screen's
     // listeners; the socket stays alive so returning to a chat is instant.
     super.dispose();
@@ -652,6 +652,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // STANDARD RULE: AvaTOK calls are 1:1 only. Group chats never call (the call
     // buttons aren't shown for groups; guard here so no path can open a group call).
     if (widget.chat.group || widget.chat.gid != null) return;
+    IceCache.prefetch(); // warm TURN creds in parallel with the FCM ring
     final video = kind == 'video';
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
     final to = widget.chat.seed; // for real contacts this is their npub

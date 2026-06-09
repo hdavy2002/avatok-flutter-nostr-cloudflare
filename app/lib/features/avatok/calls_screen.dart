@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
+import '../../core/ice_cache.dart';
 import '../../core/theme.dart';
 import 'call_screen.dart';
 import 'contacts.dart';
@@ -33,6 +34,7 @@ class _CallsScreenState extends State<CallsScreen> {
   }
 
   void _callBack(CallEntry c) {
+    IceCache.prefetch(); // warm TURN creds before the call screen opens
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => CallScreen(room: 'avatok-${c.seed}', title: c.name, seed: c.seed, video: c.video, avatarUrl: _avatars[c.seed] ?? ''),
     )).then((_) => _load());

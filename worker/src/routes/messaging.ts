@@ -5,7 +5,7 @@
 // so moderation/reporting can operate.
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, kycVerified, blocks, dmConvId, isFail } from "../authz";
+import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -16,6 +16,26 @@ export async function wsInbox(req: Request, env: Env): Promise<Response> {
 }
 
 // ---- helpers ----------------------------------------------------------------
+// Fan-out rule (Scale proposal Phase 1): >FANOUT_SYNC_MAX recipients NEVER loop
+// synchronous DO calls in the router — they go through Q_PUSH ("fanout" kind,
+// consumers append + FCM offline). ≤ the cap, deliveries run in PARALLEL.
+const FANOUT_SYNC_MAX = 25;
+const FANOUT_QUEUE_CHUNK = 80; // recipients per queue message (well under 128KB)
+const BLOCKS_CHUNK = 90;       // D1 100-bound-param limit (SCALE_AUDIT P0-2)
+
+/** Which of `candidates` have blocked `sender`? ONE chunked query, not N round-trips. */
+async function blockersOf(env: Env, sender: string, candidates: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < candidates.length; i += BLOCKS_CHUNK) {
+    const chunk = candidates.slice(i, i + BLOCKS_CHUNK);
+    const rs = await env.DB_META.prepare(
+      `SELECT uid FROM blocks WHERE blocked_npub = ?1 AND uid IN (${chunk.map((_, j) => `?${j + 2}`).join(",")})`,
+    ).bind(sender, ...chunk).all<{ uid: string }>();
+    for (const r of rs.results ?? []) out.add(r.uid);
+  }
+  return out;
+}
+
 async function members(env: Env, conv: string): Promise<string[]> {
   const rows = await env.DB_META
     .prepare("SELECT uid FROM conversation_members WHERE conv_id = ?1")
@@ -88,18 +108,31 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const created = Date.now();
   const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created };
 
+  // Blocks: ONE chunked query for all members (was a D1 round-trip per member).
+  const others = mem.filter((m) => m !== ctx.uid);
+  const blockers = await blockersOf(env, ctx.uid, others);
+  if (others.length === 1 && blockers.has(others[0])) return json({ error: "blocked" }, 403);
+  const recipients = others.filter((m) => !blockers.has(m)); // group: silently skip blockers
+
   // Append to the sender's own log first (its id anchors the client's cursor).
   const mine = await appendTo(env, ctx.uid, payload);
 
-  // Fan out to every other member, honouring blocks; push FCM when offline.
-  for (const m of mem) {
-    if (m === ctx.uid) continue;
-    if (await blocks(env, m, ctx.uid)) {
-      if (mem.length === 2) return json({ error: "blocked" }, 403);
-      continue; // group: silently skip a member who blocked the sender
+  if (recipients.length <= FANOUT_SYNC_MAX) {
+    // Small fan-out: deliver in PARALLEL (was sequential awaits).
+    await Promise.all(recipients.map(async (m) => {
+      const r = await appendTo(env, m, payload);
+      if (!r.live) await pushOffline(env, m, ctx.uid, conv, text || "[media]");
+    }));
+  } else {
+    // Large fan-out: hand to Queues — consumers append to each InboxDO + FCM
+    // offline. The router NEVER loops >FANOUT_SYNC_MAX synchronous DO calls.
+    const sends: Promise<unknown>[] = [];
+    for (let i = 0; i < recipients.length; i += FANOUT_QUEUE_CHUNK) {
+      sends.push(env.Q_PUSH.send({
+        kind: "fanout", payload, recipients: recipients.slice(i, i + FANOUT_QUEUE_CHUNK),
+      }));
     }
-    const r = await appendTo(env, m, payload);
-    if (!r.live) await pushOffline(env, m, ctx.uid, conv, text || "[media]");
+    await Promise.all(sends);
   }
 
   return json({ id: mine.id, conv, created_at: created });

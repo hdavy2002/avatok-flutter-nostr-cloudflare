@@ -19,7 +19,7 @@ import type { Env, ModerationMsg } from "./types";
 import { applyStrike } from "./strikes";
 import { perceptualHash, hamming, bands } from "./phash";
 import { notifyUser } from "./notify";
-import { aiText } from "./ai";
+import { aiText, bumpAiSpend } from "./ai";
 import { csamCheckHash, csamGate, handleCsam } from "./csam";
 
 const REJECT = 0.85;
@@ -212,6 +212,7 @@ async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
     try {
       env.ANALYTICS?.writeDataPoint({ blobs: ["moderation", model, type], doubles: [Date.now() - started, 1], indexes: ["ai_moderation"] });
     } catch { /* metrics best-effort */ }
+    await bumpAiSpend(env, Date.now() - started);
     return result;
   } catch {
     // Fail-open (consistent posture): a clean result; a re-scan can run later.

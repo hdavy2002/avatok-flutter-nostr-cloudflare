@@ -1,3 +1,8 @@
+// LEGACY STUBS — Nostr is deprecated (Cloudflare-native pivot, 2026-06-09).
+// NostrEvent/NostrClient/Nip17 are kept ONLY so not-yet-migrated social screens
+// (communities, status, group info, new group) compile. All methods are no-ops.
+// Delete this file once those screens are on SyncHub/AvaDm/AvaGroupDm.
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -9,7 +14,7 @@ import 'package:pointycastle/export.dart';
 /// Cloudflare-native pivot (Nostr deprecated). The relay/NIP-01 transport is gone.
 /// `NostrClient` is now a COMPATIBILITY STUB so the handful of legacy screens that
 /// still construct `NostrClient(kNostrRelayUrl)` keep compiling. The real
-/// messaging transport is the per-user InboxDO, driven by `RelayHub`
+/// messaging transport is the per-user InboxDO, driven by `SyncHub`
 /// (relay_hub.dart) and `AvaDm`/`AvaGroupDm` over HTTP + one WebSocket.
 ///
 /// `NostrEvent` is retained (self-contained signing) for any residual callers.
@@ -102,7 +107,7 @@ class NostrClient {
   Stream<Map<String, dynamic>> get notifications => _notifs.stream;
   Stream<({String id, bool accepted, String message})> get publishResults => _publishC.stream;
 
-  bool get isConnected => true;   // the real socket lives in RelayHub now
+  bool get isConnected => true;   // the real socket lives in SyncHub now
   bool get isAuthed => true;      // no NIP-42 — Clerk JWT gates at the edge
 
   void connect() {}
@@ -117,4 +122,43 @@ class NostrClient {
     _notifs.close();
     _publishC.close();
   }
+}
+
+// ---- nip17 compatibility stub (merged) ----
+
+/// Cloudflare-native pivot (Nostr deprecated). NIP-17 gift-wrapping is GONE —
+/// messages are server-routed plaintext now. This is a COMPATIBILITY STUB so the
+/// legacy social screens (communities, status, group info, new group) that still
+/// reference Nip17 keep compiling. The real send path is AvaDm/AvaGroupDm over
+/// HTTP. The wrap* methods produce no events (a no-op publish), and unwrap returns
+/// null — these call sites are being migrated to the new transport.
+class Unwrapped {
+  final String senderPub;
+  final String recipientPub;
+  final String payload;
+  final String rumorId;
+  final int createdAt;
+  Unwrapped(this.senderPub, this.recipientPub, this.payload, this.rumorId, this.createdAt);
+}
+
+class Nip17 {
+  static (List<NostrEvent>, String) wrapBoth({
+    required String senderPriv, required String senderPub,
+    required String peerPub, required String payload,
+  }) => (<NostrEvent>[], '');
+
+  static (NostrEvent, String) wrapTo({
+    required String senderPriv, required String senderPub,
+    required String recipientPub, required String payload,
+  }) => (_empty(), '');
+
+  static (List<NostrEvent>, String) wrapMany({
+    required String senderPriv, required String senderPub,
+    required List<String> recipientPubs, required String payload,
+  }) => (<NostrEvent>[], '');
+
+  static Unwrapped? unwrap(String myPriv, NostrEvent gift) => null;
+
+  static NostrEvent _empty() =>
+      NostrEvent(id: '', pubkey: '', createdAt: 0, kind: 0, tags: const [], content: '', sig: '');
 }

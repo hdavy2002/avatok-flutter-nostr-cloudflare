@@ -136,6 +136,13 @@ name = "CONVERSATION_DO"
 class_name = "ConversationDO"
 script_name = "avatok-api"
 
+# Cross-script DO binding → avatok-api's InboxDO (large-group "fanout" delivery:
+# the router enqueues >25-recipient sends; this Worker appends to each inbox).
+[[durable_objects.bindings]]
+name = "INBOX"
+class_name = "InboxDO"
+script_name = "avatok-api"
+
 # Calendar reminders re-enqueue to the push queue (Phase 3). This Worker is both a
 # producer (cron reminders) and consumer (push-notifications) of this queue.
 [[queues.producers]]
@@ -167,6 +174,10 @@ crons = ["*/15 * * * *", "0 */6 * * *"]
 
 [vars]
 FCM_PROJECT = "avatok-e19ef"
+# Workers AI daily budget alarm (Scale Phase 0): cron emails ALERT_EMAIL once/day
+# when ai_spend.calls exceeds this.
+AI_DAILY_CALL_BUDGET = "5000"
+ALERT_EMAIL = "hdavy2005@gmail.com"
 # Image moderation: Gemma 4 26B-A4B (MoE: 26B total / ~4B active per token → ~4B-
 # class cost, far higher quality; native vision + thinking) rates NSFW + violence
 # via prompt+parse. Text moderation: Llama Guard binary safe/unsafe classifier

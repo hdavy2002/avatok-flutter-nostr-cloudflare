@@ -1,15 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
+import '../../core/call_telemetry.dart';
 import '../../core/config.dart';
+import '../../core/ice_cache.dart';
 import '../../core/theme.dart';
 import '../../push/push_service.dart';
 
@@ -66,11 +68,26 @@ class _CallScreenState extends State<CallScreen> {
   // the very one that would have connected the call (esp. over cellular/TURN).
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteSet = false;
+  // Call hardening (Scale proposal Phase 1):
+  late final CallTelemetry _telemetry;
+  bool _weOffered = false;          // only the offerer drives ICE restarts (no glare)
+  int _iceRestarts = 0;             // cap restart attempts per call
+  Timer? _failTimer;                // grace window before giving up on 'failed'
+  StreamSubscription? _netSub;      // Wi-Fi ⇆ cellular handoff → ICE restart
 
   @override
   void initState() {
     super.initState();
     gInCall = true;
+    _telemetry = CallTelemetry(callId: widget.room, video: widget.video, outgoing: widget.outgoing);
+    // Wi-Fi ⇆ cellular handoff: don't wait for the transport to time out — restart
+    // ICE proactively so the call survives leaving the house mid-conversation.
+    _netSub = Connectivity().onConnectivityChanged.listen((_) {
+      if (_connected && !_ended) {
+        _telemetry.onNetChange();
+        _tryIceRestart('net-change');
+      }
+    });
     _video = widget.video;
     _camOn = widget.video;
     _speaker = widget.video;
@@ -96,6 +113,7 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _endWith(String phase) {
+    _telemetry.ended(phase);
     // Release mic/cam IMMEDIATELY on every end path (remote hangup, decline,
     // busy, no-answer, failure) — not 1.4s later when the route finally pops.
     // This is what stops the green mic indicator lingering after the other side
@@ -111,14 +129,9 @@ class _CallScreenState extends State<CallScreen> {
   String get _room => widget.room;
 
   Future<void> _fetchIce() async {
-    try {
-      final r = await http.get(Uri.parse(kIceUrl)).timeout(const Duration(seconds: 5));
-      if (r.statusCode == 200) {
-        final data = jsonDecode(r.body) as Map<String, dynamic>;
-        final servers = (data['iceServers'] as List).cast<Map<String, dynamic>>();
-        if (servers.isNotEmpty) _ice = servers;
-      }
-    } catch (_) {/* keep STUN fallback */}
+    // Pre-warmed cache (IceCache.prefetch fires when the call becomes likely),
+    // so this is usually instant instead of an HTTPS round-trip during setup.
+    _ice = await IceCache.get();
   }
 
   Future<void> _start() async {
@@ -154,7 +167,12 @@ class _CallScreenState extends State<CallScreen> {
   void _send(Map<String, dynamic> o) => _ws?.sink.add(jsonEncode(o));
 
   Future<RTCPeerConnection> _newPC() async {
-    final pc = await createPeerConnection({'iceServers': _ice});
+    final pc = await createPeerConnection({
+      'iceServers': _ice,
+      // TURN-only diagnostics mode (Settings → Diagnostics): forces every call
+      // through the relay to validate the worst-case path on demand.
+      if (CallDiag.turnOnly) 'iceTransportPolicy': 'relay',
+    });
     _stream!.getTracks().forEach((t) => pc.addTrack(t, _stream!));
     pc.onIceCandidate = (c) {
       if (_remoteId != null) _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
@@ -163,19 +181,50 @@ class _CallScreenState extends State<CallScreen> {
       if (e.streams.isNotEmpty) {
         _remote.srcObject = e.streams[0];
         _ringTimeout?.cancel();
+        _failTimer?.cancel();
+        _telemetry.connected(pc);
         if (mounted) setState(() { _connected = true; _phase = 'connected'; });
       }
     };
     pc.onConnectionState = (s) {
-      // End cleanly if an established call's transport fails (network dropped).
-      if (mounted && _connected &&
-          (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-           s == RTCPeerConnectionState.RTCPeerConnectionStateClosed)) {
+      if (!mounted || !_connected) return;
+      if (s == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _endWith('ended');
+      } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+                 s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        // Don't kill an established call on the first transport blip: try an ICE
+        // restart, and only end if it hasn't recovered within the grace window.
+        _tryIceRestart('transport-$s');
+        _failTimer?.cancel();
+        _failTimer = Timer(const Duration(seconds: 12), () {
+          final st = _pc?.connectionState;
+          if (mounted && _connected &&
+              st != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+            _endWith('ended');
+          }
+        });
+      } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _failTimer?.cancel();
       }
     };
     _pc = pc;
     return pc;
+  }
+
+  /// ICE restart (offerer-driven to avoid offer glare): new offer with fresh
+  /// candidates over the still-open signaling socket. Capped per call.
+  Future<void> _tryIceRestart(String why) async {
+    final pc = _pc;
+    if (pc == null || _ended || !_weOffered || _remoteId == null) return;
+    if (_iceRestarts >= 3) return;
+    _iceRestarts++;
+    _telemetry.onIceRestart();
+    try {
+      _ice = await IceCache.get(); // fresh short-lived TURN creds
+      final offer = await pc.createOffer({'iceRestart': true});
+      await pc.setLocalDescription(offer);
+      _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+    } catch (_) {/* transport may already be gone; the fail timer decides */}
   }
 
   /// Apply any ICE candidates that arrived before the remote description existed.
@@ -197,6 +246,7 @@ class _CallScreenState extends State<CallScreen> {
         final peers = (d['peers'] as List).cast<String>();
         if (peers.isNotEmpty) {
           _remoteId = peers.first;
+          _weOffered = true; // we drive renegotiation/ICE restarts for this call
           final pc = await _newPC();
           final offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -302,10 +352,13 @@ class _CallScreenState extends State<CallScreen> {
     if (_ended) return; // idempotent — hangup AND dispose both call this
     _ended = true;
     gInCall = false;
+    _telemetry.ended(_connected ? 'ended' : _phase); // no-op if already reported
     // Outgoing call torn down before it connected → tell the callee to stop ringing.
     if (widget.outgoing && !_connected) _notifyCalleeCanceled();
     _timer?.cancel();
     _ringTimeout?.cancel();
+    _failTimer?.cancel();
+    _netSub?.cancel();
     // Release the mic/cam FULLY. On Android, track.stop() alone leaves the OS
     // privacy mic indicator (green dot) lit until the MediaStream is disposed
     // AND detached from the renderers — which is why the mic stayed "in use"

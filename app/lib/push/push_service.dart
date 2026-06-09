@@ -14,8 +14,9 @@ import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/call_log_store.dart';
 import '../core/config.dart';
+import '../core/ice_cache.dart';
 import '../features/avatok/call_screen.dart';
-import '../nostr/relay_hub.dart';
+import '../sync/sync_hub.dart';
 
 /// Global key so we can navigate to the call screen when a call is accepted.
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -120,6 +121,7 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
 Future<void> _showIncoming(Map<String, dynamic> d) async {
   if (d['type'] != 'call') { AvaLog.I.log('call', 'incoming skipped (type=${d['type']})'); return; }
   AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
+  IceCache.prefetch(); // warm TURN creds while the phone is still ringing
   final params = CallKitParams(
     id: (d['callId'] ?? '').toString(),
     nameCaller: (d['fromName'] ?? 'AvaTOK').toString(),
@@ -184,7 +186,7 @@ class PushService {
         // App is open: the live InboxDO socket should already have it. But if the
         // socket was dropped (mobile DNS), this FCM wake forces a reconnect + sync
         // so the message lands immediately instead of waiting for a manual refresh.
-        RelayHub.I.ensureConnected();
+        SyncHub.I.ensureConnected();
         return;
       }
       // Already on a call → auto-reply "busy" instead of ringing.
@@ -202,6 +204,33 @@ class PushService {
       _postToken(t).catchError((e) => AvaLog.I.log('push', 're-register failed: $e'));
     });
     _listenCallkit();
+    await CallDiag.load(); // TURN-only diagnostics flag
+    await _recoverAcceptedCall();
+  }
+
+  /// Killed-state accept: when the app was terminated and the user accepted the
+  /// native incoming-call UI, the engine cold-starts and the accept event has
+  /// already fired before _listenCallkit ran. Check the OS for a call that's
+  /// active-but-unanswered-in-Flutter and route into it.
+  static Future<void> _recoverAcceptedCall() async {
+    try {
+      final calls = await FlutterCallkitIncoming.activeCalls();
+      if (calls is! List || calls.isEmpty) return;
+      for (final c in calls) {
+        final m = (c as Map?) ?? const {};
+        final accepted = m['isAccepted'] == true || m['accepted'] == true;
+        final extra = m['extra'];
+        if (accepted && extra is Map && !gInCall) {
+          AvaLog.I.log('call', 'recovering accepted call after cold start callId=${extra['callId']}');
+          IceCache.prefetch();
+          // Give the navigator one frame to exist.
+          WidgetsBinding.instance.addPostFrameCallback((_) => _openCall(extra));
+          return;
+        }
+      }
+    } catch (e) {
+      AvaLog.I.log('call', 'activeCalls recovery check failed: $e');
+    }
   }
 
   /// Best-effort: nudge recipients that a new message arrived (content-less).
@@ -239,6 +268,7 @@ class PushService {
       if (event == null) return;
       switch (event.event) {
         case Event.actionCallAccept:
+          IceCache.prefetch(); // accept tapped → call screen is next; warm TURN now
           _openCall(event.body['extra']);
           break;
         case Event.actionCallDecline:

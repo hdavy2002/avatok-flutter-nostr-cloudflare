@@ -4,7 +4,7 @@
 // 8B model (never 70B on this hot path), upsert idempotently (dedupe by name+type),
 // embed a summary into Vectorize (uid-scoped), mark processed.
 import type { Env, BrainMsg } from "./types";
-import { aiText } from "./ai";
+import { aiText, bumpAiSpend } from "./ai";
 
 const RAW_TTL_MS = 30 * 86_400_000; // 30 days
 
@@ -212,6 +212,7 @@ async function extract(env: Env, msg: BrainMsg): Promise<Extracted> {
       temperature: 0,
     })) as unknown;
     try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_extract", model], doubles: [Date.now() - started, 1], indexes: ["brain"] }); } catch { /* noop */ }
+    await bumpAiSpend(env, Date.now() - started);
     return parseExtracted(aiText(out));
   } catch {
     return { entities: [], relationships: [], facts: [] };

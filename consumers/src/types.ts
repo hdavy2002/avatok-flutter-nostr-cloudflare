@@ -13,6 +13,7 @@ export interface Env {
   Q_PUSH?: Queue;                     // calendar reminders re-enqueue to push (Phase 3)
   Q_ANALYTICS?: Queue;                // lifecycle events (e.g. account_deleted) → PostHog
   CONVERSATION_DO?: DurableObjectNamespace; // cross-script → avatok-api ConversationDO (Phase 7)
+  INBOX?: DurableObjectNamespace; // cross-script → avatok-api InboxDO (large-group fanout)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
   ANALYTICS?: AnalyticsEngineDataset; // operational metrics (writeDataPoint)
   FCM_PROJECT: string;
@@ -23,6 +24,8 @@ export interface Env {
   MODERATION_MODEL_TYPE?: string;  // "vision" (LLM, parse text) | "classifier" (label+score)
   TEXT_MODERATION_MODEL?: string;  // text safety classifier (Llama Guard default)
   POSTHOG_HOST: string;
+  AI_DAILY_CALL_BUDGET?: string; // daily Workers AI call budget (default 5000); cron alarms past it
+  ALERT_EMAIL?: string;          // ops alert recipient (default hdavy2005@gmail.com)
   // secrets
   FCM_SERVICE_ACCOUNT?: string;
   BREVO_API_KEY?: string;        // transactional email (replaces Resend)
@@ -76,12 +79,14 @@ export interface WalletTxMsg {
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
-  kind: "call" | "notify" | "call-status" | "relay-event";
+  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout";
   to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
   title?: string | null; body?: string | null; data?: Record<string, unknown> | null;
   event_kind?: number; event_id?: string; ts?: number;
+  // kind === "fanout" (large-group delivery; router never loops >25 sync DO calls):
+  recipients?: string[]; payload?: Record<string, unknown>;
 }
 export interface EmailMsg { to: string; subject: string; html: string; from?: string; }
 export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }

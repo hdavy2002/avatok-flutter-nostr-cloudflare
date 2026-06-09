@@ -22,10 +22,9 @@ import '../../core/onboarding_store.dart';
 import '../../core/admin_tools.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
-import '../../nostr/nip17.dart';
-import '../../nostr/nostr_client.dart';
-import '../../nostr/relay_hub.dart';
-import '../../nostr/presence.dart';
+import '../../sync/legacy_stubs.dart';
+import '../../sync/sync_hub.dart';
+import '../../sync/presence.dart';
 import '../../push/push_service.dart';
 import '../../shell/ava_sidebar.dart';
 import '../communities/communities_tab.dart';
@@ -284,7 +283,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _inboxSub?.cancel(); // stop listening, but leave the shared RelayHub socket alive
+    _inboxSub?.cancel(); // stop listening, but leave the shared SyncHub socket alive
     super.dispose();
   }
 
@@ -370,11 +369,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// Global inbox: receive group invites (ginfo) even when no thread is open.
   void _startInbox(Identity id) {
-    _inbox = RelayHub.I.ensure(id.uid, id.uid); // shared app-lifetime client + inbox sub (survives navigation)
+    _inbox = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client + inbox sub (survives navigation)
     // Consume the hub's SINGLE-decrypt stream (HubEvent already unwrapped) — no
     // own Nip17.unwrap here. This was one of 3-4 places re-decrypting every wrap
     // on the UI thread.
-    _inboxSub = RelayHub.I.incoming.listen((u) {
+    _inboxSub = SyncHub.I.incoming.listen((u) {
       if (_seenInbox.contains(u.rumorId)) return;
       _seenInbox.add(u.rumorId);
       try {
@@ -451,7 +450,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         }
       } catch (_) {/* ignore */}
     });
-    // No subscribe here — RelayHub already holds the single 'inbox' subscription
+    // No subscribe here — SyncHub already holds the single 'inbox' subscription
     // for all my 1059 wraps; we just listen to the shared stream above.
   }
 

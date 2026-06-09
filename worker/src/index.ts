@@ -41,6 +41,15 @@ export default {
   },
 };
 
+// req.cf.continent → DO location hint (no "me" mapping derivable from continent).
+const CONTINENT_HINT: Record<string, DurableObjectLocationHint> = {
+  AF: "afr", AS: "apac", EU: "weur", NA: "enam", OC: "oc", SA: "sam",
+};
+function continentHint(req: Request): DurableObjectLocationHint | undefined {
+  const c = (req as { cf?: { continent?: string } }).cf?.continent;
+  return c ? CONTINENT_HINT[c] : undefined;
+}
+
 async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (req.method === "OPTIONS") return preflight();
     const url = new URL(req.url);
@@ -48,9 +57,15 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     if (p === "/health") return json({ ok: true, service: "avatok-api", ts: Date.now() });
 
-    // Group-call signaling → CallRoom DO (thin router, no logic).
+    // Group-call signaling → CallRoom DO (thin router, no logic). The location
+    // hint places the room near the FIRST opener (the caller) — hints only apply
+    // on first access, so the callee reaches the same instance. Cuts call-setup
+    // signaling RTT for far-from-APAC users (Scale proposal Phase 1).
     const room = p.match(/^\/(?:api\/)?room\/([A-Za-z0-9_-]{1,64})$/);
-    if (room) return env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(room[1])).fetch(req);
+    if (room) {
+      const hint = continentHint(req);
+      return env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(room[1]), hint ? { locationHint: hint } : undefined).fetch(req);
+    }
 
     // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).
     if (p === "/api/inbox" && req.headers.get("Upgrade") === "websocket") return await wsInbox(req, env);

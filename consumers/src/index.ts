@@ -76,6 +76,27 @@ export default {
     try {
       env.ANALYTICS?.writeDataPoint({ blobs: ["cron"], doubles: [r1.meta?.changes ?? 0, r2.meta?.changes ?? 0, r3.meta?.changes ?? 0], indexes: ["cron"] });
     } catch { /* best-effort */ }
+
+    // Workers AI daily budget alarm (Scale proposal Phase 0). bumpAiSpend()
+    // counts every model call into ai_spend; alert ONCE per day when today's
+    // calls exceed AI_DAILY_CALL_BUDGET (default 5000).
+    try {
+      const budget = Number(env.AI_DAILY_CALL_BUDGET || "5000");
+      const day = new Date().toISOString().slice(0, 10);
+      const row = await env.DB_MODERATION.prepare(
+        "SELECT calls, ms, alerted FROM ai_spend WHERE day=?1",
+      ).bind(day).first<{ calls: number; ms: number; alerted: number }>();
+      if (row && row.calls > budget && !row.alerted) {
+        await sendEmail({
+          to: env.ALERT_EMAIL || "hdavy2005@gmail.com",
+          subject: `[avatok] AI budget exceeded: ${row.calls} calls today (budget ${budget})`,
+          html: `<p>Workers AI made <b>${row.calls}</b> model calls today (${day}), over the daily budget of ${budget}.</p>
+                 <p>Total model time: ${(row.ms / 1000).toFixed(0)}s. Check the moderation/brain queues for a spike or abuse, and the ai_moderation / brain dashboards.</p>`,
+        }, env);
+        await env.DB_MODERATION.prepare("UPDATE ai_spend SET alerted=1 WHERE day=?1").bind(day).run();
+        env.ANALYTICS?.writeDataPoint({ blobs: ["ai_budget_alert"], doubles: [row.calls, budget], indexes: ["ai_budget"] });
+      }
+    } catch { /* ai_spend table may not exist yet */ }
   },
 };
 

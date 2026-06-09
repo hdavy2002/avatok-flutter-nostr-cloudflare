@@ -9,8 +9,7 @@ import '../../core/group_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
-import '../../nostr/nip17.dart';
-import '../../nostr/nostr_client.dart';
+import '../../sync/legacy_stubs.dart';
 import 'contacts.dart';
 
 /// Group details + member management: add from contacts, remove, leave.

@@ -7,8 +7,7 @@ import '../../core/config.dart';
 import '../../core/group_store.dart';
 import '../../core/theme.dart';
 import '../../identity/identity.dart';
-import '../../nostr/nip17.dart';
-import '../../nostr/nostr_client.dart';
+import '../../sync/legacy_stubs.dart';
 import '../avatok/contacts.dart';
 import 'community_detail_screen.dart';
 

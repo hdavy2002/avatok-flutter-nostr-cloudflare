@@ -6,6 +6,7 @@ import type { Env, PushMsg } from "./types";
 import { sendApns } from "./apns";
 
 export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
+  if (msg.kind === "fanout") return handleFanout(msg, env);
   const uid = msg.to_uid || msg.to;
   if (!uid) return;
   const rs = await env.DB_META.prepare("SELECT platform, token FROM push_tokens_v2 WHERE uid=?1").bind(uid).all();
@@ -16,6 +17,32 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   for (const t of tokens) {
     if (t.platform === "apns") await sendApns(env, t.token, payload);
     else await sendFcm(env, t.token, payload); // 'fcm' (Android) — default
+  }
+}
+
+// Large-group message delivery (router enqueues "fanout" for >25 recipients —
+// Scale proposal Phase 1: never loop sync DO calls in the request path). Appends
+// the message to each recipient's InboxDO (cross-script binding) and wakes
+// offline devices via the proven high-priority notify path. Recipients are
+// processed in parallel chunks; a single failed append never poisons the batch.
+const FANOUT_PARALLEL = 10;
+async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
+  if (!env.INBOX || !msg.payload || !Array.isArray(msg.recipients)) return;
+  for (let i = 0; i < msg.recipients.length; i += FANOUT_PARALLEL) {
+    const chunk = msg.recipients.slice(i, i + FANOUT_PARALLEL);
+    await Promise.all(chunk.map(async (uid) => {
+      try {
+        const stub = env.INBOX!.get(env.INBOX!.idFromName(uid));
+        const res = await stub.fetch("https://inbox/append", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...msg.payload, owner: uid }),
+        });
+        const r = (await res.json()) as { live?: boolean };
+        if (!r.live) await handlePush({ kind: "notify", to: uid, fromName: "AvaTOK" }, env);
+      } catch (e) {
+        console.warn("fanout append failed", uid, String(e));
+      }
+    }));
   }
 }
 

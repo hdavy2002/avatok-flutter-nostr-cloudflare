@@ -6,8 +6,8 @@ import '../core/config.dart';
 import '../core/db.dart';
 import '../core/group_store.dart';
 import '../identity/identity.dart';
-import 'nostr_client.dart';
-import 'relay_hub.dart';
+import 'legacy_stubs.dart';
+import 'sync_hub.dart';
 
 class GroupMessage {
   final String rumorId;
@@ -20,7 +20,7 @@ class GroupMessage {
 
 /// Group messaging over the Cloudflare-native backend. Fan-out is server-side: we
 /// POST one message to the group conversation (conv = group.id) and the router
-/// appends it to every member's InboxDO. Incoming arrives via [RelayHub] filtered
+/// appends it to every member's InboxDO. Incoming arrives via [SyncHub] filtered
 /// to this group. [client]/[myPriv]/[myPub] are legacy params, ignored.
 class AvaGroupDm {
   final NostrClient client;
@@ -38,7 +38,7 @@ class AvaGroupDm {
 
   void start() {
     final myConv = 'g:${group.id}';
-    _sub = RelayHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
+    _sub = SyncHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
       if (!_controller.isClosed) {
         _controller.add(GroupMessage(
           rumorId: e.rumorId, senderPub: e.senderPub, mine: e.mine,

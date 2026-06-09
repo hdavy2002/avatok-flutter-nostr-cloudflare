@@ -11,8 +11,8 @@ import '../core/ava_log.dart';
 import '../core/config.dart';
 import '../core/db.dart';
 import '../identity/identity.dart';
-import 'ava_dm.dart' show DmMessage;
-import 'nostr_client.dart';
+import 'dm.dart' show DmMessage;
+import 'legacy_stubs.dart';
 
 /// A delivered message, server-routed plaintext (Cloudflare-native; Nostr gone).
 /// Consumers (chat list, threads, group threads) filter by [convKey].
@@ -35,9 +35,9 @@ class HubEvent {
 /// cursor, receive the backlog + live messages, persist them to local SQLite, and
 /// fan a [HubEvent] to every screen. The chat list paints instantly from the local
 /// projection; this stream carries new + live messages on top.
-class RelayHub {
-  static final RelayHub I = RelayHub._();
-  RelayHub._();
+class SyncHub {
+  static final SyncHub I = SyncHub._();
+  SyncHub._();
 
   final NostrClient _stub = NostrClient(kInboxWsUrl); // returned to callers (compat)
   bool _started = false;
