@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show InternetAddress;
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -166,45 +167,85 @@ class NostrClient {
     _openSocket();
   }
 
-  void _openSocket() {
-    if (_disposed || _connected) return;
-    // Per-user inbox DO routing: tell the relay which user's DO to connect to.
-    // The pubkey is a routing hint only — NIP-42 still proves ownership server-side.
-    var url = relayUrl;
-    final id = ApiAuth.identity;
-    final pub = id?.pubHex;
-    if (pub != null && pub.isNotEmpty && !url.contains('pubkey=')) {
-      url += (url.contains('?') ? '&' : '?') + 'pubkey=$pub';
-    }
-    // Reset auth state for this (re)connection. Public reads flow immediately
-    // (the sink buffers until the socket opens); PRIVATE writes/reads wait for a
-    // real NIP-42 success — we NEVER send them in "public mode".
-    _socketAuthed = false;
-    _hasIdentity = id != null;
-    AvaLog.I.log('relay',
-        'connect (hasIdentity=$_hasIdentity)${_retry > 0 ? " [reconnect #$_retry]" : ""}');
+  bool _opening = false; // guards re-entry while the async DNS pre-resolve runs
+
+  Future<void> _openSocket() async {
+    if (_disposed || _connected || _opening) return;
+    _opening = true;
     try {
-      // Non-web: a WebSocket-level ping every 25s keeps the connection alive
-      // through NAT/edge idle timeouts AND detects a dead socket (a missing pong
-      // closes it → onDone → reconnect). On web the browser handles pings.
-      _ch = kIsWeb
-          ? WebSocketChannel.connect(Uri.parse(url))
-          : IOWebSocketChannel.connect(Uri.parse(url), pingInterval: _keepalive);
-    } catch (e) {
-      AvaLog.I.log('relay', 'connect threw: $e');
-      _onClosed();
-      return;
+      // Per-user inbox DO routing: tell the relay which user's DO to connect to.
+      // The pubkey is a routing hint only — NIP-42 still proves ownership server-side.
+      var url = relayUrl;
+      final id = ApiAuth.identity;
+      final pub = id?.pubHex;
+      if (pub != null && pub.isNotEmpty && !url.contains('pubkey=')) {
+        url += (url.contains('?') ? '&' : '?') + 'pubkey=$pub';
+      }
+      // Reset auth state for this (re)connection. Public reads flow immediately
+      // (the sink buffers until the socket opens); PRIVATE writes/reads wait for a
+      // real NIP-42 success — we NEVER send them in "public mode".
+      _socketAuthed = false;
+      _hasIdentity = id != null;
+
+      // DNS pre-resolve (tiny Happy-Eyeballs-style wrapper). Mobile DNS
+      // intermittently fails to resolve the relay host (errno 7) on wifi/LTE
+      // transitions; resolving with a few quick retries here absorbs that blip
+      // instead of letting the connect fail and inflate the reconnect backoff to
+      // ~30s. Resolves both IPv4 + IPv6. Web: the browser handles DNS.
+      if (!kIsWeb) {
+        final host = Uri.parse(relayUrl).host;
+        if (host.isNotEmpty && !await _dnsReady(host)) {
+          if (_disposed || _connected || !_wantConnected) return;
+          AvaLog.I.log('relay', 'DNS not ready for $host — quick retry in 1.5s');
+          _reconnectTimer?.cancel();
+          _reconnectTimer = Timer(const Duration(milliseconds: 1500), _openSocket);
+          return;
+        }
+      }
+      if (_disposed || _connected) return; // state may have changed during async DNS
+
+      AvaLog.I.log('relay',
+          'connect (hasIdentity=$_hasIdentity)${_retry > 0 ? " [reconnect #$_retry]" : ""}');
+      try {
+        // Non-web: a WebSocket-level ping every 25s keeps the connection alive
+        // through NAT/edge idle timeouts AND detects a dead socket (a missing pong
+        // closes it → onDone → reconnect). On web the browser handles pings.
+        _ch = kIsWeb
+            ? WebSocketChannel.connect(Uri.parse(url))
+            : IOWebSocketChannel.connect(Uri.parse(url), pingInterval: _keepalive);
+      } catch (e) {
+        AvaLog.I.log('relay', 'connect threw: $e');
+        _onClosed();
+        return;
+      }
+      _connected = true;
+      _sub = _ch!.stream.listen(
+        _onMessage,
+        onError: (e) { AvaLog.I.log('relay', 'socket error: $e'); _onClosed(); },
+        onDone: () { AvaLog.I.log('relay', 'socket closed'); _onClosed(); },
+        cancelOnError: true,
+      );
+      // Re-issue any tracked subscriptions immediately. Public ones flow now;
+      // private ones are queued and flushed when AUTH succeeds below.
+      _resubscribe();
+    } finally {
+      _opening = false;
     }
-    _connected = true;
-    _sub = _ch!.stream.listen(
-      _onMessage,
-      onError: (e) { AvaLog.I.log('relay', 'socket error: $e'); _onClosed(); },
-      onDone: () { AvaLog.I.log('relay', 'socket closed'); _onClosed(); },
-      cancelOnError: true,
-    );
-    // Re-issue any tracked subscriptions immediately. Public ones flow now;
-    // private ones are queued and flushed when AUTH succeeds below.
-    _resubscribe();
+  }
+
+  /// Resolve [host] with a few quick retries (~5s worst case). Returns true as
+  /// soon as it resolves. Absorbs transient mobile DNS failures so they don't
+  /// trip the long socket reconnect backoff.
+  Future<bool> _dnsReady(String host) async {
+    for (var i = 0; i < 5; i++) {
+      if (_disposed || !_wantConnected) return false;
+      try {
+        final r = await InternetAddress.lookup(host).timeout(const Duration(seconds: 4));
+        if (r.isNotEmpty) return true;
+      } catch (_) {/* transient lookup failure — retry */}
+      await Future.delayed(Duration(milliseconds: 400 + 300 * i));
+    }
+    return false;
   }
 
   void _onClosed() {
