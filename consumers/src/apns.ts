@@ -41,7 +41,7 @@ export async function sendApns(
     const txt = await res.text();
     // 410 Gone / BadDeviceToken → prune stale token.
     if (res.status === 410 || txt.includes("BadDeviceToken") || txt.includes("Unregistered")) {
-      await env.DB_META.prepare("DELETE FROM push_tokens WHERE token=?1").bind(token).run();
+      await env.DB_META.prepare("DELETE FROM push_tokens_v2 WHERE token=?1").bind(token).run();
     } else {
       throw new Error("APNs send failed: " + res.status + " " + txt.slice(0, 200));
     }

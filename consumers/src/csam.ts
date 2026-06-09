@@ -60,9 +60,9 @@ export async function csamGate(env: Env, sha256: string, bytes: Uint8Array): Pro
 // legal decision — do it with counsel before this path goes live. We do NOT
 // notify the uploader (no tipping-off).
 export async function handleCsam(
-  env: Env, args: { hash: string; r2Key: string; media_id: string; npub: string; source: string },
+  env: Env, args: { hash: string; r2Key: string; media_id: string; uid: string; source: string },
 ): Promise<void> {
-  const { hash, r2Key, media_id, npub, source } = args;
+  const { hash, r2Key, media_id, uid, source } = args;
   const now = Date.now();
 
   // TODO(legal): before delete, copy bytes to a locked evidence bucket for
@@ -74,33 +74,33 @@ export async function handleCsam(
   await env.DB_MODERATION.prepare(
     `INSERT OR IGNORE INTO blocked_media_hashes (id,hash_type,hash_value,category,source,original_uploader_npub,created_at)
      VALUES (?1,'sha256',?2,'csam',?3,?4,?5)`,
-  ).bind(crypto.randomUUID(), hash, source, npub, now).run();
+  ).bind(crypto.randomUUID(), hash, source, uid, now).run();
 
   // P1 report row (1-hour SLA) + permanent ban.
   await env.DB_MODERATION.prepare(
     `INSERT INTO user_reports (id,reporter_npub,reported_npub,content_kind,content_id,category,description,status,priority,created_at)
      VALUES (?1,'system',?2,'image',?3,'csam',?4,'open',1,?5)`,
-  ).bind(crypto.randomUUID(), npub, hash, `auto:${source}`, now).run();
-  await permBan(env, npub, "csam");
+  ).bind(crypto.randomUUID(), uid, hash, `auto:${source}`, now).run();
+  await permBan(env, uid, "csam");
 
   try { env.ANALYTICS?.writeDataPoint({ blobs: ["csam_block", source], doubles: [1], indexes: ["csam"] }); } catch { /* best-effort */ }
-  await reportCsam(env, { hash, npub, source, ts: now });
+  await reportCsam(env, { hash, uid, source, ts: now });
 }
 
-async function permBan(env: Env, npub: string, reason: string): Promise<void> {
-  const link = await env.DB_META.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE npub=?1")
-    .bind(npub).first<{ clerk_user_id: string }>();
-  const clerkId = link?.clerk_user_id ?? npub;
+async function permBan(env: Env, uid: string, reason: string): Promise<void> {
+  const link = await env.DB_META.prepare("SELECT clerk_user_id FROM clerk_nostr_link WHERE uid=?1")
+    .bind(uid).first<{ clerk_user_id: string }>();
+  const clerkId = link?.clerk_user_id ?? uid;
   await env.DB_META.prepare(
-    `INSERT INTO account_status (clerk_user_id,npub,status,reason,blocked_until,blocked_at)
+    `INSERT INTO account_status (clerk_user_id,uid,status,reason,blocked_until,blocked_at)
      VALUES (?1,?2,'perm_banned',?3,NULL,?4)
      ON CONFLICT(clerk_user_id) DO UPDATE SET status='perm_banned', reason=?3, blocked_at=?4`,
-  ).bind(clerkId, npub, reason, Date.now()).run();
+  ).bind(clerkId, uid, reason, Date.now()).run();
 }
 
 // Report hook. Wire CSAM_REPORT_URL to your NCMEC-filing service. Sends metadata
-// only (hash/npub/ts) — NOT the bytes — by default.
-async function reportCsam(env: Env, r: { hash: string; npub: string; source: string; ts: number }): Promise<void> {
+// only (hash/uid/ts) — NOT the bytes — by default.
+async function reportCsam(env: Env, r: { hash: string; uid: string; source: string; ts: number }): Promise<void> {
   if (!env.CSAM_REPORT_URL) { console.error("CSAM detected but CSAM_REPORT_URL unset — report NOT filed", r.hash); return; }
   try {
     await fetch(env.CSAM_REPORT_URL, {

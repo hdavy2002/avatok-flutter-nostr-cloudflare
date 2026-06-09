@@ -6,9 +6,9 @@ import type { Env, PushMsg } from "./types";
 import { sendApns } from "./apns";
 
 export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
-  const npub = msg.to_npub || msg.to;
-  if (!npub) return;
-  const rs = await env.DB_META.prepare("SELECT platform, token FROM push_tokens WHERE npub=?1").bind(npub).all();
+  const uid = msg.to_uid || msg.to;
+  if (!uid) return;
+  const rs = await env.DB_META.prepare("SELECT platform, token FROM push_tokens_v2 WHERE uid=?1").bind(uid).all();
   const tokens = (rs.results ?? []) as Array<{ platform: string; token: string }>;
   if (!tokens.length) return; // recipient has no registered device — nothing to do
 
@@ -71,7 +71,7 @@ async function sendFcm(env: Env, token: string, payload: { data: Record<string, 
     const dead = res.status === 404 || txt.includes("UNREGISTERED") ||
       txt.includes("registration-token-not-registered") || txt.includes("NOT_FOUND");
     if (dead) {
-      await env.DB_META.prepare("DELETE FROM push_tokens WHERE token=?1").bind(token).run();
+      await env.DB_META.prepare("DELETE FROM push_tokens_v2 WHERE token=?1").bind(token).run();
       console.warn("FCM: pruned dead token", token.slice(0, 12));
     } else {
       // Keep the token; surface the error in logs (visible via `wrangler tail`).

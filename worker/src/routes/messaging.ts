@@ -49,16 +49,11 @@ async function appendTo(env: Env, owner: string, body: Record<string, unknown>):
   return res.json();
 }
 
-async function pushOffline(env: Env, toUid: string, fromUid: string, conv: string, preview: string): Promise<void> {
+async function pushOffline(env: Env, toUid: string, _fromUid: string, _conv: string, _preview: string): Promise<void> {
+  // Reuse the consumer's proven high-priority 'notify' path (fcm.ts looks up the
+  // recipient's tokens in push_tokens_v2 by uid and wakes the device).
   try {
-    const toks = await env.DB_META
-      .prepare("SELECT platform, token FROM push_tokens_v2 WHERE uid = ?1")
-      .bind(toUid).all<{ platform: string; token: string }>();
-    if (!toks.results?.length) return;
-    await env.Q_PUSH.send({
-      kind: "dm", to_uid: toUid, from_uid: fromUid, conv, preview: preview.slice(0, 140),
-      tokens: toks.results,
-    });
+    await env.Q_PUSH.send({ kind: "notify", to: toUid, fromName: "AvaTOK" });
   } catch { /* best-effort; never block the send */ }
 }
 

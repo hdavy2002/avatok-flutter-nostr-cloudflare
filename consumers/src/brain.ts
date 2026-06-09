@@ -2,15 +2,15 @@
 // server-visible content (the relay/API never enqueue DM ciphertext). For each
 // event: store a short-TTL raw copy, extract entities/relationships/facts with an
 // 8B model (never 70B on this hot path), upsert idempotently (dedupe by name+type),
-// embed a summary into Vectorize (npub-scoped), mark processed.
+// embed a summary into Vectorize (uid-scoped), mark processed.
 import type { Env, BrainMsg } from "./types";
 import { aiText } from "./ai";
 
 const RAW_TTL_MS = 30 * 86_400_000; // 30 days
 
 export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
-  const npub = msg.npub;
-  if (!npub) return;
+  const uid = msg.uid;
+  if (!uid) return;
 
   // AvaLibrary FILE content ingestion (public files only). Separate path: we
   // extract caption/OCR/text from the actual bytes and embed retrievable,
@@ -25,18 +25,18 @@ export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
 
   // 1. Short-TTL raw copy (catch-up buffer, not permanent source of truth).
   await env.DB_BRAIN.prepare(
-    `INSERT INTO brain_events (id, npub, event_type, source_app, payload, processed, trace_id, created_at, expires_at)
+    `INSERT INTO brain_events (id, uid, event_type, source_app, payload, processed, trace_id, created_at, expires_at)
      VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8)`,
-  ).bind(eventId, npub, msg.event_type, msg.source_app, JSON.stringify(msg.payload ?? {}), msg.traceId ?? null, now, now + RAW_TTL_MS).run();
+  ).bind(eventId, uid, msg.event_type, msg.source_app, JSON.stringify(msg.payload ?? {}), msg.traceId ?? null, now, now + RAW_TTL_MS).run();
 
   // 2. Extract structured memory (8B, JSON).
   const extracted = await extract(env, msg);
 
-  // 3. Upsert entities (dedupe by npub+name+type) → name→id map.
+  // 3. Upsert entities (dedupe by uid+name+type) → name→id map.
   const idByName = new Map<string, string>();
   for (const e of extracted.entities) {
     if (!e.name) continue;
-    const id = await upsertEntity(env, npub, e, now);
+    const id = await upsertEntity(env, uid, e, now);
     idByName.set(e.name.toLowerCase(), id);
   }
 
@@ -45,16 +45,16 @@ export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
     const from = idByName.get((r.from || "").toLowerCase());
     const to = idByName.get((r.to || "").toLowerCase());
     if (!from || !to || !r.relationship) continue;
-    await upsertRelationship(env, npub, from, to, r.relationship, r.context ?? null, now);
+    await upsertRelationship(env, uid, from, to, r.relationship, r.context ?? null, now);
   }
 
   // 5. Insert facts (scope=public — server-derived).
   for (const f of extracted.facts) {
     if (!f.content) continue;
     await env.DB_BRAIN.prepare(
-      `INSERT INTO brain_facts (id, npub, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
+      `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
        VALUES (?1,?2,?3,?4,'public',?5,?6,?7,?8,?8)`,
-    ).bind(crypto.randomUUID(), npub, f.fact_type || "insight", f.content, msg.source_app, eventId, clamp(f.confidence ?? 0.8), now).run();
+    ).bind(crypto.randomUUID(), uid, f.fact_type || "insight", f.content, msg.source_app, eventId, clamp(f.confidence ?? 0.8), now).run();
   }
 
   // 6. (Embeddings are done per-ENTITY in upsertEntity — one bounded vector per
@@ -73,10 +73,10 @@ export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
 // so AvaBrain can retrieve and deep-link the exact file. Private files NEVER reach
 // here (the producer gates on visibility + consent; we re-check both as defense).
 async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
-  const npub = msg.npub;
+  const uid = msg.uid;
   const p = (msg.payload ?? {}) as any;
   if (p.visibility && p.visibility !== "public") return;        // server ingests public only
-  if (!(await consentAllows(env, npub, msg.source_app))) return; // opted out since enqueue
+  if (!(await consentAllows(env, uid, msg.source_app))) return; // opted out since enqueue
   if (!env.VECTOR_INDEX || !p.key || !p.media_id) return;
 
   const category = String(p.category || "other");
@@ -93,20 +93,20 @@ async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
 
   const base = `${name}. ${text}`.trim().slice(0, 8000);
   const chunks = chunkText(base, 480).slice(0, 8); // bounded vectors per file
-  const md = { npub, media_id: String(p.media_id), app: msg.source_app, folder: p.folder ?? null, category, name, type: "library", summary: base.slice(0, 480) };
+  const md = { uid, media_id: String(p.media_id), app: msg.source_app, folder: p.folder ?? null, category, name, type: "library", summary: base.slice(0, 480) };
   const vectors = [];
   for (let i = 0; i < chunks.length; i++) {
     const values = await embed(env, chunks[i]);
-    if (values) vectors.push({ id: `${npub}:lib:${p.media_id}:${i}`, values, metadata: { ...md, summary: chunks[i].slice(0, 480) } });
+    if (values) vectors.push({ id: `${uid}:lib:${p.media_id}:${i}`, values, metadata: { ...md, summary: chunks[i].slice(0, 480) } });
   }
   if (vectors.length) { try { await env.VECTOR_INDEX.upsert(vectors); } catch { /* best-effort */ } }
 
   // A retrievable fact so /api/brain ask surfaces it even before a vector hit.
   try {
     await env.DB_BRAIN.prepare(
-      `INSERT INTO brain_facts (id, npub, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
+      `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
        VALUES (?1,?2,'file',?3,'public',?4,?5,0.7,?6,?6)`,
-    ).bind(crypto.randomUUID(), npub, `File "${name}" (${category}): ${base.slice(0, 300)}`, msg.source_app, String(p.media_id), Date.now()).run();
+    ).bind(crypto.randomUUID(), uid, `File "${name}" (${category}): ${base.slice(0, 300)}`, msg.source_app, String(p.media_id), Date.now()).run();
   } catch { /* table optional */ }
 }
 
@@ -173,11 +173,11 @@ function chunkText(s: string, size: number): string[] {
 }
 
 // Consent re-check in the consumer (defense in depth; default ON when absent).
-async function consentAllows(env: Env, npub: string, app: string): Promise<boolean> {
+async function consentAllows(env: Env, uid: string, app: string): Promise<boolean> {
   try {
     const rs = await env.DB_BRAIN.prepare(
-      "SELECT capability, enabled FROM brain_consent WHERE npub=?1 AND capability IN ('master',?2)",
-    ).bind(npub, `${app}_files`).all();
+      "SELECT capability, enabled FROM brain_consent WHERE uid=?1 AND capability IN ('master',?2)",
+    ).bind(uid, `${app}_files`).all();
     for (const r of (rs.results ?? []) as any[]) if (Number(r.enabled) === 0) return false;
     return true;
   } catch { return true; }
@@ -234,11 +234,11 @@ function parseExtracted(text: string): Extracted {
 }
 
 // ---- idempotent upserts ----
-async function upsertEntity(env: Env, npub: string, e: { name: string; entity_type?: string; summary?: string }, now: number): Promise<string> {
+async function upsertEntity(env: Env, uid: string, e: { name: string; entity_type?: string; summary?: string }, now: number): Promise<string> {
   const type = e.entity_type || "person";
   const existing = await env.DB_BRAIN.prepare(
-    "SELECT id, importance, summary FROM brain_entities WHERE npub=?1 AND name=?2 AND entity_type=?3",
-  ).bind(npub, e.name, type).first<{ id: string; importance: number; summary: string | null }>();
+    "SELECT id, importance, summary FROM brain_entities WHERE uid=?1 AND name=?2 AND entity_type=?3",
+  ).bind(uid, e.name, type).first<{ id: string; importance: number; summary: string | null }>();
   let id: string;
   let needsEmbed = false;
   if (existing) {
@@ -251,9 +251,9 @@ async function upsertEntity(env: Env, npub: string, e: { name: string; entity_ty
   } else {
     id = crypto.randomUUID();
     await env.DB_BRAIN.prepare(
-      `INSERT INTO brain_entities (id, npub, entity_type, name, summary, metadata, scope, importance, first_seen, last_seen, updated_at)
+      `INSERT INTO brain_entities (id, uid, entity_type, name, summary, metadata, scope, importance, first_seen, last_seen, updated_at)
        VALUES (?1,?2,?3,?4,?5,NULL,'public',0.5,?6,?6,?6)`,
-    ).bind(id, npub, type, e.name, e.summary ?? null, now).run();
+    ).bind(id, uid, type, e.name, e.summary ?? null, now).run();
     needsEmbed = true;
   }
   // One vector PER ENTITY, deterministic id, updated in place (overwrite — no growth).
@@ -261,16 +261,16 @@ async function upsertEntity(env: Env, npub: string, e: { name: string; entity_ty
   if (needsEmbed && env.VECTOR_INDEX) {
     try {
       const values = await embed(env, `${e.name}. ${e.summary ?? ""}`.slice(0, 512));
-      if (values) await env.VECTOR_INDEX.upsert([{ id: `${npub}:ent:${id}`, values, metadata: { npub, name: e.name, summary: (e.summary ?? "").slice(0, 480) } }]);
+      if (values) await env.VECTOR_INDEX.upsert([{ id: `${uid}:ent:${id}`, values, metadata: { uid, name: e.name, summary: (e.summary ?? "").slice(0, 480) } }]);
     } catch { /* embedding best-effort */ }
   }
   return id;
 }
 
-async function upsertRelationship(env: Env, npub: string, from: string, to: string, rel: string, context: string | null, now: number): Promise<void> {
+async function upsertRelationship(env: Env, uid: string, from: string, to: string, rel: string, context: string | null, now: number): Promise<void> {
   const existing = await env.DB_BRAIN.prepare(
-    "SELECT id, strength FROM brain_relationships WHERE npub=?1 AND from_entity_id=?2 AND to_entity_id=?3 AND relationship=?4",
-  ).bind(npub, from, to, rel).first<{ id: string; strength: number }>();
+    "SELECT id, strength FROM brain_relationships WHERE uid=?1 AND from_entity_id=?2 AND to_entity_id=?3 AND relationship=?4",
+  ).bind(uid, from, to, rel).first<{ id: string; strength: number }>();
   if (existing) {
     await env.DB_BRAIN.prepare(
       "UPDATE brain_relationships SET strength=?2, context=COALESCE(?3,context), last_seen=?4 WHERE id=?1",
@@ -278,9 +278,9 @@ async function upsertRelationship(env: Env, npub: string, from: string, to: stri
     return;
   }
   await env.DB_BRAIN.prepare(
-    `INSERT INTO brain_relationships (id, npub, from_entity_id, to_entity_id, relationship, strength, context, first_seen, last_seen)
+    `INSERT INTO brain_relationships (id, uid, from_entity_id, to_entity_id, relationship, strength, context, first_seen, last_seen)
      VALUES (?1,?2,?3,?4,?5,0.5,?6,?7,?7)`,
-  ).bind(crypto.randomUUID(), npub, from, to, rel, context, now).run();
+  ).bind(crypto.randomUUID(), uid, from, to, rel, context, now).run();
 }
 
 async function embed(env: Env, text: string): Promise<number[] | null> {

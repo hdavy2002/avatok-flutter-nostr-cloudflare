@@ -33,7 +33,7 @@ const PHASH_MATCH_DISTANCE = 6; // ≤6 bits differ → treat as the same image
 interface ScanResult { nsfw: number; violence: number; label: string; model: string; }
 
 export async function handleModeration(msg: ModerationMsg, env: Env): Promise<void> {
-  const { hash, media_id, npub } = msg;
+  const { hash, media_id, uid } = msg;
   const r2Key = msg.r2_key || hash; // per-user storage path (content hash for blocklist)
 
   // Stream recordings aren't R2 blobs (no sha256) — video scan is a follow-up;
@@ -47,12 +47,12 @@ export async function handleModeration(msg: ModerationMsg, env: Env): Promise<vo
   // No-ops (bypasses) while the csam_hashes list is empty; activates when you load
   // NCMEC/PhotoDNA hash lists into it.
   const csamHash = await csamCheckHash(env, hash);
-  if (csamHash) { await handleCsam(env, { hash, r2Key, media_id, npub, source: csamHash }); return; }
+  if (csamHash) { await handleCsam(env, { hash, r2Key, media_id, uid, source: csamHash }); return; }
 
   // F6: verified accounts get a more lenient human-review threshold (still rejected
   // at REJECT). One indexed read.
-  const tierRow = await env.DB_META.prepare("SELECT tier FROM clerk_nostr_link WHERE npub=?1")
-    .bind(npub).first<{ tier: string }>();
+  const tierRow = await env.DB_META.prepare("SELECT tier FROM clerk_nostr_link WHERE uid=?1")
+    .bind(uid).first<{ tier: string }>();
   const flagThreshold = tierRow?.tier === "verified" ? 0.90 : FLAG;
 
   // F7: check the cache FIRST. If this exact sha256 was scanned before AND we have
@@ -76,7 +76,7 @@ export async function handleModeration(msg: ModerationMsg, env: Env): Promise<vo
     // CSAM external matcher (PhotoDNA/Thorn). Bypasses when CSAM_API_URL unset;
     // fail-CLOSED (quarantine for human review) when configured but unreachable.
     const csam = await csamGate(env, hash, bytes);
-    if (csam.match) { await handleCsam(env, { hash, r2Key, media_id, npub, source: csam.source! }); return; }
+    if (csam.match) { await handleCsam(env, { hash, r2Key, media_id, uid, source: csam.source! }); return; }
     if (csam.failClosed) { await setStatus(env, media_id, "flagged"); return; }
 
     if (cached) {
@@ -96,12 +96,12 @@ export async function handleModeration(msg: ModerationMsg, env: Env): Promise<vo
 
   // Perceptual blocklist gate (LSH band lookup).
   if (phash && await matchesBlockedPerceptual(env, phash)) {
-    await reject(env, hash, r2Key, media_id, npub, "perceptual_block", 1, true);
+    await reject(env, hash, r2Key, media_id, uid, "perceptual_block", 1, true);
     return;
   }
 
   if (score >= REJECT) {
-    await reject(env, hash, r2Key, media_id, npub, label, score, true);
+    await reject(env, hash, r2Key, media_id, uid, label, score, true);
     // F5: seed the perceptual blocklist so near-dupes of this confirmed-bad image are caught.
     if (phash) await addBlockedPerceptual(env, crypto.randomUUID(), phash);
     return;
@@ -112,20 +112,20 @@ export async function handleModeration(msg: ModerationMsg, env: Env): Promise<vo
   } else {
     await setStatus(env, media_id, "live");
   }
-  if (phash) await storePhash(env, media_id, npub, phash);
+  if (phash) await storePhash(env, media_id, uid, phash);
 }
 
 // --- reject: delete blob (per-user key), blocklist (content sha256 + optional perceptual), strike ---
-async function reject(env: Env, hash: string, r2Key: string, mediaId: string, npub: string, label: string, score: number, strike: boolean): Promise<void> {
+async function reject(env: Env, hash: string, r2Key: string, mediaId: string, uid: string, label: string, score: number, strike: boolean): Promise<void> {
   await env.BLOBS.delete(r2Key);
   await setStatus(env, mediaId, "rejected");
   await env.DB_MODERATION.prepare(
     `INSERT OR IGNORE INTO blocked_media_hashes (id,hash_type,hash_value,category,source,original_uploader_npub,created_at)
      VALUES (?1,'sha256',?2,?3,'admin_confirmed',?4,?5)`,
-  ).bind(crypto.randomUUID(), hash, label, npub, Date.now()).run();
-  if (strike) await applyStrike(env, npub, "ai_image:" + label, hash, score);
+  ).bind(crypto.randomUUID(), hash, label, uid, Date.now()).run();
+  if (strike) await applyStrike(env, uid, "ai_image:" + label, hash, score);
   // Tell the user (feed + push) — server-originated, no encryption needed.
-  await notifyUser(env, npub, { type: "moderation", title: "Content removed", body: "A post was removed for violating our community guidelines." });
+  await notifyUser(env, uid, { type: "moderation", title: "Content removed", body: "A post was removed for violating our community guidelines." });
 }
 
 // --- image scan orchestrator: cheap external NSFW classifier FIRST, escalate
@@ -289,10 +289,10 @@ async function addBlockedPerceptual(env: Env, hashId: string, phash: string): Pr
   ]);
 }
 
-async function storePhash(env: Env, mediaId: string, npub: string, phash: string): Promise<void> {
+async function storePhash(env: Env, mediaId: string, uid: string, phash: string): Promise<void> {
   await env.DB_MEDIA.prepare(
-    "INSERT INTO user_media_hashes (id, media_id, npub, frame_index, phash, created_at) VALUES (?1,?2,?3,0,?4,?5)",
-  ).bind(crypto.randomUUID(), mediaId, npub, phash, Date.now()).run();
+    "INSERT INTO user_media_hashes (id, media_id, uid, frame_index, phash, created_at) VALUES (?1,?2,?3,0,?4,?5)",
+  ).bind(crypto.randomUUID(), mediaId, uid, phash, Date.now()).run();
 }
 
 async function setStatus(env: Env, mediaId: string, status: string): Promise<void> {

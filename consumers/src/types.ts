@@ -58,15 +58,15 @@ export interface Env {
 }
 
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).
-export interface DeletionMsg { npub: string; clerk_user_id?: string | null; scheduled_at?: number; pubkey_hex?: string; }
+export interface DeletionMsg { uid: string; clerk_user_id?: string | null; scheduled_at?: number; pubkey_hex?: string; }
 
 // Agent task message (producer: avatok-api /api/agent/*). 'converse' runs a
 // ConversationDO turn loop; 'task' is a per-app hook (Phase 8).
-export interface AgentMsg { type: "converse" | "task"; conversation_id?: string; npub: string; app: string; peer_npub?: string; kind?: string; payload?: Record<string, unknown>; }
+export interface AgentMsg { type: "converse" | "task"; conversation_id?: string; uid: string; app: string; peer_npub?: string; kind?: string; payload?: Record<string, unknown>; }
 
 // Wallet audit message (producer: WalletDO). Writes the D1 ledger + mirrors.
 export interface WalletTxMsg {
-  npub: string; id: string; ts?: number;
+  uid: string; id: string; ts?: number;
   type: "topup" | "spend" | "earn" | "hold_release" | "refund" | "gift" | "payout";
   amount: number; balance_after?: number; app_name?: string;
   counterparty_npub?: string | null; commission?: number; ref?: string | null; hold_until?: number;
@@ -75,16 +75,16 @@ export interface WalletTxMsg {
 // Queue message shapes (producers: avatok-api, avatok-relay)
 // type: "image" (R2 blob scan) | "stream_recording" (Cloudflare Stream recording,
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
-export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; npub: string; media_id: string; r2_key: string; uid?: string; }
+export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
   kind: "call" | "notify" | "call-status" | "relay-event";
-  to?: string; to_npub?: string | null; from?: string; from_pubkey?: string;
+  to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
   title?: string | null; body?: string | null; data?: Record<string, unknown> | null;
   event_kind?: number; event_id?: string; ts?: number;
 }
 export interface EmailMsg { to: string; subject: string; html: string; from?: string; }
-export interface AnalyticsMsg { event: string; npub?: string; props?: Record<string, unknown>; ts?: number; }
+export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }
 // AvaBrain: PUBLIC content only (server never gets DM plaintext). payload is JSON.
-export interface BrainMsg { npub: string; event_type: string; source_app: string; payload: Record<string, unknown>; traceId?: string; ts?: number; }
+export interface BrainMsg { uid: string; event_type: string; source_app: string; payload: Record<string, unknown>; traceId?: string; ts?: number; }

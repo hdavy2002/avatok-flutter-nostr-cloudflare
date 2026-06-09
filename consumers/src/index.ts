@@ -66,10 +66,10 @@ export default {
     // The row is self-contained (carries clerk_user_id + pubkey_hex).
     try {
       const due = await env.DB_META.prepare(
-        "SELECT npub, clerk_user_id, pubkey_hex FROM deletion_requests WHERE status='pending' AND scheduled_at < ?1 LIMIT 20",
+        "SELECT uid, clerk_user_id, pubkey_hex FROM deletion_requests WHERE status='pending' AND scheduled_at < ?1 LIMIT 20",
       ).bind(now).all();
       for (const r of (due.results ?? []) as any[]) {
-        try { await handleDeletion({ npub: r.npub, clerk_user_id: r.clerk_user_id, pubkey_hex: r.pubkey_hex }, env); }
+        try { await handleDeletion({ uid: r.uid, clerk_user_id: r.clerk_user_id, pubkey_hex: r.pubkey_hex }, env); }
         catch (e) { console.error("[deletion-backstop]", String(e)); }
       }
     } catch { /* table may not exist pre-Phase-1 */ }
@@ -128,14 +128,14 @@ async function sendEmail(msg: EmailMsg, env: Env): Promise<void> {
   if (!res.ok) throw new Error("Brevo send failed: " + res.status + " " + (await res.text()).slice(0, 200));
 }
 
-// --- analytics consumer (PostHog /batch; identity by npub only, never PII) ---
+// --- analytics consumer (PostHog /batch; identity by uid only, never PII) ---
 async function captureBatch(batch: MessageBatch, env: Env): Promise<void> {
   if (!env.POSTHOG_API_KEY) { for (const m of batch.messages) m.ack(); return; } // no-op until configured
   const events = batch.messages.map((m) => {
     const b = m.body as AnalyticsMsg;
     return {
       event: b.event,
-      distinct_id: b.npub ?? "anonymous",
+      distinct_id: b.uid ?? "anonymous",
       properties: b.props ?? {},
       timestamp: new Date(b.ts ?? Date.now()).toISOString(),
     };
