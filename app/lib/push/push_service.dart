@@ -75,13 +75,13 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
     id: (d['callId'] ?? '').toString(),
     nameCaller: (d['fromName'] ?? 'AvaTOK').toString(),
     appName: 'AvaTOK',
-    handle: (d['from'] ?? '').toString(),
+    handle: (d['fromPub'] ?? '').toString(),
     type: d['kind'] == 'video' ? 1 : 0, // 0 = audio, 1 = video
     duration: 45000,
     textAccept: 'Accept',
     textDecline: 'Decline',
     extra: {
-      'from': d['from'] ?? '',
+      'from': d['fromPub'] ?? '', // server sends 'fromPub' (FCM reserves 'from')
       'kind': d['kind'] ?? 'audio',
       'callId': d['callId'] ?? '',
       'fromName': d['fromName'] ?? 'AvaTOK',
@@ -125,10 +125,17 @@ class PushService {
       if (d['type'] == 'message') return; // app is open — unread badge handles it
       // Already on a call → auto-reply "busy" instead of ringing.
       if (d['type'] == 'call' && gInCall) {
-        _signalStatus((d['callId'] ?? '').toString(), 'busy', (d['from'] ?? '').toString());
+        _signalStatus((d['callId'] ?? '').toString(), 'busy', (d['fromPub'] ?? '').toString());
         return;
       }
       _showIncoming(d);
+    });
+    // The FCM token rotates (reinstall, restore, periodic refresh). Always
+    // re-register the new one so the device never silently stops receiving
+    // calls/pushes — this was a key cause of "no call came through".
+    FirebaseMessaging.instance.onTokenRefresh.listen((t) {
+      AvaLog.I.log('push', 'FCM token refreshed — re-registering');
+      _postToken(t).catchError((e) => AvaLog.I.log('push', 're-register failed: $e'));
     });
     _listenCallkit();
   }
@@ -198,14 +205,27 @@ class PushService {
   /// Register this device's FCM token against the user's npub.
   static Future<void> registerToken(String npub) async {
     try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token == null) { AvaLog.I.log('push', 'FCM token is NULL — device cannot receive calls'); return; }
-      // npub derived server-side from the NIP-98 signature; platform defaults to 'fcm'.
-      final res = await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
-      AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
+      var token = await FirebaseMessaging.instance.getToken();
+      if (token == null) {
+        AvaLog.I.log('push', 'FCM token null — retrying in 3s');
+        await Future.delayed(const Duration(seconds: 3));
+        token = await FirebaseMessaging.instance.getToken();
+      }
+      if (token == null) {
+        AvaLog.I.log('push', 'FCM token STILL NULL — device cannot receive calls/pushes');
+        return;
+      }
+      await _postToken(token);
     } catch (e) {
       AvaLog.I.log('push', 'register token FAILED: $e');
     }
+  }
+
+  /// POST the current token to the server (npub is derived server-side from the
+  /// NIP-98 signature). Used by registerToken AND by onTokenRefresh.
+  static Future<void> _postToken(String token) async {
+    final res = await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
+    AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
   }
 
   static void _openCall(dynamic extra) {

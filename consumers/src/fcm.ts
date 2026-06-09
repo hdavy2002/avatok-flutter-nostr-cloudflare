@@ -23,8 +23,11 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
 // type, callId, from, fromName, kind.
 function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriority: boolean } {
   if (msg.kind === "call") {
+    // NOTE: "from" is a RESERVED key in FCM data payloads — including it makes
+    // Firebase reject the whole message (400 INVALID_ARGUMENT "Invalid data
+    // payload key: from"), so calls never ring. Use "fromPub" instead.
     return { highPriority: true, data: {
-      type: "call", callId: msg.callId ?? "", from: msg.from ?? "",
+      type: "call", callId: msg.callId ?? "", fromPub: msg.from ?? "",
       fromName: msg.fromName ?? "AvaTOK", kind: msg.callType ?? "audio",
     } };
   }
@@ -34,9 +37,9 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
   if (msg.kind === "notify") {
     return { highPriority: false, data: { type: "message", fromName: msg.fromName ?? "AvaTOK" } };
   }
-  // relay-event (from the relay's onEventSaved hook)
+  // relay-event (from the relay's onEventSaved hook). "from" is reserved by FCM.
   const type = msg.event_kind === 25050 ? "call" : "message";
-  return { highPriority: msg.event_kind === 25050, data: { type, from: msg.from_pubkey ?? "", event_id: msg.event_id ?? "" } };
+  return { highPriority: msg.event_kind === 25050, data: { type, fromPub: msg.from_pubkey ?? "", event_id: msg.event_id ?? "" } };
 }
 
 async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }): Promise<void> {
@@ -56,11 +59,17 @@ async function sendFcm(env: Env, token: string, payload: { data: Record<string, 
   });
   if (!res.ok) {
     const txt = await res.text();
-    // 404/UNREGISTERED → prune stale token.
-    if (res.status === 404 || txt.includes("UNREGISTERED") || txt.includes("INVALID_ARGUMENT")) {
+    // ONLY prune a token Firebase says is genuinely dead. NOT INVALID_ARGUMENT —
+    // that can be a payload/config issue and was wiping perfectly good tokens,
+    // leaving devices unable to receive calls ("no registered devices").
+    const dead = res.status === 404 || txt.includes("UNREGISTERED") ||
+      txt.includes("registration-token-not-registered") || txt.includes("NOT_FOUND");
+    if (dead) {
       await env.DB_META.prepare("DELETE FROM push_tokens WHERE token=?1").bind(token).run();
+      console.warn("FCM: pruned dead token", token.slice(0, 12));
     } else {
-      throw new Error("FCM send failed: " + res.status + " " + txt.slice(0, 200));
+      // Keep the token; surface the error in logs (visible via `wrangler tail`).
+      console.error("FCM send failed (token KEPT):", res.status, txt.slice(0, 300));
     }
   }
 }
