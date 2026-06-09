@@ -7,6 +7,8 @@ environment:
   sdk: '>=3.6.0 <4.0.0'
 
 dependencies:
+  ava_diagnostics:
+    path: ../ava_diagnostics
   flutter_chat_ui: ^1.6.15
   flutter_chat_types: ^3.6.2
   flutter:

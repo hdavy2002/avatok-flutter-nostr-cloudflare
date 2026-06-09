@@ -1,0 +1,11 @@
+name: ava_diagnostics
+description: >
+  Shared AvaVerse diagnostics. An in-app ring-buffer log with a pluggable sink —
+  each app wires the sink to PostHog (capture 'diag_log') and sets its own `app`
+  key, so all apps stream metadata-only logs to one place, queryable per-user by
+  npub (resolve email->npub server-side). Pure Dart; no Flutter dependency.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
