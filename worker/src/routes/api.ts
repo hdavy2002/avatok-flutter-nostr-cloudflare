@@ -29,7 +29,7 @@ export async function register(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, devices: c?.n ?? 1 });
 }
 
-async function tokenCount(db: D1DatabaseSession, npub: string): Promise<number> {
+async function tokenCount(db: D1Database | D1DatabaseSession, npub: string): Promise<number> {
   const c = await db.prepare("SELECT count(*) AS n FROM push_tokens WHERE npub=?1").bind(npub).first<{ n: number }>();
   return c?.n ?? 0;
 }
@@ -39,7 +39,12 @@ export async function call(req: Request, env: Env): Promise<Response> {
   if (isErr(auth)) return json({ error: auth.error }, auth.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string };
   if (!b.to || !b.callId) return json({ error: "to and callId required" }, 400);
-  const n = await tokenCount(metaSession(env), b.to);
+  // Read the callee's device count from the PRIMARY (plain prepare), NOT an
+  // unconstrained replica session: read replication (mode=auto) let this gate
+  // intermittently see a stale replica with 0 tokens and false-404 a call to a
+  // registered device ("no registered devices"). The push consumer (fcm.ts)
+  // already reads the primary; this aligns the gate with it.
+  const n = await tokenCount(env.DB_META, b.to);
   if (n === 0) return json({ error: "callee has no registered devices" }, 404);
   await env.Q_PUSH.send({ kind: "call", to: b.to, from: auth.npub, fromName: b.fromName ?? "AvaTOK", callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
   return json({ sent: n });
