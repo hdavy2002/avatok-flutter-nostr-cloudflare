@@ -35,11 +35,17 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     return { highPriority: true, data: { type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "" } };
   }
   if (msg.kind === "notify") {
-    return { highPriority: false, data: { type: "message", fromName: msg.fromName ?? "AvaTOK" } };
+    // HIGH priority: a normal-priority data message is batched/deferred by
+    // Android Doze, so a sleeping phone only learns of a new message minutes
+    // later (the "message arrived after 10 min" symptom). Chat messages must
+    // wake the device immediately, exactly like calls.
+    return { highPriority: true, data: { type: "message", fromName: msg.fromName ?? "AvaTOK" } };
   }
   // relay-event (from the relay's onEventSaved hook). "from" is reserved by FCM.
   const type = msg.event_kind === 25050 ? "call" : "message";
-  return { highPriority: msg.event_kind === 25050, data: { type, fromPub: msg.from_pubkey ?? "", event_id: msg.event_id ?? "" } };
+  // Both calls (25050) and DM gift-wraps (1059) are high priority so they punch
+  // through Doze and ring/notify the instant they land.
+  return { highPriority: true, data: { type, fromPub: msg.from_pubkey ?? "", event_id: msg.event_id ?? "" } };
 }
 
 async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }): Promise<void> {

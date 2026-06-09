@@ -4,8 +4,10 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:bip340/bip340.dart' as bip340;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:pointycastle/export.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
@@ -86,9 +88,18 @@ class NostrEvent {
 }
 
 /// Thin Nostr relay client over a single WebSocket (NIP-01: EVENT/REQ/CLOSE).
+///
+/// SELF-HEALING: a chat client is useless if a dropped socket means a dead
+/// inbox. This client therefore (1) holds the socket open with a WebSocket-level
+/// keepalive ping (so NAT/edge idle-timeouts can't silently kill delivery),
+/// (2) auto-reconnects with exponential backoff on any close/error, and
+/// (3) re-runs NIP-42 auth and re-issues every active subscription on reconnect,
+/// so live messages keep flowing without the UI doing anything. Call connect()
+/// once; it stays connected until dispose(). Use ensureConnected() on app resume.
 class NostrClient {
   final String relayUrl;
   WebSocketChannel? _ch;
+  StreamSubscription? _sub;
   final _events = StreamController<(String subId, NostrEvent ev)>.broadcast();
   final _eose = StreamController<String>.broadcast();
   final _notifs = StreamController<Map<String, dynamic>>.broadcast();
@@ -98,18 +109,26 @@ class NostrClient {
   // serve PRIVATE kinds (DM gift-wraps 1059, seals, call signaling, DM relay
   // lists) until the socket proves key ownership with a signed kind-22242 event.
   //
-  // BUG THIS FIXES: previously, when there was no identity at connect we marked
-  // the socket "authed" and let private EVENTs through UNauthed. The relay
-  // silently dropped them ("auth-required"), so DMs looked sent but never
-  // landed — exactly the "send but never arrive" symptom. Now private frames are
-  // gated on a REAL NIP-42 success (`_socketAuthed`), queued until then, and
-  // every publish result (accepted/rejected) is surfaced so the UI can never
-  // show a false "sent".
+  // Private frames are gated on a REAL NIP-42 success (`_socketAuthed`), queued
+  // until then, and every publish result (accepted/rejected) is surfaced so the
+  // UI can never show a false "sent".
   static const Set<int> privateKinds = {13, 14, 1059, 25050, 10050, 10443};
   bool _socketAuthed = false; // true ONLY after the relay accepts our AUTH
   bool _hasIdentity = false;  // can we NIP-42 auth at all?
   String? _authEventId;
   final List<List<dynamic>> _privateQueue = []; // private frames awaiting AUTH
+
+  // --- resilience: keepalive + auto-reconnect + subscription replay ---
+  bool _wantConnected = false; // user intent: stay connected until dispose()
+  bool _disposed = false;
+  int _retry = 0;
+  Timer? _reconnectTimer;
+  static const Duration _keepalive = Duration(seconds: 25);
+  static const int _maxBackoffSecs = 30;
+
+  /// Active subscriptions (subId → filters). Re-issued verbatim after every
+  /// reconnect so a dropped socket never means a dead inbox.
+  final Map<String, List<Map<String, dynamic>>> _subs = {};
 
   /// Per-publish relay result: ["OK", id, accepted, message]. Lets the UI mark a
   /// message delivered/failed instead of optimistically assuming it sent.
@@ -129,8 +148,26 @@ class NostrClient {
   Stream<Map<String, dynamic>> get notifications => _notifs.stream;
   bool get isConnected => _connected;
 
+  /// Connect and KEEP connected (auto-reconnecting) until dispose().
   void connect() {
+    _wantConnected = true;
+    _openSocket();
+  }
+
+  /// Force an immediate connectivity check — call on app resume. Resets the
+  /// backoff so a foregrounded app reconnects instantly rather than waiting out
+  /// a long backoff window from while it was suspended.
+  void ensureConnected() {
+    if (_disposed) return;
+    _wantConnected = true;
     if (_connected) return;
+    _retry = 0;
+    _reconnectTimer?.cancel();
+    _openSocket();
+  }
+
+  void _openSocket() {
+    if (_disposed || _connected) return;
     // Per-user inbox DO routing: tell the relay which user's DO to connect to.
     // The pubkey is a routing hint only — NIP-42 still proves ownership server-side.
     var url = relayUrl;
@@ -144,17 +181,55 @@ class NostrClient {
     // real NIP-42 success — we NEVER send them in "public mode".
     _socketAuthed = false;
     _hasIdentity = id != null;
-    AvaLog.I.log('relay', 'connect (hasIdentity=$_hasIdentity)');
-    _ch = WebSocketChannel.connect(Uri.parse(url));
+    AvaLog.I.log('relay',
+        'connect (hasIdentity=$_hasIdentity)${_retry > 0 ? " [reconnect #$_retry]" : ""}');
+    try {
+      // Non-web: a WebSocket-level ping every 25s keeps the connection alive
+      // through NAT/edge idle timeouts AND detects a dead socket (a missing pong
+      // closes it → onDone → reconnect). On web the browser handles pings.
+      _ch = kIsWeb
+          ? WebSocketChannel.connect(Uri.parse(url))
+          : IOWebSocketChannel.connect(Uri.parse(url), pingInterval: _keepalive);
+    } catch (e) {
+      AvaLog.I.log('relay', 'connect threw: $e');
+      _onClosed();
+      return;
+    }
     _connected = true;
-    _ch!.stream.listen(_onMessage,
-        onError: (e) { _connected = false; AvaLog.I.log('relay', 'socket error: $e'); },
-        onDone: () { _connected = false; AvaLog.I.log('relay', 'socket closed'); });
+    _sub = _ch!.stream.listen(
+      _onMessage,
+      onError: (e) { AvaLog.I.log('relay', 'socket error: $e'); _onClosed(); },
+      onDone: () { AvaLog.I.log('relay', 'socket closed'); _onClosed(); },
+      cancelOnError: true,
+    );
+    // Re-issue any tracked subscriptions immediately. Public ones flow now;
+    // private ones are queued and flushed when AUTH succeeds below.
+    _resubscribe();
+  }
+
+  void _onClosed() {
+    _connected = false;
+    _socketAuthed = false;
+    _sub?.cancel();
+    _sub = null;
+    if (_wantConnected && !_disposed) _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_reconnectTimer?.isActive ?? false) return;
+    _retry++;
+    // Exponential backoff capped at 30s, with jitter to avoid thundering herds.
+    final secs = min(_maxBackoffSecs, 1 << min(_retry, 5)); // 2,4,8,16,32→30
+    final delay = Duration(milliseconds: secs * 1000 + Random().nextInt(1000));
+    AvaLog.I.log('relay', 'reconnect attempt #$_retry in ${delay.inMilliseconds}ms');
+    _reconnectTimer = Timer(delay, _openSocket);
   }
 
   void _onMessage(dynamic raw) {
     try {
       final d = jsonDecode(raw as String) as List;
+      // Any well-formed frame proves the link is alive → reset backoff.
+      if (_retry != 0) _retry = 0;
       switch (d[0]) {
         case 'EVENT':
           _events.add((d[1].toString(), NostrEvent.fromJson((d[2] as Map).cast<String, dynamic>())));
@@ -175,10 +250,13 @@ class NostrClient {
           final accepted = d.length > 2 && d[2] == true;
           final okMsg = d.length > 3 ? d[3].toString() : '';
           if (okId.isNotEmpty && okId == _authEventId) {
-            // Our NIP-42 auth result. On success, unlock + flush private frames.
+            // Our NIP-42 auth result. On success, unlock + flush + resubscribe.
             AvaLog.I.log('relay', 'AUTH ${accepted ? "accepted ✓" : "REJECTED ✗ ($okMsg)"}');
             if (accepted && !_socketAuthed) {
               _socketAuthed = true;
+              // _openSocket() already re-issued every tracked sub on connect:
+              // public ones went out immediately, private ones were queued — so
+              // flushing the queue here replays the private subs exactly once.
               AvaLog.I.log('relay', 'flushing ${_privateQueue.length} queued private frame(s)');
               _flushPrivate();
             }
@@ -209,12 +287,29 @@ class NostrClient {
 
   void publish(NostrEvent e) =>
       _send(['EVENT', e.toJson()], private: privateKinds.contains(e.kind));
-  void subscribe(String subId, List<Map<String, dynamic>> filters) => _send(
-        ['REQ', subId, ...filters],
-        private: filters.any(
-            (f) => ((f['kinds'] as List?) ?? const []).any((k) => privateKinds.contains(k))),
-      );
-  void closeSub(String subId) => _send(['CLOSE', subId]);
+
+  void subscribe(String subId, List<Map<String, dynamic>> filters) {
+    _subs[subId] = filters; // track for replay across reconnects
+    _send(['REQ', subId, ...filters], private: _filtersArePrivate(filters));
+  }
+
+  void closeSub(String subId) {
+    _subs.remove(subId);
+    _send(['CLOSE', subId]);
+  }
+
+  bool _filtersArePrivate(List<Map<String, dynamic>> filters) => filters.any(
+      (f) => ((f['kinds'] as List?) ?? const []).any((k) => privateKinds.contains(k)));
+
+  /// Re-issue every tracked subscription on (re)connect. Public subs flow
+  /// immediately; private subs queue until NIP-42 auth then flush.
+  void _resubscribe() {
+    if (_subs.isEmpty) return;
+    AvaLog.I.log('relay', 'resubscribing ${_subs.length} sub(s)');
+    _subs.forEach((subId, filters) {
+      _send(['REQ', subId, ...filters], private: _filtersArePrivate(filters));
+    });
+  }
 
   /// Public frames go out immediately (the WebSocket sink buffers until the
   /// socket opens). PRIVATE frames are held until a real NIP-42 auth — never
@@ -229,6 +324,11 @@ class NostrClient {
         final id = (o.length > 1 && o[1] is Map) ? ((o[1] as Map)['id']?.toString() ?? '') : '';
         if (id.isNotEmpty) _publishC.add((id: id, accepted: false, message: 'no-identity'));
         return;
+      }
+      // Don't pile up duplicate REQ frames for the same sub while waiting on auth.
+      final isReq = o.isNotEmpty && o[0] == 'REQ';
+      if (isReq) {
+        _privateQueue.removeWhere((q) => q.isNotEmpty && q[0] == 'REQ' && q.length > 1 && q[1] == o[1]);
       }
       AvaLog.I.log('relay', 'queue private ${o[0]} until auth');
       _privateQueue.add(o);
@@ -248,6 +348,10 @@ class NostrClient {
   }
 
   void dispose() {
+    _disposed = true;
+    _wantConnected = false;
+    _reconnectTimer?.cancel();
+    _sub?.cancel();
     try { _ch?.sink.close(); } catch (_) {}
     _events.close();
     _eose.close();

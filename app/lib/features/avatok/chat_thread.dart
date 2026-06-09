@@ -860,9 +860,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final bytes = m.localBytes ?? (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
       if (bytes == null) return;
       await _audio.stop();
-      await _audio.play(BytesSource(bytes));
+      // audioplayers can't reliably decode an .m4a/AAC clip from an in-memory
+      // BytesSource on Android (no container/mime hint) — it silently no-ops,
+      // which is exactly why the play button "did nothing". Write the decrypted
+      // bytes to a real temp file and play that, so the OS media stack reads the
+      // m4a header.
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/play_${m.id}.m4a');
+      await f.writeAsBytes(bytes, flush: true);
+      await _audio.play(DeviceFileSource(f.path));
       if (mounted) setState(() => _playingAudioId = m.id);
-    } catch (_) {/* ignore */}
+    } catch (e) {
+      AvaLog.I.log('media', 'voice play failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Couldn't play this voice message")));
+      }
+    }
   }
 
   Future<void> _openGroupInfo() async {

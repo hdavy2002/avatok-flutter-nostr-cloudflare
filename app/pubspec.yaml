@@ -26,6 +26,10 @@ dependencies:
   # Phone (SMS) OTP verification at onboarding.
   firebase_auth: ^5.3.1
   flutter_local_notifications: ^17.2.3
+  # App-icon unread badge (red dot + count, WhatsApp-style). Android support is
+  # launcher-dependent: Pixel shows a dot (count on long-press), Samsung/Oppo/
+  # Xiaomi/etc. show the number. iOS/macOS always show the number.
+  app_badge_plus: ^1.2.9
   # Product analytics + error tracking → PostHog (EU). See lib/core/analytics.dart.
   posthog_flutter: ^4.10.0
   # Encrypted chat media (pure-Dart AES-GCM) + pickers/record/playback

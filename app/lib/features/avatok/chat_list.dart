@@ -42,7 +42,7 @@ class ChatListScreen extends StatefulWidget {
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends State<ChatListScreen> {
+class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObserver {
   final _store = IdentityStore();
   final _contactsStore = ContactsStore();
   final _groupStore = GroupStore();
@@ -147,11 +147,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    PushService.clearMessageBadge(); // landing on the inbox clears the unread badge
     _bootstrap();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Coming back to the foreground: a suspended app's relay socket was likely
+      // torn down by the OS — reconnect immediately (don't wait out the backoff)
+      // so live delivery resumes at once, and clear the unread badge.
+      _inbox?.ensureConnected();
+      PushService.clearMessageBadge();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _inbox?.dispose();
     super.dispose();
   }

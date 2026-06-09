@@ -47,6 +47,7 @@ class _CallScreenState extends State<CallScreen> {
   WebSocketChannel? _ws;
   RTCPeerConnection? _pc;
   MediaStream? _stream;
+  bool _ended = false; // guard: _end() runs exactly once (hangup + dispose race)
   String? _remoteId;
   List<Map<String, dynamic>> _ice = kIceServers;
   Timer? _timer;
@@ -95,6 +96,11 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _endWith(String phase) {
+    // Release mic/cam IMMEDIATELY on every end path (remote hangup, decline,
+    // busy, no-answer, failure) — not 1.4s later when the route finally pops.
+    // This is what stops the green mic indicator lingering after the other side
+    // ends the call. _end() is idempotent, so the later dispose() is harmless.
+    _end();
     if (!mounted) return;
     setState(() => _phase = phase);
     Future.delayed(const Duration(milliseconds: 1400), () {
@@ -293,14 +299,26 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Future<void> _end() async {
+    if (_ended) return; // idempotent — hangup AND dispose both call this
+    _ended = true;
     gInCall = false;
     // Outgoing call torn down before it connected → tell the callee to stop ringing.
     if (widget.outgoing && !_connected) _notifyCalleeCanceled();
     _timer?.cancel();
     _ringTimeout?.cancel();
-    await _pc?.close();
-    await _ws?.sink.close();
-    _stream?.getTracks().forEach((t) => t.stop());
+    // Release the mic/cam FULLY. On Android, track.stop() alone leaves the OS
+    // privacy mic indicator (green dot) lit until the MediaStream is disposed
+    // AND detached from the renderers — which is why the mic stayed "in use"
+    // after hanging up. Order: stop capture → close PC/WS → drop renderer refs
+    // → dispose the stream.
+    try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    try { await _pc?.close(); } catch (_) {}
+    try { await _ws?.sink.close(); } catch (_) {}
+    try { _local.srcObject = null; } catch (_) {}
+    try { _remote.srcObject = null; } catch (_) {}
+    try { await _stream?.dispose(); } catch (_) {}
+    _stream = null;
+    _pc = null;
   }
 
   String get _statusText => switch (_phase) {

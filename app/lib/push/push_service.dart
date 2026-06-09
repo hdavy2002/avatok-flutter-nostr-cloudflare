@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:app_badge_plus/app_badge_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/api_auth.dart';
@@ -26,6 +28,38 @@ const _msgChannel = AndroidNotificationChannel(
   'avatok_messages', 'Messages',
   description: 'New message notifications', importance: Importance.high,
 );
+
+// --- Unread app-icon badge (red dot + count, WhatsApp-style) ----------------
+// Device-level (NOT per-account): the launcher badge is one OS-level affordance
+// for the whole phone, and it's a transient count cleared the moment the app is
+// opened — not durable per-user data — so a device key is correct here (the
+// account-scoping rule's explicit exception for device-level values). Stored in
+// secure storage so the BACKGROUND isolate (no app state) can read + bump it.
+const _kBadgeKey = 'avatok_badge_count';
+const _badgeStore = FlutterSecureStorage();
+
+Future<int> _bumpBadge() async {
+  final cur = int.tryParse(await _badgeStore.read(key: _kBadgeKey) ?? '0') ?? 0;
+  final next = cur + 1;
+  await _badgeStore.write(key: _kBadgeKey, value: '$next');
+  try { await AppBadgePlus.updateBadge(next); } catch (_) {}
+  return next;
+}
+
+Future<void> _clearBadge() async {
+  await _badgeStore.write(key: _kBadgeKey, value: '0');
+  try { await AppBadgePlus.updateBadge(0); } catch (_) {}
+  try { await _local.cancel(8000); } catch (_) {}
+}
+
+/// A tapped message notification must open the inbox — NOT wherever the app
+/// happened to be. (The old build had no tap handler, so a tap just foregrounded
+/// the app on whatever screen it was last on — e.g. the Diagnostics page.)
+void _onNotifTap(String? payload) {
+  if (payload != 'chat') return; // call taps are handled by CallKit, not here
+  _clearBadge();
+  navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
+}
 
 /// Background/terminated FCM handler — must be a top-level entry point.
 @pragma('vm:entry-point')
@@ -51,18 +85,32 @@ bool _terminalCallStatus(String s) =>
 /// Local notification for a new (E2E) message. Content-less by design — only the
 /// sender's display name travels; the message body never leaves the devices.
 Future<void> _showMessageNotif(Map<String, dynamic> d) async {
+  // Two server push paths carry type=message:
+  //  • "notify"      → has fromName (the REAL sender) → this is the user-facing
+  //                    banner ("<name> · New message").
+  //  • "relay-event" → has event_id but only the EPHEMERAL gift-wrap author
+  //                    (E2E hides the real sender), so it can't name anyone. We
+  //                    use it purely as a high-priority WAKE so a sleeping phone
+  //                    reconnects + syncs fast — no duplicate banner, no bump.
+  if (d.containsKey('event_id')) return; // relay-event → wake only
   final who = (d['fromName'] ?? 'AvaTOK').toString();
+  final count = await _bumpBadge();
+  final body = count > 1 ? '$count new messages' : 'New message';
   await _local.show(
-    DateTime.now().millisecondsSinceEpoch ~/ 1000 % 100000,
+    8000, // fixed id → the message notification updates in place (one banner)
     who,
-    'New message',
+    body,
     NotificationDetails(
       android: AndroidNotificationDetails(
         _msgChannel.id, _msgChannel.name,
         channelDescription: _msgChannel.description,
         importance: Importance.high, priority: Priority.high,
+        number: count, // launchers read this for the icon badge count
+        ticker: 'Message from $who',
+        category: AndroidNotificationCategory.message,
       ),
     ),
+    payload: 'chat',
   );
 }
 
@@ -103,12 +151,20 @@ class PushService {
   static Future<void> init() async {
     AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
     await FirebaseMessaging.instance.requestPermission();
-    await _local.initialize(const InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    ));
+    await _local.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+      onDidReceiveNotificationResponse: (resp) => _onNotifTap(resp.payload),
+    );
     await _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_msgChannel);
+    // Cold-started by tapping a message notification? Route to the inbox.
+    final launch = await _local.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp ?? false) {
+      _onNotifTap(launch!.notificationResponse?.payload);
+    }
     FirebaseMessaging.onMessage.listen((m) {
       final d = m.data;
       AvaLog.I.log('push', 'FCM received (foreground) type=${d['type']} callId=${d['callId'] ?? ''}');
@@ -146,6 +202,10 @@ class PushService {
     if (npubs.isEmpty) return;
     ApiAuth.postJson(kNotifyUrl, {'to': npubs, 'fromName': fromName}).ignore();
   }
+
+  /// Clear the unread app-icon badge + collapse the message notification. Call
+  /// when the user opens the app or views the chat list.
+  static Future<void> clearMessageBadge() => _clearBadge();
 
   /// Tell the caller a call was declined / busy — over the WS room (fast path)
   /// AND via the server push (works even if the socket can't be held).
