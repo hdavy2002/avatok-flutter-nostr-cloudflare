@@ -84,13 +84,7 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     } catch { /* tables may not exist yet */ }
   }
 
-  // 3. DB_RELAY (needs pubkey hex).
-  if (env.DB_RELAY && pubkeyHex) {
-    await env.DB_RELAY.batch([
-      env.DB_RELAY.prepare("DELETE FROM nostr_tags WHERE event_id IN (SELECT id FROM nostr_events WHERE pubkey=?1)").bind(pubkeyHex),
-      env.DB_RELAY.prepare("DELETE FROM nostr_events WHERE pubkey=?1").bind(pubkeyHex),
-    ]); done.push("db_relay");
-  }
+  // 3. (relay removed — Nostr deprecated; no nostr_events/tags to purge.)
 
   // 4. DB_MEDIA
   await env.DB_MEDIA.batch([

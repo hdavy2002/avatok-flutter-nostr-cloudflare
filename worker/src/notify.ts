@@ -19,16 +19,9 @@ export async function notifyUser(env: Env, uid: string, n: Notice): Promise<stri
     "INSERT INTO notifications (id, uid, type, title, body, data, read, created_at) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",
   ).bind(id, uid, n.type, n.title, n.body ?? null, n.data ? JSON.stringify(n.data) : null, now).run();
 
-  const payload = { id, type: n.type, title: n.title, body: n.body ?? "", data: n.data ?? {}, created_at: now };
-
-  // Realtime to an open app (best-effort; the user may be offline).
-  try {
-    await env.RELAY.get(env.RELAY.idFromName(uid)).fetch("https://relay/notify", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
-    });
-  } catch { /* not connected — push + feed-on-open cover it */ }
-
-  // Background wake (app closed).
+  // The in-app feed (D1, above) + this FCM wake cover delivery; the relay
+  // realtime-push path was removed with Nostr. (A future enhancement can push
+  // the alert down the user's InboxDO socket.)
   try { await env.Q_PUSH.send({ kind: "notify", to: uid, fromName: n.title }); } catch { /* best-effort */ }
 
   return id;

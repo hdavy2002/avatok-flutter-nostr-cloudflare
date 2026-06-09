@@ -3,7 +3,6 @@ export interface Env {
   DB_MEDIA: D1Database;
   DB_MODERATION: D1Database;
   DB_BRAIN: D1Database;               // AvaBrain knowledge graph + memory
-  DB_RELAY?: D1Database;              // nostr_events + nostr_tags (delete cascade)
   DB_WALLET?: D1Database;             // wallet (delete cascade; Phase 2)
   BLOBS: R2Bucket;
   VERIFICATION?: R2Bucket;            // locked selfie videos (delete cascade)

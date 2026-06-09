@@ -29,15 +29,6 @@
  */
 import type { Env } from "../types";
 
-export function relayDb(env: Env): D1Database {
-  return env.DB_RELAY;
-}
-
-/** Reserved for future relay sharding. Currently axis-independent. */
-export function relayDbFor(env: Env, _authorPubkey?: string, _createdAt?: number): D1Database {
-  return env.DB_RELAY;
-}
-
 export function metaDb(env: Env): D1Database {
   return env.DB_META;
 }
@@ -68,9 +59,6 @@ export function mediaSession(env: Env): D1DatabaseSession {
 }
 export function moderationSession(env: Env): D1DatabaseSession {
   return env.DB_MODERATION.withSession("first-unconstrained");
-}
-export function relaySession(env: Env): D1DatabaseSession {
-  return env.DB_RELAY.withSession("first-unconstrained");
 }
 
 /**

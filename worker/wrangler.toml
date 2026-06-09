@@ -45,11 +45,6 @@ database_name = "avatok-moderation"
 database_id = "770d5709-2974-447e-b4e8-8c43f22df997"
 
 [[d1_databases]]
-binding = "DB_RELAY"           # nostr_events + nostr_tags (single; time-shard near 5GB)
-database_name = "avatok-relay"
-database_id = "8ce3ca0d-d668-4bb4-94ea-7c8a458a0667"
-
-[[d1_databases]]
 binding = "DB_BRAIN"           # AvaBrain knowledge graph + memory (own DB — event log is high-volume)
 database_name = "avatok-brain"
 database_id = "f5bfb712-5151-4e9f-b47a-20d76465f205"
@@ -162,15 +157,6 @@ index_name = "avatok-semantic"
 binding = "BROWSER"
 
 # ---------------------------------------------------------------------------
-# Service binding to the relay router (Worker→Worker, free, not a request).
-# ENABLED IN PHASE 3 once the relay Worker is deployed. Commented so the API
-# Worker deploys standalone in Phase 2.
-# ---------------------------------------------------------------------------
-# [[services]]
-# binding = "RELAY_SVC"
-# service = "avatok-relay"
-
-# ---------------------------------------------------------------------------
 # Durable Object — group call rooms (SFU signaling). 1:1 calls stay P2P.
 # WebSocket Hibernation so idle rooms cost ~nothing.
 # ---------------------------------------------------------------------------
@@ -202,13 +188,6 @@ class_name = "AgentDO"
 [[durable_objects.bindings]]
 name = "CONVERSATION_DO"
 class_name = "ConversationDO"
-
-# Cross-script binding to the relay's per-user inbox DO, so the API can push a
-# realtime in-app notification down the user's already-open socket.
-[[durable_objects.bindings]]
-name = "RELAY"
-class_name = "RelayRoom"
-script_name = "avatok-relay"
 
 # Per-user messaging inbox (Cloudflare-native pivot; Nostr deprecated). Holds the
 # user's hibernatable WebSocket(s) + DO-local SQLite message log. Keyed by uid.

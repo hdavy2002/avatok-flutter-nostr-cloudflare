@@ -61,7 +61,8 @@ async function pushOffline(env: Env, toUid: string, _fromUid: string, _conv: str
 export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  if (!(await kycVerified(env, ctx.uid))) return json({ error: "kyc required" }, 403);
+  // KYC gate is flag-gated OFF until Stripe Identity ships (set KYC_REQUIRED=1 to enforce).
+  if (env.KYC_REQUIRED === "1" && !(await kycVerified(env, ctx.uid))) return json({ error: "kyc required" }, 403);
 
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const kind = String(b.kind || "text");
@@ -162,25 +163,3 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   return json({ conv, kind: "group" });
 }
 
-// ---- guarded self-test (server-side verification without a Clerk JWT) -------
-// Exercises ensureDm → appendTo(recipient) → InboxDO sync. Gated on a secret
-// header; no-op unless SELFTEST_KEY is set and matches. Removed in housekeeping.
-export async function selfTest(req: Request, env: Env): Promise<Response> {
-  if (!env.SELFTEST_KEY || req.headers.get("x-selftest") !== env.SELFTEST_KEY) {
-    return json({ error: "not found" }, 404);
-  }
-  const a = "selftest_alice", b = "selftest_bob";
-  const conv = await ensureDm(env, a, b);
-  const created = Date.now();
-  const clientId = "ct_" + created;
-  const payload = { conv, sender: a, kind: "text", body: "hello from selftest", media_ref: null, client_id: clientId, created_at: created };
-  const mine = await appendTo(env, a, payload);
-  const theirs = await appendTo(env, b, payload);
-  const stub = env.INBOX.get(env.INBOX.idFromName(b));
-  const synced = await (await stub.fetch("https://inbox/sync?cursor=0")).json<any>();
-  const got = (synced.messages || []).find((m: any) => m.client_id === clientId);
-  return json({
-    ok: !!got, conv, sender_id: mine.id, recipient_id: theirs.id,
-    recipient_synced: got || null, recipient_msg_count: (synced.messages || []).length,
-  });
-}

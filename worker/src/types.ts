@@ -4,7 +4,6 @@ export interface Env {
   DB_META: D1Database;
   DB_MEDIA: D1Database;
   DB_MODERATION: D1Database;
-  DB_RELAY: D1Database;  // read-only here (/backup export)
   DB_BRAIN: D1Database;  // AvaBrain knowledge graph + memory
   DB_WALLET: D1Database; // AvaWallet audit trail (balance authority is WalletDO)
 
@@ -39,9 +38,6 @@ export interface Env {
   // Browser Rendering — link previews / OG images
   BROWSER: Fetcher;
 
-  // Worker→Worker (free). Enabled in Phase 3 when the relay deploys.
-  RELAY_SVC?: Fetcher;
-
   // Durable Object — group call rooms
   CALL_ROOMS: DurableObjectNamespace;
   // Durable Object — per-user AvaBrain reasoning
@@ -54,8 +50,6 @@ export interface Env {
   AGENT_DO: DurableObjectNamespace;
   // Durable Object — per agent↔agent conversation (turn loop, Phase 7)
   CONVERSATION_DO: DurableObjectNamespace;
-  // Cross-script — relay's per-user inbox DO (realtime in-app notifications)
-  RELAY: DurableObjectNamespace;
   // Durable Object — per-user messaging inbox (Cloudflare-native pivot; Nostr
   // deprecated). Hibernatable WS + DO-local SQLite message log. Keyed by uid.
   INBOX: DurableObjectNamespace;
@@ -95,8 +89,9 @@ export interface Env {
   // AvaStorage (universal per-account pool). Free quota in GB (default 5).
   STORAGE_FREE_GB?: string;
 
-  // Cloudflare-native messaging self-test gate (server verification, no Clerk JWT).
-  SELFTEST_KEY?: string;
+  // Messaging KYC gate. "1" enforces verified KYC on /api/msg/send; default OFF
+  // (Stripe Identity paused) so 1:1 chat works without verification for now.
+  KYC_REQUIRED?: string;
   // Stripe Identity (KYC). Gated; unset → /api/kyc/* returns 503.
   STRIPE_IDENTITY_WEBHOOK_SECRET?: string;
 

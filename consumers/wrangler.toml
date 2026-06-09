@@ -29,12 +29,6 @@ binding = "DB_BRAIN"
 database_name = "avatok-brain"
 database_id = "f5bfb712-5151-4e9f-b47a-20d76465f205"
 
-# Relay events — account-deletion cascade wipes a user's nostr_events + tags.
-[[d1_databases]]
-binding = "DB_RELAY"
-database_name = "avatok-relay"
-database_id = "8ce3ca0d-d668-4bb4-94ea-7c8a458a0667"
-
 # Wallet audit trail — wallet-transactions consumer writes the ledger + mirrors.
 [[d1_databases]]
 binding = "DB_WALLET"

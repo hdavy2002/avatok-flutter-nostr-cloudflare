@@ -20,7 +20,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
-import { wsInbox, sendMsg, syncMsg, receiptMsg, convList, convCreate, selfTest } from "./routes/messaging";
+import { wsInbox, sendMsg, syncMsg, receiptMsg, convList, convCreate } from "./routes/messaging";
 
 export { CallRoom } from "./do/call_room";
 export { InboxDO } from "./do/inbox";
@@ -62,7 +62,6 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/receipt" && req.method === "POST") return await receiptMsg(req, env);
       if (p === "/api/conversations" && req.method === "GET") return await convList(req, env);
       if (p === "/api/conversations" && req.method === "POST") return await convCreate(req, env);
-      if (p === "/api/msg/_selftest") return await selfTest(req, env);
 
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
