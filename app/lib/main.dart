@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +8,8 @@ import 'auth/clerk_client.dart';
 import 'core/account_restore.dart';
 import 'core/analytics.dart';
 import 'core/api_auth.dart';
+import 'core/ava_log.dart';
+import 'core/disk_cache.dart';
 import 'core/onboarding_store.dart';
 import 'core/prefs_sync.dart';
 import 'core/theme.dart';
@@ -114,21 +118,75 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     }
   }
 
+  static const _kAcct = 'clerk_account_id';
+
   Future<void> _boot() async {
+    // LOCAL-FIRST boot (the WhatsApp model): if we remember the account and its
+    // key is stored locally, render the app IMMEDIATELY from local state and
+    // validate the Clerk session in the BACKGROUND. currentUser() is a network
+    // call to Clerk — blocking on it at boot (esp. on flaky mobile DNS) was a big
+    // chunk of the cold-start wait. Fresh installs / signed-out fall back to the
+    // online check.
+    try {
+      final cachedId = await DiskCache.readGlobal(_kAcct);
+      if (cachedId != null && cachedId.isNotEmpty) {
+        AccountScope.id = cachedId;
+        final local = await _idStore.load(); // in-memory cached after first read
+        if (local != null && await _onb.isDone()) {
+          _to(_Stage.shell); // instant — no network on the critical path
+          unawaited(_validateClerkInBackground());
+          ContactsStore().pullAndMerge();
+          return;
+        }
+      }
+    } catch (_) {/* fall through to the online path */}
+    await _bootOnline();
+  }
+
+  /// The original network boot — used on fresh install / signed-out, or when we
+  /// have no local session to trust.
+  Future<void> _bootOnline() async {
     bool signedIn = false;
     try {
+      final t0 = DateTime.now();
       final cu = await _clerk.currentUser();
+      AvaLog.I.log('boot', 'clerk currentUser (online) ${DateTime.now().difference(t0).inMilliseconds}ms signedIn=${cu != null}');
       AccountScope.id = cu?.id; // scope the Nostr identity to this account
+      if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
       signedIn = cu != null;
     } catch (_) {}
     if (!signedIn) { _to(_Stage.welcome); return; }
     await _route();
   }
 
+  /// Validate/refresh the Clerk session AFTER the UI is already on screen. Only
+  /// signs out on a definitive revocation (currentUser returns null = no token);
+  /// a network error keeps the local session (offline-friendly). Also logs how
+  /// long Clerk actually takes (the measurement).
+  Future<void> _validateClerkInBackground() async {
+    try {
+      final t0 = DateTime.now();
+      final cu = await _clerk.currentUser();
+      AvaLog.I.log('boot', 'clerk validate (bg) ${DateTime.now().difference(t0).inMilliseconds}ms signedIn=${cu != null}');
+      if (cu == null) { await _signOut(); return; } // session revoked server-side
+      if (cu.id != AccountScope.id) { // account changed under us — re-route
+        AccountScope.id = cu.id;
+        await DiskCache.writeGlobal(_kAcct, cu.id);
+        await _route();
+        return;
+      }
+      await DiskCache.writeGlobal(_kAcct, cu.id);
+    } catch (_) {/* offline — keep showing the local session */}
+  }
+
   void _to(_Stage s) { if (mounted) setState(() => _stage = s); }
 
   Future<void> _afterAuth() async {
-    try { AccountScope.id = (await _clerk.currentUser())?.id; } catch (_) {}
+    try {
+      final cu = await _clerk.currentUser();
+      AccountScope.id = cu?.id;
+      if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
+    } catch (_) {}
     await _route();
   }
 
@@ -175,6 +233,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     try { await _clerk.signOut(); } catch (_) {/* clear locally regardless */}
     AccountScope.id = null;
     AuthSession.lastPassword = null;
+    await DiskCache.deleteGlobal(_kAcct); // forget the remembered account
     _to(_Stage.welcome);
   }
 

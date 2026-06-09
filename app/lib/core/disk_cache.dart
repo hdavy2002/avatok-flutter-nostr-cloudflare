@@ -54,4 +54,40 @@ class DiskCache {
       if (await f.exists()) await f.delete();
     } catch (_) {/* best-effort */}
   }
+
+  // ── UNSCOPED (device-level) values — e.g. the last Clerk account id, so boot
+  // can render the local session instantly before any network auth check. Not
+  // account-scoped by design (it's how we recover WHICH account to scope to). ──
+  static Future<File> _globalFile(String name) async {
+    final base = await getApplicationSupportDirectory();
+    final dir = Directory('${base.path}/cache/_global');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+    return File('${dir.path}/$safe.json');
+  }
+
+  static Future<String?> readGlobal(String name) async {
+    try {
+      final f = await _globalFile(name);
+      if (await f.exists() && await f.length() > 0) return await f.readAsString();
+    } catch (e) {
+      AvaLog.I.log('cache', 'readGlobal FAILED $name: $e');
+    }
+    return null;
+  }
+
+  static Future<void> writeGlobal(String name, String value) async {
+    try {
+      await (await _globalFile(name)).writeAsString(value, flush: true);
+    } catch (e) {
+      AvaLog.I.log('cache', 'writeGlobal FAILED $name: $e');
+    }
+  }
+
+  static Future<void> deleteGlobal(String name) async {
+    try {
+      final f = await _globalFile(name);
+      if (await f.exists()) await f.delete();
+    } catch (_) {/* best-effort */}
+  }
 }
