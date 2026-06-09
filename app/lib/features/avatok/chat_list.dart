@@ -70,6 +70,19 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   Map<String, String> _drafts = {};
   final _previewStore = ChatPreviewStore();
   Map<String, ({String text, int ts, bool me})> _previews = {};
+
+  // In-memory snapshot of the last-rendered list. STATIC so it survives this
+  // screen being destroyed + recreated when you navigate away (e.g. to AvaLive)
+  // and back — the new screen paints these INSTANTLY instead of flashing the
+  // "No chats yet" empty state while disk reloads. _booted gates that empty
+  // state so it only appears once loading is genuinely finished, never mid-load.
+  static List<Contact> _snapContacts = [];
+  static List<Group> _snapGroups = [];
+  static Map<String, ({String text, int ts, bool me})> _snapPreviews = {};
+  static Map<String, Set<String>> _snapFlags = {};
+  static Map<String, int> _snapLastRead = {};
+  static bool _snapHas = false;
+  bool _booted = false;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Set<String> _enabledApps = {};
   AccountKind _accountKind = AccountKind.personal;
@@ -154,6 +167,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     PushService.clearMessageBadge(); // landing on the inbox clears the unread badge
+    // Paint the last-known list immediately (no blank "No chats yet" flash when
+    // returning to AvaTok); _bootstrap then refreshes from disk + relay.
+    if (_snapHas) {
+      _contacts = _snapContacts;
+      _groups = _snapGroups;
+      _previews = _snapPreviews;
+      _lastRead = _snapLastRead;
+      if (_snapFlags.isNotEmpty) _flags = _snapFlags;
+      _booted = true;
+    }
     _bootstrap();
   }
 
@@ -210,8 +233,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         _lastRead = lastRead; _flags = flags; _statusCount = status.length; _drafts = drafts;
         _previews = previews;
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
+        _booted = true; // loading done → safe to show the empty state if truly empty
       });
     }
+    // Update the static snapshot so the next time this screen is recreated (after
+    // navigating away and back) it paints instantly from memory.
+    _snapContacts = contacts; _snapGroups = groups; _snapPreviews = previews;
+    _snapFlags = flags; _snapLastRead = lastRead; _snapHas = true;
     // Cold-start cache health: if these are 0 for a user who clearly has chats,
     // the local cache isn't surviving restarts (the blank-list bug). Compare in
     // PostHog against the relay re-sync that follows.
@@ -639,7 +667,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                         ]),
                       ),
                     ),
-                  if (rows.isEmpty)
+                  if (rows.isEmpty && !_booted)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 60),
+                      child: Center(
+                          child: SizedBox(width: 24, height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AvaColors.brand))),
+                    ),
+                  if (rows.isEmpty && _booted)
                     Padding(
                       padding: const EdgeInsets.only(top: 60),
                       child: Center(child: Text(
