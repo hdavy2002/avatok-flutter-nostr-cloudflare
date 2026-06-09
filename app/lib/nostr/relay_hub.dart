@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../core/ava_log.dart';
@@ -6,6 +7,22 @@ import '../core/db.dart';
 import 'ava_dm.dart' show DmMessage;
 import 'nip17.dart';
 import 'nostr_client.dart';
+
+/// A gift-wrapped DM decrypted ONCE by the hub. Consumers (chat list, threads,
+/// group threads) filter this by [convKey] instead of each re-running the heavy
+/// Nip17.unwrap themselves.
+class HubEvent {
+  final String convKey; // '1:<peerHex>' (DM) or 'g:<gid>' (group)
+  final String senderPub;
+  final String recipientPub;
+  final bool mine;
+  final String rumorId;
+  final String payload;
+  final int createdAt;
+  HubEvent(this.convKey, this.senderPub, this.recipientPub, this.mine,
+      this.rumorId, this.payload, this.createdAt);
+  DmMessage toDm() => DmMessage(rumorId: rumorId, mine: mine, payload: payload, createdAt: createdAt);
+}
 
 /// App-lifetime singleton holding the ONE relay connection and the ONE
 /// subscription to all of my gift-wrapped DMs (kind 1059), plus an in-memory
@@ -35,6 +52,13 @@ class RelayHub {
   final Map<String, List<DmMessage>> _byConv = {};
   final Set<String> _seenWrap = {};
 
+  // Every DM, decrypted exactly ONCE here, then fanned out. chat list + threads
+  // + group threads subscribe to this instead of each calling Nip17.unwrap on
+  // the same wrap (which was 3-4× the crypto on the UI thread → typing/send lag
+  // when the relay re-streamed a batch).
+  final _incoming = StreamController<HubEvent>.broadcast();
+  Stream<HubEvent> get incoming => _incoming.stream;
+
   /// The shared, always-connected client. First call connects and subscribes
   /// once to every kind-1059 wrap addressed to me; it also starts decrypting +
   /// storing them. Idempotent.
@@ -58,35 +82,38 @@ class RelayHub {
   void _onEvent((String, NostrEvent) rec) {
     final ev = rec.$2;
     if (ev.kind != 1059 || _priv == null) return;
-    if (!_seenWrap.add(ev.id)) return; // dedup by gift-wrap event id
-    final u = Nip17.unwrap(_priv!, ev);
+    if (!_seenWrap.add(ev.id)) return; // dedup by wrap id → skip re-decrypt of seen wraps
+    final u = Nip17.unwrap(_priv!, ev); // the ONE decryption per wrap, app-wide
     if (u == null) return;
-    final peer = u.senderPub == _pub ? u.recipientPub : u.senderPub;
-    final list = _byConv.putIfAbsent('1:$peer', () => []);
-    if (list.any((m) => m.rumorId == u.rumorId)) return; // dedup by rumor id
-    list.add(DmMessage(
-        rumorId: u.rumorId, mine: u.senderPub == _pub, payload: u.payload, createdAt: u.createdAt));
-
-    // Persist into the local SQLite DB (the source of truth — Phase 3 reads from
-    // it reactively). Group messages route by gid; receipts are control-only so
-    // they're not stored. INSERT OR IGNORE means the relay re-streaming old wraps
-    // on every launch is a no-op — no re-download, no re-render.
+    final mine = u.senderPub == _pub;
+    final peer = mine ? u.recipientPub : u.senderPub;
+    var convKey = '1:$peer';
+    var isReceipt = false;
     try {
-      var convKey = '1:$peer';
       final env = jsonDecode(u.payload);
       if (env is Map) {
-        if (env['t'] == 'receipt') return; // status, not a stored message
+        if (env['t'] == 'receipt') isReceipt = true; // status, not a stored message
         if (env['gid'] != null) convKey = 'g:${env['gid']}';
       }
-      Db.I.upsertMessage(MessagesCompanion.insert(
-        rumorId: u.rumorId,
-        convKey: convKey,
-        mine: u.senderPub == _pub,
-        payload: u.payload,
-        createdAt: u.createdAt,
-      ));
-      if (!_dbLogged) { _dbLogged = true; AvaLog.I.log('db', 'sqlite: storing messages locally ✓'); }
-    } catch (_) {/* best-effort; in-memory store already holds it */}
+    } catch (_) {/* legacy/plain payload */}
+
+    // Store real messages (not receipts) in memory + SQLite, deduped by rumor id.
+    // INSERT OR IGNORE means the relay re-streaming old wraps on launch is a no-op.
+    if (!isReceipt) {
+      final list = _byConv.putIfAbsent(convKey, () => []);
+      if (!list.any((m) => m.rumorId == u.rumorId)) {
+        list.add(DmMessage(rumorId: u.rumorId, mine: mine, payload: u.payload, createdAt: u.createdAt));
+        try {
+          Db.I.upsertMessage(MessagesCompanion.insert(
+            rumorId: u.rumorId, convKey: convKey, mine: mine, payload: u.payload, createdAt: u.createdAt));
+          if (!_dbLogged) { _dbLogged = true; AvaLog.I.log('db', 'sqlite: storing messages locally ✓'); }
+        } catch (_) {/* best-effort */}
+      }
+    }
+
+    // Fan out the decrypted event to all consumers (receipts included — threads
+    // apply them as delivery/read status).
+    _incoming.add(HubEvent(convKey, u.senderPub, u.recipientPub, mine, u.rumorId, u.payload, u.createdAt));
   }
 
   bool _dbLogged = false;

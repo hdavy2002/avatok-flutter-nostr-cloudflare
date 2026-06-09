@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../core/group_store.dart';
 import 'nip17.dart';
 import 'nostr_client.dart';
+import 'relay_hub.dart';
 
 class GroupMessage {
   final String rumorId;
@@ -31,26 +32,17 @@ class AvaGroupDm {
   Stream<GroupMessage> get messages => _controller.stream;
 
   void start() {
-    client.connect();
-    _sub = client.events.listen((rec) {
-      final (subId, ev) = rec;
-      if (subId != _subId || ev.kind != 1059) return;
-      final u = Nip17.unwrap(myPriv, ev);
-      if (u == null) return;
-      try {
-        final env = jsonDecode(u.payload);
-        if (env is! Map || env['gid'] != group.id) return; // not this group
-      } catch (_) {
-        return;
+    // Consume the hub's SINGLE-decrypt stream filtered to this group — no own
+    // socket, REQ, or Nip17.unwrap (the hub already decrypted every wrap once).
+    final myConv = 'g:${group.id}';
+    _sub = RelayHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
+      if (!_controller.isClosed) {
+        _controller.add(GroupMessage(
+          rumorId: e.rumorId, senderPub: e.senderPub, mine: e.mine,
+          payload: e.payload, createdAt: e.createdAt,
+        ));
       }
-      _controller.add(GroupMessage(
-        rumorId: u.rumorId, senderPub: u.senderPub, mine: u.senderPub == myPub,
-        payload: u.payload, createdAt: u.createdAt,
-      ));
     });
-    client.subscribe(_subId, [
-      {'kinds': [1059], '#p': [myPub], 'limit': 500},
-    ]);
   }
 
   /// Send [payload] (already gid-stamped) to all members. Returns rumor id.

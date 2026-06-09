@@ -274,11 +274,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// Global inbox: receive group invites (ginfo) even when no thread is open.
   void _startInbox(Identity id) {
     _inbox = RelayHub.I.ensure(id.privHex, id.pubHex); // shared app-lifetime client + inbox sub (survives navigation)
-    _inboxSub = _inbox!.events.listen((rec) {
-      final (_, ev) = rec;
-      if (ev.kind != 1059) return;
-      final u = Nip17.unwrap(id.privHex, ev);
-      if (u == null || _seenInbox.contains(u.rumorId)) return;
+    // Consume the hub's SINGLE-decrypt stream (HubEvent already unwrapped) — no
+    // own Nip17.unwrap here. This was one of 3-4 places re-decrypting every wrap
+    // on the UI thread.
+    _inboxSub = RelayHub.I.incoming.listen((u) {
+      if (_seenInbox.contains(u.rumorId)) return;
       _seenInbox.add(u.rumorId);
       try {
         final env = jsonDecode(u.payload);

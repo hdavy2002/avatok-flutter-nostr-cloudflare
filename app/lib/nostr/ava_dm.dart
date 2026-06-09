@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../core/ava_log.dart';
 import 'nip17.dart';
 import 'nostr_client.dart';
+import 'relay_hub.dart';
 
 /// A delivered 1:1 message (payload is our app envelope JSON: text or media).
 class DmMessage {
@@ -41,11 +42,10 @@ class AvaDm {
   Stream<({String rumorId, bool ok, String message})> get sendStatus => _statusC.stream;
 
   void start() {
-    // The shared RelayHub client is already connected and subscribed to ALL my
-    // kind-1059 wraps, so we do NOT open a socket or issue our own REQ here —
-    // that per-thread re-REQ was what re-downloaded a conversation's whole
-    // history every time it was opened. We just listen to the shared stream and
-    // filter to THIS peer; past messages come from the on-disk cache instead.
+    // Consume the hub's SINGLE-decrypt stream filtered to this conversation —
+    // no own Nip17.unwrap (that was duplicate per-wrap crypto on the UI thread,
+    // a cause of typing/send lag during re-stream bursts). History comes from
+    // the on-disk cache; this stream just carries new + live messages.
     _pubSub = client.publishResults.listen((r) {
       final rid = _giftToRumor[r.id];
       if (rid == null) return;
@@ -54,16 +54,9 @@ class AvaDm {
       }
       if (!_statusC.isClosed) _statusC.add((rumorId: rid, ok: r.accepted, message: r.message));
     });
-    _sub = client.events.listen((rec) {
-      final (_, ev) = rec;
-      if (ev.kind != 1059) return;
-      final u = Nip17.unwrap(myPriv, ev);
-      if (u == null) return;
-      final fromPeer = u.senderPub == peerPub && u.recipientPub == myPub;
-      final fromMe = u.senderPub == myPub && u.recipientPub == peerPub;
-      if (!fromPeer && !fromMe) return; // different conversation
-      _controller.add(DmMessage(
-          rumorId: u.rumorId, mine: fromMe, payload: u.payload, createdAt: u.createdAt));
+    final myConv = '1:$peerPub';
+    _sub = RelayHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
+      if (!_controller.isClosed) _controller.add(e.toDm());
     });
   }
 
