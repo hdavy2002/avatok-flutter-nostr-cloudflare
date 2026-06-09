@@ -56,6 +56,9 @@ export interface Env {
   CONVERSATION_DO: DurableObjectNamespace;
   // Cross-script — relay's per-user inbox DO (realtime in-app notifications)
   RELAY: DurableObjectNamespace;
+  // Durable Object — per-user messaging inbox (Cloudflare-native pivot; Nostr
+  // deprecated). Hibernatable WS + DO-local SQLite message log. Keyed by uid.
+  INBOX: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;
@@ -91,6 +94,11 @@ export interface Env {
 
   // AvaStorage (universal per-account pool). Free quota in GB (default 5).
   STORAGE_FREE_GB?: string;
+
+  // Cloudflare-native messaging self-test gate (server verification, no Clerk JWT).
+  SELFTEST_KEY?: string;
+  // Stripe Identity (KYC). Gated; unset → /api/kyc/* returns 503.
+  STRIPE_IDENTITY_WEBHOOK_SECRET?: string;
 
   // AvaWallet (Phase 2). Real money-in flag-gated OFF pending legal (§10.1).
   WALLET_TOPUP_ENABLED?: string;   // "1" enables Stripe top-up (set ONLY after legal)

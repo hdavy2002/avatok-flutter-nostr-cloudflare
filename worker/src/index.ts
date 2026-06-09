@@ -20,8 +20,10 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
+import { wsInbox, sendMsg, syncMsg, receiptMsg, convList, convCreate, selfTest } from "./routes/messaging";
 
 export { CallRoom } from "./do/call_room";
+export { InboxDO } from "./do/inbox";
 export { UserBrain } from "./do/user_brain";
 export { WalletDO } from "./do/wallet";
 export { StreamSessionDO } from "./do/stream_session";
@@ -50,7 +52,18 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     const room = p.match(/^\/(?:api\/)?room\/([A-Za-z0-9_-]{1,64})$/);
     if (room) return env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(room[1])).fetch(req);
 
+    // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).
+    if (p === "/api/inbox" && req.headers.get("Upgrade") === "websocket") return await wsInbox(req, env);
+
     try {
+      // --- messaging (Cloudflare-native; Clerk-JWT auth, server-readable) ---
+      if (p === "/api/msg/send" && req.method === "POST") return await sendMsg(req, env);
+      if (p === "/api/msg/sync" && req.method === "GET") return await syncMsg(req, env);
+      if (p === "/api/msg/receipt" && req.method === "POST") return await receiptMsg(req, env);
+      if (p === "/api/conversations" && req.method === "GET") return await convList(req, env);
+      if (p === "/api/conversations" && req.method === "POST") return await convCreate(req, env);
+      if (p === "/api/msg/_selftest") return await selfTest(req, env);
+
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);

@@ -210,6 +210,12 @@ name = "RELAY"
 class_name = "RelayRoom"
 script_name = "avatok-relay"
 
+# Per-user messaging inbox (Cloudflare-native pivot; Nostr deprecated). Holds the
+# user's hibernatable WebSocket(s) + DO-local SQLite message log. Keyed by uid.
+[[durable_objects.bindings]]
+name = "INBOX"
+class_name = "InboxDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -225,6 +231,10 @@ new_sqlite_classes = ["WalletDO", "StreamSessionDO"]
 [[migrations]]
 tag = "v4"
 new_sqlite_classes = ["AgentDO", "ConversationDO"]
+
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["InboxDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
