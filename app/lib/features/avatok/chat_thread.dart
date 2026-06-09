@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/api_auth.dart';
+import '../../core/ava_log.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
@@ -561,6 +562,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final video = kind == 'video';
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
     final to = widget.chat.seed; // for real contacts this is their npub
+    AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
     // Ring the callee's phone via FCM wake (real npub contacts only).
     if (to.startsWith('npub1')) {
       try {
@@ -571,11 +573,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           'callId': room,
           'kind': video ? 'video' : 'audio',
         });
+        AvaLog.I.log('call', 'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
         if (res.statusCode == 404 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('They have no device registered yet — they need to open AvaTOK once')));
         }
-      } catch (_) {/* still open the call screen so caller can wait */}
+      } catch (e) { AvaLog.I.log('call', 'POST /api/call FAILED: $e'); }
+    } else {
+      AvaLog.I.log('call', 'NOT ringing — contact seed is not an npub ($to)');
     }
     if (!mounted) return;
     Navigator.push(

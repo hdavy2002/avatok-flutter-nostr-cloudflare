@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/api_auth.dart';
+import '../core/ava_log.dart';
 import '../core/call_log_store.dart';
 import '../core/config.dart';
 import '../features/avatok/call_screen.dart';
@@ -68,7 +69,8 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
 /// which rings and wakes the screen even when locked or the app is killed.
 Future<void> _showIncoming(Map<String, dynamic> d) async {
-  if (d['type'] != 'call') return;
+  if (d['type'] != 'call') { AvaLog.I.log('call', 'incoming skipped (type=${d['type']})'); return; }
+  AvaLog.I.log('call', 'showing incoming-call UI callId=${d['callId']} kind=${d['kind']} from=${d['fromName']}');
   final params = CallKitParams(
     id: (d['callId'] ?? '').toString(),
     nameCaller: (d['fromName'] ?? 'AvaTOK').toString(),
@@ -108,6 +110,7 @@ class PushService {
         ?.createNotificationChannel(_msgChannel);
     FirebaseMessaging.onMessage.listen((m) {
       final d = m.data;
+      AvaLog.I.log('push', 'FCM received (foreground) type=${d['type']} callId=${d['callId'] ?? ''}');
       // Server-relayed call status → update the active CallScreen.
       if (d['type'] == 'call-status') {
         final callId = (d['callId'] ?? '').toString();
@@ -196,10 +199,13 @@ class PushService {
   static Future<void> registerToken(String npub) async {
     try {
       final token = await FirebaseMessaging.instance.getToken();
-      if (token == null) return;
+      if (token == null) { AvaLog.I.log('push', 'FCM token is NULL — device cannot receive calls'); return; }
       // npub derived server-side from the NIP-98 signature; platform defaults to 'fcm'.
-      await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
-    } catch (_) {/* offline / not configured */}
+      final res = await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
+      AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
+    } catch (e) {
+      AvaLog.I.log('push', 'register token FAILED: $e');
+    }
   }
 
   static void _openCall(dynamic extra) {
