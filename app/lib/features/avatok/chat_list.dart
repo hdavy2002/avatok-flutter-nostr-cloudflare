@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../nostr/nip17.dart';
 import '../../nostr/nostr_client.dart';
+import '../../nostr/relay_hub.dart';
 import '../../nostr/presence.dart';
 import '../../push/push_service.dart';
 import '../../shell/ava_sidebar.dart';
@@ -51,6 +53,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   List<Contact> _contacts = [];
   List<Group> _groups = [];
   NostrClient? _inbox;
+  StreamSubscription? _inboxSub; // our listener on the shared client (cancel on dispose, don't kill the socket)
   int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Communities, 3 = Calls
 
   // Unread badges + chat flags + status.
@@ -168,7 +171,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _inbox?.dispose();
+    _inboxSub?.cancel(); // stop listening, but leave the shared RelayHub socket alive
     super.dispose();
   }
 
@@ -225,8 +228,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// Global inbox: receive group invites (ginfo) even when no thread is open.
   void _startInbox(Identity id) {
-    _inbox = NostrClient(kNostrRelayUrl)..connect();
-    _inbox!.events.listen((rec) {
+    _inbox = RelayHub.I.ensure(id.privHex, id.pubHex); // shared app-lifetime client + inbox sub (survives navigation)
+    _inboxSub = _inbox!.events.listen((rec) {
       final (_, ev) = rec;
       if (ev.kind != 1059) return;
       final u = Nip17.unwrap(id.privHex, ev);
@@ -307,9 +310,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         }
       } catch (_) {/* ignore */}
     });
-    _inbox!.subscribe('inbox', [
-      {'kinds': [1059], '#p': [id.pubHex], 'limit': 200},
-    ]);
+    // No subscribe here — RelayHub already holds the single 'inbox' subscription
+    // for all my 1059 wraps; we just listen to the shared stream above.
   }
 
   /// A short, content-free-ish preview line for an incoming message envelope.

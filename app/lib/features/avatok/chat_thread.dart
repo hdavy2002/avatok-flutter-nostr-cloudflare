@@ -31,6 +31,7 @@ import '../../nostr/ava_group_dm.dart';
 import '../../nostr/nip17.dart';
 import '../../nostr/nostr_client.dart';
 import '../../nostr/presence.dart';
+import '../../nostr/relay_hub.dart';
 import '../../push/push_service.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
@@ -175,7 +176,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (peerHex == null) return; // demo contact → keep local echo
     _realMode = true;
     setState(() => _msgs.clear()); // drop demo seed; history loads from relay
-    _nostr = NostrClient(kNostrRelayUrl);
+    _nostr = RelayHub.I.ensure(id.privHex, id.pubHex); // shared app-lifetime client (no per-thread socket/REQ)
     _dm = AvaDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, peerPub: peerHex);
     _dm!.messages.listen(_onDm);
     _dm!.sendStatus.listen(_onSendStatus);
@@ -186,6 +187,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_sharePresence) _presence!.sendOnline();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
+    // Seed instantly from the shared hub's in-memory store — includes messages
+    // that arrived while this thread was CLOSED (the live stream only carries
+    // future events; disk cache is loaded separately below for cross-restart).
+    for (final m in RelayHub.I.messagesFor(_convKey!)) _onDm(m);
     // Restore persisted delivery/read marks so ticks are correct immediately on
     // reopen (before any fresh receipt arrives) — survives app restarts.
     ReceiptStore().get(_convKey!).then((r) {
@@ -230,7 +235,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _isGroup = true;
     _group = g;
     setState(() => _msgs.clear());
-    _nostr = NostrClient(kNostrRelayUrl);
+    _nostr = RelayHub.I.ensure(id.privHex, id.pubHex); // shared app-lifetime client (no per-thread socket/REQ)
     _gdm = AvaGroupDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, group: g);
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
@@ -548,7 +553,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _pruneTimer?.cancel();
     _persistTimer?.cancel();
     _persistNow(); // flush any pending message-cache write on exit
-    _nostr?.dispose();
+    // NOTE: do NOT dispose _nostr — it's the shared RelayHub client owned by the
+    // whole app. _dm.stop()/_gdm.stop() above already cancel this screen's
+    // listeners; the socket stays alive so returning to a chat is instant.
     super.dispose();
   }
 
