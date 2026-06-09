@@ -39,6 +39,27 @@ PERMS = [
     "android.permission.ACCESS_COARSE_LOCATION",
     # Read the device address book to find/invite friends (flutter_contacts)
     "android.permission.READ_CONTACTS",
+    # Unread app-icon badge count (red dot + number, WhatsApp-style). Android has
+    # NO single standard badge API — each OEM launcher reads its own permission.
+    # We declare the FULL set once (no per-device branching): each is a harmless
+    # no-op on launchers that don't use it, and app_badge_plus + the launcher pick
+    # whichever applies. Modern launchers (Android 8+) also derive the count from
+    # the active notification's setNumber(), which needs no permission at all.
+    "com.sec.android.provider.badge.permission.READ",     # Samsung
+    "com.sec.android.provider.badge.permission.WRITE",    # Samsung
+    "com.htc.launcher.permission.READ_SETTINGS",          # HTC
+    "com.htc.launcher.permission.UPDATE_SHORTCUT",        # HTC
+    "com.sonyericsson.home.permission.BROADCAST_BADGE",   # Sony
+    "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",  # Sony
+    "com.anddoes.launcher.permission.UPDATE_COUNT",       # Apex
+    "com.majeur.launcher.permission.UPDATE_BADGE",        # Solid
+    "com.huawei.android.launcher.permission.CHANGE_BADGE",   # Huawei
+    "com.huawei.android.launcher.permission.READ_SETTINGS",  # Huawei
+    "com.huawei.android.launcher.permission.WRITE_SETTINGS", # Huawei
+    "me.everything.badger.permission.BADGE_COUNT_READ",   # EverythingMe
+    "me.everything.badger.permission.BADGE_COUNT_WRITE",  # EverythingMe
+    "com.oppo.launcher.permission.READ_SETTINGS",         # Oppo
+    "com.oppo.launcher.permission.WRITE_SETTINGS",        # Oppo
 ]
 
 

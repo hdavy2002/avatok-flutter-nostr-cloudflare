@@ -63,6 +63,7 @@ class _Msg {
   Uint8List? localBytes; // instant preview of self-sent media
   bool uploading;
   bool failed;
+  bool sent; // relay ACKed this event (["OK", id, true]) — it's on the relay
   Map<String, dynamic>? replyTo; // {id, preview, who}
   bool edited;
   bool starred;
@@ -73,7 +74,7 @@ class _Msg {
   Map<int, int> pollVotes = {}; // option index → count (local tally)
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.localBytes,
-       this.uploading = false, this.failed = false, this.replyTo, this.edited = false,
+       this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
        this.starred = false, this.forwarded = false, this.expireAt, this.special, this.extra});
 }
 
@@ -314,11 +315,39 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String _shortPub(String hex) => hex.length > 8 ? '${hex.substring(0, 6)}…' : hex;
 
   // The relay accepted/rejected one of our sends → flag the bubble accordingly.
+  // ok=true means the event is now ON THE RELAY ("sent" / 1 tick); delivery and
+  // read are reported separately by the recipient over the presence channel.
   void _onSendStatus(({String rumorId, bool ok, String message}) s) {
     if (!mounted) return;
     final idx = _msgs.indexWhere((m) => m.evId == s.rumorId);
     if (idx < 0) return;
-    setState(() => _msgs[idx].failed = !s.ok);
+    setState(() { _msgs[idx].failed = !s.ok; _msgs[idx].sent = s.ok; });
+  }
+
+  /// Per-message delivery status for MY 1:1 messages (WhatsApp-style). Returns
+  /// the tick icon, its colour, and a tiny human label; null when status doesn't
+  /// apply (received messages, groups, demo mode). Drives both the ticks and the
+  /// little caption under each of my bubbles so the sender always knows where a
+  /// message is: still sending → on the relay but not yet on the phone →
+  /// delivered to the phone → actually read.
+  ({IconData icon, Color color, String label})? _statusFor(_Msg m) {
+    if (!m.me || !_realMode || _isGroup || m.ts <= 0) return null;
+    if (m.failed) {
+      return (icon: Icons.error_outline, color: const Color(0xFFFFD9D9), label: 'Not sent · tap to retry');
+    }
+    if (m.uploading) {
+      return (icon: Icons.schedule, color: Colors.white70, label: 'Sending…');
+    }
+    if (_peerReadTs > 0 && m.ts <= _peerReadTs) {
+      return (icon: Icons.done_all, color: const Color(0xFF8BE9FD), label: 'Read'); // 2 blue ticks
+    }
+    if (_peerDeliveredTs > 0 && m.ts <= _peerDeliveredTs) {
+      return (icon: Icons.done_all, color: Colors.white70, label: 'Delivered'); // 2 grey ticks
+    }
+    if (m.sent) {
+      return (icon: Icons.done, color: Colors.white70, label: 'Waiting to reach phone'); // 1 tick
+    }
+    return (icon: Icons.schedule, color: Colors.white70, label: 'Sending…');
   }
 
   void _onDm(DmMessage m) {
@@ -393,6 +422,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _seq++, j['me'] == true, (j['text'] ?? '').toString(),
         _fmtTime(ts == 0 ? DateTime.now().millisecondsSinceEpoch ~/ 1000 : ts),
         ts: ts, evId: ev,
+        sent: j['me'] == true, // my persisted history was already accepted by the relay
         special: j['special'] as String?,
         extra: (j['extra'] as Map?)?.cast<String, dynamic>(),
         replyTo: (j['replyTo'] as Map?)?.cast<String, dynamic>(),
@@ -1500,24 +1530,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                         const SizedBox(width: 4),
                         Icon(Icons.timer_outlined, size: 11, color: m.me ? Colors.white70 : const Color(0xFF9AA1AC)),
                       ],
-                      if (m.me && _realMode && !_isGroup && m.ts > 0) ...[
-                        const SizedBox(width: 4),
-                        if (_peerReadTs > 0 && m.ts <= _peerReadTs)
-                          const Icon(Icons.done_all, size: 13, color: Color(0xFF8BE9FD)) // read
-                        else if (_peerDeliveredTs > 0 && m.ts <= _peerDeliveredTs)
-                          const Icon(Icons.done_all, size: 13, color: Colors.white70)    // delivered
-                        else
-                          const Icon(Icons.done, size: 13, color: Colors.white70),       // sent
-                      ],
-                      if (m.uploading) ...[
-                        const SizedBox(width: 6),
-                        SizedBox(width: 10, height: 10,
-                            child: CircularProgressIndicator(strokeWidth: 1.5,
-                                color: m.me ? Colors.white70 : AvaColors.sub)),
-                      ],
-                      if (m.failed) ...[
-                        const SizedBox(width: 8),
-                        GestureDetector(
+                      // Delivery status (my 1:1 messages): tick + tiny caption —
+                      // sending → "waiting to reach phone" (1 tick) → "delivered"
+                      // (2 grey) → "read" (2 blue). Tap to retry when failed.
+                      Builder(builder: (_) {
+                        final st = _statusFor(m);
+                        if (st == null) return const SizedBox.shrink();
+                        final row = Row(mainAxisSize: MainAxisSize.min, children: [
+                          const SizedBox(width: 4),
+                          Icon(st.icon, size: 13, color: st.color),
+                          const SizedBox(width: 3),
+                          Text(st.label,
+                              style: TextStyle(fontSize: 9.5, fontStyle: FontStyle.italic, color: st.color)),
+                        ]);
+                        if (!m.failed) return row;
+                        return GestureDetector(
                           onTap: () {
                             if (m.localBytes != null) {
                               final kind = m.media?.kind ?? MediaKind.file;
@@ -1526,17 +1553,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                               // Resend a failed text message; track the new wrap.
                               final newId = _dm!.send(jsonEncode({'t': 'text', 'body': m.text,
                                   if (m.replyTo != null) 'replyTo': m.replyTo, if (m.expireAt != null) 'exp': m.expireAt}));
-                              setState(() { m.evId = newId; m.failed = false; _seenEv.add(newId); });
+                              setState(() { m.evId = newId; m.failed = false; m.sent = false; _seenEv.add(newId); });
                             }
                           },
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(Icons.refresh, size: 13, color: m.me ? Colors.white : AvaColors.danger),
-                            Text(' Retry',
-                                style: TextStyle(fontSize: 11,
-                                    color: m.me ? Colors.white : AvaColors.danger,
-                                    fontWeight: FontWeight.w700)),
-                          ]),
-                        ),
+                          child: row,
+                        );
+                      }),
+                      if (m.uploading && _statusFor(m) == null) ...[
+                        const SizedBox(width: 6),
+                        SizedBox(width: 10, height: 10,
+                            child: CircularProgressIndicator(strokeWidth: 1.5,
+                                color: m.me ? Colors.white70 : AvaColors.sub)),
                       ],
                     ]),
                   ),
