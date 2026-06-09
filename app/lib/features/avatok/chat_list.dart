@@ -9,6 +9,8 @@ import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/chat_state.dart';
+import '../../core/chat_list_snapshot.dart';
+import '../../core/db.dart';
 import '../../core/device_contacts.dart';
 import '../../core/filter_store.dart';
 import '../../core/group_store.dart';
@@ -71,18 +73,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   final _previewStore = ChatPreviewStore();
   Map<String, ({String text, int ts, bool me})> _previews = {};
 
-  // In-memory snapshot of the last-rendered list. STATIC so it survives this
-  // screen being destroyed + recreated when you navigate away (e.g. to AvaLive)
-  // and back — the new screen paints these INSTANTLY instead of flashing the
-  // "No chats yet" empty state while disk reloads. _booted gates that empty
-  // state so it only appears once loading is genuinely finished, never mid-load.
-  static List<Contact> _snapContacts = [];
-  static List<Group> _snapGroups = [];
-  static Map<String, ({String text, int ts, bool me})> _snapPreviews = {};
-  static Map<String, Set<String>> _snapFlags = {};
-  static Map<String, int> _snapLastRead = {};
-  static bool _snapHas = false;
+  // Cold start paints from a SINGLE indexed SQLite query over the persisted chat
+  // -list projection (Db.chatsOnce) — instant on any phone, nothing pre-loaded
+  // into memory (that wouldn't scale across many AvaVerse apps). Within a session
+  // the tiny ChatListSnapshot makes navigate-away-and-back repaint synchronously.
+  // _booted gates the "No chats yet" empty state so it only shows once a load is
+  // done; _authoritativeLoaded guards the async projection paint from clobbering
+  // the fresher store-backed data if it happens to resolve later.
   bool _booted = false;
+  bool _authoritativeLoaded = false;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Set<String> _enabledApps = {};
   AccountKind _accountKind = AccountKind.personal;
@@ -169,15 +168,105 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     PushService.clearMessageBadge(); // landing on the inbox clears the unread badge
     // Paint the last-known list immediately (no blank "No chats yet" flash when
     // returning to AvaTok); _bootstrap then refreshes from disk + relay.
-    if (_snapHas) {
-      _contacts = _snapContacts;
-      _groups = _snapGroups;
-      _previews = _snapPreviews;
-      _lastRead = _snapLastRead;
-      if (_snapFlags.isNotEmpty) _flags = _snapFlags;
+    if (ChatListSnapshot.has) {
+      _contacts = ChatListSnapshot.contacts;
+      _groups = ChatListSnapshot.groups;
+      _previews = ChatListSnapshot.previews;
+      _lastRead = ChatListSnapshot.lastRead;
+      if (ChatListSnapshot.flags.isNotEmpty) _flags = ChatListSnapshot.flags;
       _booted = true;
+    } else {
+      // True cold start (no in-session snapshot): paint from the local DB with
+      // one query before the slower store reads in _bootstrap finish.
+      _paintFromProjection();
     }
     _bootstrap();
+  }
+
+  /// Cold-start fast path: read the persisted chat-list projection (ONE indexed
+  /// query) and paint immediately. Reconstructs just enough of the in-memory maps
+  /// for build() to render; _bootstrap then overwrites them with the
+  /// authoritative store data and rewrites the projection.
+  Future<void> _paintFromProjection() async {
+    List<ChatRow> rows;
+    try {
+      rows = await Db.I.chatsOnce();
+    } catch (_) {
+      return; // no projection yet → _bootstrap will load + paint as usual
+    }
+    if (rows.isEmpty || _authoritativeLoaded || !mounted) return;
+    final contacts = <Contact>[];
+    final groups = <Group>[];
+    final previews = <String, ({String text, int ts, bool me})>{};
+    final unread = <String, int>{};
+    final flags = {'blocked': <String>{}, 'archived': <String>{}, 'muted': <String>{}, 'pinned': <String>{}};
+    for (final r in rows) {
+      if (r.json.isEmpty) continue;
+      try {
+        final m = jsonDecode(r.json) as Map<String, dynamic>;
+        final k = (m['k'] ?? '').toString();
+        if (k.isEmpty) continue;
+        final pv = (m['pv'] ?? '').toString();
+        previews[k] = (text: pv, ts: (m['ts'] as num?)?.toInt() ?? 0, me: m['me'] == true);
+        final u = (m['u'] as num?)?.toInt() ?? 0;
+        if (u > 0) unread[k] = u;
+        for (final f in ((m['f'] as List?) ?? const [])) {
+          flags[f.toString()]?.add(k);
+        }
+        if (m['g'] == true) {
+          groups.add(Group(
+              id: (m['gid'] ?? '').toString(),
+              name: (m['n'] ?? 'Group').toString(),
+              members: List.filled((m['mc'] as num?)?.toInt() ?? 0, '')));
+        } else {
+          contacts.add(Contact(
+              npub: (m['s'] ?? '').toString(),
+              name: (m['n'] ?? '').toString(),
+              avatarUrl: (m['a'] ?? '').toString()));
+        }
+      } catch (_) {/* skip a bad row */}
+    }
+    if (_authoritativeLoaded || !mounted) return;
+    setState(() {
+      _contacts = contacts;
+      _groups = groups;
+      _previews = previews;
+      _unread..clear()..addAll(unread);
+      _flags = flags;
+      _booted = true;
+    });
+  }
+
+  /// Serialize the current chat list into the persisted projection (one row per
+  /// conversation). Mirrors exactly what build() renders, so the next cold start
+  /// repaints identically from a single query.
+  void _saveProjection(List<Contact> contacts, List<Group> groups,
+      Map<String, ({String text, int ts, bool me})> previews, Map<String, Set<String>> flags) {
+    List<String> flagsFor(String k) => [for (final f in flags.keys) if (flags[f]!.contains(k)) f];
+    final rows = <({String convKey, int ts, String json})>[];
+    for (final g in groups) {
+      final k = 'g:${g.id}';
+      final pv = previews[k];
+      final ts = pv?.ts ?? 0;
+      rows.add((convKey: k, ts: ts, json: jsonEncode({
+        'k': k, 'g': true, 'n': g.name, 'a': '', 's': 'group-${g.id}',
+        'gid': g.id, 'mc': g.members.length,
+        'pv': pv?.text ?? '', 'ts': ts, 'me': pv?.me ?? false,
+        'u': _unread[k] ?? 0, 'f': flagsFor(k),
+      })));
+    }
+    for (final c in contacts) {
+      final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
+      final pv = previews[k];
+      final ts = pv?.ts ?? 0;
+      rows.add((convKey: k, ts: ts, json: jsonEncode({
+        'k': k, 'g': false, 'n': c.name, 'a': c.avatarUrl, 's': c.npub,
+        'gid': '', 'mc': 0,
+        'pv': pv?.text ?? '', 'ts': ts, 'me': pv?.me ?? false,
+        'u': _unread[k] ?? 0, 'f': flagsFor(k),
+      })));
+    }
+    Db.I.replaceChatList(rows).catchError((Object _) {}); // fire-and-forget
   }
 
   @override
@@ -235,12 +324,19 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         _previews = previews;
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
         _booted = true; // loading done → safe to show the empty state if truly empty
+        _authoritativeLoaded = true; // store data wins over the projection paint
       });
+    } else {
+      _authoritativeLoaded = true;
     }
-    // Update the static snapshot so the next time this screen is recreated (after
-    // navigating away and back) it paints instantly from memory.
-    _snapContacts = contacts; _snapGroups = groups; _snapPreviews = previews;
-    _snapFlags = flags; _snapLastRead = lastRead; _snapHas = true;
+    // Refresh the shared snapshot so the next open (or a recreated screen) paints
+    // instantly from memory.
+    ChatListSnapshot.update(
+        contacts: contacts, groups: groups, previews: previews, flags: flags, lastRead: lastRead);
+    // Persist the chat-list projection so the NEXT cold start paints from a single
+    // SQLite query (no in-memory pre-warm). Built from the authoritative stores;
+    // fire-and-forget background write.
+    _saveProjection(contacts, groups, previews, flags);
     // Cold-start cache health: if these are 0 for a user who clearly has chats,
     // the local cache isn't surviving restarts (the blank-list bug). Compare in
     // PostHog against the relay re-sync that follows.

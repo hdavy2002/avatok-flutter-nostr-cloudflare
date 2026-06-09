@@ -39,7 +39,15 @@ class Contacts extends Table {
   Set<Column> get primaryKey => {npub};
 }
 
-/// Per-conversation preview line + ordering + unread count (drives the list).
+/// Per-conversation chat-list projection — ONE persisted row per conversation
+/// that already holds everything a list row needs to paint (name, avatar,
+/// preview, unread, flags, group info), serialized in [json]. This is the
+/// WhatsApp-style local source of truth for the chat list: on cold start the
+/// list paints from a SINGLE indexed query over this table (`chatsOnce`), so it
+/// is instant on any phone WITHOUT pre-loading anything into memory. [ts] is a
+/// real column purely so the query can ORDER BY recency cheaply; [json] carries
+/// the full display payload. The authoritative stores (contacts/previews/flags)
+/// rewrite this projection in the background after each load.
 @DataClassName('ChatRow')
 class Chats extends Table {
   TextColumn get convKey => text()();
@@ -47,6 +55,7 @@ class Chats extends Table {
   IntColumn get ts => integer().withDefault(const Constant(0))();
   BoolColumn get lastMine => boolean().withDefault(const Constant(false))();
   IntColumn get unread => integer().withDefault(const Constant(0))();
+  TextColumn get json => text().withDefault(const Constant(''))();
   @override
   Set<Column> get primaryKey => {convKey};
 }
@@ -56,7 +65,46 @@ class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  // The Chats projection gained a [json] column in v2. Add it in-place so an
+  // existing on-device DB upgrades without wiping messages/contacts.
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(chats, chats.json);
+          }
+        },
+      );
+
+  // ── chat-list projection (the single-query cold-start source of truth) ──
+  /// All chat-list rows, most-recent first — ONE indexed query. Pinned-first
+  /// ordering + filtering is applied cheaply in Dart over this small result.
+  Future<List<ChatRow>> chatsOnce() => (select(chats)
+        ..orderBy([(t) => OrderingTerm(expression: t.ts, mode: OrderingMode.desc)]))
+      .get();
+
+  /// Replace the whole projection in one transaction (delete-all + bulk insert).
+  /// Cheap: the row count equals the number of conversations, and it runs in the
+  /// background right after the authoritative stores load. Takes plain records so
+  /// callers (widgets) don't need to import drift's companion/Value types.
+  Future<void> replaceChatList(List<({String convKey, int ts, String json})> rows) async {
+    await transaction(() async {
+      await delete(chats).go();
+      if (rows.isNotEmpty) {
+        await batch((b) => b.insertAll(
+              chats,
+              [
+                for (final r in rows)
+                  ChatsCompanion.insert(convKey: r.convKey, ts: Value(r.ts), json: Value(r.json)),
+              ],
+              mode: InsertMode.insertOrReplace, // duplicate convKey can't crash the write
+            ));
+      }
+    });
+  }
 
   // ── writes (used now by RelayHub; reactive reads land in Phase 3) ──
   /// Store a message; re-streamed duplicates are silently ignored.
