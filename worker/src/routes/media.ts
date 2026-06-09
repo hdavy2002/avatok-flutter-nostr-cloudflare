@@ -3,19 +3,19 @@
 import type { Env } from "../types";
 import { json, sha256Hex, CORS } from "../util";
 import { mediaSession, moderationSession } from "../db/shard";
-import { authenticate, isErr } from "../auth";
+import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
 
 // POST /upload/public — plaintext media (posts). sha256 → blocklist check →
 // R2 PUT (status 'pending') → enqueue Workers-AI scan (Phase 4 consumer flips
 // to 'live' or deletes). AI is async per Rulebook; blocklist is a cheap sync gate.
-export async function uploadPublic(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+export async function uploadPublic(req: Request, env: Env, exec: ExecutionContext): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   const hash = await sha256Hex(bytes);                  // content id (moderation/blocklist/dedup)
-  const r2Key = userKey(auth.npub, "public", hash);    // per-user storage path → clear ownership
+  const r2Key = userKey(ctx.uid, "public", hash);    // per-user storage path → clear ownership
   const url = `${env.BLOSSOM_BASE_URL}/${r2Key}`;
   const ct = req.headers.get("x-content-type") || req.headers.get("content-type") || "application/octet-stream";
   const fileName = req.headers.get("x-file-name") || defaultName(ct, hash);
@@ -35,19 +35,19 @@ export async function uploadPublic(req: Request, env: Env, ctx: ExecutionContext
     await env.BLOBS.put(r2Key, bytes, { httpMetadata: { contentType: ct } });
     id = crypto.randomUUID();
     await mdb.prepare(
-      `INSERT INTO user_media (id, npub, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, folder_id)
+      `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, folder_id)
        VALUES (?1,?2,?3,'blossom','public',0,?4,?5,?6,?7,?8,?9,'pending',?10,?11,'sent',?12)`,
-    ).bind(id, auth.npub, mediaType(ct), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(ct), fileName, folderId).run();
+    ).bind(id, ctx.uid, mediaType(ct), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(ct), fileName, folderId).run();
     // async moderation — content hash for scan/blocklist, r2_key for fetch/delete.
-    ctx.waitUntil(env.Q_MODERATION.send({ type: "image", hash, npub: auth.npub, media_id: id, r2_key: r2Key }));
+    exec.waitUntil(env.Q_MODERATION.send({ type: "image", hash, uid: ctx.uid, media_id: id, r2_key: r2Key }));
     // AvaBrain learns from public uploads (metadata only — no DM media here).
-    ctx.waitUntil(env.Q_BRAIN.send({ npub: auth.npub, event_type: "upload_completed", source_app: app, payload: { hash, mime: ct, size: bytes.byteLength } }));
+    exec.waitUntil(env.Q_BRAIN.send({ uid: ctx.uid, event_type: "upload_completed", source_app: app, payload: { hash, mime: ct, size: bytes.byteLength } }));
     // AvaBrain CONTENT ingestion of the public file itself (caption/OCR/text → embed),
     // gated on the user's consent toggles. Private uploads never reach this path.
-    ctx.waitUntil(maybeEmitLibraryBrain(env, auth.npub, app, { media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName, category: categoryOf(ct), visibility: "public" }));
+    exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName, category: categoryOf(ct), visibility: "public" }));
   } else if (folderId) {
     // Re-upload of identical content while sitting in a folder → place it there.
-    await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND npub=?2").bind(existing.id, auth.npub, folderId).run();
+    await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND uid=?2").bind(existing.id, ctx.uid, folderId).run();
   }
   return json({ hash, key: r2Key, url, status: "pending", id });
 }
@@ -56,12 +56,12 @@ export async function uploadPublic(req: Request, env: Env, ctx: ExecutionContext
 // No scan (unscannable by design). Same public bucket — ciphertext is safe to
 // serve; the AES key travels inside the encrypted DM.
 export async function uploadPrivate(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   const hash = await sha256Hex(bytes);
-  const r2Key = userKey(auth.npub, "dm", hash);   // per-user path (ciphertext owned by sender)
+  const r2Key = userKey(ctx.uid, "dm", hash);   // per-user path (ciphertext owned by sender)
   const url = `${env.BLOSSOM_BASE_URL}/${r2Key}`;
   const ct = "application/octet-stream"; // ciphertext
   // The real content type/name travel in headers (the bytes themselves are
@@ -77,22 +77,22 @@ export async function uploadPrivate(req: Request, env: Env): Promise<Response> {
   const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1").bind(r2Key).first();
   if (!existing) {
     await mdb.prepare(
-      `INSERT INTO user_media (id, npub, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
+      `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
        VALUES (?1,?2,?3,'blossom','private',1,?4,?5,?6,?7,?8,?9,'skipped',?10,?11,'sent')`,
-    ).bind(crypto.randomUUID(), auth.npub, mediaType(realMime), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(realMime), fileName).run();
+    ).bind(crypto.randomUUID(), ctx.uid, mediaType(realMime), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(realMime), fileName).run();
   }
   return json({ hash, key: r2Key, url, status: "live" });
 }
 
 // Per-user storage prefix with a type subfolder → everything a user owns lives
-// under `u/<npub>/…`, so an account delete is one prefix wipe and nothing of
-// another user's can be touched. `npub` is bech32 (safe charset).
-//   u/<npub>/public/<hash>   public posts
-//   u/<npub>/dm/<hash>       DM ciphertext
-//   u/<npub>/video/…         (future) Bunny is separate, but keep the convention
-//   u/<npub>/backups/…       account exports
-function userKey(npub: string, kind: "public" | "dm", hash: string): string {
-  return `u/${npub}/${kind}/${hash}`;
+// under `u/<uid>/…`, so an account delete is one prefix wipe and nothing of
+// another user's can be touched. `uid` is bech32 (safe charset).
+//   u/<uid>/public/<hash>   public posts
+//   u/<uid>/dm/<hash>       DM ciphertext
+//   u/<uid>/video/…         (future) Bunny is separate, but keep the convention
+//   u/<uid>/backups/…       account exports
+function userKey(uid: string, kind: "public" | "dm", hash: string): string {
+  return `u/${uid}/${kind}/${hash}`;
 }
 
 // GET /media/:hash — back-compat shim. Old app fetched bytes here; now we 301 to
@@ -111,15 +111,15 @@ const LIB_COLS =
 // ONE view (an app→category bucket, or a user folder). Soft-deleted rows excluded.
 // Back-compat: a bare ?type= still works (legacy chat library callers).
 export async function getLibrary(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const sp = new URL(req.url).searchParams;
   const cursor = Number(sp.get("cursor") || Date.now());
   const app = sp.get("app");
   const category = sp.get("category") || sp.get("type");
   const folder = sp.get("folder");
-  const where: string[] = ["npub=?1", "deleted_at IS NULL", "created_at < ?2"];
-  const binds: any[] = [auth.npub, cursor];
+  const where: string[] = ["uid=?1", "deleted_at IS NULL", "created_at < ?2"];
+  const binds: any[] = [ctx.uid, cursor];
   if (folder) { where.push(`folder_id=?${binds.length + 1}`); binds.push(folder); }
   else {
     // System (auto) folder view: files NOT placed in a user folder.
@@ -137,15 +137,15 @@ export async function getLibrary(req: Request, env: Env): Promise<Response> {
 // GET /api/library/tree — the navigation skeleton: per-app totals + per-category
 // counts (system folders) and the user's folders grouped by app. Cheap aggregates.
 export async function getLibraryTree(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const mdb = mediaSession(env);
   const agg = await mdb.prepare(
     `SELECT COALESCE(original_app,'avatok') AS app, COALESCE(category,'other') AS category,
             COUNT(*) AS n, COALESCE(SUM(size_bytes),0) AS bytes
-     FROM user_media WHERE npub=?1 AND deleted_at IS NULL
+     FROM user_media WHERE uid=?1 AND deleted_at IS NULL
      GROUP BY app, category`,
-  ).bind(auth.npub).all();
+  ).bind(ctx.uid).all();
   const apps: Record<string, any> = {};
   for (const r of (agg.results ?? []) as any[]) {
     const a = (apps[r.app] ||= { app: r.app, total: 0, bytes: 0, by_category: {} });
@@ -153,8 +153,8 @@ export async function getLibraryTree(req: Request, env: Env): Promise<Response> 
     a.total += r.n; a.bytes += r.bytes;
   }
   const fr = await mdb.prepare(
-    "SELECT id, app, name, parent_id, created_at FROM library_folders WHERE npub=?1 ORDER BY created_at ASC",
-  ).bind(auth.npub).all();
+    "SELECT id, app, name, parent_id, created_at FROM library_folders WHERE uid=?1 ORDER BY created_at ASC",
+  ).bind(ctx.uid).all();
   const foldersByApp: Record<string, any[]> = {};
   for (const f of (fr.results ?? []) as any[]) (foldersByApp[f.app] ||= []).push(f);
   return json({ apps: Object.values(apps), folders_by_app: foldersByApp });
@@ -163,16 +163,16 @@ export async function getLibraryTree(req: Request, env: Env): Promise<Response> 
 // --- /api/library/folders — user-folder CRUD ---
 // GET ?app=  list · POST create · PATCH rename · DELETE ?id= (reparents files).
 export async function libraryFolders(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const mdb = mediaSession(env);
   const url = new URL(req.url);
 
   if (req.method === "GET") {
     const app = url.searchParams.get("app");
     const rs = app
-      ? await mdb.prepare("SELECT id, app, name, parent_id, created_at FROM library_folders WHERE npub=?1 AND app=?2 ORDER BY created_at ASC").bind(auth.npub, app).all()
-      : await mdb.prepare("SELECT id, app, name, parent_id, created_at FROM library_folders WHERE npub=?1 ORDER BY created_at ASC").bind(auth.npub).all();
+      ? await mdb.prepare("SELECT id, app, name, parent_id, created_at FROM library_folders WHERE uid=?1 AND app=?2 ORDER BY created_at ASC").bind(ctx.uid, app).all()
+      : await mdb.prepare("SELECT id, app, name, parent_id, created_at FROM library_folders WHERE uid=?1 ORDER BY created_at ASC").bind(ctx.uid).all();
     return json({ folders: rs.results ?? [] });
   }
 
@@ -183,8 +183,8 @@ export async function libraryFolders(req: Request, env: Env): Promise<Response> 
     if (!name) return json({ error: "name required" }, 400);
     const id = crypto.randomUUID();
     await mdb.prepare(
-      "INSERT INTO library_folders (id, npub, app, name, parent_id, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
-    ).bind(id, auth.npub, app, name, b.parent_id ?? null, Date.now()).run();
+      "INSERT INTO library_folders (id, uid, app, name, parent_id, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+    ).bind(id, ctx.uid, app, name, b.parent_id ?? null, Date.now()).run();
     return json({ id, app, name, parent_id: b.parent_id ?? null });
   }
 
@@ -192,7 +192,7 @@ export async function libraryFolders(req: Request, env: Env): Promise<Response> 
     const b = (await req.json().catch(() => ({}))) as any;
     const name = (b.name || "").toString().trim().slice(0, 120);
     if (!b.id || !name) return json({ error: "id and name required" }, 400);
-    await mdb.prepare("UPDATE library_folders SET name=?3 WHERE id=?1 AND npub=?2").bind(b.id, auth.npub, name).run();
+    await mdb.prepare("UPDATE library_folders SET name=?3 WHERE id=?1 AND uid=?2").bind(b.id, ctx.uid, name).run();
     return json({ ok: true });
   }
 
@@ -201,9 +201,9 @@ export async function libraryFolders(req: Request, env: Env): Promise<Response> 
     if (!id) return json({ error: "id required" }, 400);
     // Don't orphan files: reparent them to the app auto folder (folder_id NULL).
     await mdb.batch([
-      mdb.prepare("UPDATE user_media SET folder_id=NULL WHERE npub=?1 AND folder_id=?2").bind(auth.npub, id),
-      mdb.prepare("UPDATE library_folders SET parent_id=NULL WHERE npub=?1 AND parent_id=?2").bind(auth.npub, id),
-      mdb.prepare("DELETE FROM library_folders WHERE id=?1 AND npub=?2").bind(id, auth.npub),
+      mdb.prepare("UPDATE user_media SET folder_id=NULL WHERE uid=?1 AND folder_id=?2").bind(ctx.uid, id),
+      mdb.prepare("UPDATE library_folders SET parent_id=NULL WHERE uid=?1 AND parent_id=?2").bind(ctx.uid, id),
+      mdb.prepare("DELETE FROM library_folders WHERE id=?1 AND uid=?2").bind(id, ctx.uid),
     ]);
     return json({ ok: true });
   }
@@ -214,17 +214,17 @@ export async function libraryFolders(req: Request, env: Env): Promise<Response> 
 // folder (or back to its system folder when folder_id is null). Passing `app`
 // moves it across app roots too (AvaLibrary lets files move anywhere).
 export async function libraryMove(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
   const mdb = mediaSession(env);
   if (b.app) {
-    await mdb.prepare("UPDATE user_media SET folder_id=?3, original_app=?4 WHERE id=?1 AND npub=?2")
-      .bind(b.id, auth.npub, b.folder_id ?? null, String(b.app).toLowerCase()).run();
+    await mdb.prepare("UPDATE user_media SET folder_id=?3, original_app=?4 WHERE id=?1 AND uid=?2")
+      .bind(b.id, ctx.uid, b.folder_id ?? null, String(b.app).toLowerCase()).run();
   } else {
-    await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND npub=?2")
-      .bind(b.id, auth.npub, b.folder_id ?? null).run();
+    await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND uid=?2")
+      .bind(b.id, ctx.uid, b.folder_id ?? null).run();
   }
   return json({ ok: true });
 }
@@ -233,26 +233,26 @@ export async function libraryMove(req: Request, env: Env): Promise<Response> {
 // the SAME content-addressed key. Storage counts distinct keys, so this is free
 // bytes. Passing `app` lands the copy under another app root.
 export async function libraryCopy(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
   const mdb = mediaSession(env);
-  const src = await mdb.prepare(`SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE id=?1 AND npub=?2`)
-    .bind(b.id, auth.npub).first<any>();
+  const src = await mdb.prepare(`SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE id=?1 AND uid=?2`)
+    .bind(b.id, ctx.uid).first<any>();
   if (!src) return json({ error: "not found" }, 404);
-  const id = await copyMediaRow(mdb, auth.npub, src, b.folder_id ?? null, b.app ? String(b.app).toLowerCase() : src.original_app);
+  const id = await copyMediaRow(mdb, ctx.uid, src, b.folder_id ?? null, b.app ? String(b.app).toLowerCase() : src.original_app);
   return json({ id });
 }
 
 // Insert a duplicate of a media row (same content key → free storage) into a
 // target folder/app. Shared by file-copy and folder-copy.
-async function copyMediaRow(mdb: any, npub: string, src: any, folderId: string | null, app: string): Promise<string> {
+async function copyMediaRow(mdb: any, uid: string, src: any, folderId: string | null, app: string): Promise<string> {
   const id = crypto.randomUUID();
   await mdb.prepare(
-    `INSERT INTO user_media (id, npub, media_type, storage, visibility, encrypted, key, display_url, thumbnail_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, folder_id, source_kind, enc_blob)
+    `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, thumbnail_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, folder_id, source_kind, enc_blob)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)`,
-  ).bind(id, npub, src.media_type, src.storage, src.visibility, src.encrypted, src.key, src.display_url, src.thumbnail_url ?? null,
+  ).bind(id, uid, src.media_type, src.storage, src.visibility, src.encrypted, src.key, src.display_url, src.thumbnail_url ?? null,
     src.mime_type, src.size_bytes, app, Date.now(), src.moderation_status, src.category, src.file_name,
     folderId, src.source_kind, src.enc_blob ?? null).run();
   return id;
@@ -260,12 +260,12 @@ async function copyMediaRow(mdb: any, npub: string, src: any, folderId: string |
 
 // Walk up the parent chain from `start` to check whether `ancestorId` is an
 // ancestor (used to block moving/copying a folder into its own subtree).
-async function isInSubtree(mdb: any, npub: string, start: string | null, ancestorId: string): Promise<boolean> {
+async function isInSubtree(mdb: any, uid: string, start: string | null, ancestorId: string): Promise<boolean> {
   let cur = start;
   let hops = 0;
   while (cur && hops < 64) {
     if (cur === ancestorId) return true;
-    const row = await mdb.prepare("SELECT parent_id FROM library_folders WHERE id=?1 AND npub=?2").bind(cur, npub).first();
+    const row = await mdb.prepare("SELECT parent_id FROM library_folders WHERE id=?1 AND uid=?2").bind(cur, uid).first();
     cur = (row as any)?.parent_id ?? null;
     hops++;
   }
@@ -277,23 +277,23 @@ async function isInSubtree(mdb: any, npub: string, start: string | null, ancesto
 // Files inside travel with the folder; when the app changes they're re-stamped so
 // the tree's per-app counts stay honest.
 export async function libraryFolderMove(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
   const mdb = mediaSession(env);
-  const folder = await mdb.prepare("SELECT id, app, parent_id FROM library_folders WHERE id=?1 AND npub=?2").bind(b.id, auth.npub).first<any>();
+  const folder = await mdb.prepare("SELECT id, app, parent_id FROM library_folders WHERE id=?1 AND uid=?2").bind(b.id, ctx.uid).first<any>();
   if (!folder) return json({ error: "not found" }, 404);
   const newApp = b.app ? String(b.app).toLowerCase() : folder.app;
   const newParent = b.parent_id === undefined ? folder.parent_id : (b.parent_id ?? null);
-  if (newParent && (newParent === b.id || await isInSubtree(mdb, auth.npub, newParent, b.id))) {
+  if (newParent && (newParent === b.id || await isInSubtree(mdb, ctx.uid, newParent, b.id))) {
     return json({ error: "cannot move a folder into itself" }, 400);
   }
   const stmts = [
-    mdb.prepare("UPDATE library_folders SET app=?3, parent_id=?4 WHERE id=?1 AND npub=?2").bind(b.id, auth.npub, newApp, newParent),
+    mdb.prepare("UPDATE library_folders SET app=?3, parent_id=?4 WHERE id=?1 AND uid=?2").bind(b.id, ctx.uid, newApp, newParent),
   ];
   if (newApp !== folder.app) {
-    stmts.push(mdb.prepare("UPDATE user_media SET original_app=?3 WHERE npub=?1 AND folder_id=?2").bind(auth.npub, b.id, newApp));
+    stmts.push(mdb.prepare("UPDATE user_media SET original_app=?3 WHERE uid=?1 AND folder_id=?2").bind(ctx.uid, b.id, newApp));
   }
   await mdb.batch(stmts);
   return json({ ok: true, id: b.id, app: newApp, parent_id: newParent });
@@ -303,38 +303,38 @@ export async function libraryFolderMove(req: Request, env: Env): Promise<Respons
 // everything inside it (recursively). Files are copied as shortcuts (same content
 // key → no extra storage). Returns the new top-level folder id.
 export async function libraryFolderCopy(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
   const mdb = mediaSession(env);
-  const folder = await mdb.prepare("SELECT id, app, parent_id FROM library_folders WHERE id=?1 AND npub=?2").bind(b.id, auth.npub).first<any>();
+  const folder = await mdb.prepare("SELECT id, app, parent_id FROM library_folders WHERE id=?1 AND uid=?2").bind(b.id, ctx.uid).first<any>();
   if (!folder) return json({ error: "not found" }, 404);
   const destApp = b.app ? String(b.app).toLowerCase() : folder.app;
   const destParent = b.parent_id ?? null;
-  if (destParent && (destParent === b.id || await isInSubtree(mdb, auth.npub, destParent, b.id))) {
+  if (destParent && (destParent === b.id || await isInSubtree(mdb, ctx.uid, destParent, b.id))) {
     return json({ error: "cannot copy a folder into itself" }, 400);
   }
-  const newId = await copyFolderRec(mdb, auth.npub, b.id, destApp, destParent);
+  const newId = await copyFolderRec(mdb, ctx.uid, b.id, destApp, destParent);
   return json({ id: newId });
 }
 
 // Recursively duplicate a folder subtree (folder rows + their non-deleted files).
-async function copyFolderRec(mdb: any, npub: string, srcId: string, destApp: string, destParent: string | null): Promise<string | null> {
-  const src = (await mdb.prepare("SELECT id, name FROM library_folders WHERE id=?1 AND npub=?2").bind(srcId, npub).first()) as any;
+async function copyFolderRec(mdb: any, uid: string, srcId: string, destApp: string, destParent: string | null): Promise<string | null> {
+  const src = (await mdb.prepare("SELECT id, name FROM library_folders WHERE id=?1 AND uid=?2").bind(srcId, uid).first()) as any;
   if (!src) return null;
   const newId = crypto.randomUUID();
-  await mdb.prepare("INSERT INTO library_folders (id, npub, app, name, parent_id, created_at) VALUES (?1,?2,?3,?4,?5,?6)")
-    .bind(newId, npub, destApp, src.name, destParent, Date.now()).run();
+  await mdb.prepare("INSERT INTO library_folders (id, uid, app, name, parent_id, created_at) VALUES (?1,?2,?3,?4,?5,?6)")
+    .bind(newId, uid, destApp, src.name, destParent, Date.now()).run();
   const files = await mdb.prepare(
-    `SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE npub=?1 AND folder_id=?2 AND deleted_at IS NULL`,
-  ).bind(npub, srcId).all();
+    `SELECT ${LIB_COLS}, media_type, storage, encrypted, moderation_status FROM user_media WHERE uid=?1 AND folder_id=?2 AND deleted_at IS NULL`,
+  ).bind(uid, srcId).all();
   for (const f of (files.results ?? []) as any[]) {
-    await copyMediaRow(mdb, npub, f, newId, destApp);
+    await copyMediaRow(mdb, uid, f, newId, destApp);
   }
-  const kids = await mdb.prepare("SELECT id FROM library_folders WHERE npub=?1 AND parent_id=?2").bind(npub, srcId).all();
+  const kids = await mdb.prepare("SELECT id FROM library_folders WHERE uid=?1 AND parent_id=?2").bind(uid, srcId).all();
   for (const k of (kids.results ?? []) as any[]) {
-    await copyFolderRec(mdb, npub, k.id, destApp, newId);
+    await copyFolderRec(mdb, uid, k.id, destApp, newId);
   }
   return newId;
 }
@@ -342,12 +342,12 @@ async function copyFolderRec(mdb: any, npub: string, srcId: string, destApp: str
 // POST /api/library/delete {id} — soft delete (storage recomputes; hard-delete of
 // orphaned blobs runs via the erasure queue / account-deletion cascade).
 export async function libraryDelete(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
-  await mediaSession(env).prepare("UPDATE user_media SET deleted_at=?3 WHERE id=?1 AND npub=?2")
-    .bind(b.id, auth.npub, Date.now()).run();
+  await mediaSession(env).prepare("UPDATE user_media SET deleted_at=?3 WHERE id=?1 AND uid=?2")
+    .bind(b.id, ctx.uid, Date.now()).run();
   return json({ ok: true });
 }
 
@@ -356,9 +356,9 @@ export async function libraryDelete(req: Request, env: Env): Promise<Response> {
 // we store the recipient's reference + their decryption material ENCRYPTED TO THEM
 // (enc_blob — Vault-style; the server never sees plaintext keys). Makes received
 // media cross-device + (opt-in) brain-eligible without weakening E2E.
-export async function libraryRecord(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+export async function libraryRecord(req: Request, env: Env, exec: ExecutionContext): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const key = (b.key || "").toString();
   if (!key) return json({ error: "key required" }, 400);
@@ -369,18 +369,18 @@ export async function libraryRecord(req: Request, env: Env, ctx: ExecutionContex
   const encrypted = b.enc_blob ? 1 : 0;
   const display = (b.display_url || `${env.BLOSSOM_BASE_URL}/${key}`).toString();
   const mdb = mediaSession(env);
-  // Idempotent per (npub, key, received): re-receiving the same blob is a no-op.
-  const existing = await mdb.prepare("SELECT id FROM user_media WHERE npub=?1 AND key=?2 AND source_kind='received'").bind(auth.npub, key).first<any>();
+  // Idempotent per (uid, key, received): re-receiving the same blob is a no-op.
+  const existing = await mdb.prepare("SELECT id FROM user_media WHERE uid=?1 AND key=?2 AND source_kind='received'").bind(ctx.uid, key).first<any>();
   if (existing) return json({ id: existing.id, deduped: true });
   const id = crypto.randomUUID();
   await mdb.prepare(
-    `INSERT INTO user_media (id, npub, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, enc_blob)
+    `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind, enc_blob)
      VALUES (?1,?2,?3,'blossom',?4,?5,?6,?7,?8,?9,?10,?11,'skipped',?12,?13,'received',?14)`,
-  ).bind(id, auth.npub, mediaType(mime), encrypted ? "private" : "public", encrypted, key, display, mime, size, app, Date.now(),
+  ).bind(id, ctx.uid, mediaType(mime), encrypted ? "private" : "public", encrypted, key, display, mime, size, app, Date.now(),
     categoryOf(mime), name, b.enc_blob ?? null).run();
   // PUBLIC received media is brain-eligible server-side; private stays on-device.
   if (!encrypted && env.Q_BRAIN) {
-    ctx.waitUntil(maybeEmitLibraryBrain(env, auth.npub, app, { media_id: id, key, mime, size, name, category: categoryOf(mime), visibility: "public" }));
+    exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key, mime, size, name, category: categoryOf(mime), visibility: "public" }));
   }
   return json({ id });
 }
@@ -390,19 +390,19 @@ export async function libraryRecord(req: Request, env: Env, ctx: ExecutionContex
 // double-count), non-deleted only. Quota: free GB from config; over quota draws
 // AvaCoins/GB/month from the AvaWallet — an empty wallet over quota = read-only.
 export async function getStorage(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const mdb = mediaSession(env);
   // Distinct-key dedup: one physical copy per key, charged once. We pick a single
   // representative row per key (MIN(id)) then aggregate its category/app/bytes.
   const rs = await mdb.prepare(
     `WITH dedup AS (
        SELECT key, MIN(id) AS rep FROM user_media
-       WHERE npub=?1 AND deleted_at IS NULL GROUP BY key
+       WHERE uid=?1 AND deleted_at IS NULL GROUP BY key
      )
      SELECT COALESCE(m.category,'other') AS category, COALESCE(m.original_app,'avatok') AS app, m.size_bytes AS size
      FROM dedup d JOIN user_media m ON m.id = d.rep`,
-  ).bind(auth.npub).all();
+  ).bind(ctx.uid).all();
   const byCategory: Record<string, number> = { image: 0, video: 0, document: 0, audio: 0, other: 0 };
   const byApp: Record<string, number> = {};
   let total = 0;
@@ -419,7 +419,7 @@ export async function getStorage(req: Request, env: Env): Promise<Response> {
     // Over the free quota — needs AvaCoins. Empty wallet → read-only (never delete).
     let coins = 0;
     try {
-      const w = await walletOp(env, auth.npub, { op: "balance", npub: auth.npub });
+      const w = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
       coins = Number(w.body?.balance ?? w.body?.coins ?? w.body?.available ?? 0);
     } catch { /* wallet optional → treat as 0 */ }
     if (coins <= 0) state = "read_only";
@@ -474,12 +474,12 @@ export function categoryOf(ct: string): string {
 // enabled (default ON). We require BOTH the master switch and the per-app "files"
 // capability to be on. brain_consent lives in DB_BRAIN (server-readable booleans —
 // not sensitive). Private/E2E plaintext never reaches this path regardless.
-export async function brainConsentAllows(env: Env, npub: string, app: string): Promise<boolean> {
+export async function brainConsentAllows(env: Env, uid: string, app: string): Promise<boolean> {
   try {
     const caps = [`master`, `${app}_files`];
     const rs = await env.DB_BRAIN.prepare(
-      `SELECT capability, enabled FROM brain_consent WHERE npub=?1 AND capability IN (?2,?3)`,
-    ).bind(npub, caps[0], caps[1]).all();
+      `SELECT capability, enabled FROM brain_consent WHERE uid=?1 AND capability IN (?2,?3)`,
+    ).bind(uid, caps[0], caps[1]).all();
     for (const r of (rs.results ?? []) as any[]) {
       if (Number(r.enabled) === 0) return false; // explicit opt-out
     }
@@ -489,12 +489,12 @@ export async function brainConsentAllows(env: Env, npub: string, app: string): P
 
 // Emit a library_file_added event for content ingestion, gated on consent.
 export async function maybeEmitLibraryBrain(
-  env: Env, npub: string, app: string,
+  env: Env, uid: string, app: string,
   payload: { media_id: string; key: string; mime: string; size: number; name: string; category: string; visibility: string },
 ): Promise<void> {
   if (payload.visibility !== "public") return;            // server ingests PUBLIC only
-  if (!(await brainConsentAllows(env, npub, app))) return; // user opted out
-  await env.Q_BRAIN.send({ npub, event_type: "library_file_added", source_app: app, payload });
+  if (!(await brainConsentAllows(env, uid, app))) return; // user opted out
+  await env.Q_BRAIN.send({ uid, event_type: "library_file_added", source_app: app, payload });
 }
 
 // A sensible display name when the client didn't send one. Extension from mime.
