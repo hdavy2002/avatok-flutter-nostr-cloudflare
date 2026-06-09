@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import '../core/db.dart';
 import '../core/group_store.dart';
 import 'nip17.dart';
 import 'nostr_client.dart';
@@ -49,6 +50,12 @@ class AvaGroupDm {
   String send(String payload) {
     final (gifts, rumorId) = Nip17.wrapMany(
         senderPriv: myPriv, senderPub: myPub, recipientPubs: group.members, payload: payload);
+    // Write-to-DB-first (see AvaDm.send) — instant local source of truth.
+    try {
+      Db.I.upsertMessage(MessagesCompanion.insert(
+        rumorId: rumorId, convKey: 'g:${group.id}', mine: true, payload: payload,
+        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
+    } catch (_) {}
     for (final g in gifts) {
       client.publish(g);
     }

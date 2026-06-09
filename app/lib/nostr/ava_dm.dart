@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../core/ava_log.dart';
+import '../core/db.dart';
 import 'nip17.dart';
 import 'nostr_client.dart';
 import 'relay_hub.dart';
@@ -65,6 +66,16 @@ class AvaDm {
   String send(String payload) {
     final (gifts, rumorId) = Nip17.wrapBoth(
         senderPriv: myPriv, senderPub: myPub, peerPub: peerPub, payload: payload);
+    // Write-to-DB-FIRST: store my own message locally right away so the SQLite DB
+    // is the complete source of truth and the UI can show it instantly. The
+    // encrypt+publish below is background work; the local store never waits on it.
+    // (The relay self-echo later re-inserts the same rumorId → INSERT OR IGNORE
+    // no-op.)
+    try {
+      Db.I.upsertMessage(MessagesCompanion.insert(
+        rumorId: rumorId, convKey: '1:$peerPub', mine: true, payload: payload,
+        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
+    } catch (_) {}
     for (final g in gifts) {
       _giftToRumor[g.id] = rumorId;
       client.publish(g);
