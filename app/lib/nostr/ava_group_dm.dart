@@ -1,9 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:math';
 
+import '../core/api_auth.dart';
+import '../core/config.dart';
 import '../core/db.dart';
 import '../core/group_store.dart';
-import 'nip17.dart';
+import '../identity/identity.dart';
 import 'nostr_client.dart';
 import 'relay_hub.dart';
 
@@ -16,25 +18,25 @@ class GroupMessage {
   GroupMessage({required this.rumorId, required this.senderPub, required this.mine, required this.payload, required this.createdAt});
 }
 
-/// Group messaging over the relay: NIP-17 gift-wrapped fan-out to every member,
-/// routed locally by the group id carried in the payload.
+/// Group messaging over the Cloudflare-native backend. Fan-out is server-side: we
+/// POST one message to the group conversation (conv = group.id) and the router
+/// appends it to every member's InboxDO. Incoming arrives via [RelayHub] filtered
+/// to this group. [client]/[myPriv]/[myPub] are legacy params, ignored.
 class AvaGroupDm {
   final NostrClient client;
   final String myPriv;
   final String myPub;
   final Group group;
-  final String _subId;
   StreamSubscription? _sub;
   final _controller = StreamController<GroupMessage>.broadcast();
 
-  AvaGroupDm({required this.client, required this.myPriv, required this.myPub, required this.group})
-      : _subId = 'grp-${group.id}';
+  AvaGroupDm({required this.client, required this.myPriv, required this.myPub, required this.group});
 
   Stream<GroupMessage> get messages => _controller.stream;
 
+  String get _myUid => AccountScope.id ?? myPub;
+
   void start() {
-    // Consume the hub's SINGLE-decrypt stream filtered to this group — no own
-    // socket, REQ, or Nip17.unwrap (the hub already decrypted every wrap once).
     final myConv = 'g:${group.id}';
     _sub = RelayHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
       if (!_controller.isClosed) {
@@ -46,25 +48,28 @@ class AvaGroupDm {
     });
   }
 
-  /// Send [payload] (already gid-stamped) to all members. Returns rumor id.
+  /// Send [payload] (already gid-stamped) to the group conversation. Returns the
+  /// client_id. Write-to-DB-first for instant local echo.
   String send(String payload) {
-    final (gifts, rumorId) = Nip17.wrapMany(
-        senderPriv: myPriv, senderPub: myPub, recipientPubs: group.members, payload: payload);
-    // Write-to-DB-first (see AvaDm.send) — instant local source of truth.
+    final clientId = _randId();
     try {
       Db.I.upsertMessage(MessagesCompanion.insert(
-        rumorId: rumorId, convKey: 'g:${group.id}', mine: true, payload: payload,
-        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
+          rumorId: clientId, convKey: 'g:${group.id}', mine: true, payload: payload,
+          createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
     } catch (_) {}
-    for (final g in gifts) {
-      client.publish(g);
-    }
-    return rumorId;
+    unawaited(ApiAuth.postJson(kMsgSendUrl, {
+      'conv': group.id, 'kind': 'text', 'body': payload, 'client_id': clientId,
+    }).then((_) {}, onError: (_) {}));
+    return clientId;
   }
 
   void stop() {
-    try { client.closeSub(_subId); } catch (_) {}
     _sub?.cancel();
     _controller.close();
+  }
+
+  static String _randId() {
+    final r = Random.secure();
+    return 'ct_' + List<int>.generate(12, (_) => r.nextInt(256)).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }

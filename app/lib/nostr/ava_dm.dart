@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import '../core/ava_log.dart';
+import '../core/api_auth.dart';
+import '../core/config.dart';
 import '../core/db.dart';
-import 'nip17.dart';
+import '../identity/identity.dart';
 import 'nostr_client.dart';
 import 'relay_hub.dart';
 
@@ -16,92 +19,79 @@ class DmMessage {
   DmMessage({required this.rumorId, required this.mine, required this.payload, required this.createdAt});
 }
 
-/// Real, metadata-private 1:1 messaging via NIP-17 gift wrap over the AvaTok
-/// relay. We subscribe to kind-1059 gifts addressed to us, unwrap locally, and
-/// keep only this conversation (peer ↔ me).
+/// 1:1 messaging over the Cloudflare-native backend (Nostr deprecated). Sends go
+/// out over HTTP (POST /api/msg/send); incoming + live messages arrive via the
+/// shared InboxDO socket in [RelayHub], filtered to this conversation. [peerPub]
+/// now carries the peer's Clerk uid (addressing id). [client]/[myPriv]/[myPub]
+/// are legacy params kept for call-site compatibility and ignored.
 class AvaDm {
   final NostrClient client;
-  final String myPriv;  // hex
-  final String myPub;   // hex (x-only)
-  final String peerPub; // hex (x-only)
-  final String _subId;
+  final String myPriv;
+  final String myPub;
+  final String peerPub; // peer Clerk uid
   StreamSubscription? _sub;
-  StreamSubscription? _pubSub;
   final _controller = StreamController<DmMessage>.broadcast();
-
-  // Map each published gift-wrap event id back to its rumor id, so a relay
-  // OK/rejection can be reported against the message the user sees.
-  final Map<String, String> _giftToRumor = {};
   final _statusC = StreamController<({String rumorId, bool ok, String message})>.broadcast();
 
-  AvaDm({required this.client, required this.myPriv, required this.myPub, required this.peerPub})
-      : _subId = 'gw-${peerPub.substring(0, 8)}';
+  AvaDm({required this.client, required this.myPriv, required this.myPub, required this.peerPub});
 
   Stream<DmMessage> get messages => _controller.stream;
-
-  /// Delivery status of our own sends (the relay accepted/rejected the wrap).
   Stream<({String rumorId, bool ok, String message})> get sendStatus => _statusC.stream;
 
+  String get _myUid => AccountScope.id ?? myPub;
+  String get _conv => dmConvId(_myUid, peerPub);
+
   void start() {
-    // Consume the hub's SINGLE-decrypt stream filtered to this conversation —
-    // no own Nip17.unwrap (that was duplicate per-wrap crypto on the UI thread,
-    // a cause of typing/send lag during re-stream bursts). History comes from
-    // the on-disk cache; this stream just carries new + live messages.
-    _pubSub = client.publishResults.listen((r) {
-      final rid = _giftToRumor[r.id];
-      if (rid == null) return;
-      if (!r.accepted) {
-        AvaLog.I.log('dm', 'send FAILED rumor=${rid.substring(0, 8)}: ${r.message}');
-      }
-      if (!_statusC.isClosed) _statusC.add((rumorId: rid, ok: r.accepted, message: r.message));
-    });
     final myConv = '1:$peerPub';
     _sub = RelayHub.I.incoming.where((e) => e.convKey == myConv).listen((e) {
       if (!_controller.isClosed) _controller.add(e.toDm());
     });
   }
 
-  /// Encrypt + gift-wrap [payload] to the peer (and a copy to myself).
-  /// Returns the rumor id for optimistic-echo dedupe.
+  /// Send [payload] (an app envelope JSON string) to the peer. Write-to-DB-first
+  /// for instant UI; POST to the router; the InboxDO echo re-inserts (no-op).
+  /// Returns the client_id (used as the optimistic-echo dedupe key).
   String send(String payload) {
-    final (gifts, rumorId) = Nip17.wrapBoth(
-        senderPriv: myPriv, senderPub: myPub, peerPub: peerPub, payload: payload);
-    // Write-to-DB-FIRST: store my own message locally right away so the SQLite DB
-    // is the complete source of truth and the UI can show it instantly. The
-    // encrypt+publish below is background work; the local store never waits on it.
-    // (The relay self-echo later re-inserts the same rumorId → INSERT OR IGNORE
-    // no-op.)
+    final clientId = _randId();
     try {
       Db.I.upsertMessage(MessagesCompanion.insert(
-        rumorId: rumorId, convKey: '1:$peerPub', mine: true, payload: payload,
-        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
+          rumorId: clientId, convKey: '1:$peerPub', mine: true, payload: payload,
+          createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
     } catch (_) {}
-    for (final g in gifts) {
-      _giftToRumor[g.id] = rumorId;
-      client.publish(g);
-    }
-    AvaLog.I.log('dm', 'send rumor=${rumorId.substring(0, 8)} (${gifts.length} wraps), authed=${client.isAuthed}');
-    return rumorId;
+    unawaited(_post(clientId, payload));
+    return clientId;
   }
 
-  /// Send a durable, gift-wrapped delivery/read receipt to the peer (no self
-  /// copy, so it can't loop back to us). [status] is 'delivered' or 'read';
-  /// [ts] is the newest message timestamp this acknowledges (a high-water mark).
-  /// Because it's a normal gift wrap it persists on the relay and the original
-  /// sender picks it up whenever they reconnect — receipts survive restarts.
+  Future<void> _post(String clientId, String payload) async {
+    try {
+      final res = await ApiAuth.postJson(kMsgSendUrl, {
+        'to': peerPub, 'kind': 'text', 'body': payload, 'client_id': clientId,
+      });
+      final ok = res.statusCode == 200;
+      if (!ok) AvaLog.I.log('dm', 'send FAILED ${res.statusCode}: ${res.body}');
+      if (!_statusC.isClosed) _statusC.add((rumorId: clientId, ok: ok, message: ok ? '' : 'http ${res.statusCode}'));
+    } catch (e) {
+      if (!_statusC.isClosed) _statusC.add((rumorId: clientId, ok: false, message: '$e'));
+    }
+  }
+
+  /// Send a delivery/read receipt to the peer. [status] is 'delivered' or 'read';
+  /// [ts] is the high-water mark this acknowledges.
   void sendReceipt(String status, int ts) {
     if (ts <= 0) return;
-    final (gift, _) = Nip17.wrapTo(
-        senderPriv: myPriv, senderPub: myPub, recipientPub: peerPub,
-        payload: jsonEncode({'t': 'receipt', 'status': status, 'ts': ts}));
-    client.publish(gift);
+    final body = <String, dynamic>{'conv': _conv, 'peer': peerPub};
+    if (status == 'read') body['read_id'] = ts; else body['delivered_id'] = ts;
+    unawaited(ApiAuth.postJson(kMsgReceiptUrl, body).then((_) {}, onError: (_) {}));
   }
 
   void stop() {
-    try { client.closeSub(_subId); } catch (_) {}
     _sub?.cancel();
-    _pubSub?.cancel();
     _controller.close();
     if (!_statusC.isClosed) _statusC.close();
+  }
+
+  static String _randId() {
+    final r = Random.secure();
+    return 'ct_' + List<int>.generate(12, (_) => r.nextInt(256)).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }

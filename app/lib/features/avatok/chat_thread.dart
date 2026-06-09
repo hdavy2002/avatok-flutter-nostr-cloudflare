@@ -173,16 +173,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (widget.chat.gid != null) { _setupGroup(id); return; }
     if (widget.chat.group) return; // legacy local group
     final seed = widget.chat.seed;
-    final peerHex = seed.startsWith('npub1') ? NostrKeys.npubToHex(seed) : null;
+    final peerHex = NostrKeys.npubToHex(seed);
     if (peerHex == null) return; // demo contact → keep local echo
     _realMode = true;
     setState(() => _msgs.clear()); // drop demo seed; history loads from relay
-    _nostr = RelayHub.I.ensure(id.privHex, id.pubHex); // shared app-lifetime client (no per-thread socket/REQ)
-    _dm = AvaDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, peerPub: peerHex);
+    _nostr = RelayHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
+    _dm = AvaDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, peerPub: peerHex);
     _dm!.messages.listen(_onDm);
     _dm!.sendStatus.listen(_onSendStatus);
     _dm!.start();
-    _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.pubHex, peerHex), id.shortNpub)..connect();
+    _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, peerHex), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
     _presence!.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     if (_sharePresence) _presence!.sendOnline();
@@ -232,7 +232,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final contacts = await ContactsStore().load();
       final names = <String, String>{};
       for (final c in contacts) { final h = NostrKeys.npubToHex(c.npub); if (h != null) names[h] = c.name; }
-      if (_meId != null) names[_meId!.pubHex] = 'You';
+      if (_meId != null) names[_meId!.uid] = 'You';
       if (mounted) setState(() => _memberNames = names);
     }
   }
@@ -244,13 +244,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _isGroup = true;
     _group = g;
     setState(() => _msgs.clear());
-    _nostr = RelayHub.I.ensure(id.privHex, id.pubHex); // shared app-lifetime client (no per-thread socket/REQ)
-    _gdm = AvaGroupDm(client: _nostr!, myPriv: id.privHex, myPub: id.pubHex, group: g);
+    _nostr = RelayHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
+    _gdm = AvaGroupDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, group: g);
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
     _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
-    _memberNpubs = g.members.where((m) => m != id.pubHex).map((h) => NostrKeys.npub(h)).toList();
+    _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
     _markRead();
     _loadChatExtras();
@@ -657,7 +657,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final to = widget.chat.seed; // for real contacts this is their npub
     AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
     // Ring the callee's phone via FCM wake (real npub contacts only).
-    if (to.startsWith('npub1')) {
+    if (to.startsWith('user_')) {
       try {
         // 'from' is derived server-side from the NIP-98 signature.
         final res = await ApiAuth.postJson(kCallUrl, {
@@ -863,7 +863,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Future<void> _addSharedContact(Map e) async {
     final npub = (e['npub'] ?? '').toString();
-    if (!npub.startsWith('npub1')) return;
+    if (!npub.startsWith('user_')) return;
     await ContactsStore().add(Contact(npub: npub, name: (e['name'] ?? 'Contact').toString(), handle: (e['handle'] ?? '').toString()));
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e['name']} added')));
   }
@@ -1064,7 +1064,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _openInfo() {
     if (widget.chat.group) { _openGroupInfo(); return; }
-    if (!widget.chat.seed.startsWith('npub1')) return;
+    if (!widget.chat.seed.startsWith('user_')) return;
     Navigator.push(context, MaterialPageRoute(
         builder: (_) => ContactProfileScreen(name: widget.chat.name, npub: widget.chat.seed, me: _meId)));
   }
@@ -1134,13 +1134,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ? {...m.media!.toEnvelope(), 'forwarded': true}
         : {'t': 'text', 'body': m.text, 'forwarded': true};
     try {
-      final client = NostrClient(kNostrRelayUrl)..connect();
-      final (gifts, _) = Nip17.wrapBoth(
-          senderPriv: id.privHex, senderPub: id.pubHex, peerPub: peerHex, payload: jsonEncode(payload));
-      for (final g in gifts) {
-        client.publish(g);
-      }
-      Future.delayed(const Duration(seconds: 2), client.dispose);
+      // Cloudflare-native: forward = one-off send to the peer's InboxDO over HTTP.
+      await ApiAuth.postJson(kMsgSendUrl, {
+        'to': peerHex, 'kind': 'text', 'body': jsonEncode(payload),
+        'client_id': 'fwd_${DateTime.now().millisecondsSinceEpoch}',
+      });
       PushService.notifyMessage([c.npub], _myName ?? 'AvaTOK');
     } catch (_) {}
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Forwarded to ${c.name}')));

@@ -20,6 +20,11 @@ class Identity {
   /// Short display form, e.g. npub1abcd…wxyz
   String get shortNpub =>
       npub.length > 16 ? '${npub.substring(0, 10)}…${npub.substring(npub.length - 6)}' : npub;
+
+  /// Cloudflare-native identity = the Clerk user id (AccountScope.id). This is
+  /// what the messaging layer addresses by; falls back to the (vestigial) Nostr
+  /// pubkey only if the account scope isn't set yet.
+  String get uid => AccountScope.id ?? pubHex;
 }
 
 /// Holds the signed-in Clerk account id so each account gets its OWN Nostr

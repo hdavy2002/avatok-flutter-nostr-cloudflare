@@ -19,7 +19,11 @@ class NostrKeys {
   static String publicKeyFromPrivate(String privHex) =>
       bip340.getPublicKey(privHex);
 
-  static String npub(String pubHex) => _toNip19('npub', pubHex);
+  // Cloudflare-native pivot: identity is now the Clerk uid ("user_..."). These
+  // helpers pass a uid through UNCHANGED so the chat layer can keep funnelling
+  // peer ids through npub()/npubToHex() while actually carrying uids.
+  static String npub(String pubHex) =>
+      pubHex.startsWith('user_') ? pubHex : _toNip19('npub', pubHex);
   static String nsec(String privHex) => _toNip19('nsec', privHex);
 
   /// Decode an npub/nsec (bech32) back to 64-char hex. Returns null if invalid.
@@ -39,8 +43,10 @@ class NostrKeys {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// npub → x-only pubkey hex (or null).
-  static String? npubToHex(String npub) => decodeToHex(npub, 'npub');
+  /// npub → x-only pubkey hex (or null). A Clerk uid ("user_...") passes through
+  /// unchanged so call sites can treat the result as the opaque peer id.
+  static String? npubToHex(String npub) =>
+      npub.startsWith('user_') ? npub : decodeToHex(npub, 'npub');
 
   // ---- bech32 internals ----
 

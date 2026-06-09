@@ -8,6 +8,7 @@ import '../../core/avatar.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
+import '../../core/api_auth.dart';
 import '../../core/chat_state.dart';
 import '../../core/chat_list_snapshot.dart';
 import '../../core/db.dart';
@@ -369,7 +370,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// Global inbox: receive group invites (ginfo) even when no thread is open.
   void _startInbox(Identity id) {
-    _inbox = RelayHub.I.ensure(id.privHex, id.pubHex); // shared app-lifetime client + inbox sub (survives navigation)
+    _inbox = RelayHub.I.ensure(id.uid, id.uid); // shared app-lifetime client + inbox sub (survives navigation)
     // Consume the hub's SINGLE-decrypt stream (HubEvent already unwrapped) — no
     // own Nip17.unwrap here. This was one of 3-4 places re-decrypting every wrap
     // on the UI thread.
@@ -388,11 +389,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             admins: ((env['admins'] as List?) ?? []).map((e) => e.toString()).toList(),
           );
           _groupStore.upsert(g).then((list) { if (mounted) setState(() => _groups = list); });
-        } else if (t == 'gkick' && u.senderPub != id.pubHex) {
+        } else if (t == 'gkick' && u.senderPub != id.uid) {
           _groupStore.remove(env['gid'].toString())
               .then((_) => _groupStore.load())
               .then((list) { if (mounted) setState(() => _groups = list); });
-        } else if (t == 'status' && u.senderPub != id.pubHex) {
+        } else if (t == 'status' && u.senderPub != id.uid) {
           final post = StatusPost(
             id: u.rumorId, authorPub: u.senderPub,
             authorName: (env['who'] ?? 'Someone').toString(),
@@ -405,13 +406,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         } else if (t == 'receipt') {
           // A peer's delivery/read receipt for one of MY messages — persist it
           // globally so the ticks are right even if this thread is closed.
-          if (u.senderPub != id.pubHex) {
+          if (u.senderPub != id.uid) {
             final rts = (env['ts'] as num?)?.toInt() ?? 0;
             final read = (env['status'] ?? '').toString() == 'read';
             if (rts > 0) ReceiptStore().bump('1:${u.senderPub}', delivered: read ? 0 : rts, read: read ? rts : 0);
           }
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
-          if (u.senderPub == id.pubHex) return; // my own message
+          if (u.senderPub == id.uid) return; // my own message
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
           if (_flags['blocked']!.contains(key)) return;
           // Durable, gift-wrapped DELIVERED receipt — fires from the global inbox
@@ -421,10 +422,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           if (env['gid'] == null && (_deliveredAckHW[u.senderPub] ?? 0) < u.createdAt) {
             _deliveredAckHW[u.senderPub] = u.createdAt;
             try {
-              final (g, _) = Nip17.wrapTo(
-                  senderPriv: id.privHex, senderPub: id.pubHex, recipientPub: u.senderPub,
-                  payload: jsonEncode({'t': 'receipt', 'status': 'delivered', 'ts': u.createdAt}));
-              _inbox?.publish(g);
+              ApiAuth.postJson(kMsgReceiptUrl, {
+                'conv': dmConvId(id.uid, u.senderPub), 'peer': u.senderPub, 'delivered_id': u.createdAt,
+              }).then((_) {}, onError: (_) {});
             } catch (_) {}
           }
           if (u.createdAt > (_lastRead[key] ?? 0) && mounted) {
@@ -444,7 +444,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           // Send a delivered receipt for recent 1:1 messages (not history replays).
           final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           if (env['gid'] == null && u.createdAt > nowSec - 300) {
-            final pres = PresenceChannel(PresenceChannel.roomFor1on1(id.pubHex, u.senderPub), 'inbox')..connect();
+            final pres = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, u.senderPub), 'inbox')..connect();
             pres.sendDelivered(u.createdAt);
             Future.delayed(const Duration(milliseconds: 900), pres.dispose);
           }

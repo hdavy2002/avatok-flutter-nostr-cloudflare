@@ -1,161 +1,38 @@
-import 'dart:convert';
-import 'dart:math';
-
-import '../crypto/nip44.dart';
-import '../identity/nostr_keys.dart';
 import 'nostr_client.dart';
 
-/// Result of unwrapping a gift-wrapped message.
+/// Cloudflare-native pivot (Nostr deprecated). NIP-17 gift-wrapping is GONE —
+/// messages are server-routed plaintext now. This is a COMPATIBILITY STUB so the
+/// legacy social screens (communities, status, group info, new group) that still
+/// reference Nip17 keep compiling. The real send path is AvaDm/AvaGroupDm over
+/// HTTP. The wrap* methods produce no events (a no-op publish), and unwrap returns
+/// null — these call sites are being migrated to the new transport.
 class Unwrapped {
-  final String senderPub;    // real sender x-only pubkey hex
-  final String recipientPub; // rumor's intended recipient (p tag)
-  final String payload;      // rumor content (our app envelope)
+  final String senderPub;
+  final String recipientPub;
+  final String payload;
   final String rumorId;
   final int createdAt;
   Unwrapped(this.senderPub, this.recipientPub, this.payload, this.rumorId, this.createdAt);
 }
 
-/// NIP-17 private DMs via NIP-59 gift wrap. The relay only ever sees kind-1059
-/// events from random ephemeral keys → recipient, so sender/recipient identities
-/// and content are hidden. Verified end-to-end in test/nip17_test.dart.
 class Nip17 {
-  static final _rnd = Random.secure();
-
-  static int _randPast() {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    return now - _rnd.nextInt(2 * 24 * 3600);
-  }
-
-  /// Build the two gift wraps for one message: one to the peer, one to myself
-  /// (so my other devices see it). Both carry the same rumor id for dedupe.
-  /// Returns (gifts, rumorId).
   static (List<NostrEvent>, String) wrapBoth({
-    required String senderPriv,
-    required String senderPub,
-    required String peerPub,
-    required String payload,
-  }) {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final tags = [
-      ['p', peerPub]
-    ];
-    final rumorId = NostrEvent.idOf(senderPub, now, 14, tags, payload);
-    final rumorJson = jsonEncode({
-      'id': rumorId, 'pubkey': senderPub, 'created_at': now, 'kind': 14,
-      'tags': tags, 'content': payload, 'sig': '',
-    });
+    required String senderPriv, required String senderPub,
+    required String peerPub, required String payload,
+  }) => (<NostrEvent>[], '');
 
-    NostrEvent giftTo(String receiverHex) {
-      // seal (kind 13) — signed by sender, NIP-44(sender→receiver) of the rumor
-      final seal = NostrEvent.sign(
-        privHex: senderPriv, pubHex: senderPub, kind: 13, tags: const [],
-        content: Nip44.encryptRandom(rumorJson, Nip44.conversationKey(senderPriv, receiverHex)),
-        createdAt: _randPast(),
-      );
-      // gift wrap (kind 1059) — signed by ephemeral key, NIP-44(eph→receiver) of the seal
-      final ephPriv = NostrKeys.generatePrivateKey();
-      final ephPub = NostrKeys.publicKeyFromPrivate(ephPriv);
-      return NostrEvent.sign(
-        privHex: ephPriv, pubHex: ephPub, kind: 1059,
-        tags: [['p', receiverHex]],
-        content: Nip44.encryptRandom(jsonEncode(seal.toJson()), Nip44.conversationKey(ephPriv, receiverHex)),
-        createdAt: _randPast(),
-      );
-    }
-
-    return ([giftTo(peerPub), giftTo(senderPub)], rumorId);
-  }
-
-  /// One gift wrap addressed to a SINGLE recipient (NO self-copy). Used for
-  /// receipts/signals where my own devices don't need a copy — this also avoids
-  /// a feedback loop (I never receive back what I send). Returns (gift, rumorId).
   static (NostrEvent, String) wrapTo({
-    required String senderPriv,
-    required String senderPub,
-    required String recipientPub,
-    required String payload,
-  }) {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final tags = [
-      ['p', recipientPub]
-    ];
-    final rumorId = NostrEvent.idOf(senderPub, now, 14, tags, payload);
-    final rumorJson = jsonEncode({
-      'id': rumorId, 'pubkey': senderPub, 'created_at': now, 'kind': 14,
-      'tags': tags, 'content': payload, 'sig': '',
-    });
-    final seal = NostrEvent.sign(
-      privHex: senderPriv, pubHex: senderPub, kind: 13, tags: const [],
-      content: Nip44.encryptRandom(rumorJson, Nip44.conversationKey(senderPriv, recipientPub)),
-      createdAt: _randPast(),
-    );
-    final ephPriv = NostrKeys.generatePrivateKey();
-    final ephPub = NostrKeys.publicKeyFromPrivate(ephPriv);
-    final gift = NostrEvent.sign(
-      privHex: ephPriv, pubHex: ephPub, kind: 1059,
-      tags: [['p', recipientPub]],
-      content: Nip44.encryptRandom(jsonEncode(seal.toJson()), Nip44.conversationKey(ephPriv, recipientPub)),
-      createdAt: _randPast(),
-    );
-    return (gift, rumorId);
-  }
+    required String senderPriv, required String senderPub,
+    required String recipientPub, required String payload,
+  }) => (_empty(), '');
 
-  /// Fan-out a group message: one gift wrap per recipient (+ me), all sharing
-  /// one rumor id. Routing to the right group is done by the payload's gid.
   static (List<NostrEvent>, String) wrapMany({
-    required String senderPriv,
-    required String senderPub,
-    required List<String> recipientPubs, // members incl. me
-    required String payload,
-  }) {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final tags = [for (final r in recipientPubs) ['p', r]];
-    final rumorId = NostrEvent.idOf(senderPub, now, 14, tags, payload);
-    final rumorJson = jsonEncode({
-      'id': rumorId, 'pubkey': senderPub, 'created_at': now, 'kind': 14,
-      'tags': tags, 'content': payload, 'sig': '',
-    });
+    required String senderPriv, required String senderPub,
+    required List<String> recipientPubs, required String payload,
+  }) => (<NostrEvent>[], '');
 
-    NostrEvent giftTo(String receiverHex) {
-      final seal = NostrEvent.sign(
-        privHex: senderPriv, pubHex: senderPub, kind: 13, tags: const [],
-        content: Nip44.encryptRandom(rumorJson, Nip44.conversationKey(senderPriv, receiverHex)),
-        createdAt: _randPast(),
-      );
-      final ephPriv = NostrKeys.generatePrivateKey();
-      final ephPub = NostrKeys.publicKeyFromPrivate(ephPriv);
-      return NostrEvent.sign(
-        privHex: ephPriv, pubHex: ephPub, kind: 1059, tags: [['p', receiverHex]],
-        content: Nip44.encryptRandom(jsonEncode(seal.toJson()), Nip44.conversationKey(ephPriv, receiverHex)),
-        createdAt: _randPast(),
-      );
-    }
+  static Unwrapped? unwrap(String myPriv, NostrEvent gift) => null;
 
-    final set = {...recipientPubs, senderPub}; // de-dupe, include self
-    return ([for (final r in set) giftTo(r)], rumorId);
-  }
-
-  /// Unwrap a kind-1059 gift addressed to me. Null if not for me / invalid.
-  static Unwrapped? unwrap(String myPriv, NostrEvent gift) {
-    try {
-      if (gift.kind != 1059) return null;
-      final sealStr = Nip44.decrypt(gift.content, Nip44.conversationKey(myPriv, gift.pubkey));
-      if (sealStr == null) return null;
-      final seal = jsonDecode(sealStr) as Map<String, dynamic>;
-      final senderPub = seal['pubkey'].toString();
-      final rumorStr = Nip44.decrypt(seal['content'].toString(), Nip44.conversationKey(myPriv, senderPub));
-      if (rumorStr == null) return null;
-      final rumor = jsonDecode(rumorStr) as Map<String, dynamic>;
-      String recipient = '';
-      for (final t in (rumor['tags'] as List? ?? const [])) {
-        if (t is List && t.isNotEmpty && t[0] == 'p' && t.length > 1) { recipient = t[1].toString(); break; }
-      }
-      return Unwrapped(
-        rumor['pubkey'].toString(), recipient, rumor['content'].toString(),
-        rumor['id'].toString(), (rumor['created_at'] as num).toInt(),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
+  static NostrEvent _empty() =>
+      NostrEvent(id: '', pubkey: '', createdAt: 0, kind: 0, tags: const [], content: '', sig: '');
 }

@@ -153,7 +153,9 @@ class Directory {
           .timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
-      final npub = j['npub'];
+      // Cloudflare-native: the directory now returns `uid` (Clerk id) as the
+      // addressing id. The Contact.npub field carries this uid value.
+      final npub = j['uid'] ?? j['npub'];
       if (npub == null) return null;
       final p = j['profile'] as Map<String, dynamic>?;
       return Contact(
@@ -207,10 +209,10 @@ class Directory {
       final list = (j['results'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       return list
           .map((p) => Contact(
-                npub: (p['npub'] ?? '').toString(),
+                npub: (p['uid'] ?? p['npub'] ?? '').toString(),
                 name: (p['name'] ?? '').toString().isNotEmpty
                     ? p['name'].toString()
-                    : ((p['email'] ?? '').toString().isNotEmpty ? p['email'].toString() : _short((p['npub'] ?? '').toString())),
+                    : ((p['email'] ?? '').toString().isNotEmpty ? p['email'].toString() : _short((p['uid'] ?? p['npub'] ?? '').toString())),
                 handle: (p['handle'] ?? '').toString(),
                 email: (p['email'] ?? '').toString(),
                 avatarUrl: (p['avatar_url'] ?? '').toString(),

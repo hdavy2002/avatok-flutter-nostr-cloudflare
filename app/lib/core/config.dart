@@ -76,11 +76,34 @@ const String kBrainConsentUrl = 'https://$kSignalingHost/api/brain/consent';    
 /// Public R2 read host (no Worker in the path) — content-addressed by sha256.
 const String kBlossomBaseUrl = 'https://blossom.avatok.ai';
 
-/// AvaTok Nostr relay (NIP-01) — real message delivery + NIP-44 encrypted DMs.
-/// First-party apex-zone host (not *.workers.dev): the long workers.dev name was
-/// intermittently failing DNS on mobile (errno 7) during wifi/LTE transitions,
-/// dropping the persistent relay socket. relay.avatok.ai is far more resilient.
+/// DEPRECATED (Nostr removed). Kept as a harmless constant so legacy screens that
+/// still construct a NostrClient(kNostrRelayUrl) compile; the client is now a
+/// compat stub and the real transport is the per-user InboxDO below.
 const String kNostrRelayUrl = 'wss://relay.avatok.ai/';
+
+// ── Cloudflare-native messaging (Nostr deprecated) ──────────────────────────
+// Per-user InboxDO WebSocket + HTTP send/sync/receipt. Auth = Clerk JWT, passed
+// as ?token= on the socket and as the Authorization bearer on HTTP.
+const String kInboxWsUrl = 'wss://$kSignalingHost/api/inbox';
+const String kMsgSendUrl = 'https://$kSignalingHost/api/msg/send';
+const String kMsgSyncUrl = 'https://$kSignalingHost/api/msg/sync';
+const String kMsgReceiptUrl = 'https://$kSignalingHost/api/msg/receipt';
+const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
+
+/// Deterministic 1:1 conversation id — MUST match server authz.dmConvId.
+String dmConvId(String a, String b) {
+  final lo = a.compareTo(b) <= 0 ? a : b;
+  final hi = a.compareTo(b) <= 0 ? b : a;
+  return 'dm_${lo}__$hi';
+}
+
+/// Peer uid from a dm conversation id, given my uid.
+String? dmPeer(String conv, String myUid) {
+  if (!conv.startsWith('dm_')) return null;
+  final parts = conv.substring(3).split('__');
+  if (parts.length != 2) return null;
+  return parts[0] == myUid ? parts[1] : parts[0];
+}
 
 /// Account backup: export your relay data → download link (media excluded). (NIP-98)
 const String kBackupUrl = 'https://$kSignalingHost/api/backup';
