@@ -12,9 +12,9 @@ compatibility_flags = ["nodejs_compat"]
 routes = [
   { pattern = "relay.avatok.ai", custom_domain = true }
 ]
-# Keep the old *.workers.dev hostname alive too, so phones still on the previous
-# build keep connecting during the rollover (the new build uses relay.avatok.ai).
-workers_dev = true
+# relay.avatok.ai is the ONLY host. The flaky *.workers.dev hostname is disabled
+# (clean reinstall on the test phones — no rollover compatibility needed).
+workers_dev = false
 
 # Nostr relay (NIP-01/09/11/17/25/42/100) for AvaTalk. Phase 3 re-platform:
 # events persist to D1 DB_RELAY (not DO SQLite); the DO holds only WebSocket
