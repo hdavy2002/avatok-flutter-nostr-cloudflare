@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../core/ava_log.dart';
 import 'nip17.dart';
@@ -78,6 +79,19 @@ class AvaDm {
     }
     AvaLog.I.log('dm', 'send rumor=${rumorId.substring(0, 8)} (${gifts.length} wraps), authed=${client.isAuthed}');
     return rumorId;
+  }
+
+  /// Send a durable, gift-wrapped delivery/read receipt to the peer (no self
+  /// copy, so it can't loop back to us). [status] is 'delivered' or 'read';
+  /// [ts] is the newest message timestamp this acknowledges (a high-water mark).
+  /// Because it's a normal gift wrap it persists on the relay and the original
+  /// sender picks it up whenever they reconnect — receipts survive restarts.
+  void sendReceipt(String status, int ts) {
+    if (ts <= 0) return;
+    final (gift, _) = Nip17.wrapTo(
+        senderPriv: myPriv, senderPub: myPub, recipientPub: peerPub,
+        payload: jsonEncode({'t': 'receipt', 'status': status, 'ts': ts}));
+    client.publish(gift);
   }
 
   void stop() {

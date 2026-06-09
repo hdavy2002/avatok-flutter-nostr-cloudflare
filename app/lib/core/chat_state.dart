@@ -80,6 +80,47 @@ class ChatPreviewStore {
   }
 }
 
+/// Per-conversation PEER receipt high-water marks for MY messages: the newest
+/// message timestamp the peer has had DELIVERED to their device, and READ.
+/// Persisted (account-scoped) so the WhatsApp-style ticks survive app restarts
+/// and backfill when receipts arrive while a thread is closed. Key: '1:<peerHex>'.
+class ReceiptStore {
+  static const _key = 'avatok_receipts';
+  final _s = _store();
+
+  Future<({int delivered, int read})> get(String convKey) async {
+    final raw = await _s.read(key: scopedKey(_key));
+    if (raw == null || raw.isEmpty) return (delivered: 0, read: 0);
+    try {
+      final v = (jsonDecode(raw) as Map)[convKey];
+      if (v is Map) {
+        return (delivered: (v['d'] as num?)?.toInt() ?? 0, read: (v['r'] as num?)?.toInt() ?? 0);
+      }
+    } catch (_) {}
+    return (delivered: 0, read: 0);
+  }
+
+  /// Merge a high-water mark — monotonic (never goes backwards); a 'read' ts
+  /// also implies 'delivered'. Returns the merged (delivered, read).
+  Future<({int delivered, int read})> bump(String convKey, {int delivered = 0, int read = 0}) async {
+    final raw = await _s.read(key: scopedKey(_key));
+    Map<String, dynamic> j = {};
+    if (raw != null && raw.isNotEmpty) {
+      try { j = (jsonDecode(raw) as Map).cast<String, dynamic>(); } catch (_) {}
+    }
+    final cur = j[convKey] is Map ? (j[convKey] as Map) : const {};
+    final curD = (cur['d'] as num?)?.toInt() ?? 0;
+    final curR = (cur['r'] as num?)?.toInt() ?? 0;
+    final newR = read > curR ? read : curR;
+    var newD = delivered > curD ? delivered : curD;
+    if (newR > newD) newD = newR; // read implies delivered
+    if (newD == curD && newR == curR) return (delivered: curD, read: curR);
+    j[convKey] = {'d': newD, 'r': newR};
+    await _s.write(key: scopedKey(_key), value: jsonEncode(j));
+    return (delivered: newD, read: newR);
+  }
+}
+
 /// Block / archive / mute / pin flags, each a set of conversation keys.
 class ChatFlagsStore {
   static const _key = 'avatok_chatflags';

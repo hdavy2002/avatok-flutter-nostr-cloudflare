@@ -186,6 +186,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_sharePresence) _presence!.sendOnline();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
+    // Restore persisted delivery/read marks so ticks are correct immediately on
+    // reopen (before any fresh receipt arrives) — survives app restarts.
+    ReceiptStore().get(_convKey!).then((r) {
+      if (!mounted) return;
+      setState(() {
+        if (r.delivered > _peerDeliveredTs) _peerDeliveredTs = r.delivered;
+        if (r.read > _peerReadTs) _peerReadTs = r.read;
+      });
+    });
     _markRead();
     _loadChatExtras();
     _loadCachedMessages();
@@ -364,6 +373,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Map<String, dynamic>? extra;
     try {
       final env = jsonDecode(m.payload);
+      if (env is Map && env['t'] == 'receipt') { _applyReceipt(m.mine, env); return; } // status, never a bubble
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
@@ -392,9 +402,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
-    if (!m.mine) _presence?.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    if (!m.mine) {
+      // I'm looking at this thread → tell the sender it's read, both the live
+      // (presence) way and the durable (gift-wrapped) way so it sticks.
+      _presence?.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+      _dm?.sendReceipt('read', m.createdAt);
+    }
     _markRead();
     _schedulePersist();
+  }
+
+  /// Apply a peer's delivery/read receipt for MY messages: advance the in-memory
+  /// high-water marks (drives the ticks live) and persist them so the status is
+  /// still correct after the thread/app is reopened. A 'read' implies delivered.
+  void _applyReceipt(bool mine, Map env) {
+    if (mine) return; // my own copy (shouldn't occur — receipts use wrapTo)
+    final rts = (env['ts'] as num?)?.toInt() ?? 0;
+    if (rts <= 0 || !mounted) return;
+    final read = (env['status'] ?? '').toString() == 'read';
+    setState(() {
+      if (read && rts > _peerReadTs) _peerReadTs = rts;
+      if (rts > _peerDeliveredTs) _peerDeliveredTs = rts;
+    });
+    if (_convKey != null) {
+      ReceiptStore().bump(_convKey!, delivered: read ? 0 : rts, read: read ? rts : 0);
+    }
   }
 
   void _applyEdit(String target, String body) {

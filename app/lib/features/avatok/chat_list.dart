@@ -59,6 +59,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   Map<String, int> _lastRead = {};
   final Map<String, int> _unread = {};
   final Set<String> _seenInbox = {};
+  final Map<String, int> _deliveredAckHW = {}; // peerHex → newest msg ts I've sent a delivered receipt for
   Map<String, Set<String>> _flags = {'blocked': {}, 'archived': {}, 'muted': {}, 'pinned': {}};
   int _statusCount = 0;
   bool _showArchived = false;
@@ -251,10 +252,31 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             ts: u.createdAt,
           );
           _statusStore.add(post).then((list) { if (mounted) setState(() => _statusCount = list.length); });
+        } else if (t == 'receipt') {
+          // A peer's delivery/read receipt for one of MY messages — persist it
+          // globally so the ticks are right even if this thread is closed.
+          if (u.senderPub != id.pubHex) {
+            final rts = (env['ts'] as num?)?.toInt() ?? 0;
+            final read = (env['status'] ?? '').toString() == 'read';
+            if (rts > 0) ReceiptStore().bump('1:${u.senderPub}', delivered: read ? 0 : rts, read: read ? rts : 0);
+          }
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
           if (u.senderPub == id.pubHex) return; // my own message
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
           if (_flags['blocked']!.contains(key)) return;
+          // Durable, gift-wrapped DELIVERED receipt — fires from the global inbox
+          // so it works with no thread open, and (unlike the ephemeral presence
+          // one) reaches the sender even if they were offline. One per peer per
+          // session high-water, so history replays don't spam receipts.
+          if (env['gid'] == null && (_deliveredAckHW[u.senderPub] ?? 0) < u.createdAt) {
+            _deliveredAckHW[u.senderPub] = u.createdAt;
+            try {
+              final (g, _) = Nip17.wrapTo(
+                  senderPriv: id.privHex, senderPub: id.pubHex, recipientPub: u.senderPub,
+                  payload: jsonEncode({'t': 'receipt', 'status': 'delivered', 'ts': u.createdAt}));
+              _inbox?.publish(g);
+            } catch (_) {}
+          }
           if (u.createdAt > (_lastRead[key] ?? 0) && mounted) {
             setState(() => _unread[key] = (_unread[key] ?? 0) + 1);
           }

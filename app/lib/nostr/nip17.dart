@@ -66,6 +66,40 @@ class Nip17 {
     return ([giftTo(peerPub), giftTo(senderPub)], rumorId);
   }
 
+  /// One gift wrap addressed to a SINGLE recipient (NO self-copy). Used for
+  /// receipts/signals where my own devices don't need a copy — this also avoids
+  /// a feedback loop (I never receive back what I send). Returns (gift, rumorId).
+  static (NostrEvent, String) wrapTo({
+    required String senderPriv,
+    required String senderPub,
+    required String recipientPub,
+    required String payload,
+  }) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final tags = [
+      ['p', recipientPub]
+    ];
+    final rumorId = NostrEvent.idOf(senderPub, now, 14, tags, payload);
+    final rumorJson = jsonEncode({
+      'id': rumorId, 'pubkey': senderPub, 'created_at': now, 'kind': 14,
+      'tags': tags, 'content': payload, 'sig': '',
+    });
+    final seal = NostrEvent.sign(
+      privHex: senderPriv, pubHex: senderPub, kind: 13, tags: const [],
+      content: Nip44.encryptRandom(rumorJson, Nip44.conversationKey(senderPriv, recipientPub)),
+      createdAt: _randPast(),
+    );
+    final ephPriv = NostrKeys.generatePrivateKey();
+    final ephPub = NostrKeys.publicKeyFromPrivate(ephPriv);
+    final gift = NostrEvent.sign(
+      privHex: ephPriv, pubHex: ephPub, kind: 1059,
+      tags: [['p', recipientPub]],
+      content: Nip44.encryptRandom(jsonEncode(seal.toJson()), Nip44.conversationKey(ephPriv, recipientPub)),
+      createdAt: _randPast(),
+    );
+    return (gift, rumorId);
+  }
+
   /// Fan-out a group message: one gift wrap per recipient (+ me), all sharing
   /// one rumor id. Routing to the right group is done by the payload's gid.
   static (List<NostrEvent>, String) wrapMany({
