@@ -54,11 +54,13 @@ jobs:
         working-directory: app
         run: flutter analyze || true
 
-      # Cloudflare-native pivot: Nostr gift-wrap (NIP-17) is deprecated — messages
-      # are server-routed plaintext now, so the gift-wrap roundtrip test is retired.
+      # Cloudflare-native pivot: the Nostr-era tests (nip44, relay diags) are
+      # retired with the crypto/relay code. Run whatever tests remain; the
+      # release APK build below stays the real compile gate.
       - name: Test (compile gate)
         working-directory: app
-        run: flutter test test/nip44_test.dart
+        run: |
+          if ls test/*_test.dart >/dev/null 2>&1; then flutter test; else echo "no tests — APK build is the compile gate"; fi
 
       # Sign every debug build with the SAME committed debug keystore so a new
       # APK installs over an existing one (Android refuses updates when the
