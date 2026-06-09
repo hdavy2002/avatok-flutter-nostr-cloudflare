@@ -72,17 +72,35 @@ jobs:
       # number from the run number guarantees each new APK is strictly newer, so
       # it installs over the top — no uninstall needed. (Signature already stable
       # via the pinned debug keystore above; both are required for clean updates.)
-      - name: Build debug APK
+      # RELEASE + split-per-ABI: the debug APK bundled all 4 CPU architectures +
+      # the JIT engine + no shrinking → ~200 MB. Release is AOT + R8 shrunk, and
+      # split-per-ABI ships ONE architecture per file, so the arm64 APK (every
+      # phone from the last ~7 years, incl. the test devices) is ~30–50 MB.
+      # Release is signed with the SAME committed keystore as debug (postcreate
+      # points signingConfigs.debug at it and the release buildType reuses it),
+      # so this installs straight over the existing build — no uninstall.
+      - name: Build release APK (split per ABI)
+        working-directory: app
+        run: flutter build apk --release --split-per-abi --build-number=$((10000 + GITHUB_RUN_NUMBER))
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
+      # Safety net: also build the debug APK as a fallback, in case the release
+      # build misbehaves on a device (release is AOT + can differ from debug).
+      # The small release arm64 is the primary download; debug is the backup.
+      - name: Build debug APK (fallback)
         working-directory: app
         run: flutter build apk --debug --build-number=$((10000 + GITHUB_RUN_NUMBER))
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
 
-      - name: Stage APK with stable name
+      - name: Stage APKs with stable names
         run: |
           mkdir -p dist
-          cp app/build/app/outputs/flutter-apk/app-debug.apk dist/avatok-call.apk
-          ls -la dist
+          ls -la app/build/app/outputs/flutter-apk/
+          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call.apk
+          cp app/build/app/outputs/flutter-apk/app-debug.apk dist/avatok-call-debug.apk
+          echo "sizes:"; ls -lh dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -95,9 +113,11 @@ jobs:
         with:
           tag_name: calltest-latest
           name: AvaTok Call Test (latest)
+          files: |
+            dist/avatok-call.apk
+            dist/avatok-call-debug.apk
           body: |
             Debug APK for on-device call testing. Built by CI from `app/`.
             Install on Android (allow "install from unknown sources"), open it,
             enter a room code, and join the same room on a second device or the
             browser test page at the signaling URL.
-          files: dist/avatok-call.apk
