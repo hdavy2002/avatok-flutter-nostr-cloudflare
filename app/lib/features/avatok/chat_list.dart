@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/avatar.dart';
+import '../../core/analytics.dart';
 import '../../core/config.dart';
 import '../../core/chat_state.dart';
 import '../../core/device_contacts.dart';
@@ -184,6 +185,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     // AvaContacts) and resolve who's already on AvaTok — best-effort, silent.
     DeviceContactsService.syncAndMatch(id.npub);
     // Register this device for incoming-call wake pushes (npub hashed at rest).
+    Analytics.identify(id.npub); // attribute diagnostics/events to this npub every app open
     await PushService.registerToken(id.npub);
     // Email is the human-facing id: publish email → npub so others find me by email.
     try {

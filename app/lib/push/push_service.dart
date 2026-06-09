@@ -101,6 +101,7 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
 
 class PushService {
   static Future<void> init() async {
+    AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
     await FirebaseMessaging.instance.requestPermission();
     await _local.initialize(const InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),

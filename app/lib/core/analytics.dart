@@ -3,6 +3,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
+import 'ava_log.dart';
+
 /// Central client-side analytics for AvaTOK → PostHog (EU region, project 139917).
 ///
 /// Everything here is best-effort: a telemetry failure must never throw into the
@@ -28,6 +30,16 @@ class Analytics {
         ..debug = kDebugMode;
       await Posthog().setup(config);
       _ready = true;
+      // Stream every diagnostic log line live to PostHog (batched/flushed by the
+      // SDK), keyed to the person via identify(npub). No manual upload, no
+      // app-owned DB. Pull a user's logs by resolving their email -> npub.
+      AvaLog.I.sink = (e) => capture('diag_log', {
+            'tag': e.tag,
+            'level': e.level,
+            'line': e.line,
+            'log_app': AvaLog.I.app,
+            'session': AvaLog.I.session,
+          });
     } catch (_) {/* analytics is optional; app runs without it */}
   }
 
