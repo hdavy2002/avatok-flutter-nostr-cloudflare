@@ -1,4 +1,4 @@
-// WalletDO — per-user atomic coin balance (§10.1). One DO per npub. ALL balance
+// WalletDO — per-user atomic coin balance (§10.1). One DO per uid. ALL balance
 // math happens here, inside the DO's own SQLite, so it is strictly serialized and
 // race-free. D1 (avatok-wallet) is only the async audit trail, written by the
 // wallet-transactions queue consumer. The DO also serves a WebSocket that pushes
@@ -45,36 +45,36 @@ export class WalletDO {
 
     let body: any = {};
     try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
-    const npub: string = body.npub || "";
+    const uid: string = body.uid || "";
 
     // Lazily release matured holds on every touch.
     this.releaseMatured();
 
     switch (body.op) {
-      case "balance": return json({ ...this.bal(), npub });
-      case "credit": return this.credit(npub, body);
-      case "spend": return this.spend(npub, body);
-      case "earn": return this.earn(npub, body);
-      case "debit_hold": return this.debitHold(npub, body); // refund clawback within hold
+      case "balance": return json({ ...this.bal(), uid });
+      case "credit": return this.credit(uid, body);
+      case "spend": return this.spend(uid, body);
+      case "earn": return this.earn(uid, body);
+      case "debit_hold": return this.debitHold(uid, body); // refund clawback within hold
       case "release": { const released = this.releaseMatured(); return json({ released, ...this.bal() }); }
       default: return json({ error: "unknown op" }, 400);
     }
   }
 
   // Immediate spendable credit (topup, refund).
-  private async credit(npub: string, b: any): Promise<Response> {
+  private async credit(uid: string, b: any): Promise<Response> {
     const amount = Math.trunc(Number(b.amount));
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
     const cur = this.bal();
     const balance = cur.balance + amount;
     this.setBal(balance, cur.held);
-    await this.audit(npub, { type: b.type || "topup", amount, balance_after: balance, app_name: b.app_name, ref: b.ref });
+    await this.audit(uid, { type: b.type || "topup", amount, balance_after: balance, app_name: b.app_name, ref: b.ref });
     this.broadcast();
     return json({ ok: true, balance, held: cur.held });
   }
 
   // Atomic debit. Refuses to go negative.
-  private async spend(npub: string, b: any): Promise<Response> {
+  private async spend(uid: string, b: any): Promise<Response> {
     const amount = Math.trunc(Number(b.amount));
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
     const cur = this.bal();
@@ -82,14 +82,14 @@ export class WalletDO {
     const balance = cur.balance - amount;
     this.setBal(balance, cur.held);
     const txType = b.type === "payout" || b.type === "refund" ? b.type : "spend";
-    await this.audit(npub, { type: txType, amount: -amount, balance_after: balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, ref: b.ref });
+    await this.audit(uid, { type: txType, amount: -amount, balance_after: balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, ref: b.ref });
     this.broadcast();
     return json({ ok: true, balance, held: cur.held });
   }
 
   // Earn into a 7-day hold (not spendable until matured). commission already deducted
   // by the caller; `amount` is the net credited to the creator.
-  private async earn(npub: string, b: any): Promise<Response> {
+  private async earn(uid: string, b: any): Promise<Response> {
     const amount = Math.trunc(Number(b.amount));
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
     const cur = this.bal();
@@ -99,14 +99,14 @@ export class WalletDO {
     const id = crypto.randomUUID();
     this.sql.exec("INSERT INTO holds (id, amount, available_at, released) VALUES (?1,?2,?3,0)", id, amount, availableAt);
     await this.state.storage.setAlarm(availableAt);
-    await this.audit(npub, { type: "earn", amount, balance_after: cur.balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, commission: Math.trunc(Number(b.commission || 0)), ref: b.ref, hold_until: availableAt });
+    await this.audit(uid, { type: "earn", amount, balance_after: cur.balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, commission: Math.trunc(Number(b.commission || 0)), ref: b.ref, hold_until: availableAt });
     this.broadcast();
     return json({ ok: true, balance: cur.balance, held, available_at: availableAt });
   }
 
   // Claw back from the held pool (refund of a still-held earning). Removes matching
   // unreleased holds first; floors at 0.
-  private async debitHold(npub: string, b: any): Promise<Response> {
+  private async debitHold(uid: string, b: any): Promise<Response> {
     const amount = Math.trunc(Number(b.amount));
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
     const cur = this.bal();
@@ -114,7 +114,7 @@ export class WalletDO {
     this.setBal(cur.balance, cur.held - take);
     // Drop newest unreleased holds covering `take` (best-effort bookkeeping).
     this.sql.exec("DELETE FROM holds WHERE id IN (SELECT id FROM holds WHERE released=0 ORDER BY available_at DESC LIMIT 50)");
-    await this.audit(npub, { type: "refund", amount: -take, balance_after: cur.balance, app_name: b.app_name, ref: b.ref });
+    await this.audit(uid, { type: "refund", amount: -take, balance_after: cur.balance, app_name: b.app_name, ref: b.ref });
     this.broadcast();
     return json({ ok: true, clawed: take, balance: cur.balance, held: cur.held - take });
   }
@@ -140,8 +140,8 @@ export class WalletDO {
   }
 
   // D1 audit trail via the wallet-transactions queue (never blocks the user).
-  private async audit(npub: string, tx: Record<string, unknown>): Promise<void> {
-    try { await this.env.Q_WALLET.send({ npub, id: crypto.randomUUID(), ts: Date.now(), ...tx }); } catch { /* best-effort */ }
+  private async audit(uid: string, tx: Record<string, unknown>): Promise<void> {
+    try { await this.env.Q_WALLET.send({ uid, id: crypto.randomUUID(), ts: Date.now(), ...tx }); } catch { /* best-effort */ }
   }
 
   // ---- live balance over WebSocket ----

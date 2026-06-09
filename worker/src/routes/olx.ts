@@ -12,7 +12,7 @@
 //   GET    /api/olx/downloads/:id/file    signed download (marks downloaded)
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
-import { authenticate, isErr, requireVerifiedKV } from "../auth";
+import { requireUser, isFail, kycVerified } from "../authz";
 import { mediaSession, mediaDb } from "../db/shard";
 import { transferCoins } from "./wallet";
 import { presignGetUrl } from "../aws/sigv4";
@@ -38,9 +38,9 @@ function autoListing(title: string, kind: string, notes: string, category?: stri
 
 // POST /api/olx/listings  { kind, title, notes, category, price_coins?, location?, image_hashes? }
 export async function olxCreate(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
-  if (!(await requireVerifiedKV(env, auth.npub))) return json({ error: "verification required to list", reason: "tier2" }, 403);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if (!(await kycVerified(env, ctx.uid))) return json({ error: "verification required to list", reason: "tier2" }, 403);
 
   const b = (await req.json().catch(() => ({}))) as any;
   const kind = b.kind === "digital" ? "digital" : "physical";
@@ -54,10 +54,10 @@ export async function olxCreate(req: Request, env: Env): Promise<Response> {
   await mediaDb(env).prepare(
     `INSERT INTO olx_listings (id, seller_npub, kind, title, description, category, price_coins, location, image_hashes, status, created_at, updated_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'active',?10,?10)`,
-  ).bind(id, auth.npub, kind, String(b.title), desc, b.category ?? null, price, kind === "physical" ? (b.location ?? null) : null, b.image_hashes ? JSON.stringify(b.image_hashes) : null, now).run();
+  ).bind(id, ctx.uid, kind, String(b.title), desc, b.category ?? null, price, kind === "physical" ? (b.location ?? null) : null, b.image_hashes ? JSON.stringify(b.image_hashes) : null, now).run();
 
-  track(env, auth.npub, "olx_listing_created", APP, { kind, price });
-  brainFact(env, auth.npub, "olx_listed", APP, { kind, title: b.title, price });
+  track(env, ctx.uid, "olx_listing_created", APP, { kind, price });
+  brainFact(env, ctx.uid, "olx_listed", APP, { kind, title: b.title, price });
   return json({ ok: true, listing_id: id, kind, needs_file: kind === "digital" });
 }
 
@@ -84,10 +84,10 @@ export async function olxGet(req: Request, env: Env, id: string): Promise<Respon
 }
 
 export async function olxUpdate(req: Request, env: Env, id: string): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const row = await mediaDb(env).prepare("SELECT seller_npub, kind FROM olx_listings WHERE id=?1").bind(id).first<any>();
-  if (!row || row.seller_npub !== auth.npub) return json({ error: "not found" }, 404);
+  if (!row || row.seller_npub !== ctx.uid) return json({ error: "not found" }, 404);
   const b = (await req.json().catch(() => ({}))) as any;
   const desc = b.title || b.notes ? autoListing(String(b.title || ""), row.kind, String(b.notes || ""), b.category, b.price_coins) : null;
   await mediaDb(env).prepare(
@@ -97,41 +97,41 @@ export async function olxUpdate(req: Request, env: Env, id: string): Promise<Res
 }
 
 export async function olxDelete(req: Request, env: Env, id: string): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const row = await mediaDb(env).prepare("SELECT seller_npub FROM olx_listings WHERE id=?1").bind(id).first<any>();
-  if (!row || row.seller_npub !== auth.npub) return json({ error: "not found" }, 404);
+  if (!row || row.seller_npub !== ctx.uid) return json({ error: "not found" }, 404);
   await mediaDb(env).prepare("UPDATE olx_listings SET status='closed', updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
   return json({ ok: true });
 }
 
 // POST /api/olx/listings/:id/file — seller uploads the digital deliverable (bytes).
 export async function olxUploadFile(req: Request, env: Env, id: string): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const listing = await mediaDb(env).prepare("SELECT seller_npub, kind FROM olx_listings WHERE id=?1").bind(id).first<any>();
-  if (!listing || listing.seller_npub !== auth.npub) return json({ error: "not found" }, 404);
+  if (!listing || listing.seller_npub !== ctx.uid) return json({ error: "not found" }, 404);
   if (listing.kind !== "digital") return json({ error: "not a digital product" }, 400);
 
   const bytes = await req.arrayBuffer();
   if (!bytes.byteLength) return json({ error: "empty body" }, 400);
   const fileName = req.headers.get("x-file-name") || "download.bin";
   const mime = req.headers.get("x-content-type") || "application/octet-stream";
-  const r2Key = `u/${auth.npub}/digital/${id}/${await sha256Hex(bytes)}`;
+  const r2Key = `u/${ctx.uid}/digital/${id}/${await sha256Hex(bytes)}`;
   await env.DIGITAL.put(r2Key, bytes, { httpMetadata: { contentType: mime } });
 
   await mediaDb(env).prepare(
     `INSERT INTO olx_digital_products (listing_id, seller_npub, r2_key, file_name, mime, size_bytes, created_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7)
      ON CONFLICT(listing_id) DO UPDATE SET r2_key=?3, file_name=?4, mime=?5, size_bytes=?6`,
-  ).bind(id, auth.npub, r2Key, fileName, mime, bytes.byteLength, Date.now()).run();
+  ).bind(id, ctx.uid, r2Key, fileName, mime, bytes.byteLength, Date.now()).run();
   return json({ ok: true, size_bytes: bytes.byteLength });
 }
 
 // POST /api/olx/buy  { listing_id }
 export async function olxBuy(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const listingId = String(b.listing_id || "");
   const listing = await mediaDb(env).prepare(
@@ -139,13 +139,13 @@ export async function olxBuy(req: Request, env: Env): Promise<Response> {
   ).bind(listingId).first<any>();
   if (!listing || listing.status !== "active") return json({ error: "listing not available" }, 404);
   if (listing.kind !== "digital") return json({ error: "physical goods: contact the seller via AvaChat", contact: listing.seller_npub }, 400);
-  if (listing.seller_npub === auth.npub) return json({ error: "cannot buy your own product" }, 400);
+  if (listing.seller_npub === ctx.uid) return json({ error: "cannot buy your own product" }, 400);
 
   const product = await mediaDb(env).prepare("SELECT r2_key FROM olx_digital_products WHERE listing_id=?1").bind(listingId).first<any>();
   if (!product) return json({ error: "product file not uploaded yet" }, 409);
 
   // Pay: debit buyer → credit seller minus 15% commission (avaolx), 7-day hold.
-  const t = await transferCoins(env, auth.npub, listing.seller_npub, listing.price_coins, APP, `olx:${listingId}`);
+  const t = await transferCoins(env, ctx.uid, listing.seller_npub, listing.price_coins, APP, `olx:${listingId}`);
   if (!t.ok) return json({ error: "payment failed", detail: t.body }, t.status === 402 ? 402 : 502);
 
   const purchaseId = crypto.randomUUID();
@@ -153,63 +153,63 @@ export async function olxBuy(req: Request, env: Env): Promise<Response> {
   await mediaDb(env).prepare(
     `INSERT INTO olx_purchases (id, listing_id, buyer_npub, seller_npub, price_coins, commission, status, created_at)
      VALUES (?1,?2,?3,?4,?5,?6,'paid',?7)`,
-  ).bind(purchaseId, listingId, auth.npub, listing.seller_npub, listing.price_coins, t.commission, now).run();
+  ).bind(purchaseId, listingId, ctx.uid, listing.seller_npub, listing.price_coins, t.commission, now).run();
 
-  brainFact(env, auth.npub, "olx_purchased", APP, { title: listing.title, price: listing.price_coins });
-  track(env, auth.npub, "olx_purchase", APP, { price: listing.price_coins, commission: t.commission });
+  brainFact(env, ctx.uid, "olx_purchased", APP, { title: listing.title, price: listing.price_coins });
+  track(env, ctx.uid, "olx_purchase", APP, { price: listing.price_coins, commission: t.commission });
   try { await notifyUser(env, listing.seller_npub, { type: "wallet", title: "Product sold", body: listing.title, data: { deeplink: "/wallet" } }); } catch { /* best-effort */ }
   return json({ ok: true, purchase_id: purchaseId, download_path: `/api/olx/downloads/${purchaseId}/file` });
 }
 
 // POST /api/olx/refund { purchase_id } — 24h refund if NOT downloaded (§10.6).
 export async function olxRefund(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const pur = await mediaDb(env).prepare(
     "SELECT id, buyer_npub, seller_npub, price_coins, commission, status, created_at FROM olx_purchases WHERE id=?1",
   ).bind(String(b.purchase_id || "")).first<any>();
-  if (!pur || pur.buyer_npub !== auth.npub) return json({ error: "purchase not found" }, 404);
+  if (!pur || pur.buyer_npub !== ctx.uid) return json({ error: "purchase not found" }, 404);
   if (pur.status !== "paid") return json({ error: "not refundable", reason: pur.status }, 409); // downloaded/refunded
   if (Date.now() - pur.created_at > REFUND_WINDOW) return json({ error: "refund window (24h) expired" }, 409);
 
   // Refund the buyer; claw the seller's held net back.
   const sellerNet = pur.price_coins - pur.commission;
-  await walletOpRefund(env, auth.npub, pur.price_coins, pur.id);
+  await walletOpRefund(env, ctx.uid, pur.price_coins, pur.id);
   await env.WALLET_DO.get(env.WALLET_DO.idFromName(pur.seller_npub)).fetch("https://wallet/op", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ op: "debit_hold", npub: pur.seller_npub, amount: sellerNet, app_name: APP, ref: pur.id }),
+    body: JSON.stringify({ op: "debit_hold", uid: pur.seller_npub, amount: sellerNet, app_name: APP, ref: pur.id }),
   });
   await mediaDb(env).prepare("UPDATE olx_purchases SET status='refunded' WHERE id=?1").bind(pur.id).run();
-  track(env, auth.npub, "olx_refund", APP, { price: pur.price_coins });
+  track(env, ctx.uid, "olx_refund", APP, { price: pur.price_coins });
   return json({ ok: true, refunded: pur.price_coins });
 }
 
-async function walletOpRefund(env: Env, npub: string, amount: number, ref: string): Promise<void> {
-  await env.WALLET_DO.get(env.WALLET_DO.idFromName(npub)).fetch("https://wallet/op", {
+async function walletOpRefund(env: Env, uid: string, amount: number, ref: string): Promise<void> {
+  await env.WALLET_DO.get(env.WALLET_DO.idFromName(uid)).fetch("https://wallet/op", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ op: "credit", npub, amount, type: "refund", app_name: APP, ref }),
+    body: JSON.stringify({ op: "credit", uid, amount, type: "refund", app_name: APP, ref }),
   });
 }
 
 // GET /api/olx/downloads — my purchases.
 export async function olxDownloads(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const rs = await mediaSession(env).prepare(
     "SELECT id, listing_id, price_coins, status, downloaded_at, created_at FROM olx_purchases WHERE buyer_npub=?1 ORDER BY created_at DESC LIMIT 50",
-  ).bind(auth.npub).all();
+  ).bind(ctx.uid).all();
   return json({ purchases: rs.results ?? [] });
 }
 
 // GET /api/olx/downloads/:id/file — signed download; marks downloaded (ends refund window).
 export async function olxDownloadFile(req: Request, env: Env, purchaseId: string): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const pur = await mediaDb(env).prepare(
     "SELECT id, listing_id, buyer_npub, status FROM olx_purchases WHERE id=?1",
   ).bind(purchaseId).first<any>();
-  if (!pur || pur.buyer_npub !== auth.npub) return json({ error: "not found" }, 404);
+  if (!pur || pur.buyer_npub !== ctx.uid) return json({ error: "not found" }, 404);
   if (pur.status === "refunded") return json({ error: "purchase was refunded" }, 410);
 
   const product = await mediaDb(env).prepare("SELECT r2_key, file_name, mime FROM olx_digital_products WHERE listing_id=?1").bind(pur.listing_id).first<any>();
@@ -219,7 +219,7 @@ export async function olxDownloadFile(req: Request, env: Env, purchaseId: string
   if (pur.status !== "downloaded") {
     await mediaDb(env).prepare("UPDATE olx_purchases SET status='downloaded', downloaded_at=?2 WHERE id=?1").bind(purchaseId, Date.now()).run();
   }
-  track(env, auth.npub, "olx_download", APP, {});
+  track(env, ctx.uid, "olx_download", APP, {});
 
   // Preferred: a presigned R2 URL (bytes never through the Worker). Fallback: stream.
   if (env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY && env.R2_ACCOUNT_ID) {

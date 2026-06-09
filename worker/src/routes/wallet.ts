@@ -11,18 +11,18 @@
 //   GET  /api/wallet/live         → WebSocket balance stream (DO)
 import type { Env } from "../types";
 import { json } from "../util";
-import { authenticate, isErr } from "../auth";
+import { requireUser, isFail } from "../authz";
 import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 
 const COIN_CENTS = 1;            // 1 AvaCoin = $0.01
 const MIN_TOPUP = 100, MAX_TOPUP = 50_000; // §10.1 free-form 100..50,000
 
-function walletStub(env: Env, npub: string) {
-  return env.WALLET_DO.get(env.WALLET_DO.idFromName(npub));
+function walletStub(env: Env, uid: string) {
+  return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
 }
-export async function walletOp(env: Env, npub: string, op: object): Promise<{ status: number; body: any }> {
-  const r = await walletStub(env, npub).fetch("https://wallet/op", {
+export async function walletOp(env: Env, uid: string, op: object): Promise<{ status: number; body: any }> {
+  const r = await walletStub(env, uid).fetch("https://wallet/op", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(op),
   });
   return { status: r.status, body: await r.json().catch(() => ({})) };
@@ -48,12 +48,12 @@ export async function transferCoins(
   ref: string,
   commissionOverride?: number,
 ): Promise<{ ok: boolean; status: number; body: any; sellerNet: number; commission: number }> {
-  const debit = await walletOp(env, buyer, { op: "spend", npub: buyer, amount, app_name: app, counterparty_npub: seller, ref });
+  const debit = await walletOp(env, buyer, { op: "spend", uid: buyer, amount, app_name: app, counterparty_npub: seller, ref });
   if (debit.status !== 200) return { ok: false, status: debit.status, body: debit.body, sellerNet: 0, commission: 0 };
   const rate = commissionOverride ?? await commissionRate(env, app);
   const commission = Math.round(amount * rate);
   const sellerNet = amount - commission;
-  await walletOp(env, seller, { op: "earn", npub: seller, amount: sellerNet, commission, app_name: app, counterparty_npub: buyer, ref });
+  await walletOp(env, seller, { op: "earn", uid: seller, amount: sellerNet, commission, app_name: app, counterparty_npub: buyer, ref });
   return { ok: true, status: 200, body: debit.body, sellerNet, commission };
 }
 
@@ -63,8 +63,8 @@ function topupEnabled(env: Env): boolean {
 
 // POST /api/wallet/topup { amount }
 export async function walletTopup(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const amount = Math.trunc(Number(b.amount));
   if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} coins` }, 400);
@@ -82,7 +82,7 @@ export async function walletTopup(req: Request, env: Env): Promise<Response> {
   form.set("success_url", (env.WALLET_RETURN_URL || "https://avatok.ai/wallet") + "?topup=success");
   form.set("cancel_url", (env.WALLET_RETURN_URL || "https://avatok.ai/wallet") + "?topup=cancel");
   form.set("client_reference_id", id);
-  form.set("metadata[npub]", auth.npub);
+  form.set("metadata[uid]", ctx.uid);
   form.set("metadata[topup_id]", id);
   form.set("metadata[coins]", String(amount));
   form.set("line_items[0][quantity]", "1");
@@ -99,9 +99,9 @@ export async function walletTopup(req: Request, env: Env): Promise<Response> {
   if (!res.ok) return json({ error: "stripe error", detail: session?.error?.message }, 502);
 
   await env.DB_WALLET.prepare(
-    "INSERT INTO topup_records (id, npub, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,'usd','pending',?6)",
-  ).bind(id, auth.npub, session.id, amount, cents, Date.now()).run();
-  track(env, auth.npub, "wallet_topup_initiated", "avawallet", { amount, cents });
+    "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,'usd','pending',?6)",
+  ).bind(id, ctx.uid, session.id, amount, cents, Date.now()).run();
+  track(env, ctx.uid, "wallet_topup_initiated", "avawallet", { amount, cents });
   return json({ checkout_url: session.url, session_id: session.id, topup_id: id });
 }
 
@@ -117,38 +117,38 @@ export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   if (event.type !== "checkout.session.completed") return json({ received: true });
 
   const s = event.data?.object ?? {};
-  const npub = s.metadata?.npub; const coins = Math.trunc(Number(s.metadata?.coins || 0));
+  const uid = s.metadata?.uid; const coins = Math.trunc(Number(s.metadata?.coins || 0));
   const topupId = s.metadata?.topup_id;
-  if (!npub || !(coins > 0)) return json({ received: true });
+  if (!uid || !(coins > 0)) return json({ received: true });
 
   // Security + idempotency: only credit a top-up THIS user actually initiated and
   // that is still pending. No record → ignore (prevents forged-webhook free coins
   // when no signing secret is configured). Already-paid → idempotent no-op.
-  const rec = await env.DB_WALLET.prepare("SELECT status, amount_coins FROM topup_records WHERE id=?1 AND npub=?2")
-    .bind(topupId, npub).first<{ status: string; amount_coins: number }>();
+  const rec = await env.DB_WALLET.prepare("SELECT status, amount_coins FROM topup_records WHERE id=?1 AND uid=?2")
+    .bind(topupId, uid).first<{ status: string; amount_coins: number }>();
   if (!rec) return json({ received: true, ignored: "no matching topup record" });
   if (rec.status !== "pending") return json({ received: true, duplicate: true });
   if (rec.amount_coins !== coins) return json({ received: true, ignored: "amount mismatch" });
 
-  await walletOp(env, npub, { op: "credit", npub, amount: coins, type: "topup", app_name: "avawallet", ref: topupId });
+  await walletOp(env, uid, { op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: topupId });
   await env.DB_WALLET.prepare("UPDATE topup_records SET status='paid', paid_at=?2 WHERE id=?1").bind(topupId, Date.now()).run();
-  brainFact(env, npub, "wallet_topup", "avawallet", { coins });
-  try { await notifyUser(env, npub, { type: "wallet", title: `Added ${coins} AvaCoins`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
-  track(env, npub, "wallet_topup_completed", "avawallet", { coins });
+  brainFact(env, uid, "wallet_topup", "avawallet", { coins });
+  try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} AvaCoins`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
+  track(env, uid, "wallet_topup_completed", "avawallet", { coins });
   return json({ received: true, credited: coins });
 }
 
 // POST /api/wallet/spend { amount, app_name, to_npub, ref }
 export async function walletSpend(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const amount = Math.trunc(Number(b.amount));
   const app = String(b.app_name || "avawallet");
   if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
 
   // 1. Debit the buyer atomically.
-  const debit = await walletOp(env, auth.npub, { op: "spend", npub: auth.npub, amount, app_name: app, counterparty_npub: b.to_npub ?? null, ref: b.ref ?? null });
+  const debit = await walletOp(env, ctx.uid, { op: "spend", uid: ctx.uid, amount, app_name: app, counterparty_npub: b.to_npub ?? null, ref: b.ref ?? null });
   if (debit.status !== 200) return json(debit.body, debit.status);
 
   // 2. Credit the creator minus commission, into a 7-day hold.
@@ -157,54 +157,54 @@ export async function walletSpend(req: Request, env: Env): Promise<Response> {
     const rate = await commissionRate(env, app);
     commission = Math.round(amount * rate);
     creatorNet = amount - commission;
-    await walletOp(env, b.to_npub, { op: "earn", npub: b.to_npub, amount: creatorNet, commission, app_name: app, counterparty_npub: auth.npub, ref: b.ref ?? null });
+    await walletOp(env, b.to_npub, { op: "earn", uid: b.to_npub, amount: creatorNet, commission, app_name: app, counterparty_npub: ctx.uid, ref: b.ref ?? null });
     brainFact(env, b.to_npub, "wallet_earned", app, { amount: creatorNet, from: "spend" });
     try { await notifyUser(env, b.to_npub, { type: "wallet", title: `Earned ${creatorNet} AvaCoins`, body: "Available after a 7-day hold.", data: { deeplink: "/wallet", amount: creatorNet } }); } catch { /* best-effort */ }
   }
 
-  brainFact(env, auth.npub, "wallet_spent", app, { amount });
-  track(env, auth.npub, "wallet_spend", app, { amount, commission, creator_net: creatorNet });
+  brainFact(env, ctx.uid, "wallet_spent", app, { amount });
+  track(env, ctx.uid, "wallet_spend", app, { amount, commission, creator_net: creatorNet });
   metric(env, "wallet_spend", [amount, commission]);
   return json({ ok: true, spent: amount, balance: debit.body.balance, creator_net: creatorNet, commission });
 }
 
 export async function walletBalance(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
-  const r = await walletOp(env, auth.npub, { op: "balance", npub: auth.npub });
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const r = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
   return json(r.body, r.status);
 }
 
 export async function walletTransactions(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
-    "SELECT id, type, amount, balance_after, app_name, counterparty_npub, commission, ref, created_at FROM wallet_transactions WHERE npub=?1 ORDER BY created_at DESC LIMIT 100",
-  ).bind(auth.npub).all();
+    "SELECT id, type, amount, balance_after, app_name, counterparty_npub, commission, ref, created_at FROM wallet_transactions WHERE uid=?1 ORDER BY created_at DESC LIMIT 100",
+  ).bind(ctx.uid).all();
   return json({ transactions: rs.results ?? [] });
 }
 
 export async function walletEarnings(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const now = Date.now();
   const held = await env.DB_WALLET.prepare(
-    "SELECT COALESCE(SUM(amount),0) AS held FROM earning_holds WHERE npub=?1 AND released=0 AND available_at>?2",
-  ).bind(auth.npub, now).first<{ held: number }>();
+    "SELECT COALESCE(SUM(amount),0) AS held FROM earning_holds WHERE uid=?1 AND released=0 AND available_at>?2",
+  ).bind(ctx.uid, now).first<{ held: number }>();
   const matured = await env.DB_WALLET.prepare(
-    "SELECT COALESCE(SUM(amount),0) AS matured FROM earning_holds WHERE npub=?1 AND released=1",
-  ).bind(auth.npub).first<{ matured: number }>();
+    "SELECT COALESCE(SUM(amount),0) AS matured FROM earning_holds WHERE uid=?1 AND released=1",
+  ).bind(ctx.uid).first<{ matured: number }>();
   const upcoming = await env.DB_WALLET.prepare(
-    "SELECT amount, available_at FROM earning_holds WHERE npub=?1 AND released=0 ORDER BY available_at ASC LIMIT 20",
-  ).bind(auth.npub).all();
+    "SELECT amount, available_at FROM earning_holds WHERE uid=?1 AND released=0 ORDER BY available_at ASC LIMIT 20",
+  ).bind(ctx.uid).all();
   return json({ held: held?.held ?? 0, released_total: matured?.matured ?? 0, upcoming: upcoming.results ?? [] });
 }
 
-// GET /api/wallet/live — WebSocket balance stream (auth via query: the DO needs the npub).
+// GET /api/wallet/live — WebSocket balance stream (auth via query: the DO needs the uid).
 export async function walletLive(req: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(req, env);
-  if (isErr(auth)) return json({ error: auth.error }, auth.status);
-  return walletStub(env, auth.npub).fetch("https://wallet/ws", req);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  return walletStub(env, ctx.uid).fetch("https://wallet/ws", req);
 }
 
 // Stripe webhook signature (HMAC-SHA256 over `${t}.${payload}`).
