@@ -16,6 +16,7 @@ part 'db.g.dart';
 // re-renders; only genuinely new rows fire a UI update.
 
 /// One row per 1:1/group message (deduped by the gift-wrap rumor id).
+@DataClassName('MessageRow')
 class Messages extends Table {
   TextColumn get rumorId => text()();
   TextColumn get convKey => text()(); // '1:<peerHex>' (DM) or 'g:<gid>' (group)
@@ -27,6 +28,7 @@ class Messages extends Table {
 }
 
 /// Saved contacts.
+@DataClassName('ContactRow')
 class Contacts extends Table {
   TextColumn get npub => text()();
   TextColumn get name => text().withDefault(const Constant(''))();
@@ -38,6 +40,7 @@ class Contacts extends Table {
 }
 
 /// Per-conversation preview line + ordering + unread count (drives the list).
+@DataClassName('ChatRow')
 class Chats extends Table {
   TextColumn get convKey => text()();
   TextColumn get preview => text().withDefault(const Constant(''))();
@@ -69,8 +72,17 @@ class AppDb extends _$AppDb {
     return (await q.getSingle()).read(c) ?? 0;
   }
 
-  /// Reactive history for a conversation (Phase 3 binds the thread to this).
-  Stream<List<Message>> watchMessages(String convKey) =>
+  /// One-shot history for a conversation (ordered oldest→newest). The thread
+  /// seeds from this on open — it's the durable, deduped source of truth, and
+  /// includes messages that arrived in PAST sessions while the thread was closed.
+  Future<List<MessageRow>> messagesFor(String convKey) =>
+      (select(messages)
+            ..where((t) => t.convKey.equals(convKey))
+            ..orderBy([(t) => OrderingTerm(expression: t.createdAt)]))
+          .get();
+
+  /// Reactive history for a conversation (full reactive UI binds to this next).
+  Stream<List<MessageRow>> watchMessages(String convKey) =>
       (select(messages)
             ..where((t) => t.convKey.equals(convKey))
             ..orderBy([(t) => OrderingTerm(expression: t.createdAt)]))

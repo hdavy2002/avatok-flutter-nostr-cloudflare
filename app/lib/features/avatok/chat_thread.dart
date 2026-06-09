@@ -26,6 +26,7 @@ import '../../core/group_store.dart';
 import '../../core/message_store.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
+import '../../core/db.dart';
 import '../../nostr/ava_dm.dart';
 import '../../nostr/ava_group_dm.dart';
 import '../../nostr/nip17.dart';
@@ -187,10 +188,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_sharePresence) _presence!.sendOnline();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
-    // Seed instantly from the shared hub's in-memory store — includes messages
-    // that arrived while this thread was CLOSED (the live stream only carries
-    // future events; disk cache is loaded separately below for cross-restart).
-    for (final m in RelayHub.I.messagesFor(_convKey!)) _onDm(m);
+    // Seed instantly from the shared hub's in-memory store (this session).
+    for (final m in RelayHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
+    // Durable history from the local SQLite DB — the source of truth. Covers
+    // messages received in PAST sessions while this thread was closed (the hub
+    // stored them in the DB even though no open thread cached them). _onDm dedups
+    // by rumor id, so this never double-renders what's already shown.
+    Db.I.messagesFor(_convKey!).then((rows) {
+      if (!mounted) return;
+      for (final m in rows) {
+        _onDm(DmMessage(rumorId: m.rumorId, mine: m.mine, payload: m.payload, createdAt: m.createdAt), seed: true);
+      }
+    });
     // Restore persisted delivery/read marks so ticks are correct immediately on
     // reopen (before any fresh receipt arrives) — survives app restarts.
     ReceiptStore().get(_convKey!).then((r) {
@@ -364,7 +373,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return (icon: Icons.schedule, color: Colors.white70, label: 'Sending…');
   }
 
-  void _onDm(DmMessage m) {
+  // [seed]=true when replaying stored history (hub memory / local DB) on open —
+  // it suppresses re-sending read receipts for old messages (only genuinely
+  // live, just-arrived messages should mark-read).
+  void _onDm(DmMessage m, {bool seed = false}) {
     if (_seenEv.contains(m.rumorId)) return;
     _seenEv.add(m.rumorId);
     if (!mounted) return;
@@ -405,13 +417,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: forwarded, expireAt: exp, special: special, extra: extra,
+          sent: m.mine, // my own messages reaching here are already on the relay
           starred: _starred.contains(m.rumorId)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
-    if (!m.mine) {
-      // I'm looking at this thread → tell the sender it's read, both the live
-      // (presence) way and the durable (gift-wrapped) way so it sticks.
+    if (!m.mine && !seed) {
+      // Live (just-arrived) message I'm looking at → tell the sender it's read,
+      // both the live (presence) way and the durable (gift-wrapped) way.
       _presence?.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
       _dm?.sendReceipt('read', m.createdAt);
     }

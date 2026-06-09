@@ -3,7 +3,8 @@
 part of 'db.dart';
 
 // ignore_for_file: type=lint
-class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
+class $MessagesTable extends Messages
+    with TableInfo<$MessagesTable, MessageRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -49,7 +50,7 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
   String get actualTableName => $name;
   static const String $name = 'messages';
   @override
-  VerificationContext validateIntegrity(Insertable<Message> instance,
+  VerificationContext validateIntegrity(Insertable<MessageRow> instance,
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
@@ -89,9 +90,9 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
   @override
   Set<GeneratedColumn> get $primaryKey => {rumorId};
   @override
-  Message map(Map<String, dynamic> data, {String? tablePrefix}) {
+  MessageRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return Message(
+    return MessageRow(
       rumorId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}rumor_id'])!,
       convKey: attachedDatabase.typeMapping
@@ -111,13 +112,13 @@ class $MessagesTable extends Messages with TableInfo<$MessagesTable, Message> {
   }
 }
 
-class Message extends DataClass implements Insertable<Message> {
+class MessageRow extends DataClass implements Insertable<MessageRow> {
   final String rumorId;
   final String convKey;
   final bool mine;
   final String payload;
   final int createdAt;
-  const Message(
+  const MessageRow(
       {required this.rumorId,
       required this.convKey,
       required this.mine,
@@ -144,10 +145,10 @@ class Message extends DataClass implements Insertable<Message> {
     );
   }
 
-  factory Message.fromJson(Map<String, dynamic> json,
+  factory MessageRow.fromJson(Map<String, dynamic> json,
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return Message(
+    return MessageRow(
       rumorId: serializer.fromJson<String>(json['rumorId']),
       convKey: serializer.fromJson<String>(json['convKey']),
       mine: serializer.fromJson<bool>(json['mine']),
@@ -167,21 +168,21 @@ class Message extends DataClass implements Insertable<Message> {
     };
   }
 
-  Message copyWith(
+  MessageRow copyWith(
           {String? rumorId,
           String? convKey,
           bool? mine,
           String? payload,
           int? createdAt}) =>
-      Message(
+      MessageRow(
         rumorId: rumorId ?? this.rumorId,
         convKey: convKey ?? this.convKey,
         mine: mine ?? this.mine,
         payload: payload ?? this.payload,
         createdAt: createdAt ?? this.createdAt,
       );
-  Message copyWithCompanion(MessagesCompanion data) {
-    return Message(
+  MessageRow copyWithCompanion(MessagesCompanion data) {
+    return MessageRow(
       rumorId: data.rumorId.present ? data.rumorId.value : this.rumorId,
       convKey: data.convKey.present ? data.convKey.value : this.convKey,
       mine: data.mine.present ? data.mine.value : this.mine,
@@ -192,7 +193,7 @@ class Message extends DataClass implements Insertable<Message> {
 
   @override
   String toString() {
-    return (StringBuffer('Message(')
+    return (StringBuffer('MessageRow(')
           ..write('rumorId: $rumorId, ')
           ..write('convKey: $convKey, ')
           ..write('mine: $mine, ')
@@ -207,7 +208,7 @@ class Message extends DataClass implements Insertable<Message> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is Message &&
+      (other is MessageRow &&
           other.rumorId == this.rumorId &&
           other.convKey == this.convKey &&
           other.mine == this.mine &&
@@ -215,7 +216,7 @@ class Message extends DataClass implements Insertable<Message> {
           other.createdAt == this.createdAt);
 }
 
-class MessagesCompanion extends UpdateCompanion<Message> {
+class MessagesCompanion extends UpdateCompanion<MessageRow> {
   final Value<String> rumorId;
   final Value<String> convKey;
   final Value<bool> mine;
@@ -242,7 +243,7 @@ class MessagesCompanion extends UpdateCompanion<Message> {
         mine = Value(mine),
         payload = Value(payload),
         createdAt = Value(createdAt);
-  static Insertable<Message> custom({
+  static Insertable<MessageRow> custom({
     Expression<String>? rumorId,
     Expression<String>? convKey,
     Expression<bool>? mine,
@@ -315,7 +316,8 @@ class MessagesCompanion extends UpdateCompanion<Message> {
   }
 }
 
-class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
+class $ContactsTable extends Contacts
+    with TableInfo<$ContactsTable, ContactRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -362,7 +364,7 @@ class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
   String get actualTableName => $name;
   static const String $name = 'contacts';
   @override
-  VerificationContext validateIntegrity(Insertable<Contact> instance,
+  VerificationContext validateIntegrity(Insertable<ContactRow> instance,
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
@@ -394,9 +396,9 @@ class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
   @override
   Set<GeneratedColumn> get $primaryKey => {npub};
   @override
-  Contact map(Map<String, dynamic> data, {String? tablePrefix}) {
+  ContactRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return Contact(
+    return ContactRow(
       npub: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}npub'])!,
       name: attachedDatabase.typeMapping
@@ -416,13 +418,13 @@ class $ContactsTable extends Contacts with TableInfo<$ContactsTable, Contact> {
   }
 }
 
-class Contact extends DataClass implements Insertable<Contact> {
+class ContactRow extends DataClass implements Insertable<ContactRow> {
   final String npub;
   final String name;
   final String handle;
   final String email;
   final String avatarUrl;
-  const Contact(
+  const ContactRow(
       {required this.npub,
       required this.name,
       required this.handle,
@@ -449,10 +451,10 @@ class Contact extends DataClass implements Insertable<Contact> {
     );
   }
 
-  factory Contact.fromJson(Map<String, dynamic> json,
+  factory ContactRow.fromJson(Map<String, dynamic> json,
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return Contact(
+    return ContactRow(
       npub: serializer.fromJson<String>(json['npub']),
       name: serializer.fromJson<String>(json['name']),
       handle: serializer.fromJson<String>(json['handle']),
@@ -472,21 +474,21 @@ class Contact extends DataClass implements Insertable<Contact> {
     };
   }
 
-  Contact copyWith(
+  ContactRow copyWith(
           {String? npub,
           String? name,
           String? handle,
           String? email,
           String? avatarUrl}) =>
-      Contact(
+      ContactRow(
         npub: npub ?? this.npub,
         name: name ?? this.name,
         handle: handle ?? this.handle,
         email: email ?? this.email,
         avatarUrl: avatarUrl ?? this.avatarUrl,
       );
-  Contact copyWithCompanion(ContactsCompanion data) {
-    return Contact(
+  ContactRow copyWithCompanion(ContactsCompanion data) {
+    return ContactRow(
       npub: data.npub.present ? data.npub.value : this.npub,
       name: data.name.present ? data.name.value : this.name,
       handle: data.handle.present ? data.handle.value : this.handle,
@@ -497,7 +499,7 @@ class Contact extends DataClass implements Insertable<Contact> {
 
   @override
   String toString() {
-    return (StringBuffer('Contact(')
+    return (StringBuffer('ContactRow(')
           ..write('npub: $npub, ')
           ..write('name: $name, ')
           ..write('handle: $handle, ')
@@ -512,7 +514,7 @@ class Contact extends DataClass implements Insertable<Contact> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is Contact &&
+      (other is ContactRow &&
           other.npub == this.npub &&
           other.name == this.name &&
           other.handle == this.handle &&
@@ -520,7 +522,7 @@ class Contact extends DataClass implements Insertable<Contact> {
           other.avatarUrl == this.avatarUrl);
 }
 
-class ContactsCompanion extends UpdateCompanion<Contact> {
+class ContactsCompanion extends UpdateCompanion<ContactRow> {
   final Value<String> npub;
   final Value<String> name;
   final Value<String> handle;
@@ -543,7 +545,7 @@ class ContactsCompanion extends UpdateCompanion<Contact> {
     this.avatarUrl = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : npub = Value(npub);
-  static Insertable<Contact> custom({
+  static Insertable<ContactRow> custom({
     Expression<String>? npub,
     Expression<String>? name,
     Expression<String>? handle,
@@ -616,7 +618,7 @@ class ContactsCompanion extends UpdateCompanion<Contact> {
   }
 }
 
-class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
+class $ChatsTable extends Chats with TableInfo<$ChatsTable, ChatRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -668,7 +670,7 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
   String get actualTableName => $name;
   static const String $name = 'chats';
   @override
-  VerificationContext validateIntegrity(Insertable<Chat> instance,
+  VerificationContext validateIntegrity(Insertable<ChatRow> instance,
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
@@ -699,9 +701,9 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
   @override
   Set<GeneratedColumn> get $primaryKey => {convKey};
   @override
-  Chat map(Map<String, dynamic> data, {String? tablePrefix}) {
+  ChatRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return Chat(
+    return ChatRow(
       convKey: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}conv_key'])!,
       preview: attachedDatabase.typeMapping
@@ -721,13 +723,13 @@ class $ChatsTable extends Chats with TableInfo<$ChatsTable, Chat> {
   }
 }
 
-class Chat extends DataClass implements Insertable<Chat> {
+class ChatRow extends DataClass implements Insertable<ChatRow> {
   final String convKey;
   final String preview;
   final int ts;
   final bool lastMine;
   final int unread;
-  const Chat(
+  const ChatRow(
       {required this.convKey,
       required this.preview,
       required this.ts,
@@ -754,10 +756,10 @@ class Chat extends DataClass implements Insertable<Chat> {
     );
   }
 
-  factory Chat.fromJson(Map<String, dynamic> json,
+  factory ChatRow.fromJson(Map<String, dynamic> json,
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return Chat(
+    return ChatRow(
       convKey: serializer.fromJson<String>(json['convKey']),
       preview: serializer.fromJson<String>(json['preview']),
       ts: serializer.fromJson<int>(json['ts']),
@@ -777,21 +779,21 @@ class Chat extends DataClass implements Insertable<Chat> {
     };
   }
 
-  Chat copyWith(
+  ChatRow copyWith(
           {String? convKey,
           String? preview,
           int? ts,
           bool? lastMine,
           int? unread}) =>
-      Chat(
+      ChatRow(
         convKey: convKey ?? this.convKey,
         preview: preview ?? this.preview,
         ts: ts ?? this.ts,
         lastMine: lastMine ?? this.lastMine,
         unread: unread ?? this.unread,
       );
-  Chat copyWithCompanion(ChatsCompanion data) {
-    return Chat(
+  ChatRow copyWithCompanion(ChatsCompanion data) {
+    return ChatRow(
       convKey: data.convKey.present ? data.convKey.value : this.convKey,
       preview: data.preview.present ? data.preview.value : this.preview,
       ts: data.ts.present ? data.ts.value : this.ts,
@@ -802,7 +804,7 @@ class Chat extends DataClass implements Insertable<Chat> {
 
   @override
   String toString() {
-    return (StringBuffer('Chat(')
+    return (StringBuffer('ChatRow(')
           ..write('convKey: $convKey, ')
           ..write('preview: $preview, ')
           ..write('ts: $ts, ')
@@ -817,7 +819,7 @@ class Chat extends DataClass implements Insertable<Chat> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is Chat &&
+      (other is ChatRow &&
           other.convKey == this.convKey &&
           other.preview == this.preview &&
           other.ts == this.ts &&
@@ -825,7 +827,7 @@ class Chat extends DataClass implements Insertable<Chat> {
           other.unread == this.unread);
 }
 
-class ChatsCompanion extends UpdateCompanion<Chat> {
+class ChatsCompanion extends UpdateCompanion<ChatRow> {
   final Value<String> convKey;
   final Value<String> preview;
   final Value<int> ts;
@@ -848,7 +850,7 @@ class ChatsCompanion extends UpdateCompanion<Chat> {
     this.unread = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : convKey = Value(convKey);
-  static Insertable<Chat> custom({
+  static Insertable<ChatRow> custom({
     Expression<String>? convKey,
     Expression<String>? preview,
     Expression<int>? ts,
@@ -1029,14 +1031,14 @@ class $$MessagesTableAnnotationComposer
 class $$MessagesTableTableManager extends RootTableManager<
     _$AppDb,
     $MessagesTable,
-    Message,
+    MessageRow,
     $$MessagesTableFilterComposer,
     $$MessagesTableOrderingComposer,
     $$MessagesTableAnnotationComposer,
     $$MessagesTableCreateCompanionBuilder,
     $$MessagesTableUpdateCompanionBuilder,
-    (Message, BaseReferences<_$AppDb, $MessagesTable, Message>),
-    Message,
+    (MessageRow, BaseReferences<_$AppDb, $MessagesTable, MessageRow>),
+    MessageRow,
     PrefetchHooks Function()> {
   $$MessagesTableTableManager(_$AppDb db, $MessagesTable table)
       : super(TableManagerState(
@@ -1090,14 +1092,14 @@ class $$MessagesTableTableManager extends RootTableManager<
 typedef $$MessagesTableProcessedTableManager = ProcessedTableManager<
     _$AppDb,
     $MessagesTable,
-    Message,
+    MessageRow,
     $$MessagesTableFilterComposer,
     $$MessagesTableOrderingComposer,
     $$MessagesTableAnnotationComposer,
     $$MessagesTableCreateCompanionBuilder,
     $$MessagesTableUpdateCompanionBuilder,
-    (Message, BaseReferences<_$AppDb, $MessagesTable, Message>),
-    Message,
+    (MessageRow, BaseReferences<_$AppDb, $MessagesTable, MessageRow>),
+    MessageRow,
     PrefetchHooks Function()>;
 typedef $$ContactsTableCreateCompanionBuilder = ContactsCompanion Function({
   required String npub,
@@ -1193,14 +1195,14 @@ class $$ContactsTableAnnotationComposer
 class $$ContactsTableTableManager extends RootTableManager<
     _$AppDb,
     $ContactsTable,
-    Contact,
+    ContactRow,
     $$ContactsTableFilterComposer,
     $$ContactsTableOrderingComposer,
     $$ContactsTableAnnotationComposer,
     $$ContactsTableCreateCompanionBuilder,
     $$ContactsTableUpdateCompanionBuilder,
-    (Contact, BaseReferences<_$AppDb, $ContactsTable, Contact>),
-    Contact,
+    (ContactRow, BaseReferences<_$AppDb, $ContactsTable, ContactRow>),
+    ContactRow,
     PrefetchHooks Function()> {
   $$ContactsTableTableManager(_$AppDb db, $ContactsTable table)
       : super(TableManagerState(
@@ -1254,14 +1256,14 @@ class $$ContactsTableTableManager extends RootTableManager<
 typedef $$ContactsTableProcessedTableManager = ProcessedTableManager<
     _$AppDb,
     $ContactsTable,
-    Contact,
+    ContactRow,
     $$ContactsTableFilterComposer,
     $$ContactsTableOrderingComposer,
     $$ContactsTableAnnotationComposer,
     $$ContactsTableCreateCompanionBuilder,
     $$ContactsTableUpdateCompanionBuilder,
-    (Contact, BaseReferences<_$AppDb, $ContactsTable, Contact>),
-    Contact,
+    (ContactRow, BaseReferences<_$AppDb, $ContactsTable, ContactRow>),
+    ContactRow,
     PrefetchHooks Function()>;
 typedef $$ChatsTableCreateCompanionBuilder = ChatsCompanion Function({
   required String convKey,
@@ -1355,14 +1357,14 @@ class $$ChatsTableAnnotationComposer extends Composer<_$AppDb, $ChatsTable> {
 class $$ChatsTableTableManager extends RootTableManager<
     _$AppDb,
     $ChatsTable,
-    Chat,
+    ChatRow,
     $$ChatsTableFilterComposer,
     $$ChatsTableOrderingComposer,
     $$ChatsTableAnnotationComposer,
     $$ChatsTableCreateCompanionBuilder,
     $$ChatsTableUpdateCompanionBuilder,
-    (Chat, BaseReferences<_$AppDb, $ChatsTable, Chat>),
-    Chat,
+    (ChatRow, BaseReferences<_$AppDb, $ChatsTable, ChatRow>),
+    ChatRow,
     PrefetchHooks Function()> {
   $$ChatsTableTableManager(_$AppDb db, $ChatsTable table)
       : super(TableManagerState(
@@ -1416,14 +1418,14 @@ class $$ChatsTableTableManager extends RootTableManager<
 typedef $$ChatsTableProcessedTableManager = ProcessedTableManager<
     _$AppDb,
     $ChatsTable,
-    Chat,
+    ChatRow,
     $$ChatsTableFilterComposer,
     $$ChatsTableOrderingComposer,
     $$ChatsTableAnnotationComposer,
     $$ChatsTableCreateCompanionBuilder,
     $$ChatsTableUpdateCompanionBuilder,
-    (Chat, BaseReferences<_$AppDb, $ChatsTable, Chat>),
-    Chat,
+    (ChatRow, BaseReferences<_$AppDb, $ChatsTable, ChatRow>),
+    ChatRow,
     PrefetchHooks Function()>;
 
 class $AppDbManager {
