@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'account_storage.dart';
+import 'disk_cache.dart';
 
 /// A group: stable id, name, and member pubkeys (hex, x-only). Messages are
 /// fan-out gift-wrapped to every member (NIP-17), routed locally by [id].
@@ -37,16 +38,19 @@ class Group {
 }
 
 class GroupStore {
+  // Bulk, non-secret → plain per-account file (DiskCache), not encrypted storage
+  // (whose reads are slow on Samsung and were part of the ~1.2s cold-start load).
   static const _key = 'avatok_groups';
-  final FlutterSecureStorage _s;
-  GroupStore([FlutterSecureStorage? s])
-      : _s = s ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+  static const _legacy = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   Future<List<Group>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    var raw = await DiskCache.read(_key);
+    if (raw == null) {
+      try { raw = await _legacy.read(key: scopedKey(_key)); } catch (_) {}
+      if (raw != null && raw.isNotEmpty) await DiskCache.write(_key, raw); // migrate once
+    }
     if (raw == null || raw.isEmpty) return [];
     try {
       return (jsonDecode(raw) as List).cast<Map<String, dynamic>>().map(Group.fromJson).toList();
@@ -59,14 +63,14 @@ class GroupStore {
     final list = await load();
     list.removeWhere((x) => x.id == g.id);
     list.insert(0, g);
-    await _s.write(key: scopedKey(_key), value: jsonEncode(list.map((x) => x.toJson()).toList()));
+    await DiskCache.write(_key, jsonEncode(list.map((x) => x.toJson()).toList()));
     return list;
   }
 
   Future<void> remove(String id) async {
     final list = await load();
     list.removeWhere((x) => x.id == id);
-    await _s.write(key: scopedKey(_key), value: jsonEncode(list.map((x) => x.toJson()).toList()));
+    await DiskCache.write(_key, jsonEncode(list.map((x) => x.toJson()).toList()));
   }
 
   Future<Group?> byId(String id) async {

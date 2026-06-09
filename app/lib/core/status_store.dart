@@ -1,8 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
-import 'account_storage.dart';
+import 'disk_cache.dart';
 
 /// A received/own status post (24h ephemeral).
 class StatusPost {
@@ -34,14 +32,12 @@ class StatusPost {
 }
 
 /// Stores statuses locally; auto-prunes anything older than 24h.
+/// Bulk, non-secret → plain per-account file (DiskCache), not encrypted storage.
 class StatusStore {
   static const _key = 'avatok_status';
-  final FlutterSecureStorage _s = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
 
   Future<List<StatusPost>> load() async {
-    final raw = await _s.read(key: scopedKey(_key));
+    final raw = await DiskCache.read(_key);
     if (raw == null || raw.isEmpty) return [];
     try {
       final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>().map(StatusPost.fromJson).toList();
@@ -62,5 +58,5 @@ class StatusStore {
   }
 
   Future<void> _save(List<StatusPost> list) =>
-      _s.write(key: scopedKey(_key), value: jsonEncode(list.map((p) => p.toJson()).toList()));
+      DiskCache.write(_key, jsonEncode(list.map((p) => p.toJson()).toList()));
 }
