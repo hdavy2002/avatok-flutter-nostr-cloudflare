@@ -176,18 +176,34 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   }
 
   Future<void> _bootstrap() async {
-    var id = await _store.load();
+    // Kick EVERY local read off concurrently. These were 11 sequential awaits,
+    // which on a slower phone (Samsung secure-storage/disk reads) serialised into
+    // a ~10-second BLANK chat list on every cold start. They're independent, so
+    // overlapping them makes the cached list appear in roughly one read instead
+    // of eleven.
+    final fId = _store.load();
+    final fContacts = _contactsStore.load();
+    final fGroups = _groupStore.load();
+    final fLastRead = _readStore.load();
+    final fFlags = _flagsStore.load();
+    final fStatus = _statusStore.load();
+    final fDrafts = DraftStore().load();
+    final fPreviews = _previewStore.load();
+    final fEnabled = OnboardingStore().enabledApps();
+    final fKind = AccountKindStore().load();
+    final fFilters = _filterStore.load();
+    var id = await fId;
     id ??= await _store.createAndStore();
-    final contacts = await _contactsStore.load();
-    final groups = await _groupStore.load();
-    final lastRead = await _readStore.load();
-    final flags = await _flagsStore.load();
-    final status = await _statusStore.load();
-    final drafts = await DraftStore().load();
-    final previews = await _previewStore.load();
-    final enabled = await OnboardingStore().enabledApps();
-    final kind = await AccountKindStore().load();
-    final customFilters = await _filterStore.load();
+    final contacts = await fContacts;
+    final groups = await fGroups;
+    final lastRead = await fLastRead;
+    final flags = await fFlags;
+    final status = await fStatus;
+    final drafts = await fDrafts;
+    final previews = await fPreviews;
+    final enabled = await fEnabled;
+    final kind = await fKind;
+    final customFilters = await fFilters;
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
