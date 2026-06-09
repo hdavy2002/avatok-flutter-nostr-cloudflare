@@ -4,19 +4,19 @@
 const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 
 /// Worker endpoint to register a device's push token against an npub. (NIP-98)
-const String kRegisterUrl = 'https://avatok-api.getmystuffme.workers.dev/api/register';
+const String kRegisterUrl = 'https://api.avatok.ai/api/register';
 
 /// Worker endpoint to ring a callee (sends a high-priority FCM wake push). (NIP-98)
-const String kCallUrl = 'https://avatok-api.getmystuffme.workers.dev/api/call';
+const String kCallUrl = 'https://api.avatok.ai/api/call';
 
 /// Relay a call status (declined / busy / ended) to the caller via FCM. (NIP-98)
-const String kCallStatusUrl = 'https://avatok-api.getmystuffme.workers.dev/api/call-status';
+const String kCallStatusUrl = 'https://api.avatok.ai/api/call-status';
 
 /// Nudge recipients that a new message arrived (content-less wake). (NIP-98)
-const String kNotifyUrl = 'https://avatok-api.getmystuffme.workers.dev/api/notify';
+const String kNotifyUrl = 'https://api.avatok.ai/api/notify';
 
 /// Signaling host (no scheme). Baked at deploy time.
-const String kSignalingHost = 'avatok-api.getmystuffme.workers.dev';
+const String kSignalingHost = 'api.avatok.ai';
 
 /// Calls backend — mints Cloudflare RealtimeKit participant tokens (AvaConsult).
 const String kCallsJoinUrl = 'https://avatok-calls.getmystuffme.workers.dev/join';

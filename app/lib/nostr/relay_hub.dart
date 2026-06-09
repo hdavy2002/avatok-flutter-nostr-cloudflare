@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show InternetAddress;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -91,6 +92,18 @@ class RelayHub {
         _scheduleReconnect();
         return;
       }
+      // Mobile DNS for the host intermittently fails (errno 7) on wifi/LTE
+      // transitions — fatal for a WebSocket. Pre-resolve with a few quick retries
+      // to absorb the blip instead of dropping into the long reconnect backoff.
+      if (!kIsWeb) {
+        final host = Uri.parse(kInboxWsUrl).host;
+        if (host.isNotEmpty && !await _dnsReady(host)) {
+          if (!_wantConnected) return;
+          AvaLog.I.log('hub', 'DNS not ready for $host — quick retry');
+          _scheduleReconnect();
+          return;
+        }
+      }
       final url = '$kInboxWsUrl?token=${Uri.encodeQueryComponent(token)}';
       try {
         _ch = kIsWeb
@@ -134,6 +147,20 @@ class RelayHub {
 
   void _send(Map<String, dynamic> o) {
     try { _ch?.sink.add(jsonEncode(o)); } catch (_) {}
+  }
+
+  /// Resolve [host] with a few quick retries (~5s worst case). Absorbs the
+  /// transient mobile DNS failures (errno 7) that otherwise kill the socket.
+  Future<bool> _dnsReady(String host) async {
+    for (var i = 0; i < 5; i++) {
+      if (!_wantConnected) return false;
+      try {
+        final r = await InternetAddress.lookup(host).timeout(const Duration(seconds: 4));
+        if (r.isNotEmpty) return true;
+      } catch (_) {/* transient lookup failure — retry */}
+      await Future.delayed(Duration(milliseconds: 400 + 300 * i));
+    }
+    return false;
   }
 
   void _onFrame(dynamic raw) {

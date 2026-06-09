@@ -10,6 +10,14 @@ main = "src/index.ts"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Apex-zone custom domain. The long *.workers.dev host intermittently fails mobile
+# DNS resolution (errno 7) on wifi/LTE transitions — fatal for the persistent
+# InboxDO WebSocket. api.avatok.ai (zone avatok.ai, on Cloudflare) is far more
+# resilient, exactly like the old relay.avatok.ai. Serves both HTTP and WSS.
+[[routes]]
+pattern = "api.avatok.ai"
+custom_domain = true
+
 [vars]
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worker in path)
 FCM_PROJECT = "avatok-e19ef"

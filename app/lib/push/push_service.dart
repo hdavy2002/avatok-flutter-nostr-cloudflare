@@ -15,6 +15,7 @@ import '../core/ava_log.dart';
 import '../core/call_log_store.dart';
 import '../core/config.dart';
 import '../features/avatok/call_screen.dart';
+import '../nostr/relay_hub.dart';
 
 /// Global key so we can navigate to the call screen when a call is accepted.
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -179,7 +180,13 @@ class PushService {
         }
         return;
       }
-      if (d['type'] == 'message') return; // app is open — unread badge handles it
+      if (d['type'] == 'message') {
+        // App is open: the live InboxDO socket should already have it. But if the
+        // socket was dropped (mobile DNS), this FCM wake forces a reconnect + sync
+        // so the message lands immediately instead of waiting for a manual refresh.
+        RelayHub.I.ensureConnected();
+        return;
+      }
       // Already on a call → auto-reply "busy" instead of ringing.
       if (d['type'] == 'call' && gInCall) {
         _signalStatus((d['callId'] ?? '').toString(), 'busy', (d['fromPub'] ?? '').toString());
