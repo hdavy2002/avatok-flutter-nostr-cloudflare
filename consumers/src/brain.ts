@@ -404,28 +404,38 @@ async function ingestMessage(msg: BrainMsg, env: Env): Promise<void> {
   await recordVector(env, uid, vecId, capability, "message", "avatok", conv);
 }
 
-// OpenAI Whisper transcription of a voice note in R2. Gated on OPENAI_API_KEY
-// (unset → voice notes are simply not indexed). media_ref is the R2 key.
+// Whisper transcription of a voice note in R2. Prefers OpenAI when
+// OPENAI_API_KEY is set; otherwise falls back to Workers AI
+// (@cf/openai/whisper) on the existing AI binding — no external key needed.
 async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
-  if (!env.OPENAI_API_KEY) return "";
   const obj = await env.BLOBS.get(mediaRef).catch(() => null);
   if (!obj) return "";
   const buf = await obj.arrayBuffer();
   if (buf.byteLength > 24_000_000) return ""; // Whisper hard limit ~25 MB
-  const mime = obj.httpMetadata?.contentType || "audio/mp4";
-  const form = new FormData();
-  form.append("file", new File([buf], "voice.m4a", { type: mime }));
-  form.append("model", "whisper-1");
+  if (env.OPENAI_API_KEY) {
+    const mime = obj.httpMetadata?.contentType || "audio/mp4";
+    const form = new FormData();
+    form.append("file", new File([buf], "voice.m4a", { type: mime }));
+    form.append("model", "whisper-1");
+    try {
+      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+        body: form,
+      });
+      if (!res.ok) return "";
+      const j = (await res.json()) as any;
+      try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_whisper"], doubles: [buf.byteLength], indexes: ["brain"] }); } catch { /* noop */ }
+      return String(j.text || "").trim();
+    } catch { return ""; }
+  }
+  // Workers AI fallback (Whisper large file support varies; voice notes are short)
   try {
-    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
-      body: form,
-    });
-    if (!res.ok) return "";
-    const j = (await res.json()) as any;
-    try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_whisper"], doubles: [buf.byteLength], indexes: ["brain"] }); } catch { /* noop */ }
-    return String(j.text || "").trim();
+    const r = (await (env as any).AI.run("@cf/openai/whisper", {
+      audio: [...new Uint8Array(buf)],
+    })) as any;
+    try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_whisper_cf"], doubles: [buf.byteLength], indexes: ["brain"] }); } catch { /* noop */ }
+    return String(r?.text || "").trim();
   } catch { return ""; }
 }
 
