@@ -71,3 +71,12 @@ relay/package-lock.json
 firebase/*adminsdk*.json
 firebase/*service-account*.json
 *-firebase-adminsdk-*.json
+
+# Archive folder (pending permanent deletion)
+_ARCHIVE-*/
+
+# graphify code-graph cache (local only, regenerable)
+graphify-out/cache/
+
+# vite crash leftovers
+*.timestamp-*.mjs

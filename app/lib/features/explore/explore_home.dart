@@ -4,7 +4,7 @@ import '../../core/theme.dart';
 import 'listing_detail.dart';
 import 'product.dart';
 
-/// AvaExplore — the Nostr creator marketplace; the default landing screen.
+/// AvaExplore — the AvaVerse creator marketplace; the default landing screen.
 class ExploreHome extends StatefulWidget {
   final VoidCallback onMenu;
   const ExploreHome({super.key, required this.onMenu});
@@ -115,7 +115,7 @@ class _ExploreHomeState extends State<ExploreHome> {
                   fontSize: 10.5, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
             ]),
             const SizedBox(height: 10),
-            const Text('Sell your work,\npaid instantly over Nostr',
+            const Text('Sell your work,\npaid instantly to your wallet',
                 style: TextStyle(color: Colors.white, fontSize: 19, height: 1.2, fontWeight: FontWeight.w800)),
             const SizedBox(height: 14),
             Container(

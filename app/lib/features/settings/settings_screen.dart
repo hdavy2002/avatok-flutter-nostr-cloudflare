@@ -22,7 +22,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _revealKey = false;
 
   bool _backingUp = false;
 
@@ -58,9 +57,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Back up my account'),
         content: const Text(
-          'We will export your AvaTOK account data from the Nostr network (your posts and '
-          'your encrypted messages) and give you a download link. Media files (images, '
-          'videos, voice) are not included in backups.',
+          'We will export your AvaTOK account data (your posts and messages) and '
+          'give you a download link. Media files (images, videos, voice) are not '
+          'included in backups.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -129,8 +128,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete account?'),
         content: const Text(
-          'This permanently deletes your AvaTOK account. Your Nostr key stays yours, but your '
-          'profile, settings, and data on our network are removed. This cannot be undone.',
+          'This permanently deletes your AvaTOK account. Your profile, settings, '
+          'and data on our network are removed. This cannot be undone.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -138,8 +137,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: FilledButton.styleFrom(backgroundColor: AvaColors.danger),
             onPressed: () async {
               Navigator.pop(ctx);
-              // Purge server-side data FIRST (needs the Nostr key + Clerk session
-              // that we still have here), then delete the Clerk account, then sign out.
+              // Purge server-side data FIRST (needs the Clerk session that we
+              // still have here), then delete the Clerk account, then sign out.
               try { await ApiAuth.postJson(kAccountDeleteUrl, const {}, timeout: const Duration(seconds: 30)); } catch (_) {}
               try { await widget.clerk.deleteAccount(); } catch (_) {}
               widget.onSignOut();
@@ -153,7 +152,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final id = widget.identity;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -209,28 +207,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _tile(Icons.cloud_upload_outlined, 'Back up account',
             'Email yourself a download of your account (media excluded)', _backup),
         const SizedBox(height: 20),
-        _section('Your keys'),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Public key (npub)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.brand)),
-            const SizedBox(height: 4),
-            _copyRow(id?.npub ?? '—'),
-            const Divider(height: 24),
-            const Text('Private key (nsec) — never share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.danger)),
-            const SizedBox(height: 4),
-            if (!_revealKey)
-              TextButton.icon(
-                style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                icon: const Icon(Icons.visibility, size: 16),
-                label: const Text('Reveal & re-download'),
-                onPressed: () => setState(() => _revealKey = true))
-            else
-              _copyRow(id?.nsec ?? '—'),
-          ]),
-        ),
-        const SizedBox(height: 20),
         _section('Danger zone'),
         _tile(Icons.delete_outline, 'Delete account', 'Permanently remove your account', _delete, danger: true),
         const SizedBox(height: 20),
@@ -259,11 +235,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
-  Widget _copyRow(String value) => Row(children: [
-        Expanded(child: SelectableText(value, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))),
-        IconButton(icon: const Icon(Icons.copy, size: 18), onPressed: () {
-          Clipboard.setData(ClipboardData(text: value));
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
-        }),
-      ]);
 }

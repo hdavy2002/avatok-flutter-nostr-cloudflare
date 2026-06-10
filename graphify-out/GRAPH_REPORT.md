@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-06-10)
 
 ## Corpus Check
-- 1522 files · ~1,572,616 words
+- 1522 files · ~1,572,823 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -2148,11 +2148,11 @@ Nodes (1): flutter_local_notifications requires core library desugaring.
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `package:flutter/material.dart` connect `Community 0` to `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 10`, `Community 12`, `Community 13`, `Community 14`, `Community 15`, `Community 17`, `Community 18`, `Community 19`, `Community 21`, `Community 22`, `Community 23`, `Community 24`, `Community 25`, `Community 26`, `Community 27`, `Community 28`, `Community 32`, `Community 33`, `Community 37`, `Community 39`, `Community 40`, `Community 41`, `Community 76`, `Community 81`, `Community 82`, `Community 84`, `Community 86`, `Community 96`, `Community 103`?**
-  _High betweenness centrality (0.214) - this node is a cross-community bridge._
+  _High betweenness centrality (0.243) - this node is a cross-community bridge._
 - **Why does `dart:convert` connect `Community 4` to `Community 0`, `Community 2`, `Community 3`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 15`, `Community 16`, `Community 17`, `Community 18`, `Community 19`, `Community 21`, `Community 22`, `Community 23`, `Community 24`, `Community 27`, `Community 29`?**
-  _High betweenness centrality (0.126) - this node is a cross-community bridge._
-- **Why does `package:chatcore/chat-core.dart` connect `Community 2` to `Community 0`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 14`, `Community 15`, `Community 17`, `Community 18`, `Community 19`, `Community 21`, `Community 22`, `Community 23`, `Community 25`, `Community 26`, `Community 27`, `Community 36`, `Community 40`?**
-  _High betweenness centrality (0.103) - this node is a cross-community bridge._
+  _High betweenness centrality (0.127) - this node is a cross-community bridge._
+- **Why does `dart:async` connect `Community 2` to `Community 0`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 15`, `Community 16`, `Community 17`, `Community 18`, `Community 19`, `Community 21`, `Community 22`, `Community 24`, `Community 25`, `Community 27`, `Community 29`, `Community 33`?**
+  _High betweenness centrality (0.115) - this node is a cross-community bridge._
 - **Are the 129 inferred relationships involving `bind()` (e.g. with `handleWalletTx()` and `handlePush()`) actually correct?**
   _`bind()` has 129 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `JoinScreen`, `_JoinScreenState`, `build` to the rest of the system?**

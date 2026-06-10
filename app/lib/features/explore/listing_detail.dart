@@ -55,7 +55,7 @@ class ListingDetail extends StatelessWidget {
                 ]),
                 const SizedBox(height: 18),
                 const Text('A hand-crafted creator product delivered instantly to your AvaTOK store. '
-                    'One-time purchase. Lifetime updates, paid out to your wallet over the Nostr network.',
+                    'One-time purchase. Lifetime updates, paid out straight to your AvaWallet.',
                     style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.55)),
                 const SizedBox(height: 18),
                 Container(
@@ -79,7 +79,7 @@ class ListingDetail extends StatelessWidget {
               const SizedBox(width: 18),
               Expanded(child: FilledButton(
                 onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Checkout wires to Nostr payments next'))),
+                    const SnackBar(content: Text('Checkout wires to AvaWallet next'))),
                 child: const Text('Buy now'))),
             ]),
           ),

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/logo.dart';
 import '../../core/theme.dart';
 
-/// "Own your audience." — pre-auth welcome.
+/// "Everything you do, one account." — pre-auth welcome (dark ink, super-app).
 class WelcomeScreen extends StatelessWidget {
   final VoidCallback onContinue;
   const WelcomeScreen({super.key, required this.onContinue});
@@ -20,41 +20,42 @@ class WelcomeScreen extends StatelessWidget {
               children: [
                 const Spacer(flex: 3),
                 Container(
-                  width: 84, height: 84,
+                  width: 96, height: 96,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12),
-                        blurRadius: 24, offset: const Offset(0, 10))],
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 28, offset: const Offset(0, 12))],
                   ),
-                  child: const Center(child: AvaLogo(size: 46)),
+                  // The mark fills the card (was a small A floating in white).
+                  child: const Center(child: AvaLogo(size: 76)),
                 ),
                 const SizedBox(height: 22),
                 Text('A V A T O K',
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 13, letterSpacing: 6, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 18),
-                Text('Own your\naudience.', textAlign: TextAlign.center,
+                Text('Everything you do,\none account.', textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                        color: Colors.white, fontSize: 40, height: 1.05)),
+                        color: Colors.white, fontSize: 38, height: 1.08)),
                 const SizedBox(height: 16),
                 Text(
-                  'A creator platform on Nostr — your identity,\nyour followers, your data. No platform can\ntake them away.',
+                  'Calls, chat, social, market and storage —\none app, in sync on every device.\nSign in and everything follows you.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.88), fontSize: 14, height: 1.5),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 14, height: 1.5),
                 ),
                 const SizedBox(height: 22),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.16),
+                    color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
                   ),
                   child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.bolt, color: Colors.white, size: 15),
+                    Icon(Icons.apps_rounded, color: AvaColors.brand, size: 15),
                     SizedBox(width: 6),
-                    Text('DECENTRALIZED · YOURS',
+                    Text('ALL YOUR APPS · ONE ACCOUNT',
                         style: TextStyle(color: Colors.white, fontSize: 11,
                             letterSpacing: 1, fontWeight: FontWeight.w700)),
                   ]),

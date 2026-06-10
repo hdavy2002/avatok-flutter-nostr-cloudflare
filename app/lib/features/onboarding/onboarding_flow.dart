@@ -8,7 +8,6 @@ import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
 import '../../core/analytics.dart';
 import '../../core/apps.dart';
-import '../../core/key_backup.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
@@ -28,9 +27,11 @@ class OnboardingFlow extends StatefulWidget {
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> {
-  static const _steps = 8;
+  // Cloudflare-native pivot: the 'keys' step is GONE — signing in IS the
+  // account; there is no user-facing key to save or recover.
+  static const _steps = 7;
   static const _stepNames = [
-    'account_kind', 'notifications', 'terms', 'keys', 'profile', 'verify_identity', 'contacts', 'apps'
+    'account_kind', 'notifications', 'terms', 'profile', 'verify_identity', 'contacts', 'apps'
   ];
   int _step = 0;
 
@@ -49,9 +50,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   bool _notifEnabled = false;
   bool _agreedTerms = false;
-  bool _savedPub = false;
-  bool _savedPriv = false;
-  bool _revealPriv = false;
   late Set<String> _enabled = kApps.where((a) => a.defaultOn).map((a) => a.key).toSet();
 
   // ---- profile step (handle + display name) ----
@@ -111,19 +109,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     // Persist locally first (merge with any phone captured earlier).
     final existing = await _profileStore.load();
     await _profileStore.save(existing.copyWith(displayName: name, handle: handle));
-    // Encrypt this account's Nostr key with the password the user signed up with
-    // so it can be restored on another device (server stores only ciphertext).
-    String? encBackup;
-    final pw = AuthSession.lastPassword;
-    if (pw != null && pw.isNotEmpty) {
-      try { encBackup = await KeyBackup.encryptSecret(id.privHex, pw); } catch (_) { encBackup = null; }
-    }
-    // Publish to the directory so the handle + name are immediately searchable,
-    // and (when present) link the key backup to the Clerk account.
+    // Publish to the directory so the handle + name are immediately searchable.
+    // (No key backup anymore — the Clerk sign-in IS the account credential.)
     final r = await Directory.registerProfile(
       npub: id.npub, handle: handle, name: name,
-      encryptedNsecBackup: encBackup,
-      backupMethod: encBackup != null ? KeyBackup.method : null,
       accountKind: _selectedKind?.wire,
     );
     if (!mounted) return;
@@ -205,10 +194,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 0: return _accountType();
       case 1: return _notifications();
       case 2: return _terms();
-      case 3: return _keys();
-      case 4: return _profileStep();
-      case 5: return _verifyStep();
-      case 6: return _contacts();
+      case 3: return _profileStep();
+      case 4: return _verifyStep();
+      case 5: return _contacts();
       default: return _appsSetup();
     }
   }
@@ -474,9 +462,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ---- Step 2: terms ----
   Widget _terms() {
-    const para = 'AvaTOK is a decentralized creator platform built on the Nostr protocol. '
-        'By using AvaTOK you acknowledge that your identity is secured by a cryptographic '
-        'key pair that you, and only you, control.';
+    const para = 'AvaTOK is your account for the whole AvaVerse — calls, chat, '
+        'social, marketplace and storage in one place. Your account, profile and '
+        'settings stay in sync on every device you sign in to.';
     return Column(
       children: [
         Expanded(
@@ -489,7 +477,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 4),
                 const Text('Please review before continuing', style: TextStyle(color: AvaColors.sub)),
                 const SizedBox(height: 20),
-                _termSection('1. Your Keys, Your Account', '$para $para'),
+                _termSection('1. Your Account', '$para $para'),
                 _termSection('2. Content & Ownership', '$para $para'),
                 _termSection('3. Payments & Payouts', para),
                 _termSection('4. Backups', 'You can request a backup of your account data, delivered by email. '
@@ -527,130 +515,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           Text(body, style: const TextStyle(color: AvaColors.sub, fontSize: 13.5, height: 1.5)),
         ]),
       );
-
-  // ---- Step 3: keys ----
-  Widget _keys() {
-    final id = _id;
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _iconTileSmall(Icons.vpn_key, AvaColors.brand50, AvaColors.brand),
-                const SizedBox(height: 16),
-                Text('Your keys', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 30)),
-                const SizedBox(height: 6),
-                const Text.rich(TextSpan(children: [
-                  TextSpan(text: 'On Nostr, these keys ', style: TextStyle(color: AvaColors.sub)),
-                  TextSpan(text: 'are', style: TextStyle(color: AvaColors.ink, fontWeight: FontWeight.w800)),
-                  TextSpan(text: ' your account. Save both somewhere safe.', style: TextStyle(color: AvaColors.sub)),
-                ])),
-                const SizedBox(height: 22),
-                _keyCard(
-                  accent: AvaColors.brand, bg: const Color(0xFFEFF9FB),
-                  label: 'Public key', icon: Icons.vpn_key,
-                  hint: 'npub — share this freely, it\'s your @',
-                  value: id?.npub ?? '…', saved: _savedPub, secret: false,
-                  onSave: () => setState(() => _savedPub = true),
-                ),
-                const SizedBox(height: 14),
-                _keyCard(
-                  accent: AvaColors.danger, bg: const Color(0xFFFEF2F2),
-                  label: 'Private key', icon: Icons.vpn_key,
-                  hint: 'nsec — the only way to recover your account',
-                  value: id?.nsec ?? '…', saved: _savedPriv, secret: true,
-                  onSave: () => setState(() => _savedPriv = true),
-                  warning: 'Never share this with anyone. AvaTOK can never recover it for you.',
-                ),
-              ],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-          child: _primary(
-            (_savedPub && _savedPriv) ? 'Continue' : 'Save both keys to continue',
-            (_savedPub && _savedPriv) ? _next : null,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _keyCard({
-    required Color accent, required Color bg, required String label, required IconData icon,
-    required String hint, required String value, required bool saved, required bool secret,
-    required VoidCallback onSave, String? warning,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: accent.withValues(alpha: 0.25))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(icon, size: 16, color: accent),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: accent)),
-          const Spacer(),
-          if (saved) Row(children: const [
-            Icon(Icons.check, size: 14, color: AvaColors.success),
-            SizedBox(width: 3),
-            Text('Saved', style: TextStyle(color: AvaColors.success, fontSize: 12, fontWeight: FontWeight.w700)),
-          ]),
-        ]),
-        const SizedBox(height: 4),
-        Text(hint, style: const TextStyle(color: AvaColors.sub, fontSize: 11.5)),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-          child: Row(children: [
-            Expanded(
-              child: (secret && !_revealPriv)
-                  ? const Text('•••• •••• •••• •••• ••••', style: TextStyle(fontFamily: 'monospace', fontSize: 12))
-                  : Text(value, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5)),
-            ),
-            if (secret)
-              GestureDetector(
-                onTap: () => setState(() => _revealPriv = !_revealPriv),
-                child: Icon(_revealPriv ? Icons.visibility_off : Icons.visibility, size: 18, color: AvaColors.sub)),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () { Clipboard.setData(ClipboardData(text: value)); },
-              child: const Icon(Icons.copy, size: 16, color: AvaColors.sub)),
-          ]),
-        ),
-        if (warning != null) ...[
-          const SizedBox(height: 8),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.lock, size: 13, color: AvaColors.danger),
-            const SizedBox(width: 6),
-            Expanded(child: Text(warning, style: const TextStyle(color: AvaColors.danger, fontSize: 11.5))),
-          ]),
-        ],
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: saved
-              ? OutlinedButton.icon(onPressed: null,
-                  icon: const Icon(Icons.check, size: 16), label: const Text('Saved'))
-              : FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: accent, padding: const EdgeInsets.symmetric(vertical: 12)),
-                  onPressed: onSave, icon: const Icon(Icons.bookmark_border, size: 16), label: const Text('Save'))),
-          const SizedBox(width: 10),
-          Expanded(child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: AvaColors.ink,
-                side: const BorderSide(color: Color(0xFFE0E2E6)), padding: const EdgeInsets.symmetric(vertical: 12)),
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Key emailed to you (coming soon)'))),
-            icon: const Icon(Icons.mail_outline, size: 16), label: const Text('Email it'))),
-        ]),
-      ]),
-    );
-  }
 
   // ---- Step 5: contacts ----
   Widget _contacts() {

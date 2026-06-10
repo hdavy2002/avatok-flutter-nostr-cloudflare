@@ -70,8 +70,8 @@ class _SignInScreenState extends State<SignInScreen> {
         // Store the phone locally now so it persists through email verification;
         // it's indexed to the directory on first launch (OTP verification later).
         await ProfileStore().setPhone(_phone.text);
-        // Remember the password to encrypt this account's Nostr key backup at
-        // the end of onboarding (so it can be restored on another device).
+        // Kept in memory for the session only (legacy; restore no longer needs
+        // it — the Clerk sign-in is the account credential).
         AuthSession.lastPassword = _pass.text;
         _handleStep(await widget.clerk.signUp(_email.text, _pass.text));
         return;
@@ -223,7 +223,7 @@ class _SignInScreenState extends State<SignInScreen> {
               const SizedBox(height: 18),
               Center(child: _footerLink()),
               const SizedBox(height: 16),
-              const Center(child: Text('Secured by Clerk · identity is your private Nostr key',
+              const Center(child: Text('Secured by Clerk · one account for everything Ava',
                   textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub, fontSize: 12))),
             ],
           ),

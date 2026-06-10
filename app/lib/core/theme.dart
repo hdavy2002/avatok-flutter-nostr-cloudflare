@@ -14,11 +14,12 @@ class AvaColors {
   static const success = Color(0xFF22C55E);
   static const coral = Color(0xFFFF5A4D);
 
-  /// Welcome screen background gradient (vibrant teal).
+  /// Welcome screen background: deep ink/navy — calm and premium; the white
+  /// logo card, brand accents and CTA carry the color. (Was a bright teal.)
   static const welcomeGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF18D2C8), Color(0xFF0BB6AE)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0xFF171C2E), Color(0xFF0C0F1C)],
   );
 
   /// CREATOR DROP banner gradient (orange → pink).

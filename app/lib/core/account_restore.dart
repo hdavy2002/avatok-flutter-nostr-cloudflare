@@ -1,70 +1,63 @@
 import 'dart:convert';
 
-import 'admin_tools.dart';
 import 'api_auth.dart';
 import 'config.dart';
-import 'key_backup.dart';
 import 'onboarding_store.dart';
 import 'prefs_sync.dart';
 import 'profile_store.dart';
 import '../identity/identity.dart';
-import '../identity/nostr_keys.dart';
 
-/// Transient holder for the password the user just typed at sign-in / sign-up.
-/// Used only in-memory to encrypt (on sign-up) or decrypt (on a new device) the
-/// Nostr key backup, then it can be discarded. Never persisted.
+/// Transient holder for the password typed at sign-in / sign-up. Kept only
+/// because the sign-in screen sets it; the restore flow no longer needs it —
+/// the Clerk session IS the account credential (Cloudflare-native pivot).
 class AuthSession {
   static String? lastPassword;
 }
 
 /// What the server knows about the signed-in Clerk account (GET /api/me).
+/// Post-pivot the account IS the Clerk uid — there are no key backups.
 class MeResult {
   final bool found;
   final bool clerkEnabled;
-  final String? npub;
+  final String? uid;
   final String? handle;
   final String? displayName;
-  final String? encBackup;
-  final String? backupMethod;
-  final String? accountKind;
+  final String? avatarUrl;
   const MeResult({
     required this.found,
     required this.clerkEnabled,
-    this.npub,
+    this.uid,
     this.handle,
     this.displayName,
-    this.encBackup,
-    this.backupMethod,
-    this.accountKind,
+    this.avatarUrl,
   });
 }
 
-/// Where login should route a user with NO local key (fresh install / new phone):
-/// - restored:     identity re-installed automatically → go straight to dashboard.
-/// - newUser:      server has no account for them → show onboarding.
-/// - needsRecovery: an account EXISTS but couldn't auto-restore (no/!match
-///                  password) → show the recovery screen. NEVER onboarding, so the
-///                  user can't accidentally create a second handle and "lose" data.
-/// - unavailable:  couldn't reach the server → show retry. Never onboarding.
+/// Where login routes a user with NO local state (fresh install / new phone):
+/// - restored:    account found → device set up automatically → dashboard.
+/// - newUser:     server has no account for them → onboarding.
+/// - unavailable: couldn't reach the server → retry screen. Never onboarding,
+///                so an existing user can't accidentally fork their account.
+/// (needsRecovery is retired: signing in IS the recovery. Kept in the enum so
+/// old switch statements compile; it is never produced.)
 enum RestoreOutcome { restored, newUser, needsRecovery, unavailable }
 
 class RestoreState {
   final RestoreOutcome outcome;
   final String? handle;
   final String? displayName;
-  final String? npub;
-  final String? encBackup;
-  final String? accountKind;
-  const RestoreState(this.outcome,
-      {this.handle, this.displayName, this.npub, this.encBackup, this.accountKind});
+  const RestoreState(this.outcome, {this.handle, this.displayName});
 }
 
-/// Restores a returning user's account from the server after they log in on a
-/// new device / fresh install: fetches their linked identity + encrypted key
-/// backup, decrypts it with their password, and re-installs the SAME Nostr key
-/// so their handle and messages all come back — no re-onboarding.
+/// Sets up a returning user's account on a new device / fresh install.
+///
+/// Cloudflare-native model: the Clerk sign-in is the ONLY credential. Messages
+/// live server-side in the user's InboxDO (keyed by uid), prefs/settings/apps
+/// live in the server vault, media is re-cached on demand. The local keypair is
+/// a vestigial internal credential the server no longer verifies — we mint a
+/// fresh one silently. No password re-entry, no recovery key, ever.
 class AccountRestore {
-  /// GET /api/me using the Clerk session JWT (no Nostr key needed yet).
+  /// GET /api/me using the Clerk session JWT.
   static Future<MeResult?> fetchMe() async {
     try {
       final r = await ApiAuth.getSigned(kMeUrl);
@@ -73,91 +66,45 @@ class AccountRestore {
       return MeResult(
         found: j['found'] == true,
         clerkEnabled: j['clerk_enabled'] != false,
-        npub: j['npub']?.toString(),
+        uid: j['uid']?.toString(),
         handle: (j['handle'] ?? '').toString().isEmpty ? null : j['handle'].toString(),
         displayName: (j['display_name'] ?? '').toString().isEmpty ? null : j['display_name'].toString(),
-        encBackup: (j['encrypted_nsec_backup'] ?? '').toString().isEmpty ? null : j['encrypted_nsec_backup'].toString(),
-        backupMethod: j['backup_method']?.toString(),
-        accountKind: (j['account_kind'] ?? '').toString().isEmpty ? null : j['account_kind'].toString(),
+        avatarUrl: (j['avatar_url'] ?? '').toString().isEmpty ? null : j['avatar_url'].toString(),
       );
     } catch (_) {
-      return null; // offline / endpoint missing → caller falls back to onboarding
+      return null; // offline → caller shows retry, never onboarding
     }
   }
 
-  /// Decide where login should route a user who has NO local key yet (fresh
-  /// install / new device). Crucially, if the server already has an account for
-  /// this Clerk user we return `restored` or `needsRecovery` — NEVER `newUser` —
-  /// so an existing user can never be dropped into the claim-a-handle flow and
-  /// accidentally fork their account.
+  /// Decide where login routes a user with no local state. If the server knows
+  /// this Clerk account, the device is set up automatically — signing in is all
+  /// the proof we need.
   static Future<RestoreState> restoreFromServer() async {
     final me = await fetchMe();
     if (me == null) return const RestoreState(RestoreOutcome.unavailable);
     if (!me.found) {
-      // Only treat as a brand-new user when Clerk verification positively told us
-      // there's no linked account. If Clerk is off/unknown, don't risk onboarding.
+      // Only treat as brand-new when Clerk verification positively told us
+      // there's no account. If Clerk is off/unknown, don't risk onboarding.
       return me.clerkEnabled
           ? const RestoreState(RestoreOutcome.newUser)
           : const RestoreState(RestoreOutcome.unavailable);
     }
-    // The account exists. Try a silent auto-restore with the password just typed.
-    final pw = AuthSession.lastPassword;
-    if (me.encBackup != null && pw != null && pw.isNotEmpty) {
-      final priv = await KeyBackup.decryptSecret(me.encBackup!, pw);
-      if (priv != null && priv.isNotEmpty) {
-        await _install(priv, handle: me.handle, displayName: me.displayName, accountKind: me.accountKind);
-        return RestoreState(RestoreOutcome.restored, handle: me.handle, displayName: me.displayName);
-      }
-    }
-    // Account exists but we couldn't auto-restore → recovery screen, not onboarding.
-    return RestoreState(RestoreOutcome.needsRecovery,
-        handle: me.handle, displayName: me.displayName, npub: me.npub,
-        encBackup: me.encBackup, accountKind: me.accountKind);
+    await _install(handle: me.handle, displayName: me.displayName);
+    return RestoreState(RestoreOutcome.restored, handle: me.handle, displayName: me.displayName);
   }
 
-  /// Recovery path 1: decrypt the server backup with a (re-entered) password.
-  static Future<bool> recoverWithPassword(RestoreState st, String password) async {
-    if (st.encBackup == null || password.isEmpty) return false;
-    final priv = await KeyBackup.decryptSecret(st.encBackup!, password);
-    if (priv == null || priv.isEmpty) return false;
-    await _install(priv, handle: st.handle, displayName: st.displayName, accountKind: st.accountKind);
-    return true;
-  }
-
-  /// Recovery path 2: paste the saved recovery key (nsec or 64-char hex). We only
-  /// accept it if it derives the SAME npub the account is linked to.
-  static Future<bool> recoverWithKey(RestoreState st, String input) async {
-    final hex = _toPrivHex(input.trim());
-    if (hex == null) return false;
-    final id = Identity.fromPrivateKey(hex);
-    if (st.npub != null && st.npub!.isNotEmpty && id.npub != st.npub) return false;
-    await _install(hex, handle: st.handle, displayName: st.displayName, accountKind: st.accountKind);
-    return true;
-  }
-
-  static String? _toPrivHex(String s) {
-    if (s.startsWith('nsec')) return NostrKeys.decodeToHex(s, 'nsec');
-    final hex = s.toLowerCase();
-    if (RegExp(r'^[0-9a-f]{64}$').hasMatch(hex)) return hex;
-    return null;
-  }
-
-  /// Install a restored private key + refill local profile/account-kind and mark
-  /// onboarding done so the returning user lands straight on the dashboard.
-  static Future<void> _install(String privHex,
-      {String? handle, String? displayName, String? accountKind}) async {
-    await IdentityStore().importPrivateKey(privHex); // same npub; sets ApiAuth.identity
+  /// Set the device up for this account: mint the internal signing key if none,
+  /// refill the local profile, pull prefs (enabled apps, filters, settings…)
+  /// from the server vault, and mark onboarding done → straight to dashboard.
+  static Future<void> _install({String? handle, String? displayName}) async {
+    final store = IdentityStore();
+    if (await store.load() == null) await store.createAndStore();
     final ps = ProfileStore();
     final cur = await ps.load();
     await ps.save(cur.copyWith(
       displayName: displayName ?? cur.displayName,
       handle: handle ?? cur.handle,
     ));
-    if (accountKind != null) {
-      await AccountKindStore().set(AccountKindX.fromWire(accountKind));
-    }
-    // Pull the rest of the user's prefs (enabled apps, filters, stars, flags…)
-    // so the device is fully set up before we show the dashboard.
     await PrefsSync.pull();
     await OnboardingStore().setDone();
   }
