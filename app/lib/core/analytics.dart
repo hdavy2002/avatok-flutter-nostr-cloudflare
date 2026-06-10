@@ -1,9 +1,11 @@
 import 'dart:io' show Platform;
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'ava_log.dart';
+import 'feature_flags.dart';
 
 /// Central client-side analytics for AvaTOK → PostHog (EU region, project 139917).
 ///
@@ -19,10 +21,63 @@ class Analytics {
 
   static bool _ready = false;
 
+  // ── Envelope (ANALYTICS-OBSERVABILITY §1, BINDING) ─────────────────────────
+  // Auto-merged onto EVERY event so any app's events are remotely diagnosable.
+  /// Which AvaVerse app the user is in (avatok|wallet|explore|avalive|…).
+  /// Screens set this when an app takes the foreground.
+  static String app = 'avatok';
+  /// Current logical screen (set via [screenViewed] or by screens directly).
+  static String? currentScreen;
+  /// Person buckets — set at identify time.
+  static String? _accountId;
+  static String accountKind = 'personal';
+  static int _seq = 0; // session_seq — monotonic per app session
+  static String _net = 'unknown'; // wifi|cell|offline
+
   /// Add to MaterialApp.navigatorObservers to auto-capture a screen on each route.
   static final PosthogObserver observer = PosthogObserver();
 
+  /// Mandatory `screen_viewed` event (§2) — call on every route push.
+  static Future<void> screenViewed(String appId, String screenName, {String? from}) {
+    app = appId;
+    currentScreen = screenName;
+    return capture('screen_viewed', {if (from != null) 'from': from});
+  }
+
+  /// Central `api_error` event (§2) — emitted by the HTTP wrapper (ApiAuth),
+  /// never per screen.
+  static Future<void> apiError({
+    required String endpoint,
+    required int status,
+    String? code,
+    int? latencyMs,
+    int retryCount = 0,
+  }) =>
+      capture('api_error', {
+        'endpoint': endpoint,
+        'status': status,
+        if (code != null) 'code': code,
+        if (latencyMs != null) 'latency_ms': latencyMs,
+        'retry_count': retryCount,
+      });
+
+  static void _applyNet(List<ConnectivityResult> rs) {
+    if (rs.isEmpty || rs.every((r) => r == ConnectivityResult.none)) {
+      _net = 'offline';
+    } else if (rs.contains(ConnectivityResult.wifi) || rs.contains(ConnectivityResult.ethernet)) {
+      _net = 'wifi';
+    } else if (rs.contains(ConnectivityResult.mobile)) {
+      _net = 'cell';
+    } else {
+      _net = 'other';
+    }
+  }
+
   static Future<void> init() async {
+    try {
+      Connectivity().checkConnectivity().then(_applyNet).catchError((_) {});
+      Connectivity().onConnectivityChanged.listen(_applyNet, onError: (_) {});
+    } catch (_) {/* net dimension stays 'unknown' */}
     try {
       final config = PostHogConfig(_apiKey)
         ..host = _host
@@ -50,11 +105,23 @@ class Analytics {
         'platform': _platform,
         'app_version': appVersion,
         'service_name': 'avatok-app',
+        // Envelope (§1) — present on every event; explicit props win on clash.
+        'app': app,
+        if (currentScreen != null) 'screen': currentScreen!,
+        if (_accountId != null) 'account_id': _accountId!,
+        'account_kind': accountKind,
+        'build': kAppBuild,
+        'env': kAvatokEnv,
+        'net': _net,
+        'session_seq': ++_seq,
         ...?p,
       };
 
   /// Attach all subsequent events to this person (call when the npub exists).
   static Future<void> identify(String npub, {Map<String, Object>? properties}) async {
+    _accountId = npub;
+    final k = properties?['account_kind'];
+    if (k is String && k.isNotEmpty) accountKind = k;
     if (!_ready) return;
     try {
       await Posthog().identify(userId: npub, userProperties: _base(properties));
@@ -115,6 +182,8 @@ class Analytics {
 
   /// Clear the identity on sign-out so the next user starts anonymous.
   static Future<void> reset() async {
+    _accountId = null;
+    accountKind = 'personal';
     if (!_ready) return;
     try {
       await Posthog().reset();

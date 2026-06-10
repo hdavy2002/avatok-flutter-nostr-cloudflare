@@ -38,6 +38,8 @@ class CallTelemetry {
     final setupMs = _tConnected! - _t0;
     _probeIceType(pc).then((_) {
       Analytics.capture('call_connected', {
+        // call_id = room id, shared by BOTH sides so their events join (A4.5).
+        'call_id': callId,
         'call_id_hash': callId.hashCode.toString(),
         'setup_ms': setupMs,
         'ice_type': _iceType,
@@ -110,6 +112,7 @@ class CallTelemetry {
     double? maxRtt;
     if (_rttMs.isNotEmpty) maxRtt = _rttMs.reduce((a, b) => a > b ? a : b);
     Analytics.capture('call_ended', {
+      'call_id': callId,
       'call_id_hash': callId.hashCode.toString(),
       'reason': reason,
       'connected': _tConnected != null,

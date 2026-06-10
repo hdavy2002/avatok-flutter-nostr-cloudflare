@@ -12,6 +12,7 @@ import 'core/ava_log.dart';
 import 'core/disk_cache.dart';
 import 'core/onboarding_store.dart';
 import 'core/prefs_sync.dart';
+import 'core/remote_config.dart';
 import 'core/theme.dart';
 import 'firebase_options.dart';
 import 'identity/identity.dart';
@@ -41,6 +42,8 @@ void main() async {
   } catch (e, st) {
     Analytics.captureException(e, st, screen: 'startup_firebase_init');
   }
+  // Remote kill switches (A2): fetch in the background; never blocks startup.
+  unawaited(RemoteConfig.start());
   // Push is separate: a messaging failure must not block the app.
   try {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
@@ -252,6 +255,19 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // Forced-update gate (A2): minAppBuild above the installed build blocks the
+    // app until updated. Listens to config revisions so a remote flip applies
+    // within one poll cycle without restarting.
+    return ValueListenableBuilder<int>(
+      valueListenable: RemoteConfig.revision,
+      builder: (context, _, __) {
+        if (RemoteConfig.updateRequired) return const _UpdateRequiredScreen();
+        return _stageBody();
+      },
+    );
+  }
+
+  Widget _stageBody() {
     switch (_stage) {
       case _Stage.loading:
         return const Scaffold(body: Center(child: CircularProgressIndicator(color: AvaColors.brand)));
@@ -271,5 +287,39 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       case _Stage.shell:
         return AvaShell(clerk: _clerk, onSignOut: _signOut);
     }
+  }
+}
+
+/// Blocking screen shown when the server's minAppBuild is newer than this
+/// build (remote kill switch A2). No way past it except updating.
+class _UpdateRequiredScreen extends StatelessWidget {
+  const _UpdateRequiredScreen();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 36),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 84, height: 84,
+              decoration: BoxDecoration(color: AvaColors.brand50, borderRadius: BorderRadius.circular(24)),
+              child: const Icon(Icons.system_update, color: AvaColors.brand, size: 40),
+            ),
+            const SizedBox(height: 20),
+            const Text('Update required',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+            const SizedBox(height: 8),
+            const Text(
+              'This version of AvaTOK is no longer supported. '
+              'Please install the latest update to continue.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 }

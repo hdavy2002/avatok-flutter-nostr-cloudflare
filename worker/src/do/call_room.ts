@@ -69,9 +69,18 @@ export class CallRoom {
     const out = JSON.stringify(data);
 
     if (typeof data.to === "string" && data.to) {
+      let delivered = false;
       for (const w of all) {
         if (this.state.getTags(w)[0] === data.to) {
-          try { w.send(out); } catch { /* peer gone */ }
+          try { w.send(out); delivered = true; } catch { /* peer gone */ }
+        }
+      }
+      // Ringing race (zombie-call hotfix A4.3): a bye/decline addressed to a
+      // peer that hasn't registered (hangup-before-welcome) or already left
+      // must NOT be dropped — broadcast it so the other side ends cleanly.
+      if (!delivered && (data.type === "bye" || data.type === "decline")) {
+        for (const w of all) {
+          if (w !== ws) { try { w.send(out); } catch { /* peer gone */ } }
         }
       }
     } else {

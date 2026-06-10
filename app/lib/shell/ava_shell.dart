@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/clerk_client.dart';
 import '../core/admin_tools.dart';
+import '../core/app_registry.dart';
 import '../core/apps.dart';
 import '../core/onboarding_store.dart';
 import '../core/theme.dart';
@@ -94,8 +95,12 @@ class _AvaShellState extends State<AvaShell> {
         _push(ProfileScreen(identity: _id));
         return;
       case 'wallet':
-      case 'billing':
+        _push(ComingSoon.forApp('avawallet'));
+        return;
       case 'payout':
+        _push(ComingSoon.forApp('avapayout'));
+        return;
+      case 'billing':
       case 'invite':
         _push(ComingSoon(title: dest[0].toUpperCase() + dest.substring(1), subtitle: 'Coming soon', icon: Icons.bolt, color: AvaColors.brand));
         return;
@@ -104,6 +109,12 @@ class _AvaShellState extends State<AvaShell> {
         final tool = adminToolByKey(dest);
         if (tool != null) {
           _push(ComingSoon(title: tool.name, subtitle: tool.tagline, icon: tool.icon, color: tool.color));
+          return;
+        }
+        // App registry (standard or hidden) → branded ComingSoon until its
+        // phase ships; legacy kApps keys fall through to the same screen.
+        if (AppRegistry.byId(dest) != null) {
+          _push(ComingSoon.forApp(dest));
           return;
         }
         final a = appByKey(dest);

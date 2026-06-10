@@ -32,6 +32,8 @@ WALLET_RETURN_URL = "https://avatok.ai/wallet"
 # key (clerk_nostr_link) and powers cross-device restore via GET /api/me.
 CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.avatok.ai"
+# Admins allowed to PUT /api/admin/config (remote kill switches, Phase 1 A2).
+ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
@@ -235,3 +237,173 @@ new_sqlite_classes = ["InboxDO"]
 #   BUNNY_API_KEY, BUNNY_LIBRARY_ID    — Bunny.net Stream video uploads
 #   STREAM_WEBHOOK_SECRET              — Cloudflare Stream webhook HMAC (AvaLive)
 # (Text/image moderation runs on Workers AI in avatok-consumers — no OpenAI.)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STAGING (creator-marketplace Phase 1, audit A1). Deploy:
+#   wrangler deploy --env staging        → avatok-api-staging @ api-staging.avatok.ai
+# Fully separate state: -staging D1/R2/KV/queues. Vectorize/AI/Browser/Analytics
+# Engine are shared with prod (read-mostly or cost-free to share; revisit if a
+# phase needs isolated vectors). Secrets: `wrangler secret put X --env staging`
+# with Stripe TEST keys / Wise sandbox per secrets/secret-values.env "# staging".
+# ═══════════════════════════════════════════════════════════════════════════
+[env.staging]
+name = "avatok-api-staging"
+
+[[env.staging.routes]]
+pattern = "api-staging.avatok.ai"
+custom_domain = true
+
+[env.staging.vars]
+BLOSSOM_BASE_URL = "https://blossom.avatok.ai"
+FCM_PROJECT = "avatok-e19ef"
+BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"
+POSTHOG_QUERY_HOST = "https://eu.posthog.com"
+POSTHOG_PROJECT_ID = "139917"
+WALLET_TOPUP_ENABLED = "0"
+WALLET_RETURN_URL = "https://avatok.ai/wallet"
+CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
+CLERK_ISSUER = "https://clerk.avatok.ai"
+ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
+
+[[env.staging.d1_databases]]
+binding = "DB_META"
+database_name = "avatok-meta-staging"
+database_id = "3866e75b-89ab-4325-bbfa-4bef61395107"
+
+[[env.staging.d1_databases]]
+binding = "DB_MEDIA"
+database_name = "avatok-media-meta-staging"
+database_id = "33a9816d-7139-4eea-9ce9-57ed9cf955d6"
+
+[[env.staging.d1_databases]]
+binding = "DB_MODERATION"
+database_name = "avatok-moderation-staging"
+database_id = "04d887bd-3339-423b-97bd-f9bbfaf60a2b"
+
+[[env.staging.d1_databases]]
+binding = "DB_BRAIN"
+database_name = "avatok-brain-staging"
+database_id = "30a0507a-4ade-4c3f-817f-33abfc6cee82"
+
+[[env.staging.d1_databases]]
+binding = "DB_WALLET"
+database_name = "avatok-wallet-staging"
+database_id = "371e6b93-dc1e-4d35-91f0-f0c7573f1fb0"
+
+[[env.staging.r2_buckets]]
+binding = "BLOBS"
+bucket_name = "avatok-blobs-staging"
+
+[[env.staging.r2_buckets]]
+binding = "VERIFICATION"
+bucket_name = "avatok-verification-staging"
+
+[[env.staging.r2_buckets]]
+binding = "DIGITAL"
+bucket_name = "avatok-digital-staging"
+
+[[env.staging.r2_buckets]]
+binding = "AGENT_AUDIO"
+bucket_name = "avatok-agent-audio-staging"
+
+[[env.staging.kv_namespaces]]
+binding = "TOKENS"
+id = "fbd93a113d634a29b89dd40ad8caff0d"
+
+[[env.staging.queues.producers]]
+binding = "Q_MODERATION"
+queue = "moderation-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_PUSH"
+queue = "push-notifications-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_EMAIL"
+queue = "email-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_ANALYTICS"
+queue = "analytics-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_BRAIN"
+queue = "brain-events-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_DELETE"
+queue = "account-deletions-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_WALLET"
+queue = "wallet-transactions-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_AGENT"
+queue = "agent-tasks-staging"
+
+[env.staging.ai]
+binding = "AI"
+
+[env.staging.observability]
+enabled = true
+
+[[env.staging.analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "avatok_metrics_staging"
+
+[[env.staging.vectorize]]
+binding = "VECTOR_INDEX"
+index_name = "avatok-semantic"
+
+[env.staging.browser]
+binding = "BROWSER"
+
+[[env.staging.durable_objects.bindings]]
+name = "CALL_ROOMS"
+class_name = "CallRoom"
+
+[[env.staging.durable_objects.bindings]]
+name = "USER_BRAIN"
+class_name = "UserBrain"
+
+[[env.staging.durable_objects.bindings]]
+name = "WALLET_DO"
+class_name = "WalletDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "STREAM_SESSION_DO"
+class_name = "StreamSessionDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "AGENT_DO"
+class_name = "AgentDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "CONVERSATION_DO"
+class_name = "ConversationDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "INBOX"
+class_name = "InboxDO"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["CallRoom"]
+
+[[env.staging.migrations]]
+tag = "v2"
+new_sqlite_classes = ["UserBrain"]
+
+[[env.staging.migrations]]
+tag = "v3"
+new_sqlite_classes = ["WalletDO", "StreamSessionDO"]
+
+[[env.staging.migrations]]
+tag = "v4"
+new_sqlite_classes = ["AgentDO", "ConversationDO"]
+
+[[env.staging.migrations]]
+tag = "v5"
+new_sqlite_classes = ["InboxDO"]

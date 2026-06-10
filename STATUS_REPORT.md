@@ -1,6 +1,38 @@
 # AvaTok — Where We Are (Plain-English Status)
 
-_Last updated: 2026-06-05_
+_Last updated: 2026-06-10_
+
+## 2026-06-10 — Creator-marketplace Phase 1 (groundwork) SHIPPED
+
+Per `Specs/proposals/creator-marketplace/PHASE-01.md`:
+- **Onboarding**: account-type step (Single/Parent/Enterprise) disabled behind
+  `kAccountTypeStepEnabled=false` (`app/lib/core/feature_flags.dart`); every
+  signup defaults to `personal`. Widget kept for re-enable.
+- **Standard-apps sidebar**: `app/lib/core/app_registry.dart` (tier
+  standard/hidden); sidebar renders the 14 standard apps only; every app
+  navigates (real screen or branded `ComingSoon.forApp`).
+- **URL space locked**: `worker/src/routes/stubs.ts` answers 501 for the
+  unclaimed marketplace namespaces (wallet/payout/identity/storage/calendar/
+  booking/listings/inbox/avabrain). `worker/migrations/MIGRATION-PLAN.md`
+  reserves table names (no empty DDL — deliberate).
+- **A1 staging**: full `-staging` copies of D1×5 / R2×4 / KV / queues×8
+  provisioned; `[env.staging]` in both wrangler.tomls; DEPLOYED:
+  `avatok-api-staging` @ api-staging.avatok.ai (verified: /api/wallet/ping →
+  501, /api/config → 200) + `avatok-consumers-staging`. CI builds a staging
+  APK on `staging`-branch pushes (`--dart-define=AVATOK_ENV=staging`).
+- **A2 kill switches**: KV `platform_config` → GET /api/config (60 s cache),
+  PUT /api/admin/config (ADMIN_UIDS-gated). Flutter `RemoteConfig` polls every
+  15 min; `minAppBuild` shows a blocking update screen.
+- **A3**: shared `EmptyState`/`ErrorState`/`OfflineBanner` in `app/lib/core/ui/`.
+- **A4 zombie-call hotfix**: socket-loss ends the call; rtc-failed/disconnected
+  watchdog (10 s grace); CallRoom DO broadcasts undeliverable bye/decline;
+  CallKit notification cleared on every end path; `call_id` + full reason
+  taxonomy on call events (both sides join).
+- **A5 analytics envelope**: every client event now carries app/screen/
+  account_id/account_kind/build/env/net/session_seq; central `api_error`
+  capture in ApiAuth; worker events tagged `worker:true`.
+- **PENDING (needs davy)**: prod `wrangler deploy` of avatok-api (staging is
+  verified; prod deploy was held for explicit approval).
 
 ## In one line
 The backend is built, hardened, scale-proofed, and given an AI memory layer — all

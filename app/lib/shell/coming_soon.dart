@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_registry.dart';
 import '../core/theme.dart';
 
 /// Placeholder for an app whose screens aren't built yet. Keeps the app's
@@ -10,6 +11,19 @@ class ComingSoon extends StatelessWidget {
   final IconData icon;
   final Color color;
   const ComingSoon({super.key, required this.title, required this.subtitle, required this.icon, required this.color});
+
+  /// Phase-1 ComingSoonScreen(appId): styled from the app registry so every
+  /// not-yet-shipped standard app navigates somewhere branded.
+  factory ComingSoon.forApp(String appId, {Key? key}) {
+    final e = AppRegistry.byId(appId);
+    return ComingSoon(
+      key: key,
+      title: e?.title ?? appId,
+      subtitle: e?.tagline ?? 'Coming soon',
+      icon: e?.icon ?? Icons.bolt,
+      color: e?.color ?? const Color(0xFFFF6036),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
