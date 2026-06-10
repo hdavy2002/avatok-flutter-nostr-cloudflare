@@ -57,6 +57,8 @@ export interface Env {
   // vars
   BLOSSOM_BASE_URL: string;
   FCM_PROJECT: string;
+  // Comma-separated Clerk uids allowed to PUT /api/admin/config (Phase 1, A2).
+  ADMIN_UIDS?: string;
   BRAIN_REASONER_MODEL?: string;
   BRAIN_EMBED_MODEL?: string;
   POSTHOG_QUERY_HOST?: string;

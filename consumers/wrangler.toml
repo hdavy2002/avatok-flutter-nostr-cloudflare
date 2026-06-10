@@ -189,3 +189,152 @@ POSTHOG_HOST = "https://eu.i.posthog.com"
 BRAIN_EXTRACT_MODEL = "@cf/google/gemma-4-26b-a4b-it"       # MoE 26B/4B-active background extraction
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matches avatok-semantic (embeddings stay on bge)
 BRAIN_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it"        # Gemma 4 multimodal — AvaLibrary image caption/OCR/doc/chart/UI (replaces llava)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STAGING (creator-marketplace Phase 1, audit A1). Deploy:
+#   wrangler deploy --env staging   → avatok-consumers-staging
+# Consumes the -staging queues, writes the -staging D1s/R2s. Secrets per env:
+# Brevo real key but [STG]-prefixed templates; Stripe TEST; Wise sandbox.
+# ═══════════════════════════════════════════════════════════════════════════
+[env.staging]
+name = "avatok-consumers-staging"
+
+[env.staging.observability]
+enabled = true
+
+[[env.staging.d1_databases]]
+binding = "DB_META"
+database_name = "avatok-meta-staging"
+database_id = "3866e75b-89ab-4325-bbfa-4bef61395107"
+
+[[env.staging.d1_databases]]
+binding = "DB_MEDIA"
+database_name = "avatok-media-meta-staging"
+database_id = "33a9816d-7139-4eea-9ce9-57ed9cf955d6"
+
+[[env.staging.d1_databases]]
+binding = "DB_MODERATION"
+database_name = "avatok-moderation-staging"
+database_id = "04d887bd-3339-423b-97bd-f9bbfaf60a2b"
+
+[[env.staging.d1_databases]]
+binding = "DB_BRAIN"
+database_name = "avatok-brain-staging"
+database_id = "30a0507a-4ade-4c3f-817f-33abfc6cee82"
+
+[[env.staging.d1_databases]]
+binding = "DB_WALLET"
+database_name = "avatok-wallet-staging"
+database_id = "371e6b93-dc1e-4d35-91f0-f0c7573f1fb0"
+
+[[env.staging.r2_buckets]]
+binding = "BLOBS"
+bucket_name = "avatok-blobs-staging"
+
+[[env.staging.r2_buckets]]
+binding = "VERIFICATION"
+bucket_name = "avatok-verification-staging"
+
+[[env.staging.r2_buckets]]
+binding = "DIGITAL"
+bucket_name = "avatok-digital-staging"
+
+[[env.staging.r2_buckets]]
+binding = "AGENT_AUDIO"
+bucket_name = "avatok-agent-audio-staging"
+
+[[env.staging.kv_namespaces]]
+binding = "TOKENS"
+id = "fbd93a113d634a29b89dd40ad8caff0d"
+
+[env.staging.ai]
+binding = "AI"
+
+[[env.staging.vectorize]]
+binding = "VECTOR_INDEX"
+index_name = "avatok-semantic"
+
+[[env.staging.analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "avatok_metrics_staging"
+
+[[env.staging.queues.consumers]]
+queue = "moderation-staging"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "push-notifications-staging"
+max_batch_size = 10
+max_batch_timeout = 2
+max_retries = 5
+
+[[env.staging.queues.consumers]]
+queue = "email-staging"
+max_batch_size = 10
+max_batch_timeout = 10
+max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "analytics-staging"
+max_batch_size = 50
+max_batch_timeout = 15
+max_retries = 2
+
+[[env.staging.queues.consumers]]
+queue = "brain-events-staging"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "account-deletions-staging"
+max_batch_size = 1
+max_batch_timeout = 10
+max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "wallet-transactions-staging"
+max_batch_size = 20
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "agent-tasks-staging"
+max_batch_size = 2
+max_batch_timeout = 5
+max_retries = 3
+
+[[env.staging.durable_objects.bindings]]
+name = "CONVERSATION_DO"
+class_name = "ConversationDO"
+script_name = "avatok-api-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "INBOX"
+class_name = "InboxDO"
+script_name = "avatok-api-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_PUSH"
+queue = "push-notifications-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_ANALYTICS"
+queue = "analytics-staging"
+
+[env.staging.triggers]
+crons = ["*/15 * * * *", "0 */6 * * *"]
+
+[env.staging.vars]
+FCM_PROJECT = "avatok-e19ef"
+AI_DAILY_CALL_BUDGET = "5000"
+ALERT_EMAIL = "hdavy2005@gmail.com"
+MODERATION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+MODERATION_MODEL_TYPE = "vision"
+TEXT_MODERATION_MODEL = "@cf/meta/llama-guard-3-8b"
+POSTHOG_HOST = "https://eu.i.posthog.com"
+BRAIN_EXTRACT_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"
+BRAIN_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it"

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -94,7 +95,7 @@ class _CallScreenState extends State<CallScreen> {
     _phase = widget.outgoing ? 'ringing' : 'connecting';
     if (widget.outgoing) {
       _ringTimeout = Timer(const Duration(seconds: 35), () {
-        if (mounted && !_connected) _endWith('no-answer');
+        if (mounted && !_connected) _endWith('no-answer', reason: 'timeout-ringing');
       });
     }
     // Server-relayed call status (declined / busy) for this call.
@@ -112,8 +113,11 @@ class _CallScreenState extends State<CallScreen> {
     _start();
   }
 
-  void _endWith(String phase) {
-    _telemetry.ended(phase);
+  /// [phase] drives the UI label; [reason] is the exhaustive telemetry taxonomy
+  /// (A4.5): local-hangup|remote-bye|peer-left|decline|busy|socket-lost|
+  /// rtc-failed|rtc-disconnected|timeout-ringing.
+  void _endWith(String phase, {String? reason}) {
+    _telemetry.ended(reason ?? phase);
     // Release mic/cam IMMEDIATELY on every end path (remote hangup, decline,
     // busy, no-answer, failure) — not 1.4s later when the route finally pops.
     // This is what stops the green mic indicator lingering after the other side
@@ -161,7 +165,15 @@ class _CallScreenState extends State<CallScreen> {
     });
     final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
     _ws = WebSocketChannel.connect(Uri.parse(url));
-    _ws!.stream.listen(_onSignal, onError: (_) {}, onDone: () {});
+    // Zombie-call hotfix (A4.1): a dead signaling socket means hangup/decline
+    // can never reach us — never ignore it. (_end() closes the socket itself,
+    // so _onSocketLost checks _ended to stay a no-op on normal teardown.)
+    _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+  }
+
+  void _onSocketLost() {
+    if (_ended) return;
+    _endWith('ended', reason: 'socket-lost');
   }
 
   void _send(Map<String, dynamic> o) => _ws?.sink.add(jsonEncode(o));
@@ -192,15 +204,22 @@ class _CallScreenState extends State<CallScreen> {
         _endWith('ended');
       } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
                  s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-        // Don't kill an established call on the first transport blip: try an ICE
-        // restart, and only end if it hasn't recovered within the grace window.
+        // Media watchdog (A4.2). `failed` with no restart available ends the
+        // call NOW; otherwise try an ICE restart and give it a 10 s grace
+        // window before ending with the precise reason.
+        final isFailed = s == RTCPeerConnectionState.RTCPeerConnectionStateFailed;
+        final canRestart = _weOffered && _iceRestarts < 3 && _remoteId != null;
+        if (isFailed && !canRestart) {
+          _endWith('ended', reason: 'rtc-failed');
+          return;
+        }
         _tryIceRestart('transport-$s');
         _failTimer?.cancel();
-        _failTimer = Timer(const Duration(seconds: 12), () {
+        _failTimer = Timer(const Duration(seconds: 10), () {
           final st = _pc?.connectionState;
           if (mounted && _connected &&
               st != RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-            _endWith('ended');
+            _endWith('ended', reason: isFailed ? 'rtc-failed' : 'rtc-disconnected');
           }
         });
       } else if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
@@ -277,7 +296,7 @@ class _CallScreenState extends State<CallScreen> {
         }
         break;
       case 'decline':
-        _endWith('declined');
+        _endWith('declined', reason: 'decline');
         break;
       case 'busy':
         _endWith('busy');
@@ -286,7 +305,12 @@ class _CallScreenState extends State<CallScreen> {
       case 'bye':
         _remote.srcObject = null;
         if (_connected) {
-          _endWith('ended');
+          _endWith('ended', reason: d['type'] == 'bye' ? 'remote-bye' : 'peer-left');
+        } else if (d['type'] == 'bye') {
+          // Hangup-before-connect (the zombie-call race): the remote ended the
+          // call while we were still ringing/connecting — end OUR side too
+          // instead of sitting in "Connecting…" forever.
+          _endWith('ended', reason: 'remote-bye');
         } else if (mounted) {
           setState(() => _connected = false);
         }
@@ -344,6 +368,7 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _hangup() async {
     if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
+    _telemetry.ended('local-hangup'); // before _end()'s generic fallback fires
     await _end();
     if (mounted) Navigator.pop(context);
   }
@@ -359,6 +384,10 @@ class _CallScreenState extends State<CallScreen> {
     _ringTimeout?.cancel();
     _failTimer?.cancel();
     _netSub?.cancel();
+    // End-path hygiene (A4.4): clear the CallKit/ongoing-call notification +
+    // ringtone on EVERY end path, not just the explicit decline. Without this a
+    // dead peer leaves a stale "ongoing call" banner on the callee's phone.
+    try { await FlutterCallkitIncoming.endCall(widget.room); } catch (_) {}
     // Release the mic/cam FULLY. On Android, track.stop() alone leaves the OS
     // privacy mic indicator (green dot) lit until the MediaStream is disposed
     // AND detached from the renderers — which is why the mic stayed "in use"

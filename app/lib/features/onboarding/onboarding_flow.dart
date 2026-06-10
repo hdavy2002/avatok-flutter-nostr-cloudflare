@@ -7,7 +7,9 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
 import '../../core/analytics.dart';
+import '../../core/app_registry.dart';
 import '../../core/apps.dart';
+import '../../core/feature_flags.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
@@ -29,10 +31,16 @@ class OnboardingFlow extends StatefulWidget {
 class _OnboardingFlowState extends State<OnboardingFlow> {
   // Cloudflare-native pivot: the 'keys' step is GONE — signing in IS the
   // account; there is no user-facing key to save or recover.
-  static const _steps = 7;
-  static const _stepNames = [
+  // Phase 1 (creator marketplace): the account-type step is flag-gated. When
+  // kAccountTypeStepEnabled is false the flow starts at notifications and every
+  // signup is AccountKind.personal. Step indices in analytics re-index with the
+  // list, so onboarding_step_viewed/completed stay consistent.
+  static const _allStepNames = [
     'account_kind', 'notifications', 'terms', 'profile', 'verify_identity', 'contacts', 'apps'
   ];
+  static final List<String> _stepNames =
+      kAccountTypeStepEnabled ? _allStepNames : _allStepNames.sublist(1);
+  static final int _steps = _stepNames.length;
   int _step = 0;
 
   // ---- verification step (age / gender / phone / email) ----
@@ -46,11 +54,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Identity? _id;
 
   // ---- account-type step (Single / Parent / Enterprise) ----
-  AccountKind? _selectedKind;
+  // Defaults to personal when the step is disabled (kAccountTypeStepEnabled).
+  AccountKind? _selectedKind = kAccountTypeStepEnabled ? null : AccountKind.personal;
 
   bool _notifEnabled = false;
   bool _agreedTerms = false;
-  late Set<String> _enabled = kApps.where((a) => a.defaultOn).map((a) => a.key).toSet();
+  // Standard-tier apps only (Phase 1): a signup ends with exactly the standard
+  // apps — hidden-tier apps stay registered but are not offered or enabled.
+  late Set<String> _enabled = kApps
+      .where((a) => a.defaultOn && AppRegistry.isStandard(a.key))
+      .map((a) => a.key)
+      .toSet();
 
   // ---- profile step (handle + display name) ----
   final _handleCtrl = TextEditingController();
@@ -190,13 +204,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       );
 
   Widget _body() {
-    switch (_step) {
-      case 0: return _accountType();
-      case 1: return _notifications();
-      case 2: return _terms();
-      case 3: return _profileStep();
-      case 4: return _verifyStep();
-      case 5: return _contacts();
+    // Dispatch by step NAME, not index — the list shrinks when the
+    // account-type step is flag-disabled.
+    switch (_stepNames[_step]) {
+      case 'account_kind': return _accountType();
+      case 'notifications': return _notifications();
+      case 'terms': return _terms();
+      case 'profile': return _profileStep();
+      case 'verify_identity': return _verifyStep();
+      case 'contacts': return _contacts();
       default: return _appsSetup();
     }
   }
@@ -552,7 +568,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         width: big ? 30 : 24, height: big ? 30 : 24,
         decoration: BoxDecoration(color: c, shape: BoxShape.circle));
 
-  // ---- Step 6: app selection ----
+  // ---- Step 6: app selection (standard-tier apps only) ----
+  late final List<AppDef> _offeredApps =
+      kApps.where((a) => AppRegistry.isStandard(a.key)).toList();
+
   Widget _appsSetup() {
     return Column(
       children: [
@@ -568,10 +587,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-            itemCount: kApps.length,
+            itemCount: _offeredApps.length,
             separatorBuilder: (_, __) => const Divider(height: 1, color: AvaColors.line),
             itemBuilder: (c, i) {
-              final a = kApps[i];
+              final a = _offeredApps[i];
               final on = _enabled.contains(a.key);
               return ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

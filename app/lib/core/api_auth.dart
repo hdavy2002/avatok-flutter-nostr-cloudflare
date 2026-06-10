@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:pointycastle/export.dart';
 
 import '../identity/identity.dart';
+import 'analytics.dart';
 
 /// Central authenticated-HTTP helper for the hardened `/api/*` Worker contract.
 ///
@@ -63,27 +64,52 @@ class ApiAuth {
     return '${h(4)}-${h(2)}-${h(2)}-${h(2)}-${h(6)}'; // uuid-ish, enough for tracing
   }
 
+  /// Central api_error capture (ANALYTICS-OBSERVABILITY §2): every authed HTTP
+  /// call reports failures here — screens never capture api_error themselves.
+  static Future<http.Response> _tracked(String url, Future<http.Response> Function() run) async {
+    final t0 = DateTime.now();
+    try {
+      final res = await run();
+      if (res.statusCode >= 400) {
+        Analytics.apiError(
+          endpoint: Uri.parse(url).path,
+          status: res.statusCode,
+          latencyMs: DateTime.now().difference(t0).inMilliseconds,
+        );
+      }
+      return res;
+    } catch (e) {
+      Analytics.apiError(
+        endpoint: Uri.parse(url).path,
+        status: 0,
+        code: e.runtimeType.toString(),
+        latencyMs: DateTime.now().difference(t0).inMilliseconds,
+      );
+      rethrow;
+    }
+  }
+
   /// Signed POST with a JSON body.
   static Future<http.Response> postJson(String url, Object jsonBody,
       {Duration timeout = const Duration(seconds: 8)}) async {
     final bodyStr = jsonEncode(jsonBody);
     final bytes = utf8.encode(bodyStr);
     final headers = await _headers('POST', url, body: bytes, base: {'Content-Type': 'application/json'});
-    return http.post(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout);
+    return _tracked(url, () => http.post(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout));
   }
 
   /// Signed POST with a raw byte body (media uploads).
   static Future<http.Response> postBytes(String url, List<int> bytes,
       {Map<String, String>? extraHeaders, Duration timeout = const Duration(seconds: 60)}) async {
     final headers = await _headers('POST', url, body: bytes, base: extraHeaders);
-    return http.post(Uri.parse(url), headers: headers, body: Uint8List.fromList(bytes)).timeout(timeout);
+    return _tracked(url, () => http.post(Uri.parse(url), headers: headers, body: Uint8List.fromList(bytes)).timeout(timeout));
   }
 
   /// Signed GET (for authed reads like /api/library).
   static Future<http.Response> getSigned(String url,
       {Duration timeout = const Duration(seconds: 8)}) async {
     final headers = await _headers('GET', url);
-    return http.get(Uri.parse(url), headers: headers).timeout(timeout);
+    return _tracked(url, () => http.get(Uri.parse(url), headers: headers).timeout(timeout));
   }
 
   /// Signed PUT with a JSON body (e.g. agent persona, OLX listing edit).
@@ -92,21 +118,21 @@ class ApiAuth {
     final bodyStr = jsonEncode(jsonBody);
     final bytes = utf8.encode(bodyStr);
     final headers = await _headers('PUT', url, body: bytes, base: {'Content-Type': 'application/json'});
-    return http.put(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout);
+    return _tracked(url, () => http.put(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout));
   }
 
   /// Signed DELETE.
   static Future<http.Response> deleteSigned(String url,
       {Duration timeout = const Duration(seconds: 8)}) async {
     final headers = await _headers('DELETE', url);
-    return http.delete(Uri.parse(url), headers: headers).timeout(timeout);
+    return _tracked(url, () => http.delete(Uri.parse(url), headers: headers).timeout(timeout));
   }
 
   /// Signed GET that returns raw bytes (e.g. agent TTS audio stream).
   static Future<http.Response> getBytes(String url,
       {Duration timeout = const Duration(seconds: 30)}) async {
     final headers = await _headers('GET', url);
-    return http.get(Uri.parse(url), headers: headers).timeout(timeout);
+    return _tracked(url, () => http.get(Uri.parse(url), headers: headers).timeout(timeout));
   }
 
   // ---- internals ----

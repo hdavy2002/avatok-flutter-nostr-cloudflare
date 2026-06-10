@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/admin_tools.dart';
-import '../core/apps.dart';
+import '../core/app_registry.dart';
 import '../core/avatar.dart';
 import '../core/device_contacts.dart';
 import '../core/logo.dart';
@@ -53,7 +53,12 @@ class _AvaSidebarState extends State<AvaSidebar> {
 
   @override
   Widget build(BuildContext context) {
-    final apps = kApps.where((a) => widget.enabledApps.contains(a.key)).toList();
+    // Phase 1: the sidebar renders STANDARD-tier apps only (hidden tier stays
+    // registered in AppRegistry for later). Explore/Verse/Library render as the
+    // featured tiles above, so the APPS list excludes them.
+    final apps = AppRegistry.standard
+        .where((a) => a.id != 'explore' && a.id != 'verse' && a.id != 'avalibrary')
+        .toList();
     return Drawer(
       backgroundColor: Colors.white,
       width: MediaQuery.of(context).size.width * 0.82,
@@ -180,14 +185,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
         onTap: () => widget.onSelect(t.key),
       );
 
-  Widget _appRow(AppDef a) => ListTile(
+  Widget _appRow(AppEntry a) => ListTile(
         dense: true,
         leading: Container(width: 30, height: 30,
             decoration: BoxDecoration(color: a.color, borderRadius: BorderRadius.circular(9)),
             child: Icon(a.icon, color: Colors.white, size: 16)),
-        title: Text(a.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        title: Text(a.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         trailing: const Icon(Icons.expand_more, size: 18, color: AvaColors.sub),
-        onTap: () => widget.onSelect(a.key),
+        onTap: () => widget.onSelect(a.route),
       );
 
   /// Avatar wrapped in an Instagram-style gradient story-ring + a small badge.

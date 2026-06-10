@@ -21,6 +21,8 @@ import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveI
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, sendMsg, syncMsg, receiptMsg, convList, convCreate } from "./routes/messaging";
+import { getConfig, putConfig } from "./routes/config";
+import { marketplaceStub } from "./routes/stubs";
 
 export { CallRoom } from "./do/call_room";
 export { InboxDO } from "./do/inbox";
@@ -56,6 +58,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     const p = url.pathname;
 
     if (p === "/health") return json({ ok: true, service: "avatok-api", ts: Date.now() });
+
+    // Remote kill switches (Phase 1, A2) — public read, admin write.
+    if (p === "/api/config" && req.method === "GET") return await getConfig(env);
+    if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
 
     // Group-call signaling → CallRoom DO (thin router, no logic). The location
     // hint places the room near the FIRST opener (the caller) — hints only apply
@@ -211,6 +217,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
       // --- permanent redirect for any cached/shared legacy media URLs ---
       if (/^\/media\/[a-f0-9]{64}$/.test(p) && req.method === "GET") return mediaRedirect(p, env);
+
+      // --- creator-marketplace URL-space reservation (Phase 1) — 501 stubs ---
+      const stub = marketplaceStub(p);
+      if (stub) return stub;
     } catch (e: any) {
       return json({ error: "internal", detail: String(e?.message ?? e) }, 500);
     }

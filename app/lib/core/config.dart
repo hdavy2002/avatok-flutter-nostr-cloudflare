@@ -1,22 +1,27 @@
 /// App-wide configuration.
+library;
+
+import 'feature_flags.dart';
 
 /// Clerk publishable key (existing avatok.ai tenant) — public, ships in app.
 const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 
 /// Worker endpoint to register a device's push token against an npub. (NIP-98)
-const String kRegisterUrl = 'https://api.avatok.ai/api/register';
+const String kRegisterUrl = 'https://$kSignalingHost/api/register';
 
 /// Worker endpoint to ring a callee (sends a high-priority FCM wake push). (NIP-98)
-const String kCallUrl = 'https://api.avatok.ai/api/call';
+const String kCallUrl = 'https://$kSignalingHost/api/call';
 
 /// Relay a call status (declined / busy / ended) to the caller via FCM. (NIP-98)
-const String kCallStatusUrl = 'https://api.avatok.ai/api/call-status';
+const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 
 /// Nudge recipients that a new message arrived (content-less wake). (NIP-98)
-const String kNotifyUrl = 'https://api.avatok.ai/api/notify';
+const String kNotifyUrl = 'https://$kSignalingHost/api/notify';
 
-/// Signaling host (no scheme). Baked at deploy time.
-const String kSignalingHost = 'api.avatok.ai';
+/// Signaling host (no scheme). Baked at compile time; the staging APK flavor
+/// (--dart-define=AVATOK_ENV=staging, Phase 1 A1) talks to the staging worker.
+const String kSignalingHost =
+    kAvatokEnv == 'staging' ? 'api-staging.avatok.ai' : 'api.avatok.ai';
 
 /// Calls backend — mints Cloudflare RealtimeKit participant tokens (AvaConsult).
 const String kCallsJoinUrl = 'https://avatok-calls.getmystuffme.workers.dev/join';
@@ -113,6 +118,9 @@ const String kBrainBase = 'https://$kSignalingHost/api/brain';
 
 // ── Platform + agentic API bases (v5.2 Phases 1-8) ──────────────────────────
 const String kApiBase = 'https://$kSignalingHost/api';
+
+/// Remote kill switches / server config (creator-marketplace Phase 1, A2).
+const String kConfigUrl = '$kApiBase/config';
 const String kIdBase = '$kApiBase/id';            // AvaID verification (Phase 1)
 
 // ── Onboarding verification (age/gender + phone OTP + email OTP) ─────────────
