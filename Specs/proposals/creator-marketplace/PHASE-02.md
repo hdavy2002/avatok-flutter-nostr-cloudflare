@@ -7,20 +7,52 @@ A real wallet: AvaCoins backed by USD, Stripe top-ups of any amount, an immutabl
 double-entry ledger with escrow buckets, and a wallet UI with balance cards,
 transaction trail, row-detail popups, pagination, and filters.
 
-## Backend (D1 `avatok-meta` + worker `routes/wallet.ts`)
+## Backend — RECONCILED WITH THE EXISTING WALLET ENGINE (decision 2026-06-10)
 
-### Schema
+**An engine already exists — do NOT replace it.** `worker/src/do/wallet.ts`
+(WalletDO): one DO per uid, ALL balance math serialized in DO-local SQLite
+(`credit|spend|earn|release` ops, 7-day earnings hold via alarm, live balance
+over WS), with D1 **`avatok-wallet`** (binding `DB_WALLET`, staging twin exists)
+as the async audit trail written by the `Q_WALLET` queue consumer.
+`StreamSessionDO` already settles gifts → creator WalletDO. Phase 2 LAYERS
+double-entry semantics onto this:
+
+- **Balance authority = WalletDO** (per-user). Never compute a user's balance
+  from D1; D1 is the queryable history.
+- **Ledger lives in D1 `avatok-wallet`** (NOT avatok-meta): extend/replace its
+  audit table with the `wallet_ledger` schema below, populated via `Q_WALLET`.
+- **Every money primitive = WalletDO op(s) + a queued ledger row** carrying the
+  same idempotency id (`op_id`), so DO-truth and ledger always correspond.
+- **Escrow accounts are ledger-only** (`escrow:<orderId>`, `platform:fees` rows
+  in `wallet_accounts` in D1) — escrow has no DO because nothing races on it:
+  hold = buyer `WalletDO.spend` + row `user→escrow`; release = creator
+  `WalletDO.earn` (KEEPS the existing 7-day held→spendable behavior — earnings
+  show as "pending" in the UI) + fee row `escrow→platform:fees`; refund = buyer
+  `WalletDO.credit` + row `escrow→user`.
+- **Donations** (Phase 7) follow the StreamSessionDO pattern: aggregate in the
+  session DO, settle to creator WalletDO, ledger rows via Q_WALLET.
+- **WalletDO additions needed:** accept an `op_id` on every mutating op and
+  dedupe (idempotency at the authority, not just the API); emit the ledger
+  message to Q_WALLET itself (single writer).
+- **Reconciliation (A2) restated:** nightly, per user: WalletDO `balance+held`
+  must equal Σ ledger credits−debits for `user:<id>` **up to the queue
+  watermark** (tolerate in-flight Q_WALLET messages: compare against rows older
+  than 5 min and re-check mismatches once before alerting).
+- `WALLET_TOPUP_ENABLED="0"` is the existing real-money flag — Phase 2's Stripe
+  work goes behind it (test keys on staging first), as already specced.
+
+### Schema (D1 `avatok-wallet`)
 ```sql
-CREATE TABLE wallet_accounts (
-  id TEXT PRIMARY KEY,            -- 'user:<clerkId>' | 'escrow:<orderId>' | 'platform:fees'
-  kind TEXT NOT NULL,             -- user | escrow | platform
+CREATE TABLE wallet_accounts (            -- escrow + platform buckets ONLY (user balances live in WalletDO)
+  id TEXT PRIMARY KEY,            -- 'escrow:<orderId>' | 'platform:fees'
+  kind TEXT NOT NULL,             -- escrow | platform
   balance INTEGER NOT NULL DEFAULT 0,  -- coins, integer (1 coin = 1 cent USD)
   updated_at INTEGER NOT NULL
 );
 CREATE TABLE wallet_ledger (
-  id TEXT PRIMARY KEY,            -- ulid
-  debit TEXT NOT NULL,            -- account id money leaves
-  credit TEXT NOT NULL,           -- account id money enters
+  id TEXT PRIMARY KEY,            -- op_id (idempotency id, UNIQUE by definition)
+  debit TEXT NOT NULL,            -- account: 'user:<clerkId>' | 'escrow:<orderId>' | 'platform:fees' | 'external:stripe' | 'external:wise'
+  credit TEXT NOT NULL,
   amount INTEGER NOT NULL,        -- coins
   type TEXT NOT NULL,             -- topup|purchase_hold|escrow_release|refund|fee|payout|storage_charge|donation|adjustment
   ref TEXT,                       -- orderId / bookingId / eventId / stripe pi_...
@@ -30,8 +62,8 @@ CREATE TABLE wallet_ledger (
 CREATE INDEX idx_ledger_acct_time ON wallet_ledger(debit, created_at DESC);
 CREATE INDEX idx_ledger_acct_time2 ON wallet_ledger(credit, created_at DESC);
 ```
-- Balance updates + ledger insert in ONE D1 batch (atomic). Ledger rows are never
-  edited or deleted. `adjustment` type reserved for admin fixes.
+- Ledger rows are never edited or deleted; `adjustment` reserved for admin fixes
+  (admin console must apply adjustments through WalletDO + ledger, never D1-only).
 - Coin peg: **1 AvaCoin = $0.01** (integers everywhere; UI shows $). Storage
   pricing (20 AvaCoins/GB/mo from the rulebook) re-confirmed against this peg
   in Phase 4 — flag to davy if 20 coins = $0.20/GB/mo is not intended.

@@ -90,6 +90,16 @@ class ApiAuth {
   }
 
   /// Signed POST with a JSON body.
+  /// Signed JSON POST with extra headers (e.g. Idempotency-Key on money routes).
+  static Future<http.Response> postJsonH(String url, Object jsonBody, Map<String, String> extraHeaders,
+      {Duration timeout = const Duration(seconds: 20)}) async {
+    final bodyStr = jsonEncode(jsonBody);
+    final bytes = utf8.encode(bodyStr);
+    final headers = await _headers('POST', url,
+        body: bytes, base: {'Content-Type': 'application/json', ...extraHeaders});
+    return _tracked(url, () => http.post(Uri.parse(url), headers: headers, body: bodyStr).timeout(timeout));
+  }
+
   static Future<http.Response> postJson(String url, Object jsonBody,
       {Duration timeout = const Duration(seconds: 8)}) async {
     final bodyStr = jsonEncode(jsonBody);

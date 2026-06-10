@@ -14,6 +14,7 @@ export interface Env {
   Q_ANALYTICS?: Queue;                // lifecycle events (e.g. account_deleted) → PostHog
   CONVERSATION_DO?: DurableObjectNamespace; // cross-script → avatok-api ConversationDO (Phase 7)
   INBOX?: DurableObjectNamespace; // cross-script → avatok-api InboxDO (large-group fanout)
+  WALLET_DO?: DurableObjectNamespace; // cross-script → avatok-api WalletDO (nightly recon reads, Phase 2)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
   ANALYTICS?: AnalyticsEngineDataset; // operational metrics (writeDataPoint)
   FCM_PROJECT: string;
@@ -25,6 +26,7 @@ export interface Env {
   TEXT_MODERATION_MODEL?: string;  // text safety classifier (Llama Guard default)
   POSTHOG_HOST: string;
   AI_DAILY_CALL_BUDGET?: string; // daily Workers AI call budget (default 5000); cron alarms past it
+  STORAGE_COINS_PER_GB?: string; // AvaStorage over-quota price (coins/GB/month, default 20)
   ALERT_EMAIL?: string;          // ops alert recipient (default hdavy2005@gmail.com)
   // secrets
   FCM_SERVICE_ACCOUNT?: string;
@@ -68,10 +70,14 @@ export interface AgentMsg { type: "converse" | "task"; conversation_id?: string;
 
 // Wallet audit message (producer: WalletDO). Writes the D1 ledger + mirrors.
 export interface WalletTxMsg {
-  uid: string; id: string; ts?: number;
-  type: "topup" | "spend" | "earn" | "hold_release" | "refund" | "gift" | "payout";
-  amount: number; balance_after?: number; app_name?: string;
+  // Legacy audit fields (uid/type/amount) — optional for ledger-only rows
+  // (e.g. escrow→platform fee rows, which touch no user account).
+  uid?: string; id: string; ts?: number;
+  type?: "topup" | "spend" | "earn" | "hold_release" | "refund" | "gift" | "payout";
+  amount?: number; balance_after?: number; app_name?: string;
   counterparty_npub?: string | null; commission?: number; ref?: string | null; hold_until?: number;
+  // Phase 2 double-entry row (id above = op_id = wallet_ledger PK).
+  ledger?: { debit: string; credit: string; type: string; ref?: string | null; meta?: string | null };
 }
 
 // Queue message shapes (producers: avatok-api, avatok-relay)

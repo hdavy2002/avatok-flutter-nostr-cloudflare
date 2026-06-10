@@ -2,6 +2,50 @@
 
 _Last updated: 2026-06-10_
 
+## 2026-06-10 — Creator-marketplace Phase 2 (AvaWallet: ledger, Stripe top-up, escrow) SHIPPED
+
+Per the updated `PHASE-02.md` (reconciled with the existing WalletDO engine —
+**layered, not replaced**): balance authority stays WalletDO; the double-entry
+ledger lives in D1 `avatok-wallet`.
+
+- **Schema** (`worker/migrations/wallet_ledger.sql`, applied prod + staging):
+  `wallet_ledger` (immutable double-entry, PK = op_id), `wallet_accounts`
+  (escrow/platform buckets only), `admin_audit`, `recon_runs`.
+- **WalletDO**: mutating ops take `op_id`, dedupe at the authority (replay
+  returns the original result with `duplicate:true`); the DO is the single
+  writer of user-account ledger rows to Q_WALLET.
+- **Escrow primitives** (`worker/src/ledger.ts`): `hold` / `release` (80%
+  creator into the 7-day hold + 20% fee row) / `refund` (partial OK) — internal
+  fns + admin HTTP; consumed by Phases 6–7.
+- **Stripe top-up**: `POST /api/wallet/topup {amountUsdCents}` (any amount
+  $0.50–$500), webhook alias `/api/wallet/stripe-webhook`, ledger row
+  `external:stripe → user`, pi-ref unique-indexed. Still behind
+  `WALLET_TOPUP_ENABLED=0` (legal) — needs Stripe TEST keys on staging.
+- **A1 idempotency**: `Idempotency-Key` required on money routes (KV 24 h
+  replay) + DO op_id dedupe; Flutter `MoneyApi` auto-attaches + retries safely.
+- **A2 ops console + recon**: `/api/admin/{ledger,refund,adjust,account/:uid,
+  recon,escrow/*}` (ADMIN_UIDS gate, every action → `admin_audit`); nightly
+  recon in avatok-consumers (midnight-UTC tick): buckets vs ledger Σ, user DO
+  balances vs ledger Σ (5-min watermark + re-check), results → `recon_runs`,
+  mismatch → Brevo alert to hdavy2005@gmail.com.
+- **A3 rate limiter**: KV sliding window (topup 5/h, withdraw 3/h…) → 429.
+- **A4 receipts**: Brevo email on top-up + purchase_hold (email via Clerk);
+  "Email me this receipt" re-send on the row detail sheet.
+- **Flutter** (`app/lib/features/wallet/`): wallet home (balance $ + coins,
+  Top up, this-month in/out), infinite-scroll ledger on the cursor API,
+  server-side type/date/search filters, row detail sheet with fee breakdown,
+  drift `wallet_ledger_cache` (per-account DB file → scoping free), PostHog
+  events; sidebar Wallet opens the real screen; `AdminMoneyScreen` appears only
+  when the server confirms admin.
+- **Deployed**: avatok-api + avatok-consumers, staging AND prod (flag off — no
+  real money can move yet).
+- **To verify with your keys**: (1) Stripe TEST keys on staging
+  (`wrangler secret put STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`
+  `--env staging` + `WALLET_TOPUP_ENABLED=1` staging-only) for the end-to-end
+  top-up; (2) `ADMIN_TOKEN=<Clerk JWT> BASE=https://api-staging.avatok.ai node
+  worker/scripts/ledger_invariants.mjs` — asserts idempotent holds, balanced
+  hold/release/refund rows, 80/20 fee math, fee-breakdown meta, 7-day hold.
+
 ## 2026-06-10 — Creator-marketplace Phase 1 (groundwork) SHIPPED
 
 Per `Specs/proposals/creator-marketplace/PHASE-01.md`:

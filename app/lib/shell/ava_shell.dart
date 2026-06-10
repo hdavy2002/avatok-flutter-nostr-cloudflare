@@ -13,6 +13,7 @@ import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
 import '../features/explore/explore_home.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/wallet/wallet_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'ava_sidebar.dart';
 import 'coming_soon.dart';
@@ -95,7 +96,8 @@ class _AvaShellState extends State<AvaShell> {
         _push(ProfileScreen(identity: _id));
         return;
       case 'wallet':
-        _push(ComingSoon.forApp('avawallet'));
+      case 'avawallet':
+        _push(const WalletScreen());
         return;
       case 'payout':
         _push(ComingSoon.forApp('avapayout'));

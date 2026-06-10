@@ -60,15 +60,30 @@ class Chats extends Table {
   Set<Column> get primaryKey => {convKey};
 }
 
-@DriftDatabase(tables: [Messages, Contacts, Chats])
+/// AvaWallet ledger cache (Phase 2) — local-first mirror of the server's
+/// double-entry ledger so the wallet paints instantly on open. Per-account
+/// scoping comes free: the whole DB file is per-account (avatok_<scope>.sqlite).
+/// [json] is the full API entry payload; [createdAt]+[id] mirror the server's
+/// keyset cursor so refreshes merge cheaply (INSERT OR REPLACE on id).
+@DataClassName('WalletLedgerRow')
+class WalletLedgerCache extends Table {
+  TextColumn get id => text()(); // op_id (server wallet_ledger PK)
+  IntColumn get createdAt => integer()();
+  TextColumn get type => text().withDefault(const Constant(''))();
+  TextColumn get json => text()();
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(tables: [Messages, Contacts, Chats, WalletLedgerCache])
 class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
-  // The Chats projection gained a [json] column in v2. Add it in-place so an
-  // existing on-device DB upgrades without wiping messages/contacts.
+  // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). Both are
+  // added in-place so an existing on-device DB upgrades without wiping data.
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
@@ -76,8 +91,32 @@ class AppDb extends _$AppDb {
           if (from < 2) {
             await m.addColumn(chats, chats.json);
           }
+          if (from < 3) {
+            await m.createTable(walletLedgerCache);
+          }
         },
       );
+
+  // ── wallet ledger cache (Phase 2) ──
+  /// Newest-first page of cached ledger entries (instant paint on open).
+  Future<List<WalletLedgerRow>> walletLedgerOnce({int limit = 100}) => (select(walletLedgerCache)
+        ..orderBy([(t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)])
+        ..limit(limit))
+      .get();
+
+  /// Merge a server page in (INSERT OR REPLACE on the op_id PK).
+  Future<void> upsertWalletLedger(List<({String id, int createdAt, String type, String json})> rows) async {
+    if (rows.isEmpty) return;
+    await batch((b) => b.insertAll(
+          walletLedgerCache,
+          [
+            for (final r in rows)
+              WalletLedgerCacheCompanion.insert(
+                  id: r.id, createdAt: r.createdAt, type: Value(r.type), json: r.json),
+          ],
+          mode: InsertMode.insertOrReplace,
+        ));
+  }
 
   // ── chat-list projection (the single-query cold-start source of truth) ──
   /// All chat-list rows, most-recent first — ONE indexed query. Pinned-first

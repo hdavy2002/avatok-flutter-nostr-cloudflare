@@ -3,7 +3,7 @@
 export const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "access-control-allow-headers": "content-type,authorization,x-nostr-auth,x-content-type",
+  "access-control-allow-headers": "content-type,authorization,x-nostr-auth,x-content-type,idempotency-key",
 };
 
 export function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {

@@ -14,9 +14,11 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
+import { withIdempotency, rateLimit, RL } from "../money";
+import { acctUser, sendReceipt } from "../ledger";
 
 const COIN_CENTS = 1;            // 1 AvaCoin = $0.01
-const MIN_TOPUP = 100, MAX_TOPUP = 50_000; // §10.1 free-form 100..50,000
+const MIN_TOPUP = 50, MAX_TOPUP = 50_000; // any amount ≥ Stripe's $0.50 floor, ≤ $500
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
@@ -61,13 +63,21 @@ function topupEnabled(env: Env): boolean {
   return env.WALLET_TOPUP_ENABLED === "1" && !!env.STRIPE_SECRET_KEY; // legal gate + creds
 }
 
-// POST /api/wallet/topup { amount }
+// POST /api/wallet/topup { amountUsdCents } (legacy { amount } in coins also accepted).
+// Money route: requires Idempotency-Key header (A1); rate-limited 5/h (A3).
 export async function walletTopup(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const limited = await rateLimit(env, `topup:${ctx.uid}`, RL.topup.max, RL.topup.windowSec);
+  if (limited) return limited;
+  return withIdempotency(req, env, ctx.uid, () => topupCore(req, env, ctx.uid));
+}
+
+async function topupCore(req: Request, env: Env, uid: string): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
-  const amount = Math.trunc(Number(b.amount));
-  if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} coins` }, 400);
+  // 1 coin = 1 cent, so amountUsdCents IS the coin amount.
+  const amount = Math.trunc(Number(b.amountUsdCents ?? b.amount));
+  if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} cents` }, 400);
 
   if (!topupEnabled(env)) {
     // Infra is built; real money-in is held pending legal (§10.1). Honest 503.
@@ -82,7 +92,7 @@ export async function walletTopup(req: Request, env: Env): Promise<Response> {
   form.set("success_url", (env.WALLET_RETURN_URL || "https://avatok.ai/wallet") + "?topup=success");
   form.set("cancel_url", (env.WALLET_RETURN_URL || "https://avatok.ai/wallet") + "?topup=cancel");
   form.set("client_reference_id", id);
-  form.set("metadata[uid]", ctx.uid);
+  form.set("metadata[uid]", uid);
   form.set("metadata[topup_id]", id);
   form.set("metadata[coins]", String(amount));
   form.set("line_items[0][quantity]", "1");
@@ -100,8 +110,8 @@ export async function walletTopup(req: Request, env: Env): Promise<Response> {
 
   await env.DB_WALLET.prepare(
     "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,'usd','pending',?6)",
-  ).bind(id, ctx.uid, session.id, amount, cents, Date.now()).run();
-  track(env, ctx.uid, "wallet_topup_initiated", "avawallet", { amount, cents });
+  ).bind(id, uid, session.id, amount, cents, Date.now()).run();
+  track(env, uid, "wallet_topup_initiated", "avawallet", { amount, cents });
   return json({ checkout_url: session.url, session_id: session.id, topup_id: id });
 }
 
@@ -130,8 +140,17 @@ export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   if (rec.status !== "pending") return json({ received: true, duplicate: true });
   if (rec.amount_coins !== coins) return json({ received: true, ignored: "amount mismatch" });
 
-  await walletOp(env, uid, { op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: topupId });
+  // Credit via WalletDO with a deterministic op_id — the DO dedupes AND emits the
+  // double-entry ledger row (external:stripe → user) to Q_WALLET. The Stripe
+  // payment-intent id rides in `ref` (unique-indexed on type='topup' in D1).
+  const pi = (typeof s.payment_intent === "string" && s.payment_intent) || s.id || topupId;
+  await walletOp(env, uid, {
+    op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: pi, op_id: `topup:${topupId}`,
+    ledger: { debit: "external:stripe", credit: acctUser(uid), type: "topup", ref: pi, meta: JSON.stringify({ title: `Top-up ${coins} AvaCoins`, cents: coins * COIN_CENTS, session: s.id }) },
+  });
   await env.DB_WALLET.prepare("UPDATE topup_records SET status='paid', paid_at=?2 WHERE id=?1").bind(topupId, Date.now()).run();
+  // A4: top-up receipt (best-effort, never blocks the credit).
+  try { await sendReceipt(env, uid, "topup", { orderId: topupId, title: `${coins} AvaCoins`, lines: [{ label: `${coins} AvaCoins`, amount: coins }], total: coins }); } catch { /* best-effort */ }
   brainFact(env, uid, "wallet_topup", "avawallet", { coins });
   try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} AvaCoins`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
   track(env, uid, "wallet_topup_completed", "avawallet", { coins });
@@ -205,6 +224,104 @@ export async function walletLive(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   return walletStub(env, ctx.uid).fetch("https://wallet/ws", req);
+}
+
+// ---------------------------------------------------------------------------
+// Double-entry ledger read APIs (Phase 2). A user's statement = rows where
+// their account is debit (out) or credit (in). Keyset pagination on
+// (created_at, id); server-side filters: type, from, to, q (ref/meta search).
+// ---------------------------------------------------------------------------
+
+function decodeCursor(c: string | null): { t: number; id: string } | null {
+  if (!c) return null;
+  try {
+    const [t, ...rest] = atob(c).split(":");
+    return { t: Number(t), id: rest.join(":") };
+  } catch { return null; }
+}
+const encodeCursor = (t: number, id: string) => btoa(`${t}:${id}`);
+
+/** Shape a ledger row for the requesting account: signed amount + parsed meta. */
+function shapeRow(r: any, acct: string) {
+  let meta: any = null; try { meta = r.meta ? JSON.parse(r.meta) : null; } catch { /* raw */ }
+  const out = r.debit === acct;
+  return {
+    id: r.id, type: r.type, ref: r.ref, created_at: r.created_at,
+    debit: r.debit, credit: r.credit,
+    amount: out ? -Number(r.amount) : Number(r.amount), // signed for this account
+    title: meta?.title ?? null, meta,
+  };
+}
+
+// GET /api/wallet/ledger?cursor=&limit=50&type=&from=&to=&q=
+export async function walletLedger(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const acct = acctUser(ctx.uid);
+  const u = new URL(req.url);
+  const limit = Math.min(100, Math.max(1, Number(u.searchParams.get("limit") || 50)));
+  const cur = decodeCursor(u.searchParams.get("cursor"));
+  const types = (u.searchParams.get("type") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const from = Number(u.searchParams.get("from") || 0);
+  const to = Number(u.searchParams.get("to") || 0);
+  const q = (u.searchParams.get("q") || "").trim();
+
+  const where: string[] = ["(debit=?1 OR credit=?1)"];
+  const binds: unknown[] = [acct];
+  let i = 2;
+  if (cur) { where.push(`(created_at < ?${i} OR (created_at = ?${i} AND id < ?${i + 1}))`); binds.push(cur.t, cur.id); i += 2; }
+  if (types.length) { where.push(`type IN (${types.map(() => `?${i++}`).join(",")})`); binds.push(...types); }
+  if (from > 0) { where.push(`created_at >= ?${i++}`); binds.push(from); }
+  if (to > 0) { where.push(`created_at <= ?${i++}`); binds.push(to); }
+  if (q) { where.push(`(ref LIKE ?${i} OR meta LIKE ?${i})`); binds.push(`%${q}%`); i++; }
+
+  const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
+    `SELECT id, debit, credit, amount, type, ref, meta, created_at FROM wallet_ledger
+     WHERE ${where.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ${limit + 1}`,
+  ).bind(...binds).all();
+  const rows = (rs.results ?? []) as any[];
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  track(env, ctx.uid, q || types.length || from || to ? "wallet_filter_used" : "wallet_ledger_viewed", "avawallet", { n: page.length });
+  return json({
+    entries: page.map((r) => shapeRow(r, acct)),
+    cursor: rows.length > limit && last ? encodeCursor(Number(last.created_at), String(last.id)) : null,
+  });
+}
+
+// GET /api/wallet/ledger/:id — full detail (fee breakdown, counterpart, refs).
+export async function walletLedgerDetail(req: Request, env: Env, id: string): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const acct = acctUser(ctx.uid);
+  const r = await env.DB_WALLET.prepare(
+    "SELECT id, debit, credit, amount, type, ref, meta, created_at FROM wallet_ledger WHERE id=?1 AND (debit=?2 OR credit=?2)",
+  ).bind(id, acct).first<any>();
+  if (!r) return json({ error: "not found" }, 404);
+  // Sibling rows on the same ref complete the picture (e.g. the fee row of a release).
+  const siblings = r.ref
+    ? ((await env.DB_WALLET.prepare("SELECT id, debit, credit, amount, type, created_at FROM wallet_ledger WHERE ref=?1 AND id<>?2 LIMIT 10").bind(r.ref, id).all()).results ?? [])
+    : [];
+  return json({ entry: shapeRow(r, acct), related: siblings });
+}
+
+// POST /api/wallet/ledger/:id/receipt — "Email me this receipt" (A4 re-send).
+export async function walletReceiptResend(req: Request, env: Env, id: string): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const acct = acctUser(ctx.uid);
+  const r = await env.DB_WALLET.prepare(
+    "SELECT id, debit, credit, amount, type, ref, meta, created_at FROM wallet_ledger WHERE id=?1 AND (debit=?2 OR credit=?2)",
+  ).bind(id, acct).first<any>();
+  if (!r) return json({ error: "not found" }, 404);
+  let meta: any = {}; try { meta = r.meta ? JSON.parse(r.meta) : {}; } catch { /* ignore */ }
+  const title = meta?.title || r.type;
+  const lines = [{ label: title, amount: Number(meta?.gross ?? r.amount) }];
+  if (meta?.fee) lines.push({ label: "Platform fee (creator-side)", amount: -Number(meta.fee) });
+  const ok = await sendReceipt(env, ctx.uid, r.type === "topup" ? "topup" : "purchase", {
+    orderId: r.ref || r.id, title, lines, total: Number(r.amount), date: Number(r.created_at),
+  });
+  return json(ok ? { sent: true } : { sent: false, error: "no email on file or email disabled" }, ok ? 200 : 502);
 }
 
 // Stripe webhook signature (HMAC-SHA256 over `${t}.${payload}`).

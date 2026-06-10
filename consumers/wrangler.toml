@@ -143,6 +143,13 @@ name = "INBOX"
 class_name = "InboxDO"
 script_name = "avatok-api"
 
+# Cross-script DO binding -> avatok-api's WalletDO (Phase 2: nightly recon reads
+# the authoritative balance+held per user to compare against the ledger sum).
+[[durable_objects.bindings]]
+name = "WALLET_DO"
+class_name = "WalletDO"
+script_name = "avatok-api"
+
 # Calendar reminders re-enqueue to the push queue (Phase 3). This Worker is both a
 # producer (cron reminders) and consumer (push-notifications) of this queue.
 [[queues.producers]]
@@ -314,6 +321,11 @@ script_name = "avatok-api-staging"
 [[env.staging.durable_objects.bindings]]
 name = "INBOX"
 class_name = "InboxDO"
+script_name = "avatok-api-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "WALLET_DO"
+class_name = "WalletDO"
 script_name = "avatok-api-staging"
 
 [[env.staging.queues.producers]]
