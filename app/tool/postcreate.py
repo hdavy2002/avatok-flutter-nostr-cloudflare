@@ -103,6 +103,35 @@ def patch_launcher_icon() -> None:
     print("launcher icon: AvaTOK mipmaps + adaptive icon installed")
 
 
+AGP_VERSION = "8.9.1"   # androidx.browser 1.9.0 / navigationevent 1.0.2 (transitive, CI floats versions) require >= 8.9.1
+GRADLE_DIST = "8.11.1"  # minimum Gradle for AGP 8.9.x
+
+
+def patch_agp() -> None:
+    """Flutter's template pins an older Android Gradle plugin (8.7.0). Newer
+    androidx transitives refuse it; bump AGP (+ the Gradle wrapper when too old)."""
+    settings = APP / "android/settings.gradle.kts"
+    if settings.exists():
+        t = settings.read_text()
+        t2 = re.sub(r'(id\("com\.android\.application"\)\s+version\s+")[\d.]+(")',
+                    r"\g<1>" + AGP_VERSION + r"\g<2>", t, count=1)
+        if t2 != t:
+            settings.write_text(t2)
+            print(f"settings.gradle.kts: AGP {AGP_VERSION}")
+        else:
+            print("settings.gradle.kts: AGP pattern not found (template changed?)")
+    wrapper = APP / "android/gradle/wrapper/gradle-wrapper.properties"
+    if wrapper.exists():
+        t = wrapper.read_text()
+        m = re.search(r"gradle-(\d+)\.(\d+)(?:\.(\d+))?-", t)
+        if m and (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) < (8, 11, 1):
+            t = re.sub(r"gradle-[\d.]+-(all|bin)\.zip", f"gradle-{GRADLE_DIST}-\\1.zip", t)
+            wrapper.write_text(t)
+            print(f"gradle wrapper: bumped to {GRADLE_DIST}")
+        else:
+            print("gradle wrapper: already new enough")
+
+
 def patch_sdks() -> None:
     kts = APP / "android/app/build.gradle.kts"
     groovy = APP / "android/app/build.gradle"
@@ -316,6 +345,7 @@ def patch_signing() -> None:
 if __name__ == "__main__":
     patch_manifest()
     patch_launcher_icon()
+    patch_agp()
     patch_sdks()
     patch_root_compile_sdk()
     patch_firebase()
