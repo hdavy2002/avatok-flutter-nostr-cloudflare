@@ -7,11 +7,18 @@ import '../core/apps.dart';
 import '../core/onboarding_store.dart';
 import '../core/theme.dart';
 import '../identity/identity.dart';
+import '../features/avachat/avachat_screen.dart';
 import '../features/avalive/avalive_discovery.dart';
 import '../features/avatok/chat_list.dart';
+import '../features/booking/avabooking_screen.dart';
+import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
 import '../features/explore/explore_home.dart';
+import '../features/identity/identity_screen.dart';
+import '../features/inbox/inbox_screen.dart';
+import '../features/verse/verse_screen.dart';
+import '../features/payout/payout_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/wallet/wallet_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -82,7 +89,11 @@ class _AvaShellState extends State<AvaShell> {
         _push(const AvaLiveDiscovery());
         return;
       case 'verse':
-        _push(const ComingSoon(title: 'AvaVerse', subtitle: 'Your dashboard', icon: Icons.dashboard, color: Color(0xFF6C5CE7)));
+        _push(const VerseScreen());
+        return;
+      case 'inbox':
+      case 'avainbox':
+        _push(const InboxScreen());
         return;
       case 'library':
       case 'avalibrary':
@@ -99,8 +110,24 @@ class _AvaShellState extends State<AvaShell> {
       case 'avawallet':
         _push(const WalletScreen());
         return;
+      case 'calendar':
+      case 'avacalendar':
+        _push(const AvaCalendarScreen());
+        return;
+      case 'booking':
+      case 'avabooking':
+        _push(const AvaBookingScreen());
+        return;
       case 'payout':
-        _push(ComingSoon.forApp('avapayout'));
+      case 'avapayout':
+        _push(const PayoutScreen());
+        return;
+      case 'identity':
+      case 'avaidentity':
+        _push(const IdentityScreen());
+        return;
+      case 'avachat':
+        _push(const AvaChatScreen());
         return;
       case 'billing':
       case 'invite':

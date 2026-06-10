@@ -52,9 +52,85 @@ async function sendWelcome(env, email) {
   }
 }
 
+// --- Phase 5 (A1): join-link web fallback -----------------------------------
+// avatok.ai/j/<token> — tiny no-framework page. Shows event/consult title, time
+// in the VIEWER's local timezone, creator name, and two buttons: "Open in
+// AvaTOK app" (intent URL → app via App Links) and "Get the app". Display data
+// comes from the public worker endpoint GET api.avatok.ai/api/join-info/:token
+// (no PII beyond title/time/names; joining still requires the app + auth).
+function joinPage(token) {
+  const t = JSON.stringify(String(token));
+  return `<!doctype html><html><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Your AvaTOK booking</title>
+<style>
+ body{margin:0;background:#f7f3ea;font-family:system-ui,-apple-system,Arial,sans-serif;color:#25211b}
+ .card{max-width:420px;margin:60px auto;background:#fff;border:2px solid #25211b;border-radius:20px;padding:32px;text-align:center}
+ h1{font-size:22px;margin:0 0 6px} .muted{color:#6e6c5c;font-size:14px;margin:4px 0}
+ .btn{display:block;margin:10px auto 0;max-width:280px;padding:14px 18px;border-radius:12px;text-decoration:none;font-weight:700}
+ .primary{background:#08C4C4;color:#fff}.secondary{background:#fff;color:#25211b;border:2px solid #25211b}
+ #err{color:#b3261e;display:none}
+</style></head><body>
+<div class="card">
+  <h1 id="title">Loading…</h1>
+  <p class="muted" id="when"></p>
+  <p class="muted" id="who"></p>
+  <p id="err">This link is invalid or has expired.</p>
+  <a class="btn primary" id="open" href="#" style="display:none">Open in AvaTOK app</a>
+  <a class="btn secondary" id="store" href="https://play.google.com/store/apps/details?id=ai.avatok.avatok_call" style="display:none">Get the app</a>
+</div>
+<script>
+(async()=>{
+  const token=${t};
+  try{
+    const r=await fetch("https://api.avatok.ai/api/join-info/"+encodeURIComponent(token));
+    if(!r.ok)throw 0;
+    const j=await r.json();
+    document.getElementById("title").textContent=j.title||"AvaTOK session";
+    const s=new Date(j.starts_at),e=new Date(j.ends_at);
+    const f=new Intl.DateTimeFormat(undefined,{dateStyle:"full",timeStyle:"short"});
+    const tf=new Intl.DateTimeFormat(undefined,{timeStyle:"short"});
+    document.getElementById("when").textContent=f.format(s)+" – "+tf.format(e)+" (your time)";
+    document.getElementById("who").textContent="with "+(j.creator_name||"a creator")+(j.status!=="confirmed"?" · "+j.status:"");
+    const open=document.getElementById("open");
+    open.href="intent://j/"+encodeURIComponent(token)+"#Intent;scheme=https;package=ai.avatok.avatok_call;S.browser_fallback_url="+encodeURIComponent(location.href)+";end";
+    open.style.display="block";
+    document.getElementById("store").style.display="block";
+  }catch(_){
+    document.getElementById("title").textContent="Booking unavailable";
+    document.getElementById("err").style.display="block";
+  }
+})();
+</script></body></html>`;
+}
+
+// Android App Links: the app's release-key SHA-256 fingerprint goes in
+// ASSETLINKS_SHA256 (Pages env var, comma-separated for multiple keys) so a
+// key rotation never needs a code change.
+function assetlinks(env) {
+  const prints = String(env.ASSETLINKS_SHA256 || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  return JSON.stringify([{
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: "ai.avatok.avatok_call", sha256_cert_fingerprints: prints },
+  }]);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // Phase 5 (A1): join-link fallback page + Android App Links statement.
+    const jm = url.pathname.match(/^\/j\/([A-Za-z0-9._-]{1,512})$/);
+    if (jm) {
+      return new Response(joinPage(jm[1]), {
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+      });
+    }
+    if (url.pathname === "/.well-known/assetlinks.json") {
+      return new Response(assetlinks(env), {
+        headers: { "content-type": "application/json", "cache-control": "public, max-age=3600" },
+      });
+    }
 
     if (url.pathname === "/api/waitlist") {
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);

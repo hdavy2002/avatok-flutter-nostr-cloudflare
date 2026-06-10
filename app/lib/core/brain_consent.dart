@@ -20,6 +20,14 @@ class BrainCapability {
 /// default ON (opt-out model) EXCEPT private/E2E reading, which is opt-IN.
 const kBrainCapabilities = <BrainCapability>[
   BrainCapability('master', 'AvaBrain', 'Let AvaBrain learn from your activity to help you across apps', master: true),
+  // Phase 9 — per-app guardrails the ingestion pipeline obeys (server-checked).
+  BrainCapability('avatok_messages', 'AvaTok messages', 'Index your 1:1 messages so AvaChat can answer "what did X say about…"'),
+  BrainCapability('group_chats', 'Group chats', 'Index messages from your group conversations'),
+  BrainCapability('voicemails', 'Voice mails & voice notes', 'Transcribe your voice notes so you can find them by what was said'),
+  BrainCapability('files', 'Files & images', 'Read your public files (captions, text) so you can find them later'),
+  BrainCapability('avawallet', 'AvaWallet', 'Remember wallet activity (top-ups, purchases) — never card details'),
+  BrainCapability('avacalendar', 'AvaCalendar & bookings', 'Remember your bookings and events so AvaChat knows your schedule'),
+  // Pre-Phase-9 keys (kept for compatibility with already-stored rows).
   BrainCapability('avatok_files', 'Keep a tab on my files', 'AvaBrain can read your public AvaTok files (captions, text) so you can find them later'),
   BrainCapability('avatok_dms', 'Read my AvaTok DMs', 'On-device only — AvaBrain summarises chats without your messages ever leaving your phone'),
 ];

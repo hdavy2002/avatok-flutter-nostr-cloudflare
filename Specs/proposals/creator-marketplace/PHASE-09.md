@@ -5,6 +5,28 @@ Phase 4 (files index). Owner direction 2026-06-10: AvaChat is a ChatGPT-like
 interface to AvaBrain; AvaBrain screen = settings/guardrails; Whisper transcribes
 voice mails into vectors so users can find them by content.
 
+## ⚠️ ALREADY BUILT — verified 2026-06-10. AvaBrain has a large existing base.
+- **UserBrainDO EXISTS** (`worker/src/do/user_brain.ts`) + a knowledge graph in
+  D1 (`migrations/brain.sql`: brain_entities, brain_relationships, brain_facts,
+  brain_daily_summaries, brain_events) + `consumers/brain.ts` ingestion consumer
+  + `hooks.brainFact()` — apps ALREADY write facts into the brain.
+- **Guardrails EXIST:** `migrations/brain_consent.sql` → `brain_consent` table
+  + `worker/src/routes/brain.ts` (GET/POST capability toggles). **Do NOT create
+  `brain_settings` — extend `brain_consent`** with the per-app toggles and make
+  the AvaBrain screen render this API. Verify `consumers/brain.ts` checks
+  consent before ingesting; add the check if missing.
+- **Agent system EXISTS:** AgentDO (`do/agent.ts`), `agent_personas`/
+  `agent_conversations`/`agent_inbox` (agent.sql), `routes/agent.ts` +
+  `agent_tts.ts` (TTS), `consumers/{agent,ai}.ts`, `ai_spend` budget table.
+  **AvaChat's conversation layer = the existing agent-conversation plumbing**
+  with a "brain" persona — don't build a parallel chat backend; add RAG
+  retrieval (Vectorize + brain_facts) to its context assembly.
+- **GDPR partially EXISTS:** `deletion_requests` (avaid.sql) +
+  `consumers/deletion.ts` — A1's deleteUserData EXTENDS this consumer with the
+  per-store map; don't create a second deletion pipeline.
+- Genuinely NEW: ChatGPT-style AvaChat UI, Whisper voicemail transcription →
+  Vectorize, voicemail-search intent, source chips, retro-delete on toggle-off.
+
 ## Objective
 - **AvaChat (app):** conversational UI where the user talks to THEIR AvaBrain — an
   AI aware of their own platform content: AvaTok messages, group chats, files,

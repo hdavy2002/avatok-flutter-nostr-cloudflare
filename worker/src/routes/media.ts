@@ -5,6 +5,7 @@ import { json, sha256Hex, CORS } from "../util";
 import { mediaSession, moderationSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { walletOp } from "./wallet";
+import { checkUploadAllowed, afterRegisterFile } from "../storage";
 
 // POST /upload/public — plaintext media (posts). sha256 → blocklist check →
 // R2 PUT (status 'pending') → enqueue Workers-AI scan (Phase 4 consumer flips
@@ -32,6 +33,9 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
   const existing = await mdb.prepare("SELECT id, moderation_status FROM user_media WHERE key=?1").bind(r2Key).first<any>();
   let id: string | undefined = existing?.id;
   if (!existing) {
+    // Phase 4 quota gate: would-exceed 5 GB + empty wallet ⇒ 413, read_only.
+    const gate = await checkUploadAllowed(env, ctx.uid, bytes.byteLength, false);
+    if (!gate.ok) return gate.resp;
     await env.BLOBS.put(r2Key, bytes, { httpMetadata: { contentType: ct } });
     id = crypto.randomUUID();
     await mdb.prepare(
@@ -45,6 +49,8 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
     // AvaBrain CONTENT ingestion of the public file itself (caption/OCR/text → embed),
     // gated on the user's consent toggles. Private uploads never reach this path.
     exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key: r2Key, mime: ct, size: bytes.byteLength, name: fileName, category: categoryOf(ct), visibility: "public" }));
+    // Phase 4: refresh the storage summary + live-push it over the InboxDO socket.
+    exec.waitUntil(afterRegisterFile(env, ctx.uid, { kind: categoryOf(ct), bytes: bytes.byteLength, source_app: app, dedup: false }));
   } else if (folderId) {
     // Re-upload of identical content while sitting in a folder → place it there.
     await mdb.prepare("UPDATE user_media SET folder_id=?3 WHERE id=?1 AND uid=?2").bind(existing.id, ctx.uid, folderId).run();
@@ -55,7 +61,7 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
 // POST /upload/private — client-side AES-GCM ciphertext (DM attachments).
 // No scan (unscannable by design). Same public bucket — ciphertext is safe to
 // serve; the AES key travels inside the encrypted DM.
-export async function uploadPrivate(req: Request, env: Env): Promise<Response> {
+export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const bytes = await req.arrayBuffer();
@@ -70,16 +76,23 @@ export async function uploadPrivate(req: Request, env: Env): Promise<Response> {
   const fileName = req.headers.get("x-file-name") || defaultName(realMime, hash);
   const app = (req.headers.get("x-app") || "avachat").toLowerCase();
 
+  const mdb = mediaSession(env);
+  const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1").bind(r2Key).first();
+  if (!existing) {
+    // Phase 4 quota gate (same pool as public — ciphertext bytes count too).
+    const gate = await checkUploadAllowed(env, ctx.uid, bytes.byteLength, false);
+    if (!gate.ok) return gate.resp;
+  }
   const head = await env.BLOBS.head(r2Key);
   if (!head) await env.BLOBS.put(r2Key, bytes, { httpMetadata: { contentType: ct } });
 
-  const mdb = mediaSession(env);
-  const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1").bind(r2Key).first();
   if (!existing) {
     await mdb.prepare(
       `INSERT INTO user_media (id, uid, media_type, storage, visibility, encrypted, key, display_url, mime_type, size_bytes, original_app, created_at, moderation_status, category, file_name, source_kind)
        VALUES (?1,?2,?3,'blossom','private',1,?4,?5,?6,?7,?8,?9,'skipped',?10,?11,'sent')`,
     ).bind(crypto.randomUUID(), ctx.uid, mediaType(realMime), r2Key, url, ct, bytes.byteLength, app, Date.now(), categoryOf(realMime), fileName).run();
+    const reg = afterRegisterFile(env, ctx.uid, { kind: categoryOf(realMime), bytes: bytes.byteLength, source_app: app, dedup: false });
+    if (exec) exec.waitUntil(reg); else await reg.catch(() => { /* best-effort */ });
   }
   return json({ hash, key: r2Key, url, status: "live" });
 }
@@ -118,12 +131,16 @@ export async function getLibrary(req: Request, env: Env): Promise<Response> {
   const app = sp.get("app");
   const category = sp.get("category") || sp.get("type");
   const folder = sp.get("folder");
+  const q = (sp.get("q") || "").trim();
   const where: string[] = ["uid=?1", "deleted_at IS NULL", "created_at < ?2"];
   const binds: any[] = [ctx.uid, cursor];
+  // Phase 4: server-side name search (file_name LIKE, escaped).
+  if (q) { where.push(`file_name LIKE ?${binds.length + 1} ESCAPE '\\'`); binds.push(`%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`); }
   if (folder) { where.push(`folder_id=?${binds.length + 1}`); binds.push(folder); }
   else {
-    // System (auto) folder view: files NOT placed in a user folder.
-    where.push("folder_id IS NULL");
+    // System (auto) folder view: files NOT placed in a user folder. A name
+    // search (?q=) spans user folders too — it's a find, not a folder view.
+    if (!q) where.push("folder_id IS NULL");
     if (app) { where.push(`original_app=?${binds.length + 1}`); binds.push(app); }
     if (category) { where.push(`(category=?${binds.length + 1} OR media_type=?${binds.length + 1})`); binds.push(category); }
   }
@@ -341,13 +358,16 @@ async function copyFolderRec(mdb: any, uid: string, srcId: string, destApp: stri
 
 // POST /api/library/delete {id} — soft delete (storage recomputes; hard-delete of
 // orphaned blobs runs via the erasure queue / account-deletion cascade).
-export async function libraryDelete(req: Request, env: Env): Promise<Response> {
+export async function libraryDelete(req: Request, env: Env, exec?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.id) return json({ error: "id required" }, 400);
   await mediaSession(env).prepare("UPDATE user_media SET deleted_at=?3 WHERE id=?1 AND uid=?2")
     .bind(b.id, ctx.uid, Date.now()).run();
+  // Phase 4: quota frees when the LAST reference to a key goes (dedup recompute).
+  const reg = afterRegisterFile(env, ctx.uid);
+  if (exec) exec.waitUntil(reg); else await reg.catch(() => { /* best-effort */ });
   return json({ ok: true });
 }
 
@@ -382,6 +402,8 @@ export async function libraryRecord(req: Request, env: Env, exec: ExecutionConte
   if (!encrypted && env.Q_BRAIN) {
     exec.waitUntil(maybeEmitLibraryBrain(env, ctx.uid, app, { media_id: id, key, mime, size, name, category: categoryOf(mime), visibility: "public" }));
   }
+  // Phase 4: received files join the recipient's pool too → recompute + live push.
+  exec.waitUntil(afterRegisterFile(env, ctx.uid, { kind: categoryOf(mime), bytes: size, source_app: app, dedup: false }));
   return json({ id });
 }
 

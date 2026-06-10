@@ -1,0 +1,306 @@
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/analytics.dart';
+import '../../core/avatar.dart';
+import '../../core/listings_api.dart';
+import '../../core/theme.dart';
+import '../../core/verse_api.dart';
+import '../../identity/identity.dart';
+import '../avatok/chat_thread.dart';
+import '../avatok/data.dart';
+import 'listing_detail.dart';
+import 'widgets.dart';
+
+/// Creator channel page (Phase 6): profile card, public details, listings grid,
+/// all reviews, Follow + Message buttons, A7 polish (banner, link chips, pinned).
+class CreatorChannelScreen extends StatefulWidget {
+  final String creatorUid;
+  const CreatorChannelScreen({super.key, required this.creatorUid});
+  @override
+  State<CreatorChannelScreen> createState() => _CreatorChannelScreenState();
+}
+
+class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
+  CreatorChannel? _c;
+  bool _loading = true, _followBusy = false;
+
+  bool get _isSelf => AccountScope.id != null && AccountScope.id == widget.creatorUid;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    Analytics.capture('creator_channel_viewed', {'creator': widget.creatorUid});
+  }
+
+  Future<void> _load() async {
+    final c = await ListingsApi.creator(widget.creatorUid);
+    if (!mounted) return;
+    setState(() { _c = c; _loading = false; });
+  }
+
+  Future<void> _toggleFollow() async {
+    final c = _c;
+    if (c == null || _followBusy) return;
+    setState(() => _followBusy = true);
+    final ok = c.following
+        ? await ListingsApi.unfollow(c.uid)
+        : await ListingsApi.follow(c.uid);
+    if (ok) await _load();
+    if (mounted) setState(() => _followBusy = false);
+  }
+
+  Future<void> _toggleMute() async {
+    final c = _c;
+    if (c == null || !c.following) return;
+    await ListingsApi.follow(c.uid, notify: !c.notify); // same endpoint toggles notify
+    _load();
+  }
+
+  void _message() {
+    final c = _c;
+    if (c == null) return;
+    // Existing messenger infra: a 1:1 thread keyed by the creator's uid —
+    // lands in the creator's inbox (AvaInbox rides the same InboxDO in Phase 8).
+    final chat = Chat(name: c.name ?? c.handle ?? 'Creator', seed: c.uid, last: '', time: '',
+        avatarUrl: c.avatarUrl ?? '');
+    VerseApi.tagThread(c.uid, 'channel:${c.uid}'); // Phase 8: AvaInbox source chip
+    Analytics.capture('creator_message_tapped', {'creator': c.uid});
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
+  }
+
+  void _overflow() {
+    final c = _c;
+    if (c == null) return;
+    showModalBottomSheet(context: context, builder: (s) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      if (c.following) ListTile(
+        leading: Icon(c.notify ? Icons.notifications_off_outlined : Icons.notifications_active_outlined),
+        title: Text(c.notify ? 'Mute notifications from this creator' : 'Unmute notifications'),
+        onTap: () { Navigator.pop(s); _toggleMute(); },
+      ),
+      ListTile(leading: const Icon(Icons.flag_outlined), title: const Text('Report creator'), onTap: () async {
+        Navigator.pop(s);
+        final ok = await ListingsApi.report('creator', c.uid, 'inappropriate');
+        if (mounted && ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted — thank you')));
+      }),
+      ListTile(leading: const Icon(Icons.block, color: AvaColors.danger), title: const Text('Block creator'), onTap: () async {
+        Navigator.pop(s);
+        final ok = await ListingsApi.blockCreator(c.uid);
+        if (mounted && ok) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creator blocked'))); Navigator.pop(context); }
+      }),
+    ])));
+  }
+
+  Future<void> _editChannel() async {
+    final c = _c;
+    if (c == null) return;
+    final saved = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (_) => _ChannelEditorSheet(channel: c),
+    );
+    if (saved == true) _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _c;
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
+        title: Text(c?.name ?? 'Channel'),
+        actions: [
+          if (_isSelf) IconButton(icon: const Icon(Icons.edit_outlined), onPressed: _editChannel),
+          IconButton(icon: const Icon(Icons.more_vert), onPressed: _overflow),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : c == null
+              ? const Center(child: Text('Creator not found'))
+              : RefreshIndicator(onRefresh: _load, child: _body(c)),
+    );
+  }
+
+  Widget _body(CreatorChannel c) {
+    ListingCard? pinnedFound;
+    for (final l in c.listings) {
+      if (l.id == c.pinnedListingId) { pinnedFound = l; break; }
+    }
+    final pinned = pinnedFound;
+    final rest = c.listings.where((l) => l.id != c.pinnedListingId).toList();
+    return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 32), children: [
+      if (c.bannerKey != null && c.bannerKey!.isNotEmpty)
+        CoverImage(url: c.bannerKey, seed: c.uid.hashCode, height: 130, radius: BorderRadius.zero),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Avatar(seed: c.uid, name: c.name ?? '?', size: 64, avatarUrl: c.avatarUrl),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(c.name ?? 'Creator', maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800))),
+                if (c.kycVerified) ...[
+                  const SizedBox(width: 5),
+                  const Tooltip(message: 'ID verified', child: Icon(Icons.verified, size: 18, color: AvaColors.brand)),
+                ],
+              ]),
+              if (c.handle != null) Text('@${c.handle}', style: const TextStyle(color: AvaColors.sub, fontSize: 13)),
+              const SizedBox(height: 4),
+              Text(
+                [
+                  '${c.followerCount} followers',
+                  if (c.ratingAvg != null && c.ratingCount > 0) '★ ${c.ratingAvg!.toStringAsFixed(1)} (${c.ratingCount})',
+                ].join(' · '),
+                style: const TextStyle(color: AvaColors.sub, fontSize: 12.5),
+              ),
+            ])),
+          ]),
+          if ((c.bio ?? '').isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(c.bio!, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+          ],
+          if (c.links.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              for (final li in c.links)
+                if (li is Map && (li['url']?.toString().startsWith('https://') ?? false))
+                  ActionChip(
+                    avatar: const Icon(Icons.link, size: 15),
+                    label: Text(
+                      '${li['label'] ?? Uri.tryParse(li['url'].toString())?.host ?? 'link'} · ${Uri.tryParse(li['url'].toString())?.host ?? ''}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    onPressed: () => launchUrl(Uri.parse(li['url'].toString()), mode: LaunchMode.externalApplication),
+                  ),
+            ]),
+          ],
+          if (!_isSelf) ...[
+            const SizedBox(height: 14),
+            Row(children: [
+              Expanded(child: FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: c.following ? AvaColors.soft : AvaColors.brand,
+                    foregroundColor: c.following ? AvaColors.ink : Colors.white),
+                icon: Icon(c.following ? Icons.check : Icons.add, size: 18),
+                label: Text(c.following ? 'Following' : 'Follow'),
+                onPressed: _followBusy ? null : _toggleFollow,
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: OutlinedButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline, size: 17),
+                label: const Text('Message'),
+                onPressed: _message,
+              )),
+            ]),
+          ],
+          const SizedBox(height: 20),
+          if (pinned != null) ...[
+            const Text('📌 Pinned', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 8),
+            SizedBox(height: 250, child: Padding(
+              padding: const EdgeInsets.only(right: 80),
+              child: ListingCardTile(card: pinned, onTap: () => _open(pinned.id)),
+            )),
+            const SizedBox(height: 16),
+          ],
+          Text('Listings', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (rest.isEmpty && pinned == null)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 10),
+                child: Text('No published listings yet.', style: TextStyle(color: AvaColors.sub))),
+          GridView.builder(
+            shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2, crossAxisSpacing: 14, mainAxisSpacing: 16, childAspectRatio: 0.70),
+            itemCount: rest.length,
+            itemBuilder: (_, i) => ListingCardTile(card: rest[i], onTap: () => _open(rest[i].id)),
+          ),
+          const SizedBox(height: 20),
+          Text('Reviews', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          if (c.reviews.isEmpty)
+            const Padding(padding: EdgeInsets.symmetric(vertical: 10),
+                child: Text('No reviews yet.', style: TextStyle(color: AvaColors.sub))),
+          for (final r in c.reviews) ReviewTile(review: r),
+        ]),
+      ),
+    ]);
+  }
+
+  void _open(String id) =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => ListingDetailScreen(listingId: id)));
+}
+
+/// A7 — "My channel" editor: bio, https link chips, pinned listing id.
+class _ChannelEditorSheet extends StatefulWidget {
+  final CreatorChannel channel;
+  const _ChannelEditorSheet({required this.channel});
+  @override
+  State<_ChannelEditorSheet> createState() => _ChannelEditorSheetState();
+}
+
+class _ChannelEditorSheetState extends State<_ChannelEditorSheet> {
+  late final TextEditingController _bio;
+  late final TextEditingController _links;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _bio = TextEditingController(text: widget.channel.bio ?? '');
+    _links = TextEditingController(
+        text: widget.channel.links
+            .whereType<Map>()
+            .map((l) => '${l['label'] ?? ''}|${l['url'] ?? ''}')
+            .join('\n'));
+  }
+
+  Future<void> _save() async {
+    setState(() { _busy = true; _error = null; });
+    final links = <Map<String, String>>[];
+    for (final line in _links.text.split('\n')) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      final parts = t.split('|');
+      final url = (parts.length > 1 ? parts[1] : parts[0]).trim();
+      if (!url.startsWith('https://')) {
+        setState(() { _busy = false; _error = 'Links must start with https://'; });
+        return;
+      }
+      links.add({'label': parts.length > 1 ? parts[0].trim() : Uri.parse(url).host, 'url': url});
+    }
+    final ok = await ListingsApi.updateChannel({'bio': _bio.text.trim(), 'links': links});
+    if (!mounted) return;
+    if (ok) { Navigator.pop(context, true); return; }
+    setState(() { _busy = false; _error = 'Could not save — try again.'; });
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('My channel', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          TextField(controller: _bio, maxLines: 3,
+              decoration: InputDecoration(labelText: 'Bio',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+          const SizedBox(height: 12),
+          TextField(controller: _links, maxLines: 4,
+              decoration: InputDecoration(
+                  labelText: 'Links (one per line: Label|https://…)',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+          if (_error != null) Padding(padding: const EdgeInsets.only(top: 8),
+              child: Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 13))),
+          const SizedBox(height: 12),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 13)),
+            onPressed: _busy ? null : _save,
+            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ]),
+      );
+}

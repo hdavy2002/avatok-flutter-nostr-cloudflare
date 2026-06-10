@@ -3,6 +3,24 @@
 **Read first:** `00-UNIVERSAL-PROPOSAL.md` §1, §4, §5. Prereqs: Phases 2 (wallet
 hold), 3 (KYC gate), 5 (slots). AvaExplore UI exists as dummy — wire it live.
 
+## ⚠️ ALREADY BUILT — verified 2026-06-10. Reuse, don't duplicate.
+- **A marketplace engine EXISTS — AvaOLX** (`worker/src/routes/olx.ts`,
+  `migrations/olx.sql`: olx_listings/olx_digital_products/olx_purchases):
+  listing CRUD with browse filters (?kind=&category=&seller=), wallet `buy`,
+  signed downloads, and an **auto-generate-listing-body helper** (turns short
+  input into a tidy listing — reuse for the creation pipeline's description
+  step). AvaOLX stays the DIGITAL-GOODS marketplace; this phase's `listings`
+  table (events/consults) is separate as planned but copies olx's route
+  patterns, category config, and wallet-buy flow.
+- **Directory search exists:** `routes/identity.ts` `GET /resolve` +
+  `GET /search` (uid/@handle) — creator-name search can ride it; listing FTS5
+  is still new.
+- `users` table (cfnative.sql) holds handle/display_name/avatar — creator
+  profile EXTENDS it (don't duplicate identity fields into creator_profiles;
+  store only the channel extras + FK to uid).
+- **Follows NOT built** (`routes/social.ts` is contact-discovery/communities,
+  not follows) — build as specced. Reviews NOT built — build as specced.
+
 ## Objective
 Creators create listings (live events + consult offerings) through a guided
 pipeline; published listings appear in AvaExplore under categories; full details

@@ -69,6 +69,18 @@ export class InboxDO {
         });
       }
       if (url.pathname.endsWith("/receipt")) return this.receipt(await req.json());
+      if (url.pathname.endsWith("/event")) return this.event(await req.json());
+      // GDPR deletion cascade (Phase 9 A1): wipe ALL DO storage for this user.
+      // Peers keep their own copies in their own InboxDOs (their side of the
+      // conversation survives, as the spec requires).
+      if (url.pathname.endsWith("/purge") && req.method === "POST") {
+        // Row deletes keep the schema valid for any in-flight access; the DO
+        // then idles back to (near-)nothing.
+        this.sql.exec("DELETE FROM messages");
+        this.sql.exec("DELETE FROM receipts");
+        this.sql.exec("DELETE FROM conv_meta");
+        return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
+      }
     } catch (e: any) {
       return new Response(JSON.stringify({ error: String(e?.message ?? e) }), { status: 500 });
     }
@@ -134,6 +146,15 @@ export class InboxDO {
       type: "receipt", conv: b.conv, peer: b.peer,
       delivered_id: b.delivered_id ?? null, read_id: b.read_id ?? null,
     }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // Transient SYSTEM event (Phase 4+: storage summary, booking blips, …) —
+  // broadcast to open sockets only, never persisted in the message log. The
+  // frame is the body as-is; callers set {type:'storage'|...}. Screens that
+  // missed it (socket closed) refresh on open, so durability isn't needed.
+  private event(b: Record<string, unknown>): Response {
+    const live = this.broadcast(JSON.stringify(b));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
 

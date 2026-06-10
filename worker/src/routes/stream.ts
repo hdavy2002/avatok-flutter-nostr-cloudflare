@@ -26,10 +26,51 @@ export async function streamWebhook(req: Request, env: Env, ctx: ExecutionContex
   try { body = JSON.parse(raw); } catch { return json({ error: "bad json" }, 400); }
 
   const uid: string = body.uid || body.data?.uid || "";              // Cloudflare Stream id
-  const liveInput: string = body.liveInput || body.live_input || body.data?.live_input || "";
+  const liveInput: string = body.liveInput || body.live_input || body.data?.live_input || body.data?.input_id || "";
   const state: string = body.status?.state || body.status?.current?.state || body.state || "";
+  const eventType: string = body.eventType || body.event_type || body.name || state || "";
   const readyToStream: boolean = body.readyToStream === true || state === "ready";
   const creatorUid: string = body.meta?.creator || body.meta?.uid || ""; // owner (Clerk uid)
+  const listingId: string = body.meta?.listing || "";
+
+  // ---- Phase 7: live event lifecycle + R7 downtime evidence -----------------
+  // connected/disconnected gaps feed refund rule R7 ("platform failure" fires
+  // only after ≥5 CONTIGUOUS minutes of downtime, not transient blips — A4).
+  // downtime_ms stores the LONGEST contiguous gap seen.
+  const connected = /(^|\.)connected$|live_input\.connected/i.test(eventType) || state === "connected" || state === "live";
+  const disconnected = /disconnected/i.test(eventType) || state === "disconnected";
+  if (connected || disconnected) {
+    try {
+      const sess = listingId
+        ? await env.DB_META.prepare("SELECT listing_id, downtime_ms, last_disconnect_at, state FROM live_sessions WHERE listing_id=?1").bind(listingId).first<any>()
+        : await env.DB_META.prepare("SELECT listing_id, downtime_ms, last_disconnect_at, state FROM live_sessions WHERE live_input=?1").bind(liveInput || uid).first<any>();
+      if (sess) {
+        const now = Date.now();
+        if (disconnected) {
+          await env.DB_META.prepare(
+            "UPDATE live_sessions SET last_disconnect_at=COALESCE(last_disconnect_at,?2), updated_at=?2 WHERE listing_id=?1",
+          ).bind(sess.listing_id, now).run();
+        } else if (sess.last_disconnect_at) {
+          const gap = now - Number(sess.last_disconnect_at);
+          await env.DB_META.prepare(
+            "UPDATE live_sessions SET downtime_ms=MAX(downtime_ms,?2), last_disconnect_at=NULL, started_at=COALESCE(started_at,?3), updated_at=?3 WHERE listing_id=?1",
+          ).bind(sess.listing_id, gap, now).run();
+        } else {
+          await env.DB_META.prepare(
+            "UPDATE live_sessions SET started_at=COALESCE(started_at,?2), state=CASE WHEN state='scheduled' THEN 'live' ELSE state END, updated_at=?2 WHERE listing_id=?1",
+          ).bind(sess.listing_id, now).run();
+        }
+        // Viewer overlay: "Creator reconnecting…" / auto-resume (A4).
+        const stub = env.STREAM_SESSION_DO.get(env.STREAM_SESSION_DO.idFromName(`live:${sess.listing_id}`));
+        ctx.waitUntil(stub.fetch("https://session/op", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ op: "host-live", live: connected }),
+        }).then(() => undefined).catch(() => undefined));
+      }
+    } catch (e) {
+      console.warn("live_sessions lifecycle write skipped:", String(e));
+    }
+  }
 
   // Persist lifecycle (best-effort; table is additive — see migrations/stream.sql).
   // live_streams.npub holds the creator's uid VALUE — the column keeps its name to

@@ -59,6 +59,23 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     verifKeys = (v.results ?? []).map((r: any) => r.selfie_video_key).filter(Boolean);
   } catch { /* optional */ }
 
+  // ---- Phase 9 A1: WALLET GATE — pending escrow blocks deletion. ----
+  // A balance > 0 after the grace period is FORFEITED (logged); coins held in
+  // escrow (an undelivered order) must resolve first → retry later.
+  if (env.WALLET_DO) {
+    try {
+      const res = await env.WALLET_DO.get(env.WALLET_DO.idFromName(uid)).fetch("https://wallet/op", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "balance", uid }),
+      });
+      const w = (await res.json()) as any;
+      if (Number(w.held ?? 0) > 0) throw new Error("pending escrow blocks deletion — retry later");
+      if (Number(w.balance ?? 0) > 0) done.push(`wallet_forfeited:${w.balance}`);
+    } catch (e) {
+      if (String(e).includes("escrow")) throw e;
+      /* WalletDO unreachable → proceed (recon catches drift) */
+    }
+  }
+
   // 1. DB_BRAIN
   await env.DB_BRAIN.batch([
     env.DB_BRAIN.prepare("DELETE FROM brain_entities WHERE uid=?1").bind(uid),
@@ -69,22 +86,40 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   ]); done.push("db_brain");
   // AvaBrain consent toggles.
   try { await env.DB_BRAIN.prepare("DELETE FROM brain_consent WHERE uid=?1").bind(uid).run(); done.push("db_brain_consent"); } catch { /* table optional */ }
+  // Phase 9: message/voicemail vector registry + Whisper transcripts (collect
+  // ids BEFORE deleting the registry rows).
+  try {
+    const vr = await env.DB_BRAIN.prepare("SELECT vec_id FROM brain_vectors WHERE uid=?1").bind(uid).all();
+    for (const r of (vr.results ?? []) as any[]) vectorIds.push(String(r.vec_id));
+    await env.DB_BRAIN.prepare("DELETE FROM brain_vectors WHERE uid=?1").bind(uid).run();
+    await env.DB_BRAIN.prepare("DELETE FROM brain_transcripts WHERE uid=?1").bind(uid).run();
+    done.push("db_brain_vectors_transcripts");
+  } catch { /* tables from brain_phase9.sql */ }
 
-  // 2. DB_WALLET (Phase 2) — guarded.
+  // 2. DB_WALLET (Phase 2/9). A1: the LEDGER is RETAINED (finance-law retention)
+  // with meta anonymized; only PII-bearing side tables are deleted.
   if (env.DB_WALLET) {
     try {
       await env.DB_WALLET.batch([
-        env.DB_WALLET.prepare("DELETE FROM wallet_transactions WHERE uid=?1").bind(uid),
+        // wallet_transactions = the immutable ledger → RETAIN rows, anonymize meta.
+        env.DB_WALLET.prepare("UPDATE wallet_transactions SET meta='{\"anonymized\":true}' WHERE uid=?1").bind(uid),
         env.DB_WALLET.prepare("DELETE FROM topup_records WHERE uid=?1").bind(uid),
         env.DB_WALLET.prepare("DELETE FROM earning_holds WHERE uid=?1").bind(uid),
         env.DB_WALLET.prepare("DELETE FROM wallet_balances WHERE uid=?1").bind(uid),
         env.DB_WALLET.prepare("DELETE FROM payout_accounts WHERE uid=?1").bind(uid),
         env.DB_WALLET.prepare("DELETE FROM payout_requests WHERE uid=?1").bind(uid),
-      ]); done.push("db_wallet");
+      ]); done.push("db_wallet_ledger_retained");
     } catch { /* tables may not exist yet */ }
   }
 
-  // 3. (relay removed — Nostr deprecated; no nostr_events/tags to purge.)
+  // 3. InboxDO (Phase 9 A1) — purge the user's own message log. Peers keep
+  // their own side in their own InboxDOs; their conv simply stops updating.
+  if (env.INBOX) {
+    try {
+      await env.INBOX.get(env.INBOX.idFromName(uid)).fetch("https://inbox/purge", { method: "POST" });
+      done.push("inbox_do");
+    } catch { /* best-effort */ }
+  }
 
   // 4. DB_MEDIA
   await env.DB_MEDIA.batch([
@@ -138,7 +173,22 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     "DELETE FROM verification_status WHERE uid=?1",
     "DELETE FROM verification_attempts WHERE uid=?1",
     "DELETE FROM calendar_slots WHERE uid=?1",
-    "DELETE FROM calendar_events WHERE host_npub=?1 OR attendee_npub=?1",
+    // A1: bookings/orders KEEP their rows (the counterparty + finance need
+    // them) — the deleted party's id is replaced, so nothing is findable by uid.
+    "UPDATE calendar_events SET host_npub='deleted_user' WHERE host_npub=?1",
+    "UPDATE calendar_events SET attendee_npub='deleted_user' WHERE attendee_npub=?1",
+    "UPDATE bookings SET creator_id='deleted_user', updated_at=strftime('%s','now')*1000 WHERE creator_id=?1",
+    "UPDATE bookings SET buyer_id='deleted_user', updated_at=strftime('%s','now')*1000 WHERE buyer_id=?1",
+    "DELETE FROM availability_rules WHERE user_id=?1",
+    "DELETE FROM booking_policies WHERE user_id=?1",
+    "DELETE FROM calendar_blocks WHERE user_id=?1",
+    // gcal OAuth tokens (A1 store map).
+    "DELETE FROM gcal_accounts WHERE user_id=?1",
+    // Marketplace (Phase 6, guarded — tables may not exist yet): listings go,
+    // reviews stay anonymized ("deleted user").
+    "DELETE FROM listings WHERE creator_id=?1",
+    "UPDATE reviews SET author_id='deleted_user' WHERE author_id=?1",
+    "DELETE FROM creator_profiles WHERE uid=?1",
     "DELETE FROM agent_personas WHERE uid=?1",
     "DELETE FROM agent_conversations WHERE uid=?1",
     "DELETE FROM agent_inbox WHERE uid=?1",

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/apps.dart';
 import '../../core/library_api.dart';
@@ -392,6 +395,8 @@ class _FolderViewState extends State<_FolderView> {
   bool _more = true;
   String _query = '';
   String? _typeFilter;
+  Timer? _searchDebounce;
+  String _serverQ = ''; // the query the loaded pages were fetched with
 
   @override
   void initState() {
@@ -399,11 +404,33 @@ class _FolderViewState extends State<_FolderView> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  // Phase 4: search is SERVER-side (file_name LIKE over the whole index, user
+  // folders included) — the instant client filter narrows the loaded pages while
+  // the debounced refetch is in flight.
+  void _onQuery(String v) {
+    setState(() => _query = v);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted || _serverQ == _query.trim()) return;
+      _serverQ = _query.trim();
+      if (_serverQ.isNotEmpty) Analytics.capture('library_search', {'q_len': _serverQ.length, 'app': widget.app});
+      _refresh();
+    });
+  }
+
   Future<void> _load() async {
     if (_fetching) return; // guard against duplicate calls from the list sentinel
     _fetching = true;
     try {
-      final r = await LibraryApi.list(app: widget.app, category: widget.category, folder: widget.folderId, cursor: _cursor);
+      final r = await LibraryApi.list(
+          app: widget.app, category: widget.category, folder: widget.folderId, cursor: _cursor,
+          q: _serverQ.isEmpty ? null : _serverQ);
       if (!mounted) return;
       setState(() {
         _items.addAll(r.items);
@@ -459,7 +486,7 @@ class _FolderViewState extends State<_FolderView> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: _SearchBar(hint: 'Search files', onChanged: (v) => setState(() => _query = v)),
+          child: _SearchBar(hint: 'Search files', onChanged: _onQuery),
         ),
         if (isFolder) _typeChips(),
         Expanded(

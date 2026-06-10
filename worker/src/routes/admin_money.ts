@@ -14,7 +14,7 @@ import { requireUser, isFail } from "../authz";
 import { hold, release, refund, adjust, acctUser, escrowBalance } from "../ledger";
 import { walletOp } from "./wallet";
 
-async function requireAdmin(req: Request, env: Env): Promise<{ uid: string } | Response> {
+export async function requireAdmin(req: Request, env: Env): Promise<{ uid: string } | Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const admins = (env.ADMIN_UIDS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -125,6 +125,37 @@ export async function adminEscrowRelease(req: Request, env: Env): Promise<Respon
   return json(r.body, r.status);
 }
 
+// GET /api/admin/tax-export?year=YYYY — Phase 3 A1: CSV of creator payout
+// earnings for year-end reporting (1099-K / DAC7). One row per creator per
+// currency: settled (completed) withdrawals joined with the tax data captured
+// at payout setup. Reconciles against settled ledger totals.
+export async function adminTaxExport(req: Request, env: Env): Promise<Response> {
+  const a = await requireAdmin(req, env); if (a instanceof Response) return a;
+  const year = Number(new URL(req.url).searchParams.get("year") || new Date().getUTCFullYear());
+  if (!(year >= 2020 && year <= 2100)) return json({ error: "valid year required" }, 400);
+  const from = Date.UTC(year, 0, 1), to = Date.UTC(year + 1, 0, 1);
+
+  const rs = await env.DB_WALLET.prepare(
+    `SELECT r.uid, r.target_currency,
+            COUNT(*) AS payouts, SUM(r.amount_coins) AS total_coins, SUM(r.amount_cents) AS total_cents,
+            MAX(a2.tax_country) AS tax_country, MAX(a2.tax_id_type) AS tax_id_type,
+            MAX(a2.tax_id_last4) AS tax_id_last4, MAX(a2.tax_form_status) AS tax_form_status
+       FROM payout_requests r LEFT JOIN payout_accounts a2 ON a2.id = r.account_id
+      WHERE r.status='completed' AND r.created_at >= ?1 AND r.created_at < ?2
+      GROUP BY r.uid, r.target_currency ORDER BY total_cents DESC`,
+  ).bind(from, to).all();
+
+  const esc = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const header = "uid,target_currency,payouts,total_coins,total_usd,tax_country,tax_id_type,tax_id_last4,tax_form_status";
+  const rows = (rs.results ?? []).map((r: any) =>
+    [r.uid, r.target_currency, r.payouts, r.total_coins, (Number(r.total_cents) / 100).toFixed(2),
+     r.tax_country, r.tax_id_type, r.tax_id_last4, r.tax_form_status].map(esc).join(","));
+  await audit(env, a.uid, "tax_export", String(year), { rows: rows.length });
+  return new Response([header, ...rows].join("\n") + "\n", {
+    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="avatok-tax-${year}.csv"` },
+  });
+}
+
 // GET /api/admin/recon — recent reconciliation runs (+ live escrow spot-check via ?order=).
 export async function adminRecon(req: Request, env: Env): Promise<Response> {
   const a = await requireAdmin(req, env); if (a instanceof Response) return a;
@@ -132,4 +163,32 @@ export async function adminRecon(req: Request, env: Env): Promise<Response> {
   const runs = await env.DB_WALLET.prepare("SELECT date, ok, diff_json, created_at FROM recon_runs ORDER BY date DESC LIMIT 30").all().catch(() => ({ results: [] as any[] }));
   const spot = order ? { order, escrow_balance: await escrowBalance(env, order) } : null;
   return json({ runs: runs.results ?? [], spot });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — DLQ console: list dead-lettered settlement jobs + manual retry.
+// A retry re-enqueues the ORIGINAL payload to Q_MONEY; the engine's op_id
+// dedupe guarantees no double-settle even if the job half-ran before dying.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/settlements?status=failed
+export async function adminFailedSettlements(req: Request, env: Env): Promise<Response> {
+  const a = await requireAdmin(req, env); if (a instanceof Response) return a;
+  const status = new URL(req.url).searchParams.get("status") || "failed";
+  const rs = await env.DB_WALLET.prepare(
+    "SELECT id, payload, error, created_at, retried_at, status FROM failed_settlements WHERE status=?1 ORDER BY created_at DESC LIMIT 100",
+  ).bind(status).all().catch(() => ({ results: [] as any[] }));
+  return json({ settlements: rs.results ?? [] });
+}
+
+// POST /api/admin/settlements/:id/retry
+export async function adminRetrySettlement(req: Request, env: Env, id: string): Promise<Response> {
+  const a = await requireAdmin(req, env); if (a instanceof Response) return a;
+  const row = await env.DB_WALLET.prepare("SELECT id, payload, status FROM failed_settlements WHERE id=?1").bind(id).first<any>();
+  if (!row) return json({ error: "not found" }, 404);
+  let payload: any; try { payload = JSON.parse(String(row.payload)); } catch { return json({ error: "unparseable payload" }, 422); }
+  await env.Q_MONEY.send(payload);
+  await env.DB_WALLET.prepare("UPDATE failed_settlements SET status='retried', retried_at=?2 WHERE id=?1").bind(id, Date.now()).run();
+  await audit(env, a.uid, "settlement_retry", id, { payload });
+  return json({ ok: true, requeued: payload });
 }

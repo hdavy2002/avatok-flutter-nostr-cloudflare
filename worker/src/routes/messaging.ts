@@ -43,13 +43,26 @@ async function members(env: Env, conv: string): Promise<string[]> {
   return (rows.results || []).map((r) => r.uid);
 }
 
-async function ensureDm(env: Env, a: string, b: string): Promise<string> {
+// Phase 8 (AvaInbox): conversations carry a `context` tag — dm | event:<listingId>
+// | channel:<creatorId> | consult:<bookingId> | system. Set when the thread is
+// created (Phase 6 "Message" buttons pass event/channel); never overwritten once set.
+const CONTEXT_RE = /^(dm|system|event:[A-Za-z0-9-]{1,64}|channel:[A-Za-z0-9_-]{1,64}|consult:[A-Za-z0-9-]{1,64})$/;
+function normContext(c: unknown): string | null {
+  const s = String(c ?? "").trim();
+  return CONTEXT_RE.test(s) ? s : null;
+}
+
+async function ensureDm(env: Env, a: string, b: string, context?: string | null): Promise<string> {
   const conv = dmConvId(a, b);
   const now = Date.now();
   await env.DB_META.batch([
     env.DB_META.prepare(
-      "INSERT OR IGNORE INTO conversations (id, kind, created_by, created_at, updated_at) VALUES (?1,'dm',?2,?3,?3)",
-    ).bind(conv, a, now),
+      "INSERT OR IGNORE INTO conversations (id, kind, created_by, created_at, updated_at, context) VALUES (?1,'dm',?2,?3,?3,?4)",
+    ).bind(conv, a, now, context ?? null),
+    // Tag an existing untagged thread the first time a context arrives.
+    env.DB_META.prepare(
+      "UPDATE conversations SET context=COALESCE(context, ?2) WHERE id=?1",
+    ).bind(conv, context ?? null),
     env.DB_META.prepare(
       "INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)",
     ).bind(conv, a, now),
@@ -95,7 +108,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   let conv: string;
   let mem: string[];
   if (b.to) {
-    conv = await ensureDm(env, ctx.uid, String(b.to));
+    conv = await ensureDm(env, ctx.uid, String(b.to), normContext(b.context));
     mem = [ctx.uid, String(b.to)];
   } else if (b.conv) {
     conv = String(b.conv);
@@ -135,6 +148,23 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     await Promise.all(sends);
   }
 
+  // Phase 9 — AvaBrain ingestion producer (best-effort; consumer re-checks the
+  // guardrails). Sender + each recipient (≤ sync cap) get the message indexed
+  // into THEIR OWN brain. Voice notes (kind=audio) get Whisper-transcribed.
+  try {
+    const isGroup = mem.length > 2;
+    const brainPayload = {
+      conv, kind, body: text ? text.slice(0, 2000) : null, media_ref: mediaRef,
+      group: isGroup, created_at: created,
+    };
+    void env.Q_BRAIN.send({ uid: ctx.uid, event_type: "message_stored", source_app: "avatok", payload: { ...brainPayload, peer: others[0] ?? null } });
+    if (recipients.length <= FANOUT_SYNC_MAX) {
+      for (const m of recipients) {
+        void env.Q_BRAIN.send({ uid: m, event_type: "message_received", source_app: "avatok", payload: { ...brainPayload, peer: ctx.uid } });
+      }
+    }
+  } catch { /* brain feed is best-effort, never blocks the send */ }
+
   return json({ id: mine.id, conv, created_at: created });
 }
 
@@ -167,10 +197,16 @@ export async function receiptMsg(req: Request, env: Env): Promise<Response> {
 export async function convList(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // Phase 8 — AvaInbox filter: ?context=event|channel|consult|dm|system matches
+  // the tag's prefix ("event" hits "event:<listingId>"); untagged threads count as dm.
+  const f = (new URL(req.url).searchParams.get("context") || "").replace(/[^a-z]/g, "");
+  const where = f
+    ? (f === "dm" ? "AND (c.context IS NULL OR c.context='dm')" : `AND c.context LIKE '${f}%'`)
+    : "";
   const rows = await env.DB_META.prepare(
-    `SELECT c.id, c.kind, c.title, c.avatar_url, c.updated_at
+    `SELECT c.id, c.kind, c.title, c.avatar_url, c.updated_at, c.context
        FROM conversations c JOIN conversation_members m ON m.conv_id = c.id
-      WHERE m.uid = ?1 ORDER BY c.updated_at DESC LIMIT 500`,
+      WHERE m.uid = ?1 ${where} ORDER BY c.updated_at DESC LIMIT 500`,
   ).bind(ctx.uid).all();
   return json({ conversations: rows.results || [] });
 }
@@ -179,7 +215,7 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
-  if (b.to) return json({ conv: await ensureDm(env, ctx.uid, String(b.to)), kind: "dm" });
+  if (b.to) return json({ conv: await ensureDm(env, ctx.uid, String(b.to), normContext(b.context)), kind: "dm" });
   // group
   const list: string[] = Array.isArray(b.members) ? b.members.map(String) : [];
   if (!list.length) return json({ error: "members or to required" }, 400);

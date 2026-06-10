@@ -34,6 +34,9 @@ import '../../sync/legacy_stubs.dart';
 import '../../sync/presence.dart';
 import '../../sync/sync_hub.dart';
 import '../../push/push_service.dart';
+import '../../core/remote_config.dart';
+import '../conference/conference_api.dart';
+import '../conference/conference_screen.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
 import 'contacts.dart';
@@ -165,6 +168,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         setState(() => _msgs.removeWhere((m) => m.expireAt != null && m.expireAt! < nowS));
       }
     });
+    // Group conferencing (Phase 10): poll for an ongoing LiveKit call so the
+    // "tap to join" banner appears/disappears while the thread is open.
+    if (widget.chat.gid != null || widget.chat.group) _startConfPolling();
   }
 
   Timer? _pruneTimer;
@@ -303,7 +309,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'card', 'poll', 'sticker'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'gmedia') {
@@ -394,7 +400,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'card', 'poll', 'sticker'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'media') {
@@ -563,6 +569,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _typingClear?.cancel();
     _myTypingOff?.cancel();
     _onlineClear?.cancel();
+    _confTimer?.cancel();
     _pruneTimer?.cancel();
     _persistTimer?.cancel();
     _persistNow(); // flush any pending message-cache write on exit
@@ -647,10 +654,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
       });
 
-  // ---- calls (1:1 only; groups are messaging-only) ----
+  // ---- calls ----
+  // 1:1 = P2P (CallRoom DO) via _call(). Groups = LiveKit conference via
+  // _groupCall() — RULE CHANGE 2026-06-10 (Phase 10): group conferences are
+  // allowed, ≤25 participants. The CallRoom DO 2-peer cap stays untouched.
   Future<void> _call(String kind) async {
-    // STANDARD RULE: AvaTOK calls are 1:1 only. Group chats never call (the call
-    // buttons aren't shown for groups; guard here so no path can open a group call).
+    // This path is 1:1 P2P ONLY — group threads route through _groupCall()
+    // (LiveKit) and must NEVER reach the CallRoom DO.
     if (widget.chat.group || widget.chat.gid != null) return;
     IceCache.prefetch(); // warm TURN creds in parallel with the FCM ring
     final video = kind == 'video';
@@ -685,6 +695,125 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
+  // ---- group conferencing (Phase 10 — LiveKit, ≤25 participants) ----
+  Timer? _confTimer;
+  bool _confLive = false;
+  int _confCount = 0;
+
+  int get _groupMemberCount => _group?.members.length ?? widget.chat.members;
+  bool get _confAllowed => RemoteConfig.conferenceEnabled && _groupMemberCount <= 25;
+  bool get _confOngoingHere => OngoingConference.active?.gid == widget.chat.gid && widget.chat.gid != null;
+
+  void _startConfPolling() {
+    if (!_isGroup && widget.chat.gid == null) return;
+    _confTimer ??= Timer.periodic(const Duration(seconds: 25), (_) => _refreshConfStatus());
+    _refreshConfStatus();
+  }
+
+  Future<void> _refreshConfStatus() async {
+    final gid = widget.chat.gid;
+    if (gid == null || !RemoteConfig.conferenceEnabled) return;
+    if (_confOngoingHere) {
+      // We're connected — count comes straight from the live room, no HTTP.
+      final n = OngoingConference.active!.participantCount;
+      if (mounted) setState(() { _confLive = true; _confCount = n; });
+      return;
+    }
+    final s = await ConferenceApi.status(gid);
+    if (mounted) setState(() { _confLive = s.live; _confCount = s.count; });
+  }
+
+  Future<void> _groupCall(bool video) async {
+    final gid = widget.chat.gid;
+    if (gid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('This group needs to sync once before it can hold calls')));
+      return;
+    }
+    if (!RemoteConfig.conferenceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Group calls are temporarily unavailable')));
+      return;
+    }
+    if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
+
+    // Already in THIS group's call (minimized) → just re-open the room screen.
+    if (_confOngoingHere) {
+      await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => ConferenceScreen.resume(OngoingConference.active!)));
+      _refreshConfStatus();
+      return;
+    }
+    // In a DIFFERENT call → one call at a time.
+    if (OngoingConference.active != null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You are already in a call — leave it first')));
+      return;
+    }
+
+    try {
+      final live = _confLive;
+      final ticket = live
+          ? await ConferenceApi.join(gid)
+          : await ConferenceApi.start(gid, video: video);
+      // In-thread system row so the group sees the call started (the worker
+      // webhook also posts rows for server-registered groups).
+      if (!live) {
+        _sendSpecial('gcall', {'state': 'start', 'kind': ticket.kind, 'gid': gid},
+            ticket.kind == 'audio' ? '🎙️ Audio call started — tap 📞 to join' : '📹 Video call started — tap 📞 to join');
+      }
+      if (!mounted) return;
+      await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => ConferenceScreen.connect(
+              ticket: ticket, gid: gid, title: widget.chat.name, starter: !live)));
+      _refreshConfStatus();
+    } on ConferenceException catch (e) {
+      if (!mounted) return;
+      if (e.status == 403 && e.message.contains('25')) { _confLimitNotice(video); return; }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      AvaLog.I.log('conference', 'group call failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not start the call')));
+      }
+    }
+  }
+
+  /// Exact copy required by PHASE-10 acceptance criteria.
+  void _confLimitNotice(bool video) {
+    final what = video ? 'video' : 'audio';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${video ? 'Video' : 'Audio'} calls disabled'),
+        content: Text('This group has more than 25 members, so $what calls are '
+            'disabled. You need fewer than 25 people to have a $what conference.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+      ),
+    );
+  }
+
+  /// "Ongoing call · 6 — tap to join" banner (PiP return-to-call included:
+  /// if we're connected-but-minimized, tapping re-attaches to the live room).
+  Widget _confBanner() => GestureDetector(
+        onTap: () => _groupCall(true),
+        child: Container(
+          color: AvaColors.success.withValues(alpha: 0.12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(children: [
+            const Icon(Icons.videocam, color: AvaColors.success, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              _confOngoingHere
+                  ? 'Ongoing call · $_confCount — tap to return'
+                  : 'Ongoing call · $_confCount — tap to join',
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AvaColors.ink),
+            )),
+            const Icon(Icons.chevron_right, size: 18, color: AvaColors.sub),
+          ]),
+        ),
+      );
+
   // ---- media send + retry ----
   String _caption(MediaKind k, String name) => switch (k) {
         MediaKind.image => '📷 Photo',
@@ -699,6 +828,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         'card' => '👤 ${e['name'] ?? 'Contact'}',
         'poll' => '📊 ${e['q'] ?? 'Poll'}',
         'sticker' => (e['emoji'] ?? '🙂').toString(),
+        'gcall' => e['kind'] == 'audio' ? '🎙️ Audio call' : '📹 Video call',
         _ => '',
       };
 
@@ -839,6 +969,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 child: Text('Add contact', style: TextStyle(color: m.me ? Colors.white70 : AvaColors.brand, fontSize: 12))),
           ]),
         ]);
+      case 'gcall':
+        // Call start/end system row — Join affordance while the call is live.
+        final audio = e['kind'] == 'audio';
+        return GestureDetector(
+          onTap: _confLive ? () => _groupCall(!audio) : null,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(audio ? Icons.call : Icons.videocam, size: 18, color: m.me ? Colors.white : AvaColors.success),
+            const SizedBox(width: 6),
+            Text(audio ? 'Audio call' : 'Video call', style: TextStyle(color: fg, fontWeight: FontWeight.w700)),
+            if (_confLive) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: AvaColors.success, borderRadius: BorderRadius.circular(12)),
+                child: const Text('Join', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ]),
+        );
       case 'poll':
         final options = (e['options'] as List?)?.map((x) => x.toString()).toList() ?? [];
         return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -1318,11 +1467,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 if (!c.group) ...[
                   IconButton(icon: const Icon(Icons.call, color: AvaColors.ink), onPressed: () => _call('voice')),
                   IconButton(icon: const Icon(Icons.videocam, color: AvaColors.ink), onPressed: () => _call('video')),
+                ] else if (RemoteConfig.conferenceEnabled) ...[
+                  // Phase 10 RULE CHANGE: group conferences (LiveKit, ≤25).
+                  // >25 members → greyed icons; tapping pops the limit notice.
+                  IconButton(
+                      icon: Icon(Icons.call, color: _confAllowed ? AvaColors.ink : const Color(0xFFB9BEC6)),
+                      onPressed: () => _confAllowed ? _groupCall(false) : _confLimitNotice(false)),
+                  IconButton(
+                      icon: Icon(Icons.videocam, color: _confAllowed ? AvaColors.ink : const Color(0xFFB9BEC6)),
+                      onPressed: () => _confAllowed ? _groupCall(true) : _confLimitNotice(true)),
+                  if (!_confAllowed)
+                    IconButton(
+                        icon: const Icon(Icons.info_outline, size: 18, color: Color(0xFFB9BEC6)),
+                        onPressed: () => _confLimitNotice(true)),
                 ],
                 IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.ink), onPressed: _overflow),
               ]),
             ),
             if (_pinned != null) _pinBanner(),
+            // Ongoing group conference (Phase 10) — joinable, not ringing.
+            if (widget.chat.gid != null && _confLive && RemoteConfig.conferenceEnabled) _confBanner(),
             Expanded(
               child: DecoratedBox(
                 decoration: BoxDecoration(gradient: wallpaperGradient(_wallpaperId)),

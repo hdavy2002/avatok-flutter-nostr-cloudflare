@@ -127,7 +127,7 @@ class LibraryApi {
 
   /// Files in one view: a user folder, or an app→category system folder.
   static Future<({List<LibraryItem> items, int? cursor})> list({
-    String? app, String? category, String? folder, int? cursor,
+    String? app, String? category, String? folder, int? cursor, String? q,
   }) async {
     final qp = <String, String>{};
     if (folder != null) qp['folder'] = folder;
@@ -136,6 +136,7 @@ class LibraryApi {
       if (category != null) qp['category'] = category;
     }
     if (cursor != null) qp['cursor'] = cursor.toString();
+    if (q != null && q.trim().isNotEmpty) qp['q'] = q.trim(); // server-side name search (Phase 4)
     final uri = Uri.parse(kLibraryUrl).replace(queryParameters: qp.isEmpty ? null : qp);
     final r = await ApiAuth.getSigned(uri.toString());
     final j = jsonDecode(r.body) as Map<String, dynamic>;

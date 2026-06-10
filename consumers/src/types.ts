@@ -12,6 +12,7 @@ export interface Env {
   AI: Ai;
   Q_PUSH?: Queue;                     // calendar reminders re-enqueue to push (Phase 3)
   Q_ANALYTICS?: Queue;                // lifecycle events (e.g. account_deleted) → PostHog
+  Q_MONEY?: Queue;                    // Phase 7 — sweep enqueues refund/settlement jobs
   CONVERSATION_DO?: DurableObjectNamespace; // cross-script → avatok-api ConversationDO (Phase 7)
   INBOX?: DurableObjectNamespace; // cross-script → avatok-api InboxDO (large-group fanout)
   WALLET_DO?: DurableObjectNamespace; // cross-script → avatok-api WalletDO (nightly recon reads, Phase 2)
@@ -52,13 +53,22 @@ export interface Env {
   // Bunny.net Stream (delete cascade removes a user's video collection).
   BUNNY_API_KEY?: string;
   BUNNY_LIBRARY_ID?: string;
-  // Clerk Backend API (delete cascade removes the Clerk user). Gated.
+  // Clerk Backend API (delete cascade removes the Clerk user; Phase 5 reminder
+  // emails resolve addresses from Clerk — D1 stores only hashes). Gated.
   CLERK_SECRET_KEY?: string;
+  // Phase 5 — gcal inbound-sync cron fallback + reminder join links.
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GCAL_TOKEN_KEY?: string;
+  JOIN_LINK_SECRET?: string;
   // PostHog person deletion (delete cascade; uses personal key). Gated.
   POSTHOG_PERSONAL_API_KEY?: string;
   POSTHOG_PROJECT_ID?: string;
   // Stripe customer deletion (delete cascade; Phase 2). Gated.
   STRIPE_SECRET_KEY?: string;
+  // Phase 9 — OpenAI Whisper voice-note transcription. Unset → voice notes are
+  // simply not indexed (no transcript, no vector); everything else still works.
+  OPENAI_API_KEY?: string;
 }
 
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).
@@ -94,7 +104,8 @@ export interface PushMsg {
   // kind === "fanout" (large-group delivery; router never loops >25 sync DO calls):
   recipients?: string[]; payload?: Record<string, unknown>;
 }
-export interface EmailMsg { to: string; subject: string; html: string; from?: string; }
+// attachments: Brevo transactional attachment shape — content is base64 (Phase 5 ICS).
+export interface EmailMsg { to: string; subject: string; html: string; from?: string; attachments?: { name: string; content: string }[]; }
 export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }
 // AvaBrain: PUBLIC content only (server never gets DM plaintext). payload is JSON.
-export interface BrainMsg { uid: string; event_type: string; source_app: string; payload: Record<string, unknown>; traceId?: string; ts?: number; }
+export interface BrainMsg { uid: string; event_type: string; source_app: string; payload: Record<string, unknown>; capability?: string; traceId?: string; ts?: number; }

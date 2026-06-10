@@ -22,8 +22,70 @@ export async function brain(req: Request, env: Env, op: string): Promise<Respons
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const uid = ctx.uid;
 
+  // --- Phase 9: AvaChat — RAG chat over the user's own content -------------
+  // POST /api/brain/chat {message, conversationId?} → {answer, sources}.
+  // History rides in the user's own InboxDO under conv 'brain' (no new store).
+  if (op === "chat" && req.method === "POST") {
+    const b = (await req.json().catch(() => ({}))) as any;
+    const message = String(b.message || "").trim().slice(0, 4000);
+    if (!message) return json({ error: "message required" }, 400);
+    const stub = env.USER_BRAIN.get(env.USER_BRAIN.idFromName(uid));
+    const res = await stub.fetch("https://brain/op", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ uid, op: "chat", message }),
+    });
+    const data = (await res.json().catch(() => ({ answer: "Something went wrong — try again.", sources: [] }))) as any;
+    // Persist both turns to the user's InboxDO (conv 'brain') — best-effort.
+    try {
+      const inbox = env.INBOX.get(env.INBOX.idFromName(uid));
+      const now = Date.now();
+      await inbox.fetch("https://inbox/append", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ conv: "brain", sender: uid, owner: uid, kind: "text", body: message, created_at: now }),
+      });
+      await inbox.fetch("https://inbox/append", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          conv: "brain", sender: "brain", owner: uid, kind: "brain",
+          body: JSON.stringify({ text: data.answer ?? "", sources: data.sources ?? [] }).slice(0, 16_000),
+          created_at: now + 1,
+        }),
+      });
+    } catch { /* history is best-effort */ }
+    return json({ answer: data.answer ?? "", sources: data.sources ?? [] });
+  }
+
+  // GET /api/brain/history — the AvaChat transcript (conv 'brain' in InboxDO).
+  if (op === "history" && req.method === "GET") {
+    try {
+      const inbox = env.INBOX.get(env.INBOX.idFromName(uid));
+      const res = await inbox.fetch("https://inbox/sync?cursor=0");
+      const data = (await res.json()) as any;
+      const msgs = ((data.messages ?? []) as any[]).filter((m) => m.conv === "brain").slice(-200);
+      return json({ messages: msgs });
+    } catch { return json({ messages: [] }); }
+  }
+
+  // POST /api/brain/purge — "Delete my AvaBrain data" (vectors + transcripts +
+  // graph). Queued: the wipe touches Vectorize in batches.
+  if (op === "purge" && req.method === "POST") {
+    try { await env.Q_BRAIN.send({ uid, event_type: "purge", source_app: "avabrain", payload: {} }); } catch { return json({ error: "queue unavailable" }, 503); }
+    return json({ ok: true, queued: true });
+  }
+
+  // POST /api/brain/backfill — admin-triggered re-index of existing history.
+  // Body {uid?} lets an admin backfill another user; self-serve backfills self.
+  if (op === "backfill" && req.method === "POST") {
+    const b = (await req.json().catch(() => ({}))) as any;
+    const admins = (env.ADMIN_UIDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const target = b.uid && admins.includes(uid) ? String(b.uid) : uid;
+    try { await env.Q_BRAIN.send({ uid: target, event_type: "backfill", source_app: "avabrain", payload: {} }); } catch { return json({ error: "queue unavailable" }, 503); }
+    return json({ ok: true, queued: true, uid: target });
+  }
+
   // --- consent toggles (server-readable booleans; default ON when a row is absent) ---
-  if (op === "consent") {
+  // 'settings' is the Phase-9 alias the AvaBrain guardrails screen uses (GET/PUT).
+  if (op === "consent" || op === "settings") {
     if (req.method === "GET") {
       const rs = await env.DB_BRAIN.prepare("SELECT capability, enabled FROM brain_consent WHERE uid=?1").bind(uid).all();
       const out: Record<string, boolean> = {};
@@ -42,6 +104,15 @@ export async function brain(req: Request, env: Env, op: string): Promise<Respons
         `INSERT INTO brain_consent (uid, capability, enabled, updated_at) VALUES (?1,?2,?3,?4)
          ON CONFLICT(uid, capability) DO UPDATE SET enabled=?3, updated_at=?4`,
       ).bind(uid, cap, en ? 1 : 0, now)));
+    // Phase 9: toggling OFF with BRAIN_RETRO_DELETE also deletes already-indexed
+    // items from that source (vectors + transcripts + derived facts).
+    if (env.BRAIN_RETRO_DELETE === "1") {
+      for (const [cap, en] of entries) {
+        if (!en && cap !== "master") {
+          try { void env.Q_BRAIN.send({ uid, event_type: "retro_delete", source_app: "avabrain", payload: { capability: cap } }); } catch { /* best-effort */ }
+        }
+      }
+    }
     return json({ ok: true });
   }
 

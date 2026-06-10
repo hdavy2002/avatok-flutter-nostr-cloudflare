@@ -62,8 +62,11 @@ export async function hold(env: Env, uid: string, orderId: string, amount: numbe
  * 7-day earnings hold — shows as "pending" in the UI), 20% platform fee.
  * Gross defaults to the escrow bucket's full balance. Idempotent per order.
  */
-export async function release(env: Env, orderId: string, creatorId: string, opts?: { title?: string; app?: string; feeRate?: number }): Promise<LedgerResult> {
-  const gross = await escrowBalance(env, orderId);
+export async function release(env: Env, orderId: string, creatorId: string, opts?: { title?: string; app?: string; feeRate?: number; gross?: number }): Promise<LedgerResult> {
+  // Phase 7: pass opts.gross for a PARTIAL release (R2 pro-rata, R5 split);
+  // default stays "everything left in the bucket".
+  const avail = await escrowBalance(env, orderId);
+  const gross = opts?.gross != null ? Math.min(Math.trunc(opts.gross), avail) : avail;
   if (!(gross > 0)) return { ok: false, status: 409, body: { error: "escrow empty or not yet settled", orderId } };
   const rate = opts?.feeRate ?? PLATFORM_FEE_RATE;
   const fee = Math.round(gross * rate);
@@ -97,6 +100,34 @@ export async function refund(env: Env, orderId: string, uid: string, amount: num
     ledger: { debit: acctEscrow(orderId), credit: acctUser(uid), type: "refund", ref: orderId, meta: JSON.stringify({ title: opts?.title ?? null, reason: opts?.reason ?? null, amount }) },
   });
   return { ok: r.status === 200, status: r.status, body: r.body };
+}
+
+/**
+ * donation — Phase 7 live tips (universal §4): instant to the creator (NO
+ * escrow, NO 7-day hold — it's a gift, not a deliverable), minus the 20%
+ * platform fee. Three balanced rows: buyer→creator gross (type donation),
+ * ledger-only creator→platform:fees fee, and the creator credit is the net.
+ * Idempotent on `don:<donationId>:*` op_ids.
+ */
+export async function donation(env: Env, buyer: string, creator: string, amount: number, donationId: string, opts?: { title?: string; feeRate?: number }): Promise<LedgerResult & { net: number; fee: number }> {
+  amount = Math.trunc(Number(amount));
+  if (!(amount > 0)) return { ok: false, status: 400, body: { error: "amount>0 required" }, net: 0, fee: 0 };
+  const rate = opts?.feeRate ?? PLATFORM_FEE_RATE;
+  const fee = Math.round(amount * rate);
+  const net = amount - fee;
+  const ref = `don:${donationId}`;
+  const meta = JSON.stringify({ title: opts?.title ?? "Live donation", gross: amount, fee, net, fee_rate: rate });
+  // 1. Debit the buyer (gross) — carries the buyer→creator donation row.
+  const d = await walletOp(env, buyer, {
+    op: "spend", uid: buyer, amount, type: "spend", app_name: "avalive", counterparty_npub: creator, ref, op_id: `${ref}:spend`,
+    ledger: { debit: acctUser(buyer), credit: acctUser(creator), type: "donation", ref, meta },
+  });
+  if (d.status !== 200) return { ok: false, status: d.status, body: d.body, net: 0, fee: 0 };
+  // 2. Credit the creator the NET, spendable immediately (no hold).
+  await walletOp(env, creator, { op: "credit", uid: creator, amount: net, type: "donation", app_name: "avalive", counterparty_npub: buyer, ref, op_id: `${ref}:credit` });
+  // 3. Ledger-only fee row balances the creator's account (gross in − fee out = net).
+  if (fee > 0) await sendLedgerRow(env, `${ref}:fee`, acctUser(creator), ACCT_PLATFORM_FEES, fee, "fee", ref, { title: "Donation fee", gross: amount, fee_rate: rate });
+  return { ok: true, status: 200, body: { ok: true, gross: amount, net, fee, buyer_balance: d.body?.balance }, net, fee };
 }
 
 /**

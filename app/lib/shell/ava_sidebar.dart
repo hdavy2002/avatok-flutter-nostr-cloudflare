@@ -107,6 +107,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
             child: ListView(padding: EdgeInsets.zero, children: [
               _special('explore', 'AvaExplore', 'Marketplace', Icons.storefront, AvaColors.brand),
               _special('verse', 'AvaVerse', 'Your dashboard', Icons.dashboard, const Color(0xFF6C5CE7)),
+              // AvaInbox rides the registry row ('avainbox') in the APPS section
+              // below — the shell routes it to the real InboxScreen (Phase 8).
               _special('library', 'AvaLibrary', 'Saved media & files', Icons.folder_open, const Color(0xFF8B5CF6)),
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),

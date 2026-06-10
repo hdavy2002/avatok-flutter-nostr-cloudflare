@@ -13,7 +13,9 @@ rulebook" below or `Specs/AVATALK-CLOUDFLARE-RULEBOOK.md` conflict with the new 
 **the new arch wins** (those files are pending rewrite). Do NOT re-introduce Nostr
 (NIP-17/44/59, gift-wrap, keypairs, NIP-42/98, the relay Worker). Do NOT make a single
 central D1 the high-write message store — messages live in DO-local SQLite per user.
-Still valid: the AvaTok **1:1-only calls** product rule, and per-account scoping.
+Still valid: per-account scoping. NOTE (2026-06-10): the old "1:1-only calls" rule
+was CHANGED in Phase 10 — group conferences ≤25 via LiveKit are now allowed (see
+the product rule below).
 
 ---
 
@@ -65,14 +67,16 @@ literal text / string search (TODOs, error messages, arbitrary tokens).
 
 ## Engineering rulebook (READ — applies to every app)
 
-**AvaTOK product rule — calls are 1:1 ONLY.** AvaTOK is a peer-to-peer 1:1
-audio/video calling app. **Group calls are NOT allowed** (group/conference calling
-lives in AvaConsult). Never add a group-call entry point. Enforcement is layered and
-must stay intact: call buttons appear in 1:1 threads only (never group chats), the
-client `_call()` guards against any `group`/`gid`, and the `CallRoom` DO caps a room
-at 2 peers (a 3rd is refused with `busy`). Group chats keep FULL messaging (text,
-media, voice notes, stickers, polls, location, contact cards) — they simply can't
-start a call.
+**AvaTOK product rule — RULE CHANGE 2026-06-10 (owner decision, Phase 10).**
+Group conferences ARE allowed in AvaTalk groups, **≤25 participants, via LiveKit**
+(`worker/src/routes/conference.ts` + `app/lib/features/conference/`). 1:1 calls
+stay P2P (CallRoom DO, **2-peer cap unchanged** — group conferences never touch
+it; do NOT raise the cap). Group/conference CONSULTING still lives in AvaConsult.
+Enforcement: group-thread call icons active only when `memberCount <= 25`
+(otherwise greyed + a notice popup), the Worker rejects start/join for >25-member
+groups, and LiveKit `max_participants=25` is the server-side backstop. All gated
+by the `conferenceEnabled` kill switch (`routes/config.ts`). Group chats keep FULL
+messaging (text, media, voice notes, stickers, polls, location, contact cards).
 
 The full rulebook is **`Specs/AVATALK-CLOUDFLARE-RULEBOOK.md`** — read it before
 building. It governs ALL AvaVerse apps. The two client rules that bite hardest:

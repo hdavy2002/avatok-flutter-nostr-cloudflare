@@ -45,6 +45,15 @@ export async function kycVerified(env: Env, uid: string): Promise<boolean> {
   return r?.status === "verified";
 }
 
+// Phase 3 — hard KYC gate for routes (payout setup/request now; consult- and
+// live-listing creation in Phase 6). One gate, two providers: kyc_status is
+// written by BOTH the Rekognition liveness path and the Stripe Identity path.
+// Returns null when verified, or an AuthFail the route should surface as-is.
+export async function requireKyc(env: Env, uid: string): Promise<AuthFail | null> {
+  if (await kycVerified(env, uid)) return null;
+  return { error: "identity verification required", status: 403 };
+}
+
 // Hard block — does `owner` block `other`? (recipient blocks sender → no delivery)
 // Consolidated on the `blocks` table (uid renamed; blocked_npub holds a uid value),
 // which social.ts manages — so the messaging gate honours the same block list.

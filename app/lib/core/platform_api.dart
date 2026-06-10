@@ -51,6 +51,43 @@ class PlatformApi {
   static Future<List<Map<String, dynamic>>> events() async =>
       _list(_json((await ApiAuth.getSigned('$kCalendarBase/events')).body), 'events');
 
+  // ── AvaCalendar + AvaBooking (Phase 5: conflict engine, gcal, policies) ──
+  /// My cross-app occupancy (blips): avacalendar|avabooking|avalive|gcal|manual.
+  static Future<List<Map<String, dynamic>>> calendarBlocks({required int from, required int to}) async =>
+      _list(_json((await ApiAuth.getSigned('$kCalendarBase/blocks?from=$from&to=$to')).body), 'blocks');
+  /// Computed picker grid for a creator+date. Occupied slots come back FLAGGED
+  /// (available=false, reason, occupied_by) — render greyed, never hide.
+  static Future<List<Map<String, dynamic>>> freeSlots({required String creator, required String date, int durMin = 0}) async =>
+      _list(_json((await ApiAuth.getSigned('$kCalendarBase/slots?creator=$creator&date=$date&dur=$durMin')).body), 'slots');
+  static Future<List<Map<String, dynamic>>> availabilityRules() async =>
+      _list(_json((await ApiAuth.getSigned('$kCalendarBase/rules')).body), 'rules');
+  static Future<Map<String, dynamic>> saveAvailabilityRules(List<Map<String, dynamic>> rules) async =>
+      _json((await ApiAuth.putJson('$kCalendarBase/rules', {'rules': rules})).body);
+  static Future<Map<String, dynamic>> gcalStatus() async =>
+      _json((await ApiAuth.getSigned('$kCalendarBase/gcal/status')).body);
+  /// Returns {url} — open in a browser to run the Google OAuth consent flow.
+  static Future<Map<String, dynamic>> gcalConnect() async =>
+      _json((await ApiAuth.getSigned('$kCalendarBase/gcal/connect')).body);
+  static Future<Map<String, dynamic>> gcalDisconnect() async =>
+      _json((await ApiAuth.deleteSigned('$kCalendarBase/gcal')).body);
+  static Future<List<Map<String, dynamic>>> bookings({String role = 'all', String when = 'upcoming'}) async =>
+      _list(_json((await ApiAuth.getSigned('$kBookingBase/list?role=$role&when=$when')).body), 'bookings');
+  static Future<Map<String, dynamic>> bookingPolicies() async =>
+      _json((await ApiAuth.getSigned('$kBookingBase/policies')).body);
+  static Future<Map<String, dynamic>> saveBookingPolicies({int? bufferMin, int? minNoticeMin, int? maxPerDay, int? vacationUntil}) async =>
+      _json((await ApiAuth.putJson('$kBookingBase/policies', {
+        if (bufferMin != null) 'buffer_min': bufferMin,
+        if (minNoticeMin != null) 'min_notice_min': minNoticeMin,
+        if (maxPerDay != null) 'max_per_day': maxPerDay,
+        'vacation_until': vacationUntil ?? 0,
+      })).body);
+  static Future<Map<String, dynamic>> proposeReschedule(String bookingId, {required int newStart, required int newEnd}) async =>
+      _json((await ApiAuth.postJson('$kBookingBase/$bookingId/reschedule', {'new_start': newStart, 'new_end': newEnd})).body);
+  static Future<Map<String, dynamic>> respondReschedule(String rescheduleId, {required bool accept}) async =>
+      _json((await ApiAuth.postJson('$kBookingBase/reschedule/$rescheduleId/respond', {'accept': accept})).body);
+  static Future<List<Map<String, dynamic>>> reschedules(String bookingId) async =>
+      _list(_json((await ApiAuth.getSigned('$kBookingBase/reschedules?booking=$bookingId')).body), 'reschedules');
+
   // ── AvaPayout (Phase 4) ───────────────────────────────────────────────────
   static Future<Map<String, dynamic>> payoutSetup({required String accountHolder, required String ifsc, required String accountNumber, String? label}) async =>
       _json((await ApiAuth.postJson('$kPayoutBase/setup', {'account_holder': accountHolder, 'ifsc': ifsc, 'account_number': accountNumber, if (label != null) 'label': label})).body);

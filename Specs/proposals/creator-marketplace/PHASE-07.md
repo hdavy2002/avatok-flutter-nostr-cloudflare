@@ -8,6 +8,28 @@ Deliver the sessions people paid for: AvaLive streaming (creator streams from th
 phone; buyers watch live), AvaConsult video sessions (1:1 P2P; 1:10/1:20 via SFU),
 then settle escrow (80/20) or refund by rule. Emails at every money event.
 
+## ⚠️ ALREADY BUILT — verified 2026-06-10. Reuse, don't duplicate.
+- **Donations/gifts engine EXISTS:** `worker/src/do/stream_session.ts`
+  (StreamSessionDO) — per-stream gift aggregation that settles to the creator's
+  WalletDO. **The "donate" feature = the existing gift flow** + a ledger row
+  type `donation` via Q_WALLET + the on-screen banner. Do NOT build a separate
+  donation path.
+- **Stream webhook EXISTS:** `worker/src/routes/stream.ts` — Cloudflare Stream
+  Live event sink (live_input lifecycle) + post-stream recording dispatched to
+  Q_MODERATION. Extend it for attendance/no-show evidence; don't re-create.
+- **LiveRoomDO:** prefer EXTENDING StreamSessionDO (it already holds per-stream
+  state + sockets pattern) into the interaction room (reactions/flyers/
+  stickers/moderation) rather than adding a parallel DO — decide in-session
+  after reading the file; either way ONE DO per stream, not two.
+- `bunny.ts` + `bunny_collections` = legacy Bunny.net video storage — do not
+  wire new work to it; Stream/R2 only.
+- **avaconsult/ dir** contains an earlier RealtimeKit-based consult app — treat
+  as REFERENCE ONLY: the perf budget (§1) forbids shipping the RealtimeKit/Dyte
+  SDK; consult group calls use Cloudflare Realtime SFU via its HTTPS API +
+  the shared `flutter_webrtc`.
+- Orders/escrow/refund engine + attendance: genuinely NEW — build as specced
+  (on the Phase 2 WalletDO primitives).
+
 ## Video stack (per owner direction)
 - **AvaLive (1→many):** Cloudflare **Stream Live** — create Live Input per event;
   creator publishes via WHIP (low-latency WebRTC ingest) from the phone; viewers

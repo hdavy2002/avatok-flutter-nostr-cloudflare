@@ -20,6 +20,7 @@ export class UserBrain {
     if (!uid) return json({ error: "uid required" }, 400);
     switch (body.op) {
       case "ask": return json({ answer: await this.ask(uid, String(body.question || "")) });
+      case "chat": return json(await this.chat(uid, String(body.message || "")));
       case "briefing": return json({ briefing: await this.briefing(uid) });
       case "remember": return json(await this.remember(uid, body.facts || [], body.entities || []));
       case "investigate": return json({ diagnosis: await this.investigate(uid, String(body.complaint || "")) });
@@ -90,6 +91,69 @@ export class UserBrain {
         })
         .filter((s: string) => s);
     } catch { return []; }
+  }
+
+  // ---- Phase 9: AvaChat — RAG answer + tappable source chips ----------------
+  // Sources: [{app, kind, ref, media_ref, conv, name, snippet}] — the client
+  // renders them as cards (open thread / open file in AvaLibrary / play voicemail).
+  private async rawMatches(uid: string, query: string, topK: number): Promise<any[]> {
+    if (!this.env.VECTOR_INDEX) return [];
+    try {
+      const emb = (await this.env.AI.run((this.env.BRAIN_EMBED_MODEL || "@cf/baai/bge-small-en-v1.5") as any, { text: query })) as any;
+      const vec: number[] | undefined = emb.data?.[0];
+      if (!vec) return [];
+      // HARD tenant isolation: every query is uid-filtered. 'kind' is filtered
+      // in code below (uid is the only indexed metadata field on the index).
+      const res = await this.env.VECTOR_INDEX.query(vec, { topK, filter: { uid }, returnMetadata: true } as any);
+      return res.matches ?? [];
+    } catch { return []; }
+  }
+
+  private async chat(uid: string, message: string): Promise<{ answer: string; sources: any[] }> {
+    if (!message) return { answer: "Ask me anything about your own messages, files and voice notes.", sources: [] };
+
+    // Voicemail-search intent → restrict to kind=voicemail, return playable refs.
+    const vmIntent = /\b(voice\s?-?mails?|voice\s?-?notes?|voice\s?messages?)\b/i.test(message);
+    const matches = await this.rawMatches(uid, message, vmIntent ? 24 : 12);
+    const filtered = vmIntent ? matches.filter((m: any) => (m.metadata?.kind ?? m.metadata?.type) === "voicemail") : matches;
+
+    const sources: any[] = [];
+    const ctxLines: string[] = [];
+    for (const m of filtered.slice(0, 8)) {
+      const md = m.metadata ?? {};
+      const kind = String(md.kind ?? md.type ?? (md.media_id ? "file" : "memory"));
+      const snippet = String(md.snippet ?? md.summary ?? "").slice(0, 300);
+      if (kind === "voicemail") {
+        sources.push({ app: "avatok", kind, conv: md.conv ?? null, media_ref: md.media_ref ?? null, ref: md.media_ref ?? null, name: "Voice note", snippet, ts: md.ts ?? null });
+        ctxLines.push(`[voicemail from conversation ${md.conv ?? "?"}] ${snippet}`);
+      } else if (kind === "message") {
+        sources.push({ app: "avatok", kind, conv: md.conv ?? null, ref: md.conv ?? null, name: md.peer ? `Message (${String(md.peer).slice(0, 12)}…)` : "Message", snippet, ts: md.ts ?? null });
+        ctxLines.push(`[message in ${md.conv ?? "?"}] ${snippet}`);
+      } else if (md.media_id) {
+        sources.push({ app: String(md.app ?? "avalibrary"), kind: "file", ref: md.media_id, media_id: md.media_id, name: md.name ?? "File", snippet, ts: null });
+        ctxLines.push(`[file "${md.name ?? "file"}"] ${snippet}`);
+      } else if (md.name || md.summary) {
+        ctxLines.push(`[memory] ${[md.name, md.summary].filter(Boolean).join(": ").slice(0, 300)}`);
+      }
+    }
+
+    if (vmIntent && sources.length) {
+      // Don't over-think it: the user asked to FIND voicemails — list what matched.
+      const n = sources.length;
+      return { answer: n === 1 ? "I found this voice note — tap to play it." : `I found ${n} voice notes that match — tap one to play it.`, sources };
+    }
+
+    const [facts, summaries] = await Promise.all([this.recentFacts(uid, 20), this.recentSummaries(uid, 3)]);
+    const context = JSON.stringify({
+      retrieved: ctxLines,
+      facts: facts.map((f) => f.content).slice(0, 20),
+      recent_days: summaries,
+    }).slice(0, 12_000);
+    const answer = await this.reason(
+      "You are AvaChat, the user's personal AI over THEIR OWN content (messages, files, voice notes). Answer ONLY from the provided context — never invent facts. When the answer comes from a retrieved item, mention it naturally (the app shows tappable source cards). If the context doesn't contain the answer, say so plainly.",
+      `Question: ${message}\n\nContext: ${context}`,
+    );
+    return { answer, sources };
   }
 
   // ---- ops ----

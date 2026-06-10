@@ -325,7 +325,7 @@ export async function walletReceiptResend(req: Request, env: Env, id: string): P
 }
 
 // Stripe webhook signature (HMAC-SHA256 over `${t}.${payload}`).
-async function verifyStripeSig(payload: string, header: string | null, secret: string): Promise<boolean> {
+export async function verifyStripeSig(payload: string, header: string | null, secret: string): Promise<boolean> {
   if (!header) return false;
   const parts = Object.fromEntries(header.split(",").map((kv) => kv.split("=")));
   const t = parts["t"]; const v1 = parts["v1"];

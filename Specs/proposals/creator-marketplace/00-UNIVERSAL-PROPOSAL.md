@@ -150,7 +150,23 @@ data. The only allowed placeholder is the Phase-1 `ComingSoonScreen` for apps
 whose phase hasn't shipped yet — and each phase deletes its own. Acceptance
 criteria in every phase must be demonstrated against deployed worker APIs.
 
-## 10. Audit addendum
+## 10. Existing-code reconciliation (2026-06-10)
+
+Phases 2–10 were audited against the repo: **every phase file now opens with an
+"ALREADY BUILT" section** listing what exists and must be extended, not redone.
+Headlines: Phase 1 kill switches shipped (`routes/config.ts`); wallet =
+WalletDO authority + D1 `avatok-wallet` ledger; KYC = existing AvaID gateway
+(`routes/id.ts`, Rekognition) gaining Stripe Identity as a second provider;
+payout routes complete (`routes/payout.ts`, min $10, spendable-only); file
+index = `user_media` (+library extension), not a new table; calendar slots/
+bookings exist but are **npub-keyed → must migrate to Clerk uid** (Phase 5 first
+task); AvaOLX marketplace patterns reusable; donations = existing
+StreamSessionDO gift engine; AvaBrain has UserBrainDO + knowledge graph +
+`brain_consent` guardrails + agent conversation plumbing; GDPR deletion
+consumer exists. Trust the phase files' ALREADY-BUILT sections over older
+wording elsewhere in the same file.
+
+## 11. Audit addendum
 
 The 2026-06-10 three-perspective audit's **[MUST] and [SHOULD] items are folded
 into the phase files** as "Folded from audit" sections — they are part of each
@@ -159,7 +175,7 @@ phase's scope and acceptance criteria, not optional extras.
 waitlists, gift bookings, co-hosts, tiered tickets, memberships, multi-currency,
 API versioning, load tests) — revisit post-launch.
 
-## 11. Session-handover protocol
+## 12. Session-handover protocol
 
 Each phase file is self-contained: objective, prerequisites, schema, endpoints,
 Flutter screens, acceptance criteria, and "definition of done". At the end of every

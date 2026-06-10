@@ -25,6 +25,7 @@ export interface Env {
   Q_DELETE: Queue;   // account-deletions (30-day-grace 15-store cascade, Phase 1)
   Q_WALLET: Queue;   // wallet-transactions (DO → D1 audit trail, Phase 2)
   Q_AGENT: Queue;    // agent-tasks (agent conversations + per-app hooks, Phase 7)
+  Q_MONEY: Queue;    // money-settlements (refund/settlement engine, marketplace Phase 7)
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;
@@ -61,6 +62,9 @@ export interface Env {
   ADMIN_UIDS?: string;
   BRAIN_REASONER_MODEL?: string;
   BRAIN_EMBED_MODEL?: string;
+  // Phase 9 — "1" → toggling a guardrail OFF also retro-deletes already-indexed
+  // items from that source (vectors, transcripts, derived facts).
+  BRAIN_RETRO_DELETE?: string;
   POSTHOG_QUERY_HOST?: string;
   POSTHOG_PROJECT_ID?: string;
 
@@ -88,14 +92,27 @@ export interface Env {
   // Clerk Backend API (account deletion cascade, Phase 1). Gated.
   CLERK_SECRET_KEY?: string;
 
-  // AvaStorage (universal per-account pool). Free quota in GB (default 5).
+  // Phase 5 — AvaCalendar/AvaBooking. Google Calendar OAuth (gated; unset →
+  // /api/calendar/gcal/* returns 503), token-encryption key, join-link signer.
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GCAL_TOKEN_KEY?: string;         // AES-GCM key material for gcal refresh tokens
+  JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
+
+  // AvaStorage (universal per-account pool). Free quota in GB (default 5);
+  // over-quota metered price in AvaCoins per GB per month (default 20 — billed
+  // by the consumers monthly cron, ledger type storage_charge).
   STORAGE_FREE_GB?: string;
+  STORAGE_COINS_PER_GB?: string;
 
   // Messaging KYC gate. "1" enforces verified KYC on /api/msg/send; default OFF
   // (Stripe Identity paused) so 1:1 chat works without verification for now.
   KYC_REQUIRED?: string;
   // Stripe Identity (KYC). Gated; unset → /api/kyc/* returns 503.
   STRIPE_IDENTITY_WEBHOOK_SECRET?: string;
+  // A1 compliance — current agreement-doc versions, CSV "doc_id:version,…"
+  // (e.g. "creator-agreement:2,tos:1"). Unlisted docs default to "1".
+  AGREEMENT_VERSIONS?: string;
 
   // AvaWallet (Phase 2). Real money-in flag-gated OFF pending legal (§10.1).
   WALLET_TOPUP_ENABLED?: string;   // "1" enables Stripe top-up (set ONLY after legal)
@@ -109,9 +126,29 @@ export interface Env {
   WISE_PROFILE_ID?: string;
   WISE_ENV?: string;               // "production" | (default sandbox)
 
+  // AvaTalk group conferencing (Phase 10 — LiveKit, ≤25 participants). Gated:
+  // unset → /api/conference/* returns 503. LIVEKIT_URL = project URL
+  // (wss://<project>.livekit.cloud); key/secret via `wrangler secret put`.
+  LIVEKIT_URL?: string;
+  LIVEKIT_API_KEY?: string;
+  LIVEKIT_API_SECRET?: string;
+
   // R2 S3 API creds for presigned digital-download URLs (Phase 5). Unset → the
   // OLX download route streams bytes through the Worker as a fallback.
   R2_ACCOUNT_ID?: string;
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
+
+  // Marketplace Phase 7 — AvaLive (Cloudflare Stream Live) + AvaConsult group
+  // (Cloudflare Realtime SFU). All gated: unset → 503.
+  STREAM_ACCOUNT_ID?: string;      // Cloudflare account id for Stream Live Inputs
+  STREAM_API_TOKEN?: string;       // API token with Stream:Edit (secret)
+  CALLS_APP_ID?: string;           // Cloudflare Realtime (Calls) SFU app
+  CALLS_APP_SECRET?: string;       // (secret)
+  // Refund-engine test clock (A2). TEST_CLOCK_ALLOWED="1" ONLY in staging vars;
+  // production hard-refuses any offset.
+  TEST_CLOCK_ALLOWED?: string;
+  TEST_CLOCK_OFFSET_MS?: string;
+  // DLQ alert recipient (defaults to hdavy2005@gmail.com).
+  ALERT_EMAIL?: string;
 }

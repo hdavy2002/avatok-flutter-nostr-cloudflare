@@ -5,6 +5,13 @@
 group chats may hold audio/video conferences, max 25 participants, via LiveKit.
 1:1 calls keep the existing P2P CallRoom-DO path.
 
+## ⚠️ ALREADY BUILT — verified 2026-06-10.
+- `conferenceEnabled` kill switch already exists in `routes/config.ts`
+  (Phase 1 shipped it) — gate everything in this phase behind it.
+- CallRoom DO (1:1 P2P, 2-peer cap) exists and stays untouched except the
+  ringing-race fix from Phase 1 A4. No LiveKit code exists anywhere — this
+  phase is genuinely greenfield apart from the guard changes.
+
 ## Objective
 Group audio/video conferencing inside AvaTalk group chats with a hard 25-member
 cap, standard meeting UI, and graceful UX when a group exceeds 25 members.

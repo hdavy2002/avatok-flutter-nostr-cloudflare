@@ -8,9 +8,58 @@ import { aiText, bumpAiSpend } from "./ai";
 
 const RAW_TTL_MS = 30 * 86_400_000; // 30 days
 
+// Phase 9 — which guardrail capability gates an event. Producers may pass an
+// explicit msg.capability; otherwise it's derived here. The AvaBrain settings
+// screen renders exactly these keys (default ON / opt-out; rows only exist when
+// the user changed something).
+function capabilityFor(msg: BrainMsg): string {
+  if (msg.capability) return String(msg.capability);
+  const p = (msg.payload ?? {}) as any;
+  switch (msg.event_type) {
+    case "message_stored":
+    case "message_received":
+      if (String(p.kind || "") === "audio") return "voicemails";
+      return p.group ? "group_chats" : "avatok_messages";
+    case "library_file_added":
+    case "upload_completed":
+      return "files";
+    default:
+      // App-level toggle (avawallet, avacalendar, avapayout, …).
+      return msg.source_app || "files";
+  }
+}
+
+// Guardrail check (master + the event's capability). Default ON when no row
+// exists (opt-out model). Fail-open on D1 error — consent rows are tiny.
+async function guardrailAllows(env: Env, uid: string, capability: string): Promise<boolean> {
+  try {
+    const rs = await env.DB_BRAIN.prepare(
+      "SELECT capability, enabled FROM brain_consent WHERE uid=?1 AND capability IN ('master',?2)",
+    ).bind(uid, capability).all();
+    for (const r of (rs.results ?? []) as any[]) if (Number(r.enabled) === 0) return false;
+    return true;
+  } catch { return true; }
+}
+
 export async function handleBrain(msg: BrainMsg, env: Env): Promise<void> {
   const uid = msg.uid;
   if (!uid) return;
+
+  // Maintenance ops bypass guardrails (they REMOVE data, never add it).
+  if (msg.event_type === "retro_delete") { await retroDelete(msg, env); return; }
+  if (msg.event_type === "purge") { await purgeBrain(uid, env); return; }
+  if (msg.event_type === "backfill") { await backfill(uid, env); return; }
+
+  // Phase 9: EVERY ingestion event is guardrail-checked first (master + per-app
+  // toggle). Drop silently when the user opted out.
+  if (!(await guardrailAllows(env, uid, capabilityFor(msg)))) return;
+
+  // Phase 9: messages + voice notes → retrievable vectors (RAG), not the
+  // entity/fact extraction below (too high-volume for an LLM per message).
+  if (msg.event_type === "message_stored" || msg.event_type === "message_received") {
+    await ingestMessage(msg, env);
+    return;
+  }
 
   // AvaLibrary FILE content ingestion (public files only). Separate path: we
   // extract caption/OCR/text from the actual bytes and embed retrievable,
@@ -282,6 +331,174 @@ async function upsertRelationship(env: Env, uid: string, from: string, to: strin
     `INSERT INTO brain_relationships (id, uid, from_entity_id, to_entity_id, relationship, strength, context, first_seen, last_seen)
      VALUES (?1,?2,?3,?4,?5,0.5,?6,?7,?7)`,
   ).bind(crypto.randomUUID(), uid, from, to, rel, context, now).run();
+}
+
+// ═══════════ Phase 9 — message / voicemail ingestion + RAG vectors ═══════════
+
+// Record a vector id in the brain_vectors registry (enables retro-delete +
+// purge — Vectorize can only delete by id, never by metadata filter).
+async function recordVector(env: Env, uid: string, vecId: string, capability: string, kind: string, sourceApp: string, ref: string | null): Promise<void> {
+  try {
+    await env.DB_BRAIN.prepare(
+      `INSERT OR REPLACE INTO brain_vectors (vec_id, uid, capability, kind, source_app, ref, created_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7)`,
+    ).bind(vecId, uid, capability, kind, sourceApp, ref, Date.now()).run();
+  } catch { /* registry best-effort (table from brain_phase9.sql) */ }
+}
+
+// Message stored/received → embed the text (or the Whisper transcript for a
+// voice note) into Vectorize, uid-scoped, with deep-linkable metadata.
+// payload: { conv, kind, body, media_ref, peer, group, created_at }
+async function ingestMessage(msg: BrainMsg, env: Env): Promise<void> {
+  const uid = msg.uid;
+  const p = (msg.payload ?? {}) as any;
+  if (!env.VECTOR_INDEX || !p.conv) return;
+  const conv = String(p.conv);
+  const ts = Number(p.created_at || Date.now());
+  const peer = p.peer ? String(p.peer) : "";
+  const capability = capabilityFor(msg);
+
+  // Voice note / voice mail → Whisper transcription → kind=voicemail vectors.
+  if (String(p.kind || "text") === "audio" && p.media_ref) {
+    const mediaRef = String(p.media_ref);
+    // Client-encrypted blobs (legacy E2E DM media) are unscannable ciphertext —
+    // skip them; only server-readable voice notes get transcribed.
+    try {
+      const row = await env.DB_MEDIA.prepare("SELECT encrypted FROM user_media WHERE key=?1 LIMIT 1").bind(mediaRef).first<{ encrypted: number }>();
+      if (row && Number(row.encrypted) === 1) return;
+    } catch { /* lookup best-effort */ }
+    const transcript = await transcribeVoice(env, mediaRef);
+    if (!transcript) return; // no key / fetch failed — nothing to index
+    try {
+      await env.DB_BRAIN.prepare(
+        `INSERT OR REPLACE INTO brain_transcripts (uid, media_ref, conv, transcript, created_at)
+         VALUES (?1,?2,?3,?4,?5)`,
+      ).bind(uid, mediaRef, conv, transcript.slice(0, 8000), ts).run();
+    } catch { /* table from brain_phase9.sql */ }
+    const chunks = chunkText(transcript, 480).slice(0, 8);
+    const md = { uid, kind: "voicemail", app: "avatok", conv, media_ref: mediaRef, peer, ts, type: "voicemail" };
+    const vectors = [] as any[];
+    for (let i = 0; i < chunks.length; i++) {
+      const values = await embed(env, chunks[i]);
+      if (values) vectors.push({ id: `${uid}:vm:${mediaRef}:${i}`, values, metadata: { ...md, snippet: chunks[i].slice(0, 480) } });
+    }
+    if (vectors.length) {
+      try { await env.VECTOR_INDEX.upsert(vectors); } catch { return; }
+      for (const v of vectors) await recordVector(env, uid, v.id, "voicemails", "voicemail", "avatok", mediaRef);
+    }
+    return;
+  }
+
+  // Text message → one bounded vector (snippet keeps the answerable content).
+  const body = String(p.body || "").trim();
+  if (!body) return;
+  const values = await embed(env, body.slice(0, 512));
+  if (!values) return;
+  const vecId = `${uid}:msg:${conv}:${ts}`;
+  try {
+    await env.VECTOR_INDEX.upsert([{
+      id: vecId, values,
+      metadata: { uid, kind: "message", app: "avatok", conv, peer, ts, snippet: body.slice(0, 480), type: "message" },
+    }]);
+  } catch { return; }
+  await recordVector(env, uid, vecId, capability, "message", "avatok", conv);
+}
+
+// OpenAI Whisper transcription of a voice note in R2. Gated on OPENAI_API_KEY
+// (unset → voice notes are simply not indexed). media_ref is the R2 key.
+async function transcribeVoice(env: Env, mediaRef: string): Promise<string> {
+  if (!env.OPENAI_API_KEY) return "";
+  const obj = await env.BLOBS.get(mediaRef).catch(() => null);
+  if (!obj) return "";
+  const buf = await obj.arrayBuffer();
+  if (buf.byteLength > 24_000_000) return ""; // Whisper hard limit ~25 MB
+  const mime = obj.httpMetadata?.contentType || "audio/mp4";
+  const form = new FormData();
+  form.append("file", new File([buf], "voice.m4a", { type: mime }));
+  form.append("model", "whisper-1");
+  try {
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+      body: form,
+    });
+    if (!res.ok) return "";
+    const j = (await res.json()) as any;
+    try { env.ANALYTICS?.writeDataPoint({ blobs: ["brain_whisper"], doubles: [buf.byteLength], indexes: ["brain"] }); } catch { /* noop */ }
+    return String(j.text || "").trim();
+  } catch { return ""; }
+}
+
+// Guardrail toggled OFF with BRAIN_RETRO_DELETE → remove already-indexed items
+// for that capability. payload: { capability }
+async function retroDelete(msg: BrainMsg, env: Env): Promise<void> {
+  const uid = msg.uid;
+  const capability = String((msg.payload as any)?.capability || msg.capability || "");
+  if (!capability || !env.VECTOR_INDEX) return;
+  const rs = await env.DB_BRAIN.prepare(
+    "SELECT vec_id, kind, ref FROM brain_vectors WHERE uid=?1 AND capability=?2",
+  ).bind(uid, capability).all().catch(() => ({ results: [] as any[] }));
+  const rows = (rs.results ?? []) as any[];
+  const ids = rows.map((r) => String(r.vec_id));
+  for (let i = 0; i < ids.length; i += 1000) {
+    try { await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000)); } catch { /* best-effort */ }
+  }
+  await env.DB_BRAIN.prepare("DELETE FROM brain_vectors WHERE uid=?1 AND capability=?2").bind(uid, capability).run().catch(() => null);
+  if (capability === "voicemails") {
+    await env.DB_BRAIN.prepare("DELETE FROM brain_transcripts WHERE uid=?1").bind(uid).run().catch(() => null);
+  }
+  // App-level toggles also drop derived facts from that app.
+  await env.DB_BRAIN.prepare("DELETE FROM brain_facts WHERE uid=?1 AND source_app=?2").bind(uid, capability).run().catch(() => null);
+}
+
+// "Delete my AvaBrain data" — wipe ALL brain stores + vectors for the user
+// (account itself stays; this is the settings-screen button, not GDPR deletion).
+async function purgeBrain(uid: string, env: Env): Promise<void> {
+  const ids: string[] = [];
+  try {
+    const er = await env.DB_BRAIN.prepare("SELECT id FROM brain_entities WHERE uid=?1").bind(uid).all();
+    for (const r of (er.results ?? []) as any[]) ids.push(`${uid}:ent:${r.id}`);
+  } catch { /* empty */ }
+  try {
+    const vr = await env.DB_BRAIN.prepare("SELECT vec_id FROM brain_vectors WHERE uid=?1").bind(uid).all();
+    for (const r of (vr.results ?? []) as any[]) ids.push(String(r.vec_id));
+  } catch { /* empty */ }
+  try {
+    const lr = await env.DB_MEDIA.prepare("SELECT DISTINCT id FROM user_media WHERE uid=?1").bind(uid).all();
+    for (const r of (lr.results ?? []) as any[]) for (let i = 0; i < 8; i++) ids.push(`${uid}:lib:${r.id}:${i}`);
+  } catch { /* empty */ }
+  if (env.VECTOR_INDEX) {
+    for (let i = 0; i < ids.length; i += 1000) {
+      try { await env.VECTOR_INDEX.deleteByIds(ids.slice(i, i + 1000)); } catch { /* best-effort */ }
+    }
+  }
+  for (const q of [
+    "DELETE FROM brain_entities WHERE uid=?1",
+    "DELETE FROM brain_relationships WHERE uid=?1",
+    "DELETE FROM brain_facts WHERE uid=?1",
+    "DELETE FROM brain_daily_summaries WHERE uid=?1",
+    "DELETE FROM brain_events WHERE uid=?1",
+    "DELETE FROM brain_vectors WHERE uid=?1",
+    "DELETE FROM brain_transcripts WHERE uid=?1",
+  ]) { try { await env.DB_BRAIN.prepare(q).bind(uid).run(); } catch { /* table optional */ } }
+}
+
+// Admin-triggered backfill: re-index the user's existing PUBLIC library files
+// (bounded). Messages live in InboxDO and flow in as they're sent — the backfill
+// covers the static file history, guardrails respected via the normal path.
+async function backfill(uid: string, env: Env): Promise<void> {
+  if (!(await guardrailAllows(env, uid, "files"))) return;
+  try {
+    const rs = await env.DB_MEDIA.prepare(
+      "SELECT id, key, mime_type, size_bytes, file_name, category FROM user_media WHERE uid=?1 AND visibility='public' AND moderation_status='live' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200",
+    ).bind(uid).all();
+    for (const r of (rs.results ?? []) as any[]) {
+      await ingestLibraryFile({
+        uid, event_type: "library_file_added", source_app: "avalibrary",
+        payload: { media_id: r.id, key: r.key, mime: r.mime_type, size: r.size_bytes, name: r.file_name, category: r.category, visibility: "public" },
+      }, env);
+    }
+  } catch { /* columns may differ; backfill best-effort */ }
 }
 
 async function embed(env: Env, text: string): Promise<number[] | null> {

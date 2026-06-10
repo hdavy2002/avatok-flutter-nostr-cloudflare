@@ -54,6 +54,36 @@ class BrainApi {
     return ((j['events'] as List?) ?? const []).map((e) => (e as Map).cast<String, dynamic>()).toList();
   }
 
+  // ---- Phase 9: AvaChat ----------------------------------------------------
+
+  /// One AvaChat turn: RAG answer + tappable source chips.
+  static Future<BrainChatReply> chat(String message) async {
+    final res = await ApiAuth.postJson('$kBrainBase/chat', {'message': message},
+        timeout: const Duration(seconds: 45));
+    final j = _json(res.body);
+    return BrainChatReply(
+      (j['answer'] ?? '').toString(),
+      ((j['sources'] as List?) ?? const [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList(),
+    );
+  }
+
+  /// AvaChat transcript (stored server-side in the user's own inbox, conv 'brain').
+  static Future<List<Map<String, dynamic>>> history() async {
+    final res = await ApiAuth.getSigned('$kBrainBase/history');
+    final j = _json(res.body);
+    return ((j['messages'] as List?) ?? const [])
+        .map((e) => (e as Map).cast<String, dynamic>())
+        .toList();
+  }
+
+  /// "Delete my AvaBrain data" — wipes vectors, transcripts and the knowledge graph.
+  static Future<bool> purge() async {
+    final res = await ApiAuth.postJson('$kBrainBase/purge', const {});
+    return res.statusCode == 200;
+  }
+
   static Map<String, dynamic> _json(String body) {
     try { return jsonDecode(body) as Map<String, dynamic>; } catch (_) { return {}; }
   }
@@ -62,4 +92,12 @@ class BrainApi {
     final v = _json(body)[key];
     return v == null ? '' : v.toString();
   }
+}
+
+/// One AvaChat answer + its source chips ({app, kind, ref, conv, media_ref,
+/// media_id, name, snippet}).
+class BrainChatReply {
+  final String answer;
+  final List<Map<String, dynamic>> sources;
+  const BrainChatReply(this.answer, this.sources);
 }

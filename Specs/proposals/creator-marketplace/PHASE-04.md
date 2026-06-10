@@ -5,6 +5,25 @@
 its schema/quota work where it matches; THIS file wins on conflicts).
 Prereq: Phase 1 (Phase 2 only needed for over-quota charging).
 
+## ⚠️ ALREADY BUILT — verified 2026-06-10. Do NOT redo.
+- **The file index EXISTS:** D1 `avatok-media-meta` → `user_media` +
+  `user_media_hashes` (content-addressed) per `migrations/media.sql`, EXTENDED by
+  `migrations/library.sql` with `category` (image|video|document|audio|other,
+  backfilled from mime), `file_name`, `folder_id`, `deleted_at` (soft delete),
+  `source_kind` (sent|received), `enc_blob`, plus `library_folders`.
+  **Do NOT create `files_index` — `user_media` IS the index.** "registerFile" =
+  the existing media-insert path; this phase's job is to VERIFY every upload
+  route writes it (chat, /upload/public, future apps) and add what's missing.
+- Upload pipeline + moderation chain (CSAM hash → NSFW → pHash → strikes) exist
+  in `avatok-consumers`.
+
+**Therefore this phase = quota + AvaStorage UI + live updates:**
+`storage_quota` table, 5 GB enforcement at upload, 20 coins/GB/mo billing cron
+(WalletDO `spend` + ledger `storage_charge` per Phase 2 reconciliation),
+read-only-never-delete state, the AvaStorage screen (graphs from a per-kind
+summary over `user_media.category`), live summary push over the InboxDO socket,
+and the AvaLibrary Flutter screens over the EXISTING folder/category model.
+
 ## Objective
 ONE per-account storage pool. Every picture, file, PDF, video, voice note uploaded
 or received in ANY app (chat today; every future app) appears in AvaLibrary.

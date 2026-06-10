@@ -2,6 +2,29 @@
 
 **Read first:** `00-UNIVERSAL-PROPOSAL.md` §2, §6. Prereq: Phase 1.
 
+## ⚠️ ALREADY BUILT — verified 2026-06-10. Do NOT redo.
+- **Slots + bookings EXIST:** `migrations/calendar.sql` → `calendar_slots`
+  (host, price_coins, capacity, booked_count, status) and `calendar_events`
+  (MIRRORED rows: one per party, booking_id links host+attendee, paid flag,
+  `reminded_60`/`reminded_30` columns). Routes `worker/src/routes/calendar.ts`:
+  slot create/list/cancel, `POST /api/calendar/book` (wallet debit), cancel,
+  `GET /api/calendar/events`. A reminder cron design (30 m + 1 h) exists.
+  **Do NOT create new `bookings`/`availability_rules` tables from scratch —
+  `calendar_events` IS the bookings table; `calendar_slots` IS availability.**
+- ⚠️ **npub migration:** these tables/routes are keyed by `host_npub`/
+  `attendee_npub` (pre-pivot Nostr ids). First task of this phase: migrate
+  columns/queries to Clerk `uid` (ADD uid columns, backfill, switch routes) —
+  identity = Clerk per the Cloudflare-native arch.
+- `notifyUser` (worker/src/notify.ts) handles in-app feed + push; Brevo email
+  is the missing layer, not the notification plumbing.
+
+**Therefore this phase = conflict engine + sync + policies on top:**
+`calendar_blocks` (cross-app occupancy — NEW, the heart of this phase) wired
+into slot creation AND booking AND AvaLive event publish; Google Calendar
+two-way sync; `booking_policies` + vacation mode; reschedule flow; Brevo email
+matrix + ICS + join-link fallback; adapt the reminder columns to the
+T-24h/T-60m/T-10m ladder (`reminded_30` → repurpose or add `reminded_10`).
+
 ## Objective
 ONE availability engine for the whole platform. Every time-consuming thing a
 creator does — AvaLive event, AvaConsult session, anything future — lands in the

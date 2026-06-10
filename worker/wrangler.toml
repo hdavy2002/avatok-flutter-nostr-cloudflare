@@ -23,6 +23,7 @@ BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worke
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"  # Gemma 4 26B-A4B MoE (~4B-class cost, thinking-mode reasoning)
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matches avatok-semantic
+BRAIN_RETRO_DELETE = "1"                                    # Phase 9: toggle OFF ⇒ retro-delete indexed items
 POSTHOG_QUERY_HOST = "https://eu.posthog.com"               # investigate() reads (personal key) — EU: project 139917 lives on eu.posthog.com
 POSTHOG_PROJECT_ID = "139917"
 WALLET_TOPUP_ENABLED = "0"                                  # ⚠️ real money-in OFF pending legal (§10.1)
@@ -34,6 +35,10 @@ CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.avatok.ai"
 # Admins allowed to PUT /api/admin/config (remote kill switches, Phase 1 A2).
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
+# AvaTalk group conferencing (Phase 10 — LiveKit ≤25). LIVEKIT_URL is a var;
+# LIVEKIT_API_KEY / LIVEKIT_API_SECRET are secrets (`wrangler secret put`).
+# All three unset ⇒ /api/conference/* returns 503 (flag-gated).
+LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
@@ -127,6 +132,23 @@ queue = "wallet-transactions"
 [[queues.producers]]
 binding = "Q_AGENT"            # agent-tasks (agent conversations + per-app hooks, Phase 7)
 queue = "agent-tasks"
+
+[[queues.producers]]
+binding = "Q_MONEY"            # money-settlements (refund/settlement engine, marketplace Phase 7)
+queue = "money-settlements"
+
+# Phase 7: avatok-api consumes its OWN money queue — the engine lives next to
+# the ledger primitives. 5 retries, then the DLQ (alert email + admin retry).
+[[queues.consumers]]
+queue = "money-settlements"
+max_batch_size = 10
+max_retries = 5
+dead_letter_queue = "money-dlq"
+
+[[queues.consumers]]
+queue = "money-dlq"
+max_batch_size = 10
+max_retries = 3
 
 # ---------------------------------------------------------------------------
 # Workers AI — image moderation on the /upload/public path only.
@@ -254,10 +276,12 @@ pattern = "api-staging.avatok.ai"
 custom_domain = true
 
 [env.staging.vars]
+TEST_CLOCK_ALLOWED = "1"   # Phase 7 A2 — refund-engine test clock (staging ONLY)
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"
+BRAIN_RETRO_DELETE = "1"
 POSTHOG_QUERY_HOST = "https://eu.posthog.com"
 POSTHOG_PROJECT_ID = "139917"
 WALLET_TOPUP_ENABLED = "0"
@@ -342,6 +366,21 @@ queue = "wallet-transactions-staging"
 [[env.staging.queues.producers]]
 binding = "Q_AGENT"
 queue = "agent-tasks-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_MONEY"
+queue = "money-settlements-staging"
+
+[[env.staging.queues.consumers]]
+queue = "money-settlements-staging"
+max_batch_size = 10
+max_retries = 5
+dead_letter_queue = "money-dlq-staging"
+
+[[env.staging.queues.consumers]]
+queue = "money-dlq-staging"
+max_batch_size = 10
+max_retries = 3
 
 [env.staging.ai]
 binding = "AI"

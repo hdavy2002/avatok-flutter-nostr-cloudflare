@@ -2,9 +2,37 @@
 
 **Read first:** `00-UNIVERSAL-PROPOSAL.md` §5 (gating matrix), §4. Prereq: Phase 2.
 
+## ⚠️ ALREADY BUILT — verified against the repo 2026-06-10. Do NOT redo.
+- **AvaID gateway EXISTS:** `worker/src/routes/id.ts` — `POST /api/id/session`,
+  `POST /api/id/result`, `GET /api/id/status`; selfie-video **liveness via AWS
+  Rekognition** (flag-gated: no AWS creds ⇒ 503), ≥90% confidence auto-verifies
+  (`tier='verified'`, KV cache, brain hook, notifyUser), 3 attempts/24 h cap.
+  Tables exist in `migrations/avaid.sql`: `verification_status`,
+  `verification_attempts`, `deletion_requests`.
+- **Payout backend EXISTS:** `worker/src/routes/payout.ts` — `POST /api/payout/
+  setup` (bank → Wise recipient), `GET /api/payout/accounts`, `POST /api/payout/
+  request` (min 1,000 coins = $10; only SPENDABLE post-7-day-hold coins),
+  `GET /api/payout/status`, `POST /webhooks/wise` (transfer state changes).
+  Tables: `migrations/payout.sql` → `payout_accounts`, `payout_requests`
+  (NOT "payouts" — use the existing names).
+- **Notifications producer EXISTS:** `worker/src/notify.ts` (`notifyUser`) — D1
+  feed + realtime via inbox DO + Q_PUSH. Use it; Brevo email rides consumers.
+
+**Therefore this phase = EXTEND, not build:**
+1. **Stripe Identity becomes a second provider behind the SAME AvaID gateway**
+   (owner requirement: document + selfie video KYC). Add provider column to
+   `verification_attempts`; `POST /api/id/session {provider:'stripe'}` creates a
+   Stripe VerificationSession; webhook updates `verification_status` exactly like
+   the Rekognition path. Rekognition liveness stays as the lightweight tier;
+   Stripe = the strong doc-KYC required by the gating matrix. `requireKyc` reads
+   the existing `verification_status`/tier — one gate, two providers.
+2. **Payout:** add the `requireKyc` gate to `setup` + `request` (currently
+   ungated), tax fields via ALTERs on `payout_accounts`, the Flutter UI, and
+   Brevo status emails. Do not rewrite wise.ts or the routes.
+
 ## Objective
-AvaIdentity = reusable video-KYC gateway (Stripe Identity) any app can call.
-AvaPayout = withdraw wallet → bank via Wise, allowed only after KYC passes.
+AvaIdentity = the existing AvaID gateway, extended with Stripe Identity doc-KYC.
+AvaPayout = UI + KYC gate + tax capture over the existing Wise payout backend.
 
 ## Part A — AvaIdentity
 

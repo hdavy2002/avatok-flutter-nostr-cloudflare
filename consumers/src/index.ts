@@ -6,6 +6,10 @@ import { handleBrain } from "./brain";
 import { handleDeletion } from "./deletion";
 import { handleWalletTx } from "./wallet";
 import { handleAgent } from "./agent";
+import { reconWallet } from "./recon";
+import { storageSnapshots, storageBilling } from "./storage";
+import { bookingReminderLadder, gcalSyncSweep } from "./calendar";
+import { moneySweep } from "./money_sweep";
 
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
@@ -34,9 +38,21 @@ export default {
     try { env.ANALYTICS?.writeDataPoint({ blobs: ["queue", batch.queue], doubles: [ok, fail], indexes: ["queue"] }); } catch { /* best-effort */ }
   },
 
-  // Cron — reminders every 15m (lightweight); heavy cleanup only on the 6h tick.
+  // Cron — money sweep every minute (Phase 7); reminders every 15m
+  // (lightweight); heavy cleanup only on the 6h tick.
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
-    await calendarReminders(env);
+    // Phase 7: refund/settlement SWEEP — catches missed DO alarms + settles
+    // ended sessions (enqueue-only; the engine in avatok-api is idempotent, so
+    // the system is alarm-precise AND cron-safe).
+    try {
+      const n = await moneySweep(env);
+      if (n) env.ANALYTICS?.writeDataPoint({ blobs: ["money_sweep"], doubles: [n], indexes: ["money"] });
+    } catch (e) { console.error("[money-sweep]", String(e)); }
+    if ((event as any).cron === "* * * * *") return; // minute tick: sweep only
+
+    // Phase 5: T-24h / T-60m / T-10m reminder ladder + gcal inbound-sync fallback.
+    try { await bookingReminderLadder(env, sendEmail); } catch (e) { console.error("[reminders]", String(e)); }
+    try { await gcalSyncSweep(env); } catch (e) { console.error("[gcal]", String(e)); }
     if ((event as any).cron && (event as any).cron !== "0 */6 * * *") return; // 15m tick: reminders only
 
     const dayAgo = Date.now() - 86_400_000;
@@ -97,32 +113,27 @@ export default {
         env.ANALYTICS?.writeDataPoint({ blobs: ["ai_budget_alert"], doubles: [row.calls, budget], indexes: ["ai_budget"] });
       }
     } catch { /* ai_spend table may not exist yet */ }
+
+    // Wallet reconciliation (Phase 2, A2) — nightly, on the midnight 6h tick.
+    // Every wallet_accounts bucket and every recently-active user's WalletDO is
+    // checked against the double-entry ledger; mismatches email ALERT_EMAIL.
+    if (new Date().getUTCHours() === 0) {
+      try { await reconWallet(env); } catch (e) { console.error("[recon]", String(e)); }
+      // AvaStorage (Phase 4): daily usage snapshot (trend mini-bars) + the
+      // monthly 20-coins/GB over-quota billing run on the 1st (idempotent op_id).
+      try { await storageSnapshots(env); } catch (e) { console.error("[storage-snap]", String(e)); }
+      if (new Date().getUTCDate() === 1) {
+        try {
+          const r = await storageBilling(env);
+          env.ANALYTICS?.writeDataPoint({ blobs: ["storage_billing"], doubles: [r.charged, r.locked], indexes: ["storage"] });
+        } catch (e) { console.error("[storage-billing]", String(e)); }
+      }
+    }
   },
 };
 
-// --- AvaCalendar reminders (§10.2): 1h + 30m before start, deduped by flags ---
-async function calendarReminders(env: Env): Promise<void> {
-  if (!env.Q_PUSH) return;
-  const now = Date.now();
-  const h1Lo = now + 30 * 60_000, h1Hi = now + 60 * 60_000;   // 1h band
-  const m30Hi = now + 30 * 60_000;                             // 30m band (now..30m)
-  try {
-    const due60 = await env.DB_META.prepare(
-      "SELECT id, owner_npub, title, start_at FROM calendar_events WHERE status='confirmed' AND reminded_60=0 AND start_at>?1 AND start_at<=?2 LIMIT 100",
-    ).bind(h1Lo, h1Hi).all();
-    for (const e of (due60.results ?? []) as any[]) {
-      try { await env.Q_PUSH.send({ kind: "notify", to: e.owner_npub, fromName: "Reminder", title: "In ~1 hour", body: e.title, data: { deeplink: "/calendar" } }); } catch { /* best-effort */ }
-      await env.DB_META.prepare("UPDATE calendar_events SET reminded_60=1 WHERE id=?1").bind(e.id).run();
-    }
-    const due30 = await env.DB_META.prepare(
-      "SELECT id, owner_npub, title, start_at FROM calendar_events WHERE status='confirmed' AND reminded_30=0 AND start_at>?1 AND start_at<=?2 LIMIT 100",
-    ).bind(now, m30Hi).all();
-    for (const e of (due30.results ?? []) as any[]) {
-      try { await env.Q_PUSH.send({ kind: "notify", to: e.owner_npub, fromName: "Reminder", title: "Starting soon", body: e.title, data: { deeplink: "/calendar" } }); } catch { /* best-effort */ }
-      await env.DB_META.prepare("UPDATE calendar_events SET reminded_30=1, reminded_60=1 WHERE id=?1").bind(e.id).run();
-    }
-  } catch { /* tables may not exist pre-Phase-3 */ }
-}
+// (Phase 5: the old 1h/30m calendarReminders moved to src/calendar.ts as the
+// T-24h/T-60m/T-10m bookingReminderLadder — emails+push, idempotent flags.)
 
 // --- email consumer (Brevo / Sendinblue transactional API) ---
 // Parses an optional "Name <addr@host>" sender into Brevo's {name,email} shape.
@@ -144,6 +155,8 @@ async function sendEmail(msg: EmailMsg, env: Env): Promise<void> {
       to: [{ email: msg.to }],
       subject: msg.subject,
       htmlContent: msg.html,
+      // Phase 5: ICS attachments (base64) — Brevo "attachment" shape.
+      ...(msg.attachments?.length ? { attachment: msg.attachments.map((a) => ({ name: a.name, content: a.content })) } : {}),
     }),
   });
   if (!res.ok) throw new Error("Brevo send failed: " + res.status + " " + (await res.text()).slice(0, 200));

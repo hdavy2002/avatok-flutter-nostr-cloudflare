@@ -13,6 +13,7 @@ import { setVerifiedCache } from "../auth";
 import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
 import { createLivenessSession, getLivenessResults, rekognitionConfigured } from "../aws/rekognition";
+import { stripeKycSession, stripeIdentityConfigured } from "./kyc";
 import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 
@@ -27,15 +28,23 @@ async function attemptsLast24h(env: Env, uid: string): Promise<number> {
   return row?.n ?? 0;
 }
 
-// POST /api/id/session
+// POST /api/id/session  — {provider?: 'rekognition'|'stripe'} (default rekognition).
+// Phase 3: Stripe Identity (document + matching selfie) is a SECOND provider
+// behind this same gateway; both share the 3-attempts/24h budget.
 export async function idSession(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  if (!rekognitionConfigured(env)) return json({ error: "verification unavailable", reason: "aws_unconfigured" }, 503);
+
+  const body = (await req.clone().json().catch(() => ({}))) as any;
+  const provider = String(body.provider || "rekognition");
 
   if (await attemptsLast24h(env, ctx.uid) >= MAX_ATTEMPTS_24H) {
     return json({ error: "too many attempts", retry_after_hours: 24 }, 429);
   }
+
+  if (provider === "stripe") return stripeKycSession(ctx, env);
+
+  if (!rekognitionConfigured(env)) return json({ error: "verification unavailable", reason: "aws_unconfigured" }, 503);
 
   let session: { SessionId: string };
   try {
@@ -53,7 +62,7 @@ export async function idSession(req: Request, env: Env): Promise<Response> {
        ON CONFLICT(uid) DO UPDATE SET status='pending', session_id=?2, updated_at=?3`,
     ).bind(ctx.uid, session.SessionId, now),
     metaDb(env).prepare(
-      "INSERT INTO verification_attempts (uid, session_id, result, created_at) VALUES (?1,?2,'pending',?3)",
+      "INSERT INTO verification_attempts (uid, session_id, result, provider, created_at) VALUES (?1,?2,'pending','rekognition',?3)",
     ).bind(ctx.uid, session.SessionId, now),
   ]);
 
@@ -128,15 +137,22 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const row = await metaSession(env)
-    .prepare("SELECT status, confidence, verified_at FROM verification_status WHERE uid=?1")
-    .bind(ctx.uid).first<{ status: string; confidence: number | null; verified_at: number | null }>();
+    .prepare("SELECT status, method, confidence, failure_reason, verified_at FROM verification_status WHERE uid=?1")
+    .bind(ctx.uid).first<{ status: string; method: string | null; confidence: number | null; failure_reason: string | null; verified_at: number | null }>();
+  const kyc = await metaSession(env)
+    .prepare("SELECT status, provider, verified_at FROM kyc_status WHERE uid=?1")
+    .bind(ctx.uid).first<{ status: string; provider: string | null; verified_at: number | null }>();
   return json({
     uid: ctx.uid,
     status: row?.status ?? "unverified",
+    method: row?.method ?? null,
     confidence: row?.confidence ?? null,
+    failure_reason: row?.failure_reason ?? null,
     verified_at: row?.verified_at ?? null,
     tier: (row?.status === "verified" ? "verified" : "basic"),
+    kyc: { status: kyc?.status ?? "unverified", provider: kyc?.provider ?? null, verified_at: kyc?.verified_at ?? null },
     rekognition_configured: rekognitionConfigured(env),
+    stripe_configured: stripeIdentityConfigured(env),
   });
 }
 

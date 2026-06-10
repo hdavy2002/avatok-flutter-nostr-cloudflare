@@ -38,6 +38,10 @@ const String kLiveEndUrl = 'https://avatok-calls.getmystuffme.workers.dev/live/e
 /// 1:1 calls connect off-Wi-Fi / on cellular.
 const String kIceUrl = 'https://$kSignalingHost/api/ice';
 
+/// AvaTalk group conferencing (Phase 10 — LiveKit, ≤25 participants).
+/// POST $kConferenceBase/<gid>/start|join|end · GET $kConferenceBase/<gid>/status
+const String kConferenceBase = 'https://$kSignalingHost/api/conference';
+
 /// AvaTok public directory (NIP-05-style) — find people by @handle / name / npub.
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)
 const String kMeUrl = 'https://$kSignalingHost/api/me'; // GET — restore my account by Clerk session
@@ -76,6 +80,7 @@ const String kLibraryFolderCopyUrl = 'https://$kSignalingHost/api/library/folder
 const String kLibraryDeleteUrl = 'https://$kSignalingHost/api/library/delete';  // POST {id}
 const String kLibraryRecordUrl = 'https://$kSignalingHost/api/library/record';  // POST received entry
 const String kStorageUrl = 'https://$kSignalingHost/api/storage';               // GET accounting
+const String kStorageSummaryUrl = 'https://$kSignalingHost/api/storage/summary'; // GET summary row + 6-mo trend (Phase 4)
 const String kBrainConsentUrl = 'https://$kSignalingHost/api/brain/consent';    // GET/POST toggles
 
 /// Public R2 read host (no Worker in the path) — content-addressed by sha256.
@@ -134,9 +139,12 @@ const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {sessio
 const String kLivenessResultUrl = '$kIdBase/liveness/result'; // POST {session_id}
 
 const String kWalletBase = '$kApiBase/wallet';    // AvaWallet (Phase 2)
-const String kCalendarBase = '$kApiBase/calendar';// AvaCalendar (Phase 3)
+const String kCalendarBase = '$kApiBase/calendar';// AvaCalendar (Phase 3→5)
+const String kBookingBase = '$kApiBase/booking';  // AvaBooking (Phase 5)
+const String kTimeUrl = '$kApiBase/time';         // server epoch (clock skew, Phase 5 A2)
 const String kPayoutBase = '$kApiBase/payout';    // AvaPayout (Phase 4)
 const String kOlxBase = '$kApiBase/olx';          // AvaOLX (Phase 5)
+const String kAgreementsBase = '$kApiBase/agreements'; // A1 compliance (Phase 3)
 const String kAgentBase = '$kApiBase/agent';      // AvaBrain agentic layer (Phase 7-8)
 
 /// Right-to-erasure: server-side cascade delete of all the user's media + data. (NIP-98 + Clerk)

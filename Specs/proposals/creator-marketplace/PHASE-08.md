@@ -3,6 +3,21 @@
 **Read first:** `00-UNIVERSAL-PROPOSAL.md` §1, §4. Prereqs: Phases 6, 7
 (data sources). AvaVerse currently = "Your dashboard" placeholder.
 
+## ⚠️ ALREADY BUILT — verified 2026-06-10. Reuse, don't duplicate.
+- **System-notice feed EXISTS:** `worker/src/notify.ts` + `migrations/
+  notifications.sql` + `routes/notifications.ts` — typed notices (wallet|system|
+  moderation|social|brain|payment) persisted to D1, realtime via inbox DO,
+  push via Q_PUSH. **AvaInbox "System" rows = this feed** — render it, don't
+  re-plumb it.
+- **InboxDO + messaging routes exist** (DM/conversation core) — AvaInbox is a
+  filtered VIEW as specced; the `context` tag is the only backend addition.
+- **Server-side PostHog capture EXISTS:** `worker/src/hooks.ts` (`track`,
+  `metric`, `brainFact`) — Verse/worker events use these helpers, per
+  ANALYTICS-OBSERVABILITY.md.
+- `agent_inbox` table (agent.sql) holds AI-agent messages — surface as another
+  AvaInbox source chip ("Agent"), don't merge stores.
+- Verse aggregation/snapshots: genuinely NEW — build as specced.
+
 ## Objective
 AvaVerse = the creator's bird's-eye view: money earned, projections ("400 joined ×
 $10 ⇒ you may earn ~$3,200 after fees"), audience analytics, top events, reviews

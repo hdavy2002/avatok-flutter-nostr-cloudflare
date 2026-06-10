@@ -58,6 +58,11 @@ class SyncHub {
   final _incoming = StreamController<HubEvent>.broadcast();
   Stream<HubEvent> get incoming => _incoming.stream;
 
+  /// Live AvaStorage summaries pushed by the server after any upload/delete in
+  /// ANY app (frame {type:'storage', used_bytes, quota_bytes, state, by_category}).
+  final _storage = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get storage => _storage.stream;
+
   String? get _myUid => AccountScope.id;
 
   /// Start (idempotent) the shared InboxDO socket. The priv/pub args are legacy
@@ -182,6 +187,11 @@ class SyncHub {
         break;
       case 'receipt':
         _ingestReceipt(m);
+        break;
+      case 'storage':
+        // AvaStorage live summary (Phase 4): transient system event — fan to any
+        // open AvaStorage screen. Same multiplexed socket, no extra connection.
+        _storage.add(m);
         break;
     }
   }

@@ -15,6 +15,7 @@ export interface PlatformConfig {
   consultEnabled: boolean;
   conferenceEnabled: boolean;
   brainEnabled: boolean;
+  verseEnabled: boolean;
   minAppBuild: number;
 }
 
@@ -25,6 +26,7 @@ const DEFAULTS: PlatformConfig = {
   consultEnabled: true,
   conferenceEnabled: true,
   brainEnabled: true,
+  verseEnabled: true,
   minAppBuild: 0,
 };
 
