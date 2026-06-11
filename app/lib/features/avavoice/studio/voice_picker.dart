@@ -1,6 +1,7 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/analytics.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/theme.dart';
 import '../widgets.dart';
@@ -41,6 +42,8 @@ class _VoicePickerState extends State<VoicePicker> {
   }
 
   Future<void> _preview(VoiceOption v) async {
+    Analytics.capture('avavoice_voice_previewed',
+        {'voice': v.name, 'has_clip': v.previewUrl != null});
     if (_playing == v.name) {
       await _player.stop();
       setState(() => _playing = null);

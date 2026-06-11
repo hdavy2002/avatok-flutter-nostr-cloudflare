@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/theme.dart';
@@ -29,6 +30,8 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   @override
   void initState() {
     super.initState();
+    Analytics.screenViewed('avavoice', 'agent_detail',
+        from: widget.bookingId != null ? 'booking' : null);
     _load();
     // Live availability: poll every 10 s so "Agent busy" flips back to
     // "Call now" the moment a slot frees (spec §3.1b).
@@ -67,12 +70,17 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Future<void> _callNow() async {
     final a = _agent;
     if (a == null || _working) return;
+    Analytics.capture('avavoice_call_now_tapped',
+        {'agent': a.id, 'payer_mode': a.payerMode, 'vision': a.visionEnabled});
     final lang = await pickLanguage(context);
     if (lang == null || !mounted) return;
+    Analytics.capture('avavoice_language_selected', {'agent': a.id, 'language': lang, 'where': 'call_now'});
     setState(() => _working = true);
     final r = await AvaVoiceApi.callNow(a.id, language: lang);
     if (!mounted) return;
     setState(() => _working = false);
+    Analytics.capture('avavoice_call_now_result',
+        {'agent': a.id, 'status': (r['status'] as num?)?.toInt() ?? 0});
     switch (r['status']) {
       case 200:
         Navigator.push(context, MaterialPageRoute(builder: (_) => VoiceCallScreen(
@@ -80,6 +88,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
         ))).then((_) { _load(); });
       case 402:
         final needed = (r['needed'] as num?)?.toInt();
+        Analytics.capture('avavoice_topup_prompted', {'agent': a.id, 'where': 'call_now'});
         _snack('Not enough AvaCoins in your wallet'
             '${needed != null ? ' — you need ${fmtCoins(needed)}' : ''}.', topUp: true);
       case 409:
@@ -93,6 +102,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Future<void> _book() async {
     final a = _agent;
     if (a == null) return;
+    Analytics.capture('avavoice_book_tapped', {'agent': a.id, 'payer_mode': a.payerMode});
     final booked = await showBookingSheet(context, a);
     if (booked == true && mounted) {
       _snack('Booked! Find it under "My bookings".');

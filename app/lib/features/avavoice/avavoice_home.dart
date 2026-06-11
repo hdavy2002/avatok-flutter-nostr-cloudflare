@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/remote_config.dart';
@@ -26,6 +27,13 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
+    Analytics.screenViewed('avavoice', 'home');
+    _tabs.addListener(() {
+      if (!_tabs.indexIsChanging) {
+        Analytics.capture('avavoice_tab_switched',
+            {'tab': _tabs.index == 0 ? 'marketplace' : 'my_bookings'});
+      }
+    });
     _load();
   }
 
@@ -52,9 +60,15 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
     }
   }
 
-  void _openAgent(VoiceAgent a) => Navigator.push(context,
-      MaterialPageRoute(builder: (_) => AgentDetailScreen(agentId: a.id)))
-      .then((_) => _load());
+  void _openAgent(VoiceAgent a) {
+    Analytics.capture('avavoice_agent_opened', {
+      'agent': a.id, 'payer_mode': a.payerMode, 'busy': a.busy,
+      'from': _q.isEmpty ? 'browse' : 'search',
+    });
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => AgentDetailScreen(agentId: a.id)))
+        .then((_) => _load());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +134,11 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
             ),
-            onSubmitted: (v) { _q = v; _load(); },
+            onSubmitted: (v) {
+              _q = v;
+              Analytics.capture('avavoice_search', {'q_len': v.trim().length});
+              _load();
+            },
           ),
           const SizedBox(height: 14),
           // Hero strip — what AvaVoice is.

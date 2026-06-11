@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/analytics.dart';
 import '../../../core/avatar.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/theme.dart';
@@ -24,6 +25,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    Analytics.screenViewed('avavoice', 'studio_dashboard');
     _load();
   }
 

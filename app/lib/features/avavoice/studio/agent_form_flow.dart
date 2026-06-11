@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/analytics.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/theme.dart';
 import '../widgets.dart';
@@ -52,6 +53,9 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   void initState() {
     super.initState();
     _agentId = widget.existing?.id;
+    Analytics.screenViewed('avavoice', 'studio_wizard');
+    Analytics.capture('avavoice_wizard_started',
+        {'mode': widget.existing == null ? 'create' : 'edit'});
   }
 
   @override
@@ -113,9 +117,15 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   Future<void> _next() async {
     if (!_validStep() || _working) return;
     if (!await _save() || !mounted) return;
+    Analytics.capture('avavoice_wizard_step_completed', {
+      'step': _step + 1, 'agent': _agentId ?? '',
+      if (_step == 1) 'voice': _voice,
+      if (_step == 3) 'payer_mode': _payerMode,
+    });
     if (_step < 3) {
       setState(() => _step++);
     } else {
+      Analytics.capture('avavoice_agent_saved_draft', {'agent': _agentId ?? ''});
       Navigator.pop(context, true); // saved as draft
     }
   }
@@ -127,6 +137,12 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     final r = await AvaVoiceApi.publish(_agentId!);
     if (!mounted) return;
     setState(() => _working = false);
+    Analytics.capture('avavoice_publish_result', {
+      'agent': _agentId ?? '', 'ok': r.isEmpty, 'payer_mode': _payerMode,
+      'rate_coins': _payerMode == 'creator_pays' ? 0 : _rateCoins,
+      'session_limit': _sessionLimit, 'vision': _vision, 'files': _files.length,
+      'voice': _voice,
+    });
     if (r.isEmpty) {
       showDialog(context: context, builder: (d) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -155,6 +171,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     setState(() {
       _uploading = false;
       if (rec != null) _files.add(rec);
+    });
+    Analytics.capture('avavoice_brain_file_upload', {
+      'agent': _agentId ?? '', 'ok': rec != null, 'size': f.size,
+      'indexed': rec?.indexed ?? false,
     });
     if (rec == null) _snack('Upload failed — try again.');
   }

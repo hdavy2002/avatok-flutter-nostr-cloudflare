@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/analytics.dart';
 import '../../../core/avatar.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/theme.dart';
@@ -22,6 +23,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
   @override
   void initState() {
     super.initState();
+    Analytics.screenViewed('avavoice', 'studio_my_agents');
     _load();
   }
 
@@ -54,6 +56,7 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
   }
 
   Future<void> _act(VoiceAgent a, String action) async {
+    Analytics.capture('avavoice_studio_action', {'agent': a.id, 'action': action});
     switch (action) {
       case 'publish':
         final r = await AvaVoiceApi.publish(a.id);

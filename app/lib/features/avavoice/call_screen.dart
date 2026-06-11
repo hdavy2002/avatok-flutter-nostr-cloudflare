@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/theme.dart';
@@ -42,6 +43,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   @override
   void initState() {
     super.initState();
+    Analytics.screenViewed('avavoice', 'call',
+        from: widget.bookingId != null ? 'booking' : 'call_now');
     _start();
   }
 
@@ -61,6 +64,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     final r = await AvaVoiceApi.sessionStart(
         bookingId: widget.bookingId, callId: widget.callId, language: widget.language);
     if (!mounted) return;
+    Analytics.capture('avavoice_session_connect_result', {
+      'agent': a.id, 'status': (r['status'] as num?)?.toInt() ?? 0,
+      'language': widget.language, 'kind': widget.bookingId != null ? 'booking' : 'call_now',
+    });
     if (r['status'] != 200) {
       setState(() {
         _state = 'error';
@@ -90,7 +97,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     setState(() {
       _elapsedSec++;
       final remaining = _limitMinutes * 60 - _elapsedSec;
-      if (remaining <= 120 && _state == 'live') _state = 'wrapup';
+      if (remaining <= 120 && _state == 'live') {
+        _state = 'wrapup';
+        Analytics.capture('avavoice_wrapup_shown',
+            {'agent': a.id, 'elapsed_sec': _elapsedSec, 'limit_min': _limitMinutes});
+      }
       if (remaining <= 0) _end(reason: 'hard_cap');
     });
   }
@@ -110,6 +121,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     _tick?.cancel();
     _beat?.cancel();
     setState(() => _state = 'ended');
+    Analytics.capture('avavoice_call_ended_client', {
+      'agent': a.id, 'reason': reason, 'seconds': _elapsedSec,
+      'limit_min': _limitMinutes, 'language': widget.language, 'muted': _muted,
+    });
     final s = _sessionId;
     if (s != null) await AvaVoiceApi.sessionStop(s, reason: reason);
     if (!mounted) return;

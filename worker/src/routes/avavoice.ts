@@ -160,7 +160,14 @@ async function mintToken(env: Env, a: AgentRow, limitMin: number, language: stri
     body: JSON.stringify(body),
   });
   const j = (await r.json().catch(() => ({}))) as any;
-  if (!r.ok || !j?.name) return { error: `token mint failed (${r.status}): ${j?.error?.message ?? "unknown"}` };
+  if (!r.ok || !j?.name) {
+    // Admin troubleshooting: token mints are THE critical dependency.
+    track(env, a.creator_id, "avavoice_token_mint_failed", APP,
+        { agent: a.id, http_status: r.status, api_error: String(j?.error?.message ?? "unknown"), model });
+    metric(env, "avavoice_token_mint_failed", [1, r.status], [model]);
+    return { error: `token mint failed (${r.status}): ${j?.error?.message ?? "unknown"}` };
+  }
+  metric(env, "avavoice_token_mint_ok", [1], [model]);
   return { token: String(j.name), expires_at: expireMs, model };
 }
 
@@ -198,6 +205,7 @@ async function indexFile(env: Env, store: string, filename: string, bytes: Array
     },
   );
   const j = (await r.json().catch(() => ({}))) as any;
+  if (!r.ok) metric(env, "avavoice_index_failed", [1, r.status], [store]);
   return r.ok ? String(j?.name ?? j?.response?.document?.name ?? "pending") : null;
 }
 
@@ -267,6 +275,7 @@ export async function avavoiceMarketplace(req: Request, env: Env): Promise<Respo
       ).bind(`%${q}%`).all()
     : await db.prepare("SELECT * FROM avavoice_agents WHERE status='published' ORDER BY updated_at DESC LIMIT 60").all();
   const agents = await Promise.all(((rows.results ?? []) as any[]).map((a) => agentJson(env, a as AgentRow)));
+  metric(env, "avavoice_marketplace_view", [1, agents.length], [q ? "search" : "browse"]);
   return json({ agents });
 }
 
@@ -440,6 +449,7 @@ export async function avavoiceStats(req: Request, env: Env, id: string): Promise
             COALESCE(SUM(refund_coins),0) AS refunds
      FROM avavoice_sessions WHERE agent_id=?1 AND started_at>?2 AND status='ended'`,
   ).bind(id, since).first<any>();
+  track(env, ctx.uid, "avavoice_creator_dashboard_viewed", APP, { agent: id });
   return json({
     bookings: Number(bk?.n ?? 0), calls: Number(ses?.calls ?? 0),
     minutes: Number(ses?.minutes ?? 0), gross_coins: Number(ses?.gross ?? 0),
@@ -472,6 +482,9 @@ export async function avavoiceBook(req: Request, env: Env): Promise<Response> {
   if (escrow > 0) {
     const h = await hold(env, ctx.uid, orderId, escrow, { title: `AvaVoice — ${a.name}`, app: APP });
     if (!h.ok) {
+      track(env, ctx.uid, "avavoice_insufficient_funds", APP,
+          { where: "booking", agent: a.id, needed: escrow, minutes });
+      metric(env, "avavoice_insufficient_funds", [1, escrow], ["booking"]);
       return json({ error: "insufficient_avacoins", needed: escrow, ...(h.body ?? {}) }, h.status === 402 ? 402 : (h.status || 402));
     }
   }
@@ -479,8 +492,12 @@ export async function avavoiceBook(req: Request, env: Env): Promise<Response> {
     `INSERT INTO avavoice_bookings (id, agent_id, user_id, scheduled_at, booked_minutes, language, rate_per_hour, escrow_coins, order_id, status, created_at, updated_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'booked',?10,?10)`,
   ).bind(id, a.id, ctx.uid, at, minutes, language, a.rate_per_hour, escrow, orderId, Date.now()).run();
-  track(env, ctx.uid, "avavoice_booking_created", APP, { agent: a.id, minutes, escrow });
-  metric(env, "avavoice_booking", [1, escrow]);
+  track(env, ctx.uid, "avavoice_booking_created", APP,
+      { agent: a.id, minutes, escrow, language, payer_mode: a.payer_mode, lead_time_min: Math.round((at - Date.now()) / 60000) });
+  // Creator-facing mirror — powers the AvaVerse dashboard funnel per agent.
+  track(env, a.creator_id, "avavoice_creator_booking_received", APP,
+      { agent: a.id, agent_name: a.name, minutes, escrow });
+  metric(env, "avavoice_booking", [1, escrow, minutes], [a.id]);
   return json({ ok: true, booking_id: id, escrow_coins: escrow });
 }
 
@@ -514,6 +531,11 @@ export async function avavoiceCancelBooking(req: Request, env: Env, id: string):
   }
   await metaDb(env).prepare("UPDATE avavoice_bookings SET status='cancelled', updated_at=?2 WHERE id=?1")
     .bind(id, Date.now()).run();
+  track(env, ctx.uid, "avavoice_booking_cancelled", APP, {
+    agent: bk.agent_id, refunded: Number(bk.escrow_coins),
+    hours_before: Math.round((Number(bk.scheduled_at) - Date.now()) / 3600000),
+  });
+  metric(env, "avavoice_booking_cancelled", [1, Number(bk.escrow_coins)], [String(bk.agent_id)]);
   return json({ ok: true, refunded: Number(bk.escrow_coins) });
 }
 
@@ -526,7 +548,13 @@ export async function avavoiceCallNow(req: Request, env: Env): Promise<Response>
   const b = (await req.json().catch(() => ({}))) as any;
   const a = await loadAgent(env, String(b.agent_id || ""));
   if (!a || a.status !== "published") return json({ error: "agent not found" }, 404);
-  if (await activeCalls(env, a.id) >= MAX_CONCURRENT) return json({ error: "AGENT_BUSY" }, 409);
+  if (await activeCalls(env, a.id) >= MAX_CONCURRENT) {
+    // Busy rejections = demand signal for the creator + capacity signal for admin.
+    track(env, ctx.uid, "avavoice_busy_rejected", APP, { agent: a.id, where: "call_now" });
+    track(env, a.creator_id, "avavoice_creator_demand_missed", APP, { agent: a.id, agent_name: a.name });
+    metric(env, "avavoice_busy_reject", [1], [a.id]);
+    return json({ error: "AGENT_BUSY" }, 409);
+  }
   const language = String(b.language || "en-US").slice(0, 16);
   // Instant call = a booking for "now" — same escrow + settlement path.
   const id = crypto.randomUUID();
@@ -535,7 +563,11 @@ export async function avavoiceCallNow(req: Request, env: Env): Promise<Response>
   const orderId = `avv_${id}`;
   if (escrow > 0) {
     const h = await hold(env, ctx.uid, orderId, escrow, { title: `AvaVoice — ${a.name}`, app: APP });
-    if (!h.ok) return json({ error: "insufficient_avacoins", needed: escrow, ...(h.body ?? {}) }, 402);
+    if (!h.ok) {
+      track(env, ctx.uid, "avavoice_insufficient_funds", APP, { where: "call_now", agent: a.id, needed: escrow });
+      metric(env, "avavoice_insufficient_funds", [1, escrow], ["call_now"]);
+      return json({ error: "insufficient_avacoins", needed: escrow, ...(h.body ?? {}) }, 402);
+    }
   }
   await metaDb(env).prepare(
     `INSERT INTO avavoice_bookings (id, agent_id, user_id, scheduled_at, booked_minutes, language, rate_per_hour, escrow_coins, order_id, status, created_at, updated_at)
@@ -569,14 +601,23 @@ export async function avavoiceSessionStart(req: Request, env: Env): Promise<Resp
   if (!a || a.status !== "published") return json({ error: "agent unavailable" }, 409);
 
   // Slot gate (10 concurrent). TODO Phase 6: AgentPresenceDO atomic acquire.
-  if (await activeCalls(env, a.id) >= MAX_CONCURRENT) return json({ error: "AGENT_BUSY" }, 409);
+  if (await activeCalls(env, a.id) >= MAX_CONCURRENT) {
+    track(env, ctx.uid, "avavoice_busy_rejected", APP, { agent: a.id, where: "session_start" });
+    metric(env, "avavoice_busy_reject", [1], [a.id]);
+    return json({ error: "AGENT_BUSY" }, 409);
+  }
 
   // creator_pays runway: the creator must afford ≥5 min before we connect.
   if (a.payer_mode === "creator_pays") {
     const bal = await walletOp(env, a.creator_id, { op: "balance", uid: a.creator_id });
     const need = Math.ceil(CREATOR_PAYS_RATE_PER_HOUR / 60) * 5;
-    if (Number(bal.body?.balance ?? 0) < need)
+    if (Number(bal.body?.balance ?? 0) < need) {
+      // Creator must learn their sponsored agent went dark — money left on the table.
+      track(env, a.creator_id, "avavoice_creator_wallet_empty", APP,
+          { agent: a.id, agent_name: a.name, balance: Number(bal.body?.balance ?? 0), needed: need });
+      metric(env, "avavoice_creator_wallet_empty", [1], [a.id]);
       return json({ error: "agent unavailable", reason: "creator wallet empty" }, 409);
+    }
   }
 
   const limitMin = Math.min(Number(bk.booked_minutes) || a.session_limit_min, a.session_limit_min, MAX_SESSION_MIN);
@@ -674,7 +715,25 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
   await db.prepare(
     `UPDATE avavoice_sessions SET status='ended', end_reason=?2, billed_minutes=?3, gross_coins=?4, creator_coins=?5, refund_coins=?6, updated_at=?7 WHERE id=?1`,
   ).bind(String(s.id), reason, mins, gross, creatorCoins, refundCoins, now).run();
-  track(env, String(s.user_id), "avavoice_call_ended", APP, { reason, minutes: mins, gross });
-  metric(env, "avavoice_minutes", [mins, gross]);
+  const platformCoins = a?.payer_mode === "creator_pays" ? gross : gross - creatorCoins;
+  // Caller-side event (funnel + refunds visibility).
+  track(env, String(s.user_id), "avavoice_call_ended", APP, {
+    agent: String(s.agent_id), reason, minutes: mins, seconds: Math.round(usedMs / 1000),
+    gross_coins: gross, refund_coins: refundCoins, language: String(s.language),
+    payer_mode: a?.payer_mode ?? "unknown",
+  });
+  // Creator-side settlement event — the AvaVerse dashboard's earnings stream.
+  if (a) {
+    track(env, a.creator_id, "avavoice_creator_settlement", APP, {
+      agent: a.id, agent_name: a.name, payer_mode: a.payer_mode, reason,
+      minutes: mins, gross_coins: gross, earned_coins: creatorCoins,
+      platform_coins: platformCoins, refund_coins: refundCoins,
+    });
+  }
+  // Admin/ops metrics: utilization, money split, end-reason mix, per-agent blobs.
+  metric(env, "avavoice_minutes", [mins, gross, creatorCoins, platformCoins, refundCoins],
+      [String(s.agent_id), reason, a?.payer_mode ?? "unknown"]);
+  if (reason === "hard_cap") metric(env, "avavoice_hard_cap_cut", [1], [String(s.agent_id)]);
+  if (reason === "disconnect") metric(env, "avavoice_disconnect_settle", [1], [String(s.agent_id)]);
   return json({ ok: true, ended: true, billed_minutes: mins, gross_coins: gross, refund_coins: refundCoins, reason });
 }

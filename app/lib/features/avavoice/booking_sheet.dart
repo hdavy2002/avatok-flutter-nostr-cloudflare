@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/theme.dart';
 import '../wallet/wallet_screen.dart';
@@ -25,6 +26,13 @@ class _BookingSheet extends StatefulWidget {
 }
 
 class _BookingSheetState extends State<_BookingSheet> {
+  @override
+  void initState() {
+    super.initState();
+    Analytics.capture('avavoice_booking_sheet_opened',
+        {'agent': widget.agent.id, 'payer_mode': widget.agent.payerMode});
+  }
+
   DateTime _date = DateTime.now().add(const Duration(hours: 1));
   TimeOfDay _time = TimeOfDay.fromDateTime(DateTime.now().add(const Duration(hours: 1)));
   late int _minutes = widget.agent.sessionLimitMin;
@@ -59,7 +67,11 @@ class _BookingSheetState extends State<_BookingSheet> {
 
   Future<void> _pickLang() async {
     final l = await pickLanguage(context, selected: _language);
-    if (l != null) setState(() => _language = l);
+    if (l != null) {
+      Analytics.capture('avavoice_language_selected',
+          {'agent': a.id, 'language': l, 'where': 'booking'});
+      setState(() => _language = l);
+    }
   }
 
   Future<void> _confirm() async {
@@ -70,16 +82,21 @@ class _BookingSheetState extends State<_BookingSheet> {
       return;
     }
     setState(() => _working = true);
+    Analytics.capture('avavoice_booking_confirm_tapped',
+        {'agent': a.id, 'minutes': _minutes, 'total_coins': _totalCoins, 'language': _language});
     final r = await AvaVoiceApi.book(a.id,
         scheduledAt: _scheduled.millisecondsSinceEpoch,
         minutes: _minutes,
         language: _language);
     if (!mounted) return;
     setState(() => _working = false);
+    Analytics.capture('avavoice_booking_result',
+        {'agent': a.id, 'status': (r['status'] as num?)?.toInt() ?? 0, 'minutes': _minutes});
     switch (r['status']) {
       case 200:
         Navigator.pop(context, true);
       case 402:
+        Analytics.capture('avavoice_topup_prompted', {'agent': a.id, 'where': 'booking'});
         final needed = (r['needed'] as num?)?.toInt();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Not enough AvaCoins'
