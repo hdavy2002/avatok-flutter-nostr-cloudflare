@@ -36,6 +36,7 @@ const kAppRegistry = <AppEntry>[
   AppEntry('avaconsult', 'AvaConsult', 'Paid sessions', Icons.video_camera_front, Color(0xFF22C9C0)),
   AppEntry('avainbox', 'AvaInbox', 'All messages, one inbox', Icons.inbox, Color(0xFF4F8DFD)),
   AppEntry('avachat', 'AvaChat', 'Your personal AI', Icons.auto_awesome, Color(0xFFA06AF0)),
+  AppEntry('avaaffiliate', 'AvaAffiliate', 'Earn 10% for life', Icons.campaign, Color(0xFFF97316)),
   // ---- hidden until a later phase flips them ----
   AppEntry('avaai', 'AvaAI', 'AI assistant', Icons.auto_awesome, Color(0xFF22C9C0), tier: AppTier.hidden),
   AppEntry('avaagent', 'AvaAgent', 'Build AI agents', Icons.bolt, Color(0xFF6C5CE7), tier: AppTier.hidden),

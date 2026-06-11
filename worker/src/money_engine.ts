@@ -17,6 +17,7 @@ import { settleTranslation } from "./routes/translate";
 import { emailRefundIssued, emailSettlementPaid } from "./cal/emails";
 import { notifyUser } from "./notify";
 import { track } from "./hooks";
+import { settleAffiliate } from "./routes/affiliate";
 
 export interface MoneyMsg {
   type: "evaluate" | "cancel";
@@ -136,6 +137,17 @@ async function applyAction(env: Env, ctx: SessionCtx, a: Action): Promise<void> 
       const feeRate = ((o as any)?.fee_pct ?? 20) / 100;
       const r = await release(env, a.orderId, ctx.hostId, { title: ctx.title, app: ctx.kind === "live_event" ? "avalive" : "avaconsult", feeRate, gross: a.gross });
       if (!r.ok && r.status !== 409) throw new Error(`release failed ${a.orderId}: ${JSON.stringify(r.body)}`);
+      // AvaAffiliate (§6): allowlisted kinds ONLY — AvaLive ticket/entry + AvaConsult
+      // listing orders settle here (gifts use donation(), translation uses
+      // settleTranslation — neither ever reaches this branch). Funded from the
+      // platform fee; creator share untouched. Idempotent inside; never throws.
+      if (r.ok && Number(r.body?.fee) > 0) {
+        await settleAffiliate(env, {
+          settlementId: `${ctx.sid}:${a.rule}:release:${a.orderId}`, orderId: a.orderId,
+          app: ctx.kind === "live_event" ? "avalive" : "avaconsult",
+          gross: Number(r.body.gross), platformCut: Number(r.body.fee), creatorId: ctx.hostId,
+        });
+      }
       const fresh = await logRow(env, `${ctx.sid}:${a.rule}:release:${a.orderId}`, ctx.sid, a.orderId, a.rule, "release", a.gross);
       if (!fresh) return;
       if (r.ok && a.email === "settlement_paid") {

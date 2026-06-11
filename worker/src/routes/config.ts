@@ -26,6 +26,10 @@ export interface PlatformConfig {
   translationGroupEnabled: boolean;  // group conferences (multi-speaker caveat)
   // AvaVoice — creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md).
   avavoiceEnabled: boolean;          // master switch for /api/avavoice/*
+  // AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md). OFF stops
+  // registration, attribution + the settlement step (redirects keep working).
+  avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
+  affiliateAssetKitEnabled: boolean; // v2 Gemini promo-image kit (flag only; no code in v1)
   minAppBuild: number;
 }
 
@@ -44,6 +48,8 @@ const DEFAULTS: PlatformConfig = {
   translationEnabled: true,
   translationGroupEnabled: true,
   avavoiceEnabled: true,
+  avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
+  affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   minAppBuild: 0,
 };
 

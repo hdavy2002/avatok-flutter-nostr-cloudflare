@@ -13,6 +13,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { hold, release, refund, adjust, acctUser, escrowBalance } from "../ledger";
 import { walletOp } from "./wallet";
+import { reverseAffiliate } from "./affiliate";
 
 export async function requireAdmin(req: Request, env: Env): Promise<{ uid: string } | Response> {
   const ctx = await requireUser(req, env);
@@ -66,8 +67,13 @@ export async function adminRefund(req: Request, env: Env): Promise<Response> {
     if (!h?.debit?.startsWith("user:")) return json({ error: "no purchase_hold found for orderId; pass userId" }, 404);
     uid = h.debit.slice(5);
   }
-  const r = await refund(env, orderId, uid, amount, { opId: `refund:${orderId}:${crypto.randomUUID().slice(0, 8)}`, reason: `admin: ${reason}` });
-  await audit(env, a.uid, "refund", orderId, { uid, amount, reason, ok: r.ok });
+  const opId = crypto.randomUUID().slice(0, 8);
+  const r = await refund(env, orderId, uid, amount, { opId: `refund:${orderId}:${opId}`, reason: `admin: ${reason}` });
+  // AvaAffiliate (§6 reversal mirror): a post-settlement refund claws back the
+  // commission proportionally (status → 'reversed'). Best-effort, idempotent.
+  let affClawed = 0;
+  if (r.ok) affClawed = await reverseAffiliate(env, orderId, amount, `admin: ${reason}`, opId);
+  await audit(env, a.uid, "refund", orderId, { uid, amount, reason, ok: r.ok, affiliate_clawed: affClawed });
   return json(r.body, r.status);
 }
 

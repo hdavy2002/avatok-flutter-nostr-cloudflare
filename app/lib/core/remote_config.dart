@@ -34,6 +34,9 @@ class RemoteConfig {
   static bool get translationEnabled => _b('translationEnabled', true);
   static bool get translationGroupEnabled => _b('translationGroupEnabled', true);
   static bool get avavoiceEnabled => _b('avavoiceEnabled', true);
+  /// AvaAffiliate (PROPOSAL-AVA-AFFILIATE) — default OFF until launch, so a
+  /// config-fetch failure never advertises a program the Worker isn't serving.
+  static bool get avaAffiliateEnabled => _b('avaAffiliateEnabled', false);
   static int get minAppBuild => (_cfg['minAppBuild'] as num?)?.toInt() ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

@@ -50,6 +50,11 @@ import {
   blockCreator, report, bookListing, createReview,
 } from "./routes/listings";
 import { listingStats, creatorStats } from "./routes/insights";
+import {
+  affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
+  affiliateLinkStats, affiliateLinkSubscribers, affiliateLinkPause, affiliateClick,
+  affiliateBind, adminAffiliates, adminAffiliateSuspend,
+} from "./routes/affiliate";
 
 export { CallRoom } from "./do/call_room";
 export { InboxDO } from "./do/inbox";
@@ -479,6 +484,30 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         }
         const cm = p.match(/^\/api\/creators\/([A-Za-z0-9_-]{1,64})$/);
         if (cm && req.method === "GET") return await getCreator(req, env, cm[1]);
+      }
+
+      // --- AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md) ---
+      // Public click route: telemetry → pending-attribution KV → preview/deep link.
+      {
+        const ac = p.match(/^\/a\/([A-Za-z0-9_-]{4,32})$/);
+        if (ac && req.method === "GET") return await affiliateClick(req, env, ac[1]);
+      }
+      if (p === "/api/affiliate/register" && req.method === "POST") return await affiliateRegister(req, env);
+      if (p === "/api/affiliate/me" && req.method === "GET") return await affiliateMe(req, env);
+      if (p === "/api/affiliate/listings" && req.method === "GET") return await affiliateListings(req, env);
+      if (p === "/api/affiliate/links" && req.method === "POST") return await affiliateLinkCreate(req, env);
+      if (p === "/api/affiliate/links" && req.method === "GET") return await affiliateLinks(req, env);
+      if (p === "/api/affiliate/bind" && req.method === "POST") return await affiliateBind(req, env);
+      {
+        const al = p.match(/^\/api\/affiliate\/links\/([A-Za-z0-9_-]{4,32})\/(stats|subscribers|pause)$/);
+        if (al) {
+          if (al[2] === "stats" && req.method === "GET") return await affiliateLinkStats(req, env, al[1]);
+          if (al[2] === "subscribers" && req.method === "GET") return await affiliateLinkSubscribers(req, env, al[1]);
+          if (al[2] === "pause" && req.method === "POST") return await affiliateLinkPause(req, env, al[1]);
+        }
+        if (p === "/api/admin/affiliates" && req.method === "GET") return await adminAffiliates(req, env);
+        const as = p.match(/^\/api\/admin\/affiliates\/([A-Za-z0-9_:-]{1,64})\/suspend$/);
+        if (as && req.method === "POST") return await adminAffiliateSuspend(req, env, as[1]);
       }
 
       // --- creator-marketplace URL-space reservation (Phase 1) — 501 stubs ---

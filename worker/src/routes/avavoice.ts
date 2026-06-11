@@ -40,6 +40,7 @@ import { rateLimit } from "../money";
 import { track, metric } from "../hooks";
 import { readConfig } from "./config";
 import { recordView, trackImpressions, geoOf } from "./insights";
+import { settleAffiliate } from "./affiliate";
 
 const APP = "avavoice";
 // Gemini Live models (owner-confirmed 2026-06-11). Vision agents use the 3.1
@@ -751,6 +752,15 @@ async function settleSession(env: Env, s: any, now: number, reason: string): Pro
         const rel = await release(env, String(bk.order_id), a.creator_id,
             { title: `AvaVoice — ${a.name}`, app: APP, feeRate: FEE_RATE, gross });
         creatorCoins = Number((rel.body as any)?.net ?? Math.floor(gross / 2));
+        // AvaAffiliate (§6): voice sessions are commissionable — funded from the
+        // platform fee, creator share untouched. Idempotent inside; never throws.
+        if (rel.ok && Number((rel.body as any)?.fee) > 0) {
+          await settleAffiliate(env, {
+            settlementId: `avv:${s.id}`, orderId: String(bk.order_id), app: APP,
+            gross: Number((rel.body as any).gross), platformCut: Number((rel.body as any).fee),
+            buyerId: String(bk.user_id), listingId: a.id, creatorId: a.creator_id,
+          });
+        }
       }
       refundCoins = Math.max(0, Number(bk.escrow_coins) - gross);
       if (refundCoins > 0) {

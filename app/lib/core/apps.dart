@@ -23,6 +23,7 @@ const kApps = <AppDef>[
   AppDef('avaai', 'AvaAI', 'AI assistant', Icons.auto_awesome, Color(0xFF22C9C0)),
   AppDef('avaagent', 'AvaAgent', 'Build AI agents', Icons.bolt, Color(0xFF6C5CE7)),
   AppDef('avavoice', 'AvaVoice', 'AI voice agents', Icons.mic, Color(0xFFA06AF0)),
+  AppDef('avaaffiliate', 'AvaAffiliate', 'Earn 10% for life', Icons.campaign, Color(0xFFF97316), built: true),
   AppDef('avatweet', 'AvaTweet', 'Microblog & timeline', Icons.tag, Color(0xFF1DA1F2)),
   AppDef('avabook', 'AvaBook', 'Friends & feed', Icons.groups, Color(0xFF7C5CFC)),
   AppDef('avagram', 'AvaGram', 'Photos & stories', Icons.photo_camera, Color(0xFFE1306C)),
