@@ -31,6 +31,8 @@ class RemoteConfig {
   static bool get consultEnabled => _b('consultEnabled', true);
   static bool get conferenceEnabled => _b('conferenceEnabled', true);
   static bool get brainEnabled => _b('brainEnabled', true);
+  static bool get translationEnabled => _b('translationEnabled', true);
+  static bool get translationGroupEnabled => _b('translationGroupEnabled', true);
   static int get minAppBuild => (_cfg['minAppBuild'] as num?)?.toInt() ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

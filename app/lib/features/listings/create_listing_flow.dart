@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import '../identity/identity_gate.dart';
+import '../translation/translation_langs.dart';
 
 /// Phase 6 creator pipeline — guided stepper:
 /// 1 type · 2 title/description/category · 3 price (+capacity | date/time, with
@@ -38,6 +39,9 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
   final _country = TextEditingController();
   bool _adultsOnly = false;
   final _language = TextEditingController();
+  // Voice translation: "available" toggle + language of transmission.
+  bool _translationEnabled = false;
+  String? _spokenLang;
   // A5 pricing extras
   bool _earlyBird = false;
   final _ebPct = TextEditingController(text: '20');
@@ -81,6 +85,8 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         'duration_min': _duration,
         'capacity': _kind == 'consult' ? _capacity : null,
         'joined_count': 0, 'rating_count': 0,
+        'translation_enabled': _translationEnabled,
+        'spoken_lang': _spokenLang,
         'creator': {'uid': '', 'name': 'You', 'kyc_verified': true},
       });
 
@@ -129,6 +135,8 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       if (_kind == 'live_event') 'starts_at': _start!.millisecondsSinceEpoch,
       'duration_min': _duration,
       if (_kind == 'consult') 'capacity': _capacity,
+      'translation_enabled': _translationEnabled,
+      'spoken_lang': _spokenLang,
     });
     if (id == null) {
       if (mounted) setState(() { _publishing = false; _error = 'Could not save the listing — try again.'; });
@@ -355,6 +363,27 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
           value: _adultsOnly, onChanged: (v) => setState(() => _adultsOnly = v),
           title: const Text('18+ only'),
         ),
+        const Divider(height: 20),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _translationEnabled, onChanged: (v) => setState(() => _translationEnabled = v),
+          title: const Text('🌐 Voice translation available'),
+          subtitle: const Text(
+            'Attendees can hear you live in their own language. They pay \$3/hour '
+            'in AvaCoins on top of your price — your earnings are not affected.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+        if (_translationEnabled)
+          DropdownButtonFormField<String>(
+            value: _spokenLang,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Language of transmission (the language you speak)'),
+            items: [
+              for (final l in kTranslationLangs) DropdownMenuItem(value: l.code, child: Text(l.label)),
+            ],
+            onChanged: (v) => setState(() => _spokenLang = v),
+          ),
       ]);
 
   // A6: the preview renders the REAL details-page widget with draft data.

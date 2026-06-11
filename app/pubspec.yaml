@@ -45,6 +45,9 @@ dependencies:
   file_picker: ^8.1.6
   audioplayers: ^6.1.0
   record: ^7.0.0
+  # Live voice translation — raw 24 kHz PCM playback of Gemini Live Translate
+  # output (lib/features/translation/translation_engine.dart).
+  flutter_pcm_sound: ^3.0.0
   path_provider: ^2.1.4
   video_player: ^2.9.2
   # NIP-44 v2 crypto (secp256k1 ECDH, ChaCha20, HMAC, HKDF) — pure Dart

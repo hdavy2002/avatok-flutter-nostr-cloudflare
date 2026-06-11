@@ -10,6 +10,8 @@ import '../../core/verse_api.dart';
 import '../avalive/live_viewer_screen.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/data.dart';
+import '../translation/translation_api.dart';
+import '../translation/translation_langs.dart';
 import 'creator_channel.dart';
 import 'widgets.dart';
 
@@ -213,6 +215,8 @@ class ListingDetailView extends StatelessWidget {
             if (card.durationMin != null) _chip('${card.durationMin} min'),
             if (card.country != null) _chip('${flagEmoji(card.country)} ${card.country}'),
             if (card.adultsOnly) _chip('18+'),
+            if (card.translationEnabled)
+              _chip('🌐 Voice translation available${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
             for (final b in card.badges) _chip(b.toString()),
             _chip(card.category),
           ]),
@@ -326,8 +330,22 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   int? _slotStart, _slotEnd;
   bool _busy = false, _loadingSlots = false;
   String? _error;
+  // "Would you like this to be translated into the language of your choice?"
+  bool _translate = false;
+  String? _translateLang;
 
   bool get _isConsult => widget.listing.kind == 'consult';
+
+  int get _durationMin {
+    if (_isConsult && _slotStart != null && _slotEnd != null) {
+      return ((_slotEnd! - _slotStart!) / 60000).ceil();
+    }
+    return widget.listing.durationMin ?? 60;
+  }
+
+  /// $3/h = 5 AvaCoins/min for the booked duration.
+  int get _translationCoins => _translate && _translateLang != null ? TranslationApi.quoteCoins(_durationMin) : 0;
+  int get _totalCoins => widget.listing.effectivePrice + _translationCoins;
 
   @override
   void initState() {
@@ -352,9 +370,11 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
 
   Future<void> _confirm() async {
     if (_isConsult && _slotStart == null) { setState(() => _error = 'Pick a time slot first.'); return; }
+    if (_translate && _translateLang == null) { setState(() => _error = 'Select a translation language first.'); return; }
     setState(() { _busy = true; _error = null; });
     final r = await ListingsApi.book(widget.listing.id,
-        slotStart: _slotStart, slotEnd: _slotEnd, promoCode: _promo.text.trim());
+        slotStart: _slotStart, slotEnd: _slotEnd, promoCode: _promo.text.trim(),
+        translationLang: _translate ? _translateLang : null);
     if (!mounted) return;
     final status = (r['status'] as num?)?.toInt() ?? 0;
     if (status == 200) {
@@ -441,15 +461,71 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             ),
             const SizedBox(height: 12),
           ],
+          // Voice translation add-on (only when the creator offers it).
+          if (l.translationEnabled) ...[
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              decoration: BoxDecoration(
+                color: AvaColors.soft, borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _translate ? AvaColors.brand : Colors.transparent),
+              ),
+              child: Column(children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero, dense: true,
+                  value: _translate,
+                  onChanged: (v) => setState(() => _translate = v),
+                  title: const Text('🌐 Would you like this to be translated into the language of your choice?',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  subtitle: Text(
+                    'Live voice translation · \$3 per hour'
+                    '${l.spokenLang != null ? ' · the creator speaks ${translationLangLabel(l.spokenLang!)}' : ''}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                if (_translate)
+                  DropdownButtonFormField<String>(
+                    value: _translateLang,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Select language', isDense: true),
+                    items: [
+                      for (final lng in kTranslationLangs)
+                        DropdownMenuItem(value: lng.code, child: Text(lng.label)),
+                    ],
+                    onChanged: (v) => setState(() => _translateLang = v),
+                  ),
+                if (_translate) const SizedBox(height: 10),
+              ]),
+            ),
+            const SizedBox(height: 12),
+          ],
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [
-              const Icon(Icons.account_balance_wallet_outlined, size: 18),
-              const SizedBox(width: 8),
-              Text('Wallet: ${_balance == null ? '…' : fmtCoins(_balance!)}'),
-              const Spacer(),
-              Text(l.priceLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            child: Column(children: [
+              Row(children: [
+                const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                const SizedBox(width: 8),
+                Text('Wallet: ${_balance == null ? '…' : fmtCoins(_balance!)}'),
+                const Spacer(),
+                Text(l.priceLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ]),
+              // Itemized total when translation is on: e.g. $60 + $3 × 1 h = $63.
+              if (_translationCoins > 0) ...[
+                const Divider(height: 16),
+                Row(children: [
+                  Expanded(child: Text(
+                    'Voice translation · $_durationMin min',
+                    style: const TextStyle(fontSize: 12.5, color: AvaColors.sub),
+                  )),
+                  Text('+ ${fmtCoins(_translationCoins)}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                ]),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Expanded(child: Text('Total (including voice translation)',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+                  Text(fmtCoins(_totalCoins), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                ]),
+              ],
             ]),
           ),
           if (_error != null) ...[
@@ -462,7 +538,10 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             onPressed: _busy ? null : _confirm,
             child: _busy
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text(l.effectivePrice == 0 ? 'Confirm (free)' : 'Pay ${l.priceLabel} & confirm',
+                : Text(
+                    _totalCoins == 0
+                        ? 'Confirm (free)'
+                        : 'Pay ${l.money(_totalCoins)} & confirm',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
         ]),

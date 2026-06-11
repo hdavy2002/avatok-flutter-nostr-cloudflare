@@ -15,6 +15,7 @@ import '../../core/money_api.dart';
 import '../../core/session_api.dart';
 import '../../core/theme.dart';
 import '../explore/creator_channel.dart';
+import '../translation/translate_overlay.dart';
 import 'live_room_widgets.dart';
 
 class LiveViewerScreen extends StatefulWidget {
@@ -235,6 +236,9 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
         if (!_hostLive) const ReconnectingOverlay(),
         FlyLayer(msgs: _fly),
         ReactionLayer(bursts: _bursts),
+        // Live voice translation — hear the creator in your language ($3/h in
+        // AvaCoins; 100% platform — the creator's earnings are untouched).
+        TranslateOverlay(context: 'live', refId: widget.listingId, top: 100),
         // chat bottom-left
         Positioned(
           left: 12, right: 110, bottom: 70, height: 180,

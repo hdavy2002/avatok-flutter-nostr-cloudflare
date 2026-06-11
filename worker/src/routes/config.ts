@@ -21,6 +21,9 @@ export interface PlatformConfig {
   guestTierEnabled: boolean;         // L0 handle-only visitors
   workersAiLivenessEnabled: boolean; // L2 via Workers AI clip check (Rekognition fallback)
   simOnlyPhoneEnabled: boolean;      // block VoIP/temp numbers on phone verify
+  // Live voice translation (Gemini 3.5 Live Translate, $3/h in AvaCoins).
+  translationEnabled: boolean;       // master switch for /api/translate/*
+  translationGroupEnabled: boolean;  // group conferences (multi-speaker caveat)
   minAppBuild: number;
 }
 
@@ -36,8 +39,17 @@ const DEFAULTS: PlatformConfig = {
   guestTierEnabled: true,
   workersAiLivenessEnabled: false, // flip on after model tuning; Rekognition stays default
   simOnlyPhoneEnabled: true,
+  translationEnabled: true,
+  translationGroupEnabled: true,
   minAppBuild: 0,
 };
+
+/** Merged config for server-side gates (same blob getConfig serves). */
+export async function readConfig(env: Env): Promise<PlatformConfig> {
+  let stored: Partial<PlatformConfig> = {};
+  try { stored = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>; } catch { /* defaults */ }
+  return { ...DEFAULTS, ...stored };
+}
 
 export async function getConfig(env: Env): Promise<Response> {
   let stored: Partial<PlatformConfig> = {};

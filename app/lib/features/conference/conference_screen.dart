@@ -23,7 +23,9 @@ import 'package:livekit_client/livekit_client.dart' as lk;
 import '../../core/avatar.dart';
 import '../../core/ava_log.dart';
 import '../../core/disk_cache.dart';
+import '../../core/remote_config.dart';
 import '../../core/theme.dart';
+import '../translation/translate_overlay.dart';
 import 'conference_api.dart';
 
 /// The one live conference this device is in (a phone is in ≤1 call at a time).
@@ -293,6 +295,9 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
                   Text('${ps.length} in call · max 25',
                       style: const TextStyle(color: Colors.white54, fontSize: 11.5)),
                 ])),
+                // Live voice translation ($3/h in AvaCoins) — group conferences.
+                if (RemoteConfig.translationGroupEnabled)
+                  TranslateOverlay(context: 'conference', refId: conf.gid, inline: true),
                 IconButton(icon: const Icon(Icons.people_outline, color: Colors.white),
                     onPressed: _participantsSheet, tooltip: 'Participants'),
               ]),

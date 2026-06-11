@@ -138,6 +138,10 @@ export interface Env {
   LIVEKIT_API_KEY?: string;
   LIVEKIT_API_SECRET?: string;
 
+  // Live voice translation (Gemini 3.5 Live Translate). Unset → /api/translate/*
+  // returns 503. The key never leaves the Worker — clients get ephemeral tokens.
+  GEMINI_API_KEY?: string;
+
   // R2 S3 API creds for presigned digital-download URLs (Phase 5). Unset → the
   // OLX download route streams bytes through the Worker as a fallback.
   R2_ACCOUNT_ID?: string;

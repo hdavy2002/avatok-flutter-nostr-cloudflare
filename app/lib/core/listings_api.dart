@@ -31,6 +31,9 @@ class ListingCard {
   final int? startsAt, durationMin, capacity;
   final double? ratingAvg;
   final ListingCreator creator;
+  // Voice translation: creator offers it + their transmission language.
+  final bool translationEnabled;
+  final String? spokenLang;
   String? description; // only on the details endpoint
 
   ListingCard.fromJson(Map<String, dynamic> j)
@@ -54,6 +57,8 @@ class ListingCard {
         durationMin = (j['duration_min'] as num?)?.toInt(),
         capacity = (j['capacity'] as num?)?.toInt(),
         ratingAvg = (j['rating_avg'] as num?)?.toDouble(),
+        translationEnabled = j['translation_enabled'] == true,
+        spokenLang = j['spoken_lang']?.toString(),
         creator = ListingCreator.fromJson((j['creator'] as Map?)?.cast<String, dynamic>() ?? const {}),
         description = j['description']?.toString();
 
@@ -261,10 +266,12 @@ class ListingsApi {
 
   // ── booking / reviews / social ────────────────────────────────────────────
   /// Returns the response json + 'status' (402 → insufficient_funds w/ `needed`).
-  static Future<Map<String, dynamic>> book(String id, {int? slotStart, int? slotEnd, String? promoCode}) async {
+  static Future<Map<String, dynamic>> book(String id, {int? slotStart, int? slotEnd, String? promoCode, String? translationLang}) async {
     final r = await ApiAuth.postJson('$_base/listings/$id/book', {
       if (slotStart != null) 'slot': {'start_at': slotStart, if (slotEnd != null) 'end_at': slotEnd},
       if (promoCode != null && promoCode.isNotEmpty) 'promo_code': promoCode,
+      // "Would you like this to be translated…?" — $3/h prepay, refunds unused.
+      if (translationLang != null && translationLang.isNotEmpty) 'translation': {'lang': translationLang},
     }, timeout: const Duration(seconds: 20));
     return {..._j(r.body), 'status': r.statusCode};
   }

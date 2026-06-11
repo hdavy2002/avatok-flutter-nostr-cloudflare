@@ -13,6 +13,7 @@ import { metaDb } from "./db/shard";
 import { nowMs } from "./clock";
 import { evaluate, type Action, type Phase, type RuleCfg, type SessionCtx } from "./rules";
 import { refund, release, clerkEmail } from "./ledger";
+import { settleTranslation } from "./routes/translate";
 import { emailRefundIssued, emailSettlementPaid } from "./cal/emails";
 import { notifyUser } from "./notify";
 import { track } from "./hooks";
@@ -200,6 +201,12 @@ export async function runMoney(env: Env, msg: MoneyMsg): Promise<{ applied: numb
   }
   if (!premature && phase !== "cancel") {
     await logRow(env, `${msg.sid}:${phase}`, msg.sid, null, phase, "marker", null);
+  }
+  // Voice-translation prepay settles whenever the booking money is decided:
+  // consumed minutes → platform:fees (100%, never the creator), unused minutes
+  // refund to the buyer. Idempotent inside (settlement_log row per trl order).
+  if (!premature && (phase === "end" || phase === "cancel")) {
+    try { await settleTranslation(env, msg.sid, msg.kind); } catch (e) { console.error("translation settle failed:", String(e)); }
   }
   if (phase === "end" && msg.kind === "live_event") {
     await metaDb(env).prepare("UPDATE live_sessions SET state='settled', updated_at=?2 WHERE listing_id=?1 AND state IN ('ended','live')").bind(msg.sid, Date.now()).run();

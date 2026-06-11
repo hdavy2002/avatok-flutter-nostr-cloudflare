@@ -34,7 +34,8 @@ import { json } from "../util";
 import { requireUser, isFail, requireKyc } from "../authz";
 import { metaDb, metaSession, moderationDb } from "../db/shard";
 import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
-import { hold } from "../ledger";
+import { hold, refund } from "../ledger";
+import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { emailBookingConfirmed } from "../cal/emails";
@@ -71,6 +72,7 @@ const CARD_SELECT = `
   SELECT l.id, l.creator_id, l.kind, l.title, l.description, l.category, l.price,
          l.currency_display, l.country, l.adults_only, l.badges, l.cover_media,
          l.starts_at, l.duration_min, l.capacity, l.status, l.joined_count,
+         l.translation_enabled, l.spoken_lang,
          l.rating_avg, l.rating_count, l.created_at,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
          (SELECT k.status FROM kyc_status k WHERE k.uid = l.creator_id) AS creator_kyc
@@ -102,6 +104,7 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>) {
     cover_media: parseJson(r.cover_media, [] as unknown[]),
     starts_at: r.starts_at ?? null, duration_min: r.duration_min ?? null,
     capacity: r.capacity ?? null, status: r.status,
+    translation_enabled: !!r.translation_enabled, spoken_lang: r.spoken_lang ?? null,
     joined_count: Number(r.joined_count ?? 0),
     rating_avg: r.rating_avg != null ? Number(r.rating_avg) : null,
     rating_count: Number(r.rating_count ?? 0),
@@ -180,7 +183,7 @@ export async function fanout(env: Env, creatorId: string, title: string, body: s
 // creation pipeline
 // ---------------------------------------------------------------------------
 
-const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity"] as const;
+const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang"] as const;
 
 function normFields(b: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -196,6 +199,10 @@ function normFields(b: any): Record<string, unknown> {
   if (b.starts_at !== undefined) out.starts_at = b.starts_at ? Math.trunc(Number(b.starts_at)) : null;
   if (b.duration_min !== undefined) out.duration_min = b.duration_min ? Math.trunc(Number(b.duration_min)) : null;
   if (b.capacity !== undefined) out.capacity = b.capacity ? Math.trunc(Number(b.capacity)) : null;
+  // Voice translation options ("Voice translation available" + creator's
+  // language of transmission, e.g. 'hi' for Hindi).
+  if (b.translation_enabled !== undefined) out.translation_enabled = b.translation_enabled ? 1 : 0;
+  if (b.spoken_lang !== undefined) out.spoken_lang = b.spoken_lang ? String(b.spoken_lang).slice(0, 12) : null;
   return out;
 }
 
@@ -318,10 +325,11 @@ export async function duplicateListing(req: Request, env: Env, id: string): Prom
   const now = Date.now();
   await db.prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
-       country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL,?13,?14,'draft',?15,?15)`,
+       country, adults_only, badges, cover_media, starts_at, duration_min, capacity, translation_enabled, spoken_lang, status, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL,?13,?14,?15,?16,'draft',?17,?17)`,
   ).bind(nid, ctx.uid, l.kind, l.title, l.description, l.category, l.price, l.currency_display,
-    l.country, l.adults_only, l.badges, l.cover_media, l.duration_min, l.capacity, now).run();
+    l.country, l.adults_only, l.badges, l.cover_media, l.duration_min, l.capacity,
+    l.translation_enabled ?? 0, l.spoken_lang ?? null, now).run();
   track(env, ctx.uid, "listing_duplicated", APP, {});
   return json({ ok: true, listing_id: nid });
 }
@@ -740,6 +748,20 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   const bookingId = crypto.randomUUID();
   const orderId = `ord_${bookingId.slice(0, 18)}`;
 
+  // Voice translation add-on ("Would you like this to be translated into the
+  // language of your choice?"). $3/h = 5 AvaCoins/min for the booked duration;
+  // 100% platform fee — NEVER shared with the creator. Unused minutes refund
+  // at settlement.
+  let trlLang: string | null = null, trlCoins = 0, trlOrderId: string | null = null;
+  if (b.translation?.lang) {
+    if (!l.translation_enabled) return json({ error: "translation not offered on this listing" }, 400);
+    const lang = String(b.translation.lang);
+    if (!TRL_LANGS.has(lang)) return json({ error: "unsupported translation language", lang }, 400);
+    trlLang = lang;
+    trlCoins = Math.ceil((end - start) / 60_000) * TRL_RATE;
+    trlOrderId = `trl_${bookingId.slice(0, 18)}`;
+  }
+
   // Conflict engine claims: the BUYER always; the creator too for 1:1 consults.
   const claim = await claimBlock(env, { userId: ctx.uid, sourceApp: "avabooking", sourceRef: bookingId, start, end, title: String(l.title) });
   if (!claim.ok) return json({ error: "conflict", conflictWith: claim.conflict }, 409);
@@ -759,8 +781,20 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
     if (!h.ok) {
       await releaseBlocks(env, "avabooking", bookingId);
       if (creatorClaimed) await releaseBlocks(env, APP, bookingId);
-      if (h.status === 402) return json({ error: "insufficient_funds", needed: amount, ...h.body }, 402);
+      if (h.status === 402) return json({ error: "insufficient_funds", needed: amount + trlCoins, ...h.body }, 402);
       return json({ error: "payment failed", detail: h.body }, 502);
+    }
+  }
+  // Translation prepay → its own escrow bucket (trl_*). On failure, unwind the
+  // main hold so the buyer never pays for a booking they didn't get.
+  if (trlOrderId && trlCoins > 0) {
+    const th = await hold(env, ctx.uid, trlOrderId, trlCoins, { title: `Voice translation (${trlLang})`, app: "avatranslate" });
+    if (!th.ok) {
+      if (amount > 0) await refund(env, orderId, ctx.uid, amount, { opId: `refund:${orderId}:trlfail`, reason: "booking failed (translation payment)", title: String(l.title) });
+      await releaseBlocks(env, "avabooking", bookingId);
+      if (creatorClaimed) await releaseBlocks(env, APP, bookingId);
+      if (th.status === 402) return json({ error: "insufficient_funds", needed: amount + trlCoins, ...th.body }, 402);
+      return json({ error: "payment failed", detail: th.body }, 502);
     }
   }
 
@@ -777,9 +811,9 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
     ).bind(orderId, id, ctx.uid, l.creator_id, amount, promo?.id ?? null, amount > 0 ? "held" : "free", now,
       l.kind === "live_event" ? "live_event" : "consult", `escrow:${orderId}`, bookingId),
     db.prepare(
-      `INSERT INTO bookings (id, creator_id, buyer_id, listing_id, kind, starts_at, ends_at, price, order_id, status, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'confirmed',?10,?10)`,
-    ).bind(bookingId, l.creator_id, ctx.uid, id, bkKind, start, end, amount, amount > 0 ? orderId : null, now),
+      `INSERT INTO bookings (id, creator_id, buyer_id, listing_id, kind, starts_at, ends_at, price, order_id, status, translation_lang, translation_coins, trl_order_id, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'confirmed',?10,?11,?12,?13,?13)`,
+    ).bind(bookingId, l.creator_id, ctx.uid, id, bkKind, start, end, amount, amount > 0 ? orderId : null, trlLang, trlCoins, trlOrderId, now),
     mkEvent(ctx.uid, "attendee"),
     mkEvent(l.creator_id, "host"),
     db.prepare("UPDATE listings SET joined_count=joined_count+1, updated_at=?2 WHERE id=?1").bind(id, now),
@@ -806,8 +840,13 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   try { await notifyUser(env, l.creator_id, { type: "system", title: l.kind === "live_event" ? "New attendee" : "New booking", body: l.title, data: { deeplink: "/booking", booking_id: bookingId } }); } catch { /* best-effort */ }
   try { await notifyUser(env, ctx.uid, { type: "system", title: "Booking confirmed", body: l.title, data: { deeplink: `/explore/listing/${id}`, booking_id: bookingId } }); } catch { /* best-effort */ }
   brainFact(env, ctx.uid, "listing_booked", APP, { title: l.title, kind: l.kind, amount });
-  track(env, ctx.uid, "listing_booked", APP, { kind: l.kind, amount, promo: pct, live: l.status === "live" });
-  return json({ ok: true, booking_id: bookingId, order_id: orderId, amount, paid: amount > 0, start_at: start, end_at: end, joinable: l.status === "live" });
+  track(env, ctx.uid, "listing_booked", APP, { kind: l.kind, amount, promo: pct, live: l.status === "live", translation: !!trlLang });
+  return json({
+    ok: true, booking_id: bookingId, order_id: orderId, amount, paid: amount + trlCoins > 0,
+    translation: trlLang ? { lang: trlLang, coins: trlCoins, order_id: trlOrderId } : null,
+    total: amount + trlCoins,
+    start_at: start, end_at: end, joinable: l.status === "live",
+  });
 }
 
 // POST /api/listings/:id/reviews { rating 1–5, body? } — attendees only.

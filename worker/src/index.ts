@@ -34,6 +34,7 @@ import { listNotifications, unreadCount, markRead } from "./routes/notifications
 import { wsInbox, sendMsg, syncMsg, receiptMsg, convList, convCreate } from "./routes/messaging";
 import { getConfig, putConfig } from "./routes/config";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook } from "./routes/conference";
+import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import { marketplaceStub } from "./routes/stubs";
 import { verseSummary, verseAnnounce, verseStatement, reviewReply } from "./routes/verse";
 import {
@@ -343,6 +344,18 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           if (act === "donate" && req.method === "POST") return await liveDonate(req, env);
           if (act === "mod" && req.method === "POST") return await liveMod(req, env);
           if (act === "state" && req.method === "GET") return await liveState(req, env);
+        }
+      }
+
+      // --- Live voice translation (Gemini 3.5 Live Translate; $3/h AvaCoins) ---
+      if (p === "/api/translate/quote" && req.method === "GET") return translateQuote(req);
+      if (p === "/api/translate/start" && req.method === "POST") return await translateStart(req, env);
+      {
+        const tr = p.match(/^\/api\/translate\/([A-Za-z0-9-]{1,64})\/(beat|stop|token)$/);
+        if (tr && req.method === "POST") {
+          if (tr[2] === "beat") return await translateBeat(req, env, tr[1]);
+          if (tr[2] === "stop") return await translateStop(req, env, tr[1]);
+          if (tr[2] === "token") return await translateToken(req, env, tr[1]);
         }
       }
 

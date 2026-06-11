@@ -24,6 +24,7 @@ import '../../core/session_api.dart';
 import '../../core/theme.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/data.dart';
+import '../translation/translate_overlay.dart';
 
 const _kWaitWindowMs = 20 * 60_000;   // R2 wait window shown to the host
 
@@ -464,6 +465,9 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
             ),
           ),
         ),
+        // Live voice translation — transparent "Translate" menu (both sides;
+        // the listener pays: $3/h in AvaCoins, never shared with the creator).
+        TranslateOverlay(context: 'consult', refId: widget.bookingId),
         // bottom controls
         Positioned(
           left: 0, right: 0, bottom: 16,
