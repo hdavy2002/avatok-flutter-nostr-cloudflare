@@ -25,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _picker = ImagePicker();
   final _name = TextEditingController();
   final _handle = TextEditingController();
+  final _birthYear = TextEditingController();
   bool _saving = false;
   bool _listed = false;
   bool _sharePresence = true;
@@ -47,7 +48,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
-  void dispose() { _name.dispose(); _handle.dispose(); super.dispose(); }
+  void dispose() { _name.dispose(); _handle.dispose(); _birthYear.dispose(); super.dispose(); }
+
+  int? get _birthYearValue {
+    final y = int.tryParse(_birthYear.text.trim());
+    if (y == null) return null;
+    final maxY = DateTime.now().year - 13;
+    return (y >= 1900 && y <= maxY) ? y : null;
+  }
 
   Future<void> _save() async {
     final id = widget.identity;
@@ -58,7 +66,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _store.save(existing.copyWith(displayName: _name.text.trim(), handle: handle, sharePresence: _sharePresence));
     // Opt-in discovery: publish to the directory so others can find me.
     if (_name.text.trim().isNotEmpty || handle.isNotEmpty) {
-      await Directory.registerProfile(npub: id.npub, handle: handle, name: _name.text.trim(), avatarUrl: _avatarUrl);
+      await Directory.registerProfile(npub: id.npub, handle: handle, name: _name.text.trim(), avatarUrl: _avatarUrl,
+          birthYear: _birthYearValue);
     }
     if (!mounted) return;
     setState(() { _saving = false; _listed = true; });
@@ -207,6 +216,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 6),
         const Text('Others can add you by @handle. Leave blank to stay unlisted.',
+            style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+        const SizedBox(height: 16),
+        const Text('Birth year (optional)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _birthYear,
+          keyboardType: TextInputType.number,
+          maxLength: 4,
+          decoration: _dec('e.g. 1990').copyWith(counterText: ''),
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        ),
+        const SizedBox(height: 6),
+        const Text('Never shown to anyone. Helps creators see anonymous age-group stats (e.g. "25-34").',
             style: TextStyle(color: AvaColors.sub, fontSize: 12)),
         const SizedBox(height: 12),
         SwitchListTile(

@@ -106,6 +106,7 @@ class AgentBrainFile {
 class VoiceAgent {
   final String id, name, role, systemProfile, voiceName, payerMode, status;
   final String? avatarUrl, creatorUid, creatorName;
+  final List<String> images; // listing photos (1–5, public CDN URLs)
   final int ratePerHourCoins, sessionLimitMin;
   final bool visionEnabled;
   final List<AgentBrainFile> files;
@@ -123,6 +124,7 @@ class VoiceAgent {
         payerMode = (j['payer_mode'] ?? 'user_pays').toString(),
         status = (j['status'] ?? 'draft').toString(),
         avatarUrl = j['avatar_url']?.toString(),
+        images = ((j['images'] as List?) ?? const []).map((u) => u.toString()).toList(),
         creatorUid = j['creator_uid']?.toString(),
         creatorName = j['creator_name']?.toString(),
         ratePerHourCoins = (j['rate_per_hour'] as num?)?.toInt() ?? 0,
@@ -167,13 +169,26 @@ class VoiceBooking {
 
 class AgentDayStats {
   final int bookings, calls, minutes, grossCoins, netCoins, refundsCoins;
+  // Audience analytics (last 30 days) — views by country / age group.
+  final int views30d, uniqueViewers30d;
+  final List<MapEntry<String, int>> viewsByCountry, viewsByAgeGroup;
+
+  static List<MapEntry<String, int>> _pairs(dynamic v, String key) =>
+      ((v as List?) ?? const [])
+          .map((e) => MapEntry((e[key] ?? '?').toString(), ((e['views'] as num?) ?? 0).toInt()))
+          .toList();
+
   AgentDayStats.fromJson(Map<String, dynamic> j)
       : bookings = (j['bookings'] as num?)?.toInt() ?? 0,
         calls = (j['calls'] as num?)?.toInt() ?? 0,
         minutes = (j['minutes'] as num?)?.toInt() ?? 0,
         grossCoins = (j['gross_coins'] as num?)?.toInt() ?? 0,
         netCoins = (j['net_coins'] as num?)?.toInt() ?? 0,
-        refundsCoins = (j['refunds_coins'] as num?)?.toInt() ?? 0;
+        refundsCoins = (j['refunds_coins'] as num?)?.toInt() ?? 0,
+        views30d = (j['views_30d'] as num?)?.toInt() ?? 0,
+        uniqueViewers30d = (j['unique_viewers_30d'] as num?)?.toInt() ?? 0,
+        viewsByCountry = _pairs(j['views_by_country'], 'country'),
+        viewsByAgeGroup = _pairs(j['views_by_age_group'], 'age_group');
 }
 
 class VoiceSessionTicket {

@@ -49,6 +49,7 @@ import {
   exploreCategories, getListing, getCreator, updateMyChannel, followCreator, unfollowCreator,
   blockCreator, report, bookListing, createReview,
 } from "./routes/listings";
+import { listingStats, creatorStats } from "./routes/insights";
 
 export { CallRoom } from "./do/call_room";
 export { InboxDO } from "./do/inbox";
@@ -448,7 +449,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/listings/mine" && req.method === "GET") return await myListings(req, env);
       if (p === "/api/report" && req.method === "POST") return await report(req, env);
       if (p === "/api/creators/me" && req.method === "PUT") return await updateMyChannel(req, env);
+      // Creator insights dashboards (owner-gated).
+      if (p === "/api/creators/me/stats" && req.method === "GET") return await creatorStats(req, env);
       {
+        const ls = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/stats$/);
+        if (ls && req.method === "GET") return await listingStats(req, env, ls[1]);
         const la = p.match(/^\/api\/listings\/([A-Za-z0-9-]{1,64})\/(publish|status|duplicate|book|reviews|promotions)$/);
         if (la) {
           const lid = la[1], act = la[2];

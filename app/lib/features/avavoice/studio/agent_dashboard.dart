@@ -101,6 +101,31 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                             style: const TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.4)),
                       ]),
                     ),
+                    // ── Audience (last 30 days) — who's looking at this agent ──
+                    const SizedBox(height: 22),
+                    const Text('Audience — last 30 days',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      _stat('Page views', '${s.views30d}', Icons.visibility_outlined),
+                      const SizedBox(width: 10),
+                      _stat('Unique viewers', '${s.uniqueViewers30d}', Icons.group_outlined),
+                    ]),
+                    if (s.viewsByCountry.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      const Text('Top countries',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                      const SizedBox(height: 6),
+                      for (final c in s.viewsByCountry) _rank(c.key, c.value,
+                          s.viewsByCountry.first.value),
+                    ],
+                    if (s.viewsByAgeGroup.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      const Text('Age groups',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                      const SizedBox(height: 6),
+                      for (final g in s.viewsByAgeGroup) _rank(g.key, g.value, s.views30d),
+                    ],
                   ],
                   const SizedBox(height: 16),
                   const Text(
@@ -112,6 +137,32 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
             ),
     );
   }
+
+  String _flag(String cc) {
+    if (cc.length != 2 || cc == '??') return '🌐';
+    return String.fromCharCodes(cc.toUpperCase().codeUnits.map((c) => c + 127397));
+  }
+
+  Widget _rank(String label, int value, int max) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          SizedBox(width: 90, child: Text(
+              label.length == 2 ? '${_flag(label)}  $label' : label,
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+          Expanded(child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: max > 0 ? value / max : 0, minHeight: 8,
+              backgroundColor: AvaColors.soft,
+              valueColor: const AlwaysStoppedAnimation(kAvaVoicePurple),
+            ),
+          )),
+          const SizedBox(width: 8),
+          SizedBox(width: 32, child: Text('$value', textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
+        ]),
+      );
 
   Widget _stat(String label, String value, IconData icon) => Expanded(
         child: Container(

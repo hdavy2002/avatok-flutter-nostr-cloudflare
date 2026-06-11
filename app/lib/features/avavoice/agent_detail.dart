@@ -6,6 +6,7 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/theme.dart';
+import '../explore/widgets.dart' show CoverImage;
 import '../wallet/wallet_screen.dart';
 import 'booking_sheet.dart';
 import 'call_screen.dart';
@@ -141,6 +142,22 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
+        // Listing photos (1–5) — swipeable strip.
+        if (a.images.isNotEmpty) ...[
+          SizedBox(
+            height: 180,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: a.images.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) => CoverImage(
+                  url: a.images[i], seed: i,
+                  width: a.images.length == 1 ? MediaQuery.of(context).size.width - 40 : 260,
+                  height: 180),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         Row(children: [
           Avatar(seed: a.id, name: a.name, size: 72, avatarUrl: a.avatarUrl),
           const SizedBox(width: 16),

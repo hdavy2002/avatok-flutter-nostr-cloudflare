@@ -39,6 +39,7 @@ import { hold, release, refund, acctUser, ACCT_PLATFORM_FEES } from "../ledger";
 import { rateLimit } from "../money";
 import { track, metric } from "../hooks";
 import { readConfig } from "./config";
+import { recordView, trackImpressions, geoOf } from "./insights";
 
 const APP = "avavoice";
 // Gemini Live models (owner-confirmed 2026-06-11). Vision agents use the 3.1
@@ -221,9 +222,14 @@ async function indexFile(env: Env, store: string, filename: string, bytes: Array
 // ---------------------------------------------------------------------------
 interface AgentRow {
   id: string; creator_id: string; name: string; role: string; system_profile: string;
-  voice_name: string; avatar_url: string | null; rate_per_hour: number; payer_mode: string;
+  voice_name: string; avatar_url: string | null; images: string | null;
+  rate_per_hour: number; payer_mode: string;
   session_limit_min: number; vision_enabled: number; file_search_store: string | null;
   status: string; created_at: number; updated_at: number;
+}
+
+function agentImages(a: AgentRow): string[] {
+  try { const v = JSON.parse(a.images || "[]"); return Array.isArray(v) ? v.map(String) : []; } catch { return []; }
 }
 
 async function loadAgent(env: Env, id: string): Promise<AgentRow | null> {
@@ -248,7 +254,8 @@ async function agentFiles(env: Env, agentId: string): Promise<any[]> {
 async function agentJson(env: Env, a: AgentRow, withFiles = false): Promise<any> {
   return {
     id: a.id, name: a.name, role: a.role, system_profile: a.system_profile,
-    voice_name: a.voice_name, avatar_url: a.avatar_url, rate_per_hour: a.rate_per_hour,
+    voice_name: a.voice_name, avatar_url: a.avatar_url, images: agentImages(a),
+    rate_per_hour: a.rate_per_hour,
     payer_mode: a.payer_mode, session_limit_min: a.session_limit_min,
     vision_enabled: !!a.vision_enabled, status: a.status, creator_uid: a.creator_id,
     active_calls: await activeCalls(env, a.id),
@@ -283,6 +290,7 @@ export async function avavoiceMarketplace(req: Request, env: Env): Promise<Respo
     : await db.prepare("SELECT * FROM avavoice_agents WHERE status='published' ORDER BY updated_at DESC LIMIT 60").all();
   const agents = await Promise.all(((rows.results ?? []) as any[]).map((a) => agentJson(env, a as AgentRow)));
   metric(env, "avavoice_marketplace_view", [1, agents.length], [q ? "search" : "browse"]);
+  trackImpressions(env, req, null, APP, q ? "marketplace_search" : "marketplace", agents.map((a) => String(a.id)));
   return json({ agents });
 }
 
@@ -311,9 +319,16 @@ function validateFields(b: any): { error?: string; f?: any } {
   if (!["user_pays", "creator_pays"].includes(payer)) return { error: "payer_mode invalid" };
   if (!SESSION_LIMITS.has(limit)) return { error: "session_limit_min must be 5|10|30|60" };
   if (payer === "user_pays" && rate < MIN_RATE_PER_HOUR) return { error: `rate_per_hour ≥ ${MIN_RATE_PER_HOUR} coins` };
+  // Listing photos: 1–5 public CDN URLs (min enforced at publish; max here).
+  const images = (Array.isArray(b.images) ? b.images : [])
+    .map((u: unknown) => String(u))
+    .filter((u: string) => /^https:\/\//.test(u))
+    .slice(0, 5);
+  if (Array.isArray(b.images) && b.images.length > 5) return { error: "max 5 photos" };
   return { f: { name, role, system_profile: profile, voice_name: voice, payer_mode: payer,
     rate_per_hour: payer === "creator_pays" ? 0 : rate, session_limit_min: limit,
-    vision_enabled: b.vision_enabled === true ? 1 : 0 } };
+    vision_enabled: b.vision_enabled === true ? 1 : 0,
+    images: images.length ? JSON.stringify(images) : null } };
 }
 
 export async function avavoiceCreateAgent(req: Request, env: Env): Promise<Response> {
@@ -327,9 +342,9 @@ export async function avavoiceCreateAgent(req: Request, env: Env): Promise<Respo
   const id = crypto.randomUUID();
   const now = Date.now();
   await metaDb(env).prepare(
-    `INSERT INTO avavoice_agents (id, creator_id, name, role, system_profile, voice_name, rate_per_hour, payer_mode, session_limit_min, vision_enabled, status, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'draft',?11,?11)`,
-  ).bind(id, ctx.uid, v.f.name, v.f.role, v.f.system_profile, v.f.voice_name,
+    `INSERT INTO avavoice_agents (id, creator_id, name, role, system_profile, voice_name, images, rate_per_hour, payer_mode, session_limit_min, vision_enabled, status, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'draft',?12,?12)`,
+  ).bind(id, ctx.uid, v.f.name, v.f.role, v.f.system_profile, v.f.voice_name, v.f.images,
       v.f.rate_per_hour, v.f.payer_mode, v.f.session_limit_min, v.f.vision_enabled, now).run();
   track(env, ctx.uid, "avavoice_agent_created", APP, { agent: id });
   return json({ ok: true, agent_id: id });
@@ -341,6 +356,14 @@ export async function avavoiceGetAgent(req: Request, env: Env, id: string): Prom
   const a = await loadAgent(env, id);
   if (!a || a.status === "deleted") return json({ error: "not found" }, 404);
   if (a.status !== "published" && a.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  // Creator analytics: log non-owner detail views (D1 dashboard + PostHog mirror).
+  if (a.creator_id !== ctx.uid && a.status === "published") {
+    await recordView(env, req, {
+      kind: "voice_agent", subjectId: a.id, creatorId: a.creator_id, viewerUid: ctx.uid,
+      app: APP, source: new URL(req.url).searchParams.get("src"),
+      extra: { payer_mode: a.payer_mode, rate_per_hour: a.rate_per_hour, vision: !!a.vision_enabled },
+    });
+  }
   return json({ agent: await agentJson(env, a, true) });
 }
 
@@ -352,8 +375,8 @@ export async function avavoiceUpdateAgent(req: Request, env: Env, id: string): P
   const v = validateFields(await req.json().catch(() => ({})));
   if (v.error) return json({ error: v.error }, 400);
   await metaDb(env).prepare(
-    `UPDATE avavoice_agents SET name=?2, role=?3, system_profile=?4, voice_name=?5, rate_per_hour=?6, payer_mode=?7, session_limit_min=?8, vision_enabled=?9, updated_at=?10 WHERE id=?1`,
-  ).bind(id, v.f.name, v.f.role, v.f.system_profile, v.f.voice_name, v.f.rate_per_hour,
+    `UPDATE avavoice_agents SET name=?2, role=?3, system_profile=?4, voice_name=?5, images=?6, rate_per_hour=?7, payer_mode=?8, session_limit_min=?9, vision_enabled=?10, updated_at=?11 WHERE id=?1`,
+  ).bind(id, v.f.name, v.f.role, v.f.system_profile, v.f.voice_name, v.f.images, v.f.rate_per_hour,
       v.f.payer_mode, v.f.session_limit_min, v.f.vision_enabled, Date.now()).run();
   return json({ ok: true });
 }
@@ -367,6 +390,10 @@ export async function avavoicePublish(req: Request, env: Env, id: string, on: bo
   if (on) {
     if (a.system_profile.trim().length < 30) return json({ error: "system_profile too short to publish" }, 400);
     if (a.payer_mode === "user_pays" && a.rate_per_hour < MIN_RATE_PER_HOUR) return json({ error: "rate too low" }, 400);
+    // Listing photos are mandatory: 1–5 (owner decision 2026-06-11).
+    if (agentImages(a).length < 1) {
+      return json({ error: "cover_required", detail: "Add at least one photo (up to 5) before publishing." }, 400);
+    }
   }
   await metaDb(env).prepare("UPDATE avavoice_agents SET status=?2, updated_at=?3 WHERE id=?1")
     .bind(id, on ? "published" : "draft", Date.now()).run();
@@ -456,11 +483,26 @@ export async function avavoiceStats(req: Request, env: Env, id: string): Promise
             COALESCE(SUM(refund_coins),0) AS refunds
      FROM avavoice_sessions WHERE agent_id=?1 AND started_at>?2 AND status='ended'`,
   ).bind(id, since).first<any>();
+  // Audience analytics (30 d) from the shared listing_views log.
+  const since30 = Date.now() - 30 * 24 * 3600_000;
+  const vTotals = await db.prepare(
+    "SELECT COUNT(*) AS total, COUNT(DISTINCT viewer_uid) AS uniq FROM listing_views WHERE subject_kind='voice_agent' AND subject_id=?1 AND ts>?2",
+  ).bind(id, since30).first<any>().catch(() => null);
+  const vCountry = await db.prepare(
+    `SELECT COALESCE(country,'??') AS country, COUNT(*) AS views FROM listing_views
+      WHERE subject_kind='voice_agent' AND subject_id=?1 AND ts>?2 GROUP BY country ORDER BY views DESC LIMIT 10`,
+  ).bind(id, since30).all().catch(() => ({ results: [] as any[] }));
+  const vAge = await db.prepare(
+    `SELECT age_group, COUNT(*) AS views FROM listing_views
+      WHERE subject_kind='voice_agent' AND subject_id=?1 AND ts>?2 AND age_group IS NOT NULL GROUP BY age_group ORDER BY age_group`,
+  ).bind(id, since30).all().catch(() => ({ results: [] as any[] }));
   track(env, ctx.uid, "avavoice_creator_dashboard_viewed", APP, { agent: id });
   return json({
     bookings: Number(bk?.n ?? 0), calls: Number(ses?.calls ?? 0),
     minutes: Number(ses?.minutes ?? 0), gross_coins: Number(ses?.gross ?? 0),
     net_coins: Number(ses?.net ?? 0), refunds_coins: Number(ses?.refunds ?? 0),
+    views_30d: Number(vTotals?.total ?? 0), unique_viewers_30d: Number(vTotals?.uniq ?? 0),
+    views_by_country: vCountry.results ?? [], views_by_age_group: vAge.results ?? [],
   });
 }
 
@@ -500,7 +542,8 @@ export async function avavoiceBook(req: Request, env: Env): Promise<Response> {
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'booked',?10,?10)`,
   ).bind(id, a.id, ctx.uid, at, minutes, language, a.rate_per_hour, escrow, orderId, Date.now()).run();
   track(env, ctx.uid, "avavoice_booking_created", APP,
-      { agent: a.id, minutes, escrow, language, payer_mode: a.payer_mode, lead_time_min: Math.round((at - Date.now()) / 60000) });
+      { agent: a.id, minutes, escrow, language, payer_mode: a.payer_mode, lead_time_min: Math.round((at - Date.now()) / 60000),
+        ...geoOf(req) });
   // Creator-facing mirror — powers the AvaVerse dashboard funnel per agent.
   track(env, a.creator_id, "avavoice_creator_booking_received", APP,
       { agent: a.id, agent_name: a.name, minutes, escrow });
@@ -580,7 +623,7 @@ export async function avavoiceCallNow(req: Request, env: Env): Promise<Response>
     `INSERT INTO avavoice_bookings (id, agent_id, user_id, scheduled_at, booked_minutes, language, rate_per_hour, escrow_coins, order_id, status, created_at, updated_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'booked',?10,?10)`,
   ).bind(id, a.id, ctx.uid, Date.now(), minutes, language, a.rate_per_hour, escrow, orderId, Date.now()).run();
-  track(env, ctx.uid, "avavoice_call_now", APP, { agent: a.id });
+  track(env, ctx.uid, "avavoice_call_now", APP, { agent: a.id, ...geoOf(req) });
   return json({ ok: true, call_id: id, escrow_coins: escrow });
 }
 

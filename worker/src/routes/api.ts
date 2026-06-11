@@ -95,8 +95,15 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as {
     handle?: string; name?: string; email?: string; phone?: string;
-    account_kind?: string; avatar_url?: string;
+    account_kind?: string; avatar_url?: string; birth_year?: number;
   };
+  // Optional birth year — powers coarse age-group analytics only (13+); never shown publicly.
+  let birthYear: number | null = null;
+  if (b.birth_year !== undefined && b.birth_year !== null && b.birth_year !== 0) {
+    const y = Math.trunc(Number(b.birth_year));
+    if (!(y >= 1900 && y <= new Date().getFullYear() - 13)) return json({ error: "invalid_birth_year" }, 400);
+    birthYear = y;
+  }
   const handle = normalizeHandle(b.handle || "") || null;
   const name = (b.name || "").trim() || null;
   const avatarUrl = typeof b.avatar_url === "string" ? b.avatar_url.trim() : null;
@@ -115,13 +122,13 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   }
   try {
     await db.prepare(
-      `INSERT INTO users (uid, handle, display_name, avatar_url, email_hash, phone_hash, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?7)
+      `INSERT INTO users (uid, handle, display_name, avatar_url, email_hash, phone_hash, birth_year, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?8)
        ON CONFLICT(uid) DO UPDATE SET
          handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name),
          avatar_url=COALESCE(?4,avatar_url), email_hash=COALESCE(?5,email_hash),
-         phone_hash=COALESCE(?6,phone_hash), updated_at=?7`,
-    ).bind(ctx.uid, handle, name, avatarUrl, emailHash, phoneHash, now).run();
+         phone_hash=COALESCE(?6,phone_hash), birth_year=COALESCE(?7,birth_year), updated_at=?8`,
+    ).bind(ctx.uid, handle, name, avatarUrl, emailHash, phoneHash, birthYear, now).run();
   } catch (e) {
     if (String((e as Error)?.message || "").includes("UNIQUE")) return json({ error: "handle_taken" }, 409);
     throw e;
@@ -137,12 +144,13 @@ export async function me(req: Request, env: Env): Promise<Response> {
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
   const uid = clerk.clerkUserId;
   const prof = await metaSession(env).prepare(
-    "SELECT handle, display_name, avatar_url FROM users WHERE uid=?1",
-  ).bind(uid).first<{ handle: string | null; display_name: string | null; avatar_url: string | null }>();
+    "SELECT handle, display_name, avatar_url, birth_year FROM users WHERE uid=?1",
+  ).bind(uid).first<{ handle: string | null; display_name: string | null; avatar_url: string | null; birth_year: number | null }>();
   if (!prof) return json({ found: false, clerk_enabled: true, uid });
   return json({
     found: true, clerk_enabled: true, uid,
     handle: prof.handle ?? null, display_name: prof.display_name ?? null, avatar_url: prof.avatar_url ?? null,
+    birth_year: prof.birth_year ?? null,
   });
 }
 

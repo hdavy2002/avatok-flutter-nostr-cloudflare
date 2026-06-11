@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/theme.dart';
+import '../explore/widgets.dart' show CoverImage;
 
 /// AvaVoice brand accent (matches core/apps.dart tile color).
 const Color kAvaVoicePurple = Color(0xFFA06AF0);
@@ -94,7 +95,12 @@ class AgentCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(children: [
-          Avatar(seed: agent.id, name: agent.name, size: 52, avatarUrl: agent.avatarUrl),
+          // Listing photo (first of 1–5) when present; identicon fallback.
+          if (agent.images.isNotEmpty)
+            CoverImage(url: agent.images.first, seed: agent.id.hashCode, width: 52, height: 52,
+                radius: BorderRadius.circular(12))
+          else
+            Avatar(seed: agent.id, name: agent.name, size: 52, avatarUrl: agent.avatarUrl),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

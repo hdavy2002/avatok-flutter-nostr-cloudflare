@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import 'create_listing_flow.dart';
+import 'creator_insights_screen.dart';
 
 /// "My listings" — the creator's pipeline home: drafts, published, live.
 /// Overflow per listing: publish, go live / end, duplicate (A6), cancel.
@@ -90,7 +91,16 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-          title: const Text('My listings')),
+          title: const Text('My listings'),
+          actions: [
+            // Creator Insights — views, audience countries/ages, conversion.
+            IconButton(
+              tooltip: 'Insights',
+              icon: const Icon(Icons.insights_outlined),
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const CreatorInsightsScreen())),
+            ),
+          ]),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AvaColors.brand,
         onPressed: _create,

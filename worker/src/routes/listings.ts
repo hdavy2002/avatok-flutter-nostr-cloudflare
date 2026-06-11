@@ -37,6 +37,7 @@ import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
 import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track, brainFact } from "../hooks";
+import { recordView, trackImpressions, geoOf } from "./insights";
 import { notifyUser } from "../notify";
 import { emailBookingConfirmed } from "../cal/emails";
 
@@ -195,7 +196,14 @@ function normFields(b: any): Record<string, unknown> {
   if (b.country !== undefined) out.country = b.country ? String(b.country).slice(0, 2).toUpperCase() : null;
   if (b.adults_only !== undefined) out.adults_only = b.adults_only ? 1 : 0;
   if (b.badges !== undefined) out.badges = b.badges ? JSON.stringify(b.badges) : null;
-  if (b.cover_media !== undefined) out.cover_media = b.cover_media ? JSON.stringify(b.cover_media) : null;
+  if (b.cover_media !== undefined) {
+    // Listing photos: 1–5 (min enforced at publish; max here). Shape: {type,url}.
+    const arr = (Array.isArray(b.cover_media) ? b.cover_media : [])
+      .filter((m: any) => m && typeof m.url === "string" && /^https:\/\//.test(m.url))
+      .slice(0, 5)
+      .map((m: any) => ({ type: String(m.type || "image"), url: String(m.url).slice(0, 500) }));
+    out.cover_media = arr.length ? JSON.stringify(arr) : null;
+  }
   if (b.starts_at !== undefined) out.starts_at = b.starts_at ? Math.trunc(Number(b.starts_at)) : null;
   if (b.duration_min !== undefined) out.duration_min = b.duration_min ? Math.trunc(Number(b.duration_min)) : null;
   if (b.capacity !== undefined) out.capacity = b.capacity ? Math.trunc(Number(b.capacity)) : null;
@@ -263,6 +271,12 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   if (gate) return json({ error: gate.error, reason: "kyc" }, gate.status);
 
   if (!l.title || !l.category) return json({ error: "title and category required" }, 400);
+  // Listing photos are mandatory: 1–5 (owner decision 2026-06-11).
+  const covers = parseJson(l.cover_media, [] as unknown[]);
+  if (!Array.isArray(covers) || covers.length < 1) {
+    return json({ error: "cover_required", detail: "Add at least one photo (up to 5) before publishing." }, 400);
+  }
+  if (covers.length > 5) return json({ error: "max 5 photos" }, 400);
   const cat = await db.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(l.category).first();
   if (!cat) return json({ error: "unknown category" }, 400);
   if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
@@ -439,6 +453,7 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const promos = await promosFor(env, page.map((r) => r.id));
+  trackImpressions(env, req, uid, APP, "explore", page.map((r) => String(r.id)));
   return json({ listings: page.map((r) => shapeCard(r, promos)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
@@ -453,6 +468,7 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
+  trackImpressions(env, req, uid, APP, "live_now", rows.map((r) => String(r.id)));
   return json({ listings: rows.map((r) => ({ ...shapeCard(r, promos), joinable: true })) });
 }
 
@@ -504,7 +520,9 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const promos = await promosFor(env, page.map((r) => r.id));
-  if (uid) track(env, uid, "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length });
+  const g = geoOf(req);
+  track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, country: g.country, city: g.city });
+  trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
   return json({ listings: page.map((r) => shapeCard(r, promos)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
@@ -528,6 +546,14 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   if (uid) {
     following = !!(await metaDb(env).prepare("SELECT 1 FROM creator_follows WHERE follower_id=?1 AND creator_id=?2").bind(uid, r.creator_id).first());
     booked = !!(await metaDb(env).prepare("SELECT 1 FROM bookings WHERE listing_id=?1 AND buyer_id=?2 AND status IN ('confirmed','completed')").bind(id, uid).first());
+  }
+  // Creator analytics: log non-owner detail views (D1 dashboard + PostHog mirror).
+  if (!isOwner && ["published", "live"].includes(String(r.status))) {
+    const src = new URL(req.url).searchParams.get("src");
+    await recordView(env, req, {
+      kind: "listing", subjectId: id, creatorId: String(r.creator_id), viewerUid: uid,
+      app: APP, source: src, extra: { listing_kind: r.kind, price: Number(r.price), live: r.status === "live" },
+    });
   }
   return json({
     listing: { ...card, description: r.description ?? "" },
@@ -560,6 +586,10 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   if (uid) {
     const f = await metaDb(env).prepare("SELECT notify FROM creator_follows WHERE follower_id=?1 AND creator_id=?2").bind(uid, id).first<any>();
     following = !!f; notify = f ? !!f.notify : true;
+  }
+  if (uid !== id) {
+    const g = geoOf(req);
+    track(env, uid ?? "guest", "creator_channel_viewed", APP, { creator_id: id, guest: !uid, country: g.country, city: g.city });
   }
   return json({
     creator: {
@@ -840,7 +870,13 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   try { await notifyUser(env, l.creator_id, { type: "system", title: l.kind === "live_event" ? "New attendee" : "New booking", body: l.title, data: { deeplink: "/booking", booking_id: bookingId } }); } catch { /* best-effort */ }
   try { await notifyUser(env, ctx.uid, { type: "system", title: "Booking confirmed", body: l.title, data: { deeplink: `/explore/listing/${id}`, booking_id: bookingId } }); } catch { /* best-effort */ }
   brainFact(env, ctx.uid, "listing_booked", APP, { title: l.title, kind: l.kind, amount });
-  track(env, ctx.uid, "listing_booked", APP, { kind: l.kind, amount, promo: pct, live: l.status === "live", translation: !!trlLang });
+  {
+    const g = geoOf(req);
+    track(env, ctx.uid, "listing_booked", APP, {
+      kind: l.kind, amount, promo: pct, live: l.status === "live", translation: !!trlLang,
+      listing_id: id, creator_id: l.creator_id, country: g.country, city: g.city, region: g.region,
+    });
+  }
   return json({
     ok: true, booking_id: bookingId, order_id: orderId, amount, paid: amount + trlCoins > 0,
     translation: trlLang ? { lang: trlLang, coins: trlCoins, order_id: trlOrderId } : null,

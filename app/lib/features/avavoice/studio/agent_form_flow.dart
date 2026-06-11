@@ -1,9 +1,15 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/api_auth.dart';
 import '../../../core/avavoice_api.dart';
+import '../../../core/config.dart';
 import '../../../core/theme.dart';
+import '../../explore/widgets.dart' show CoverImage;
 import '../widgets.dart';
 import 'voice_picker.dart';
 
@@ -29,6 +35,10 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   late final _name = TextEditingController(text: widget.existing?.name ?? '');
   late final _role = TextEditingController(text: widget.existing?.role ?? '');
   late final _profile = TextEditingController(text: widget.existing?.systemProfile ?? '');
+
+  // Step 1 — listing photos (1–5; at least one required to publish)
+  late final List<String> _images = List.of(widget.existing?.images ?? const []);
+  bool _imgUploading = false;
 
   // Step 2 — voice
   late String _voice = widget.existing?.voiceName ?? 'Puck';
@@ -71,6 +81,7 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
         'role': _role.text.trim(),
         'system_profile': _profile.text.trim(),
         'voice_name': _voice,
+        'images': _images,
         'rate_per_hour': _payerMode == 'creator_pays' ? 0 : _rateCoins,
         'payer_mode': _payerMode,
         'session_limit_min': _sessionLimit,
@@ -130,8 +141,32 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     }
   }
 
+  Future<void> _pickImage() async {
+    if (_images.length >= 5 || _imgUploading) return;
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+    if (x == null) return;
+    setState(() => _imgUploading = true);
+    try {
+      final bytes = await x.readAsBytes();
+      final res = await ApiAuth.postBytes(kUploadPublicUrl, bytes,
+          extraHeaders: {'x-content-type': 'image/jpeg'}, timeout: const Duration(seconds: 60));
+      if (res.statusCode == 200) {
+        final url = (jsonDecode(res.body) as Map)['url']?.toString();
+        if (url != null && url.isNotEmpty && mounted) setState(() => _images.add(url));
+      }
+      Analytics.capture('avavoice_listing_photo_upload',
+          {'agent': _agentId ?? '', 'ok': res.statusCode == 200, 'count': _images.length});
+    } catch (_) {/* keep UI responsive */}
+    if (mounted) setState(() => _imgUploading = false);
+  }
+
   Future<void> _publish() async {
     if (!_validStep() || _working) return;
+    if (_images.isEmpty) {
+      setState(() => _step = 0);
+      _snack('Add at least one photo (up to 5) before publishing.');
+      return;
+    }
     if (!await _save()) return;
     setState(() => _working = true);
     final r = await AvaVoiceApi.publish(_agentId!);
@@ -251,6 +286,35 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
           '💡 The better you describe the personality, tone and tasks, the better your agent performs. Time-keeping and polite wrap-up are handled automatically by the platform.',
           style: TextStyle(fontSize: 12, color: AvaColors.sub, height: 1.4),
         ),
+        const SizedBox(height: 16),
+        _label('Listing photos (1–5)'),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          for (var i = 0; i < _images.length; i++)
+            Stack(children: [
+              CoverImage(url: _images[i], seed: i, width: 90, height: 90),
+              Positioned(right: 0, top: 0, child: GestureDetector(
+                onTap: () => setState(() => _images.removeAt(i)),
+                child: Container(
+                    decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                    padding: const EdgeInsets.all(3),
+                    child: const Icon(Icons.close, size: 14, color: Colors.white)),
+              )),
+            ]),
+          if (_images.length < 5)
+            GestureDetector(
+              onTap: _pickImage,
+              child: Container(
+                width: 90, height: 90,
+                decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+                child: _imgUploading
+                    ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                    : const Icon(Icons.add_a_photo_outlined, color: AvaColors.sub),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 6),
+        const Text('At least one photo is required to publish. Shown on your marketplace card and agent page.',
+            style: TextStyle(fontSize: 11.5, color: AvaColors.sub)),
       ]);
 
   // ── Step 2: voice ─────────────────────────────────────────────────────

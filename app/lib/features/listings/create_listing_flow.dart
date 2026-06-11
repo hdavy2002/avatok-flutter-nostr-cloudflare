@@ -91,7 +91,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       });
 
   Future<void> _pickCover() async {
-    if (_coverUrls.length >= 4 || _uploading) return;
+    if (_coverUrls.length >= 5 || _uploading) return;
     final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
     if (x == null) return;
     setState(() => _uploading = true);
@@ -113,11 +113,16 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       case 2:
         if (_kind == 'live_event') return _start != null && _start!.isAfter(DateTime.now());
         return true;
+      case 3: return _coverUrls.isNotEmpty; // at least one photo required
       default: return true;
     }
   }
 
   Future<void> _publish() async {
+    if (_coverUrls.isEmpty) {
+      setState(() { _step = 3; _error = 'Add at least one photo (up to 5) before publishing.'; });
+      return;
+    }
     setState(() { _publishing = true; _error = null; });
     // KYC gate intercepts here if unverified (server enforces too: API 403).
     final ok = await IdentityGate.ensureVerified(context, reason: 'publish a listing');
@@ -186,7 +191,11 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         type: StepperType.vertical,
         onStepContinue: () {
           if (!_validStep(_step)) {
-            setState(() => _error = _step == 1 ? 'A title is required.' : 'Pick a future date & time.');
+            setState(() => _error = _step == 1
+                ? 'A title is required.'
+                : _step == 3
+                    ? 'Add at least one photo (up to 5).'
+                    : 'Pick a future date & time.');
             return;
           }
           setState(() { _error = null; if (_step < 5) _step++; });
@@ -336,7 +345,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                     padding: const EdgeInsets.all(3), child: const Icon(Icons.close, size: 14, color: Colors.white)),
               )),
             ]),
-          if (_coverUrls.length < 4)
+          if (_coverUrls.length < 5)
             GestureDetector(
               onTap: _pickCover,
               child: Container(
@@ -349,7 +358,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
             ),
         ]),
         const SizedBox(height: 6),
-        const Text('Up to 4 photos. Served via Cloudflare (AVIF) and cached on devices.',
+        const Text('1–5 photos (at least one required). Served via Cloudflare (AVIF) and cached on devices.',
             style: TextStyle(fontSize: 11.5, color: AvaColors.sub)),
       ]);
 

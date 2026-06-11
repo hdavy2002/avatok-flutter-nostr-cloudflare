@@ -219,6 +219,19 @@ class ListingsApi {
     return CreatorChannel.fromJson(_j(r.body));
   }
 
+  // ── creator insights (owner-gated dashboards) ─────────────────────────────
+  /// Cross-listing rollup: views by day/country/age group, bookings, revenue.
+  static Future<Map<String, dynamic>?> creatorStats() async {
+    final r = await ApiAuth.getSigned('$_base/creators/me/stats');
+    return r.statusCode == 200 ? _j(r.body) : null;
+  }
+
+  /// Per-listing dashboard (views, audience, conversion).
+  static Future<Map<String, dynamic>?> listingStats(String id) async {
+    final r = await ApiAuth.getSigned('$_base/listings/$id/stats');
+    return r.statusCode == 200 ? _j(r.body) : null;
+  }
+
   // ── creator pipeline ──────────────────────────────────────────────────────
   static Future<String?> createDraft(String kind, Map<String, dynamic> fields) async {
     final r = await ApiAuth.postJson('$_base/listings', {'kind': kind, ...fields});
