@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../auth/clerk_client.dart';
+import '../../core/account_gate.dart';
 import '../../core/avatar.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
@@ -491,6 +492,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   }
 
   Future<void> _openAddContact() async {
+    // Adding an AvaTok contact needs a real, recoverable account: an L0 guest
+    // is routed to AvaIdentity to become an L1 member first (email + password).
+    final ok = await AccountGate.ensureMember(context, reason: 'add a contact');
+    if (!ok || !mounted) return;
     final c = await showAddContactSheet(context);
     if (c == null || !mounted) return;
     // Don't let someone add their own account (e.g. their other email).

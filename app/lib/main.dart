@@ -5,13 +5,18 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'auth/clerk_client.dart';
+import 'core/account_gate.dart';
 import 'core/account_restore.dart';
 import 'core/analytics.dart';
 import 'core/api_auth.dart';
+import 'core/app_registry.dart';
+import 'core/apps.dart';
 import 'core/ava_log.dart';
 import 'core/disk_cache.dart';
+import 'core/guest_session.dart';
 import 'core/onboarding_store.dart';
 import 'core/prefs_sync.dart';
+import 'core/profile_store.dart';
 import 'core/remote_config.dart';
 import 'core/theme.dart';
 import 'firebase_options.dart';
@@ -110,6 +115,10 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // Dual auth: every signed API call carries NIP-98 (key ownership) + a Clerk
     // session JWT (verified account). The Worker requires both on mutations.
     ApiAuth.clerkBearer = _clerk.sessionToken;
+    // Let any deep widget upgrade an L0 guest to an L1 member (AccountGate):
+    // it drives the Clerk sign-up, then calls back here to re-scope the app.
+    AccountGate.clerk = _clerk;
+    AccountGate.onUpgraded = _promoteGuestToMember;
     _boot();
   }
 
@@ -154,6 +163,19 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
           unawaited(_validateClerkInBackground());
           ContactsStore().pullAndMerge();
           return;
+        }
+      } else {
+        // No Clerk account remembered — but a returning L0 guest who already
+        // claimed a handle and set up locally goes straight back into the app
+        // (browse mode). They stay in the default scope until they upgrade.
+        final guestHandle = await GuestSession.reservedHandle();
+        if (guestHandle != null && guestHandle.isNotEmpty) {
+          AccountScope.id = null;
+          final local = await _idStore.load();
+          if (local != null && await _onb.isDone()) {
+            _to(_Stage.shell);
+            return;
+          }
         }
       }
     } catch (_) {/* fall through to the online path */}
@@ -205,6 +227,71 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
     } catch (_) {}
     await _route();
+  }
+
+  /// Handle claimed → walk straight into the app as an L0 guest. No sign-up
+  /// wall and no multi-step setup: we mint the device identity, default the
+  /// app set, and render the shell. Everything lives in the default
+  /// (un-scoped) space and migrates forward automatically if/when the guest
+  /// upgrades to a real account (see [_promoteGuestToMember]).
+  Future<void> _enterAsGuest() async {
+    AccountScope.id = null; // L0 guests browse in the default scope
+    try {
+      final existing = await _idStore.load();
+      if (existing == null) await _idStore.createAndStore();
+    } catch (_) {/* identity is best-effort; the shell still renders */}
+    if (!await _onb.isDone()) {
+      await _onb.setEnabledApps(kApps
+          .where((a) => a.defaultOn && AppRegistry.isStandard(a.key))
+          .map((a) => a.key)
+          .toSet());
+      await _onb.setDone();
+    }
+    Analytics.capture('guest_entered_app', const {});
+    _to(_Stage.shell);
+  }
+
+  /// L0 guest → L1 member (AccountGate). Called after the Clerk sign-up
+  /// completes. Re-scopes the app to the new Clerk account, carries the guest's
+  /// local state forward, and merges the reserved @handle into the real
+  /// account. The shell stays mounted — only the gated action resumes.
+  Future<void> _promoteGuestToMember() async {
+    // Read guest-scope bits BEFORE the scope flips: DiskCache is keyed by
+    // AccountScope.id and (unlike the identity/secure-storage keys) does not
+    // auto-migrate, so we re-stamp these under the new scope below.
+    final guestHandle = await GuestSession.reservedHandle();
+    Set<String> apps;
+    try { apps = await _onb.enabledApps(); } catch (_) { apps = <String>{}; }
+
+    try {
+      final cu = await _clerk.currentUser();
+      if (cu?.id != null && cu!.id.isNotEmpty) {
+        AccountScope.id = cu.id;
+        await DiskCache.writeGlobal(_kAcct, cu.id);
+      }
+    } catch (_) {}
+
+    // Carry onboarding state into the Clerk-scoped space so the member is never
+    // bounced back through onboarding on the next launch.
+    if (apps.isNotEmpty) await _onb.setEnabledApps(apps);
+    await _onb.setDone();
+    try { await _idStore.load(); } catch (_) {} // migrates the guest npub forward
+
+    // Keep their reserved @handle on the profile, then merge it server-side.
+    if (guestHandle != null && guestHandle.isNotEmpty) {
+      try {
+        final prof = await ProfileStore().load();
+        if (prof.handle.isEmpty) {
+          await ProfileStore().save(prof.copyWith(handle: guestHandle));
+        }
+      } catch (_) {}
+    }
+    try { await GuestSession.upgradeIfAny(); } catch (_) {}
+
+    PrefsSync.push();
+    ContactsStore().pullAndMerge();
+    Analytics.capture('guest_upgraded_to_member', const {});
+    if (mounted) setState(() {}); // refresh AccountGate.isMember-driven UI
   }
 
   /// Decide where a signed-in user lands. The key safety rule: a user the server
@@ -277,9 +364,18 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         // signup wall; it is reserved server-side and merged after Clerk auth.
         return WelcomeScreen(onContinue: () => _to(_Stage.handleClaim));
       case _Stage.handleClaim:
-        return HandleClaimScreen(onDone: () => _to(_Stage.signIn));
+        return HandleClaimScreen(
+          onClaimed: _enterAsGuest, // claim a handle → browse as an L0 guest
+          onHaveAccount: () => _to(_Stage.signIn),
+        );
       case _Stage.signIn:
-        return SignInScreen(clerk: _clerk, onSignedIn: _afterAuth);
+        return SignInScreen(
+          clerk: _clerk,
+          onSignedIn: _afterAuth,
+          // "New here? Sign up" → back to claim a handle (handle-first), NOT the
+          // email/password form (that only surfaces from the AccountGate).
+          onSignUpRequested: () => _to(_Stage.handleClaim),
+        );
       case _Stage.onboarding:
         return OnboardingFlow(onComplete: () => _to(_Stage.shell));
       case _Stage.restore:

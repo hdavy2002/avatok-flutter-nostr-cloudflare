@@ -8,11 +8,16 @@ import '../../core/theme.dart';
 
 /// L0 entry — the FIRST thing a new user sees (Trust Ladder, §3).
 /// One field: pick a unique @handle. It is reserved server-side immediately
-/// (guest token), then the user continues to sign-in/sign-up whenever they
-/// want to actually DO something. Time-to-app target: under 15 seconds.
+/// (guest token), then the visitor walks STRAIGHT into the app to browse as an
+/// L0 guest. No sign-up wall — an account is only asked for later, when an
+/// action needs one (AccountGate). Time-to-app target: under 15 seconds.
 class HandleClaimScreen extends StatefulWidget {
-  final VoidCallback onDone;
-  const HandleClaimScreen({super.key, required this.onDone});
+  /// A handle was claimed (or already reserved) → enter the app as a guest.
+  final VoidCallback onClaimed;
+
+  /// "I already have an account" → go to sign-in.
+  final VoidCallback onHaveAccount;
+  const HandleClaimScreen({super.key, required this.onClaimed, required this.onHaveAccount});
   @override
   State<HandleClaimScreen> createState() => _HandleClaimScreenState();
 }
@@ -31,7 +36,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
     Analytics.capture('handle_claim_viewed', const {});
     // Already reserved on this device? Skip straight through.
     GuestSession.reservedHandle().then((h) {
-      if (h != null && h.isNotEmpty && mounted) widget.onDone();
+      if (h != null && h.isNotEmpty && mounted) widget.onClaimed();
     });
   }
 
@@ -61,7 +66,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
     setState(() => _reserving = false);
     if (r.ok) {
       Analytics.capture('handle_claimed', const {});
-      widget.onDone();
+      widget.onClaimed();
     } else {
       setState(() { _avail = false; _msg = r.message; });
     }
@@ -120,7 +125,7 @@ class _HandleClaimScreenState extends State<HandleClaimScreen> {
                   : const Text('Claim my handle'),
             ),
             TextButton(
-              onPressed: widget.onDone, // existing users skip straight to sign-in
+              onPressed: widget.onHaveAccount, // existing users go to sign-in
               child: const Text('I already have an account'),
             ),
             const Spacer(),

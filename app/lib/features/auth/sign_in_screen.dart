@@ -3,16 +3,42 @@ import 'package:flutter/material.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/account_restore.dart';
 import '../../core/logo.dart';
-import '../../core/profile_store.dart';
 import '../../core/theme.dart';
 
 enum _Mode { signIn, signUp, verify, reset, resetCode }
+
+/// Public entry mode for the screen. Sign-up is only reached deliberately —
+/// from the AccountGate when a guest upgrades to an L1 member. The normal
+/// login path never shows the email sign-up form (its "Sign up" link sends the
+/// visitor back to claim a @handle instead).
+enum SignInMode { signIn, signUp }
 
 /// AvaTOK-styled auth (sign in / sign up / email-code), backed by Clerk's FAPI.
 class SignInScreen extends StatefulWidget {
   final ClerkClient clerk;
   final VoidCallback onSignedIn;
-  const SignInScreen({super.key, required this.clerk, required this.onSignedIn});
+
+  /// Where the screen opens. Defaults to sign-in. The AccountGate opens it on
+  /// [SignInMode.signUp] to turn a guest into a member.
+  final SignInMode initialMode;
+
+  /// When set, the sign-in footer's "Sign up" link calls this instead of
+  /// switching to the in-screen email form — RootFlow uses it to send the
+  /// visitor back to the handle-claim page (handle-first onboarding).
+  final VoidCallback? onSignUpRequested;
+
+  /// Optional context shown under the title when launched from a gate, e.g.
+  /// "to add a contact". Surfaces WHY the account is suddenly needed.
+  final String? gateReason;
+
+  const SignInScreen({
+    super.key,
+    required this.clerk,
+    required this.onSignedIn,
+    this.initialMode = SignInMode.signIn,
+    this.onSignUpRequested,
+    this.gateReason,
+  });
   @override
   State<SignInScreen> createState() => _SignInScreenState();
 }
@@ -20,10 +46,10 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
-  final _phone = TextEditingController();
   final _code = TextEditingController();
   final _newPass = TextEditingController();
-  _Mode _mode = _Mode.signIn;
+  late _Mode _mode =
+      widget.initialMode == SignInMode.signUp ? _Mode.signUp : _Mode.signIn;
   String? _pendingId;
   String? _pendingKind;
   bool _obscure = true;
@@ -63,13 +89,8 @@ class _SignInScreenState extends State<SignInScreen> {
           setState(() { _busy = false; _error = 'Enter an email and a password (8+ characters)'; });
           return;
         }
-        if (_phone.text.trim().length < 6) {
-          setState(() { _busy = false; _error = 'Enter your phone number'; });
-          return;
-        }
-        // Store the phone locally now so it persists through email verification;
-        // it's indexed to the directory on first launch (OTP verification later).
-        await ProfileStore().setPhone(_phone.text);
+        // L1 member = email + password + email OTP (Trust Ladder). No phone:
+        // SMS verification is a later, separate step surfaced only when needed.
         // Kept in memory for the session only (legacy; restore no longer needs
         // it — the Clerk sign-in is the account credential).
         AuthSession.lastPassword = _pass.text;
@@ -114,9 +135,12 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final signUpSub = widget.gateReason != null
+        ? 'Create your account to ${widget.gateReason}'
+        : 'Join AvaTOK';
     final (title, sub, cta) = switch (_mode) {
       _Mode.signIn => ('Welcome back', 'Log in to your AvaTOK account', 'Log In'),
-      _Mode.signUp => ('Create account', 'Join AvaTOK', 'Create account'),
+      _Mode.signUp => ('Create account', signUpSub, 'Create account'),
       _Mode.verify => ('Verify email', 'Enter the 6-digit code we emailed you', 'Verify'),
       _Mode.reset => ('Reset password', 'We\'ll email you a reset code', 'Send code'),
       _Mode.resetCode => ('Set a new password', 'Enter the code we emailed + your new password', 'Reset password'),
@@ -180,21 +204,6 @@ class _SignInScreenState extends State<SignInScreen> {
                   _eyeToggle(),
                 ])),
               ],
-              // PHONE (sign up only — for later OTP verification)
-              if (_mode == _Mode.signUp) ...[
-                const SizedBox(height: 16),
-                _label('PHONE'),
-                _box(child: TextField(
-                  controller: _phone, keyboardType: TextInputType.phone,
-                  decoration: _bare('+1 555 123 4567'), style: const TextStyle(fontSize: 16),
-                  onSubmitted: (_) => _submit(),
-                )),
-                const Padding(
-                  padding: EdgeInsets.only(left: 4, top: 8),
-                  child: Text('We\'ll verify this by SMS later. Friends can find you by phone.',
-                      style: TextStyle(color: AvaColors.sub, fontSize: 12)),
-                ),
-              ],
               // Forgot password (sign in only)
               if (_mode == _Mode.signIn)
                 Align(
@@ -241,8 +250,13 @@ class _SignInScreenState extends State<SignInScreen> {
   Widget _footerLink() {
     switch (_mode) {
       case _Mode.signIn:
+        // Handle-first onboarding: "Sign up" sends the visitor back to claim a
+        // @handle (onSignUpRequested). The email/password form is never reached
+        // from here — it only appears when an action needs an account (gate).
         return TextButton(
-          onPressed: () => _switch(_Mode.signUp),
+          onPressed: () => widget.onSignUpRequested != null
+              ? widget.onSignUpRequested!()
+              : _switch(_Mode.signUp),
           child: const Text('New here?  Sign up',
               style: TextStyle(color: AvaColors.ink, fontWeight: FontWeight.w700)),
         );
