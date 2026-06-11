@@ -41,9 +41,9 @@ import { track, metric } from "../hooks";
 import { readConfig } from "./config";
 
 const APP = "avavoice";
-// Gemini Live native-audio dialog model. Override with env.AVAVOICE_MODEL —
-// confirm the exact preview string in build Phase 0.
-const DEFAULT_MODEL = "gemini-3.5-flash-native-audio-preview";
+// Gemini Live native-audio dialog model (owner-confirmed 2026-06-11).
+// Override with env.AVAVOICE_MODEL if Google renames the preview.
+const DEFAULT_MODEL = "gemini-live-2.5-flash-native-audio";
 export const MAX_SESSION_MIN = 60;
 export const MAX_CONCURRENT = 10;
 export const SESSION_LIMITS = new Set([5, 10, 30, 60]);
