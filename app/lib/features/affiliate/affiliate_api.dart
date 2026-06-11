@@ -165,6 +165,17 @@ class AffiliateLinkStats {
             .toList();
 }
 
+/// One generated marketing-kit image (v2 asset kit, flag-gated).
+class AffiliateAsset {
+  final String id, format, url; // format: 'story' | 'post' | 'banner'
+  final int createdAt;
+  AffiliateAsset.fromJson(Map<String, dynamic> j)
+      : id = _s(j['id']),
+        format = _s(j['format'], 'post'),
+        url = _s(j['url']),
+        createdAt = _i(j['created_at']);
+}
+
 class AffiliateSubscriber {
   final String maskedHandle;
   final int boundAt, ltvCoins, commissionCoins;
@@ -282,6 +293,45 @@ class AffiliateApi {
     return ((_j(r.body)['subscribers'] as List?) ?? const [])
         .map((e) => AffiliateSubscriber.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
+  }
+
+  // ── v2 marketing-asset kit (flag affiliateAssetKitEnabled) ───────────────
+  /// POST /api/affiliate/links/:id/assets {style?} — generates 3 promo images
+  /// (story/post/banner) via Gemini. Slow (3 image calls) → generous timeout.
+  /// Returns {'ok': true, 'assets': List<AffiliateAsset>} or {'error', 'status'}
+  /// (429 = daily limit, 503 = kit disabled / key unset).
+  static Future<Map<String, dynamic>> generateAssets(String linkId, {String? style}) async {
+    try {
+      final r = await ApiAuth.postJson(
+        '$kAffiliateBase/links/$linkId/assets',
+        {if (style != null && style.trim().isNotEmpty) 'style': style.trim()},
+        timeout: const Duration(seconds: 120),
+      );
+      final j = _j(r.body);
+      if (r.statusCode == 200) {
+        final assets = ((j['assets'] as List?) ?? const [])
+            .map((e) => AffiliateAsset.fromJson((e as Map).cast<String, dynamic>()))
+            .toList();
+        return {'ok': true, 'assets': assets};
+      }
+      return {'error': _s(j['error'], 'generate_failed'), 'status': r.statusCode};
+    } catch (_) {
+      return {'error': 'network', 'status': 0};
+    }
+  }
+
+  /// GET /api/affiliate/links/:id/assets — newest first. Null on failure.
+  static Future<List<AffiliateAsset>?> listAssets(String linkId) async {
+    try {
+      final r = await ApiAuth.getSigned('$kAffiliateBase/links/$linkId/assets',
+          timeout: const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return ((_j(r.body)['assets'] as List?) ?? const [])
+          .map((e) => AffiliateAsset.fromJson((e as Map).cast<String, dynamic>()))
+          .toList();
+    } catch (_) {
+      return null;
+    }
   }
 
   /// POST /api/affiliate/links/:id/pause — toggles; returns the new status or null.

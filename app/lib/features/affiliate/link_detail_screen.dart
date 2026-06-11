@@ -1,6 +1,15 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
+import '../../core/avatar_cache.dart';
+import '../../core/remote_config.dart';
 import '../../core/theme.dart';
 import 'affiliate_api.dart';
 import 'link_created_sheet.dart';
@@ -26,11 +35,41 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
   bool _togglingPause = false;
   late String _status = widget.link.status;
 
+  // v2 marketing kit (flag affiliateAssetKitEnabled)
+  List<AffiliateAsset> _assets = const [];
+  bool _generating = false;
+
   @override
   void initState() {
     super.initState();
     Analytics.screenViewed('avaaffiliate', 'link_detail');
     _load();
+    if (RemoteConfig.affiliateAssetKitEnabled) _loadAssets();
+  }
+
+  Future<void> _loadAssets() async {
+    final a = await AffiliateApi.listAssets(widget.link.id);
+    if (!mounted || a == null) return;
+    setState(() => _assets = a);
+  }
+
+  Future<void> _generateAssets() async {
+    setState(() => _generating = true);
+    final res = await AffiliateApi.generateAssets(widget.link.id);
+    if (!mounted) return;
+    setState(() => _generating = false);
+    if (res['ok'] == true) {
+      final fresh = (res['assets'] as List?)?.cast<AffiliateAsset>() ?? const [];
+      setState(() => _assets = [...fresh, ..._assets]);
+      return;
+    }
+    final status = res['status'] as int? ?? 0;
+    final msg = status == 429
+        ? 'Daily limit reached — you can generate 3 kits per link per day. Try again tomorrow.'
+        : status == 503
+            ? 'The marketing kit isn\'t available right now — try again later.'
+            : 'Could not generate the kit — try again.';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _load() async {
@@ -146,6 +185,18 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
                   style: TextStyle(color: AvaColors.sub, fontSize: 12.5)))
         else
           ...s.recent.map(_conversionRow),
+        if (RemoteConfig.affiliateAssetKitEnabled) ...[
+          const SizedBox(height: 18),
+          _sectionTitle('Marketing kit'),
+          const SizedBox(height: 4),
+          const Text(
+            'AI-generated promo images for this listing — story, post and banner. '
+            'Tap one to add your QR code and share it.',
+            style: TextStyle(fontSize: 12, color: AvaColors.sub),
+          ),
+          const SizedBox(height: 10),
+          _marketingKit(),
+        ],
         const SizedBox(height: 18),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(
@@ -279,6 +330,200 @@ class _LinkDetailScreenState extends State<LinkDetailScreen> {
             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5,
                 color: AvaColors.success)),
       );
+
+  // ── v2 marketing kit ───────────────────────────────────────────────────────
+  Widget _marketingKit() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_assets.isNotEmpty) ...[
+        SizedBox(
+          height: 170,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _assets.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) => _assetCard(_assets[i]),
+          ),
+        ),
+        const SizedBox(height: 10),
+      ],
+      FilledButton.icon(
+        style: FilledButton.styleFrom(backgroundColor: kAffiliateOrange,
+            padding: const EdgeInsets.symmetric(vertical: 13)),
+        onPressed: _generating ? null : _generateAssets,
+        icon: _generating
+            ? const SizedBox(width: 16, height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : const Icon(Icons.auto_awesome, size: 18),
+        label: Text(_generating
+            ? 'Generating your kit… (~30 s)'
+            : _assets.isEmpty ? 'Generate marketing kit' : 'Generate a new kit'),
+      ),
+    ]);
+  }
+
+  static double _assetAspect(String format) => switch (format) {
+        'story' => 9 / 16,
+        'banner' => 16 / 9,
+        _ => 1.0,
+      };
+
+  Widget _assetCard(AffiliateAsset a) {
+    final w = 150 * _assetAspect(a.format) + (a.format == 'banner' ? -60 : 0);
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => AssetShareScreen(asset: a, link: widget.link))),
+      child: SizedBox(
+        width: w.clamp(86.0, 240.0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              // CF-AVIF transformed variant, disk-cached (existing image pipeline).
+              child: FutureBuilder<File?>(
+                future: AvatarCache.get(a.url, 480),
+                builder: (_, snap) => snap.data == null
+                    ? Container(color: AvaColors.soft,
+                        child: const Center(child: SizedBox(width: 18, height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))))
+                    : Image.file(snap.data!, fit: BoxFit.cover,
+                        width: double.infinity, height: double.infinity),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(a.format, style: const TextStyle(fontSize: 10.5,
+              fontWeight: FontWeight.w700, color: AvaColors.sub)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Share preview — composites the REAL scannable QR (the affiliate link URL)
+/// over the clean lower third the prompt reserved in the generated image, then
+/// captures the RepaintBoundary as PNG bytes and hands it to the native share
+/// sheet. The QR is rendered client-side (qr_flutter) — never by the model.
+class AssetShareScreen extends StatefulWidget {
+  final AffiliateAsset asset;
+  final AffiliateLink link;
+  const AssetShareScreen({super.key, required this.asset, required this.link});
+  @override
+  State<AssetShareScreen> createState() => _AssetShareScreenState();
+}
+
+class _AssetShareScreenState extends State<AssetShareScreen> {
+  final GlobalKey _boundaryKey = GlobalKey();
+  File? _image;
+  bool _sharing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // High-res CF-AVIF variant via the shared disk cache.
+    AvatarCache.get(widget.asset.url, 1080).then((f) {
+      if (mounted) setState(() => _image = f);
+    });
+  }
+
+  Future<void> _share() async {
+    final boundary =
+        _boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return;
+    setState(() => _sharing = true);
+    try {
+      final img = await boundary.toImage(pixelRatio: 3);
+      final data = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (data == null) throw Exception('capture failed');
+      final dir = await getTemporaryDirectory();
+      final file = File(
+          '${dir.path}/avatok-promo-${widget.asset.format}-${widget.asset.id}.png');
+      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      Analytics.capture('affiliate_asset_shared',
+          {'link_id': widget.link.id, 'format': widget.asset.format});
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'image/png')],
+        text: 'Check out "${widget.link.title}" on AvaTok — ${widget.link.url}',
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not share the image — try again.')));
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final aspect = _LinkDetailScreenState._assetAspect(widget.asset.format);
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
+        title: Text('Share ${widget.asset.format}'),
+      ),
+      body: Column(children: [
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _image == null
+                  ? const CircularProgressIndicator()
+                  : RepaintBoundary(
+                      key: _boundaryKey,
+                      child: AspectRatio(
+                        aspectRatio: aspect,
+                        child: LayoutBuilder(builder: (_, box) {
+                          // QR sized to sit comfortably inside the reserved
+                          // clean lower third of the artwork.
+                          final qrSize =
+                              (box.maxHeight * .24).clamp(56.0, box.maxWidth * .4);
+                          return Stack(fit: StackFit.expand, children: [
+                            Image.file(_image!, fit: BoxFit.cover),
+                            Positioned(
+                              bottom: box.maxHeight * .04,
+                              left: 0, right: 0,
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: QrImageView(
+                                    data: widget.link.url,
+                                    size: qrSize,
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ]);
+                        }),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: kAffiliateOrange,
+                  minimumSize: const Size.fromHeight(48)),
+              onPressed: _image == null || _sharing ? null : _share,
+              icon: _sharing
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.ios_share, size: 18),
+              label: const Text('Share with QR'),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
 /// Simple custom-painter dual-series bar chart: clicks (bars) + earnings

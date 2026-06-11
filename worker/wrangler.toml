@@ -39,6 +39,10 @@ ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 # LIVEKIT_API_KEY / LIVEKIT_API_SECRET are secrets (`wrangler secret put`).
 # All three unset ⇒ /api/conference/* returns 503 (flag-gated).
 LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
+# AvaAffiliate /a/:linkId web preview — Play badge package id (the Android
+# applicationId from app/android/app/build.gradle.kts). APP_STORE_ID is
+# deliberately NOT set (Android-only launch): unset ⇒ no App Store badge.
+PLAY_PACKAGE_ID = "ai.avatok.avatok_call"
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
@@ -289,6 +293,7 @@ WALLET_RETURN_URL = "https://avatok.ai/wallet"
 CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.avatok.ai"
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
+PLAY_PACKAGE_ID = "ai.avatok.avatok_call"   # staging APK = applicationIdSuffix .staging, but the Play listing is the prod package
 
 [[env.staging.d1_databases]]
 binding = "DB_META"

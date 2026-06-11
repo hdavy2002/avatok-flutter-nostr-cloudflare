@@ -37,6 +37,8 @@ class RemoteConfig {
   /// AvaAffiliate (PROPOSAL-AVA-AFFILIATE) — default OFF until launch, so a
   /// config-fetch failure never advertises a program the Worker isn't serving.
   static bool get avaAffiliateEnabled => _b('avaAffiliateEnabled', false);
+  /// v2 marketing-asset kit (Gemini Nano Banana 2 promo images) — default OFF.
+  static bool get affiliateAssetKitEnabled => _b('affiliateAssetKitEnabled', false);
   static int get minAppBuild => (_cfg['minAppBuild'] as num?)?.toInt() ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

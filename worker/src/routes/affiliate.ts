@@ -499,7 +499,7 @@ export async function affiliateClick(req: Request, env: Env, linkId: string): Pr
   if (limited) return limited;
 
   const link = await loadLink(env, linkId);
-  if (!link) return htmlResponse(previewHtml({ title: "Link not found", missing: true }), 404);
+  if (!link) return htmlResponse(previewHtml(env, { title: "Link not found", missing: true }), 404);
   const [affiliate, listing, cfg] = await Promise.all([
     loadAffiliate(env, link.affiliate_uid),
     loadListing(env, link.app, link.listing_id),
@@ -542,7 +542,7 @@ export async function affiliateClick(req: Request, env: Env, linkId: string): Pr
   }
 
   const deep = DEEP_LINK(link.listing_id, linkId);
-  const html = previewHtml({
+  const html = previewHtml(env, {
     title: listing?.title ?? "AvaTok",
     price: listing?.price ?? null,
     app: link.app,
@@ -563,11 +563,20 @@ const APP_LABEL: Record<string, string> = { avalive: "AvaLive", avaconsult: "Ava
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 /** Minimal public preview for non-installed users — attempts the deep link
- *  (which carries the aff param), then shows the listing + store badges. */
-function previewHtml(p: { title: string; price?: number | null; app?: string; creator?: string | null; deepLink?: string; linkId?: string; missing?: boolean }): string {
+ *  (which carries the aff param), then shows the listing + store badges.
+ *  Store links are config-driven: PLAY_PACKAGE_ID (var; falls back to the real
+ *  applicationId) and APP_STORE_ID (unset on the Android-only launch ⇒ NO App
+ *  Store badge is rendered at all — never a dead id000000000 link). */
+function previewHtml(env: Env, p: { title: string; price?: number | null; app?: string; creator?: string | null; deepLink?: string; linkId?: string; missing?: boolean }): string {
   const price = p.price != null && p.price > 0 ? `$${(p.price / 100).toFixed(2)}` : "";
   const appLabel = p.app ? APP_LABEL[p.app] ?? "AvaTok" : "AvaTok";
   const open = p.deepLink ? `<script>setTimeout(function(){window.location.href=${JSON.stringify(p.deepLink)};},300);</script>` : "";
+  const playId = (env.PLAY_PACKAGE_ID || "ai.avatok.avatok_call").trim();
+  const appStoreId = (env.APP_STORE_ID || "").trim();
+  const playBadge = `<a href="https://play.google.com/store/apps/details?id=${encodeURIComponent(playId)}${p.linkId ? `&referrer=aff%3D${encodeURIComponent(p.linkId)}` : ""}" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 6px 8px 0">Google&nbsp;Play</a>`;
+  const appStoreBadge = appStoreId
+    ? `<a href="https://apps.apple.com/app/avatok/id${encodeURIComponent(appStoreId)}" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 0 8px 0">App&nbsp;Store</a>`
+    : "";
   const body = p.missing
     ? `<p style="color:#888">This affiliate link doesn't exist (anymore).</p>`
     : `<p style="margin:4px 0 2px;color:#888;font-size:13px">${esc(appLabel)}${p.creator ? " · by a verified creator" : ""}</p>
@@ -575,10 +584,7 @@ function previewHtml(p: { title: string; price?: number | null; app?: string; cr
        ${price ? `<p style="margin:0 0 18px;font-weight:700;font-size:18px">${price}</p>` : ""}
        ${p.deepLink ? `<a href="${esc(p.deepLink)}" style="display:inline-block;background:#5b3df5;color:#fff;text-decoration:none;border-radius:12px;padding:12px 28px;font-weight:600;margin-bottom:22px">Open in AvaTok</a>` : ""}
        <p style="color:#888;font-size:13px;margin:0 0 10px">Don't have the app yet?</p>
-       <p style="margin:0">
-         <a href="https://play.google.com/store/apps/details?id=ai.avatok.app${p.linkId ? `&referrer=aff%3D${encodeURIComponent(p.linkId)}` : ""}" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 6px 8px 0">Google&nbsp;Play</a>
-         <a href="https://apps.apple.com/app/avatok/id000000000" style="display:inline-block;border:1px solid #ccc;border-radius:10px;padding:10px 16px;text-decoration:none;color:#222;margin:0 0 8px 0">App&nbsp;Store</a>
-       </p>
+       <p style="margin:0">${playBadge}${appStoreBadge}</p>
        <p style="color:#bbb;font-size:11px;margin-top:18px">Your invite stays linked when you install &amp; sign up.</p>`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.title)} — AvaTok</title>${open}</head>

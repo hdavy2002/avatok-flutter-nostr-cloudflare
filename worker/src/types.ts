@@ -140,7 +140,15 @@ export interface Env {
 
   // Live voice translation (Gemini 3.5 Live Translate). Unset → /api/translate/*
   // returns 503. The key never leaves the Worker — clients get ephemeral tokens.
+  // Also powers the AvaAffiliate v2 marketing-asset kit (Nano Banana 2 images).
   GEMINI_API_KEY?: string;
+
+  // App-store links on the /a/:linkId web preview (AvaAffiliate). Android-only
+  // launch: APP_STORE_ID stays UNSET until a real App Store listing exists —
+  // unset/empty ⇒ the App Store badge is not rendered at all. PLAY_PACKAGE_ID
+  // is the Android applicationId (app/android/app/build.gradle.kts).
+  APP_STORE_ID?: string;
+  PLAY_PACKAGE_ID?: string;
 
   // R2 S3 API creds for presigned digital-download URLs (Phase 5). Unset → the
   // OLX download route streams bytes through the Worker as a fallback.
