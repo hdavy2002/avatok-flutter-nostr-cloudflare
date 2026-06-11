@@ -112,7 +112,7 @@ export async function guestCreate(req: Request, env: Env): Promise<Response> {
   const deviceHash = b.device_id ? await sha256Hex(String(b.device_id)) : null;
   try {
     await db.batch([
-      db.prepare("INSERT INTO users (uid, handle, updated_at) VALUES (?1,?2,?3)").bind(uid, handle, now),
+      db.prepare("INSERT INTO users (uid, handle, created_at, updated_at) VALUES (?1,?2,?3,?3)").bind(uid, handle, now),
       db.prepare(
         "INSERT INTO guest_accounts (uid, handle, device_hash, created_at, last_seen_at) VALUES (?1,?2,?3,?4,?4)",
       ).bind(uid, handle, deviceHash, now),
@@ -121,8 +121,11 @@ export async function guestCreate(req: Request, env: Env): Promise<Response> {
          VALUES (?1,'handle','verified','system',?2,?2)`,
       ).bind(uid, now),
     ]);
-  } catch {
-    return json({ error: "handle taken" }, 409); // unique-index race
+  } catch (e: any) {
+    const msg = String(e?.message ?? e);
+    if (/UNIQUE|constraint/i.test(msg) && /handle/i.test(msg)) return json({ error: "handle taken" }, 409);
+    metric(env, "guest_create_error", [1]);
+    return json({ error: "could not reserve handle", detail: msg.slice(0, 200) }, 500);
   }
   await env.TOKENS.put(rlKey, String(n + 1), { expirationTtl: 86_400 });
 
@@ -153,7 +156,7 @@ export async function guestUpgrade(req: Request, env: Env): Promise<Response> {
   await db.batch([
     db.prepare("DELETE FROM users WHERE uid=?1").bind(guestUid),
     db.prepare(
-      `INSERT INTO users (uid, handle, updated_at) VALUES (?1,?2,?3)
+      `INSERT INTO users (uid, handle, created_at, updated_at) VALUES (?1,?2,?3,?3)
        ON CONFLICT(uid) DO UPDATE SET handle=COALESCE(users.handle, ?2), updated_at=?3`,
     ).bind(ctx.uid, g.handle, now),
     db.prepare("UPDATE guest_accounts SET upgraded_uid=?2, last_seen_at=?3 WHERE uid=?1")
