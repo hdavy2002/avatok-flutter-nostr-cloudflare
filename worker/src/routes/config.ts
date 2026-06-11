@@ -16,6 +16,11 @@ export interface PlatformConfig {
   conferenceEnabled: boolean;
   brainEnabled: boolean;
   verseEnabled: boolean;
+  // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md)
+  identityLadderEnabled: boolean;    // master switch for requireLevel gating
+  guestTierEnabled: boolean;         // L0 handle-only visitors
+  workersAiLivenessEnabled: boolean; // L2 via Workers AI clip check (Rekognition fallback)
+  simOnlyPhoneEnabled: boolean;      // block VoIP/temp numbers on phone verify
   minAppBuild: number;
 }
 
@@ -27,6 +32,10 @@ const DEFAULTS: PlatformConfig = {
   conferenceEnabled: true,
   brainEnabled: true,
   verseEnabled: true,
+  identityLadderEnabled: true,
+  guestTierEnabled: true,
+  workersAiLivenessEnabled: false, // flip on after model tuning; Rekognition stays default
+  simOnlyPhoneEnabled: true,
   minAppBuild: 0,
 };
 

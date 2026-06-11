@@ -19,6 +19,7 @@ import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
 import 'features/avatok/contacts.dart';
+import 'features/onboarding/handle_claim_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
 import 'push/push_service.dart';
@@ -87,7 +88,7 @@ class AvaTalkApp extends StatelessWidget {
   }
 }
 
-enum _Stage { loading, welcome, signIn, onboarding, restore, shell }
+enum _Stage { loading, welcome, handleClaim, signIn, onboarding, restore, shell }
 
 class RootFlow extends StatefulWidget {
   const RootFlow({super.key});
@@ -272,7 +273,11 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       case _Stage.loading:
         return const Scaffold(body: Center(child: CircularProgressIndicator(color: AvaColors.brand)));
       case _Stage.welcome:
-        return WelcomeScreen(onContinue: () => _to(_Stage.signIn));
+        // Handle-first onboarding (Trust Ladder L0): pick a handle BEFORE any
+        // signup wall; it is reserved server-side and merged after Clerk auth.
+        return WelcomeScreen(onContinue: () => _to(_Stage.handleClaim));
+      case _Stage.handleClaim:
+        return HandleClaimScreen(onDone: () => _to(_Stage.signIn));
       case _Stage.signIn:
         return SignInScreen(clerk: _clerk, onSignedIn: _afterAuth);
       case _Stage.onboarding:

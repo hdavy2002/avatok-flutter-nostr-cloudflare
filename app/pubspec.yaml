@@ -40,6 +40,8 @@ dependencies:
   # Encrypted chat media (pure-Dart AES-GCM) + pickers/record/playback
   cryptography: ^2.7.0
   image_picker: ^1.1.2
+  # L2 liveness selfie-clip capture (Trust Ladder — challenge frames + clip)
+  camera: ^0.11.0+2
   file_picker: ^8.1.6
   audioplayers: ^6.1.0
   record: ^7.0.0

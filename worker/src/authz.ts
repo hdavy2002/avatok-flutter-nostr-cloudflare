@@ -54,6 +54,18 @@ export async function requireKyc(env: Env, uid: string): Promise<AuthFail | null
   return { error: "identity verification required", status: 403 };
 }
 
+// Trust Ladder L3 — payouts specifically need DOCUMENT KYC (Stripe Identity),
+// not just liveness. Liveness (any provider) keeps satisfying requireKyc for
+// creator actions; money leaving the platform requires the stripe provider.
+// (PROPOSAL-PROGRESSIVE-IDENTITY.md §6)
+export async function requireStripeKyc(env: Env, uid: string): Promise<AuthFail | null> {
+  const r = await env.DB_META
+    .prepare("SELECT status, provider FROM kyc_status WHERE uid = ?1")
+    .bind(uid).first<{ status: string; provider: string | null }>();
+  if (r?.status === "verified" && (r.provider ?? "").startsWith("stripe")) return null;
+  return { error: "document verification (Stripe Identity) required for payouts", status: 403 };
+}
+
 // Hard block — does `owner` block `other`? (recipient blocks sender → no delivery)
 // Consolidated on the `blocks` table (uid renamed; blocked_npub holds a uid value),
 // which social.ts manages — so the messaging gate honours the same block list.

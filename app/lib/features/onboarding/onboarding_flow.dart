@@ -10,6 +10,7 @@ import '../../core/analytics.dart';
 import '../../core/app_registry.dart';
 import '../../core/apps.dart';
 import '../../core/feature_flags.dart';
+import '../../core/guest_session.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
@@ -90,10 +91,22 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     super.dispose();
   }
 
+  String? _guestHandle; // reserved pre-signup on the handle-claim screen (L0)
+
   Future<void> _bootstrap() async {
     var id = await _idStore.load();
     id ??= await _idStore.createAndStore();
     if (mounted) setState(() => _id = id);
+    // Handle-first onboarding: prefill the handle the visitor already reserved.
+    final gh = await GuestSession.reservedHandle();
+    if (gh != null && gh.isNotEmpty && mounted) {
+      setState(() {
+        _guestHandle = gh;
+        _handleCtrl.text = gh;
+        _handleAvail = true;
+        _handleMsg = 'Reserved for you ✓';
+      });
+    }
     // Attach this person's whole onboarding journey to their npub.
     Analytics.identify(id.npub);
     Analytics.capture('onboarding_started', const {});
@@ -102,6 +115,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   void _onHandleChanged(String v) {
     _handleDebounce?.cancel();
+    // Their own guest reservation always counts as available.
+    if (_guestHandle != null && v.trim().toLowerCase().replaceAll('@', '') == _guestHandle) {
+      setState(() { _checkingHandle = false; _handleAvail = true; _handleMsg = 'Reserved for you ✓'; });
+      return;
+    }
     setState(() { _handleAvail = null; _handleMsg = null; _checkingHandle = v.trim().isNotEmpty; });
     if (v.trim().isEmpty) { setState(() => _checkingHandle = false); return; }
     _handleDebounce = Timer(const Duration(milliseconds: 400), () async {
@@ -123,6 +141,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     // Persist locally first (merge with any phone captured earlier).
     final existing = await _profileStore.load();
     await _profileStore.save(existing.copyWith(displayName: name, handle: handle));
+    // Merge the L0 guest reservation FIRST — it re-keys the reserved handle to
+    // this Clerk account, so the directory registration below won't see it as
+    // taken by the (now retired) guest row.
+    await GuestSession.upgradeIfAny();
     // Publish to the directory so the handle + name are immediately searchable.
     // (No key backup anymore — the Clerk sign-in IS the account credential.)
     final r = await Directory.registerProfile(

@@ -239,7 +239,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
       ),
       if (_accountOpen) ...[
         _acct('wallet', 'Wallet', Icons.account_balance_wallet_outlined),
-        _acct('profile', 'Profile', Icons.person_outline),
+        _acct('identity', 'AvaIdentity', Icons.verified_user_outlined),
         _acct('billing', 'Billing', Icons.credit_card),
         _acct('payout', 'Payout', Icons.payments_outlined),
         _acct('settings', 'Settings', Icons.settings_outlined),

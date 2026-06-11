@@ -134,9 +134,17 @@ const String kIdBase = '$kApiBase/id';            // AvaID verification (Phase 1
 const String kEmailOtpStartUrl = '$kIdBase/email/start';   // POST {email}
 const String kEmailOtpVerifyUrl = '$kIdBase/email/verify'; // POST {email, code}
 const String kPhoneConfirmUrl = '$kIdBase/phone/confirm';  // POST {phone}
-// Future: video / liveness verification (events piped now; endpoints later).
-const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {session_id}
-const String kLivenessResultUrl = '$kIdBase/liveness/result'; // POST {session_id}
+// L2 liveness — Workers AI provider (flag: workersAiLivenessEnabled).
+const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {session_id, challenge}
+const String kLivenessUploadUrl = '$kIdBase/liveness/upload'; // POST ?session=&part= (raw bytes)
+const String kLivenessVerifyUrl = '$kIdBase/liveness/verify'; // POST {session_id}
+
+// Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
+const String kIdentityBase = '$kApiBase/identity';
+const String kGuestCreateUrl = '$kIdentityBase/guest';        // POST {handle} (no auth)
+const String kGuestCheckUrl = '$kIdentityBase/guest/check';   // GET ?handle= (no auth)
+const String kGuestUpgradeUrl = '$kIdentityBase/upgrade';     // POST {guest_token} (Clerk auth)
+const String kIdentityLevelUrl = '$kIdentityBase/level';      // GET (Clerk auth)
 
 const String kWalletBase = '$kApiBase/wallet';    // AvaWallet (Phase 2)
 const String kCalendarBase = '$kApiBase/calendar';// AvaCalendar (Phase 3→5)

@@ -19,7 +19,6 @@ import '../features/identity/identity_screen.dart';
 import '../features/inbox/inbox_screen.dart';
 import '../features/verse/verse_screen.dart';
 import '../features/payout/payout_screen.dart';
-import '../features/profile/profile_screen.dart';
 import '../features/wallet/wallet_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'ava_sidebar.dart';
@@ -104,7 +103,9 @@ class _AvaShellState extends State<AvaShell> {
         _push(const AvaStorageScreen());
         return;
       case 'profile':
-        _push(ProfileScreen(identity: _id));
+        // Profile menu removed — AvaIdentity is the one-stop identity hub
+        // (profile & photo live inside it). PROPOSAL-PROGRESSIVE-IDENTITY §7b.
+        _push(const IdentityScreen());
         return;
       case 'wallet':
       case 'avawallet':

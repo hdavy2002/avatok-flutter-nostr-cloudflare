@@ -277,11 +277,59 @@ export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
     await metaDb(env).prepare("UPDATE users SET email_hash=?2, updated_at=?3 WHERE uid=?1")
       .bind(ctx.uid, emailHash, now).run();
   } catch { /* profile row may not exist yet; contact_verification is the source of truth */ }
+  // Trust Ladder ledger (AvaIdentity hub green tick).
+  try {
+    await metaDb(env).prepare(
+      `INSERT INTO identity_proofs (uid, proof, status, provider, verified_at, updated_at)
+       VALUES (?1,'email','verified','clerk',?2,?2)
+       ON CONFLICT(uid, proof) DO UPDATE SET status='verified', verified_at=?2, updated_at=?2`,
+    ).bind(ctx.uid, now).run();
+  } catch { /* table may predate migration */ }
   await env.TOKENS.delete(key);
 
   track(env, ctx.uid, "email_verified", "avaid", {});
   metric(env, "email_otp_verified", [1]);
   return json({ ok: true, verified: true });
+}
+
+// ── SIM-only phone enforcement (PROPOSAL-PROGRESSIVE-IDENTITY.md §7b) ────────
+// Web temp-OTP services hand out VoIP/virtual numbers; we only accept real
+// mobile SIMs. Three layers: (1) carrier line-type lookup via Twilio Lookup v2
+// when TWILIO_* creds are set — accept type 'mobile' only; (2) a KV denylist
+// of known temp-number prefixes (`phone_denylist`: JSON array of E.164
+// prefixes, updatable without deploy); (3) one phone → one account.
+// Flag-gated by platform_config.simOnlyPhoneEnabled.
+
+async function simOnlyEnabled(env: Env): Promise<boolean> {
+  try {
+    const cfg = (await env.TOKENS.get("platform_config", "json")) as any;
+    if (cfg && "simOnlyPhoneEnabled" in cfg) return cfg.simOnlyPhoneEnabled !== false;
+  } catch { /* default on */ }
+  return true;
+}
+
+async function phoneDenylisted(env: Env, phone: string): Promise<boolean> {
+  try {
+    const list = (await env.TOKENS.get("phone_denylist", "json")) as string[] | null;
+    if (Array.isArray(list)) return list.some((p) => p && phone.startsWith(p));
+  } catch { /* no list */ }
+  return false;
+}
+
+/** 'mobile' | 'voip' | 'landline' | … | null when lookup unavailable. */
+async function lineType(env: Env, phone: string): Promise<string | null> {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) return null;
+  try {
+    const r = await fetch(
+      `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(phone)}?Fields=line_type_intelligence`,
+      { headers: { authorization: "Basic " + btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`) } },
+    );
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    return j?.line_type_intelligence?.type ?? null;
+  } catch {
+    return null; // lookup outage must not lock users out — denylist still applies
+  }
 }
 
 // POST /api/id/phone/confirm  { phone }
@@ -295,13 +343,47 @@ export async function idPhoneConfirm(req: Request, env: Env): Promise<Response> 
   const phone = normalizePhone(String(b.phone || ""));
   if (phone.replace(/\D/g, "").length < 8) return json({ error: "valid phone required" }, 400);
 
+  if (await simOnlyEnabled(env)) {
+    if (await phoneDenylisted(env, phone)) {
+      track(env, ctx.uid, "phone_verification_failed", "avaid", { reason: "denylisted" });
+      return json({ error: "this number can't be used — please use a real mobile number", reason: "phone_type_blocked" }, 400);
+    }
+    const t = await lineType(env, phone);
+    if (t !== null && t !== "mobile") {
+      track(env, ctx.uid, "phone_verification_failed", "avaid", { reason: "line_type", line_type: t });
+      metric(env, "phone_blocked_linetype", [1]);
+      return json({ error: "temporary/VoIP numbers aren't accepted — please use a real mobile number", reason: "phone_type_blocked" }, 400);
+    }
+  }
+
+  // One phone → one account.
+  const phoneHashPre = await sha256Hex(phone);
+  const existing = await env.DB_META
+    .prepare("SELECT uid FROM contact_phone_index WHERE phone_hash=?1")
+    .bind(phoneHashPre).first<{ uid: string }>();
+  if (existing && existing.uid !== ctx.uid) {
+    track(env, ctx.uid, "phone_verification_failed", "avaid", { reason: "in_use" });
+    return json({ error: "this number is already linked to another account", reason: "phone_in_use" }, 409);
+  }
+
   const now = Date.now();
-  const phoneHash = await sha256Hex(phone); // store hash only — never the raw number
-  await metaDb(env).prepare(
-    `INSERT INTO contact_verification (uid, phone_verified, phone_hash, phone_verified_at, updated_at)
-     VALUES (?1, 1, ?2, ?3, ?3)
-     ON CONFLICT(uid) DO UPDATE SET phone_verified=1, phone_hash=?2, phone_verified_at=?3, updated_at=?3`,
-  ).bind(ctx.uid, phoneHash, now).run();
+  const phoneHash = phoneHashPre; // store hash only — never the raw number
+  await metaDb(env).batch([
+    metaDb(env).prepare(
+      `INSERT INTO contact_verification (uid, phone_verified, phone_hash, phone_verified_at, updated_at)
+       VALUES (?1, 1, ?2, ?3, ?3)
+       ON CONFLICT(uid) DO UPDATE SET phone_verified=1, phone_hash=?2, phone_verified_at=?3, updated_at=?3`,
+    ).bind(ctx.uid, phoneHash, now),
+    // Claim the number in the directory index (enforces one phone → one account).
+    metaDb(env).prepare(
+      "INSERT OR REPLACE INTO contact_phone_index (phone_hash, uid, updated_at) VALUES (?1,?2,?3)",
+    ).bind(phoneHash, ctx.uid, now),
+    metaDb(env).prepare(
+      `INSERT INTO identity_proofs (uid, proof, status, provider, verified_at, updated_at)
+       VALUES (?1,'phone','verified','firebase',?2,?2)
+       ON CONFLICT(uid, proof) DO UPDATE SET status='verified', verified_at=?2, updated_at=?2`,
+    ).bind(ctx.uid, now),
+  ]);
 
   track(env, ctx.uid, "phone_verification_completed", "avaid", {});
   metric(env, "phone_confirmed", [1]);

@@ -99,6 +99,11 @@ export interface Env {
   GCAL_TOKEN_KEY?: string;         // AES-GCM key material for gcal refresh tokens
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
 
+  // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
+  GUEST_TOKEN_SECRET?: string;     // HMAC for L0 guest tokens (falls back to JOIN_LINK_SECRET)
+  TWILIO_ACCOUNT_SID?: string;     // Twilio Lookup v2 — SIM-only phone enforcement
+  TWILIO_AUTH_TOKEN?: string;      // (unset → line-type check skipped; KV denylist still applies)
+
   // AvaStorage (universal per-account pool). Free quota in GB (default 5);
   // over-quota metered price in AvaCoins per GB per month (default 20 — billed
   // by the consumers monthly cron, ledger type storage_charge).

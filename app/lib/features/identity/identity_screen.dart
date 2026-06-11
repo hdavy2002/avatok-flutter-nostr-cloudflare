@@ -1,13 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
+import '../../core/config.dart';
+import '../../core/theme.dart';
+import '../profile/phone_verify_card.dart';
+import '../profile/profile_screen.dart';
 import 'identity_api.dart';
 import 'identity_gate.dart';
+import 'ladder_api.dart';
+import 'liveness_check_screen.dart';
 
-/// AvaIdentity app screen (Phase 3): current verification status, restart
-/// button, and a what-we-check explainer. The strong doc-KYC (Stripe Identity)
-/// sits on top of the onboarding age/phone/email checks — it is only required
-/// for the creator/payout actions in the universal §5 gating matrix.
+/// AvaIdentity — the ONE-STOP identity hub (replaces the Profile sidebar
+/// entry; PROPOSAL-PROGRESSIVE-IDENTITY.md §7b). Shows the Trust Ladder with
+/// green ticks, and hosts every identity action: profile & photo, email
+/// change (OTP re-verify), password (Clerk), phone change (SIM-only, OTP),
+/// video liveness (L2) and Stripe document KYC (L3).
+///
+/// The liveness and Stripe KYC ticks are NOT deletable — they are trust
+/// assets. The only way to remove them is full account deletion, which wipes
+/// EVERYTHING (including verification media) after the 30-day grace window.
 class IdentityScreen extends StatefulWidget {
   const IdentityScreen({super.key});
   @override
@@ -16,127 +28,268 @@ class IdentityScreen extends StatefulWidget {
 
 class _IdentityScreenState extends State<IdentityScreen> {
   IdentityStatus? _status;
+  LadderState? _ladder;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    Analytics.capture('identity_screen_viewed');
+    Analytics.capture('identity_hub_viewed');
     _refresh();
   }
 
   Future<void> _refresh() async {
-    final s = await IdentityApi.status();
+    final st = await IdentityApi.status();
+    final ld = await LadderApi.level();
     if (!mounted) return;
     setState(() {
-      _status = s;
+      _status = st;
+      _ladder = ld;
       _loading = false;
     });
   }
 
-  Future<void> _verify() async {
-    final ok = await IdentityGate.ensureVerified(context, reason: 'use creator features');
+  bool get _livenessDone =>
+      _ladder?.proofs['liveness'] == 'verified' || _status?.verified == true;
+  bool get _stripeDone =>
+      _ladder?.proofs['stripe_kyc'] == 'verified' ||
+      (_status?.verified == true && _status?.provider == 'stripe_identity');
+
+  Future<void> _startLiveness() async {
+    final ok = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const LivenessCheckScreen()));
+    if (ok == true) {
+      await _refresh();
+    } else if (mounted) {
+      // Workers AI flow unavailable (flag off / camera) → offer the Stripe path.
+      await _startStripe();
+    }
+  }
+
+  Future<void> _startStripe() async {
+    final ok = await IdentityGate.ensureVerified(context, reason: 'unlock verified features');
     if (ok) await _refresh();
   }
 
-  ({IconData icon, Color color, String title, String subtitle}) _stateUi() {
-    final s = _status;
-    if (s == null) {
-      return (icon: Icons.cloud_off, color: Colors.grey, title: 'Status unavailable', subtitle: 'Could not reach the server. Pull to retry.');
-    }
-    if (s.verified) {
-      return (icon: Icons.verified, color: const Color(0xFF10B981), title: 'Verified ✓', subtitle: 'Your identity is verified${s.provider != null ? ' (${s.provider == 'stripe_identity' ? 'document + selfie' : 'selfie video'})' : ''}. Creator features are unlocked.');
-    }
-    switch (s.status) {
-      case 'pending':
-        return (icon: Icons.hourglass_top, color: Colors.amber, title: 'Pending', subtitle: 'Your verification is being processed. This usually takes a few minutes.');
-      case 'pending_input':
-        return (icon: Icons.error_outline, color: Colors.orange, title: 'More input needed', subtitle: s.failureReason ?? 'Stripe needs you to retry part of the check.');
-      case 'rejected':
-        return (icon: Icons.cancel_outlined, color: Colors.redAccent, title: 'Failed', subtitle: s.failureReason ?? 'Verification did not pass. You can try again.');
-      default:
-        return (icon: Icons.shield_outlined, color: const Color(0xFF7C5CFC), title: 'Not started', subtitle: 'Verify once to unlock creator payouts, paid listings and live selling.');
-    }
+  Future<void> _changeEmail() async {
+    final emailCtrl = TextEditingController();
+    final codeCtrl = TextEditingController();
+    var sent = false;
+    String? err;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        Future<void> send() async {
+          final r = await ApiAuth.postJson(kEmailOtpStartUrl, {'email': emailCtrl.text.trim()});
+          setS(() {
+            sent = r.statusCode == 200;
+            err = sent ? null : 'Could not send the code — check the address.';
+          });
+        }
+
+        Future<void> verify() async {
+          final r = await ApiAuth.postJson(
+              kEmailOtpVerifyUrl, {'email': emailCtrl.text.trim(), 'code': codeCtrl.text.trim()});
+          if (r.statusCode == 200) {
+            if (ctx.mounted) Navigator.of(ctx).pop();
+            await _refresh();
+          } else {
+            setS(() => err = 'Incorrect or expired code.');
+          }
+        }
+
+        return AlertDialog(
+          title: const Text('Change email'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+              controller: emailCtrl,
+              enabled: !sent,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'New email address'),
+            ),
+            if (sent) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: codeCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '6-digit code from your inbox'),
+              ),
+            ],
+            if (err != null) ...[
+              const SizedBox(height: 8),
+              Text(err!, style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 13)),
+            ],
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+            FilledButton(onPressed: sent ? verify : send, child: Text(sent ? 'Verify' : 'Send code')),
+          ],
+        );
+      }),
+    );
+  }
+
+  Future<void> _changePhone() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: const Padding(padding: EdgeInsets.all(16), child: PhoneVerifyCard()),
+      ),
+    );
+    await _refresh();
+  }
+
+  Future<void> _deleteAccount() async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text(
+          'This wipes EVERYTHING after a 30-day grace period: your profile, '
+          'messages, wallet, listings — and your identity verifications, '
+          'including the liveness photo and all KYC records. Verification '
+          'media cannot be deleted any other way.\n\n'
+          'You can cancel within 30 days by signing back in.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Keep my account')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete everything'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    final r = await ApiAuth.postJson(kAccountDeleteUrl, const {});
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(r.statusCode == 200
+            ? 'Deletion scheduled — everything is wiped in 30 days.'
+            : 'Could not schedule deletion — try again.')));
+    Analytics.capture('account_deletion_from_identity_hub', {'ok': r.statusCode == 200});
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final ui = _stateUi();
-    final verified = _status?.verified == true;
+    final level = _ladder?.level ?? 1;
     return Scaffold(
       appBar: AppBar(title: const Text('AvaIdentity')),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: ui.color.withValues(alpha: .09),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: ui.color.withValues(alpha: .35)),
-                    ),
-                    child: Column(children: [
-                      Icon(ui.icon, size: 52, color: ui.color),
-                      const SizedBox(height: 12),
-                      Text(ui.title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 6),
-                      Text(ui.subtitle, textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant, height: 1.4)),
-                    ]),
+            : ListView(padding: const EdgeInsets.all(20), children: [
+                // ── Level card ────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AvaColors.brand.withValues(alpha: .08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AvaColors.brand.withValues(alpha: .3)),
                   ),
-                  const SizedBox(height: 16),
-                  if (!verified)
-                    FilledButton.icon(
-                      onPressed: _verify,
-                      icon: const Icon(Icons.badge_outlined),
-                      label: Text(_status?.status == 'rejected' || _status?.status == 'pending_input'
-                          ? 'Restart verification'
-                          : 'Verify my identity'),
-                      style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                  child: Row(children: [
+                    const Icon(Icons.shield_outlined, size: 40, color: AvaColors.brand),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Trust level $level',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800)),
+                        Text(
+                          level >= 3
+                              ? 'Fully verified — payouts unlocked.'
+                              : level == 2
+                                  ? 'Verified human — creator features unlocked.'
+                                  : 'Member — verify to unlock creator features.',
+                          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                        ),
+                      ]),
                     ),
-                  const SizedBox(height: 28),
-                  Text('What we check', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  const _CheckRow(Icons.badge_outlined, 'Government ID',
-                      'A photo of your passport, driving licence or national ID card.'),
-                  const _CheckRow(Icons.face_retouching_natural, 'Selfie match',
-                      'A short live selfie, matched against your document.'),
-                  const _CheckRow(Icons.lock_outline, 'Privacy',
-                      'Documents are processed by Stripe Identity. AvaTOK stores only the verification result — never your ID images.'),
-                  const _CheckRow(Icons.workspace_premium_outlined, 'What it unlocks',
-                      'Withdrawing earnings, paid consult listings and live selling. Browsing, chatting and buying never need this.'),
-                ],
-              ),
+                  ]),
+                ),
+                const SizedBox(height: 20),
+
+                // ── The ladder ────────────────────────────────────────────
+                Text('Your identity',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                _tick(true, Icons.alternate_email, 'Handle', 'Your unique @handle', null),
+                _tick(true, Icons.email_outlined, 'Email & password',
+                    'Tap to change your email (OTP re-verify)', _changeEmail),
+                _tick(_ladder?.proofs['phone'] == 'verified', Icons.sms_outlined, 'Phone',
+                    'Real SIM numbers only — temp/VoIP numbers are rejected', _changePhone),
+                _tick(
+                    _livenessDone,
+                    Icons.video_camera_front_outlined,
+                    'Video liveness',
+                    _livenessDone
+                        ? 'Verified — cannot be removed (delete account to erase)'
+                        : 'A 5–10 s selfie clip with random gestures',
+                    _livenessDone ? null : _startLiveness),
+                _tick(
+                    _stripeDone,
+                    Icons.badge_outlined,
+                    'Document KYC (Stripe)',
+                    _stripeDone
+                        ? 'Verified by Stripe — cannot be removed (delete account to erase)'
+                        : 'Government ID + selfie match — required for payouts',
+                    _stripeDone ? null : _startStripe),
+                const SizedBox(height: 20),
+
+                // ── Account actions ───────────────────────────────────────
+                Text('Account',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('Profile & photo'),
+                  subtitle: const Text('Display name, bio, profile picture'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const ProfileScreen()))
+                      .then((_) => _refresh()),
+                ),
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.password_outlined),
+                  title: Text('Password'),
+                  subtitle: Text(
+                      'Managed securely by sign-in — use "Forgot password" at sign-in to change it'),
+                ),
+                const Divider(height: 32),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.delete_forever_outlined, color: cs.error),
+                  title: Text('Delete account', style: TextStyle(color: cs.error)),
+                  subtitle: const Text('Wipes everything — including verification media'),
+                  onTap: _deleteAccount,
+                ),
+                const SizedBox(height: 24),
+              ]),
       ),
     );
   }
-}
 
-class _CheckRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String body;
-  const _CheckRow(this.icon, this.title, this.body);
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 22, color: const Color(0xFF7C5CFC)),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 2),
-            Text(body, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, height: 1.35)),
-          ]),
-        ),
+  Widget _tick(bool done, IconData icon, String title, String subtitle, VoidCallback? onTap) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: done ? const Color(0xFF10B981) : null),
+      title: Row(children: [
+        Flexible(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+        const SizedBox(width: 6),
+        if (done) const Icon(Icons.check_circle, size: 18, color: Color(0xFF10B981)),
       ]),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12.5)),
+      trailing: onTap != null ? const Icon(Icons.chevron_right) : null,
+      onTap: onTap,
     );
   }
 }

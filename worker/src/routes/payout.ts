@@ -9,7 +9,7 @@
 //   POST /webhooks/wise        → Wise transfer state-change callback
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, requireKyc, isFail } from "../authz";
+import { requireUser, requireStripeKyc, isFail } from "../authz";
 import { walletOp } from "./wallet";
 import { wiseConfigured, createRecipient, createQuote, createTransfer, fundTransfer } from "../wise";
 import { track, brainFact } from "../hooks";
@@ -44,8 +44,8 @@ export async function payoutSetup(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   // Phase 3 — KYC BEFORE we accept bank details (acceptance: API-level gate).
-  const kyc = await requireKyc(env, ctx.uid);
-  if (kyc) return json({ error: kyc.error, reason: "kyc_required" }, kyc.status);
+  const kyc = await requireStripeKyc(env, ctx.uid);
+  if (kyc) return json({ error: kyc.error, reason: "stripe_kyc_required" }, kyc.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const acctNum = String(b.account_number || "");
   if (!b.account_holder || !b.ifsc || !acctNum) return json({ error: "account_holder, ifsc, account_number required" }, 400);
@@ -99,8 +99,8 @@ export async function payoutRequest(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   // Phase 3 — KYC gate at the API level (not just UI-gated).
-  const kyc = await requireKyc(env, ctx.uid);
-  if (kyc) return json({ error: kyc.error, reason: "kyc_required" }, kyc.status);
+  const kyc = await requireStripeKyc(env, ctx.uid);
+  if (kyc) return json({ error: kyc.error, reason: "stripe_kyc_required" }, kyc.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const amount = Math.trunc(Number(b.amount_coins));
   const accountId = String(b.account_id || "");

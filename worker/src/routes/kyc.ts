@@ -127,8 +127,15 @@ export async function stripeIdentityWebhook(req: Request, env: Env): Promise<Res
       metaDb(env).prepare(
         "UPDATE verification_attempts SET result='pass' WHERE uid=?1 AND session_id=?2",
       ).bind(uid, sessionId),
+      // Trust Ladder L3 ledger row (payouts gate on stripe provider).
+      metaDb(env).prepare(
+        `INSERT INTO identity_proofs (uid, proof, status, provider, evidence_ref, verified_at, updated_at)
+         VALUES (?1,'stripe_kyc','verified','stripe_identity',?2,?3,?3)
+         ON CONFLICT(uid, proof) DO UPDATE SET status='verified', evidence_ref=?2, verified_at=?3, updated_at=?3`,
+      ).bind(uid, sessionId, now),
     ]);
     await setVerifiedCache(env, uid, true);
+    try { await env.TOKENS.delete(`idlevel:${uid}`); } catch { /* level cache */ }
     brainFact(env, uid, "identity_verified", "avaid", { method: "stripe_identity", at: now });
     track(env, uid, "id_verified", "avaid", { provider: "stripe" });
     metric(env, "avaid_stripe_verified", [1]);

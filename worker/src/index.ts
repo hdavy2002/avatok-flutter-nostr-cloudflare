@@ -21,6 +21,8 @@ import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, c
 import { runMoney, moneyDlq, type MoneyMsg } from "./money_engine";
 import { setTestClock } from "./clock";
 import { stripeIdentityWebhook, agreementStatus, agreementDoc, agreementAccept } from "./routes/kyc";
+import { livenessStart, livenessUpload, livenessVerify } from "./routes/liveness";
+import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
 import { gcalConnect, gcalCallback, gcalStatus, gcalDisconnect, gcalWebhook } from "./cal/gcal";
@@ -182,6 +184,15 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/id/email/start" && req.method === "POST") return await idEmailStart(req, env);
       if (p === "/api/id/email/verify" && req.method === "POST") return await idEmailVerify(req, env);
       if (p === "/api/id/phone/confirm" && req.method === "POST") return await idPhoneConfirm(req, env);
+      // L2 liveness — Workers AI provider (flag-gated; Rekognition stays default).
+      if (p === "/api/id/liveness/start" && req.method === "POST") return await livenessStart(req, env);
+      if (p === "/api/id/liveness/upload" && req.method === "POST") return await livenessUpload(req, env);
+      if (p === "/api/id/liveness/verify" && req.method === "POST") return await livenessVerify(req, env);
+      // Progressive Identity ladder — guest tier (no auth) + level (Clerk auth).
+      if (p === "/api/identity/guest" && req.method === "POST") return await guestCreate(req, env);
+      if (p === "/api/identity/guest/check" && req.method === "GET") return await guestHandleCheck(req, env);
+      if (p === "/api/identity/upgrade" && req.method === "POST") return await guestUpgrade(req, env);
+      if (p === "/api/identity/level" && req.method === "GET") return await getIdentityLevel(req, env);
       // Phase 3 — Stripe Identity webhook (second KYC provider, same gateway)
       // + A1 agreement acceptance (creator agreement before first withdrawal).
       if ((p === "/webhooks/stripe-identity" || p === "/api/identity/stripe-webhook") && req.method === "POST") return await stripeIdentityWebhook(req, env);
