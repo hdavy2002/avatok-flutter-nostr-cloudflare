@@ -5,9 +5,11 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'ladder_api.dart';
 
 /// L2 liveness check (Workers AI provider). The random challenge is only
@@ -175,76 +177,102 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Video verification')),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Video check', markWord: 'Video', tag: 'prove you\'re real'),
       body: switch (_phase) {
-        _Phase.intro => _intro(cs),
-        _Phase.preparing => const Center(child: CircularProgressIndicator()),
+        _Phase.intro => _intro(),
+        _Phase.preparing => const Center(child: CircularProgressIndicator(color: Zine.blueInk)),
         _Phase.challenge => _challengeView(),
         _Phase.uploading => _busy('Uploading…'),
         _Phase.verifying => _busy('Checking your clip…\nThis takes a few seconds.'),
-        _Phase.passed => _done(cs),
-        _Phase.failed => _failed(cs),
+        _Phase.passed => _done(),
+        _Phase.failed => _failed(),
       },
     );
   }
 
-  Widget _intro(ColorScheme cs) => Padding(
+  Widget _intro() => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Spacer(),
-          const Icon(Icons.video_camera_front_outlined, size: 64, color: AvaColors.brand),
-          const SizedBox(height: 16),
+          Center(
+            child: Container(
+              width: 104, height: 104,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Zine.lilac,
+                border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
+                boxShadow: Zine.shadow,
+              ),
+              child: PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                  size: 46, color: Zine.ink),
+            ),
+          ),
+          const SizedBox(height: 22),
           Text('Prove you\'re a real person',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
+              textAlign: TextAlign.center, style: ZineText.hero(size: 28)),
+          const SizedBox(height: 12),
           Text(
             'A quick selfie video (5–10 s). We\'ll ask you to say a short phrase '
             'and make two random gestures. The clip is checked automatically and '
             'then DELETED — only a single photo stays on your AvaIdentity card.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: cs.onSurfaceVariant, height: 1.45),
+            style: ZineText.sub(size: 14),
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: cs.error)),
-          ],
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Center(child: SizedBox(width: 280, child: ZineErrorMsg(_error!))),
+            ),
           const Spacer(),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 14)),
-            onPressed: _begin,
-            child: const Text('Start'),
-          ),
+          ZineButton(label: 'Start', fullWidth: true, fontSize: 19, onPressed: _begin),
           const SizedBox(height: 8),
         ]),
       );
 
   Widget _challengeView() {
     final cam = _cam;
+    // Camera preview keeps its natural look; overlays are zine chrome.
     return Stack(fit: StackFit.expand, children: [
-      if (cam != null && cam.value.isInitialized) CameraPreview(cam) else const ColoredBox(color: Colors.black),
+      if (cam != null && cam.value.isInitialized) CameraPreview(cam) else const ColoredBox(color: Zine.ink),
+      // Instruction sticker-card (overlay scrim with ink alpha is OK here).
       Positioned(
         left: 0, right: 0, bottom: 48,
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: .65),
-            borderRadius: BorderRadius.circular(16),
+            color: Zine.ink.withValues(alpha: .7),
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            border: Border.all(color: Zine.lime, width: Zine.bw),
           ),
           child: Text(_prompt,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.3)),
+              style: ZineText.cardTitle(size: 22, color: Zine.paper)),
         ),
       ),
+      // REC sticker.
       const Positioned(
         top: 16, right: 16,
+        child: ZineSticker('● rec', kind: ZineStickerKind.no),
+      ),
+      // Progress pips: phrase + 2 actions + neutral frame.
+      Positioned(
+        top: 18, left: 16,
         child: Row(children: [
-          Icon(Icons.fiber_manual_record, color: Colors.redAccent, size: 16),
-          SizedBox(width: 6),
-          Text('REC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          for (var i = -1; i <= 2; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 7),
+              child: Container(
+                width: 11, height: 11,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i <= _actionIx ? Zine.lime : Zine.paper,
+                  border: Border.all(color: Zine.ink, width: 2),
+                ),
+              ),
+            ),
         ]),
       ),
     ]);
@@ -252,57 +280,57 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
 
   Widget _busy(String msg) => Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const CircularProgressIndicator(color: AvaColors.brand),
-          const SizedBox(height: 16),
-          Text(msg, textAlign: TextAlign.center),
+          const CircularProgressIndicator(color: Zine.blueInk),
+          const SizedBox(height: 18),
+          Text(msg, textAlign: TextAlign.center, style: ZineText.sub(size: 14)),
         ]),
       );
 
-  Widget _done(ColorScheme cs) => Padding(
+  Widget _done() => ZineSuccessOverlay(
+        icon: PhosphorIcons.sealCheck(PhosphorIconsStyle.fill),
+        headline: 'You\'re verified',
+        sub: 'Creator features and verified apps are now unlocked.',
+        ctaLabel: 'Done',
+        onCta: () => Navigator.of(context).pop(true),
+      );
+
+  Widget _failed() => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Spacer(),
-          const Icon(Icons.verified, size: 72, color: Color(0xFF10B981)),
-          const SizedBox(height: 16),
-          Text('You\'re verified ✓',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Text('Creator features and verified apps are now unlocked.',
-              textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
-          const Spacer(),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 14)),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Done'),
+          Center(
+            child: Container(
+              width: 92, height: 92,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Zine.coral,
+                border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
+                boxShadow: Zine.shadow,
+              ),
+              child: PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold),
+                  size: 42, color: Colors.white),
+            ),
           ),
-        ]),
-      );
-
-  Widget _failed(ColorScheme cs) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Spacer(),
-          Icon(Icons.error_outline, size: 64, color: cs.error),
-          const SizedBox(height: 16),
-          Text('Not verified yet',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
+          Text('Not verified yet', textAlign: TextAlign.center, style: ZineText.hero(size: 28)),
+          const SizedBox(height: 10),
           Text(
             '${_failMessage ?? 'Verification failed.'}'
             '${_attemptsLeft != null ? '\nAttempts left today: $_attemptsLeft' : ''}'
             '\n\nYour clip and photos were deleted.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
+            style: ZineText.sub(size: 14),
           ),
           const Spacer(),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 14)),
+          ZineButton(
+            label: 'Try again',
+            fullWidth: true,
+            fontSize: 19,
             onPressed: (_attemptsLeft ?? 1) > 0 ? _begin : null,
-            child: const Text('Try again'),
           ),
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Later')),
+          const SizedBox(height: 14),
+          Center(child: ZineLink('LATER', onTap: () => Navigator.of(context).pop(false))),
+          const SizedBox(height: 8),
         ]),
       );
 }

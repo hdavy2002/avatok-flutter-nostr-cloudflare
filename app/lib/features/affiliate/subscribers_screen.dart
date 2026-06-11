@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
 import 'widgets.dart';
 
@@ -38,31 +40,32 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('Subscribers'),
-      ),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Subscribers', markWord: 'Subs', tag: 'bound for life'),
       body: _failed
           ? Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Text('Could not load subscribers.',
-                    style: TextStyle(color: AvaColors.sub)),
-                const SizedBox(height: 10),
-                OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                ZineEmptyState(
+                  icon: PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
+                  text: 'Could not load subscribers.',
+                ),
+                const SizedBox(height: 14),
+                ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
+                    fontSize: 16, onPressed: _load),
               ]),
             )
           : _subs == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
               : _subs!.isEmpty
                   ? const AffEmpty(
                       'No referred users yet.\nEvery user who signs up through your link binds to you for life.')
                   : RefreshIndicator(
                       onRefresh: _load,
+                      color: Zine.blueInk,
                       child: ListView.separated(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
                         itemCount: _subs!.length + 1,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (_, i) => i == 0 ? _header() : _row(_subs![i - 1]),
                       ),
                     ),
@@ -70,34 +73,38 @@ class _SubscribersScreenState extends State<SubscribersScreen> {
   }
 
   Widget _header() => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(bottom: 4),
         child: Text(
           '${_subs!.length} referred ${_subs!.length == 1 ? 'user' : 'users'} on '
           '"${widget.link.title}" — identities are anonymized for privacy.',
-          style: const TextStyle(fontSize: 12.5, color: AvaColors.sub),
+          style: ZineText.sub(size: 12.5),
         ),
       );
 
-  Widget _row(AffiliateSubscriber s) => ListTile(
-        contentPadding: const EdgeInsets.symmetric(vertical: 6),
-        leading: Container(width: 42, height: 42,
-            decoration: BoxDecoration(
-                color: kAffiliateOrange.withValues(alpha: .12),
-                shape: BoxShape.circle),
-            child: const Icon(Icons.person, color: kAffiliateOrange, size: 20)),
-        title: Text(s.maskedHandle,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-        subtitle: Text(
-          'Bound ${fmtAffDate(s.boundAt)} · spent ${affCoinsLabel(s.ltvCoins)}',
-          style: const TextStyle(fontSize: 11.5, color: AvaColors.sub),
-        ),
-        trailing: Column(mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('+${affCoinsLabel(s.commissionCoins)}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14,
-                  color: AvaColors.success)),
-          const Text('your commission',
-              style: TextStyle(fontSize: 9.5, color: AvaColors.sub)),
+  Widget _row(AffiliateSubscriber s) => ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        boxShadow: Zine.shadowXs,
+        child: Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+              color: Zine.blue, size: 38),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(s.maskedHandle, style: ZineText.value(size: 14)),
+              const SizedBox(height: 2),
+              Text(
+                'Bound ${fmtAffDate(s.boundAt)} · spent ${affCoinsLabel(s.ltvCoins)}'.toUpperCase(),
+                style: ZineText.kicker(size: 9, color: Zine.inkMute),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('+${affCoinsLabel(s.commissionCoins)}',
+                style: ZineText.value(size: 14, weight: FontWeight.w900, color: Zine.mintInk)),
+            Text('YOUR CUT', style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+          ]),
         ]),
       );
 }

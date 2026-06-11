@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/notifications_api.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 
 /// In-app notification feed (wallet, moderation, briefings, social).
 /// Pass [realtime] (NostrClient.notifications) to prepend live notifications as
@@ -41,37 +44,74 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void dispose() { _sub?.cancel(); super.dispose(); }
 
-  IconData _icon(String type) {
+  /// Phosphor icon + zine accent per notification type (accent rotation §6).
+  (IconData, Color) _meta(String type) {
     switch (type) {
       case 'wallet':
-      case 'payment': return Icons.account_balance_wallet_outlined;
-      case 'moderation': return Icons.gpp_maybe_outlined;
-      case 'brain': return Icons.auto_awesome_outlined;
-      case 'social': return Icons.people_outline;
-      default: return Icons.notifications_none;
+      case 'payment': return (PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint);
+      case 'moderation': return (PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.coral);
+      case 'brain': return (PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac);
+      case 'social': return (PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.blue);
+      default: return (PhosphorIcons.bell(PhosphorIconsStyle.bold), Zine.lime);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Notifications', markWord: 'Notif', tag: 'what happened'),
       body: RefreshIndicator(
         onRefresh: _load,
+        color: Zine.blueInk,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
             : _items.isEmpty
-                ? ListView(children: const [SizedBox(height: 120), Center(child: Text("You're all caught up"))])
+                ? ListView(children: [
+                    const SizedBox(height: 120),
+                    Center(
+                      child: ZineEmptyState(
+                        icon: PhosphorIcons.bell(PhosphorIconsStyle.bold),
+                        text: 'All caught up',
+                      ),
+                    ),
+                  ])
                 : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
                     itemCount: _items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (_, i) {
                       final n = _items[i];
-                      return ListTile(
-                        leading: Icon(_icon(n.type)),
-                        title: Text(n.title),
-                        subtitle: n.body.isEmpty ? null : Text(n.body),
-                        trailing: n.read ? null : const Icon(Icons.circle, size: 10, color: Colors.blue),
+                      final (icon, accent) = _meta(n.type);
+                      return ZineCard(
+                        radius: Zine.rSm,
+                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+                        boxShadow: Zine.shadowXs,
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          ZineIconBadge(icon: icon, color: accent, size: 36),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(n.title, style: ZineText.value(size: 14.5)),
+                              if (n.body.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(n.body, style: ZineText.sub(size: 12.5)),
+                              ],
+                            ]),
+                          ),
+                          if (!n.read) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              width: 11, height: 11,
+                              margin: const EdgeInsets.only(top: 4),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Zine.coral,
+                                border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: 2)),
+                              ),
+                            ),
+                          ],
+                        ]),
                       );
                     },
                   ),

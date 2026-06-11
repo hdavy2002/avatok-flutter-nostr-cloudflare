@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../payout/payout_screen.dart';
 import 'affiliate_api.dart';
 import 'widgets.dart';
@@ -72,68 +74,71 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
   Widget build(BuildContext context) {
     final t = widget.totals;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('Earnings & payout'),
-      ),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Earnings', markWord: 'Earnings', tag: 'your 10%, for life'),
       body: RefreshIndicator(
         onRefresh: _load,
+        color: Zine.blueInk,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
           children: [
-            Row(children: [
-              Expanded(child: StatCard(label: 'Available', icon: Icons.account_balance_wallet,
-                  color: AvaColors.success, value: affCoinsLabel(t.availableCoins),
+            Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: StatCard(label: 'Available',
+                  icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
+                  color: Zine.mint, value: affCoinsLabel(t.availableCoins),
                   sub: '${t.availableCoins} coins')),
-              const SizedBox(width: 10),
-              Expanded(child: StatCard(label: 'Held (refund window)', icon: Icons.hourglass_top,
-                  color: kAffiliateOrange, value: affCoinsLabel(t.heldCoins),
+              const SizedBox(width: 12),
+              Expanded(child: StatCard(label: 'Held (refund window)',
+                  icon: PhosphorIcons.hourglass(PhosphorIconsStyle.bold),
+                  color: Zine.lilac, value: affCoinsLabel(t.heldCoins),
                   sub: 'releases after 7 days')),
             ]),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: kAffiliateOrange,
-                  padding: const EdgeInsets.symmetric(vertical: 14)),
-              icon: const Icon(Icons.payments, size: 18),
-              label: const Text('Withdraw with AvaPayout'),
+            const SizedBox(height: 16),
+            ZineButton(
+              label: 'Withdraw with AvaPayout',
+              fullWidth: true,
+              fontSize: 18,
+              icon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
+              trailingIcon: false,
               onPressed: _withdraw,
             ),
-            const SizedBox(height: 6),
-            const Text(
+            const SizedBox(height: 10),
+            Text(
               'Commissions land in your AvaWallet instantly at settlement and become withdrawable after the 7-day refund window.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11.5, color: AvaColors.sub),
+              style: ZineText.sub(size: 11.5),
             ),
-            const SizedBox(height: 18),
-            const Text('Commission history',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            const SizedBox(height: 4),
+            const SizedBox(height: 22),
+            Text('COMMISSION HISTORY', style: ZineText.kicker(size: 11.5)),
+            const SizedBox(height: 8),
             if (_failed)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Column(children: [
-                  const Text('Could not load your history.',
-                      style: TextStyle(color: AvaColors.sub)),
-                  const SizedBox(height: 10),
-                  OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                  ZineEmptyState(
+                    icon: PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
+                    text: 'Could not load your history.',
+                  ),
+                  const SizedBox(height: 14),
+                  ZineButton(label: 'Retry', variant: ZineButtonVariant.ghost,
+                      fontSize: 16, onPressed: _load),
                 ]),
               )
             else if (_entries == null)
               const Padding(padding: EdgeInsets.all(32),
-                  child: Center(child: CircularProgressIndicator()))
+                  child: Center(child: CircularProgressIndicator(color: Zine.blueInk)))
             else if (_entries!.isEmpty)
               const AffEmpty('No commissions yet.\nShare your links — every referred purchase pays you 10%.')
             else ...[
               ..._entries!.map(_entryRow),
               if (_cursor != null && _cursor!.isNotEmpty)
                 Center(
-                  child: TextButton(
-                    onPressed: _loadingMore ? null : _more,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
                     child: _loadingMore
                         ? const SizedBox(width: 18, height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Load more'),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))
+                        : ZineLink('LOAD MORE', onTap: _more),
                   ),
                 ),
             ],
@@ -143,27 +148,37 @@ class _AffiliateEarningsScreenState extends State<AffiliateEarningsScreen> {
     );
   }
 
+  /// Ledger row (§7.10): icon badge + label + mint/coral value.
   Widget _entryRow(Map<String, dynamic> e) {
     final amount = ((e['amount'] as num?) ?? 0).toInt();
     final positive = amount >= 0;
     final createdAt = ((e['created_at'] as num?) ?? 0).toInt();
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      leading: Container(width: 36, height: 36,
-          decoration: BoxDecoration(
-              color: (positive ? AvaColors.success : AvaColors.danger).withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(10)),
-          child: Icon(positive ? Icons.trending_up : Icons.undo, size: 18,
-              color: positive ? AvaColors.success : AvaColors.danger)),
-      title: Text('${e['title'] ?? (positive ? 'Affiliate commission' : 'Commission reversed')}',
-          maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-      subtitle: Text(fmtAffDate(createdAt),
-          style: const TextStyle(fontSize: 11, color: AvaColors.sub)),
-      trailing: Text('${positive ? '+' : '−'}${affCoinsLabel(amount.abs())}',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14,
-              color: positive ? AvaColors.success : AvaColors.danger)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(children: [
+        ZineIconBadge(
+          icon: positive
+              ? PhosphorIcons.trendUp(PhosphorIconsStyle.bold)
+              : PhosphorIcons.arrowUUpLeft(PhosphorIconsStyle.bold),
+          color: positive ? Zine.mint : Zine.coral,
+          size: 32,
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${e['title'] ?? (positive ? 'Affiliate commission' : 'Commission reversed')}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: ZineText.value(size: 13.5)),
+            const SizedBox(height: 1),
+            Text(fmtAffDate(createdAt).toUpperCase(),
+                style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Text('${positive ? '+' : '−'}${affCoinsLabel(amount.abs())}',
+            style: ZineText.value(size: 14, weight: FontWeight.w900,
+                color: positive ? Zine.mintInk : Zine.coral)),
+      ]),
     );
   }
 }

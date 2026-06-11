@@ -1,20 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
 
-/// AvaAffiliate brand accent (matches the core/app_registry.dart tile color).
-const Color kAffiliateOrange = Color(0xFFF97316);
-
-/// Hero gradient for the landing + dashboard header.
-const LinearGradient kAffiliateGradient = LinearGradient(
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-  colors: [Color(0xFFF97316), Color(0xFFFB923C)],
-);
-
-/// Display metadata for the three promotable apps.
+/// Display metadata for the three promotable apps (zine accent rotation —
+/// matches affiliate_home / link_detail `_appMeta`).
 class AffApp {
   final String key, label;
   final IconData icon;
@@ -22,10 +15,10 @@ class AffApp {
   const AffApp(this.key, this.label, this.icon, this.color);
 }
 
-const kAffApps = <AffApp>[
-  AffApp('avalive', 'AvaLive', Icons.sensors, Color(0xFFFF3B30)),
-  AffApp('avaconsult', 'AvaConsult', Icons.video_camera_front, Color(0xFF22C9C0)),
-  AffApp('avavoice', 'AvaVoice', Icons.mic, Color(0xFFA06AF0)),
+final kAffApps = <AffApp>[
+  AffApp('avalive', 'AvaLive', PhosphorIcons.broadcast(PhosphorIconsStyle.bold), Zine.coral),
+  AffApp('avaconsult', 'AvaConsult', PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), Zine.blue),
+  AffApp('avavoice', 'AvaVoice', PhosphorIcons.microphone(PhosphorIconsStyle.bold), Zine.lilac),
 ];
 
 AffApp affApp(String key) =>
@@ -38,28 +31,18 @@ String fmtAffDate(int ms) {
   return '${months[d.month - 1]} ${d.day}, ${d.year}';
 }
 
-/// Small colored badge naming the source app of a listing/link.
+/// Small sticker naming the source app of a listing/link (§7.5).
 class AppBadge extends StatelessWidget {
   final String appKey;
   const AppBadge({super.key, required this.appKey});
   @override
   Widget build(BuildContext context) {
     final a = affApp(appKey);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-          color: a.color.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(a.icon, size: 11, color: a.color),
-        const SizedBox(width: 3),
-        Text(a.label,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: a.color)),
-      ]),
-    );
+    return ZineSticker(a.label, icon: a.icon);
   }
 }
 
-/// Dashboard headline stat tile.
+/// Dashboard headline stat tile — metric card (§7.11).
 class StatCard extends StatelessWidget {
   final String label, value;
   final IconData icon;
@@ -69,25 +52,24 @@ class StatCard extends StatelessWidget {
       required this.icon, required this.color, this.sub});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: AvaColors.line),
-        borderRadius: BorderRadius.circular(16),
-      ),
+    return ZineCard(
+      radius: Zine.rSm,
+      padding: const EdgeInsets.all(14),
+      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
-          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11.5, color: AvaColors.sub, fontWeight: FontWeight.w700))),
-        ]),
-        const SizedBox(height: 8),
-        Text(value, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: AvaColors.ink)),
+        ZineIconBadge(icon: icon, color: color, size: 30),
+        const SizedBox(height: 10),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(value, maxLines: 1, style: ZineText.stat(size: 24)),
+        ),
+        const SizedBox(height: 3),
+        Text(label.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: ZineText.kicker(size: 9.5)),
         if (sub != null)
-          Text(sub!, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: AvaColors.sub)),
+          Text(sub!.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ZineText.kicker(size: 9, color: Zine.inkMute)),
       ]),
     );
   }
@@ -104,58 +86,61 @@ class ListingPickCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final est = estimatedCommissionPerSale(listing.price);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: AvaColors.line),
-        borderRadius: BorderRadius.circular(16),
-      ),
+    return ZineCard(
+      radius: Zine.rSm,
+      padding: const EdgeInsets.all(13),
+      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Avatar(seed: listing.creatorId.isEmpty ? listing.id : listing.creatorId,
-              name: listing.creatorName, size: 44, avatarUrl: listing.creatorAvatar),
-          const SizedBox(width: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: 2)),
+            ),
+            child: Avatar(seed: listing.creatorId.isEmpty ? listing.id : listing.creatorId,
+                name: listing.creatorName, size: 44, avatarUrl: listing.creatorAvatar),
+          ),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(listing.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-              const SizedBox(height: 2),
+                  style: ZineText.cardTitle(size: 15.5)),
+              const SizedBox(height: 3),
               Row(children: [
                 Flexible(child: Text(listing.creatorName, maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: AvaColors.sub))),
+                    overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12))),
                 if (listing.rating != null) ...[
                   const SizedBox(width: 6),
-                  const Icon(Icons.star, size: 13, color: Color(0xFFEAB308)),
+                  PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill),
+                      size: 13, color: Zine.coral),
+                  const SizedBox(width: 2),
                   Text(listing.rating!.toStringAsFixed(1),
-                      style: const TextStyle(fontSize: 12, color: AvaColors.sub,
-                          fontWeight: FontWeight.w700)),
+                      style: ZineText.value(size: 12)),
                 ],
               ]),
             ]),
           ),
+          const SizedBox(width: 8),
           AppBadge(appKey: listing.app),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(affCoinsLabel(listing.price),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  style: ZineText.value(size: 15, weight: FontWeight.w900)),
+              const SizedBox(height: 1),
               Text('You earn ~${affCoinsLabel(est)} per sale — for life',
-                  style: const TextStyle(fontSize: 11.5, color: kAffiliateOrange,
-                      fontWeight: FontWeight.w800)),
+                  style: ZineText.value(size: 11.5, color: Zine.mintInk)),
             ]),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: kAffiliateOrange,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+          const SizedBox(width: 10),
+          ZineButton(
+            label: 'Create my link',
+            variant: ZineButtonVariant.blue,
+            fontSize: 14,
+            loading: busy,
             onPressed: busy ? null : onCreateLink,
-            child: busy
-                ? const SizedBox(width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Create my link', style: TextStyle(fontSize: 13)),
           ),
         ]),
       ]),
@@ -163,7 +148,7 @@ class ListingPickCard extends StatelessWidget {
   }
 }
 
-/// Per-link performance row (Dashboard list).
+/// Per-link performance row (Dashboard list) — zine card row.
 class LinkRow extends StatelessWidget {
   final AffiliateLink link;
   final VoidCallback onTap;
@@ -171,45 +156,52 @@ class LinkRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = affApp(link.app);
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      leading: Container(width: 40, height: 40,
-          decoration: BoxDecoration(color: a.color.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(12)),
-          child: Icon(a.icon, color: a.color, size: 20)),
-      title: Row(children: [
-        Expanded(child: Text(link.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
-        if (link.paused)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(color: AvaColors.soft,
-                borderRadius: BorderRadius.circular(8)),
-            child: const Text('PAUSED', style: TextStyle(fontSize: 9,
-                fontWeight: FontWeight.w800, color: AvaColors.sub)),
-          ),
-      ]),
-      subtitle: Text('${link.clicks} clicks · ${link.binds} referred',
-          style: const TextStyle(fontSize: 11.5, color: AvaColors.sub)),
-      trailing: Column(mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text(affCoinsLabel(link.earnedCoins),
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5,
-                color: AvaColors.success)),
-        const Text('earned', style: TextStyle(fontSize: 10.5, color: AvaColors.sub)),
-      ]),
+    return ZinePressable(
       onTap: onTap,
+      radius: BorderRadius.circular(Zine.rSm),
+      boxShadow: Zine.shadowXs,
+      padding: const EdgeInsets.all(12),
+      child: Row(children: [
+        ZineIconBadge(icon: a.icon, color: a.color, size: 40),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(link.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 14))),
+              if (link.paused) ...[
+                const SizedBox(width: 6),
+                const ZineSticker('paused', kind: ZineStickerKind.hint),
+              ],
+            ]),
+            const SizedBox(height: 3),
+            Text('${link.clicks} clicks · ${link.binds} referred'.toUpperCase(),
+                style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(affCoinsLabel(link.earnedCoins),
+              style: ZineText.value(size: 14.5, weight: FontWeight.w900, color: Zine.mintInk)),
+          Text('EARNED', style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+        ]),
+      ]),
     );
   }
 }
 
-/// Centered empty/notice state.
+/// Centered empty/notice state (§7.12).
 class AffEmpty extends StatelessWidget {
   final String text;
   const AffEmpty(this.text, {super.key});
   @override
   Widget build(BuildContext context) => Center(
-      child: Padding(padding: const EdgeInsets.all(32),
-          child: Text(text, textAlign: TextAlign.center,
-              style: const TextStyle(color: AvaColors.sub))));
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: ZineEmptyState(
+            icon: PhosphorIcons.megaphone(PhosphorIconsStyle.bold),
+            text: text,
+          ),
+        ),
+      );
 }

@@ -3,13 +3,15 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/apps.dart';
 import '../../core/library_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'private_ingest.dart';
 
 /// Visual metadata for the five system categories.
@@ -21,12 +23,12 @@ class _Cat {
   const _Cat(this.key, this.label, this.icon, this.color);
 }
 
-const _cats = <_Cat>[
-  _Cat('image', 'Images', Icons.image, Color(0xFF22C9C0)),
-  _Cat('video', 'Videos', Icons.movie, Color(0xFFFF3B30)),
-  _Cat('document', 'Documents', Icons.description, Color(0xFFEAB308)),
-  _Cat('audio', 'Music', Icons.music_note, Color(0xFF7C5CFC)),
-  _Cat('other', 'Other', Icons.insert_drive_file, Color(0xFF737A86)),
+final _cats = <_Cat>[
+  _Cat('image', 'Images', PhosphorIcons.image(PhosphorIconsStyle.bold), Zine.blue),
+  _Cat('video', 'Videos', PhosphorIcons.filmStrip(PhosphorIconsStyle.bold), Zine.coral),
+  _Cat('document', 'Documents', PhosphorIcons.fileText(PhosphorIconsStyle.bold), Zine.lime),
+  _Cat('audio', 'Music', PhosphorIcons.musicNotes(PhosphorIconsStyle.bold), Zine.lilac),
+  _Cat('other', 'Other', PhosphorIcons.file(PhosphorIconsStyle.bold), Zine.mint),
 ];
 
 _Cat _catOf(String k) => _cats.firstWhere((c) => c.key == k, orElse: () => _cats.last);
@@ -73,26 +75,75 @@ Future<List<String>> _destApps() async {
   return s.toList();
 }
 
-/// A search box styled to the app. Calls [onChanged] live.
+/// A search box in the zine field chrome (§7.2). Calls [onChanged] live.
 class _SearchBar extends StatelessWidget {
   final String hint;
   final ValueChanged<String> onChanged;
   const _SearchBar({required this.hint, required this.onChanged});
   @override
-  Widget build(BuildContext context) => TextField(
+  Widget build(BuildContext context) => ZineField(
+        hint: hint,
+        leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
         onChanged: onChanged,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: hint,
-          prefixIcon: const Icon(Icons.search, color: AvaColors.sub),
-          filled: true,
-          fillColor: AvaColors.soft,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-        ),
       );
 }
+
+/// Lime pill action button replacing the Material FAB (§7.1) — the ONE lime
+/// primary on each Library screen.
+class _ZineFab extends StatelessWidget {
+  final VoidCallback onTap;
+  final String? label;
+  const _ZineFab({required this.onTap, this.label});
+  @override
+  Widget build(BuildContext context) => ZinePressable(
+        onTap: onTap,
+        color: Zine.lime,
+        radius: BorderRadius.circular(100),
+        padding: EdgeInsets.symmetric(horizontal: label == null ? 16 : 20, vertical: 15),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+          if (label != null) ...[
+            const SizedBox(width: 8),
+            Text(label!, style: ZineText.button(size: 17)),
+          ],
+        ]),
+      );
+}
+
+/// Bottom-sheet row in the zine voice: phosphor icon + Nunito label.
+Widget _sheetTile({
+  required IconData icon,
+  required String title,
+  String? subtitle,
+  Color iconColor = Zine.ink,
+  Color? textColor,
+  required VoidCallback onTap,
+}) =>
+    InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        child: Row(children: [
+          PhosphorIcon(icon, size: 21, color: iconColor),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: ZineText.value(size: 15, color: textColor ?? Zine.ink, weight: FontWeight.w700)),
+              if (subtitle != null) ...[
+                const SizedBox(height: 1),
+                Text(subtitle, style: ZineText.sub(size: 12.5)),
+              ],
+            ]),
+          ),
+        ]),
+      ),
+    );
+
+/// Shared zine bottom-sheet chrome: paper fill, ink top border.
+const _sheetShape = RoundedRectangleBorder(
+  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  side: BorderSide(color: Zine.ink, width: Zine.bw),
+);
 
 /// AvaLibrary — the global, cross-app file manager. App roots → category folders
 /// (+ user folders) → files. Local-first: paints the cached tree, then refreshes.
@@ -145,70 +196,70 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
         ? all
         : all.where((a) => appByKey(a.app).name.toLowerCase().contains(_query.toLowerCase())).toList();
     return Scaffold(
-      backgroundColor: AvaColors.bg,
-      appBar: AppBar(
-        backgroundColor: AvaColors.bg, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('AvaLibrary', style: TextStyle(fontWeight: FontWeight.w800)),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(
+        title: 'AvaLibrary',
+        markWord: 'Library',
+        tag: 'Your files, every app',
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AvaColors.brand,
-        onPressed: _add,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: _ZineFab(onTap: _add),
       body: RefreshIndicator(
+        color: Zine.blueInk,
         onRefresh: _load,
         child: _loading && _tree == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(padding: const EdgeInsets.all(16), children: [
+            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+            : ListView(padding: const EdgeInsets.all(18), children: [
                 _SearchBar(hint: 'Search apps', onChanged: (v) => setState(() => _query = v)),
                 const SizedBox(height: 14),
                 if (all.isEmpty)
                   _emptyBody()
                 else ...[
-                  const Text('Your files across every AvaVerse app.',
-                      style: TextStyle(color: AvaColors.sub, fontSize: 13)),
+                  Text('Your files across every AvaVerse app.', style: ZineText.sub(size: 13.5)),
                   const SizedBox(height: 14),
                   if (apps.isEmpty)
-                    const Padding(padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(child: Text('No apps match.', style: TextStyle(color: AvaColors.sub))))
+                    Padding(padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: Text('No apps match.', style: ZineText.sub(size: 14))))
                   else
-                    for (final a in apps) _appCard(a),
+                    for (final (i, a) in apps.indexed) _appCard(a, i),
                 ],
               ]),
       ),
     );
   }
 
-  Widget _emptyBody() => const Padding(
-        padding: EdgeInsets.only(top: 80),
-        child: Column(children: [
-          Icon(Icons.folder_open, size: 64, color: AvaColors.line),
-          SizedBox(height: 12),
-          Center(child: Text('No files yet', style: TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w700))),
-          SizedBox(height: 4),
-          Center(child: Text('Tap + to upload, or send/receive a file in any app.',
-              style: TextStyle(color: AvaColors.sub, fontSize: 12), textAlign: TextAlign.center)),
-        ]),
+  Widget _emptyBody() => Padding(
+        padding: const EdgeInsets.only(top: 80),
+        child: Center(
+          child: ZineEmptyState(
+            icon: PhosphorIcons.folderOpen(PhosphorIconsStyle.bold),
+            text: 'No files yet — tap + to upload, or send a file in any app.',
+          ),
+        ),
       );
 
-  Widget _appCard(AppNode a) {
+  Widget _appCard(AppNode a, int i) {
     final def = appByKey(a.app);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        leading: Container(
-          width: 44, height: 44,
-          decoration: BoxDecoration(color: def.color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
-          child: Icon(def.icon, color: def.color),
-        ),
-        title: Text(def.name, style: const TextStyle(fontWeight: FontWeight.w800, color: AvaColors.ink)),
-        subtitle: Text('${a.total} file${a.total == 1 ? '' : 's'} · ${_fmtBytes(a.bytes)}',
-            style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-        trailing: const Icon(Icons.chevron_right, color: AvaColors.sub),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
         onTap: () => Navigator.push(context, MaterialPageRoute(
             builder: (_) => _AppView(app: a.app, node: a, tree: _tree!))).then((_) => _load()),
+        child: Row(children: [
+          // Accent badges rotate (§6) so adjacent app cards differ.
+          ZineIconBadge(icon: def.icon, color: Zine.accents[i % Zine.accents.length], size: 40),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(def.name, style: ZineText.value(size: 15.5)),
+              const SizedBox(height: 2),
+              Text('${a.total} file${a.total == 1 ? '' : 's'} · ${_fmtBytes(a.bytes)}'.toUpperCase(),
+                  style: ZineText.kicker(size: 10)),
+            ]),
+          ),
+          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+        ]),
       ),
     );
   }
@@ -270,23 +321,18 @@ class _AppViewState extends State<_AppView> {
         ? _cats
         : _cats.where((c) => c.label.toLowerCase().contains(q)).toList();
     return Scaffold(
-      backgroundColor: AvaColors.bg,
-      appBar: AppBar(
-        backgroundColor: AvaColors.bg, elevation: 0, foregroundColor: AvaColors.ink,
-        title: Text(def.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: def.name,
+        tag: 'AvaLibrary / ${def.name}', // breadcrumb, mono (§3)
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AvaColors.brand,
-        onPressed: _add,
-        icon: const Icon(Icons.add),
-        label: const Text('Add'),
-      ),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
+      floatingActionButton: _ZineFab(onTap: _add, label: 'Add'),
+      body: ListView(padding: const EdgeInsets.all(18), children: [
         _SearchBar(hint: 'Search in ${def.name}', onChanged: (v) => setState(() => _query = v)),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         if (cats.any((c) => (_byCategory[c.key] ?? 0) > 0)) ...[
-          const Text('CATEGORIES', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
+          Text('CATEGORIES', style: ZineText.kicker()),
+          const SizedBox(height: 10),
           for (final c in cats)
             if ((_byCategory[c.key] ?? 0) > 0) _row(
               icon: c.icon, color: c.color, title: c.label,
@@ -295,21 +341,20 @@ class _AppViewState extends State<_AppView> {
             ),
           const SizedBox(height: 18),
         ],
-        Row(children: const [
-          Text('FOLDERS', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
-        ]),
-        const SizedBox(height: 8),
+        Text('FOLDERS', style: ZineText.kicker()),
+        const SizedBox(height: 10),
         if (folders.isEmpty)
           Padding(padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(_query.isEmpty ? 'No folders yet — tap Add › New folder.' : 'No folders match.',
-                  style: const TextStyle(color: AvaColors.sub, fontSize: 12)))
+                  style: ZineText.sub(size: 13)))
         else
           for (final f in folders) _row(
-            icon: Icons.folder, color: AvaColors.brand, title: f.name, sub: 'Folder',
+            icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: Zine.blue,
+            title: f.name, sub: 'Folder',
             onTap: () => _openView(folder: f.id, title: f.name),
             menu: () => _folderMenu(f),
           ),
-        const SizedBox(height: 80),
+        const SizedBox(height: 90),
       ]),
     );
   }
@@ -323,18 +368,28 @@ class _AppViewState extends State<_AppView> {
   Future<void> _folderMenu(LibraryFolder f) async {
     final action = await showModalBottomSheet<String>(
       context: context,
+      backgroundColor: Zine.paper,
+      shape: _sheetShape,
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: Row(children: [const Icon(Icons.folder, color: AvaColors.brand), const SizedBox(width: 10),
-              Expanded(child: Text(f.name, style: const TextStyle(fontWeight: FontWeight.w800)))])),
-        const Divider(height: 1),
-        ListTile(leading: const Icon(Icons.drive_file_rename_outline), title: const Text('Rename'), onTap: () => Navigator.pop(context, 'rename')),
-        ListTile(leading: const Icon(Icons.drive_file_move_outline), title: const Text('Move to…'), onTap: () => Navigator.pop(context, 'move')),
-        ListTile(leading: const Icon(Icons.copy_all_outlined), title: const Text('Copy to…'),
-            subtitle: const Text('Duplicates the folder and its files (shortcuts)'), onTap: () => Navigator.pop(context, 'copy')),
-        ListTile(leading: const Icon(Icons.delete_outline, color: AvaColors.danger),
-            title: const Text('Delete folder', style: TextStyle(color: AvaColors.danger)),
-            subtitle: const Text('Files move back to their category'), onTap: () => Navigator.pop(context, 'delete')),
+        Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+            child: Row(children: [
+              ZineIconBadge(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: Zine.blue, size: 30),
+              const SizedBox(width: 11),
+              Expanded(child: Text(f.name, style: ZineText.cardTitle(size: 17))),
+            ])),
+        const Divider(height: 2, color: Zine.ink, thickness: 2),
+        _sheetTile(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), title: 'Rename',
+            onTap: () => Navigator.pop(context, 'rename')),
+        _sheetTile(icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), title: 'Move to…',
+            onTap: () => Navigator.pop(context, 'move')),
+        _sheetTile(icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), title: 'Copy to…',
+            subtitle: 'Duplicates the folder and its files (shortcuts)',
+            onTap: () => Navigator.pop(context, 'copy')),
+        _sheetTile(icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), iconColor: Zine.coral,
+            title: 'Delete folder', textColor: Zine.coral,
+            subtitle: 'Files move back to their category',
+            onTap: () => Navigator.pop(context, 'delete')),
+        const SizedBox(height: 8),
       ])),
     );
     if (!mounted || action == null) return;
@@ -359,17 +414,35 @@ class _AppViewState extends State<_AppView> {
   }
 
   Widget _row({required IconData icon, required Color color, required String title, required String sub, required VoidCallback onTap, VoidCallback? menu}) =>
-      Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-        child: ListTile(
-          leading: Icon(icon, color: color),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AvaColors.ink)),
-          subtitle: Text(sub, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-          trailing: menu == null
-              ? const Icon(Icons.chevron_right, color: AvaColors.sub)
-              : IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.sub), onPressed: menu),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ZineCard(
+          radius: 14,
+          padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
           onTap: onTap,
+          child: Row(children: [
+            ZineIconBadge(icon: icon, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 15)),
+                const SizedBox(height: 2),
+                Text(sub.toUpperCase(), style: ZineText.kicker(size: 10)),
+              ]),
+            ),
+            if (menu == null)
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft)
+            else
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: menu,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
+                      size: 20, color: Zine.inkSoft),
+                ),
+              ),
+          ]),
         ),
       );
 }
@@ -473,28 +546,30 @@ class _FolderViewState extends State<_FolderView> {
     final visible = _visible;
     final filtering = _query.isNotEmpty || _typeFilter != null;
     return Scaffold(
-      backgroundColor: AvaColors.bg,
-      appBar: AppBar(
-        backgroundColor: AvaColors.bg, elevation: 0, foregroundColor: AvaColors.ink,
-        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: widget.title,
+        tag: '${appByKey(widget.app).name} / ${widget.title}', // breadcrumb, mono
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AvaColors.brand,
-        onPressed: _add,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: _ZineFab(onTap: _add),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
           child: _SearchBar(hint: 'Search files', onChanged: _onQuery),
         ),
         if (isFolder) _typeChips(),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
               : visible.isEmpty
-                  ? Center(child: Text(filtering ? 'No matches' : 'Empty', style: const TextStyle(color: AvaColors.sub)))
+                  ? Center(
+                      child: ZineEmptyState(
+                        icon: PhosphorIcons.fileDashed(PhosphorIconsStyle.bold),
+                        text: filtering ? 'No matches — try another search.' : 'Nothing here yet — tap + to add.',
+                      ),
+                    )
                   : RefreshIndicator(
+                      color: Zine.blueInk,
                       onRefresh: _refresh,
                       child: isGrid ? _grid(visible, filtering) : _list(visible, filtering),
                     ),
@@ -504,42 +579,42 @@ class _FolderViewState extends State<_FolderView> {
   }
 
   Widget _typeChips() => SizedBox(
-        height: 44,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+        height: 48,
+        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(18, 6, 18, 6), children: [
           _chip('All', null),
           for (final c in _cats) _chip(c.label, c.key),
         ]),
       );
 
-  Widget _chip(String label, String? key) {
-    final on = _typeFilter == key;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: on,
-        onSelected: (_) => setState(() => _typeFilter = key),
-        selectedColor: AvaColors.brand.withOpacity(0.18),
-        labelStyle: TextStyle(color: on ? AvaColors.brand : AvaColors.sub, fontWeight: FontWeight.w700, fontSize: 12.5),
-        backgroundColor: AvaColors.soft,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide.none),
-      ),
-    );
-  }
+  // Filter chip (§7.4): active = lime fill + check + shadow.
+  Widget _chip(String label, String? key) => Padding(
+        padding: const EdgeInsets.only(right: 9),
+        child: ZineChip(
+          label: label.toUpperCase(),
+          active: _typeFilter == key,
+          onTap: () => setState(() => _typeFilter = key),
+        ),
+      );
 
   Widget _grid(List<LibraryItem> visible, bool filtering) => GridView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8),
+            crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10),
         itemCount: visible.length + (!filtering && _more ? 1 : 0),
         itemBuilder: (_, i) {
-          if (i >= visible.length) { _load(); return const Center(child: CircularProgressIndicator()); }
+          if (i >= visible.length) { _load(); return const Center(child: CircularProgressIndicator(color: Zine.blueInk)); }
           final m = visible[i];
           return GestureDetector(
             onTap: () => _open(m),
             onLongPress: () => _itemMenu(m),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+            // Grid tile: ink border + radius 14 (tiles range per §4).
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Zine.paper2,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Zine.ink, width: 2),
+              ),
               child: _thumb(m),
             ),
           );
@@ -547,23 +622,39 @@ class _FolderViewState extends State<_FolderView> {
       );
 
   Widget _list(List<LibraryItem> visible, bool filtering) => ListView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         itemCount: visible.length + (!filtering && _more ? 1 : 0),
         itemBuilder: (_, i) {
-          if (i >= visible.length) { _load(); return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())); }
+          if (i >= visible.length) { _load(); return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: Zine.blueInk))); }
           final m = visible[i];
           final c = _catOf(m.category);
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-            child: ListTile(
-              leading: Icon(c.icon, color: c.color),
-              title: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AvaColors.ink)),
-              subtitle: Text('${_fmtBytes(m.size)}${m.sourceKind == 'received' ? ' · received' : ''}${m.isPrivate ? ' · private' : ''}',
-                  style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-              trailing: IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.sub), onPressed: () => _itemMenu(m)),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: ZineCard(
+              radius: 14,
+              padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
               onTap: () => _open(m),
+              child: Row(children: [
+                ZineIconBadge(icon: c.icon, color: c.color),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 14.5)),
+                    const SizedBox(height: 2),
+                    Text('${_fmtBytes(m.size)}${m.sourceKind == 'received' ? ' · received' : ''}${m.isPrivate ? ' · private' : ''}'.toUpperCase(),
+                        style: ZineText.kicker(size: 10)),
+                  ]),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _itemMenu(m),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
+                        size: 20, color: Zine.inkSoft),
+                  ),
+                ),
+              ]),
             ),
           );
         },
@@ -578,12 +669,14 @@ class _FolderViewState extends State<_FolderView> {
     return _catTile(m);
   }
 
+  // Flat accent tile (no alpha washes): poster fill + ink icon.
   Widget _catTile(LibraryItem m) {
     final c = _catOf(m.category);
     return Container(
-      color: c.color.withOpacity(0.12),
-      child: Center(child: Icon(
-        m.category == 'video' ? Icons.play_circle_outline : c.icon, color: c.color, size: 34)),
+      color: c.color,
+      child: Center(child: PhosphorIcon(
+        m.category == 'video' ? PhosphorIcons.playCircle(PhosphorIconsStyle.fill) : c.icon,
+        color: c.color == Zine.coral ? Colors.white : Zine.ink, size: 32)),
     );
   }
 
@@ -600,17 +693,25 @@ class _FolderViewState extends State<_FolderView> {
   Future<void> _itemMenu(LibraryItem m) async {
     final action = await showModalBottomSheet<String>(
       context: context,
+      backgroundColor: Zine.paper,
+      shape: _sheetShape,
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.drive_file_move_outline), title: const Text('Move to…'), onTap: () => Navigator.pop(context, 'move')),
-        ListTile(leading: const Icon(Icons.copy_all_outlined), title: const Text('Copy to…'),
-            subtitle: const Text("Shortcut — doesn't use extra storage"), onTap: () => Navigator.pop(context, 'copy')),
+        const SizedBox(height: 10),
+        _sheetTile(icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), title: 'Move to…',
+            onTap: () => Navigator.pop(context, 'move')),
+        _sheetTile(icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), title: 'Copy to…',
+            subtitle: "Shortcut — doesn't use extra storage",
+            onTap: () => Navigator.pop(context, 'copy')),
         if (m.isPrivate)
-          ListTile(leading: const Icon(Icons.psychology_outlined, color: AvaColors.brand),
-              title: const Text('Let AvaBrain read this'),
-              subtitle: const Text('On-device only — nothing leaves your phone but a summary'),
+          // AI action → lilac (§2).
+          _sheetTile(icon: PhosphorIcons.brain(PhosphorIconsStyle.bold), iconColor: Zine.lilac,
+              title: 'Let AvaBrain read this',
+              subtitle: 'On-device only — nothing leaves your phone but a summary',
               onTap: () => Navigator.pop(context, 'brain')),
-        ListTile(leading: const Icon(Icons.delete_outline, color: AvaColors.danger),
-            title: const Text('Delete', style: TextStyle(color: AvaColors.danger)), onTap: () => Navigator.pop(context, 'delete')),
+        _sheetTile(icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), iconColor: Zine.coral,
+            title: 'Delete', textColor: Zine.coral,
+            onTap: () => Navigator.pop(context, 'delete')),
+        const SizedBox(height: 8),
       ])),
     );
     if (!mounted || action == null) return;
@@ -655,17 +756,19 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
   final app = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
+    backgroundColor: Zine.paper,
+    shape: _sheetShape,
     builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Padding(padding: const EdgeInsets.all(16), child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-      const Divider(height: 1),
+      Padding(padding: const EdgeInsets.all(18), child: Text(title, style: ZineText.cardTitle(size: 17))),
+      const Divider(height: 2, color: Zine.ink, thickness: 2),
       Flexible(child: ListView(shrinkWrap: true, children: [
         for (final a in apps)
-          ListTile(
-            leading: Icon(appByKey(a).icon, color: appByKey(a).color),
-            title: Text(appByKey(a).name, style: const TextStyle(fontWeight: FontWeight.w700)),
-            trailing: const Icon(Icons.chevron_right, color: AvaColors.sub),
+          _sheetTile(
+            icon: appByKey(a).icon,
+            title: appByKey(a).name,
             onTap: () => Navigator.pop(context, a),
           ),
+        const SizedBox(height: 8),
       ])),
     ])),
   );
@@ -680,14 +783,19 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
   final folder = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
+    backgroundColor: Zine.paper,
+    shape: _sheetShape,
     builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Padding(padding: const EdgeInsets.all(16),
-          child: Text('${appByKey(app).name} — choose folder', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-      const Divider(height: 1),
+      Padding(padding: const EdgeInsets.all(18),
+          child: Text('${appByKey(app).name} — choose folder', style: ZineText.cardTitle(size: 17))),
+      const Divider(height: 2, color: Zine.ink, thickness: 2),
       Flexible(child: ListView(shrinkWrap: true, children: [
-        ListTile(leading: const Icon(Icons.home_outlined), title: const Text('App root (its category)'), onTap: () => Navigator.pop(context, kRoot)),
+        _sheetTile(icon: PhosphorIcons.house(PhosphorIconsStyle.bold), title: 'App root (its category)',
+            onTap: () => Navigator.pop(context, kRoot)),
         for (final f in folders)
-          ListTile(leading: const Icon(Icons.folder, color: AvaColors.brand), title: Text(f.name), onTap: () => Navigator.pop(context, f.id)),
+          _sheetTile(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), iconColor: Zine.blueInk,
+              title: f.name, onTap: () => Navigator.pop(context, f.id)),
+        const SizedBox(height: 8),
       ])),
     ])),
   );
@@ -700,14 +808,20 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
 Future<bool> showAddSheet(BuildContext context, {required String app, String? folderId, Future<void> Function()? onNewFolder}) async {
   final action = await showModalBottomSheet<String>(
     context: context,
+    backgroundColor: Zine.paper,
+    shape: _sheetShape,
     builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const SizedBox(height: 6),
+      const SizedBox(height: 10),
       if (onNewFolder != null)
-        ListTile(leading: const Icon(Icons.create_new_folder_outlined, color: AvaColors.brand), title: const Text('New folder'), onTap: () => Navigator.pop(context, 'folder')),
-      ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Upload photo'), onTap: () => Navigator.pop(context, 'photo')),
-      ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take photo'), onTap: () => Navigator.pop(context, 'camera')),
-      ListTile(leading: const Icon(Icons.upload_file_outlined), title: const Text('Upload file'), onTap: () => Navigator.pop(context, 'file')),
-      const SizedBox(height: 6),
+        _sheetTile(icon: PhosphorIcons.folderPlus(PhosphorIconsStyle.bold), iconColor: Zine.blueInk,
+            title: 'New folder', onTap: () => Navigator.pop(context, 'folder')),
+      _sheetTile(icon: PhosphorIcons.images(PhosphorIconsStyle.bold), title: 'Upload photo',
+          onTap: () => Navigator.pop(context, 'photo')),
+      _sheetTile(icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), title: 'Take photo',
+          onTap: () => Navigator.pop(context, 'camera')),
+      _sheetTile(icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), title: 'Upload file',
+          onTap: () => Navigator.pop(context, 'file')),
+      const SizedBox(height: 10),
     ])),
   );
   if (action == null || !context.mounted) return false;
@@ -761,11 +875,21 @@ Future<String?> _promptName(BuildContext context, String title, {String initial 
   return showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(title),
-      content: TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(hintText: 'Folder name')),
+      backgroundColor: Zine.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Zine.r),
+        side: const BorderSide(color: Zine.ink, width: Zine.bw),
+      ),
+      title: Text(title, style: ZineText.cardTitle(size: 17)),
+      content: ZineField(controller: ctrl, autofocus: true, hint: 'Folder name'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ZineText.link())),
+        ZineButton(
+          label: 'Save it',
+          variant: ZineButtonVariant.blue,
+          fontSize: 15,
+          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+        ),
       ],
     ),
   );

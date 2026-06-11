@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'identity_api.dart';
 
 /// IdentityGate (Phase 3) — wrap any KYC-gated action. If the account isn't
@@ -100,78 +102,84 @@ class _GateSheetState extends State<_GateSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    // Paper sheet with a thick ink top border (§7.3 adapted to a sheet).
     return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: const BoxDecoration(
+        color: Zine.paper,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
+        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
       ),
-      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + MediaQuery.of(context).viewPadding.bottom),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.of(context).viewPadding.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Center(
             child: Container(
-              width: 36, height: 4, margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(color: cs.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              width: 38, height: 5, margin: const EdgeInsets.only(bottom: 18),
+              decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(3)),
             ),
           ),
-          const Icon(Icons.verified_user, size: 44, color: Color(0xFF7C5CFC)),
-          const SizedBox(height: 14),
+          Center(
+            child: ZineIconBadge(
+              icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
+              color: Zine.lilac,
+              size: 56,
+            ),
+          ),
+          const SizedBox(height: 16),
           Text('Verify your identity',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
+              textAlign: TextAlign.center, style: ZineText.hero(size: 27)),
+          const SizedBox(height: 10),
           Text(
             'We need to verify your identity before you can ${widget.reason}. '
             'You\'ll photograph a government ID and take a quick selfie — it '
             'usually takes under two minutes.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
+            style: ZineText.sub(size: 14),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             'Your documents are processed securely by Stripe Identity. AvaTOK '
             'never stores your ID images.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: .7), fontSize: 12, height: 1.4),
+            style: ZineText.sub(size: 12, color: Zine.inkMute),
           ),
           if (widget.status?.failureReason != null) ...[
-            const SizedBox(height: 10),
-            Text('Last attempt: ${widget.status!.failureReason}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.orange, fontSize: 12)),
+            const SizedBox(height: 12),
+            Center(
+              child: ZineSticker('last try: ${widget.status!.failureReason}',
+                  kind: ZineStickerKind.no,
+                  icon: PhosphorIcons.warning(PhosphorIconsStyle.bold)),
+            ),
           ],
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: cs.error, fontSize: 13)),
-          ],
+          if (_error != null) ZineErrorMsg(_error!),
           const SizedBox(height: 20),
           if (_polling) ...[
-            const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 10),
+            const Center(child: CircularProgressIndicator(color: Zine.blueInk)),
+            const SizedBox(height: 12),
             Text('Waiting for verification to finish…',
-                textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('I\'ll finish later'),
+                textAlign: TextAlign.center, style: ZineText.sub(size: 13)),
+            const SizedBox(height: 12),
+            Center(
+              child: ZineLink('I\'LL FINISH LATER',
+                  onTap: () => Navigator.of(context).pop(false)),
             ),
           ] else ...[
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: AvaColors.brand,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
+            ZineButton(
+              label: 'Start verification',
+              fullWidth: true,
+              fontSize: 19,
+              loading: _busy,
               onPressed: _busy ? null : _start,
-              child: _busy
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Start verification'),
             ),
-            TextButton(
+            const SizedBox(height: 10),
+            ZineButton(
+              label: 'Not now',
+              variant: ZineButtonVariant.ghost,
+              fullWidth: true,
+              fontSize: 16,
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Not now'),
             ),
           ],
         ],

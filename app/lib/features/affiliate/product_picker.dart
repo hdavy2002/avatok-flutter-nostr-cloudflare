@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
 import 'link_created_sheet.dart';
 import 'widgets.dart';
@@ -27,6 +29,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
     super.initState();
     Analytics.screenViewed('avaaffiliate', 'product_picker');
     _tabs.addListener(() {
+      if (mounted) setState(() {}); // repaint the chip row
       if (!_tabs.indexIsChanging) _load(kAffApps[_tabs.index].key);
     });
     _load(kAffApps.first.key);
@@ -70,36 +73,33 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('Pick a product to promote'),
-        bottom: TabBar(
-          controller: _tabs,
-          labelColor: kAffiliateOrange,
-          indicatorColor: kAffiliateOrange,
-          unselectedLabelColor: AvaColors.sub,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w800),
-          tabs: [for (final a in kAffApps) Tab(text: a.label)],
-        ),
-      ),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Pick a product', markWord: 'product', tag: 'promote & earn'),
       body: Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: 'Search listings or creators…',
-              prefixIcon: const Icon(Icons.search),
-              isDense: true,
-              filled: true, fillColor: AvaColors.soft,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-            ),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+          child: ZineField(
+            hint: 'Search listings or creators…',
+            leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
             onSubmitted: (v) {
               _q = v;
               _load(kAffApps[_tabs.index].key);
             },
           ),
+        ),
+        // App chips drive the existing TabController (§7.4).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+          child: Row(children: [
+            for (var i = 0; i < kAffApps.length; i++) ...[
+              Expanded(child: ZineChip(
+                label: kAffApps[i].label,
+                active: _tabs.index == i,
+                onTap: () => _tabs.animateTo(i),
+              )),
+              if (i != kAffApps.length - 1) const SizedBox(width: 9),
+            ],
+          ]),
         ),
         Expanded(
           child: TabBarView(controller: _tabs, children: [
@@ -113,7 +113,7 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
   Widget _list(String appKey) {
     final items = _byApp[appKey];
     if (items == null || _loadingApps.contains(appKey)) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
     }
     if (items.isEmpty) {
       return AffEmpty(_q.isEmpty
@@ -122,10 +122,11 @@ class _ProductPickerScreenState extends State<ProductPickerScreen>
     }
     return RefreshIndicator(
       onRefresh: () => _load(appKey),
+      color: Zine.blueInk,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
         itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, i) => ListingPickCard(
           listing: items[i],
           busy: _creatingId == items[i].id,

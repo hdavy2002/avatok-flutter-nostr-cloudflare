@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/profile_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../avatok/contacts.dart';
 import 'avatar_crop_screen.dart';
@@ -80,31 +82,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final hasPhoto = _avatarUrl.isNotEmpty;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 8),
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-          leading: const Icon(Icons.photo_camera_outlined, color: AvaColors.ink),
-          title: const Text('Take photo'),
-          onTap: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); },
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Zine.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
+          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
         ),
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-          leading: const Icon(Icons.photo_library_outlined, color: AvaColors.ink),
-          title: const Text('Choose from gallery'),
-          onTap: () { Navigator.pop(ctx); _pickAndCrop(ImageSource.gallery); },
-        ),
-        if (hasPhoto)
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            leading: const Icon(Icons.delete_outline, color: AvaColors.danger),
-            title: const Text('Remove photo', style: TextStyle(color: AvaColors.danger)),
-            onTap: () { Navigator.pop(ctx); _removePhoto(); },
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+        child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 38, height: 5,
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(3)),
           ),
-        const SizedBox(height: 8),
-      ])),
+          _sheetTile(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), Zine.blue, 'Take photo',
+              () { Navigator.pop(ctx); _pickAndCrop(ImageSource.camera); }),
+          const SizedBox(height: 10),
+          _sheetTile(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), Zine.lime, 'Choose from gallery',
+              () { Navigator.pop(ctx); _pickAndCrop(ImageSource.gallery); }),
+          if (hasPhoto) ...[
+            const SizedBox(height: 10),
+            _sheetTile(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Remove photo',
+                () { Navigator.pop(ctx); _removePhoto(); }, danger: true),
+          ],
+        ])),
+      ),
+    );
+  }
+
+  Widget _sheetTile(BuildContext ctx, IconData icon, Color accent, String label, VoidCallback onTap,
+      {bool danger = false}) {
+    return ZinePressable(
+      onTap: onTap,
+      radius: BorderRadius.circular(Zine.rSm),
+      boxShadow: Zine.shadowXs,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(children: [
+        ZineIconBadge(icon: icon, color: accent, size: 32),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label,
+            style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink))),
+        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+      ]),
     );
   }
 
@@ -163,11 +183,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final id = widget.identity;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('Profile'),
-      ),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Profile', markWord: 'Profile', tag: 'your public card'),
       // Generous bottom padding (plus the system nav-bar inset) so the Update
       // button always sits comfortably above the nav bar — never chopped.
       body: ListView(padding: EdgeInsets.fromLTRB(20, 20, 20, 40 + MediaQuery.of(context).padding.bottom), children: [
@@ -175,107 +192,136 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: GestureDetector(
             onTap: _photoBusy ? null : _editPhoto,
             child: Stack(clipBehavior: Clip.none, children: [
-              Avatar(
-                seed: id?.npub ?? 'me',
-                name: _name.text.isEmpty ? 'You' : _name.text,
-                size: 96,
-                avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl,
+              // Ink-ringed avatar with a hard offset shadow (§4).
+              Container(
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bw)),
+                  boxShadow: Zine.shadowSm,
+                ),
+                child: Avatar(
+                  seed: id?.npub ?? 'me',
+                  name: _name.text.isEmpty ? 'You' : _name.text,
+                  size: 96,
+                  avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl,
+                ),
               ),
               if (_photoBusy)
-                const Positioned.fill(
-                  child: CircleAvatar(backgroundColor: Colors.black45,
-                      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))),
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Zine.ink.withValues(alpha: .45)),
+                    child: const Center(child: SizedBox(width: 22, height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Zine.lime))),
+                  ),
                 ),
+              // Lime camera seal.
               Positioned(
-                right: -2, bottom: -2,
+                right: -4, bottom: -4,
                 child: Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2)),
-                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 17),
+                  width: 34, height: 34,
+                  decoration: const BoxDecoration(
+                    color: Zine.lime,
+                    shape: BoxShape.circle,
+                    border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bw)),
+                    boxShadow: Zine.shadowXs,
+                  ),
+                  child: PhosphorIcon(PhosphorIcons.camera(PhosphorIconsStyle.bold), color: Zine.ink, size: 17),
                 ),
               ),
             ]),
           ),
         ),
-        const SizedBox(height: 20),
-        const Text('Display name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        const SizedBox(height: 6),
-        TextField(
+        const SizedBox(height: 16),
+        Center(child: Text(_name.text.isEmpty ? 'You' : _name.text,
+            style: ZineText.cardTitle(size: 22))),
+        if (_cleanHandle.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          Center(child: Text('@$_cleanHandle', style: ZineText.link(size: 13))),
+        ],
+        const SizedBox(height: 22),
+        ZineField(
           controller: _name,
+          label: 'Display name',
+          hint: 'Your name',
+          textCapitalization: TextCapitalization.words,
           onChanged: (_) => setState(() {}),
-          decoration: _dec('Your name'),
         ),
         const SizedBox(height: 16),
-        const Text('Handle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        const SizedBox(height: 6),
-        TextField(
+        ZineField(
           controller: _handle,
-          decoration: _dec('@yourhandle', prefix: '@'),
+          label: 'Handle',
+          leadText: '@',
+          hint: 'yourhandle',
+          onChanged: (_) => setState(() {}),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]'))],
         ),
-        const SizedBox(height: 6),
-        const Text('Others can add you by @handle. Leave blank to stay unlisted.',
-            style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+        const SizedBox(height: 7),
+        Text('Others can add you by @handle. Leave blank to stay unlisted.',
+            style: ZineText.sub(size: 12.5)),
         const SizedBox(height: 16),
-        const Text('Birth year (optional)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        const SizedBox(height: 6),
-        TextField(
+        ZineField(
           controller: _birthYear,
+          label: 'Birth year (optional)',
+          hint: 'e.g. 1990',
           keyboardType: TextInputType.number,
           maxLength: 4,
-          decoration: _dec('e.g. 1990').copyWith(counterText: ''),
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         ),
-        const SizedBox(height: 6),
-        const Text('Never shown to anyone. Helps creators see anonymous age-group stats (e.g. "25-34").',
-            style: TextStyle(color: AvaColors.sub, fontSize: 12)),
-        const SizedBox(height: 12),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          activeColor: AvaColors.brand,
-          value: _sharePresence,
-          onChanged: (v) => setState(() => _sharePresence = v),
-          title: const Text('Share last seen / online', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          subtitle: const Text('Let contacts see when you are online', style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+        const SizedBox(height: 7),
+        Text('Never shown to anyone. Helps creators see anonymous age-group stats (e.g. "25-34").',
+            style: ZineText.sub(size: 12.5)),
+        const SizedBox(height: 16),
+        ZineCard(
+          radius: Zine.rSm,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          boxShadow: Zine.shadowXs,
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Share last seen / online', style: ZineText.value(size: 14.5)),
+              const SizedBox(height: 2),
+              Text('Let contacts see when you are online', style: ZineText.sub(size: 12)),
+            ])),
+            const SizedBox(width: 10),
+            ZineToggle(value: _sharePresence, onChanged: (v) => setState(() => _sharePresence = v)),
+          ]),
         ),
         const SizedBox(height: 16),
         const PhoneVerifyCard(),
-        const SizedBox(height: 8),
-        if (id != null) Container(
+        const SizedBox(height: 12),
+        if (id != null) ZineCard(
+          radius: Zine.rSm,
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
+          boxShadow: Zine.shadowXs,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Your AvaTOK ID (npub)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AvaColors.brand)),
-            const SizedBox(height: 4),
             Row(children: [
-              Expanded(child: SelectableText(id.npub, style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5))),
-              IconButton(icon: const Icon(Icons.copy, size: 18), onPressed: () {
-                Clipboard.setData(ClipboardData(text: id.npub));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
-              }),
+              ZineIconBadge(icon: PhosphorIcons.fingerprint(PhosphorIconsStyle.bold), color: Zine.blue, size: 28),
+              const SizedBox(width: 9),
+              Expanded(child: Text('YOUR AVATOK ID (NPUB)', style: ZineText.kicker())),
+            ]),
+            const SizedBox(height: 9),
+            Row(children: [
+              Expanded(child: SelectableText(id.npub, style: ZineText.tag(size: 11, color: Zine.inkSoft))),
+              ZineBackButton(
+                icon: PhosphorIcons.copy(PhosphorIconsStyle.bold),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: id.npub));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+                },
+              ),
             ]),
           ]),
         ),
-        const SizedBox(height: 20),
-        SizedBox(width: double.infinity, child: FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 15)),
+        const SizedBox(height: 22),
+        ZineButton(
+          label: _listed ? 'Update profile' : 'Save & get discoverable',
+          fullWidth: true,
+          fontSize: 19,
+          loading: _saving,
           onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Text(_listed ? 'Update profile' : 'Save & get discoverable',
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-        )),
+        ),
       ]),
     );
   }
-
-  InputDecoration _dec(String hint, {String? prefix}) => InputDecoration(
-        hintText: hint,
-        prefixText: prefix,
-        filled: true,
-        fillColor: AvaColors.soft,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      );
 }

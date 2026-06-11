@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../sync/sync_hub.dart';
 import '../wallet/wallet_screen.dart';
 
@@ -18,11 +20,11 @@ class _CatStyle {
 }
 
 const _catStyles = <String, _CatStyle>{
-  'image': _CatStyle('Images', Color(0xFF22C9C0)),
-  'video': _CatStyle('Videos', Color(0xFFFF3B30)),
-  'document': _CatStyle('Documents', Color(0xFFEAB308)),
-  'audio': _CatStyle('Music', Color(0xFF7C5CFC)),
-  'other': _CatStyle('Other', Color(0xFF737A86)),
+  'image': _CatStyle('Images', Zine.blue),
+  'video': _CatStyle('Videos', Zine.coral),
+  'document': _CatStyle('Documents', Zine.lime),
+  'audio': _CatStyle('Music', Zine.lilac),
+  'other': _CatStyle('Other', Zine.mint),
 };
 
 String _fmt(num b) {
@@ -35,8 +37,8 @@ String _fmt(num b) {
 }
 
 /// AvaStorage — the universal per-account storage pool (Phase 4). One quota
-/// shared by every AvaVerse app: a radial used-vs-quota gauge, stacked
-/// per-category bar + legend (bytes AND counts), a last-6-months trend, and
+/// shared by every AvaVerse app: a flat used-vs-quota meter, stacked
+/// per-category bar + ledger (bytes AND counts), a last-6-months trend, and
 /// LIVE updates — the server pushes a fresh summary over the single InboxDO
 /// socket after any upload/delete in any app, and the graphs animate.
 /// Over quota: 20 AvaCoins/GB/month from the AvaWallet; empty wallet =
@@ -101,73 +103,115 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     final gbOver = total > quota ? ((total - quota) / (1024 * 1024 * 1024)).ceil() : 0;
 
     return Scaffold(
-      backgroundColor: AvaColors.bg,
-      appBar: AppBar(
-        backgroundColor: AvaColors.bg, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('AvaStorage', style: TextStyle(fontWeight: FontWeight.w800)),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(
+        title: 'AvaStorage',
+        markWord: 'Storage',
+        tag: 'One pool, every app',
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
           : RefreshIndicator(
+              color: Zine.blueInk,
               onRefresh: _load,
-              child: ListView(padding: const EdgeInsets.all(20), children: [
-                _donut(total, quota, frac, state),
-                const SizedBox(height: 18),
-                _stackedBar(total, quota, byCat),
-                const SizedBox(height: 8),
-                Text('${(frac * 100).toStringAsFixed(frac >= 0.1 ? 0 : 1)}% of your plan used',
-                    style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-                if (state == 'read_only') _banner(
-                  icon: Icons.lock_outline, color: AvaColors.danger,
-                  text: 'Over your free quota with an empty AvaWallet. Your files are safe and read-only — top up AvaCoins to add more.',
-                  cta: 'Top up wallet',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletScreen())),
-                )
-                else if (state == 'over_quota_paying') _banner(
-                  icon: Icons.payments_outlined, color: const Color(0xFFEAB308),
+              child: ListView(padding: const EdgeInsets.fromLTRB(18, 18, 18, 30), children: [
+                _metricCards(total, quota, frac),
+                const SizedBox(height: 16),
+                _meterBar(frac, state),
+                const SizedBox(height: 10),
+                Text('${(frac * 100).toStringAsFixed(frac >= 0.1 ? 0 : 1)}% OF YOUR PLAN USED',
+                    style: ZineText.kicker()),
+                if (state == 'read_only') _readOnlyCard()
+                else if (state == 'over_quota_paying') _warnCard(
+                  sticker: 'Over quota',
                   text: 'Over the free quota — ${gbOver * coinsPerGb} AvaCoins/month ($coinsPerGb coins/GB × $gbOver GB) are charged from your wallet.',
                 )
-                else if (frac >= 0.8) _banner(
-                  icon: Icons.warning_amber_rounded, color: const Color(0xFFEAB308),
+                else if (frac >= 0.8) _warnCard(
+                  sticker: 'Heads up',
                   text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $coinsPerGb AvaCoins/GB per month.',
                 ),
-                const SizedBox(height: 22),
-                const Text('BY TYPE', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 24),
+                Text('BY TYPE', style: ZineText.kicker()),
                 const SizedBox(height: 10),
-                for (final e in _catStyles.entries) _legendRow(e.key, e.value, byCat, total),
+                _stackedBar(total, quota, byCat),
+                const SizedBox(height: 14),
+                for (final e in _catStyles.entries) _ledgerRow(e.key, e.value, byCat, total),
                 if (_trend.isNotEmpty) ...[
                   const SizedBox(height: 22),
-                  const Text('LAST 6 MONTHS', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 10),
+                  Text('LAST 6 MONTHS', style: ZineText.kicker()),
+                  const SizedBox(height: 12),
                   _trendBars(quota),
                 ],
-                const SizedBox(height: 30),
               ]),
             ),
     );
   }
 
-  // -- radial gauge (CustomPainter per perf budget §1; animated via tween) -----
-  Widget _donut(double total, double quota, double frac, String state) {
-    final color = state == 'read_only'
-        ? AvaColors.danger
-        : frac >= 0.8 ? const Color(0xFFEAB308) : AvaColors.brand;
-    return Center(
-      child: RepaintBoundary(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0, end: frac),
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeOutCubic,
-          builder: (_, v, __) => SizedBox(
-            width: 190, height: 190,
-            child: CustomPaint(
-              painter: _DonutPainter(v, color, AvaColors.line),
-              child: Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_fmt(total), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AvaColors.ink)),
-                  Text('of ${_fmt(quota)}', style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-                  Text('${_fmt((quota - total).clamp(0, quota))} free', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
-                ]),
+  // -- usage stats: two metric cards (§7.11) ----------------------------------
+  Widget _metricCards(double total, double quota, double frac) {
+    final left = (quota - total).clamp(0, quota).toDouble();
+    return Row(children: [
+      Expanded(
+        child: ZineCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ZineIconBadge(icon: PhosphorIcons.database(PhosphorIconsStyle.bold), color: Zine.blue),
+            const SizedBox(height: 12),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(_fmt(total), style: ZineText.stat(size: 30)),
+            ),
+            const SizedBox(height: 6),
+            Text('USED OF ${_fmt(quota).toUpperCase()}', style: ZineText.kicker(size: 10.5)),
+          ]),
+        ),
+      ),
+      const SizedBox(width: 14),
+      Expanded(
+        child: ZineCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ZineIconBadge(icon: PhosphorIcons.cloudCheck(PhosphorIconsStyle.bold), color: Zine.mint),
+            const SizedBox(height: 12),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(_fmt(left), style: ZineText.stat(size: 30, color: Zine.mintInk)),
+            ),
+            const SizedBox(height: 6),
+            Text('STILL FREE', style: ZineText.kicker(size: 10.5)),
+          ]),
+        ),
+      ),
+    ]);
+  }
+
+  // -- flat fill bar inside an ink-bordered track (no gradients, no donut) -----
+  Widget _meterBar(double frac, String state) {
+    final fill = state == 'read_only' ? Zine.coral : Zine.mint;
+    return Container(
+      height: 24,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Zine.paper2,
+        borderRadius: BorderRadius.circular(100),
+        border: Zine.border,
+        boxShadow: Zine.shadowXs,
+      ),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: frac),
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeOutCubic,
+        builder: (_, v, __) => Align(
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: v.clamp(0.0, 1.0),
+            heightFactor: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                color: fill,
+                border: v > 0.02
+                    ? const Border(right: BorderSide(color: Zine.ink, width: 2))
+                    : null,
               ),
             ),
           ),
@@ -175,6 +219,49 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
       ),
     );
   }
+
+  // -- read-only: coral card + the one lime CTA (top up wallet) ----------------
+  Widget _readOnlyCard() => Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: ZineCard(
+          color: Zine.coral,
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              PhosphorIcon(PhosphorIcons.lock(PhosphorIconsStyle.bold), size: 18, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('READ-ONLY', style: ZineText.tag(size: 12, color: Colors.white)),
+            ]),
+            const SizedBox(height: 8),
+            Text(
+              'Over your free quota with an empty AvaWallet. Your files are safe and read-only — top up AvaCoins to add more.',
+              style: ZineText.sub(size: 14, color: Colors.white),
+            ),
+            const SizedBox(height: 14),
+            ZineButton(
+              label: 'Top up wallet',
+              fullWidth: true,
+              fontSize: 17,
+              icon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
+              onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const WalletScreen())),
+            ),
+          ]),
+        ),
+      );
+
+  // -- soft warnings: coral sticker + short line --------------------------------
+  Widget _warnCard({required String sticker, required String text}) => Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: ZineCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ZineSticker(sticker, kind: ZineStickerKind.no),
+            const SizedBox(height: 10),
+            Text(text, style: ZineText.sub(size: 14)),
+          ]),
+        ),
+      );
 
   Widget _stackedBar(double total, double quota, Map<String, dynamic> byCat) {
     final segments = <Widget>[];
@@ -184,14 +271,20 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
       segments.add(Expanded(flex: (v / quota * 10000).round().clamp(1, 10000), child: Container(color: e.value.color)));
     }
     final remaining = (quota - total).clamp(0, quota);
-    if (remaining > 0) segments.add(Expanded(flex: (remaining / quota * 10000).round().clamp(1, 10000), child: Container(color: AvaColors.line)));
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: SizedBox(height: 18, child: Row(children: segments.isEmpty ? [Expanded(child: Container(color: AvaColors.line))] : segments)),
+    if (remaining > 0) segments.add(Expanded(flex: (remaining / quota * 10000).round().clamp(1, 10000), child: Container(color: Zine.paper2)));
+    return Container(
+      height: 20,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(100),
+        border: Zine.border,
+      ),
+      child: Row(children: segments.isEmpty ? [Expanded(child: Container(color: Zine.paper2))] : segments),
     );
   }
 
-  Widget _legendRow(String key, _CatStyle style, Map<String, dynamic> byCat, double total) {
+  // -- per-type ledger rows (§7.10): label + dotted leader + Nunito 900 value --
+  Widget _ledgerRow(String key, _CatStyle style, Map<String, dynamic> byCat, double total) {
     final cat = (byCat[key] as Map?)?.cast<String, dynamic>();
     final bytes = (cat?['bytes'] as num?)?.toDouble() ?? 0;
     final count = (cat?['count'] as num?)?.toInt() ?? 0;
@@ -199,10 +292,24 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: style.color, borderRadius: BorderRadius.circular(3))),
+        Container(
+          width: 13, height: 13,
+          decoration: BoxDecoration(
+            color: style.color,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Zine.ink, width: 2),
+          ),
+        ),
         const SizedBox(width: 10),
-        Expanded(child: Text('${style.label} · $count', style: const TextStyle(fontWeight: FontWeight.w600, color: AvaColors.ink))),
-        Text('${_fmt(bytes)}  ·  ${(pct * 100).toStringAsFixed(0)}%', style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
+        Text('${style.label} · $count', style: ZineText.sub(size: 14.5)),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: CustomPaint(size: const Size(double.infinity, 2), painter: _DotLeaderPainter()),
+          ),
+        ),
+        Text('${_fmt(bytes)} · ${(pct * 100).toStringAsFixed(0)}%',
+            style: ZineText.value(size: 14, weight: FontWeight.w900)),
       ]),
     );
   }
@@ -212,24 +319,29 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     final maxV = _trend.fold<double>(
       1, (m, e) => math.max(m, ((e['used_bytes'] as num?) ?? 0).toDouble()));
     return SizedBox(
-      height: 92,
+      height: 96,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           for (final s in _trend)
             Expanded(
               child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                Text(_fmt((s['used_bytes'] as num?) ?? 0), style: const TextStyle(color: AvaColors.sub, fontSize: 9)),
+                Text(_fmt((s['used_bytes'] as num?) ?? 0),
+                    style: ZineText.tag(size: 8.5, color: Zine.inkSoft)),
                 const SizedBox(height: 4),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 400),
-                  height: (54 * (((s['used_bytes'] as num?) ?? 0) / maxV)).clamp(2, 54).toDouble(),
+                  height: (54 * (((s['used_bytes'] as num?) ?? 0) / maxV)).clamp(4, 54).toDouble(),
                   margin: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(color: AvaColors.brand.withOpacity(0.85), borderRadius: BorderRadius.circular(4)),
+                  decoration: BoxDecoration(
+                    color: Zine.mint,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Zine.ink, width: 2),
+                  ),
                 ),
                 const SizedBox(height: 4),
-                Text(_monthLabel((s['month'] ?? '').toString()),
-                    style: const TextStyle(color: AvaColors.sub, fontSize: 10)),
+                Text(_monthLabel((s['month'] ?? '').toString()).toUpperCase(),
+                    style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
               ]),
             ),
         ],
@@ -242,43 +354,18 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     final m = int.tryParse(yyyyMm.length >= 7 ? yyyyMm.substring(5, 7) : '') ?? 0;
     return m >= 1 && m <= 12 ? _months[m] : yyyyMm;
   }
-
-  Widget _banner({required IconData icon, required Color color, required String text, String? cta, VoidCallback? onTap}) =>
-      Container(
-        margin: const EdgeInsets.only(top: 16),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(14)),
-        child: Row(children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 10),
-          Expanded(child: Text(text, style: const TextStyle(color: AvaColors.ink, fontSize: 12))),
-          if (cta != null)
-            TextButton(onPressed: onTap, child: Text(cta, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 12))),
-        ]),
-      );
 }
 
-class _DonutPainter extends CustomPainter {
-  final double frac;
-  final Color color;
-  final Color track;
-  _DonutPainter(this.frac, this.color, this.track);
-
+/// The dotted "·" leader line between a ledger label and its value (§7.10).
+class _DotLeaderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final c = size.center(Offset.zero);
-    final r = size.shortestSide / 2 - 8;
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 14
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(c, r, stroke..color = track);
-    if (frac > 0) {
-      canvas.drawArc(Rect.fromCircle(center: c, radius: r), -math.pi / 2,
-          2 * math.pi * frac.clamp(0.0, 1.0), false, stroke..color = color);
+    final p = Paint()..color = Zine.inkMute;
+    for (double x = 0; x < size.width; x += 7) {
+      canvas.drawCircle(Offset(x, size.height / 2), 1.1, p);
     }
   }
 
   @override
-  bool shouldRepaint(_DonutPainter old) => old.frac != frac || old.color != color;
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }

@@ -1,12 +1,12 @@
-import 'dart:async';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/profile_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../core/verification_api.dart';
 
 /// Phone verification card for the Profile screen — for users who skipped phone
@@ -126,79 +126,72 @@ class _PhoneVerifyCardState extends State<PhoneVerifyCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return ZineCard(
+      radius: Zine.rSm,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AvaColors.soft,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _verified ? AvaColors.success : Colors.transparent, width: 1.4),
-      ),
+      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.phone_outlined, size: 16, color: AvaColors.brand),
-          const SizedBox(width: 6),
-          const Text('Phone number', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-          const Spacer(),
+          ZineIconBadge(icon: PhosphorIcons.phone(PhosphorIconsStyle.bold), color: Zine.blue, size: 28),
+          const SizedBox(width: 9),
+          Expanded(child: Text('PHONE NUMBER', style: ZineText.kicker())),
           if (_verified)
-            Row(children: const [
-              Icon(Icons.check_circle, size: 16, color: AvaColors.success),
-              SizedBox(width: 4),
-              Text('Verified', style: TextStyle(color: AvaColors.success, fontSize: 12.5, fontWeight: FontWeight.w700)),
-            ]),
+            ZineSticker('verified', kind: ZineStickerKind.ok,
+                icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         if (_verified)
           Row(children: [
-            const Icon(Icons.check_circle, size: 18, color: AvaColors.success),
+            PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), size: 18, color: Zine.mintInk),
             const SizedBox(width: 8),
-            Expanded(child: Text(_phoneCtrl.text.trim(), style: const TextStyle(fontWeight: FontWeight.w600))),
+            Expanded(child: Text(_phoneCtrl.text.trim(), style: ZineText.value(size: 15))),
           ])
         else ...[
-          _field(_phoneCtrl, '+234 800 000 0000', Icons.phone_outlined, TextInputType.phone, enabled: !_codeSent),
+          ZineField(
+            controller: _phoneCtrl,
+            hint: '+234 800 000 0000',
+            leadIcon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
+            keyboardType: TextInputType.phone,
+            enabled: !_codeSent,
+            error: _error != null && !_codeSent,
+          ),
           if (!_codeSent) ...[
-            const SizedBox(height: 10),
-            _btn(_sending ? 'Sending…' : 'Send code', _sending ? null : _send),
+            const SizedBox(height: 12),
+            ZineButton(
+              label: _sending ? 'Sending…' : 'Send code',
+              variant: ZineButtonVariant.blue,
+              fullWidth: true,
+              fontSize: 16,
+              loading: _sending,
+              onPressed: _sending ? null : _send,
+            ),
           ] else ...[
-            const SizedBox(height: 10),
-            _field(_codeCtrl, '6-digit code', Icons.sms_outlined, TextInputType.number,
-                formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)]),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            ZineField(
+              controller: _codeCtrl,
+              hint: '6-digit code',
+              leadIcon: PhosphorIcons.chatText(PhosphorIconsStyle.bold),
+              keyboardType: TextInputType.number,
+              error: _error != null,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+            ),
+            const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: _btn(_verifying ? 'Verifying…' : 'Verify', _verifying ? null : _verify)),
-              const SizedBox(width: 10),
-              TextButton(onPressed: _sending ? null : () => _send(resend: true), child: const Text('Resend')),
+              Expanded(child: ZineButton(
+                label: _verifying ? 'Verifying…' : 'Verify',
+                variant: ZineButtonVariant.blue,
+                fullWidth: true,
+                fontSize: 16,
+                loading: _verifying,
+                onPressed: _verifying ? null : _verify,
+              )),
+              const SizedBox(width: 14),
+              ZineLink('RESEND', onTap: _sending ? null : () => _send(resend: true)),
             ]),
           ],
-          if (_error != null)
-            Padding(padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 12.5))),
+          if (_error != null) ZineErrorMsg(_error!),
         ],
       ]),
     );
   }
-
-  Widget _field(TextEditingController c, String hint, IconData icon, TextInputType kb,
-      {List<TextInputFormatter>? formatters, bool enabled = true}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: Row(children: [
-        Icon(icon, size: 18, color: const Color(0xFF9AA1AC)),
-        const SizedBox(width: 8),
-        Expanded(child: TextField(
-          controller: c, enabled: enabled, keyboardType: kb, inputFormatters: formatters,
-          decoration: const InputDecoration(border: InputBorder.none, isDense: true,
-              contentPadding: EdgeInsets.symmetric(vertical: 13)),
-        )),
-      ]),
-    );
-  }
-
-  Widget _btn(String text, VoidCallback? onTap) => SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 13)),
-          onPressed: onTap, child: Text(text),
-        ),
-      );
 }

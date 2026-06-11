@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../profile/phone_verify_card.dart';
 import '../profile/profile_screen.dart';
 import 'identity_api.dart';
@@ -99,30 +101,34 @@ class _IdentityScreenState extends State<IdentityScreen> {
         }
 
         return AlertDialog(
-          title: const Text('Change email'),
+          backgroundColor: Zine.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          ),
+          title: Text('Change email', style: ZineText.cardTitle()),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(
+            ZineField(
               controller: emailCtrl,
               enabled: !sent,
+              label: 'New email address',
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'New email address'),
             ),
             if (sent) ...[
-              const SizedBox(height: 12),
-              TextField(
+              const SizedBox(height: 14),
+              ZineField(
                 controller: codeCtrl,
+                label: '6-digit code from your inbox',
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '6-digit code from your inbox'),
               ),
             ],
-            if (err != null) ...[
-              const SizedBox(height: 8),
-              Text(err!, style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontSize: 13)),
-            ],
+            if (err != null) ZineErrorMsg(err!),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-            FilledButton(onPressed: sent ? verify : send, child: Text(sent ? 'Verify' : 'Send code')),
+            TextButton(onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+            ZineButton(label: sent ? 'Verify' : 'Send code', variant: ZineButtonVariant.blue,
+                fontSize: 15, onPressed: sent ? verify : send),
           ],
         );
       }),
@@ -133,6 +139,9 @@ class _IdentityScreenState extends State<IdentityScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: const Padding(padding: EdgeInsets.all(16), child: PhoneVerifyCard()),
@@ -145,21 +154,25 @@ class _IdentityScreenState extends State<IdentityScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete your account?'),
-        content: const Text(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.r),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('Delete your account?', style: ZineText.cardTitle()),
+        content: Text(
           'This wipes EVERYTHING after a 30-day grace period: your profile, '
           'messages, wallet, listings — and your identity verifications, '
           'including the liveness photo and all KYC records. Verification '
           'media cannot be deleted any other way.\n\n'
           'You can cancel within 30 days by signing back in.',
+          style: ZineText.sub(size: 14),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Keep my account')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete everything'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Keep my account', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+          ZineButton(label: 'Delete everything', variant: ZineButtonVariant.coral,
+              fontSize: 15, onPressed: () => Navigator.of(ctx).pop(true)),
         ],
       ),
     );
@@ -175,59 +188,61 @@ class _IdentityScreenState extends State<IdentityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final level = _ladder?.level ?? 1;
     return Scaffold(
-      appBar: AppBar(title: const Text('AvaIdentity')),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'AvaIdentity', markWord: 'Identity', tag: 'trust ladder'),
       body: RefreshIndicator(
         onRefresh: _refresh,
+        color: Zine.blueInk,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
             : ListView(padding: const EdgeInsets.all(20), children: [
                 // ── Level card ────────────────────────────────────────────
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AvaColors.brand.withValues(alpha: .08),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AvaColors.brand.withValues(alpha: .3)),
-                  ),
-                  child: Row(children: [
-                    const Icon(Icons.shield_outlined, size: 40, color: AvaColors.brand),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Trust level $level',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800)),
-                        Text(
-                          level >= 3
-                              ? 'Fully verified — payouts unlocked.'
-                              : level == 2
-                                  ? 'Verified human — creator features unlocked.'
-                                  : 'Member — verify to unlock creator features.',
-                          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
-                        ),
-                      ]),
-                    ),
+                ZineCard(
+                  color: Zine.blue,
+                  padding: const EdgeInsets.all(18),
+                  boxShadow: Zine.shadow,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
+                          color: Zine.card, size: 42),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Trust level $level', style: ZineText.cardTitle(size: 21)),
+                          const SizedBox(height: 3),
+                          Text(
+                            level >= 3
+                                ? 'Fully verified — payouts unlocked.'
+                                : level == 2
+                                    ? 'Verified human — creator features unlocked.'
+                                    : 'Member — verify to unlock creator features.',
+                            style: ZineText.sub(size: 13, color: Zine.ink),
+                          ),
+                        ]),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    ZineStepPips(total: 3, active: level.clamp(1, 3).toInt()),
                   ]),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
 
                 // ── The ladder ────────────────────────────────────────────
-                Text('Your identity',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                _tick(true, Icons.alternate_email, 'Handle', 'Your unique @handle', null),
-                _tick(true, Icons.email_outlined, 'Email & password',
-                    'Tap to change your email (OTP re-verify)', _changeEmail),
-                _tick(_ladder?.proofs['phone'] == 'verified', Icons.sms_outlined, 'Phone',
+                Text('YOUR IDENTITY', style: ZineText.kicker(size: 11.5)),
+                const SizedBox(height: 10),
+                _tick(true, PhosphorIcons.at(PhosphorIconsStyle.bold), Zine.lime,
+                    'Handle', 'Your unique @handle', null),
+                _tick(true, PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.blue,
+                    'Email & password', 'Tap to change your email (OTP re-verify)', _changeEmail),
+                _tick(_ladder?.proofs['phone'] == 'verified',
+                    PhosphorIcons.phone(PhosphorIconsStyle.bold), Zine.lilac, 'Phone',
                     'Real SIM numbers only — temp/VoIP numbers are rejected', _changePhone),
                 _tick(
                     _livenessDone,
-                    Icons.video_camera_front_outlined,
+                    PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                    Zine.coral,
                     'Video liveness',
                     _livenessDone
                         ? 'Verified — cannot be removed (delete account to erase)'
@@ -235,61 +250,96 @@ class _IdentityScreenState extends State<IdentityScreen> {
                     _livenessDone ? null : _startLiveness),
                 _tick(
                     _stripeDone,
-                    Icons.badge_outlined,
+                    PhosphorIcons.identificationCard(PhosphorIconsStyle.bold),
+                    Zine.mint,
                     'Document KYC (Stripe)',
                     _stripeDone
                         ? 'Verified by Stripe — cannot be removed (delete account to erase)'
                         : 'Government ID + selfie match — required for payouts',
                     _stripeDone ? null : _startStripe),
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
 
                 // ── Account actions ───────────────────────────────────────
-                Text('Account',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person_outline),
-                  title: const Text('Profile & photo'),
-                  subtitle: const Text('Display name, bio, profile picture'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context)
-                      .push(MaterialPageRoute(builder: (_) => const ProfileScreen()))
-                      .then((_) => _refresh()),
-                ),
-                const ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.password_outlined),
-                  title: Text('Password'),
-                  subtitle: Text(
-                      'Managed securely by sign-in — use "Forgot password" at sign-in to change it'),
-                ),
-                const Divider(height: 32),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_forever_outlined, color: cs.error),
-                  title: Text('Delete account', style: TextStyle(color: cs.error)),
-                  subtitle: const Text('Wipes everything — including verification media'),
-                  onTap: _deleteAccount,
-                ),
+                Text('ACCOUNT', style: ZineText.kicker(size: 11.5)),
+                const SizedBox(height: 10),
+                _row(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), Zine.blue,
+                    'Profile & photo', 'Display name, bio, profile picture',
+                    () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => const ProfileScreen()))
+                        .then((_) => _refresh())),
+                _row(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), Zine.lilac,
+                    'Password',
+                    'Managed securely by sign-in — use "Forgot password" at sign-in to change it',
+                    null),
+                const SizedBox(height: 10),
+                _row(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral,
+                    'Delete account', 'Wipes everything — including verification media',
+                    _deleteAccount, danger: true),
                 const SizedBox(height: 24),
               ]),
       ),
     );
   }
 
-  Widget _tick(bool done, IconData icon, String title, String subtitle, VoidCallback? onTap) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: done ? const Color(0xFF10B981) : null),
-      title: Row(children: [
-        Flexible(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
-        const SizedBox(width: 6),
-        if (done) const Icon(Icons.check_circle, size: 18, color: Color(0xFF10B981)),
-      ]),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12.5)),
-      trailing: onTap != null ? const Icon(Icons.chevron_right) : null,
-      onTap: onTap,
+  /// Trust Ladder rung — zine card with a status sticker (current = ok lime,
+  /// pending/locked = hint).
+  Widget _tick(bool done, IconData icon, Color accent, String title, String subtitle, VoidCallback? onTap) {
+    final body = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ZineIconBadge(icon: icon, color: accent, size: 38),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(title, style: ZineText.cardTitle(size: 16))),
+          const SizedBox(width: 6),
+          done
+              ? ZineSticker('done', kind: ZineStickerKind.ok,
+                  icon: PhosphorIcons.check(PhosphorIconsStyle.bold))
+              : const ZineSticker('to do', kind: ZineStickerKind.hint),
+        ]),
+        const SizedBox(height: 4),
+        Text(subtitle, style: ZineText.sub(size: 12.5)),
+      ])),
+    ]);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: onTap == null
+          ? ZineCard(radius: Zine.rSm, padding: const EdgeInsets.all(13),
+              boxShadow: Zine.shadowXs, child: body)
+          : ZinePressable(
+              onTap: onTap,
+              radius: BorderRadius.circular(Zine.rSm),
+              boxShadow: Zine.shadowXs,
+              padding: const EdgeInsets.all(13),
+              child: body,
+            ),
+    );
+  }
+
+  Widget _row(IconData icon, Color accent, String title, String subtitle, VoidCallback? onTap,
+      {bool danger = false}) {
+    final body = Row(children: [
+      ZineIconBadge(icon: icon, color: accent, size: 34),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink)),
+        const SizedBox(height: 2),
+        Text(subtitle, style: ZineText.sub(size: 12)),
+      ])),
+      if (onTap != null)
+        PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+    ]);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: onTap == null
+          ? ZineCard(radius: Zine.rSm, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              boxShadow: Zine.shadowXs, child: body)
+          : ZinePressable(
+              onTap: onTap,
+              radius: BorderRadius.circular(Zine.rSm),
+              boxShadow: Zine.shadowXs,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: body,
+            ),
     );
   }
 }

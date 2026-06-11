@@ -4,8 +4,11 @@
 // engine lands in Phase 7). The buyer's own bookings appear here too (and in
 // their AvaCalendar).
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/platform_api.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart' show AccountScope;
 import '../calendar/booking_card.dart';
 import '../calendar/calendar_data.dart';
@@ -41,10 +44,42 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Zine.paper,
       appBar: AppBar(
-        title: const Text('AvaBooking'),
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh)],
-        bottom: TabBar(controller: _tab, tabs: const [Tab(text: 'Upcoming'), Tab(text: 'Past')]),
+        backgroundColor: Zine.paper2,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: Zine.ink,
+        shape: const Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        leading: const Padding(
+          padding: EdgeInsets.only(left: 10),
+          child: Center(child: ZineBackButton()),
+        ),
+        leadingWidth: 60,
+        title: Text('AvaBooking', style: ZineText.appbar().copyWith(fontSize: 21)),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Center(
+              child: ZineBackButton(
+                icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                onTap: _refresh,
+              ),
+            ),
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tab,
+          labelColor: Zine.ink,
+          unselectedLabelColor: Zine.inkMute,
+          indicatorColor: Zine.ink,
+          indicatorWeight: 3,
+          dividerColor: Colors.transparent,
+          labelStyle: ZineText.tag(size: 11.5),
+          unselectedLabelStyle: ZineText.tag(size: 11.5, color: Zine.inkMute),
+          tabs: const [Tab(text: 'UPCOMING'), Tab(text: 'PAST')],
+        ),
       ),
       body: TabBarView(controller: _tab, children: [
         _list(_upcoming, upcoming: true),
@@ -54,15 +89,37 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
   }
 
   Widget _list(List<Map<String, dynamic>>? items, {required bool upcoming}) {
-    if (_error != null) return Center(child: Text('Could not load bookings.\n$_error', textAlign: TextAlign.center));
-    if (items == null) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ZineEmptyState(
+              icon: PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
+              text: 'Could not load bookings — pull to retry.',
+            ),
+            const SizedBox(height: 10),
+            ZineErrorMsg('$_error'),
+          ]),
+        ),
+      );
+    }
+    if (items == null) return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
     if (items.isEmpty) {
-      return Center(child: Text(upcoming ? 'No upcoming bookings.' : 'No past bookings yet.', style: TextStyle(color: Colors.grey[600])));
+      return Center(
+        child: ZineEmptyState(
+          icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+          text: upcoming
+              ? 'No upcoming bookings — your next session lands here.'
+              : 'No past bookings yet.',
+        ),
+      );
     }
     return RefreshIndicator(
+      color: Zine.blueInk,
       onRefresh: _refresh,
       child: ListView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         itemCount: items.length,
         itemBuilder: (ctx, i) => _card(items[i], upcoming: upcoming),
       ),
@@ -72,7 +129,7 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
   Widget _card(Map<String, dynamic> b, {required bool upcoming}) {
     final myUid = AccountScope.id; // Clerk uid — bookings are uid-keyed (Phase 5)
     final amCreator = myUid != null && b['creator_id'] == myUid;
-    final st = styleFor(b['kind'] == 'live_event' ? 'avalive' : 'avabooking');
+    final sourceApp = b['kind'] == 'live_event' ? 'avalive' : 'avabooking';
     final price = (b['price'] as num?)?.toInt() ?? 0;
     final status = b['status'] as String? ?? 'confirmed';
     final startsAt = (b['starts_at'] as num?)?.toInt() ?? 0;
@@ -81,26 +138,14 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
     final settled = !upcoming && (status == 'completed' || (status == 'confirmed' && endsAt < DateTime.now().millisecondsSinceEpoch));
     final net = (price * 0.8 / 100).toStringAsFixed(2);
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        leading: CircleAvatar(backgroundColor: st.color.withOpacity(.15), child: Icon(st.icon, color: st.color, size: 20)),
-        title: Text(title),
-        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${fmtDate(startsAt)} · ${fmtRange(startsAt, endsAt)}'),
-          Text(
-            [
-              status,
-              if (price > 0) '\$${(price / 100).toStringAsFixed(2)}',
-              if (amCreator && settled && price > 0) 'earned ~\$$net',
-            ].join(' · '),
-            style: TextStyle(color: Colors.grey[600], fontSize: 12),
-          ),
-        ]),
-        trailing: const Icon(Icons.chevron_right),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
         onTap: () => showBookingCard(
           context,
-          sourceApp: b['kind'] == 'live_event' ? 'avalive' : 'avabooking',
+          sourceApp: sourceApp,
           title: title,
           startsAt: startsAt,
           endsAt: endsAt,
@@ -111,6 +156,37 @@ class _AvaBookingScreenState extends State<AvaBookingScreen> with SingleTickerPr
           amCreator: amCreator,
           onChanged: _refresh,
         ),
+        child: Row(children: [
+          ZineIconBadge(icon: zineSourceIcon(sourceApp), color: zineSourceColor(sourceApp)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${fmtDate(startsAt)} · ${fmtRange(startsAt, endsAt)}'.toUpperCase(),
+                  style: ZineText.kicker(size: 10)),
+              const SizedBox(height: 3),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 15)),
+              const SizedBox(height: 6),
+              Row(children: [
+                zineStatusSticker(status),
+                if (price > 0) ...[
+                  const SizedBox(width: 8),
+                  Text('\$${(price / 100).toStringAsFixed(2)}',
+                      style: ZineText.value(size: 13.5, color: Zine.mintInk, weight: FontWeight.w900)),
+                ],
+                if (amCreator && settled && price > 0) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text('EARNED ~\$$net',
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: ZineText.tag(size: 10.5, color: Zine.mintInk)),
+                  ),
+                ],
+              ]),
+            ]),
+          ),
+          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+        ]),
       ),
     );
   }

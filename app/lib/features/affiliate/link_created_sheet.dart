@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'affiliate_api.dart';
-import 'widgets.dart';
 
 /// "Your link is ready" bottom sheet — big QR (qr_flutter), copyable short
 /// URL, native share. Shown right after POST /api/affiliate/links and from
@@ -17,9 +18,7 @@ Future<void> showLinkCreatedSheet(BuildContext context, AffiliateLink link,
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    backgroundColor: Colors.transparent,
     builder: (_) => _LinkSheet(link: link, justCreated: justCreated),
   );
 }
@@ -48,72 +47,80 @@ class _LinkSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
-        child: Column(mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Center(child: Container(width: 36, height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: AvaColors.line,
-                  borderRadius: BorderRadius.circular(2)))),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Icon(Icons.celebration, color: kAffiliateOrange, size: 22),
-            const SizedBox(width: 8),
-            Text(justCreated ? 'Your link is ready!' : 'Share your link',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-          ]),
-          const SizedBox(height: 4),
-          Text(
-            'Earn 10% of every payment your referrals ever make on this listing — for life.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12.5, color: AvaColors.sub),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: AvaColors.line),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: QrImageView(
-                data: link.url,
-                size: 220,
-                backgroundColor: Colors.white,
+    return Container(
+      decoration: const BoxDecoration(
+        color: Zine.paper,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
+        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(24, 14, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
+          child: Column(mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(child: Container(width: 38, height: 5,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: Zine.inkMute,
+                    borderRadius: BorderRadius.circular(3)))),
+            Center(
+              child: ZineMarkTitle(
+                pre: justCreated ? 'Your link is ' : 'Share your ',
+                mark: justCreated ? 'ready' : 'link',
+                fontSize: 26,
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          // URL pill + copy
-          InkWell(
-            onTap: () => _copy(context),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
+            const SizedBox(height: 8),
+            Text(
+              'Earn 10% of every payment your referrals ever make on this listing — for life.',
+              textAlign: TextAlign.center,
+              style: ZineText.sub(size: 12.5),
+            ),
+            const SizedBox(height: 18),
+            // QR in an ink-bordered card with a hard offset shadow.
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Zine.card,
+                  border: Zine.border,
+                  borderRadius: BorderRadius.circular(Zine.r),
+                  boxShadow: Zine.shadowSm,
+                ),
+                child: QrImageView(
+                  data: link.url,
+                  size: 220,
+                  backgroundColor: Zine.card,
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            // URL pill + copy
+            ZinePressable(
+              onTap: () => _copy(context),
+              radius: BorderRadius.circular(Zine.rSm),
+              boxShadow: Zine.shadowXs,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(color: AvaColors.soft,
-                  borderRadius: BorderRadius.circular(12)),
               child: Row(children: [
                 Expanded(child: Text(link.url, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5))),
-                const Icon(Icons.copy, size: 18, color: AvaColors.sub),
+                    style: ZineText.tag(size: 13))),
+                const SizedBox(width: 8),
+                PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
+                    size: 18, color: Zine.inkSoft),
               ]),
             ),
-          ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: kAffiliateOrange,
-                padding: const EdgeInsets.symmetric(vertical: 14)),
-            onPressed: _share,
-            icon: const Icon(Icons.ios_share, size: 18),
-            label: const Text('Share'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ]),
+            const SizedBox(height: 16),
+            ZineButton(
+              label: 'Share it',
+              fullWidth: true,
+              fontSize: 18,
+              icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: _share,
+            ),
+            const SizedBox(height: 12),
+            Center(child: ZineLink('DONE', onTap: () => Navigator.pop(context))),
+          ]),
+        ),
       ),
     );
   }

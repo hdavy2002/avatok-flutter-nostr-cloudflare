@@ -2,13 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/admin_tools.dart';
 import '../../core/api_auth.dart';
 import '../../core/brain_consent.dart';
 import '../../core/config.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 
 /// Account settings — Backup, Manage keys, Delete account.
@@ -55,18 +57,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Back up my account'),
-        content: const Text(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.r),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('Back up my account', style: ZineText.cardTitle()),
+        content: Text(
           'We will export your AvaTOK account data (your posts and messages) and '
           'give you a download link. Media files (images, videos, voice) are not '
           'included in backups.',
+          style: ZineText.sub(size: 14),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () { Navigator.pop(ctx); _runBackup(); },
-            child: const Text('Back up'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+          ZineButton(label: 'Back up', variant: ZineButtonVariant.blue, fontSize: 15,
+              onPressed: () { Navigator.pop(ctx); _runBackup(); }),
         ],
       ),
     );
@@ -94,11 +101,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Backup ready'),
+          backgroundColor: Zine.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          ),
+          title: Text('Backup ready', style: ZineText.cardTitle()),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${j['size'] ?? 0} bytes exported (media excluded).'),
+            Text('${j['size'] ?? 0} bytes exported (media excluded).', style: ZineText.sub(size: 14)),
             const SizedBox(height: 10),
-            SelectableText(url, style: const TextStyle(fontSize: 12, color: AvaColors.brand)),
+            SelectableText(url, style: ZineText.link(size: 12)),
           ]),
           actions: [
             TextButton(
@@ -108,9 +120,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Download link copied')));
               },
-              child: const Text('Copy link'),
+              child: Text('Copy link', style: ZineText.link(size: 14)),
             ),
-            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
+            ZineButton(label: 'Done', variant: ZineButtonVariant.blue, fontSize: 15,
+                onPressed: () => Navigator.pop(ctx)),
           ],
         ),
       );
@@ -126,15 +139,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete account?'),
-        content: const Text(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.r),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('Delete account?', style: ZineText.cardTitle()),
+        content: Text(
           'This permanently deletes your AvaTOK account. Your profile, settings, '
           'and data on our network are removed. This cannot be undone.',
+          style: ZineText.sub(size: 14),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.danger),
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: Text('Keep my account', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+          ZineButton(
+            label: 'Delete',
+            variant: ZineButtonVariant.coral,
+            fontSize: 15,
             onPressed: () async {
               Navigator.pop(ctx);
               // Purge server-side data FIRST (needs the Clerk session that we
@@ -143,95 +165,123 @@ class _SettingsScreenState extends State<SettingsScreen> {
               try { await widget.clerk.deleteAccount(); } catch (_) {}
               widget.onSignOut();
             },
-            child: const Text('Delete'),
           ),
         ],
       ),
     );
   }
 
+  static const _kindLabels = {
+    AccountKind.personal: 'Personal',
+    AccountKind.parent: 'Parent',
+    AccountKind.enterprise: 'Enterprise',
+  };
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('Settings'),
-      ),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Settings', markWord: 'Settings'),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         _section('Account type (preview)'),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+        ZineCard(
+          radius: Zine.rSm,
+          padding: const EdgeInsets.all(14),
+          boxShadow: Zine.shadowXs,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Switch product to preview its sidebar tools. Temporary — '
+            Text('Switch product to preview its sidebar tools. Temporary — '
                 'real registration will set this later.',
-                style: TextStyle(color: AvaColors.sub, fontSize: 12)),
-            const SizedBox(height: 10),
-            SegmentedButton<AccountKind>(
-              segments: const [
-                ButtonSegment(value: AccountKind.personal, label: Text('Personal')),
-                ButtonSegment(value: AccountKind.parent, label: Text('Parent')),
-                ButtonSegment(value: AccountKind.enterprise, label: Text('Enterprise')),
+                style: ZineText.sub(size: 12.5)),
+            const SizedBox(height: 12),
+            Row(children: [
+              for (final k in _kindLabels.keys) ...[
+                Expanded(child: ZineChip(
+                  label: _kindLabels[k]!,
+                  active: _kind == k,
+                  onTap: () => _setKind(k),
+                )),
+                if (k != _kindLabels.keys.last) const SizedBox(width: 9),
               ],
-              selected: {_kind},
-              showSelectedIcon: false,
-              onSelectionChanged: (s) => _setKind(s.first),
-            ),
+            ]),
           ]),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         _section('AvaBrain'),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+        ZineCard(
+          radius: Zine.rSm,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          boxShadow: Zine.shadowXs,
           child: Column(children: [
             for (final c in kBrainCapabilities)
-              if (c.master || (_brain['master'] ?? true)) SwitchListTile(
-                activeColor: AvaColors.brand,
-                value: _brain[c.key] ?? true,
-                onChanged: (v) => _setBrain(c.key, v),
-                title: Text(c.title, style: TextStyle(fontWeight: c.master ? FontWeight.w800 : FontWeight.w700, color: AvaColors.ink)),
-                subtitle: Text(c.subtitle, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-              ),
+              if (c.master || (_brain['master'] ?? true))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  child: Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(c.title, style: ZineText.value(size: 14.5,
+                          weight: c.master ? FontWeight.w900 : FontWeight.w800)),
+                      const SizedBox(height: 2),
+                      Text(c.subtitle, style: ZineText.sub(size: 12)),
+                    ])),
+                    const SizedBox(width: 10),
+                    ZineToggle(value: _brain[c.key] ?? true, onChanged: (v) => _setBrain(c.key, v)),
+                  ]),
+                ),
           ]),
         ),
-        const Padding(
-          padding: EdgeInsets.only(top: 8, left: 6, right: 6),
+        Padding(
+          padding: const EdgeInsets.only(top: 10, left: 4, right: 4),
           child: Text('Private and end-to-end-encrypted content is only ever read on your device — '
               'AvaBrain never sees your message keys or plaintext on our servers.',
-              style: TextStyle(color: AvaColors.sub, fontSize: 11)),
+              style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         _section('Backup'),
-        _tile(Icons.cloud_upload_outlined, 'Back up account',
+        _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Back up account',
             'Email yourself a download of your account (media excluded)', _backup),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         _section('Danger zone'),
-        _tile(Icons.delete_outline, 'Delete account', 'Permanently remove your account', _delete, danger: true),
-        const SizedBox(height: 20),
-        SizedBox(width: double.infinity, child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(foregroundColor: AvaColors.danger,
-              side: const BorderSide(color: Color(0xFFE0E2E6)), padding: const EdgeInsets.symmetric(vertical: 14)),
+        _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Delete account',
+            'Permanently remove your account', _delete, danger: true),
+        const SizedBox(height: 24),
+        ZineButton(
+          label: 'Log out',
+          variant: ZineButtonVariant.ghost,
+          fullWidth: true,
+          fontSize: 17,
+          icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
+          trailingIcon: false,
           onPressed: () async { await widget.clerk.signOut(); widget.onSignOut(); },
-          icon: const Icon(Icons.logout), label: const Text('Log out'))),
+        ),
+        const SizedBox(height: 18),
+        Center(child: Text('AVATOK · YOU OWN IT ALL', style: ZineText.kicker(size: 10, color: Zine.inkMute))),
       ]),
     );
   }
 
   Widget _section(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 10, left: 4),
-        child: Text(t, style: const TextStyle(color: AvaColors.sub, fontSize: 12, letterSpacing: 1, fontWeight: FontWeight.w700)),
+        child: Text(t.toUpperCase(), style: ZineText.kicker()),
       );
 
-  Widget _tile(IconData icon, String title, String sub, VoidCallback onTap, {bool danger = false}) => Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-        child: ListTile(
-          leading: Icon(icon, color: danger ? AvaColors.danger : AvaColors.ink),
-          title: Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: danger ? AvaColors.danger : AvaColors.ink)),
-          subtitle: Text(sub, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
+  Widget _tile(IconData icon, Color accent, String title, String sub, VoidCallback onTap, {bool danger = false}) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ZinePressable(
           onTap: onTap,
+          radius: BorderRadius.circular(Zine.rSm),
+          boxShadow: Zine.shadowXs,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(children: [
+            ZineIconBadge(icon: icon, color: accent, size: 34),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink)),
+              const SizedBox(height: 2),
+              Text(sub, style: ZineText.sub(size: 12)),
+            ])),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+          ]),
         ),
       );
 

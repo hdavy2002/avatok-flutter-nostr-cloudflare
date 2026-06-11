@@ -2,10 +2,47 @@
 // price, status, action buttons) + the reschedule proposal flow (A4) with the
 // greyed-conflicts slot picker (occupied slots flagged, never hidden).
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/platform_api.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../consult/prejoin_screen.dart';
 import 'calendar_data.dart';
+
+/// Zine accent for a calendar source app (event dots, icon badges).
+Color zineSourceColor(String? sourceApp) => switch (sourceApp) {
+      'avacalendar' => Zine.lime,
+      'avabooking' => Zine.coral,
+      'avalive' => Zine.lilac,
+      'avaconsult' => Zine.blue,
+      'gcal' => Zine.mint,
+      'manual' => Zine.inkMute,
+      _ => Zine.inkMute,
+    };
+
+/// Phosphor (bold) icon for a calendar source app.
+IconData zineSourceIcon(String? sourceApp) => switch (sourceApp) {
+      'avacalendar' => PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+      'avabooking' => PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold),
+      'avalive' => PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
+      'avaconsult' => PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+      'gcal' => PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
+      'manual' => PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+      _ => PhosphorIcons.calendarX(PhosphorIconsStyle.bold),
+    };
+
+/// Status sticker per the zine system: confirmed = ok, pending = hint,
+/// cancelled = coral.
+ZineSticker zineStatusSticker(String status) => ZineSticker(
+      status,
+      kind: switch (status) {
+        'confirmed' || 'completed' => ZineStickerKind.ok,
+        'pending' => ZineStickerKind.hint,
+        'cancelled' => ZineStickerKind.no,
+        _ => ZineStickerKind.plain,
+      },
+    );
 
 /// Opens the detail card for a booking/event/block. Pass whatever ids exist:
 /// [bookingId] enables cancel/reschedule; gcal/manual blocks are read-only.
@@ -26,34 +63,38 @@ Future<void> showBookingCard(
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    backgroundColor: Zine.paper,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      side: BorderSide(color: Zine.ink, width: Zine.bw),
+    ),
     builder: (sheetCtx) => SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              CircleAvatar(backgroundColor: st.color.withOpacity(.15), child: Icon(st.icon, color: st.color)),
+              ZineIconBadge(icon: zineSourceIcon(sourceApp), color: zineSourceColor(sourceApp), size: 40),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                  Text(st.label, style: TextStyle(color: st.color, fontWeight: FontWeight.w600, fontSize: 12)),
+                  Text(title, style: ZineText.cardTitle()),
+                  const SizedBox(height: 2),
+                  Text(st.label.toUpperCase(), style: ZineText.kicker(size: 10.5)),
                 ]),
               ),
-              if (status != null)
-                Chip(
-                  label: Text(status, style: const TextStyle(fontSize: 11)),
-                  visualDensity: VisualDensity.compact,
-                ),
+              if (status != null) zineStatusSticker(status),
             ]),
             const SizedBox(height: 16),
-            _row(Icons.today, fmtDate(startsAt)),
-            _row(Icons.schedule, '${fmtRange(startsAt, endsAt)} · ${fmtTimeBoth(startsAt)}'),
-            if (counterpart != null && counterpart.isNotEmpty) _row(Icons.person, counterpart),
-            if ((priceCoins ?? 0) > 0) _row(Icons.payments, '\$${((priceCoins!) / 100).toStringAsFixed(2)}'),
+            _row(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), fmtDate(startsAt)),
+            _row(PhosphorIcons.clock(PhosphorIconsStyle.bold), '${fmtRange(startsAt, endsAt)} · ${fmtTimeBoth(startsAt)}'),
+            if (counterpart != null && counterpart.isNotEmpty)
+              _row(PhosphorIcons.user(PhosphorIconsStyle.bold), counterpart),
+            if ((priceCoins ?? 0) > 0)
+              _row(PhosphorIcons.coins(PhosphorIconsStyle.bold),
+                  '\$${((priceCoins!) / 100).toStringAsFixed(2)}', money: true),
             const SizedBox(height: 16),
             // Phase 7 — join the delivered session (room opens 10 min early;
             // rejoin within the slot always works — same order, new token).
@@ -61,18 +102,17 @@ Future<void> showBookingCard(
                 DateTime.now().millisecondsSinceEpoch > startsAt - 10 * 60000 &&
                 DateTime.now().millisecondsSinceEpoch < endsAt + 2 * 60000)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.video_call),
-                    label: Text(DateTime.now().millisecondsSinceEpoch >= startsAt ? 'Join session' : 'Join (starts soon)'),
-                    onPressed: () {
-                      Navigator.pop(sheetCtx);
-                      Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => PrejoinScreen(bookingId: bookingId, title: title)));
-                    },
-                  ),
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ZineButton(
+                  label: DateTime.now().millisecondsSinceEpoch >= startsAt ? 'Join session' : 'Join (starts soon)',
+                  fullWidth: true,
+                  icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                  trailingIcon: false,
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => PrejoinScreen(bookingId: bookingId, title: title)));
+                  },
                 ),
               ),
             if (bookingId != null && status == 'confirmed')
@@ -80,9 +120,12 @@ Future<void> showBookingCard(
             if (bookingId != null && status == 'confirmed')
               Row(children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.update),
-                    label: const Text('Propose new time'),
+                  child: ZineButton(
+                    label: 'New time',
+                    variant: ZineButtonVariant.ghost,
+                    fontSize: 16,
+                    icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                    trailingIcon: false,
                     onPressed: () async {
                       Navigator.pop(sheetCtx);
                       await showReschedulePicker(context, bookingId: bookingId, counterpartCreator: counterpart ?? '', amCreator: amCreator);
@@ -92,19 +135,37 @@ Future<void> showBookingCard(
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(foregroundColor: Colors.red),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('Cancel'),
+                  child: ZineButton(
+                    label: 'Cancel',
+                    variant: ZineButtonVariant.coral,
+                    fontSize: 16,
+                    icon: PhosphorIcons.xCircle(PhosphorIconsStyle.bold),
+                    trailingIcon: false,
                     onPressed: () async {
                       final sure = await showDialog<bool>(
                         context: sheetCtx,
                         builder: (d) => AlertDialog(
-                          title: const Text('Cancel this booking?'),
-                          content: const Text('Refund follows the rules: ≥24h before — 100%; later — 50%. Creators always refund 100%.'),
+                          backgroundColor: Zine.card,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(Zine.r),
+                            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+                          ),
+                          title: Text('Cancel this booking?', style: ZineText.cardTitle()),
+                          content: Text(
+                            'Refund follows the rules: ≥24h before — 100%; later — 50%. Creators always refund 100%.',
+                            style: ZineText.sub(size: 14),
+                          ),
                           actions: [
-                            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep')),
-                            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Cancel booking')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(d, false),
+                              child: Text('Keep it', style: ZineText.link()),
+                            ),
+                            ZineButton(
+                              label: 'Cancel booking',
+                              variant: ZineButtonVariant.coral,
+                              fontSize: 15,
+                              onPressed: () => Navigator.pop(d, true),
+                            ),
                           ],
                         ),
                       );
@@ -128,12 +189,17 @@ Future<void> showBookingCard(
   );
 }
 
-Widget _row(IconData icon, String text) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+Widget _row(IconData icon, String text, {bool money = false}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(children: [
-        Icon(icon, size: 18, color: Colors.grey[700]),
+        PhosphorIcon(icon, size: 18, color: Zine.inkSoft),
         const SizedBox(width: 10),
-        Expanded(child: Text(text)),
+        Expanded(
+          child: Text(text,
+              style: money
+                  ? ZineText.value(size: 15, color: Zine.mintInk, weight: FontWeight.w900)
+                  : ZineText.value(size: 14.5, weight: FontWeight.w700)),
+        ),
       ]),
     );
 
@@ -169,25 +235,38 @@ class _PendingProposalBannerState extends State<_PendingProposalBanner> {
     if (!_loaded || _pending == null) return const SizedBox.shrink();
     final p = _pending!;
     final ns = (p['new_start'] as num).toInt();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.amber.withOpacity(.15), borderRadius: BorderRadius.circular(12)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('New time proposed: ${fmtDate(ns)} ${fmtTimeBoth(ns)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Row(children: [
-          FilledButton(
-            onPressed: () => _respond(true),
-            child: const Text('Accept'),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            onPressed: () => _respond(false),
-            child: const Text('Decline'),
-          ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const ZineSticker('New time proposed', kind: ZineStickerKind.hint),
+          const SizedBox(height: 8),
+          Text('${fmtDate(ns)} ${fmtTimeBoth(ns)}',
+              style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: ZineButton(
+                label: 'Accept',
+                variant: ZineButtonVariant.blue,
+                fontSize: 15,
+                onPressed: () => _respond(true),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ZineButton(
+                label: 'Decline',
+                variant: ZineButtonVariant.ghost,
+                fontSize: 15,
+                onPressed: () => _respond(false),
+              ),
+            ),
+          ]),
         ]),
-      ]),
+      ),
     );
   }
 
@@ -217,7 +296,11 @@ Future<void> showReschedulePicker(BuildContext context, {required String booking
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    backgroundColor: Zine.paper,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      side: BorderSide(color: Zine.ink, width: Zine.bw),
+    ),
     builder: (sheetCtx) => _SlotPickerSheet(bookingId: bookingId, dateStr: dateStr, amCreator: amCreator),
   );
 }
@@ -258,20 +341,27 @@ class _SlotPickerSheetState extends State<_SlotPickerSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(22),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Pick a new time — ${widget.dateStr}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          if (_error != null) Text('Could not load slots: $_error'),
-          if (_slots == null && _error == null) const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
+          Text('Pick a new time', style: ZineText.cardTitle()),
+          const SizedBox(height: 4),
+          Text(widget.dateStr, style: ZineText.kicker()),
+          const SizedBox(height: 14),
+          if (_error != null) ZineErrorMsg('Could not load slots: $_error'),
+          if (_slots == null && _error == null)
+            const Center(child: Padding(padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(color: Zine.blueInk))),
           if (_slots != null && _slots!.isEmpty)
-            const Padding(padding: EdgeInsets.all(8), child: Text('The creator has no offered hours on this day.')),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text('The creator has no offered hours on this day.', style: ZineText.sub(size: 14)),
+            ),
           if (_slots != null && _slots!.isNotEmpty)
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 380),
               child: SingleChildScrollView(
                 child: Wrap(
-                  spacing: 8, runSpacing: 8,
+                  spacing: 9, runSpacing: 9,
                   children: _slots!.map((s) {
                     final ok = s['available'] == true;
                     final start = (s['start'] as num).toInt();
@@ -284,13 +374,24 @@ class _SlotPickerSheetState extends State<_SlotPickerSheet> {
                             : 'Unavailable: ${s['reason']}';
                     return Tooltip(
                       message: reason ?? 'Available',
-                      child: ChoiceChip(
-                        label: Text(fmtRange(start, end)),
-                        selected: false,
-                        onSelected: ok ? (_) => _propose(start, end) : null,
-                        disabledColor: Colors.grey.withOpacity(.18),
-                        labelStyle: TextStyle(color: ok ? null : Colors.grey),
-                      ),
+                      child: ok
+                          ? ZinePressable(
+                              onTap: () => _propose(start, end),
+                              radius: BorderRadius.circular(100),
+                              boxShadow: Zine.shadowXs,
+                              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                              child: Text(fmtRange(start, end), style: ZineText.tag(size: 12)),
+                            )
+                          // Occupied: ghost pill — muted border, paper fill, no shadow.
+                          : Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Zine.paper2,
+                                borderRadius: BorderRadius.circular(100),
+                                border: Border.all(color: Zine.inkMute, width: 2),
+                              ),
+                              child: Text(fmtRange(start, end), style: ZineText.tag(size: 12, color: Zine.inkMute)),
+                            ),
                     );
                   }).toList(),
                 ),

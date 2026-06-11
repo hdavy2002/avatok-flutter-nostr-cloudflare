@@ -5,10 +5,13 @@
 // vacation mode. Local-first: cached blocks render instantly (per-account
 // DiskCache), then a network refresh repaints.
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/platform_api.dart';
 import '../../core/time_sync.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'booking_card.dart';
 import 'calendar_data.dart';
 
@@ -56,29 +59,42 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AvaCalendar'),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'AvaCalendar',
+        markWord: 'Calendar',
+        tag: 'Every app, one grid',
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
-          IconButton(icon: const Icon(Icons.settings), onPressed: () => _openSettings(context)),
+          ZineBackButton(
+            icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+            onTap: _refresh,
+          ),
+          const SizedBox(width: 10),
+          ZineBackButton(
+            icon: PhosphorIcons.gearSix(PhosphorIconsStyle.bold),
+            onTap: () => _openSettings(context),
+          ),
         ],
       ),
       body: RefreshIndicator(
+        color: Zine.blueInk,
         onRefresh: _refresh,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           children: [
             _monthHeader(),
+            const SizedBox(height: 6),
             _weekdayRow(),
             _monthGrid(),
             const SizedBox(height: 16),
             Text(
               '${_selected.day}.${_selected.month}.${_selected.year}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              style: ZineText.cardTitle(),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             if (_loading && _blocks.isEmpty)
-              const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
+              const Center(child: Padding(padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(color: Zine.blueInk))),
             ..._agenda(),
             const SizedBox(height: 24),
             _legend(),
@@ -91,24 +107,24 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
   Widget _monthHeader() => Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left),
-            onPressed: () => setState(() { _month = DateTime(_month.year, _month.month - 1); _refresh(); }),
+          ZineBackButton(
+            icon: PhosphorIcons.caretLeft(PhosphorIconsStyle.bold),
+            onTap: () => setState(() { _month = DateTime(_month.year, _month.month - 1); _refresh(); }),
           ),
           Text(
             '${const ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][_month.month - 1]} ${_month.year}',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            style: ZineText.cardTitle(size: 20),
           ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right),
-            onPressed: () => setState(() { _month = DateTime(_month.year, _month.month + 1); _refresh(); }),
+          ZineBackButton(
+            icon: PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+            onTap: () => setState(() { _month = DateTime(_month.year, _month.month + 1); _refresh(); }),
           ),
         ],
       );
 
   Widget _weekdayRow() => Row(
         children: const ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-            .map((d) => Expanded(child: Center(child: Text(d, style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w600)))))
+            .map((d) => Expanded(child: Center(child: Text(d, style: ZineText.kicker(size: 10.5)))))
             .toList(),
       );
 
@@ -117,25 +133,34 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
     final lead = (first.weekday + 6) % 7; // Monday-first
     final days = DateTime(_month.year, _month.month + 1, 0).day;
     final cells = <Widget>[];
-    for (var i = 0; i < lead; i++) cells.add(const SizedBox());
+    for (var i = 0; i < lead; i++) {
+      cells.add(const SizedBox());
+    }
     final today = TimeSync.now();
     for (var d = 1; d <= days; d++) {
       final day = DateTime(_month.year, _month.month, d);
       final blips = _onDay(day);
       final isSel = day.year == _selected.year && day.month == _selected.month && day.day == _selected.day;
       final isToday = day.year == today.year && day.month == today.month && day.day == today.day;
-      cells.add(InkWell(
-        borderRadius: BorderRadius.circular(10),
+      cells.add(GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => setState(() => _selected = day),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isSel ? Theme.of(context).colorScheme.primary.withOpacity(.12) : null,
-            border: isToday ? Border.all(color: Theme.of(context).colorScheme.primary) : null,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('$d', style: TextStyle(fontWeight: isSel ? FontWeight.w800 : FontWeight.w500)),
+            // Selected = lime circle w/ ink border; today = ink-bordered circle.
+            Container(
+              width: 32, height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSel ? Zine.lime : null,
+                border: (isSel || isToday) ? Border.all(color: Zine.ink, width: 2) : null,
+              ),
+              child: Text('$d',
+                  style: ZineText.value(size: 14,
+                      weight: isSel || isToday ? FontWeight.w900 : FontWeight.w700)),
+            ),
             const SizedBox(height: 2),
             SizedBox(
               height: 8,
@@ -145,9 +170,11 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
                   for (final b in blips.take(3))
                     Container(
                       width: 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 1),
-                      decoration: BoxDecoration(color: styleFor(b.sourceApp).color, shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                          color: zineSourceColor(b.sourceApp), shape: BoxShape.circle),
                     ),
-                  if (blips.length > 3) Text('+', style: TextStyle(fontSize: 8, color: Colors.grey[600])),
+                  if (blips.length > 3)
+                    Text('+', style: ZineText.tag(size: 8, color: Zine.inkSoft)),
                 ],
               ),
             ),
@@ -167,17 +194,24 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
   List<Widget> _agenda() {
     final items = _onDay(_selected);
     if (items.isEmpty && !_loading) {
-      return [Padding(padding: const EdgeInsets.all(8), child: Text('Nothing scheduled.', style: TextStyle(color: Colors.grey[600])))];
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: ZineEmptyState(
+            icon: PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold),
+            text: 'All clear — nothing scheduled.',
+          ),
+        ),
+      ];
     }
     return items.map((b) {
       final st = styleFor(b.sourceApp);
       final isBooking = b.sourceApp == 'avabooking';
-      return Card(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        child: ListTile(
-          leading: CircleAvatar(backgroundColor: st.color.withOpacity(.15), child: Icon(st.icon, color: st.color, size: 20)),
-          title: Text(b.title ?? st.label),
-          subtitle: Text('${fmtRange(b.startsAt, b.endsAt)} · ${st.label}'),
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ZineCard(
+          radius: Zine.rSm,
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           onTap: () => showBookingCard(
             context,
             sourceApp: b.sourceApp,
@@ -188,18 +222,40 @@ class _AvaCalendarScreenState extends State<AvaCalendarScreen> {
             status: isBooking ? 'confirmed' : null,
             onChanged: _refresh,
           ),
+          child: Row(children: [
+            ZineIconBadge(icon: zineSourceIcon(b.sourceApp), color: zineSourceColor(b.sourceApp)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${fmtRange(b.startsAt, b.endsAt)} · ${st.label}'.toUpperCase(),
+                    style: ZineText.kicker(size: 10)),
+                const SizedBox(height: 3),
+                Text(b.title ?? st.label,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.value(size: 15)),
+              ]),
+            ),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+          ]),
         ),
       );
     }).toList();
   }
 
   Widget _legend() => Wrap(
-        spacing: 12, runSpacing: 6,
+        spacing: 14, runSpacing: 8,
         children: kSourceStyles.entries
             .map((e) => Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(width: 8, height: 8, decoration: BoxDecoration(color: e.value.color, shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                  Text(e.value.label, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                  Container(
+                    width: 10, height: 10,
+                    decoration: BoxDecoration(
+                      color: zineSourceColor(e.key),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Zine.ink, width: 1.5),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(e.value.label.toUpperCase(), style: ZineText.tag(size: 10, color: Zine.inkSoft)),
                 ]))
             .toList(),
       );
@@ -251,82 +307,150 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
     final vac = (_policy['vacation_until'] as num?)?.toInt();
     final onVacation = vac != null && vac > TimeSync.nowMs();
     return Scaffold(
-      appBar: AppBar(title: const Text('Calendar settings')),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(
+        title: 'Settings',
+        markWord: 'Settings',
+        tag: 'AvaCalendar',
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         children: [
           // --- Google Calendar -------------------------------------------------
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.event, color: Color(0xFF4285F4)),
-              title: const Text('Google Calendar'),
-              subtitle: Text(_gcalConnected == null
-                  ? 'Checking…'
-                  : _gcalConnected!
-                      ? 'Connected — two-way sync active'
-                      : 'Not connected'),
-              trailing: _gcalConnected == true
-                  ? TextButton(onPressed: _disconnectGcal, child: const Text('Disconnect'))
-                  : FilledButton(onPressed: _connectGcal, child: const Text('Connect')),
-            ),
+          ZineCard(
+            radius: Zine.rSm,
+            padding: const EdgeInsets.all(16),
+            child: Row(children: [
+              ZineIconBadge(icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.bold), color: Zine.blue),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Google Calendar', style: ZineText.cardTitle(size: 16)),
+                  const SizedBox(height: 2),
+                  Text(
+                    _gcalConnected == null
+                        ? 'Checking…'
+                        : _gcalConnected!
+                            ? 'Connected — two-way sync active'
+                            : 'Not connected',
+                    style: ZineText.sub(size: 13),
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              if (_gcalConnected == true)
+                ZineLink('DISCONNECT', underline: Zine.coral, fontSize: 11, onTap: _disconnectGcal)
+              else
+                ZineButton(
+                  label: 'Connect',
+                  variant: ZineButtonVariant.blue,
+                  fontSize: 15,
+                  onPressed: _connectGcal,
+                ),
+            ]),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
           // --- Availability rules ----------------------------------------------
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Offered hours', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            TextButton.icon(icon: const Icon(Icons.add), label: const Text('Add'), onPressed: _addRule),
+            Text('Offered hours', style: ZineText.cardTitle(size: 17)),
+            ZineButton(
+              label: 'Add',
+              fontSize: 15,
+              icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: _addRule,
+            ),
           ]),
-          if (_rules.isEmpty) Text('No offered hours yet — add weekday ranges buyers can book.', style: TextStyle(color: Colors.grey[600])),
-          ..._rules.map((r) => Card(
-                child: ListTile(
-                  title: Text('${_days[(r['weekday'] as num).toInt()]}  ${_hm((r['start_min'] as num).toInt())}–${_hm((r['end_min'] as num).toInt())}'),
-                  subtitle: Text('${r['slot_min']} min slots · ${r['tz']}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () async {
-                      setState(() => _rules.remove(r));
-                      await _saveRules();
-                    },
-                  ),
+          const SizedBox(height: 10),
+          if (_rules.isEmpty)
+            Text('No offered hours yet — add weekday ranges buyers can book.',
+                style: ZineText.sub(size: 13.5)),
+          ..._rules.map((r) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: ZineCard(
+                  radius: Zine.rSm,
+                  padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(
+                          '${_days[(r['weekday'] as num).toInt()]}  ${_hm((r['start_min'] as num).toInt())}–${_hm((r['end_min'] as num).toInt())}',
+                          style: ZineText.value(size: 15),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('${r['slot_min']} MIN SLOTS · ${r['tz']}'.toUpperCase(),
+                            style: ZineText.kicker(size: 10)),
+                      ]),
+                    ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () async {
+                        setState(() => _rules.remove(r));
+                        await _saveRules();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                            size: 20, color: Zine.coral),
+                      ),
+                    ),
+                  ]),
                 ),
               )),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
           // --- Booking policies -------------------------------------------------
-          const Text('Booking policies', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
+          Text('Booking policies', style: ZineText.cardTitle(size: 17)),
+          const SizedBox(height: 10),
           _policyTile('Buffer between sessions', 'buffer_min', 'min'),
           _policyTile('Minimum notice', 'min_notice_min', 'min'),
           _policyTile('Max bookings per day', 'max_per_day', ''),
-          SwitchListTile(
-            title: const Text('Vacation mode'),
-            subtitle: Text(onVacation
-                ? 'Bookings paused until ${fmtDate(vac)} — existing bookings unaffected'
-                : 'Pause new bookings until a date'),
-            value: onVacation,
-            onChanged: (v) async {
-              if (!v) {
-                await PlatformApi.saveBookingPolicies(vacationUntil: 0);
-                _load();
-                return;
-              }
-              final d = await showDatePicker(
-                context: context,
-                firstDate: DateTime.now().add(const Duration(days: 1)),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-                initialDate: DateTime.now().add(const Duration(days: 7)),
-                helpText: 'Pause bookings until…',
-              );
-              if (d == null) return;
-              await PlatformApi.saveBookingPolicies(vacationUntil: d.millisecondsSinceEpoch);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Vacation mode on. Existing bookings are unaffected — cancel them individually if needed.')));
-              }
-              _load();
-            },
+          const SizedBox(height: 4),
+          ZineCard(
+            radius: Zine.rSm,
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Vacation mode', style: ZineText.value(size: 15)),
+                  const SizedBox(height: 2),
+                  Text(
+                    onVacation
+                        ? 'Bookings paused until ${fmtDate(vac)} — existing bookings unaffected'
+                        : 'Pause new bookings until a date',
+                    style: ZineText.sub(size: 13),
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              ZineToggle(
+                value: onVacation,
+                onChanged: (v) async {
+                  if (!v) {
+                    await PlatformApi.saveBookingPolicies(vacationUntil: 0);
+                    _load();
+                    return;
+                  }
+                  final d = await showDatePicker(
+                    context: context,
+                    firstDate: DateTime.now().add(const Duration(days: 1)),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                    initialDate: DateTime.now().add(const Duration(days: 7)),
+                    helpText: 'Pause bookings until…',
+                  );
+                  if (d == null) return;
+                  await PlatformApi.saveBookingPolicies(vacationUntil: d.millisecondsSinceEpoch);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Vacation mode on. Existing bookings are unaffected — cancel them individually if needed.')));
+                  }
+                  _load();
+                },
+              ),
+            ]),
           ),
+          const SizedBox(height: 30),
         ],
       ),
     );
@@ -336,37 +460,57 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
 
   Widget _policyTile(String label, String key, String unit) {
     final v = (_policy[key] as num?)?.toInt() ?? 0;
-    return ListTile(
-      dense: true,
-      title: Text(label),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text('$v $unit'),
-        IconButton(
-          icon: const Icon(Icons.edit, size: 18),
-          onPressed: () async {
-            final c = TextEditingController(text: '$v');
-            final nv = await showDialog<int>(
-              context: context,
-              builder: (d) => AlertDialog(
-                title: Text(label),
-                content: TextField(controller: c, keyboardType: TextInputType.number, autofocus: true),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-                  FilledButton(onPressed: () => Navigator.pop(d, int.tryParse(c.text)), child: const Text('Save')),
-                ],
-              ),
-            );
-            if (nv == null) return;
-            await PlatformApi.saveBookingPolicies(
-              bufferMin: key == 'buffer_min' ? nv : null,
-              minNoticeMin: key == 'min_notice_min' ? nv : null,
-              maxPerDay: key == 'max_per_day' ? nv : null,
-              vacationUntil: (_policy['vacation_until'] as num?)?.toInt(),
-            );
-            _load();
-          },
-        ),
-      ]),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        child: Row(children: [
+          Expanded(child: Text(label, style: ZineText.sub(size: 14.5))),
+          Text('$v $unit'.trim(), style: ZineText.value(size: 15, weight: FontWeight.w900)),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () async {
+              final c = TextEditingController(text: '$v');
+              final nv = await showDialog<int>(
+                context: context,
+                builder: (d) => AlertDialog(
+                  backgroundColor: Zine.card,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Zine.r),
+                    side: const BorderSide(color: Zine.ink, width: Zine.bw),
+                  ),
+                  title: Text(label, style: ZineText.cardTitle(size: 17)),
+                  content: ZineField(controller: c, keyboardType: TextInputType.number, autofocus: true),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(d), child: Text('Cancel', style: ZineText.link())),
+                    ZineButton(
+                      label: 'Save',
+                      variant: ZineButtonVariant.blue,
+                      fontSize: 15,
+                      onPressed: () => Navigator.pop(d, int.tryParse(c.text)),
+                    ),
+                  ],
+                ),
+              );
+              if (nv == null) return;
+              await PlatformApi.saveBookingPolicies(
+                bufferMin: key == 'buffer_min' ? nv : null,
+                minNoticeMin: key == 'min_notice_min' ? nv : null,
+                maxPerDay: key == 'max_per_day' ? nv : null,
+                vacationUntil: (_policy['vacation_until'] as num?)?.toInt(),
+              );
+              _load();
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
+                  size: 18, color: Zine.inkSoft),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -399,27 +543,51 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
       context: context,
       builder: (d) => StatefulBuilder(
         builder: (d2, setS) => AlertDialog(
-          title: const Text('Offered hours'),
+          backgroundColor: Zine.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          ),
+          title: Text('Offered hours', style: ZineText.cardTitle(size: 17)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
-            DropdownButton<int>(
+            ZineDropdown<int>(
               value: weekday,
-              isExpanded: true,
               items: List.generate(7, (i) => DropdownMenuItem(value: i, child: Text(_days[i]))),
               onChanged: (v) => setS(() => weekday = v ?? 1),
             ),
-            ListTile(
-              dense: true, title: Text('From ${start.format(d2)}'),
+            const SizedBox(height: 10),
+            ZineCard(
+              radius: Zine.rSm,
+              boxShadow: Zine.shadowXs,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               onTap: () async { final t = await showTimePicker(context: d2, initialTime: start); if (t != null) setS(() => start = t); },
+              child: Row(children: [
+                Expanded(child: Text('From ${start.format(d2)}', style: ZineText.value(size: 14.5))),
+                PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+              ]),
             ),
-            ListTile(
-              dense: true, title: Text('To ${end.format(d2)}'),
+            const SizedBox(height: 10),
+            ZineCard(
+              radius: Zine.rSm,
+              boxShadow: Zine.shadowXs,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               onTap: () async { final t = await showTimePicker(context: d2, initialTime: end); if (t != null) setS(() => end = t); },
+              child: Row(children: [
+                Expanded(child: Text('To ${end.format(d2)}', style: ZineText.value(size: 14.5))),
+                PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+              ]),
             ),
-            TextField(controller: slotC, decoration: const InputDecoration(labelText: 'Slot length (min)'), keyboardType: TextInputType.number),
+            const SizedBox(height: 12),
+            ZineField(controller: slotC, label: 'Slot length (min)', keyboardType: TextInputType.number),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Add')),
+            TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Cancel', style: ZineText.link())),
+            ZineButton(
+              label: 'Add it',
+              variant: ZineButtonVariant.blue,
+              fontSize: 15,
+              onPressed: () => Navigator.pop(d, true),
+            ),
           ],
         ),
       ),

@@ -4,7 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 
 /// Lightweight, dependency-free circular crop editor. The user pans/zooms the
 /// picked image inside a circular viewport; we capture exactly that circle
@@ -44,43 +45,48 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('Crop photo'),
-        actions: [
-          TextButton(
-            onPressed: _busy ? null : _done,
-            child: _busy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AvaColors.brand))
-                : const Text('Use', style: TextStyle(color: AvaColors.brand, fontWeight: FontWeight.w800, fontSize: 16)),
-          ),
-        ],
-      ),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Crop photo', markWord: 'Crop'),
       body: Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          // Captured region = the circle (ClipOval inside the RepaintBoundary).
-          RepaintBoundary(
-            key: _boundaryKey,
-            child: ClipOval(
-              child: SizedBox(
-                width: _box,
-                height: _box,
-                child: InteractiveViewer(
-                  transformationController: _tc,
-                  minScale: 0.5,
-                  maxScale: 6,
-                  clipBehavior: Clip.none,
-                  child: Image.memory(widget.imageBytes, width: _box, height: _box, fit: BoxFit.cover),
+          // Ink ring + hard shadow AROUND the capture boundary (never captured).
+          Container(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
+              boxShadow: Zine.shadow,
+            ),
+            // Captured region = the circle (ClipOval inside the RepaintBoundary).
+            child: RepaintBoundary(
+              key: _boundaryKey,
+              child: ClipOval(
+                child: SizedBox(
+                  width: _box,
+                  height: _box,
+                  child: InteractiveViewer(
+                    transformationController: _tc,
+                    minScale: 0.5,
+                    maxScale: 6,
+                    clipBehavior: Clip.none,
+                    child: Image.memory(widget.imageBytes, width: _box, height: _box, fit: BoxFit.cover),
+                  ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          const Text('Pinch to zoom · drag to position',
-              style: TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 22),
+          const ZineSticker('pinch to zoom · drag to position', kind: ZineStickerKind.hint),
+          const SizedBox(height: 26),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ZineButton(
+              label: 'Use this photo',
+              fullWidth: true,
+              fontSize: 18,
+              loading: _busy,
+              onPressed: _busy ? null : _done,
+            ),
+          ),
         ]),
       ),
     );
