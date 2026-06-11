@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
 import '../../core/session_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../avalive/live_viewer_screen.dart';
 import '../avatok/chat_thread.dart';
@@ -94,17 +96,27 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   void _overflow() {
     final d = _d;
     if (d == null) return;
-    showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: const Icon(Icons.flag_outlined), title: const Text('Report listing'), onTap: () async {
-        Navigator.pop(c);
-        final ok = await ListingsApi.report('listing', d.listing.id, 'inappropriate');
-        if (mounted && ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted — thank you')));
-      }),
-      ListTile(leading: const Icon(Icons.block, color: AvaColors.danger), title: const Text('Block this creator'), onTap: () async {
-        Navigator.pop(c);
-        final ok = await ListingsApi.blockCreator(d.listing.creator.uid);
-        if (mounted && ok) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creator blocked'))); Navigator.pop(context); }
-      }),
+    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(
+        leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: Zine.ink),
+        title: Text('Report listing', style: ZineText.value(size: 15, weight: FontWeight.w700)),
+        onTap: () async {
+          Navigator.pop(c);
+          final ok = await ListingsApi.report('listing', d.listing.id, 'inappropriate');
+          if (mounted && ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted — thank you')));
+        },
+      ),
+      ListTile(
+        leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
+        title: Text('Block this creator', style: ZineText.value(size: 15, color: Zine.coral, weight: FontWeight.w700)),
+        onTap: () async {
+          Navigator.pop(c);
+          final ok = await ListingsApi.blockCreator(d.listing.creator.uid);
+          if (mounted && ok) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creator blocked'))); Navigator.pop(context); }
+        },
+      ),
     ])));
   }
 
@@ -112,18 +124,23 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   Widget build(BuildContext context) {
     final d = _d;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('Listing'),
-        actions: [IconButton(icon: const Icon(Icons.more_vert), onPressed: _overflow)],
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'Listing',
+        markWord: 'Listing',
+        actions: [
+          ZineBackButton(onTap: _overflow, icon: PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold)),
+        ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
           : d == null
-              ? const Center(child: Text('Listing not found'))
+              ? Center(child: ZineEmptyState(
+                  icon: PhosphorIcons.fileX(PhosphorIconsStyle.bold),
+                  text: 'Listing not found.'))
               : RefreshIndicator(
                   onRefresh: _load,
+                  color: Zine.blueInk,
                   child: ListingDetailView(
                     card: d.listing, reviews: d.reviews,
                     creatorRating: d.creatorRating, creatorRatingCount: d.creatorRatingCount,
@@ -133,32 +150,36 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                         MaterialPageRoute(builder: (_) => CreatorChannelScreen(creatorUid: d.listing.creator.uid))),
                   ),
                 ),
-      bottomNavigationBar: d == null || d.isOwner ? null : SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Row(children: [
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 14)),
-              onPressed: _message,
-              child: const Icon(Icons.chat_bubble_outline, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: d.listing.status == 'live' ? AvaColors.coral : AvaColors.brand,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-            ),
-            onPressed: _book,
-            child: Text(
-              d.listing.status == 'live'
-                  ? 'Join now · ${d.listing.priceLabel}'
-                  : d.listing.kind == 'live_event'
-                      ? 'Book · ${d.listing.priceLabel}'
-                      : 'Book a session · ${d.listing.priceLabel}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-            ),
-          )),
-          ]),
+      bottomNavigationBar: d == null || d.isOwner ? null : Container(
+        decoration: const BoxDecoration(
+          color: Zine.paper2,
+          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(children: [
+              ZinePressable(
+                onTap: _message,
+                radius: BorderRadius.circular(100),
+                child: SizedBox(width: 52, height: 52, child: Center(
+                  child: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), size: 22, color: Zine.ink),
+                )),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: ZineButton(
+                label: d.listing.status == 'live'
+                    ? 'Join now · ${d.listing.priceLabel}'
+                    : d.listing.kind == 'live_event'
+                        ? 'Book · ${d.listing.priceLabel}'
+                        : 'Book a session · ${d.listing.priceLabel}',
+                variant: d.listing.status == 'live' ? ZineButtonVariant.coral : ZineButtonVariant.lime,
+                fontSize: 18,
+                fullWidth: true,
+                onPressed: _book,
+              )),
+            ]),
+          ),
         ),
       ),
     );
@@ -186,103 +207,113 @@ class ListingDetailView extends StatelessWidget {
         .map((m) => (m is Map ? (m['url'] ?? m['r2_key']) : null)?.toString())
         .whereType<String>().where((u) => u.startsWith('http')).toList();
     return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 24), children: [
-      // media carousel
-      SizedBox(
-        height: 230,
-        child: covers.isEmpty
-            ? CoverImage(url: null, seed: card.id.hashCode, radius: BorderRadius.zero)
-            : PageView(children: [
-                for (final u in covers) CoverImage(url: u, seed: card.id.hashCode, radius: BorderRadius.zero),
-              ]),
-      ),
+      // media carousel — hero cover with ink border + hard shadow.
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: Container(
+          height: 230,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            boxShadow: Zine.shadowSm,
+          ),
+          child: covers.isEmpty
+              ? CoverImage(url: null, seed: card.id.hashCode)
+              : PageView(children: [
+                  for (final u in covers) CoverImage(url: u, seed: card.id.hashCode),
+                ]),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Text(card.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+            Expanded(child: Text(card.title, style: ZineText.cardTitle(size: 22))),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               if (card.promoPct > 0)
-                Text(fmtCoins(card.price), style: const TextStyle(color: AvaColors.sub, decoration: TextDecoration.lineThrough, fontSize: 13)),
-              Text(card.priceLabel, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800,
-                  color: card.effectivePrice == 0 ? AvaColors.brand : AvaColors.ink)),
+                Text(fmtCoins(card.price),
+                    style: ZineText.sub(size: 12, color: Zine.inkMute)
+                        .copyWith(decoration: TextDecoration.lineThrough)),
+              // money = mint pill (§7.10).
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Zine.mint,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Zine.border,
+                  boxShadow: Zine.shadowXs,
+                ),
+                child: Text(card.priceLabel, style: ZineText.value(size: 15, weight: FontWeight.w900)),
+              ),
             ]),
           ]),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            _chip(card.kind == 'live_event' ? '🎥 Live event' : '🗓 ${card.capacity == 1 ? '1:1 session' : 'Group session (${card.capacity})'}'),
-            if (card.startsAt != null) _chip('🕐 ${fmtWhen(card.startsAt)}'),
-            if (card.durationMin != null) _chip('${card.durationMin} min'),
-            if (card.country != null) _chip('${flagEmoji(card.country)} ${card.country}'),
-            if (card.adultsOnly) _chip('18+'),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            ZineSticker(card.kind == 'live_event' ? '🎥 Live event' : '🗓 ${card.capacity == 1 ? '1:1 session' : 'Group session (${card.capacity})'}'),
+            if (card.startsAt != null) ZineSticker('🕐 ${fmtWhen(card.startsAt)}'),
+            if (card.durationMin != null) ZineSticker('${card.durationMin} min'),
+            if (card.country != null) ZineSticker('${flagEmoji(card.country)} ${card.country}'),
+            if (card.adultsOnly) const ZineSticker('18+', kind: ZineStickerKind.no),
             if (card.translationEnabled)
-              _chip('🌐 Voice translation available${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
-            for (final b in card.badges) _chip(b.toString()),
-            _chip(card.category),
+              ZineSticker('🌐 Voice translation${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
+            for (final b in card.badges) ZineSticker(b.toString()),
+            ZineSticker(card.category, kind: ZineStickerKind.hint),
           ]),
           if (card.joinedCount > 0) ...[
-            const SizedBox(height: 8),
-            Text('🔥 ${card.joinedCount} joined', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AvaColors.sub)),
+            const SizedBox(height: 10),
+            Text('🔥 ${card.joinedCount} joined', style: ZineText.value(size: 13, color: Zine.inkSoft, weight: FontWeight.w800)),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           if ((card.description ?? '').isNotEmpty) ...[
-            Text(card.description!, style: const TextStyle(fontSize: 14.5, height: 1.45)),
+            Text(card.description!, style: ZineText.sub(size: 14.5, color: Zine.ink)),
             const SizedBox(height: 18),
           ],
           // creator mini-card → channel
-          GestureDetector(
+          ZineCard(
             onTap: onCreatorTap,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
-              child: Row(children: [
-                Avatar(seed: card.creator.uid, name: card.creator.name ?? '?', size: 44,
-                    avatarUrl: card.creator.avatarUrl),
-                const SizedBox(width: 10),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Flexible(child: Text(card.creator.name ?? (card.creator.handle ?? 'Creator'),
-                        maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700))),
-                    if (card.creator.kycVerified) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.verified, size: 15, color: AvaColors.brand),
-                    ],
-                  ]),
-                  Text(
-                    [
-                      if (creatorRating != null && creatorRatingCount > 0) '★ ${creatorRating!.toStringAsFixed(1)} ($creatorRatingCount)',
-                      if (followerCount > 0) '$followerCount followers',
-                    ].join(' · '),
-                    style: const TextStyle(color: AvaColors.sub, fontSize: 12),
-                  ),
-                ])),
-                const Icon(Icons.chevron_right, color: AvaColors.sub),
-              ]),
-            ),
+            padding: const EdgeInsets.all(12),
+            radius: Zine.rSm,
+            child: Row(children: [
+              Avatar(seed: card.creator.uid, name: card.creator.name ?? '?', size: 44,
+                  avatarUrl: card.creator.avatarUrl),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Flexible(child: Text(card.creator.name ?? (card.creator.handle ?? 'Creator'),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: ZineText.value(size: 15, weight: FontWeight.w800))),
+                  if (card.creator.kycVerified) ...[
+                    const SizedBox(width: 5),
+                    PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 16, color: Zine.blueInk),
+                  ],
+                ]),
+                Text(
+                  [
+                    if (creatorRating != null && creatorRatingCount > 0) '★ ${creatorRating!.toStringAsFixed(1)} ($creatorRatingCount)',
+                    if (followerCount > 0) '$followerCount followers',
+                  ].join(' · '),
+                  style: ZineText.tag(size: 10.5, color: Zine.inkSoft),
+                ),
+              ])),
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+            ]),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
           Row(children: [
-            Text('Reviews', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(width: 8),
+            Text('Reviews', style: ZineText.cardTitle()),
+            const SizedBox(width: 10),
             RatingStars(rating: card.ratingAvg, count: card.ratingCount, size: 15),
             const Spacer(),
-            if (canReview) TextButton(onPressed: onReview, child: const Text('Leave a review')),
+            if (canReview) ZineLink('Leave a review', onTap: onReview),
           ]),
           if (reviews.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('No reviews yet.', style: TextStyle(color: AvaColors.sub))),
+            Padding(padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text('No reviews yet — be the first.', style: ZineText.sub(size: 14))),
           for (final r in reviews) ReviewTile(review: r),
         ]),
       ),
     ]);
   }
-
-  Widget _chip(String t) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(10)),
-        child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-      );
 }
 
 class ReviewTile extends StatelessWidget {
@@ -298,14 +329,16 @@ class ReviewTile extends StatelessWidget {
             Row(children: [
               Expanded(child: Text(review.authorName ?? 'AvaTOK user',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-              Row(children: List.generate(5, (i) => Icon(
-                  i < review.rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                  size: 14, color: const Color(0xFFFFB400)))),
+                  style: ZineText.value(size: 13, weight: FontWeight.w800))),
+              Row(children: List.generate(5, (i) => PhosphorIcon(
+                  i < review.rating
+                      ? PhosphorIcons.star(PhosphorIconsStyle.fill)
+                      : PhosphorIcons.star(PhosphorIconsStyle.bold),
+                  size: 13, color: i < review.rating ? Zine.coral : Zine.inkMute))),
             ]),
             if (review.body.isNotEmpty)
               Padding(padding: const EdgeInsets.only(top: 2),
-                  child: Text(review.body, style: const TextStyle(fontSize: 13, height: 1.35))),
+                  child: Text(review.body, style: ZineText.sub(size: 13, color: Zine.ink))),
           ])),
         ]),
       );
@@ -414,35 +447,46 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
   Widget build(BuildContext context) {
     final l = widget.listing;
     return Container(
-      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      decoration: const BoxDecoration(
+        color: Zine.paper,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+      ),
       padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
       child: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Center(child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: AvaColors.line, borderRadius: BorderRadius.circular(2)))),
-          Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(color: Zine.ink, borderRadius: BorderRadius.circular(3)))),
+          Text(l.status == 'live' ? 'Join & pay' : 'Confirm booking', style: ZineText.cardTitle(size: 21)),
           const SizedBox(height: 4),
-          Text(l.title, style: const TextStyle(color: AvaColors.sub)),
+          Text(l.title, style: ZineText.sub(size: 14)),
           const SizedBox(height: 14),
           if (_isConsult) ...[
             Row(children: [
-              const Text('Pick a time', style: TextStyle(fontWeight: FontWeight.w700)),
+              Text('PICK A TIME', style: ZineText.kicker()),
               const Spacer(),
-              TextButton.icon(
-                icon: const Icon(Icons.calendar_today, size: 16),
-                label: Text(_ymd),
-                onPressed: () async {
+              ZinePressable(
+                onTap: () async {
                   final d = await showDatePicker(context: context, initialDate: _day,
                       firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90)));
                   if (d != null) { setState(() => _day = d); _loadSlots(); }
                 },
+                radius: BorderRadius.circular(100),
+                boxShadow: Zine.shadowXs,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 14, color: Zine.ink),
+                  const SizedBox(width: 6),
+                  Text(_ymd, style: ZineText.tag(size: 11.5)),
+                ]),
               ),
             ]),
-            if (_loadingSlots) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
+            const SizedBox(height: 10),
+            if (_loadingSlots) const Center(child: Padding(padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator(color: Zine.blueInk)))
             else if (_slots.isEmpty)
-              const Padding(padding: EdgeInsets.symmetric(vertical: 10),
-                  child: Text('No availability this day — try another date.', style: TextStyle(color: AvaColors.sub)))
+              Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text('No availability this day — try another date.', style: ZineText.sub(size: 13.5)))
             else
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final s in _slots) _slotChip(s),
@@ -450,99 +494,93 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
             const SizedBox(height: 14),
           ],
           if (l.effectivePrice > 0) ...[
-            TextField(
+            ZineField(
               controller: _promo,
+              hint: 'Promo code (optional)',
               textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                hintText: 'Promo code (optional)', isDense: true,
-                prefixIcon: const Icon(Icons.local_offer_outlined, size: 18),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+              leadIcon: PhosphorIcons.tag(PhosphorIconsStyle.bold),
             ),
             const SizedBox(height: 12),
           ],
-          // Voice translation add-on (only when the creator offers it).
+          // Voice translation add-on (only when the creator offers it) — AI = lilac.
           if (l.translationEnabled) ...[
-            Container(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-              decoration: BoxDecoration(
-                color: AvaColors.soft, borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _translate ? AvaColors.brand : Colors.transparent),
-              ),
-              child: Column(children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero, dense: true,
-                  value: _translate,
-                  onChanged: (v) => setState(() => _translate = v),
-                  title: const Text('🌐 Would you like this to be translated into the language of your choice?',
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
-                  subtitle: Text(
-                    'Live voice translation · \$3 per hour'
-                    '${l.spokenLang != null ? ' · the creator speaks ${translationLangLabel(l.spokenLang!)}' : ''}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                if (_translate)
-                  DropdownButtonFormField<String>(
+            ZineCard(
+              color: Zine.lilac,
+              radius: Zine.rSm,
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('🌐 Would you like this to be translated into the language of your choice?',
+                        style: ZineText.value(size: 13, weight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Live voice translation · \$3 per hour'
+                      '${l.spokenLang != null ? ' · the creator speaks ${translationLangLabel(l.spokenLang!)}' : ''}',
+                      style: ZineText.sub(size: 12, color: Zine.ink),
+                    ),
+                  ])),
+                  const SizedBox(width: 10),
+                  ZineToggle(value: _translate, onChanged: (v) => setState(() => _translate = v)),
+                ]),
+                if (_translate) ...[
+                  const SizedBox(height: 12),
+                  ZineDropdown<String>(
                     value: _translateLang,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Select language', isDense: true),
+                    label: 'Select language',
+                    hint: 'Pick a language',
                     items: [
                       for (final lng in kTranslationLangs)
                         DropdownMenuItem(value: lng.code, child: Text(lng.label)),
                     ],
                     onChanged: (v) => setState(() => _translateLang = v),
                   ),
-                if (_translate) const SizedBox(height: 10),
+                ],
               ]),
             ),
             const SizedBox(height: 12),
           ],
-          Container(
+          ZineCard(
+            radius: Zine.rSm,
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(12)),
             child: Column(children: [
               Row(children: [
-                const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
                 const SizedBox(width: 8),
-                Text('Wallet: ${_balance == null ? '…' : fmtCoins(_balance!)}'),
+                Text('Wallet: ${_balance == null ? '…' : fmtCoins(_balance!)}',
+                    style: ZineText.value(size: 14, weight: FontWeight.w700)),
                 const Spacer(),
-                Text(l.priceLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                Text(l.priceLabel, style: ZineText.value(size: 15, color: Zine.mintInk, weight: FontWeight.w900)),
               ]),
               // Itemized total when translation is on: e.g. $60 + $3 × 1 h = $63.
               if (_translationCoins > 0) ...[
-                const Divider(height: 16),
+                const Divider(height: 16, color: Zine.ink, thickness: 1),
                 Row(children: [
                   Expanded(child: Text(
                     'Voice translation · $_durationMin min',
-                    style: const TextStyle(fontSize: 12.5, color: AvaColors.sub),
+                    style: ZineText.sub(size: 12.5),
                   )),
-                  Text('+ ${fmtCoins(_translationCoins)}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  Text('+ ${fmtCoins(_translationCoins)}', style: ZineText.value(size: 12.5, weight: FontWeight.w800)),
                 ]),
                 const SizedBox(height: 4),
                 Row(children: [
-                  const Expanded(child: Text('Total (including voice translation)',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                  Text(fmtCoins(_totalCoins), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  Expanded(child: Text('Total (including voice translation)',
+                      style: ZineText.value(size: 13.5, weight: FontWeight.w800))),
+                  Text(fmtCoins(_totalCoins), style: ZineText.value(size: 15, color: Zine.mintInk, weight: FontWeight.w900)),
                 ]),
               ],
             ]),
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 13)),
-          ],
-          const SizedBox(height: 14),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 14)),
+          if (_error != null) ZineErrorMsg(_error!),
+          const SizedBox(height: 16),
+          ZineButton(
+            label: _totalCoins == 0
+                ? 'Confirm (free)'
+                : 'Pay ${l.money(_totalCoins)} & confirm',
+            fullWidth: true,
+            fontSize: 19,
+            loading: _busy,
             onPressed: _busy ? null : _confirm,
-            child: _busy
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text(
-                    _totalCoins == 0
-                        ? 'Confirm (free)'
-                        : 'Pay ${l.money(_totalCoins)} & confirm',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
         ]),
       ),
@@ -562,14 +600,14 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: sel ? AvaColors.ink : (available ? Colors.white : AvaColors.soft),
-          border: Border.all(color: sel ? AvaColors.ink : AvaColors.line),
-          borderRadius: BorderRadius.circular(10),
+          color: sel ? Zine.lime : (available ? Zine.card : Zine.paper2),
+          border: Border.all(color: available ? Zine.ink : Zine.inkMute, width: Zine.bw),
+          borderRadius: BorderRadius.circular(100),
+          boxShadow: sel ? Zine.shadowXs : null,
         ),
-        child: Text(label, style: TextStyle(
-            fontWeight: FontWeight.w700, fontSize: 13,
-            color: sel ? Colors.white : (available ? AvaColors.ink : AvaColors.sub),
-            decoration: available ? null : TextDecoration.lineThrough)),
+        child: Text(label, style: ZineText.tag(size: 12,
+                color: available ? Zine.ink : Zine.inkMute)
+            .copyWith(decoration: available ? null : TextDecoration.lineThrough)),
       ),
     );
   }
@@ -598,27 +636,33 @@ class _ReviewSheetState extends State<_ReviewSheet> {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        decoration: const BoxDecoration(
+          color: Zine.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+        ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Rate this session', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Text('Rate this session', style: ZineText.cardTitle(size: 20)),
           const SizedBox(height: 12),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(5, (i) => IconButton(
               onPressed: () => setState(() => _rating = i + 1),
-              icon: Icon(i < _rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                  size: 34, color: const Color(0xFFFFB400))))),
-          TextField(
-            controller: _body, maxLines: 3,
-            decoration: InputDecoration(hintText: 'Share your experience (optional)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-          ),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 13))),
+              icon: PhosphorIcon(
+                  i < _rating ? PhosphorIcons.star(PhosphorIconsStyle.fill) : PhosphorIcons.star(PhosphorIconsStyle.bold),
+                  size: 32, color: i < _rating ? Zine.coral : Zine.inkMute)))),
           const SizedBox(height: 12),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 13)),
+          ZineField(
+            controller: _body,
+            maxLines: 3,
+            hint: 'Share your experience (optional)',
+          ),
+          if (_error != null) ZineErrorMsg(_error!),
+          const SizedBox(height: 14),
+          ZineButton(
+            label: 'Send review',
+            fullWidth: true,
+            loading: _busy,
             onPressed: _busy ? null : _send,
-            child: const Text('Submit review', style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ]),
       );

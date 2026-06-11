@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 
 /// Creator Insights — audience analytics across ALL the creator's offerings
 /// (AvaLive events, AvaConsult listings, AvaVoice agents). Backed by
@@ -43,15 +45,19 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
   Widget build(BuildContext context) {
     final s = _s;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0,
-          foregroundColor: AvaColors.ink, title: const Text('Creator insights')),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(
+        title: 'Creator insights',
+        markWord: 'insights',
+        tag: 'last 30 days',
+      ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
           : s == null
-              ? const Center(child: Text('Could not load insights — pull to retry.',
-                  style: TextStyle(color: AvaColors.sub)))
-              : RefreshIndicator(onRefresh: _load, child: _body(s)),
+              ? Center(child: ZineEmptyState(
+                  icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
+                  text: 'Could not load insights — pull to retry.'))
+              : RefreshIndicator(onRefresh: _load, color: Zine.blueInk, child: _body(s)),
     );
   }
 
@@ -66,99 +72,118 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
     final conv = s['conversion_pct'];
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
       children: [
-        Row(children: [
-          _stat('Views (30d)', '${_i(views['last30d'])}', Icons.visibility_outlined),
-          const SizedBox(width: 10),
-          _stat('Unique viewers', '${_i(views['unique_viewers'])}', Icons.group_outlined),
+        // Metric cards (§7.11) — accent rotation blue/lime/coral/lilac/mint.
+        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _stat('Views (30d)', '${_i(views['last30d'])}',
+              PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.blue),
+          const SizedBox(width: 14),
+          _stat('Unique viewers', '${_i(views['unique_viewers'])}',
+              PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.lime),
         ]),
-        const SizedBox(height: 10),
-        Row(children: [
-          _stat('Bookings (30d)', '${_i(bookings['last30d'])}', Icons.event_available_outlined),
-          const SizedBox(width: 10),
-          _stat('Conversion', conv == null ? '—' : '$conv%', Icons.trending_up),
+        const SizedBox(height: 14),
+        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _stat('Bookings (30d)', '${_i(bookings['last30d'])}',
+              PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), Zine.coral),
+          const SizedBox(width: 14),
+          _stat('Conversion', conv == null ? '—' : '$conv%',
+              PhosphorIcons.trendUp(PhosphorIconsStyle.bold), Zine.lilac),
         ]),
-        const SizedBox(height: 10),
-        Row(children: [
+        const SizedBox(height: 14),
+        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _stat('Revenue (30d)', '\$${(_i(bookings['gross_coins_30d']) / 100).toStringAsFixed(2)}',
-              Icons.payments_outlined),
-          const SizedBox(width: 10),
-          _stat('Followers', '${_i(s['follower_count'])}', Icons.favorite_outline),
+              PhosphorIcons.coins(PhosphorIconsStyle.bold), Zine.mint, money: true),
+          const SizedBox(width: 14),
+          _stat('Followers', '${_i(s['follower_count'])}',
+              PhosphorIcons.heart(PhosphorIconsStyle.bold), Zine.blue),
         ]),
 
         if (byDay.isNotEmpty) ...[
           _h('Views — last 30 days'),
-          SizedBox(height: 120, child: _bars(byDay)),
+          ZineCard(
+            radius: Zine.rSm,
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+            boxShadow: Zine.shadowXs,
+            child: SizedBox(height: 120, child: _bars(byDay)),
+          ),
         ],
 
         if (byCountry.isNotEmpty) ...[
           _h('Where your audience is'),
           for (final c in byCountry)
-            _rankRow('${_flag(c['country'].toString())}  ${c['country']}', _i(c['views']),
-                _i(byCountry.first['views'])),
+            _ledgerRow('${_flag(c['country'].toString())}  ${c['country']}', '${_i(c['views'])}'),
         ],
 
         if (byAge.isNotEmpty) ...[
           _h('Age groups'),
           for (final a in byAge)
-            _rankRow(a['age_group'].toString(), _i(a['views']), _i(views['last30d'])),
-          const SizedBox(height: 4),
-          const Text('Only viewers who shared a birth year are counted.',
-              style: TextStyle(fontSize: 11, color: AvaColors.sub)),
+            _ledgerRow(a['age_group'].toString(), '${_i(a['views'])}'),
+          const SizedBox(height: 6),
+          Text('ONLY VIEWERS WHO SHARED A BIRTH YEAR ARE COUNTED.',
+              style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
         ],
 
         if (bySource.isNotEmpty) ...[
           _h('How people find you'),
           for (final src in bySource)
-            _rankRow(src['source'].toString(), _i(src['views']), _i(bySource.first['views'])),
+            _ledgerRow(src['source'].toString(), '${_i(src['views'])}'),
         ],
 
         if (listings.isNotEmpty) ...[
           _h('Your offerings — views (30d)'),
           for (final l in listings)
-            ListTile(
-              contentPadding: EdgeInsets.zero, dense: true,
-              title: Text(l['title']?.toString() ?? l['subject_id'].toString(),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: Text(l['kind'].toString(), style: const TextStyle(fontSize: 11.5)),
-              trailing: Text('${_i(l['views_30d'])}',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(l['title']?.toString() ?? l['subject_id'].toString(),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: ZineText.value(size: 13.5, weight: FontWeight.w800)),
+                  Text(l['kind'].toString().toUpperCase(),
+                      style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+                ])),
+                const SizedBox(width: 10),
+                Text('${_i(l['views_30d'])}', style: ZineText.value(size: 15, weight: FontWeight.w900)),
+              ]),
             ),
         ],
 
-        const SizedBox(height: 12),
-        const Text(
+        const SizedBox(height: 14),
+        Text(
           '📈 Numbers update in near-real-time. Guests (not signed in) are counted in views but not in unique viewers.',
-          style: TextStyle(fontSize: 12, color: AvaColors.sub, height: 1.4),
+          style: ZineText.sub(size: 12),
         ),
       ],
     );
   }
 
   Widget _h(String t) => Padding(
-        padding: const EdgeInsets.only(top: 22, bottom: 8),
-        child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        padding: const EdgeInsets.only(top: 24, bottom: 10),
+        child: Text(t, style: ZineText.cardTitle(size: 17)),
       );
 
-  Widget _stat(String label, String value, IconData icon) => Expanded(
-        child: Container(
+  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  Widget _stat(String label, String value, IconData icon, Color accent, {bool money = false}) => Expanded(
+        child: ZineCard(
+          radius: Zine.rSm,
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            border: Border.all(color: AvaColors.line),
-            borderRadius: BorderRadius.circular(14),
-          ),
+          boxShadow: Zine.shadowXs,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(icon, size: 18, color: AvaColors.brand),
-            const SizedBox(height: 8),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
-            Text(label, style: const TextStyle(fontSize: 11.5, color: AvaColors.sub)),
+            ZineIconBadge(icon: icon, color: accent, size: 30),
+            const SizedBox(height: 10),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value, style: ZineText.stat(size: 30, color: money ? Zine.mintInk : Zine.ink)),
+            ),
+            const SizedBox(height: 3),
+            Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
           ]),
         ),
       );
 
-  /// Simple bar chart — no chart package needed.
+  /// Simple bar chart — no chart package needed. Flat poster-blue bars.
   Widget _bars(List<Map<String, dynamic>> byDay) {
     final max = byDay.fold<int>(1, (m, d) => _i(d['views']) > m ? _i(d['views']) : m);
     return Row(
@@ -170,9 +195,10 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
               message: '${d['day']}: ${_i(d['views'])}',
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 1),
-                height: 8 + 104 * (_i(d['views']) / max),
+                height: 8 + 96 * (_i(d['views']) / max),
                 decoration: BoxDecoration(
-                  color: AvaColors.brand.withValues(alpha: .85),
+                  color: Zine.blue,
+                  border: Border.all(color: Zine.ink, width: 1.5),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
                 ),
               ),
@@ -182,24 +208,23 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
     );
   }
 
-  Widget _rankRow(String label, int value, int max) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(children: [
-          SizedBox(width: 110, child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+  /// Ledger row (§7.10): label + dotted leader + Nunito 900 value.
+  Widget _ledgerRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ZineText.sub(size: 13.5)),
+          const SizedBox(width: 6),
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: max > 0 ? value / max : 0, minHeight: 8,
-                backgroundColor: AvaColors.soft,
-                valueColor: const AlwaysStoppedAnimation(AvaColors.brand),
-              ),
+            child: Text(
+              '·' * 80,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: ZineText.sub(size: 13, color: Zine.inkMute),
             ),
           ),
-          const SizedBox(width: 8),
-          SizedBox(width: 36, child: Text('$value', textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
+          const SizedBox(width: 6),
+          Text(value, style: ZineText.value(size: 14, weight: FontWeight.w900)),
         ]),
       );
 }

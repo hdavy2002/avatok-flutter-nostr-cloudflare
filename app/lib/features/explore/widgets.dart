@@ -1,10 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
 
 /// Country code → flag emoji ("IN" → 🇮🇳).
 String flagEmoji(String? cc) {
@@ -26,6 +27,8 @@ String fmtWhen(int? ms) {
 }
 
 /// Cover image via the standard CF-AVIF + on-device cache pipeline.
+/// Zine treatment: ink-bordered rounded container; fallback = flat poster
+/// accent fill (no gradients, ever).
 class CoverImage extends StatelessWidget {
   final String? url;
   final int seed;
@@ -35,10 +38,20 @@ class CoverImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final r = radius ?? BorderRadius.circular(16);
-    final fallback = Container(
-      width: width, height: height,
-      decoration: BoxDecoration(gradient: AvaColors.thumbGradients[seed % AvaColors.thumbGradients.length], borderRadius: r),
+    final r = radius ?? BorderRadius.circular(Zine.rSm);
+    final accent = Zine.accents[seed.abs() % Zine.accents.length];
+    Widget frame(Widget? child, {Color? fill}) => Container(
+          width: width, height: height,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(color: fill ?? Zine.card, borderRadius: r, border: Zine.border),
+          child: child,
+        );
+    final fallback = frame(
+      Center(
+        child: PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.bold),
+            size: 26, color: accent == Zine.coral ? Colors.white : Zine.ink),
+      ),
+      fill: accent,
     );
     final u = url;
     if (u == null || u.isEmpty) return fallback;
@@ -47,9 +60,8 @@ class CoverImage extends StatelessWidget {
       builder: (context, snap) {
         final f = snap.data;
         if (f == null) return fallback;
-        return ClipRRect(
-          borderRadius: r,
-          child: Image.file(f, width: width, height: height, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback),
+        return frame(
+          Image.file(f, width: width, height: height, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback),
         );
       },
     );
@@ -65,15 +77,16 @@ class RatingStars extends StatelessWidget {
   Widget build(BuildContext context) {
     if (rating == null || count == 0) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.star_rounded, color: const Color(0xFFFFB400), size: size + 2),
-      const SizedBox(width: 2),
+      PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill), color: Zine.coral, size: size + 1),
+      const SizedBox(width: 3),
       Text('${rating!.toStringAsFixed(1)} ($count)',
-          style: TextStyle(fontSize: size - 2, fontWeight: FontWeight.w600, color: AvaColors.sub)),
+          style: ZineText.value(size: size - 2, color: Zine.inkSoft, weight: FontWeight.w800)),
     ]);
   }
 }
 
-/// The marketplace card: photo, title, $price, date, country flag, one-liner,
+/// The marketplace card — zine cut-out: card fill, thick ink border, hard
+/// shadow; photo, title, $price, date, country flag, one-liner,
 /// "🔥 400 joined" social proof (spec §Flutter/AvaExplore).
 class ListingCardTile extends StatelessWidget {
   final ListingCard card;
@@ -85,61 +98,92 @@ class ListingCardTile extends StatelessWidget {
     final live = card.status == 'live';
     return GestureDetector(
       onTap: onTap,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
-          child: Stack(children: [
-            Positioned.fill(child: CoverImage(url: card.coverUrl, seed: card.id.hashCode)),
-            Positioned(left: 8, top: 8, child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: live ? AvaColors.coral : Colors.white, borderRadius: BorderRadius.circular(10)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                if (live) ...[
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Zine.card,
+          borderRadius: BorderRadius.circular(Zine.rSm),
+          border: Zine.border,
+          boxShadow: Zine.shadowXs,
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Stack(children: [
+              Positioned.fill(
+                child: CoverImage(url: card.coverUrl, seed: card.id.hashCode, radius: BorderRadius.zero),
+              ),
+              // LIVE → coral sticker (white text allowed on coral); else category tag.
+              Positioned(left: 8, top: 8, child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: live ? Zine.coral : Zine.card,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: Zine.ink, width: 2),
+                  boxShadow: Zine.shadowXs,
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (live) ...[
+                    Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                  ],
+                  Text((live ? 'LIVE' : card.category).toUpperCase(),
+                      style: ZineText.tag(size: 10, color: live ? Colors.white : Zine.ink)),
+                ]),
+              )),
+              if (card.adultsOnly)
+                Positioned(right: 8, top: 8, child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Zine.coral,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: Zine.ink, width: 2),
+                  ),
+                  child: Text('18+', style: ZineText.tag(size: 9.5, color: Colors.white)),
+                )),
+            ]),
+          ),
+          Container(height: Zine.bw, color: Zine.ink),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 13.5, weight: FontWeight.w800)),
+              if (card.oneLiner.isNotEmpty) ...[
+                const SizedBox(height: 1),
+                Text(card.oneLiner, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.sub(size: 11)),
+              ],
+              const SizedBox(height: 4),
+              Row(children: [
+                if (card.promoPct > 0) ...[
+                  Text(fmtCoins(card.price), style: ZineText.sub(size: 11, color: Zine.inkMute)
+                      .copyWith(decoration: TextDecoration.lineThrough)),
                   const SizedBox(width: 4),
                 ],
-                Text(live ? 'LIVE' : card.category,
-                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: live ? Colors.white : AvaColors.ink)),
+                // Money = Nunito 900; free → mint ink.
+                Flexible(child: Text(card.priceLabel,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.value(size: 14,
+                        color: card.effectivePrice == 0 ? Zine.mintInk : Zine.ink,
+                        weight: FontWeight.w900))),
+                const Spacer(),
+                if (card.country != null) Text(flagEmoji(card.country), style: const TextStyle(fontSize: 12)),
+                const SizedBox(width: 4),
+                RatingStars(rating: card.ratingAvg, count: card.ratingCount, size: 13),
               ]),
-            )),
-            if (card.adultsOnly)
-              Positioned(right: 8, top: 8, child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
-                child: const Text('18+', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
-              )),
-          ]),
-        ),
-        const SizedBox(height: 8),
-        Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-        if (card.oneLiner.isNotEmpty) ...[
-          const SizedBox(height: 2),
-          Text(card.oneLiner, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AvaColors.sub, fontSize: 11.5)),
-        ],
-        const SizedBox(height: 4),
-        Row(children: [
-          if (card.promoPct > 0) ...[
-            Text(fmtCoins(card.price), style: const TextStyle(
-                fontSize: 11.5, color: AvaColors.sub, decoration: TextDecoration.lineThrough)),
-            const SizedBox(width: 4),
-          ],
-          Text(card.priceLabel, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14,
-              color: card.effectivePrice == 0 ? AvaColors.brand : AvaColors.ink)),
-          const Spacer(),
-          if (card.country != null) Text(flagEmoji(card.country), style: const TextStyle(fontSize: 13)),
-          const SizedBox(width: 4),
-          RatingStars(rating: card.ratingAvg, count: card.ratingCount),
+              const SizedBox(height: 2),
+              Row(children: [
+                if (card.startsAt != null)
+                  Expanded(child: Text(fmtWhen(card.startsAt).toUpperCase(),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: ZineText.tag(size: 9, color: Zine.inkSoft))),
+                if (card.joinedCount > 0)
+                  Text('🔥 ${card.joinedCount} joined', style: ZineText.sub(size: 10)),
+              ]),
+            ]),
+          ),
         ]),
-        const SizedBox(height: 2),
-        Row(children: [
-          if (card.startsAt != null)
-            Expanded(child: Text(fmtWhen(card.startsAt), maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: AvaColors.sub, fontSize: 11))),
-          if (card.joinedCount > 0)
-            Text('🔥 ${card.joinedCount} joined', style: const TextStyle(fontSize: 10.5, color: AvaColors.sub, fontWeight: FontWeight.w600)),
-        ]),
-      ]),
+      ),
     );
   }
 }

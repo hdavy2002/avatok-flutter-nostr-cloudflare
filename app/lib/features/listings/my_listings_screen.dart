@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/listings_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import 'create_listing_flow.dart';
@@ -61,91 +63,111 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
   }
 
   void _menu(ListingCard l) {
-    showModalBottomSheet(context: context, builder: (s) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+    Widget item(IconData icon, String label, VoidCallback onTap, {Color color = Zine.ink}) => ListTile(
+          leading: PhosphorIcon(icon, color: color),
+          title: Text(label, style: ZineText.value(size: 15, color: color, weight: FontWeight.w700)),
+          onTap: onTap,
+        );
+    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (s) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (l.status == 'draft')
-        ListTile(leading: const Icon(Icons.publish_outlined), title: const Text('Publish'),
-            onTap: () { Navigator.pop(s); _act(l, 'publish'); }),
+        item(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold), 'Publish',
+            () { Navigator.pop(s); _act(l, 'publish'); }),
       if (l.status == 'published' && l.kind == 'live_event')
-        ListTile(leading: const Icon(Icons.podcasts, color: AvaColors.coral), title: const Text('Go live now'),
-            onTap: () { Navigator.pop(s); _act(l, 'live'); }),
+        item(PhosphorIcons.broadcast(PhosphorIconsStyle.bold), 'Go live now',
+            () { Navigator.pop(s); _act(l, 'live'); }, color: Zine.coral),
       if (l.status == 'live')
-        ListTile(leading: const Icon(Icons.stop_circle_outlined), title: const Text('End & mark completed'),
-            onTap: () { Navigator.pop(s); _act(l, 'complete'); }),
-      ListTile(leading: const Icon(Icons.copy_outlined), title: const Text('Duplicate listing'),
-          onTap: () { Navigator.pop(s); _act(l, 'duplicate'); }),
+        item(PhosphorIcons.stopCircle(PhosphorIconsStyle.bold), 'End & mark completed',
+            () { Navigator.pop(s); _act(l, 'complete'); }),
+      item(PhosphorIcons.copy(PhosphorIconsStyle.bold), 'Duplicate listing',
+          () { Navigator.pop(s); _act(l, 'duplicate'); }),
       if (l.status != 'cancelled' && l.status != 'completed')
-        ListTile(leading: const Icon(Icons.cancel_outlined, color: AvaColors.danger), title: const Text('Cancel listing'),
-            onTap: () { Navigator.pop(s); _act(l, 'cancel'); }),
+        item(PhosphorIcons.xCircle(PhosphorIconsStyle.bold), 'Cancel listing',
+            () { Navigator.pop(s); _act(l, 'cancel'); }, color: Zine.coral),
     ])));
   }
 
-  Color _statusColor(String s) => switch (s) {
-        'live' => AvaColors.coral,
-        'published' => AvaColors.success,
-        'draft' => AvaColors.sub,
-        _ => AvaColors.sub,
+  // Status stickers: draft = hint (ghost), live = ok (lime), the rest plain.
+  ZineStickerKind _stickerKind(String s) => switch (s) {
+        'live' => ZineStickerKind.ok,
+        'published' => ZineStickerKind.ok,
+        'draft' => ZineStickerKind.hint,
+        _ => ZineStickerKind.plain,
       };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-          title: const Text('My listings'),
-          actions: [
-            // Creator Insights — views, audience countries/ages, conversion.
-            IconButton(
-              tooltip: 'Insights',
-              icon: const Icon(Icons.insights_outlined),
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const CreatorInsightsScreen())),
-            ),
-          ]),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AvaColors.brand,
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'My listings',
+        markWord: 'listings',
+        tag: 'creator',
+        actions: [
+          // Creator Insights — views, audience countries/ages, conversion.
+          ZineBackButton(
+            icon: PhosphorIcons.chartBar(PhosphorIconsStyle.bold),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const CreatorInsightsScreen())),
+          ),
+        ],
+      ),
+      floatingActionButton: ZineButton(
+        label: 'New listing',
+        icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+        trailingIcon: false,
         onPressed: _create,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('New listing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
           : _items.isEmpty
-              ? const Center(child: Padding(padding: EdgeInsets.all(24),
-                  child: Text('No listings yet.\nCreate a live event or consultation offering — it shows up in AvaExplore the moment you publish.',
-                      textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub))))
+              ? Center(child: Padding(padding: const EdgeInsets.all(24),
+                  child: ZineEmptyState(
+                      icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
+                      text: 'No listings yet — create a live event or consultation and it shows up in AvaExplore the moment you publish.')))
               : RefreshIndicator(
                   onRefresh: _load,
+                  color: Zine.blueInk,
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
                     itemCount: _items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (_, i) {
                       final l = _items[i];
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                        leading: SizedBox(width: 56, height: 56,
-                            child: CoverImage(url: l.coverUrl, seed: l.id.hashCode, radius: BorderRadius.circular(12))),
-                        title: Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Row(children: [
-                          Container(
-                            margin: const EdgeInsets.only(top: 2),
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                                color: _statusColor(l.status).withValues(alpha: .12),
-                                borderRadius: BorderRadius.circular(8)),
-                            child: Text(l.status.toUpperCase(),
-                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: _statusColor(l.status))),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(child: Text(
-                            '${l.priceLabel}${l.startsAt != null ? ' · ${fmtWhen(l.startsAt)}' : ''}${l.joinedCount > 0 ? ' · ${l.joinedCount} joined' : ''}',
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: AvaColors.sub))),
-                        ]),
-                        trailing: IconButton(icon: const Icon(Icons.more_vert), onPressed: () => _menu(l)),
+                      return ZineCard(
+                        radius: Zine.rSm,
+                        padding: const EdgeInsets.all(10),
+                        boxShadow: Zine.shadowXs,
                         onTap: l.status == 'draft' ? () => _menu(l)
                             : () => Navigator.push(context, MaterialPageRoute(builder: (_) => ListingDetailScreen(listingId: l.id))),
+                        child: Row(children: [
+                          CoverImage(url: l.coverUrl, seed: l.id.hashCode, width: 56, height: 56,
+                              radius: BorderRadius.circular(12)),
+                          const SizedBox(width: 11),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: ZineText.value(size: 14.5, weight: FontWeight.w800)),
+                            const SizedBox(height: 5),
+                            Row(children: [
+                              ZineSticker(l.status, kind: _stickerKind(l.status)),
+                              const SizedBox(width: 8),
+                              Flexible(child: Text(
+                                '${l.priceLabel}${l.startsAt != null ? ' · ${fmtWhen(l.startsAt)}' : ''}${l.joinedCount > 0 ? ' · ${l.joinedCount} joined' : ''}',
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: ZineText.sub(size: 11.5))),
+                            ]),
+                          ])),
+                          GestureDetector(
+                            onTap: () => _menu(l),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
+                                  size: 20, color: Zine.ink),
+                            ),
+                          ),
+                        ]),
                       );
                     },
                   ),

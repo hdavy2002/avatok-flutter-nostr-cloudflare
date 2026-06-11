@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../listings/create_listing_flow.dart';
 import '../listings/my_listings_screen.dart';
@@ -74,11 +75,12 @@ class _ExploreHomeState extends State<ExploreHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Zine.paper,
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _load,
+          color: Zine.blueInk,
           child: CustomScrollView(physics: const AlwaysScrollableScrollPhysics(), slivers: [
             SliverToBoxAdapter(child: _topBar()),
             SliverToBoxAdapter(child: _search()),
@@ -87,12 +89,14 @@ class _ExploreHomeState extends State<ExploreHome> {
             SliverToBoxAdapter(child: _drop()),
             if (_loading)
               const SliverToBoxAdapter(child: Padding(
-                  padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())))
-            else if (_listings.isEmpty)
-              const SliverToBoxAdapter(child: Padding(
                   padding: EdgeInsets.all(40),
-                  child: Center(child: Text('No listings here yet — check back soon.',
-                      style: TextStyle(color: AvaColors.sub)))))
+                  child: Center(child: CircularProgressIndicator(color: Zine.blueInk))))
+            else if (_listings.isEmpty)
+              SliverToBoxAdapter(child: Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(child: ZineEmptyState(
+                      icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
+                      text: 'No listings here yet — check back soon.'))))
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
@@ -110,88 +114,123 @@ class _ExploreHomeState extends State<ExploreHome> {
     );
   }
 
-  Widget _topBar() => Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+  // Appbar band (§8): paper-2 fill, ink bottom border, Fredoka wordmark with
+  // the marker highlight on "Explore". Keeps the onMenu wiring.
+  Widget _topBar() => Container(
+        decoration: const BoxDecoration(
+          color: Zine.paper2,
+          border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+        ),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
         child: Row(children: [
-          GestureDetector(onTap: widget.onMenu, child: const Icon(Icons.menu, size: 24)),
+          ZineBackButton(onTap: widget.onMenu, icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
           const SizedBox(width: 12),
-          Text('AvaExplore', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 20)),
-          const SizedBox(width: 5),
-          const Icon(Icons.verified, size: 16, color: AvaColors.brand),
-          const Spacer(),
-          GestureDetector(
+          const Expanded(
+            child: ZineMarkTitle(pre: 'Ava', mark: 'Explore', fontSize: 24, textAlign: TextAlign.left),
+          ),
+          ZineBackButton(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyListingsScreen())),
-            child: const Icon(Icons.storefront_outlined, size: 22),
+            icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold),
           ),
         ]),
       );
 
-  // Search bar pinned at top of AvaExplore (A1).
+  // Search bar pinned at top of AvaExplore (A1) — ink-bordered card pill.
   Widget _search() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-        child: GestureDetector(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+        child: ZinePressable(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExploreSearchScreen())),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
-            child: const Row(children: [
-              Icon(Icons.search, color: AvaColors.sub, size: 20), SizedBox(width: 10),
-              Text('Search events, sessions, creators…', style: TextStyle(color: AvaColors.sub, fontSize: 14)),
-            ]),
-          ),
+          radius: BorderRadius.circular(100),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          child: Row(children: [
+            PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), color: Zine.inkSoft, size: 19),
+            const SizedBox(width: 10),
+            Text('Search events, sessions, creators…', style: ZineText.sub(size: 14)),
+          ]),
         ),
       );
 
-  // "Live now" rail: red dot, joined count, Join button → pay popup.
+  // "Live now" rail: coral dot, joined count, Join button → pay popup.
+  // Zine tile: ink-bordered card, cover on top, card-fill info band below
+  // (no gradient scrims — gradients are forbidden).
   Widget _liveRail() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
           child: Row(children: [
-            Container(width: 9, height: 9, decoration: const BoxDecoration(color: AvaColors.coral, shape: BoxShape.circle)),
-            const SizedBox(width: 7),
-            Text('Live now', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
+            Container(width: 9, height: 9, decoration: BoxDecoration(
+                color: Zine.coral, shape: BoxShape.circle,
+                border: Border.all(color: Zine.ink, width: 2))),
+            const SizedBox(width: 8),
+            Text('Live now', style: ZineText.cardTitle()),
           ]),
         ),
         SizedBox(
-          height: 168,
+          height: 172,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
             itemCount: _live.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (_, i) {
               final l = _live[i];
               return GestureDetector(
                 onTap: () => _open(l.id),
-                child: SizedBox(width: 230, child: Stack(children: [
-                  Positioned.fill(child: CoverImage(url: l.coverUrl, seed: l.id.hashCode)),
-                  Positioned.fill(child: Container(decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Colors.black.withValues(alpha: .55)])))),
-                  Positioned(left: 10, top: 10, child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: AvaColors.coral, borderRadius: BorderRadius.circular(8)),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.circle, size: 7, color: Colors.white), SizedBox(width: 4),
-                      Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
-                    ]),
-                  )),
-                  Positioned(left: 12, right: 12, bottom: 10, child: Row(children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13.5)),
-                      Text('${l.joinedCount} watching · ${l.priceLabel}',
-                          style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                child: Container(
+                  width: 230,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: Zine.card,
+                    borderRadius: BorderRadius.circular(Zine.rSm),
+                    border: Zine.border,
+                    boxShadow: Zine.shadowXs,
+                  ),
+                  child: Column(children: [
+                    Expanded(child: Stack(children: [
+                      Positioned.fill(child: CoverImage(
+                          url: l.coverUrl, seed: l.id.hashCode, radius: BorderRadius.zero)),
+                      Positioned(left: 8, top: 8, child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Zine.coral,
+                          borderRadius: BorderRadius.circular(100),
+                          border: Border.all(color: Zine.ink, width: 2),
+                          boxShadow: Zine.shadowXs,
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(width: 6, height: 6, decoration: const BoxDecoration(
+                              color: Colors.white, shape: BoxShape.circle)),
+                          const SizedBox(width: 4),
+                          Text('LIVE', style: ZineText.tag(size: 10, color: Colors.white)),
+                        ]),
+                      )),
                     ])),
-                    FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AvaColors.coral,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), minimumSize: Size.zero),
-                      onPressed: () => _joinLive(l),
-                      child: const Text('Join', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+                    Container(height: Zine.bw, color: Zine.ink),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
+                      child: Row(children: [
+                        Expanded(child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                          Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: ZineText.value(size: 12.5, weight: FontWeight.w800)),
+                          Text('${l.joinedCount} watching · ${l.priceLabel}',
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+                        ])),
+                        const SizedBox(width: 8),
+                        ZinePressable(
+                          onTap: () => _joinLive(l),
+                          color: Zine.coral,
+                          radius: BorderRadius.circular(100),
+                          boxShadow: Zine.shadowXs,
+                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                          child: Text('Join', style: ZineText.button(size: 14, color: Colors.white)),
+                        ),
+                      ]),
                     ),
-                  ])),
-                ])),
+                  ]),
+                ),
               );
             },
           ),
@@ -201,25 +240,17 @@ class _ExploreHomeState extends State<ExploreHome> {
   Widget _chips() {
     final labels = ['All', for (final c in _cats) '${c.emoji} ${c.label}'];
     return SizedBox(
-      height: 54,
+      height: 58,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         itemCount: labels.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (c, i) {
-          final on = i == _cat;
-          return GestureDetector(
-            onTap: () => _pickCat(i),
-            child: Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              decoration: BoxDecoration(color: on ? AvaColors.ink : AvaColors.soft, borderRadius: BorderRadius.circular(20)),
-              child: Text(labels[i], style: TextStyle(color: on ? Colors.white : AvaColors.ink,
-                  fontWeight: FontWeight.w700, fontSize: 13.5)),
-            ),
-          );
-        },
+        separatorBuilder: (_, __) => const SizedBox(width: 9),
+        itemBuilder: (c, i) => ZineChip(
+          label: labels[i],
+          active: i == _cat,
+          onTap: () => _pickCat(i),
+        ),
       ),
     );
   }

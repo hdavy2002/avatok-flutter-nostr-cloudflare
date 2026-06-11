@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'zine.dart';
@@ -254,6 +255,7 @@ class ZineField extends StatefulWidget {
   final TextCapitalization textCapitalization;
   final bool autocorrect;
   final bool enabled;
+  final List<TextInputFormatter>? inputFormatters;
   const ZineField({
     super.key,
     this.controller,
@@ -274,6 +276,7 @@ class ZineField extends StatefulWidget {
     this.textCapitalization = TextCapitalization.none,
     this.autocorrect = false,
     this.enabled = true,
+    this.inputFormatters,
   });
   @override
   State<ZineField> createState() => _ZineFieldState();
@@ -354,6 +357,7 @@ class _ZineFieldState extends State<ZineField> {
               maxLines: widget.maxLines,
               textCapitalization: widget.textCapitalization,
               autocorrect: widget.autocorrect,
+              inputFormatters: widget.inputFormatters,
               cursorColor: Zine.blueInk,
               style: ZineText.input(),
               decoration: InputDecoration(

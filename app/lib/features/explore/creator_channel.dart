@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../../identity/identity.dart';
 import '../avatok/chat_thread.dart';
@@ -73,22 +75,35 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
   void _overflow() {
     final c = _c;
     if (c == null) return;
-    showModalBottomSheet(context: context, builder: (s) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+    showModalBottomSheet(context: context, backgroundColor: Zine.paper,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (s) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (c.following) ListTile(
-        leading: Icon(c.notify ? Icons.notifications_off_outlined : Icons.notifications_active_outlined),
-        title: Text(c.notify ? 'Mute notifications from this creator' : 'Unmute notifications'),
+        leading: PhosphorIcon(
+            c.notify ? PhosphorIcons.bellSlash(PhosphorIconsStyle.bold) : PhosphorIcons.bellRinging(PhosphorIconsStyle.bold),
+            color: Zine.ink),
+        title: Text(c.notify ? 'Mute notifications from this creator' : 'Unmute notifications',
+            style: ZineText.value(size: 15, weight: FontWeight.w700)),
         onTap: () { Navigator.pop(s); _toggleMute(); },
       ),
-      ListTile(leading: const Icon(Icons.flag_outlined), title: const Text('Report creator'), onTap: () async {
-        Navigator.pop(s);
-        final ok = await ListingsApi.report('creator', c.uid, 'inappropriate');
-        if (mounted && ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted — thank you')));
-      }),
-      ListTile(leading: const Icon(Icons.block, color: AvaColors.danger), title: const Text('Block creator'), onTap: () async {
-        Navigator.pop(s);
-        final ok = await ListingsApi.blockCreator(c.uid);
-        if (mounted && ok) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creator blocked'))); Navigator.pop(context); }
-      }),
+      ListTile(
+        leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: Zine.ink),
+        title: Text('Report creator', style: ZineText.value(size: 15, weight: FontWeight.w700)),
+        onTap: () async {
+          Navigator.pop(s);
+          final ok = await ListingsApi.report('creator', c.uid, 'inappropriate');
+          if (mounted && ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted — thank you')));
+        },
+      ),
+      ListTile(
+        leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
+        title: Text('Block creator', style: ZineText.value(size: 15, color: Zine.coral, weight: FontWeight.w700)),
+        onTap: () async {
+          Navigator.pop(s);
+          final ok = await ListingsApi.blockCreator(c.uid);
+          if (mounted && ok) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creator blocked'))); Navigator.pop(context); }
+        },
+      ),
     ])));
   }
 
@@ -106,20 +121,25 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
   Widget build(BuildContext context) {
     final c = _c;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: Text(c?.name ?? 'Channel'),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: c?.name ?? 'Channel',
+        tag: 'creator channel',
         actions: [
-          if (_isSelf) IconButton(icon: const Icon(Icons.edit_outlined), onPressed: _editChannel),
-          IconButton(icon: const Icon(Icons.more_vert), onPressed: _overflow),
+          if (_isSelf) ...[
+            ZineBackButton(onTap: _editChannel, icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold)),
+            const SizedBox(width: 8),
+          ],
+          ZineBackButton(onTap: _overflow, icon: PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold)),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
           : c == null
-              ? const Center(child: Text('Creator not found'))
-              : RefreshIndicator(onRefresh: _load, child: _body(c)),
+              ? Center(child: ZineEmptyState(
+                  icon: PhosphorIcons.userCircle(PhosphorIconsStyle.bold),
+                  text: 'Creator not found.'))
+              : RefreshIndicator(onRefresh: _load, color: Zine.blueInk, child: _body(c)),
     );
   }
 
@@ -132,9 +152,12 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
     final rest = c.listings.where((l) => l.id != c.pinnedListingId).toList();
     return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 32), children: [
       if (c.bannerKey != null && c.bannerKey!.isNotEmpty)
-        CoverImage(url: c.bannerKey, seed: c.uid.hashCode, height: 130, radius: BorderRadius.zero),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: CoverImage(url: c.bannerKey, seed: c.uid.hashCode, height: 130),
+        ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Avatar(seed: c.uid, name: c.name ?? '?', size: 64, avatarUrl: c.avatarUrl),
@@ -142,75 +165,80 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Flexible(child: Text(c.name ?? 'Creator', maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800))),
+                    style: ZineText.cardTitle(size: 21))),
                 if (c.kycVerified) ...[
-                  const SizedBox(width: 5),
-                  const Tooltip(message: 'ID verified', child: Icon(Icons.verified, size: 18, color: AvaColors.brand)),
+                  const SizedBox(width: 6),
+                  Tooltip(message: 'ID verified',
+                      child: PhosphorIcon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 19, color: Zine.blueInk)),
                 ],
               ]),
-              if (c.handle != null) Text('@${c.handle}', style: const TextStyle(color: AvaColors.sub, fontSize: 13)),
+              if (c.handle != null)
+                Text('@${c.handle}', style: ZineText.tag(size: 12, color: Zine.blueInk)),
               const SizedBox(height: 4),
               Text(
                 [
                   '${c.followerCount} followers',
                   if (c.ratingAvg != null && c.ratingCount > 0) '★ ${c.ratingAvg!.toStringAsFixed(1)} (${c.ratingCount})',
-                ].join(' · '),
-                style: const TextStyle(color: AvaColors.sub, fontSize: 12.5),
+                ].join(' · ').toUpperCase(),
+                style: ZineText.kicker(size: 10.5),
               ),
             ])),
           ]),
           if ((c.bio ?? '').isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(c.bio!, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+            const SizedBox(height: 12),
+            Text(c.bio!, style: ZineText.sub(size: 13.5, color: Zine.ink)),
           ],
           if (c.links.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 6, children: [
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: [
               for (final li in c.links)
                 if (li is Map && (li['url']?.toString().startsWith('https://') ?? false))
-                  ActionChip(
-                    avatar: const Icon(Icons.link, size: 15),
-                    label: Text(
-                      '${li['label'] ?? Uri.tryParse(li['url'].toString())?.host ?? 'link'} · ${Uri.tryParse(li['url'].toString())?.host ?? ''}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    onPressed: () => launchUrl(Uri.parse(li['url'].toString()), mode: LaunchMode.externalApplication),
+                  ZineSticker(
+                    '${li['label'] ?? Uri.tryParse(li['url'].toString())?.host ?? 'link'}',
+                    icon: PhosphorIcons.linkSimple(PhosphorIconsStyle.bold),
+                    onTap: () => launchUrl(Uri.parse(li['url'].toString()), mode: LaunchMode.externalApplication),
                   ),
             ]),
           ],
           if (!_isSelf) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Row(children: [
-              Expanded(child: FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: c.following ? AvaColors.soft : AvaColors.brand,
-                    foregroundColor: c.following ? AvaColors.ink : Colors.white),
-                icon: Icon(c.following ? Icons.check : Icons.add, size: 18),
-                label: Text(c.following ? 'Following' : 'Follow'),
+              Expanded(child: ZineButton(
+                label: c.following ? 'Following' : 'Follow',
+                variant: c.following ? ZineButtonVariant.ghost : ZineButtonVariant.lime,
+                icon: c.following
+                    ? PhosphorIcons.check(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.plus(PhosphorIconsStyle.bold),
+                trailingIcon: false,
+                fontSize: 16,
                 onPressed: _followBusy ? null : _toggleFollow,
               )),
               const SizedBox(width: 10),
-              Expanded(child: OutlinedButton.icon(
-                icon: const Icon(Icons.chat_bubble_outline, size: 17),
-                label: const Text('Message'),
+              Expanded(child: ZineButton(
+                label: 'Message',
+                variant: ZineButtonVariant.blue,
+                icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                trailingIcon: false,
+                fontSize: 16,
                 onPressed: _message,
               )),
             ]),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
           if (pinned != null) ...[
-            const Text('📌 Pinned', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            const SizedBox(height: 8),
+            Text('📌 PINNED', style: ZineText.kicker(size: 11.5)),
+            const SizedBox(height: 10),
             SizedBox(height: 250, child: Padding(
               padding: const EdgeInsets.only(right: 80),
               child: ListingCardTile(card: pinned, onTap: () => _open(pinned.id)),
             )),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
           ],
-          Text('Listings', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
+          Text('Listings', style: ZineText.cardTitle()),
+          const SizedBox(height: 10),
           if (rest.isEmpty && pinned == null)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 10),
-                child: Text('No published listings yet.', style: TextStyle(color: AvaColors.sub))),
+            Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text('No listings yet — check back soon.', style: ZineText.sub(size: 14))),
           GridView.builder(
             shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -218,11 +246,11 @@ class _CreatorChannelScreenState extends State<CreatorChannelScreen> {
             itemCount: rest.length,
             itemBuilder: (_, i) => ListingCardTile(card: rest[i], onTap: () => _open(rest[i].id)),
           ),
-          const SizedBox(height: 20),
-          Text('Reviews', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 22),
+          Text('Reviews', style: ZineText.cardTitle()),
           if (c.reviews.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 10),
-                child: Text('No reviews yet.', style: TextStyle(color: AvaColors.sub))),
+            Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text('No reviews yet.', style: ZineText.sub(size: 14))),
           for (final r in c.reviews) ReviewTile(review: r),
         ]),
       ),
@@ -280,26 +308,26 @@ class _ChannelEditorSheetState extends State<_ChannelEditorSheet> {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        decoration: const BoxDecoration(
+          color: Zine.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+        ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('My channel', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          TextField(controller: _bio, maxLines: 3,
-              decoration: InputDecoration(labelText: 'Bio',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-          const SizedBox(height: 12),
-          TextField(controller: _links, maxLines: 4,
-              decoration: InputDecoration(
-                  labelText: 'Links (one per line: Label|https://…)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 13))),
-          const SizedBox(height: 12),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 13)),
+          Text('My channel', style: ZineText.cardTitle(size: 20)),
+          const SizedBox(height: 14),
+          ZineField(controller: _bio, maxLines: 3, label: 'Bio', hint: 'Tell people what you do'),
+          const SizedBox(height: 14),
+          ZineField(controller: _links, maxLines: 4,
+              label: 'Links (one per line: Label|https://…)', hint: 'My site|https://…'),
+          if (_error != null) ZineErrorMsg(_error!),
+          const SizedBox(height: 16),
+          ZineButton(
+            label: 'Save',
+            fullWidth: true,
+            loading: _busy,
             onPressed: _busy ? null : _save,
-            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ]),
       );

@@ -3,11 +3,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'listing_detail.dart';
 import 'widgets.dart';
 
@@ -93,67 +95,99 @@ class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        titleSpacing: 0,
-        title: Padding(
-          padding: const EdgeInsets.only(right: 12),
-          child: TextField(
-            controller: _q, autofocus: true, onChanged: _onChanged,
-            onSubmitted: (_) => _run(),
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: 'Search events, sessions, creators…',
-              isDense: true, filled: true, fillColor: AvaColors.soft,
-              prefixIcon: const Icon(Icons.search, size: 20),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      backgroundColor: Zine.paper,
+      body: SafeArea(
+        child: Column(children: [
+          // Search band: paper-2 fill + ink bottom border (§8).
+          Container(
+            decoration: const BoxDecoration(
+              color: Zine.paper2,
+              border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
             ),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: Badge(isLabelVisible: _hasFilters, child: const Icon(Icons.tune)),
-            onPressed: _openFilters,
-          ),
-        ],
-      ),
-      body: Column(children: [
-        SizedBox(
-          height: 46,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7), children: [
-            for (final s in const [['soonest', 'Soonest'], ['cheapest', 'Cheapest'], ['popular', 'Popular'], ['rating', 'Top rated']])
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(s[1]), selected: _sort == s[0],
-                  onSelected: (_) { setState(() => _sort = s[0]); _run(); },
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              const ZineBackButton(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ZineField(
+                  controller: _q,
+                  autofocus: true,
+                  hint: 'Search the marketplace…',
+                  leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                  onChanged: _onChanged,
+                  onSubmitted: (_) => _run(),
                 ),
               ),
-          ]),
-        ),
-        Expanded(child: _bodyContent()),
-      ]),
+              const SizedBox(width: 12),
+              Stack(clipBehavior: Clip.none, children: [
+                ZineBackButton(
+                  onTap: _openFilters,
+                  icon: PhosphorIcons.faders(PhosphorIconsStyle.bold),
+                ),
+                if (_hasFilters)
+                  Positioned(right: -2, top: -2, child: Container(
+                    width: 13, height: 13,
+                    decoration: BoxDecoration(
+                      color: Zine.coral, shape: BoxShape.circle,
+                      border: Border.all(color: Zine.ink, width: 2),
+                    ),
+                  )),
+              ]),
+            ]),
+          ),
+          SizedBox(
+            height: 58,
+            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), children: [
+              for (final s in const [['soonest', 'Soonest'], ['cheapest', 'Cheapest'], ['popular', 'Popular'], ['rating', 'Top rated']])
+                Padding(
+                  padding: const EdgeInsets.only(right: 9),
+                  child: ZineChip(
+                    label: s[1],
+                    active: _sort == s[0],
+                    onTap: () { setState(() => _sort = s[0]); _run(); },
+                  ),
+                ),
+            ]),
+          ),
+          Expanded(child: _bodyContent()),
+        ]),
+      ),
     );
   }
 
   Widget _bodyContent() {
-    if (_searching) return const Center(child: CircularProgressIndicator());
+    if (_searching) return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
     if (!_ran) {
-      if (_recent.isEmpty) return const Center(child: Text('Search the marketplace', style: TextStyle(color: AvaColors.sub)));
-      return ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('Recent searches', style: TextStyle(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6),
+      if (_recent.isEmpty) {
+        return Center(child: ZineEmptyState(
+            icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+            text: 'Search the marketplace — events, sessions, creators.'));
+      }
+      return ListView(padding: const EdgeInsets.all(18), children: [
+        Text('RECENT SEARCHES', style: ZineText.kicker()),
+        const SizedBox(height: 10),
         for (final r in _recent)
-          ListTile(
-            dense: true, contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.history, size: 19, color: AvaColors.sub),
-            title: Text(r),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () { _q.text = r; _run(); },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: Row(children: [
+                PhosphorIcon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
+                const SizedBox(width: 10),
+                Expanded(child: Text(r, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.value(size: 14.5, weight: FontWeight.w700))),
+                PhosphorIcon(PhosphorIcons.arrowUpLeft(PhosphorIconsStyle.bold), size: 15, color: Zine.inkMute),
+              ]),
+            ),
           ),
       ]);
     }
-    if (_results.isEmpty) return const Center(child: Text('No results — try fewer filters.', style: TextStyle(color: AvaColors.sub)));
+    if (_results.isEmpty) {
+      return Center(child: ZineEmptyState(
+          icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
+          text: 'No results — try fewer filters.'));
+    }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -196,65 +230,83 @@ class _FilterSheetState extends State<_FilterSheet> {
 
   String _fmtDay(DateTime? d) => d == null ? 'Any' : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  Widget _dateBtn(String label, VoidCallback onTap) => ZinePressable(
+        onTap: onTap,
+        radius: BorderRadius.circular(100),
+        boxShadow: Zine.shadowXs,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.max, children: [
+          PhosphorIcon(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold), size: 15, color: Zine.ink),
+          const SizedBox(width: 7),
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ZineText.tag(size: 11.5))),
+        ]),
+      );
+
   @override
   Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        decoration: const BoxDecoration(
+          color: Zine.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bwLg)),
+        ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Text('Price: \$${_price.start.round()} – \$${_price.end.round()}${_price.end >= 500 ? '+' : ''}',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          Text('Filters', style: ZineText.cardTitle(size: 20)),
+          const SizedBox(height: 12),
+          Text('PRICE: \$${_price.start.round()} – \$${_price.end.round()}${_price.end >= 500 ? '+' : ''}',
+              style: ZineText.kicker()),
           RangeSlider(
             values: _price, min: 0, max: 500, divisions: 50,
-            activeColor: AvaColors.brand,
+            activeColor: Zine.blueInk,
+            inactiveColor: Zine.paper2,
             onChanged: (v) => setState(() => _price = v),
           ),
-          const Text('Minimum rating', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          const SizedBox(height: 6),
-          Wrap(spacing: 8, children: [
+          Text('MINIMUM RATING', style: ZineText.kicker()),
+          const SizedBox(height: 9),
+          Wrap(spacing: 9, runSpacing: 8, children: [
             for (final r in const [null, 3.0, 4.0, 4.5])
-              ChoiceChip(
-                label: Text(r == null ? 'Any' : '★ $r+'),
-                selected: _minRating == r,
-                onSelected: (_) => setState(() => _minRating = r),
+              ZineChip(
+                label: r == null ? 'Any' : '★ $r+',
+                active: _minRating == r,
+                onTap: () => setState(() => _minRating = r),
               ),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(children: [
-            Expanded(child: OutlinedButton(
-              onPressed: () async {
-                final d = await showDatePicker(context: context, initialDate: _from ?? DateTime.now(),
-                    firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
-                if (d != null) setState(() => _from = d);
-              },
-              child: Text('From: ${_fmtDay(_from)}', style: const TextStyle(fontSize: 12.5)),
-            )),
-            const SizedBox(width: 8),
-            Expanded(child: OutlinedButton(
-              onPressed: () async {
-                final d = await showDatePicker(context: context, initialDate: _to ?? DateTime.now().add(const Duration(days: 30)),
-                    firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
-                if (d != null) setState(() => _to = d.add(const Duration(hours: 23, minutes: 59)));
-              },
-              child: Text('To: ${_fmtDay(_to)}', style: const TextStyle(fontSize: 12.5)),
-            )),
+            Expanded(child: _dateBtn('From: ${_fmtDay(_from)}', () async {
+              final d = await showDatePicker(context: context, initialDate: _from ?? DateTime.now(),
+                  firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
+              if (d != null) setState(() => _from = d);
+            })),
+            const SizedBox(width: 10),
+            Expanded(child: _dateBtn('To: ${_fmtDay(_to)}', () async {
+              final d = await showDatePicker(context: context, initialDate: _to ?? DateTime.now().add(const Duration(days: 30)),
+                  firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
+              if (d != null) setState(() => _to = d.add(const Duration(hours: 23, minutes: 59)));
+            })),
           ]),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _country, maxLength: 2, textCapitalization: TextCapitalization.characters,
-            decoration: InputDecoration(labelText: 'Country code (e.g. IN, US)', counterText: '', isDense: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+          const SizedBox(height: 16),
+          ZineField(
+            controller: _country,
+            label: 'Country code (e.g. IN, US)',
+            hint: 'Anywhere',
+            maxLength: 2,
+            textCapitalization: TextCapitalization.characters,
+            leadIcon: PhosphorIcons.globeHemisphereEast(PhosphorIconsStyle.bold),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           Row(children: [
-            Expanded(child: TextButton(
+            Expanded(child: ZineButton(
+              label: 'Clear all',
+              variant: ZineButtonVariant.ghost,
+              fontSize: 16,
               onPressed: () { widget.onApply(null, null, null, '', null, null); Navigator.pop(context); },
-              child: const Text('Clear all'),
             )),
-            const SizedBox(width: 8),
-            Expanded(flex: 2, child: FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 13)),
+            const SizedBox(width: 10),
+            Expanded(flex: 2, child: ZineButton(
+              label: 'Apply filters',
+              fontSize: 17,
               onPressed: () {
                 widget.onApply(
                   _price.start <= 0 ? null : (_price.start * 100).round(),
@@ -263,7 +315,6 @@ class _FilterSheetState extends State<_FilterSheet> {
                 );
                 Navigator.pop(context);
               },
-              child: const Text('Apply filters', style: TextStyle(fontWeight: FontWeight.w800)),
             )),
           ]),
         ]),
