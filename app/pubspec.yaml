@@ -22,7 +22,8 @@ dependencies:
   web_socket_channel: ^3.0.1
   permission_handler: ^11.3.1
   uuid: ^4.5.1
-  google_fonts: ^6.2.1
+  # AvaTOK design system iconography — Phosphor (bold/fill variants only, §6).
+  phosphor_flutter: ^2.1.0
   bip340: ^0.3.1
   flutter_secure_storage: ^9.2.2
   http: ^1.2.0
@@ -85,6 +86,33 @@ flutter:
   uses-material-design: true
   assets:
     - assets/sounds/
+  # AvaTOK design system fonts (bundled — offline-safe; see AVATOK-DESIGN-SYSTEM):
+  # Fredoka = display/headings/buttons · Nunito = body (>=600) · Space Mono = labels/kickers.
+  fonts:
+    - family: Fredoka
+      fonts:
+        - asset: assets/fonts/Fredoka-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Fredoka-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Fredoka-Bold.ttf
+          weight: 700
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Nunito-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Nunito-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Nunito-Black.ttf
+          weight: 900
+    - family: Space Mono
+      fonts:
+        - asset: assets/fonts/SpaceMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/SpaceMono-Bold.ttf
+          weight: 700
 
 dependency_overrides:
   record: 6.2.1

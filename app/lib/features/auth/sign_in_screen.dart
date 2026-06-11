@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/account_restore.dart';
-import '../../core/logo.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 
 enum _Mode { signIn, signUp, verify, reset, resetCode }
 
@@ -14,6 +17,9 @@ enum _Mode { signIn, signUp, verify, reset, resetCode }
 enum SignInMode { signIn, signUp }
 
 /// AvaTOK-styled auth (sign in / sign up / email-code), backed by Clerk's FAPI.
+/// Visuals: AvaTOK design system ("Welcome Back" reference screen) — crest
+/// hero, lime-cell fields with focus/error offset shadows, lime pill CTA,
+/// "You're in!" success seal.
 class SignInScreen extends StatefulWidget {
   final ClerkClient clerk;
   final VoidCallback onSignedIn;
@@ -54,10 +60,11 @@ class _SignInScreenState extends State<SignInScreen> {
   String? _pendingKind;
   bool _obscure = true;
   bool _busy = false;
+  bool _done = false;
   String? _error;
 
   void _handleStep(ClerkStep r) {
-    if (r.isComplete) { _done(); return; }
+    if (r.isComplete) { _finish(); return; }
     if (r.needsCode) {
       setState(() {
         _busy = false;
@@ -91,8 +98,6 @@ class _SignInScreenState extends State<SignInScreen> {
         }
         // L1 member = email + password + email OTP (Trust Ladder). No phone:
         // SMS verification is a later, separate step surfaced only when needed.
-        // Kept in memory for the session only (legacy; restore no longer needs
-        // it — the Clerk sign-in is the account credential).
         AuthSession.lastPassword = _pass.text;
         _handleStep(await widget.clerk.signUp(_email.text, _pass.text));
         return;
@@ -102,7 +107,7 @@ class _SignInScreenState extends State<SignInScreen> {
           return;
         }
         final err = await widget.clerk.verifyCode(_pendingKind!, _pendingId!, _code.text);
-        if (err == null) { _done(); return; }
+        if (err == null) { _finish(); return; }
         if (mounted) setState(() { _busy = false; _error = err; });
         return;
       case _Mode.reset:
@@ -123,128 +128,188 @@ class _SignInScreenState extends State<SignInScreen> {
           return;
         }
         final rErr = await widget.clerk.resetPassword(_pendingId!, _code.text, _newPass.text);
-        if (rErr == null) { AuthSession.lastPassword = _newPass.text; _done(); return; }
+        if (rErr == null) { AuthSession.lastPassword = _newPass.text; _finish(); return; }
         if (mounted) setState(() { _busy = false; _error = rErr; });
         return;
     }
   }
 
-  void _done() { if (mounted) widget.onSignedIn(); }
+  /// Flash the "You're in!" seal, then hand off to the app.
+  void _finish() {
+    if (!mounted) return;
+    setState(() { _busy = false; _done = true; });
+    Timer(const Duration(milliseconds: 900), () {
+      if (mounted) widget.onSignedIn();
+    });
+  }
 
   void _switch(_Mode m) => setState(() { _mode = m; _error = null; });
 
   @override
   Widget build(BuildContext context) {
+    if (_done) {
+      return const Scaffold(
+        body: ZineSuccessOverlay(
+          icon: Icons.waving_hand_rounded,
+          headline: "You're in!",
+          sub: 'Picking up right where you left off.',
+        ),
+      );
+    }
+
     final signUpSub = widget.gateReason != null
         ? 'Create your account to ${widget.gateReason}'
-        : 'Join AvaTOK';
-    final (title, sub, cta) = switch (_mode) {
-      _Mode.signIn => ('Welcome back', 'Log in to your AvaTOK account', 'Log In'),
-      _Mode.signUp => ('Create account', signUpSub, 'Create account'),
-      _Mode.verify => ('Verify email', 'Enter the 6-digit code we emailed you', 'Verify'),
-      _Mode.reset => ('Reset password', 'We\'ll email you a reset code', 'Send code'),
-      _Mode.resetCode => ('Set a new password', 'Enter the code we emailed + your new password', 'Reset password'),
+        : 'Join AvaTOK — it takes a minute.';
+    final (titlePre, titleMark, sub, cta, tag) = switch (_mode) {
+      _Mode.signIn => ('Welcome ', 'back', 'Log in to your AvaTOK account.', 'Log in', 'log in'),
+      _Mode.signUp => ('Create ', 'account', signUpSub, 'Create account', 'sign up'),
+      _Mode.verify => ('Verify ', 'email', 'Enter the 6-digit code we emailed you.', 'Verify', 'verify'),
+      _Mode.reset => ('Reset ', 'password', "We'll email you a reset code.", 'Send code', 'reset'),
+      _Mode.resetCode => ('New ', 'password', 'Enter the code we emailed + your new password.', 'Reset password', 'reset'),
     };
+
+    final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(28, 40, 28, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 24),
-              const AvaLogo(size: 52),
-              const SizedBox(height: 22),
-              Text(title, style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 36)),
-              const SizedBox(height: 6),
-              Text(sub, style: const TextStyle(color: AvaColors.sub, fontSize: 15)),
-              const SizedBox(height: 36),
-              // CODE (email verify or password-reset)
-              if (_mode == _Mode.verify || _mode == _Mode.resetCode) ...[
-                _label('CODE'),
-                _box(child: TextField(
-                  controller: _code, keyboardType: TextInputType.number,
-                  decoration: _bare('123456'), style: const TextStyle(fontSize: 18, letterSpacing: 4),
-                  onSubmitted: (_) => _submit(),
-                )),
-              ],
-              // NEW PASSWORD (reset)
-              if (_mode == _Mode.resetCode) ...[
-                const SizedBox(height: 16),
-                _label('NEW PASSWORD'),
-                _box(child: Row(children: [
-                  Expanded(child: TextField(
-                    controller: _newPass, obscureText: _obscure,
-                    decoration: _bare('••••••••'), style: const TextStyle(fontSize: 16),
-                    onSubmitted: (_) => _submit(),
-                  )),
-                  _eyeToggle(),
-                ])),
-              ],
-              // EMAIL (sign in / sign up / reset request)
-              if (_mode == _Mode.signIn || _mode == _Mode.signUp || _mode == _Mode.reset) ...[
-                _label('EMAIL'),
-                _box(child: TextField(
-                  controller: _email, keyboardType: TextInputType.emailAddress, autocorrect: false,
-                  decoration: _bare('you@example.com'), style: const TextStyle(fontSize: 16),
-                  onSubmitted: (_) { if (_mode == _Mode.reset) _submit(); },
-                )),
-              ],
-              // PASSWORD (sign in / sign up)
-              if (_mode == _Mode.signIn || _mode == _Mode.signUp) ...[
-                const SizedBox(height: 16),
-                _label('PASSWORD'),
-                _box(child: Row(children: [
-                  Expanded(child: TextField(
-                    controller: _pass, obscureText: _obscure,
-                    decoration: _bare('••••••••'), style: const TextStyle(fontSize: 16),
-                    onSubmitted: (_) => _submit(),
-                  )),
-                  _eyeToggle(),
-                ])),
-              ],
-              // Forgot password (sign in only)
-              if (_mode == _Mode.signIn)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => _switch(_Mode.reset),
-                    child: const Text('Forgot password?',
-                        style: TextStyle(color: AvaColors.brand, fontWeight: FontWeight.w700, fontSize: 13)),
-                  ),
+      body: ZinePaper(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(
+                mainAxisAlignment:
+                    canPop ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
+                children: [
+                  if (canPop) const ZineBackButton(),
+                  Text(tag.toUpperCase(), style: ZineText.kicker()),
+                ],
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    const SizedBox(height: 22),
+                    const Center(child: ZineCrest(size: 104)),
+                    const SizedBox(height: 14),
+                    ZineMarkTitle(pre: titlePre, mark: titleMark, fontSize: 38),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 280),
+                        child: Text(sub, style: ZineText.sub(), textAlign: TextAlign.center),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    ..._fields(),
+                    if (_error != null) ZineErrorMsg(_error!),
+                    const SizedBox(height: 22),
+                  ]),
                 ),
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 13)),
-              ],
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _busy ? null : _submit,
-                  child: _busy
-                      ? const SizedBox(height: 20, width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(cta),
-                ),
+              ),
+              ZineButton(
+                label: cta,
+                icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+                fullWidth: true,
+                fontSize: 21,
+                loading: _busy,
+                onPressed: _busy ? null : _submit,
               ),
               const SizedBox(height: 18),
               Center(child: _footerLink()),
               const SizedBox(height: 16),
-              const Center(child: Text('Secured by Clerk · one account for everything Ava',
-                  textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub, fontSize: 12))),
-            ],
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
+                    size: 14, color: Zine.blueInk),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text('secured by Clerk · one account for everything Ava',
+                      style: ZineText.kicker(), textAlign: TextAlign.center),
+                ),
+              ]),
+            ]),
           ),
         ),
       ),
     );
   }
 
-  Widget _eyeToggle() => IconButton(
-        icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-            color: AvaColors.sub, size: 20),
-        onPressed: () => setState(() => _obscure = !_obscure),
+  List<Widget> _fields() {
+    return [
+      // CODE (email verify or password-reset)
+      if (_mode == _Mode.verify || _mode == _Mode.resetCode) ...[
+        ZineField(
+          controller: _code,
+          label: 'code',
+          labelIcon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+          hint: '123456',
+          keyboardType: TextInputType.number,
+          error: _error != null,
+          onSubmitted: (_) => _submit(),
+        ),
+        const SizedBox(height: 18),
+      ],
+      // NEW PASSWORD (reset)
+      if (_mode == _Mode.resetCode) ...[
+        ZineField(
+          controller: _newPass,
+          label: 'new password',
+          labelIcon: PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.asterisk(PhosphorIconsStyle.bold),
+          hint: '••••••••',
+          obscureText: _obscure,
+          error: _error != null,
+          trailing: _eyeToggle(),
+          onSubmitted: (_) => _submit(),
+        ),
+        const SizedBox(height: 18),
+      ],
+      // EMAIL (sign in / sign up / reset request)
+      if (_mode == _Mode.signIn || _mode == _Mode.signUp || _mode == _Mode.reset) ...[
+        ZineField(
+          controller: _email,
+          label: 'email',
+          labelIcon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
+          leadText: '@',
+          hint: 'you@example.com',
+          keyboardType: TextInputType.emailAddress,
+          error: _error != null && _email.text.trim().isEmpty,
+          onSubmitted: (_) { if (_mode == _Mode.reset) _submit(); },
+        ),
+        const SizedBox(height: 18),
+      ],
+      // PASSWORD (sign in / sign up)
+      if (_mode == _Mode.signIn || _mode == _Mode.signUp) ...[
+        ZineField(
+          controller: _pass,
+          label: 'password',
+          labelIcon: PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.asterisk(PhosphorIconsStyle.bold),
+          hint: '••••••••',
+          obscureText: _obscure,
+          error: _error != null && _mode == _Mode.signIn && _pass.text.isEmpty,
+          trailing: _eyeToggle(),
+          onSubmitted: (_) => _submit(),
+        ),
+        if (_mode == _Mode.signIn)
+          Padding(
+            padding: const EdgeInsets.only(top: 11),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: ZineLink('forgot password?', onTap: () => _switch(_Mode.reset)),
+            ),
+          ),
+      ],
+    ];
+  }
+
+  Widget _eyeToggle() => GestureDetector(
+        onTap: () => setState(() => _obscure = !_obscure),
+        behavior: HitTestBehavior.opaque,
+        child: PhosphorIcon(
+          _obscure
+              ? PhosphorIcons.eye(PhosphorIconsStyle.bold)
+              : PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold),
+          size: 20, color: Zine.inkSoft,
+        ),
       );
 
   Widget _footerLink() {
@@ -253,49 +318,27 @@ class _SignInScreenState extends State<SignInScreen> {
         // Handle-first onboarding: "Sign up" sends the visitor back to claim a
         // @handle (onSignUpRequested). The email/password form is never reached
         // from here — it only appears when an action needs an account (gate).
-        return TextButton(
-          onPressed: () => widget.onSignUpRequested != null
-              ? widget.onSignUpRequested!()
-              : _switch(_Mode.signUp),
-          child: const Text('New here?  Sign up',
-              style: TextStyle(color: AvaColors.ink, fontWeight: FontWeight.w700)),
-        );
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('new here? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
+          ZineLink('sign up',
+              underline: Zine.coral,
+              fontSize: 14,
+              onTap: () => widget.onSignUpRequested != null
+                  ? widget.onSignUpRequested!()
+                  : _switch(_Mode.signUp)),
+        ]);
       case _Mode.signUp:
-        return TextButton(
-          onPressed: () => _switch(_Mode.signIn),
-          child: const Text('Have an account?  Log in',
-              style: TextStyle(color: AvaColors.ink, fontWeight: FontWeight.w700)),
-        );
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('have an account? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
+          ZineLink('log in', fontSize: 14, onTap: () => _switch(_Mode.signIn)),
+        ]);
       case _Mode.verify:
-        return TextButton(
-          onPressed: () => _switch(_pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn),
-          child: const Text('Back', style: TextStyle(color: AvaColors.sub)),
-        );
+        return ZineLink('back',
+            fontSize: 14,
+            onTap: () => _switch(_pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn));
       case _Mode.reset:
       case _Mode.resetCode:
-        return TextButton(
-          onPressed: () => _switch(_Mode.signIn),
-          child: const Text('Back to log in', style: TextStyle(color: AvaColors.sub)),
-        );
+        return ZineLink('back to log in', fontSize: 14, onTap: () => _switch(_Mode.signIn));
     }
   }
-
-  Widget _label(String t) => Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 8),
-        child: Text(t, style: const TextStyle(
-            color: AvaColors.sub, fontSize: 12, letterSpacing: 1.2, fontWeight: FontWeight.w700)),
-      );
-
-  Widget _box({required Widget child}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
-        child: child,
-      );
-
-  InputDecoration _bare(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: Color(0xFFAAB0B8)),
-        border: InputBorder.none, isDense: true,
-        contentPadding: const EdgeInsets.symmetric(vertical: 14),
-      );
 }

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/theme.dart';
+import '../../core/ui/zine_widgets.dart';
+import '../listings/create_listing_flow.dart';
 import '../listings/my_listings_screen.dart';
 import 'explore_search.dart';
 import 'listing_detail.dart';
@@ -222,30 +224,31 @@ class _ExploreHomeState extends State<ExploreHome> {
     );
   }
 
+  /// "Become a creator" banner — zine card (blue fill, ink border, hard
+  /// shadow). Banner taps open My Listings; the CTA jumps straight into the
+  /// create-listing stepper (mockup behavior).
   Widget _drop() => Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: GestureDetector(
+        child: ZineCard(
+          color: Zine.blue,
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyListingsScreen())),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(gradient: AvaColors.dropGradient, borderRadius: BorderRadius.circular(20)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Icon(Icons.auto_awesome, color: Colors.white, size: 13),
-                const SizedBox(width: 5),
-                Text('BECOME A CREATOR', style: TextStyle(color: Colors.white.withValues(alpha: 0.95),
-                    fontSize: 10.5, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
-              ]),
-              const SizedBox(height: 10),
-              const Text('Host live events & paid sessions,\nearn straight to your wallet',
-                  style: TextStyle(color: Colors.white, fontSize: 19, height: 1.2, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                child: const Text('Create a listing', style: TextStyle(color: Color(0xFFFF6F6F), fontWeight: FontWeight.w800))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.auto_awesome, color: Zine.blueInk, size: 14),
+              const SizedBox(width: 6),
+              Text('BECOME A CREATOR', style: ZineText.kicker(color: Zine.blueInk)),
             ]),
-          ),
+            const SizedBox(height: 10),
+            Text('Host live events & paid sessions,\nearn straight to your wallet',
+                style: ZineText.cardTitle(size: 19)),
+            const SizedBox(height: 14),
+            ZineButton(
+              label: 'Create a listing',
+              fontSize: 17,
+              onPressed: () => Navigator.push(
+                  context, MaterialPageRoute(builder: (_) => const CreateListingFlow())),
+            ),
+          ]),
         ),
       );
 }
