@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/device_contacts.dart';
 import '../../core/group_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import 'chat_thread.dart';
@@ -17,7 +19,7 @@ enum _Scope { all, chats, contacts, groups }
 
 /// Global search — find people across your AvaTok contacts, your phone's
 /// address book (by name / email / phone), the public directory, and your
-/// groups. Non-AvaTok phone contacts get a one-tap green "Invite" action.
+/// groups. Non-AvaTok phone contacts get a one-tap "Invite" action.
 class SearchScreen extends StatefulWidget {
   final Identity? identity;
   final List<Contact> contacts;
@@ -119,95 +121,97 @@ class _SearchScreenState extends State<SearchScreen> {
     final showGroups = _scope == _Scope.all || _scope == _Scope.groups;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Zine.paper,
       body: SafeArea(
         child: Column(children: [
-          // Search bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 12, 6),
-            child: Row(children: [
-              IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
-              Expanded(
-                child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(22)),
-                  child: Row(children: [
-                    const Icon(Icons.search, size: 20, color: Color(0xFF9AA1AC)),
-                    const SizedBox(width: 8),
-                    Expanded(child: TextField(
-                      controller: _ctrl, autofocus: true, onChanged: _onChanged,
-                      decoration: const InputDecoration(
-                          hintText: 'Search name, email or phone',
-                          border: InputBorder.none, isDense: true,
-                          hintStyle: TextStyle(color: Color(0xFF9AA1AC))),
-                    )),
-                    if (_q.isNotEmpty)
-                      GestureDetector(
-                        onTap: () { _ctrl.clear(); _onChanged(''); },
-                        child: const Icon(Icons.close, size: 18, color: Color(0xFF9AA1AC))),
-                  ]),
+          // Search band — paper-2 fill with ink bottom border.
+          Container(
+            decoration: const BoxDecoration(
+              color: Zine.paper2,
+              border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            child: Column(children: [
+              Row(children: [
+                const ZineBackButton(),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ZineField(
+                    controller: _ctrl,
+                    autofocus: true,
+                    hint: 'Search name, email or phone',
+                    leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                    onChanged: _onChanged,
+                    trailing: _q.isEmpty
+                        ? null
+                        : GestureDetector(
+                            onTap: () { _ctrl.clear(); _onChanged(''); },
+                            child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold),
+                                size: 18, color: Zine.inkSoft),
+                          ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              // Scope chips
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _chip('All', _Scope.all),
+                    _chip('Chats', _Scope.chats),
+                    _chip('Contacts', _Scope.contacts),
+                    _chip('Groups', _Scope.groups),
+                  ],
                 ),
               ),
             ]),
           ),
-          // Scope chips
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                _chip('All', _Scope.all),
-                _chip('Chats', _Scope.chats),
-                _chip('Contacts', _Scope.contacts),
-                _chip('Groups', _Scope.groups),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
           Expanded(
             child: ListView(
               children: [
                 if (showChats && contactHits.isNotEmpty) ...[
-                  _section('CHATS'),
+                  _section('Chats'),
                   for (final c in contactHits) _avatokRow(c),
                 ],
                 if (showGroups && groupHits.isNotEmpty) ...[
-                  _section('GROUPS'),
+                  _section('Groups'),
                   for (final g in groupHits)
                     ListTile(
-                      leading: Avatar(seed: 'group-${g.id}', name: g.name, size: 46),
-                      title: Text(g.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text('${g.members.length} members', style: const TextStyle(color: AvaColors.sub)),
+                      leading: _ring(Avatar(seed: 'group-${g.id}', name: g.name, size: 46)),
+                      title: Text(g.name, style: ZineText.value(size: 15)),
+                      subtitle: Text('${g.members.length} members', style: ZineText.sub(size: 12.5)),
                       onTap: () => _openGroup(g),
                     ),
                 ],
                 if (showContacts && onAvatok.isNotEmpty) ...[
-                  _section('ON AVATOK'),
+                  _section('On AvaTok'),
                   for (final d in onAvatok) _deviceOnAvatokRow(d),
                 ],
                 if (showContacts && _directory.isNotEmpty) ...[
-                  _section('DIRECTORY'),
+                  _section('Directory'),
                   if (_searchingDir)
-                    const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator(color: AvaColors.brand)),
+                    const Padding(padding: EdgeInsets.all(12),
+                        child: LinearProgressIndicator(color: Zine.blueInk, backgroundColor: Zine.paper2)),
                   for (final c in _directory.where((c) => !knownNpubs.contains(c.npub))) _avatokRow(c),
                 ],
                 if (showContacts && invitable.isNotEmpty) ...[
-                  _section('INVITE TO AVATOK'),
+                  _section('Invite to AvaTok'),
                   for (final d in invitable) _inviteRow(d),
                 ],
                 if (_q.isNotEmpty &&
                     contactHits.isEmpty && groupHits.isEmpty && onAvatok.isEmpty &&
                     _directory.isEmpty && invitable.isEmpty && !_searchingDir)
-                  const Padding(padding: EdgeInsets.all(28),
-                      child: Center(child: Text(
-                          'No matches.\nTo find someone by email, type their full email address.',
-                          textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub)))),
+                  Padding(padding: const EdgeInsets.all(28),
+                      child: Center(child: ZineEmptyState(
+                          icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
+                          text: 'No matches.\nTo find someone by email, type their full email address.'))),
                 if (_q.isEmpty && _device.isEmpty)
-                  const Padding(padding: EdgeInsets.all(28),
-                      child: Center(child: Text('Search your contacts, the directory and your phone book',
-                          textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub)))),
+                  Padding(padding: const EdgeInsets.all(28),
+                      child: Center(child: ZineEmptyState(
+                          icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                          text: 'Search your contacts, the directory and your phone book'))),
                 const SizedBox(height: 20),
               ],
             ),
@@ -217,26 +221,27 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _chip(String label, _Scope scope) {
-    final on = _scope == scope;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: on,
-        showCheckmark: false,
-        selectedColor: AvaColors.brand,
-        labelStyle: TextStyle(color: on ? Colors.white : AvaColors.ink, fontWeight: FontWeight.w700),
-        backgroundColor: AvaColors.soft,
-        side: BorderSide.none,
-        onSelected: (_) => setState(() => _scope = scope),
-      ),
-    );
-  }
+  // Bordered-circle avatar ring (zine avatars are bordered circles).
+  Widget _ring(Widget avatar) => Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Zine.ink, width: 2),
+        ),
+        child: avatar,
+      );
+
+  Widget _chip(String label, _Scope scope) => Padding(
+        padding: const EdgeInsets.only(right: 9),
+        child: ZineChip(
+          label: label,
+          active: _scope == scope,
+          onTap: () => setState(() => _scope = scope),
+        ),
+      );
 
   Widget _section(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-        child: Text(label, style: const TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700)),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
+        child: Text(label.toUpperCase(), style: ZineText.kicker()),
       );
 
   // An AvaTok contact (local or directory) row with status badges.
@@ -246,9 +251,9 @@ class _SearchScreenState extends State<SearchScreen> {
     final archived = _flags['archived']!.contains(k);
     final muted = _flags['muted']!.contains(k);
     return ListTile(
-      leading: Avatar(seed: c.seed, name: c.name, size: 46, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
-      title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AvaColors.sub)),
+      leading: _ring(Avatar(seed: c.seed, name: c.name, size: 46, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
+      title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 15)),
+      subtitle: Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
       trailing: _badges(blocked: blocked, archived: archived, muted: muted),
       onTap: () => _openContactChat(c.npub, c.name, c.seed),
     );
@@ -258,9 +263,9 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _deviceOnAvatokRow(DeviceContact d) {
     final k = d.npub == null ? '' : _hexKey(d.npub!);
     return ListTile(
-      leading: Avatar(seed: d.npub ?? d.name, name: d.name, size: 46),
-      title: Text(d.name.isNotEmpty ? d.name : d.subtitle, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AvaColors.sub)),
+      leading: _ring(Avatar(seed: d.npub ?? d.name, name: d.name, size: 46)),
+      title: Text(d.name.isNotEmpty ? d.name : d.subtitle, style: ZineText.value(size: 15)),
+      subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
       trailing: _badges(
         blocked: _flags['blocked']!.contains(k),
         archived: _flags['archived']!.contains(k),
@@ -270,34 +275,30 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // A phone contact NOT on AvaTok → green invite action.
+  // A phone contact NOT on AvaTok → mint invite action (money/positive accent).
   Widget _inviteRow(DeviceContact d) => ListTile(
-        leading: Avatar(seed: d.name, name: d.name, size: 46),
-        title: Text(d.name.isNotEmpty ? d.name : d.subtitle, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AvaColors.sub)),
-        trailing: GestureDetector(
+        leading: _ring(Avatar(seed: d.name, name: d.name, size: 46)),
+        title: Text(d.name.isNotEmpty ? d.name : d.subtitle, style: ZineText.value(size: 15)),
+        subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+        trailing: ZinePressable(
           onTap: () => DeviceContactsService.invite(d),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(color: const Color(0xFF25D366), borderRadius: BorderRadius.circular(20)),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.person_add_alt_1, size: 15, color: Colors.white),
-              SizedBox(width: 5),
-              Text('Invite', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-            ]),
-          ),
+          color: Zine.mint,
+          radius: BorderRadius.circular(100),
+          boxShadow: Zine.shadowXs,
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 14, color: Zine.ink),
+            const SizedBox(width: 5),
+            Text('INVITE', style: ZineText.tag(size: 11)),
+          ]),
         ),
       );
 
   Widget? _badges({required bool blocked, required bool archived, required bool muted}) {
     final icons = <Widget>[
-      if (muted) const Icon(Icons.notifications_off, size: 16, color: AvaColors.sub),
-      if (blocked) const Icon(Icons.block, size: 16, color: AvaColors.danger),
-      if (archived) Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(border: Border.all(color: AvaColors.line), borderRadius: BorderRadius.circular(6)),
-        child: const Text('Archived', style: TextStyle(fontSize: 10, color: AvaColors.sub)),
-      ),
+      if (muted) PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+      if (blocked) PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 16, color: Zine.coral),
+      if (archived) const ZineSticker('Archived', kind: ZineStickerKind.hint),
     ];
     if (icons.isEmpty) return null;
     return Row(mainAxisSize: MainAxisSize.min, children: [

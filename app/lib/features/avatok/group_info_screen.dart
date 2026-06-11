@@ -2,11 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/group_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../sync/legacy_stubs.dart';
@@ -124,18 +126,25 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   void _memberActions(String hex) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 8),
         ListTile(
-          leading: Icon(_group.admins.contains(hex) ? Icons.remove_moderator : Icons.add_moderator, color: AvaColors.brand),
-          title: Text(_group.admins.contains(hex) ? 'Dismiss as admin' : 'Make admin'),
+          leading: PhosphorIcon(
+              _group.admins.contains(hex)
+                  ? PhosphorIcons.shieldSlash(PhosphorIconsStyle.bold)
+                  : PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
+              color: Zine.blueInk),
+          title: Text(_group.admins.contains(hex) ? 'Dismiss as admin' : 'Make admin',
+              style: ZineText.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _toggleAdmin(hex); },
         ),
         ListTile(
-          leading: const Icon(Icons.remove_circle_outline, color: AvaColors.danger),
-          title: const Text('Remove from group', style: TextStyle(color: AvaColors.danger)),
+          leading: PhosphorIcon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), color: Zine.coral),
+          title: Text('Remove from group', style: ZineText.value(size: 15, color: Zine.coral)),
           onTap: () { Navigator.pop(ctx); _removeMember(hex); },
         ),
       ])),
@@ -161,24 +170,32 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     }).toList();
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Add members', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          Text('Add members', style: ZineText.cardTitle(size: 18)),
           const SizedBox(height: 8),
           if (candidates.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text('All your contacts are already in this group', style: TextStyle(color: AvaColors.sub)))
+            Padding(padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Text('All your contacts are already in this group', style: ZineText.sub()))
           else
             ConstrainedBox(constraints: const BoxConstraints(maxHeight: 340), child: ListView(shrinkWrap: true, children: [
               for (final c in candidates)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
-                  title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  trailing: const Icon(Icons.add_circle, color: AvaColors.brand),
+                  leading: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Zine.ink, width: 2),
+                    ),
+                    child: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+                  ),
+                  title: Text(c.name, style: ZineText.value(size: 15)),
+                  trailing: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), color: Zine.blueInk),
                   onTap: () { Navigator.pop(ctx); _addMember(NostrKeys.npubToHex(c.npub)!); },
                 ),
             ])),
@@ -190,83 +207,96 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink, title: const Text('Group info')),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(title: 'Group info', markWord: 'Group'),
       body: ListView(children: [
+        const SizedBox(height: 16),
+        Center(
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Zine.border,
+              boxShadow: Zine.shadowSm,
+            ),
+            child: Avatar(seed: 'group-${_group.id}', name: _group.name, size: 84),
+          ),
+        ),
         const SizedBox(height: 12),
-        Center(child: Avatar(seed: 'group-${_group.id}', name: _group.name, size: 84)),
-        const SizedBox(height: 10),
-        Center(child: Text(_group.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
-        Center(child: Text('${_group.members.length} members', style: const TextStyle(color: AvaColors.sub))),
-        const SizedBox(height: 12),
+        Center(child: Text(_group.name, style: ZineText.cardTitle(size: 22))),
+        const SizedBox(height: 4),
+        Center(child: Text('${_group.members.length} MEMBERS', style: ZineText.kicker())),
+        const SizedBox(height: 14),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: InkWell(
+          child: ZineCard(
+            color: Zine.paper2,
+            radius: Zine.rSm,
+            boxShadow: Zine.shadowXs,
+            padding: const EdgeInsets.all(14),
             onTap: _amAdmin ? _editDescription : null,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(12)),
-              child: Row(children: [
-                Expanded(child: Text(
-                    _group.description.isEmpty ? (_amAdmin ? 'Add a group description' : 'No description') : _group.description,
-                    style: TextStyle(color: _group.description.isEmpty ? AvaColors.sub : AvaColors.ink, fontSize: 13))),
-                if (_amAdmin) const Icon(Icons.edit_outlined, size: 16, color: AvaColors.sub),
-              ]),
-            ),
+            child: Row(children: [
+              Expanded(child: Text(
+                  _group.description.isEmpty ? (_amAdmin ? 'Add a group description' : 'No description') : _group.description,
+                  style: ZineText.sub(size: 13.5,
+                      color: _group.description.isEmpty ? Zine.inkMute : Zine.inkSoft))),
+              if (_amAdmin)
+                PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+            ]),
           ),
         ),
         const SizedBox(height: 8),
         ListTile(
-          leading: const Icon(Icons.link, color: AvaColors.brand),
-          title: const Text('Copy invite link', style: TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: const Text('Share so others can ask to join', style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+          leading: ZineIconBadge(icon: PhosphorIcons.link(PhosphorIconsStyle.bold), color: Zine.blue),
+          title: Text('Copy invite link', style: ZineText.value(size: 15)),
+          subtitle: Text('Share so others can ask to join', style: ZineText.sub(size: 12.5)),
           onTap: () {
             Clipboard.setData(ClipboardData(text: 'https://avatok.ai/g/${_group.id}'));
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite link copied')));
           },
         ),
-        const Divider(height: 1),
-        const SizedBox(height: 8),
         if (_amAdmin)
           ListTile(
-            leading: const Icon(Icons.person_add_alt_1, color: AvaColors.brand),
-            title: const Text('Add members', style: TextStyle(fontWeight: FontWeight.w700, color: AvaColors.brand)),
+            leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.lime),
+            title: Text('Add members', style: ZineText.value(size: 15)),
             onTap: _busy ? null : _pickToAdd,
           ),
-        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+          child: Text('MEMBERS', style: ZineText.kicker()),
+        ),
         for (final m in _group.members)
           ListTile(
-            leading: Avatar(seed: m, name: _label(m), size: 42, avatarUrl: _avatars[m]),
+            leading: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Zine.ink, width: 2),
+              ),
+              child: Avatar(seed: m, name: _label(m), size: 42, avatarUrl: _avatars[m]),
+            ),
             title: Row(children: [
               Flexible(child: Text(_label(m), maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700))),
+                  style: ZineText.value(size: 15))),
               if (_group.admins.contains(m)) ...[
                 const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                  decoration: BoxDecoration(color: AvaColors.brand.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
-                  child: const Text('admin', style: TextStyle(fontSize: 10, color: AvaColors.brand, fontWeight: FontWeight.w700)),
-                ),
+                const ZineSticker('admin', kind: ZineStickerKind.ok),
               ],
             ]),
-            subtitle: m == _id?.pubHex ? const Text('You', style: TextStyle(color: AvaColors.sub, fontSize: 12)) : null,
+            subtitle: m == _id?.pubHex ? Text('You', style: ZineText.sub(size: 12)) : null,
             trailing: (_amAdmin && m != _id?.pubHex)
-                ? IconButton(icon: const Icon(Icons.more_vert, color: AvaColors.sub),
+                ? IconButton(
+                    icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), color: Zine.inkSoft),
                     onPressed: _busy ? null : () => _memberActions(m))
                 : null,
           ),
         const SizedBox(height: 16),
         Padding(
           padding: const EdgeInsets.all(16),
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-                foregroundColor: AvaColors.danger,
-                side: const BorderSide(color: Color(0xFFE0E2E6)),
-                padding: const EdgeInsets.symmetric(vertical: 14)),
+          child: ZineButton(
+            label: 'Leave group',
+            variant: ZineButtonVariant.coral,
+            fullWidth: true,
+            icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
             onPressed: _busy ? null : _leave,
-            icon: const Icon(Icons.logout),
-            label: const Text('Leave group'),
           ),
         ),
       ]),

@@ -3,12 +3,14 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../sync/legacy_stubs.dart';
@@ -64,12 +66,13 @@ class _StatusScreenState extends State<StatusScreen> {
     final text = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Text status'),
-        content: TextField(controller: ctrl, autofocus: true, maxLines: 3,
-            decoration: const InputDecoration(hintText: "What's on your mind?")),
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('Text status', style: ZineText.cardTitle(size: 21)),
+        content: ZineField(controller: ctrl, autofocus: true, maxLines: 3, hint: "What's on your mind?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Post')),
+          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
+          ZineButton(label: 'Post', fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
         ],
       ),
     );
@@ -97,36 +100,54 @@ class _StatusScreenState extends State<StatusScreen> {
 
   void _addSheet() {
     showModalBottomSheet(
-      context: context, backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      context: context,
+      backgroundColor: Zine.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        side: BorderSide(color: Zine.ink, width: Zine.bw),
+      ),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 12),
+        ListTile(
+          leading: ZineIconBadge(icon: PhosphorIcons.textT(PhosphorIconsStyle.bold), color: Zine.blue, size: 40),
+          title: Text('Text status', style: ZineText.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _addText(); },
+        ),
+        ListTile(
+          leading: ZineIconBadge(icon: PhosphorIcons.image(PhosphorIconsStyle.bold), color: Zine.lilac, size: 40),
+          title: Text('Photo status', style: ZineText.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _addImage(); },
+        ),
         const SizedBox(height: 8),
-        ListTile(leading: const Icon(Icons.text_fields, color: AvaColors.brand), title: const Text('Text status'),
-            onTap: () { Navigator.pop(ctx); _addText(); }),
-        ListTile(leading: const Icon(Icons.photo_outlined, color: AvaColors.brand), title: const Text('Photo status'),
-            onTap: () { Navigator.pop(ctx); _addImage(); }),
       ])),
     );
   }
 
   void _view(StatusPost p) {
     showDialog(context: context, builder: (_) => Dialog(
-      backgroundColor: Colors.black,
-      insetPadding: const EdgeInsets.all(12),
+      backgroundColor: Zine.card,
+      insetPadding: const EdgeInsets.all(14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Zine.r),
+        side: const BorderSide(color: Zine.ink, width: Zine.bw),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(p.authorName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
+          Text(p.authorName, style: ZineText.cardTitle(size: 18)),
+          const SizedBox(height: 14),
           if (p.kind == 'image' && p.media != null)
             FutureBuilder<Uint8List>(
               future: MediaService.downloadAndDecrypt(ChatMedia.fromEnvelope(p.media!)),
               builder: (_, s) => s.hasData
-                  ? Image.memory(s.data!, fit: BoxFit.contain)
-                  : const Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator(color: AvaColors.brand)),
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(Zine.rSm),
+                      child: Image.memory(s.data!, fit: BoxFit.contain),
+                    )
+                  : const Padding(padding: EdgeInsets.all(30), child: CircularProgressIndicator(color: Zine.blueInk)),
             )
           else
-            Text(p.text ?? '', style: const TextStyle(color: Colors.white, fontSize: 18)),
+            Text(p.text ?? '', style: ZineText.value(size: 17)),
         ]),
       ),
     ));
@@ -135,32 +156,96 @@ class _StatusScreenState extends State<StatusScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink, title: const Text('Updates')),
-      body: ListView(children: [
-        ListTile(
-          leading: Stack(children: [
-            Avatar(seed: widget.identity?.npub ?? 'me', name: 'You', size: 48),
-            const Positioned(right: 0, bottom: 0, child: Icon(Icons.add_circle, color: AvaColors.brand, size: 18)),
-          ]),
-          title: const Text('My status', style: TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: const Text('Tap to add to your status (24h)', style: TextStyle(color: AvaColors.sub, fontSize: 12)),
-          onTap: _addSheet,
-        ),
-        const Divider(),
-        const Padding(padding: EdgeInsets.fromLTRB(16, 6, 16, 6),
-            child: Text('RECENT', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700))),
-        if (_posts.isEmpty)
-          const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No status updates yet', style: TextStyle(color: AvaColors.sub)))),
-        for (final p in _posts)
-          ListTile(
-            leading: Avatar(seed: p.authorPub, name: p.authorName, size: 48),
-            title: Text(p.authorName, style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(p.kind == 'image' ? '📷 Photo' : (p.text ?? ''),
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AvaColors.sub)),
-            onTap: () => _view(p),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'Updates',
+        markWord: 'Updates',
+        tag: '24h status from your people',
+        showBack: Navigator.of(context).canPop(),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        children: [
+          // "My status" — 2.5px ink-ring avatar + lime add circle (the ONE lime).
+          ZineCard(
+            radius: Zine.rSm,
+            padding: const EdgeInsets.all(13),
+            onTap: _addSheet,
+            child: Row(children: [
+              Stack(clipBehavior: Clip.none, children: [
+                Container(
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Zine.border),
+                  child: Avatar(seed: widget.identity?.npub ?? 'me', name: 'You', size: 46),
+                ),
+                Positioned(
+                  right: -4, bottom: -4,
+                  child: Container(
+                    width: 22, height: 22,
+                    decoration: const BoxDecoration(
+                      color: Zine.lime,
+                      shape: BoxShape.circle,
+                      border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: 2)),
+                    ),
+                    child: Center(
+                      child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 12, color: Zine.ink),
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text('My status', style: ZineText.cardTitle(size: 17)),
+                const SizedBox(height: 3),
+                Text('Tap to add to your status (24h)', style: ZineText.sub(size: 12.5)),
+              ])),
+            ]),
           ),
-      ]),
+          const SizedBox(height: 18),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 9),
+            child: Text('RECENT', style: ZineText.kicker()),
+          ),
+          if (_posts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(child: ZineEmptyState(
+                icon: PhosphorIcons.clockCountdown(PhosphorIconsStyle.bold),
+                text: 'No updates yet — share your first one.',
+              )),
+            ),
+          for (final p in _posts) ...[
+            ZineCard(
+              radius: Zine.rSm,
+              padding: const EdgeInsets.all(12),
+              boxShadow: Zine.shadowXs,
+              onTap: () => _view(p),
+              child: Row(children: [
+                // Story ring: 2.5px lime (unseen) circle on ink — no gradients.
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Zine.lime,
+                    border: Border.all(color: Zine.ink, width: 2),
+                  ),
+                  child: Avatar(seed: p.authorPub, name: p.authorName, size: 42),
+                ),
+                const SizedBox(width: 13),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(p.authorName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: ZineText.value(size: 14.5)),
+                  const SizedBox(height: 3),
+                  Text(p.kind == 'image' ? '📷 Photo' : (p.text ?? ''),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+                ])),
+                const SizedBox(width: 8),
+                PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 15, color: Zine.inkMute),
+              ]),
+            ),
+            const SizedBox(height: 11),
+          ],
+        ],
+      ),
     );
   }
 }

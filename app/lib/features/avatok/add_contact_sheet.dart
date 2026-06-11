@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'contacts.dart';
 
 /// Bottom sheet to add a contact — matches the mockup:
@@ -14,8 +16,9 @@ Future<Contact?> showAddContactSheet(BuildContext context) {
   return showModalBottomSheet<Contact>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
+    backgroundColor: Zine.paper,
     shape: const RoundedRectangleBorder(
+        side: BorderSide(color: Zine.ink, width: Zine.bw),
         borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
     builder: (_) => const _AddContactSheet(),
   );
@@ -89,15 +92,15 @@ class _AddContactSheetState extends State<_AddContactSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Grab handle — ink-mute pill.
             Center(
               child: Container(
-                width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+                width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                    color: const Color(0xFFE2E4E9), borderRadius: BorderRadius.circular(2)),
+                    color: Zine.inkMute, borderRadius: BorderRadius.circular(100)),
               ),
             ),
-            const Text('Add contact',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AvaColors.ink)),
+            Text('Add contact', style: ZineText.cardTitle(size: 22)),
             const SizedBox(height: 14),
             _tabs(),
             const SizedBox(height: 14),
@@ -108,92 +111,56 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     );
   }
 
-  Widget _tabs() => Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-            color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-        child: Row(children: [
-          _tab('Add by email', _byId, () => setState(() => _byId = true)),
-          _tab('Search by handle', !_byId, () => setState(() => _byId = false)),
-        ]),
-      );
-
-  Widget _tab(String label, bool active, VoidCallback onTap) => Expanded(
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(vertical: 11),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-                color: active ? AvaColors.ink : Colors.transparent,
-                borderRadius: BorderRadius.circular(11)),
-            child: Text(label,
-                style: TextStyle(
-                    color: active ? Colors.white : AvaColors.sub,
-                    fontWeight: FontWeight.w700, fontSize: 14)),
-          ),
-        ),
-      );
+  Widget _tabs() => Row(children: [
+        Expanded(child: ZineChip(
+            label: 'Add by email',
+            active: _byId,
+            onTap: () => setState(() => _byId = true))),
+        const SizedBox(width: 9),
+        Expanded(child: ZineChip(
+            label: 'Search by handle',
+            active: !_byId,
+            onTap: () => setState(() => _byId = false))),
+      ]);
 
   Widget _byIdBody() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-                color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-            child: Row(children: [
-              const Icon(Icons.person_outline, size: 18, color: Color(0xFF9AA1AC)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _idCtrl,
-                  onChanged: (_) => setState(() => _error = null),
-                  onSubmitted: (_) => _addById(),
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                      hintText: 'e.g. username@domain.com',
-                      border: InputBorder.none, isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 14)),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Scan QR',
-                icon: const Icon(Icons.qr_code_scanner, size: 20, color: AvaColors.brand),
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('QR scan coming with the camera pass'))),
-              ),
-            ]),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: Text(_error!, style: const TextStyle(color: AvaColors.danger, fontSize: 12.5))),
-              TextButton(onPressed: _shareInvite, child: const Text('Invite')),
-            ]),
-          ],
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: AvaColors.brand,
-                  disabledBackgroundColor: const Color(0xFFBFC4CC),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              onPressed: _idCtrl.text.trim().isEmpty || _busy ? null : _addById,
-              child: _busy
-                  ? const SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Add contact',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          ZineField(
+            controller: _idCtrl,
+            hint: 'e.g. username@domain.com',
+            leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+            keyboardType: TextInputType.emailAddress,
+            error: _error != null,
+            onChanged: (_) => setState(() => _error = null),
+            onSubmitted: (_) => _addById(),
+            trailing: GestureDetector(
+              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('QR scan coming with the camera pass'))),
+              child: PhosphorIcon(PhosphorIcons.qrCode(PhosphorIconsStyle.bold),
+                  size: 20, color: Zine.ink),
             ),
           ),
-          const SizedBox(height: 10),
-          const Center(
-            child: Text("Add a friend by the email they signed up with. To find them by @handle, use Search by handle.",
-                style: TextStyle(color: AvaColors.sub, fontSize: 12), textAlign: TextAlign.center),
+          if (_error != null) ...[
+            Row(children: [
+              Expanded(child: ZineErrorMsg(_error!)),
+              const SizedBox(width: 8),
+              ZineLink('INVITE', onTap: _shareInvite),
+            ]),
+          ],
+          const SizedBox(height: 16),
+          ZineButton(
+            label: 'Add contact',
+            fullWidth: true,
+            loading: _busy,
+            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+            onPressed: _idCtrl.text.trim().isEmpty || _busy ? null : _addById,
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: Text(
+                'Add a friend by the email they signed up with. To find them by @handle, use Search by handle.',
+                style: ZineText.sub(size: 12.5), textAlign: TextAlign.center),
           ),
         ],
       );
@@ -201,26 +168,13 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   Widget _searchBody() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-                color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-            child: Row(children: [
-              const Icon(Icons.search, size: 18, color: Color(0xFF9AA1AC)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: _onSearchChanged,
-                  decoration: const InputDecoration(
-                      hintText: 'e.g. @handle_name',
-                      border: InputBorder.none, isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 14)),
-                ),
-              ),
-            ]),
+          ZineField(
+            controller: _searchCtrl,
+            hint: 'e.g. @handle_name',
+            leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+            onChanged: _onSearchChanged,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 280),
             child: _results.isEmpty
@@ -231,7 +185,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                           _searchCtrl.text.trim().length < 2
                               ? 'e.g. @handle_name'
                               : 'No matches yet',
-                          style: const TextStyle(color: AvaColors.sub, fontSize: 13)),
+                          style: ZineText.sub(size: 13)),
                     ),
                   )
                 : ListView.builder(
@@ -241,13 +195,21 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                       final c = _results[i];
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: Avatar(seed: c.seed, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
-                        title: Text(c.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                        leading: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Zine.ink, width: 2),
+                          ),
+                          child: Avatar(seed: c.seed, name: c.name, size: 40,
+                              avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+                        ),
+                        title: Text(c.name, style: ZineText.value(size: 14.5)),
                         subtitle: c.subtitle.isNotEmpty
-                            ? Text(c.subtitle, style: const TextStyle(color: AvaColors.sub, fontSize: 12.5))
+                            ? Text(c.subtitle, style: ZineText.sub(size: 12.5))
                             : null,
-                        trailing: const Icon(Icons.add_circle, color: AvaColors.brand),
+                        trailing: PhosphorIcon(
+                            PhosphorIcons.plusCircle(PhosphorIconsStyle.fill),
+                            color: Zine.blueInk),
                         onTap: () => Navigator.pop(context, c),
                       );
                     },

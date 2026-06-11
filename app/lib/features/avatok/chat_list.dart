@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
 import '../../core/account_gate.dart';
@@ -18,7 +19,8 @@ import '../../core/filter_store.dart';
 import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/admin_tools.dart';
 import '../../identity/identity.dart';
@@ -126,26 +128,39 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     bool has(String f) => _flags[f]!.contains(k);
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 8),
-        ListTile(leading: Icon(has('pinned') ? Icons.push_pin : Icons.push_pin_outlined, color: AvaColors.brand),
-            title: Text(has('pinned') ? 'Unpin' : 'Pin to top'),
+        ListTile(
+            leading: PhosphorIcon(
+                PhosphorIcons.pushPin(has('pinned') ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
+                color: Zine.blueInk),
+            title: Text(has('pinned') ? 'Unpin' : 'Pin to top', style: ZineText.value(size: 15)),
             onTap: () { Navigator.pop(ctx); _toggleFlag('pinned', k); }),
-        ListTile(leading: Icon(has('muted') ? Icons.notifications_off : Icons.notifications_outlined, color: AvaColors.ink),
-            title: Text(has('muted') ? 'Unmute' : 'Mute'),
+        ListTile(
+            leading: PhosphorIcon(
+                has('muted')
+                    ? PhosphorIcons.bellSlash(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.bell(PhosphorIconsStyle.bold),
+                color: Zine.ink),
+            title: Text(has('muted') ? 'Unmute' : 'Mute', style: ZineText.value(size: 15)),
             onTap: () { Navigator.pop(ctx); _toggleFlag('muted', k); }),
-        ListTile(leading: const Icon(Icons.archive_outlined, color: AvaColors.ink),
-            title: Text(has('archived') ? 'Unarchive' : 'Archive'),
+        ListTile(
+            leading: PhosphorIcon(PhosphorIcons.archive(PhosphorIconsStyle.bold), color: Zine.ink),
+            title: Text(has('archived') ? 'Unarchive' : 'Archive', style: ZineText.value(size: 15)),
             onTap: () { Navigator.pop(ctx); _toggleFlag('archived', k); }),
         if (c.gid == null)
-          ListTile(leading: const Icon(Icons.block, color: AvaColors.danger),
-              title: Text(has('blocked') ? 'Unblock' : 'Block', style: const TextStyle(color: AvaColors.danger)),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
+              title: Text(has('blocked') ? 'Unblock' : 'Block', style: ZineText.value(size: 15, color: Zine.coral)),
               onTap: () { Navigator.pop(ctx); _toggleFlag('blocked', k); }),
         if (c.gid == null)
-          ListTile(leading: const Icon(Icons.person_remove_outlined, color: AvaColors.danger),
-              title: const Text('Remove contact', style: TextStyle(color: AvaColors.danger)),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.userMinus(PhosphorIconsStyle.bold), color: Zine.coral),
+              title: Text('Remove contact', style: ZineText.value(size: 15, color: Zine.coral)),
               onTap: () { Navigator.pop(ctx); _removeContact(c); }),
       ])),
     );
@@ -521,27 +536,29 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   void _openNewChatMenu() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 8),
         ListTile(
-          leading: const Icon(Icons.person_add_alt_1, color: AvaColors.brand),
-          title: const Text('New chat'),
-          subtitle: const Text('Add someone by email, phone or @handle'),
+          leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.blue),
+          title: Text('New chat', style: ZineText.value(size: 15)),
+          subtitle: Text('Add someone by email, phone or @handle', style: ZineText.sub(size: 12.5)),
           onTap: () { Navigator.pop(ctx); _openAddContact(); }),
         ListTile(
-          leading: const Icon(Icons.groups_outlined, color: AvaColors.brand),
-          title: const Text('New group'),
+          leading: ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: Zine.lime),
+          title: Text('New group', style: ZineText.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _openNewGroup(); }),
         ListTile(
-          leading: const Icon(Icons.diversity_3, color: AvaColors.brand),
-          title: const Text('New community'),
+          leading: ZineIconBadge(icon: PhosphorIcons.usersFour(PhosphorIconsStyle.bold), color: Zine.lilac),
+          title: Text('New community', style: ZineText.value(size: 15)),
           onTap: () { Navigator.pop(ctx); setState(() => _tab = 2); }),
         ListTile(
-          leading: const Icon(Icons.share_outlined, color: Color(0xFF25D366)),
-          title: const Text('Invite friends to AvaTok'),
-          subtitle: const Text('Find people from your phone contacts'),
+          leading: ZineIconBadge(icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: Zine.mint),
+          title: Text('Invite friends to AvaTok', style: ZineText.value(size: 15)),
+          subtitle: Text('Find people from your phone contacts', style: ZineText.sub(size: 12.5)),
           onTap: () { Navigator.pop(ctx); _openSearch(); }),
         const SizedBox(height: 8),
       ])),
@@ -642,7 +659,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.white,
+      backgroundColor: Zine.paper,
       drawer: AvaSidebar(
         enabledApps: _enabledApps,
         accountKind: _accountKind,
@@ -656,79 +673,99 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         },
         onSignOut: () { Navigator.pop(context); widget.onSignOut(); },
       ),
+      // New-chat FAB — 52px lime circle, ink border, hard shadow (the ONE lime
+      // primary action on this screen).
       floatingActionButton: _tab == 0
-          ? FloatingActionButton(
-              backgroundColor: AvaColors.brand,
-              onPressed: _openNewChatMenu,
-              child: const Icon(Icons.edit_square, color: Colors.white),
+          ? ZinePressable(
+              onTap: _openNewChatMenu,
+              color: Zine.lime,
+              radius: BorderRadius.circular(100),
+              child: SizedBox(
+                width: 52, height: 52,
+                child: Center(child: PhosphorIcon(
+                    PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 24, color: Zine.ink)),
+              ),
             )
           : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: [
-          const NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chats'),
-          NavigationDestination(
-              icon: Badge(
-                isLabelVisible: _statusCount > 0,
-                child: const Icon(Icons.donut_large_outlined),
-              ),
-              selectedIcon: const Icon(Icons.donut_large), label: 'Updates'),
-          const NavigationDestination(
-              icon: Icon(Icons.groups_2_outlined), selectedIcon: Icon(Icons.groups_2), label: 'Communities'),
-          const NavigationDestination(
-              icon: Icon(Icons.call_outlined), selectedIcon: Icon(Icons.call), label: 'Calls'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        ),
+        child: NavigationBar(
+          selectedIndex: _tab,
+          onDestinationSelected: (i) => setState(() => _tab = i),
+          backgroundColor: Zine.paper2,
+          surfaceTintColor: Colors.transparent,
+          indicatorColor: Zine.lime,
+          destinations: [
+            NavigationDestination(
+                icon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold)),
+                selectedIcon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill)),
+                label: 'Chats'),
+            NavigationDestination(
+                icon: Badge(
+                  isLabelVisible: _statusCount > 0,
+                  backgroundColor: Zine.coral,
+                  child: PhosphorIcon(PhosphorIcons.circleDashed(PhosphorIconsStyle.bold)),
+                ),
+                selectedIcon: PhosphorIcon(PhosphorIcons.circleDashed(PhosphorIconsStyle.fill)),
+                label: 'Updates'),
+            NavigationDestination(
+                icon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.bold)),
+                selectedIcon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.fill)),
+                label: 'Communities'),
+            NavigationDestination(
+                icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold)),
+                selectedIcon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.fill)),
+                label: 'Calls'),
+          ],
+        ),
       ),
       body: IndexedStack(index: _tab, children: [
         SafeArea(
         bottom: false,
         child: Column(
           children: [
-            // header
+            // Appbar band (§8): paper-2 fill, ink bottom border, AvaTalk
+            // wordmark with the marker highlight on "Talk".
             Container(
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
               decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: AvaColors.line))),
+                color: Zine.paper2,
+                border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
+              ),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                    child: const Icon(Icons.menu, size: 24)),
-                  const SizedBox(width: 10),
+                  ZineBackButton(
+                      onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                      icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
+                  const SizedBox(width: 12),
                   const Expanded(
-                    child: Text('AvaTOK',
-                        style: TextStyle(
-                            color: AvaColors.brand,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.5)),
+                    child: ZineMarkTitle(pre: 'Ava', mark: 'Talk', fontSize: 24, textAlign: TextAlign.left),
                   ),
-                  _circleBtn(Icons.search, _openSearch),
+                  ZineBackButton(
+                      onTap: _openSearch,
+                      icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)),
                   const SizedBox(width: 8),
-                  _circleBtn(Icons.person_add_alt_1, _openAddContact),
+                  ZineBackButton(
+                      onTap: _openAddContact,
+                      icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold)),
                 ],
               ),
             ),
-            // tappable search bar → full search screen
+            // Tappable search pill → full search screen.
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: GestureDetector(
+              child: ZinePressable(
                 onTap: _openSearch,
-                child: Container(
-                  height: 42,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                      color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-                  child: const Row(children: [
-                    Icon(Icons.search, size: 18, color: Color(0xFF9AA1AC)),
-                    SizedBox(width: 8),
-                    Text('Search by name, email or phone',
-                        style: TextStyle(color: Color(0xFF9AA1AC), fontSize: 14)),
-                  ]),
-                ),
+                radius: BorderRadius.circular(100),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(children: [
+                  PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                      size: 18, color: Zine.inkSoft),
+                  const SizedBox(width: 10),
+                  Text('Search by name, email or phone', style: ZineText.sub(size: 14)),
+                ]),
               ),
             ),
             // filter chips
@@ -755,16 +792,17 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                       onTap: () => setState(() => _showArchived = !_showArchived),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        decoration: const BoxDecoration(
-                            border: Border(bottom: BorderSide(color: AvaColors.line))),
+                        decoration: BoxDecoration(
+                            border: Border(bottom: BorderSide(
+                                color: Zine.ink.withValues(alpha: 0.25), width: 2))),
                         child: Row(children: [
-                          const Icon(Icons.archive_outlined, size: 22, color: AvaColors.sub),
+                          PhosphorIcon(PhosphorIcons.archive(PhosphorIconsStyle.bold),
+                              size: 20, color: Zine.inkSoft),
                           const SizedBox(width: 16),
-                          const Text('Archived',
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                          Text('Archived', style: ZineText.value(size: 15)),
                           const Spacer(),
-                          Text(_showArchived ? 'Hide' : '$archivedCount',
-                              style: const TextStyle(color: AvaColors.brand, fontWeight: FontWeight.w700)),
+                          Text(_showArchived ? 'HIDE' : '$archivedCount',
+                              style: ZineText.tag(size: 12, color: Zine.blueInk)),
                         ]),
                       ),
                     ),
@@ -773,14 +811,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                       padding: EdgeInsets.only(top: 60),
                       child: Center(
                           child: SizedBox(width: 24, height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AvaColors.brand))),
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))),
                     ),
                   if (rows.isEmpty && _booted)
                     Padding(
                       padding: const EdgeInsets.only(top: 60),
-                      child: Center(child: Text(
-                          _filter == 'all' ? 'No chats yet — tap ✎ to start one' : 'Nothing here',
-                          style: const TextStyle(color: AvaColors.sub))),
+                      child: Center(child: ZineEmptyState(
+                          icon: PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                          text: _filter == 'all' ? 'No chats yet — tap + to start one' : 'Nothing here')),
                     ),
                   for (final c in rows)
                     _ChatRow(
@@ -805,7 +843,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   Widget _filterChips() {
     Widget chip(String label, String value) {
-      final on = _filter == value;
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: GestureDetector(
@@ -815,25 +852,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   if (mounted) setState(() { _customFilters = list; if (_filter == value) _filter = 'all'; });
                 }
               : null,
-          child: ChoiceChip(
-            label: Text(label),
-            selected: on,
-            showCheckmark: false,
-            selectedColor: AvaColors.brand,
-            backgroundColor: AvaColors.soft,
-            side: BorderSide.none,
-            labelStyle: TextStyle(color: on ? Colors.white : AvaColors.ink, fontWeight: FontWeight.w700, fontSize: 13),
-            onSelected: (_) => setState(() => _filter = value),
+          child: ZineChip(
+            label: label,
+            active: _filter == value,
+            onTap: () => setState(() => _filter = value),
           ),
         ),
       );
     }
 
     return SizedBox(
-      height: 44,
+      height: 48,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
         children: [
           chip('All', 'all'),
           chip('Favourites', 'fav'),
@@ -842,11 +874,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           for (final f in _customFilters) chip(f.name, 'c:${f.name}'),
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: ActionChip(
-              label: const Icon(Icons.add, size: 18, color: AvaColors.ink),
-              backgroundColor: AvaColors.soft,
-              side: BorderSide.none,
-              onPressed: _addCustomFilter,
+            child: ZinePressable(
+              onTap: _addCustomFilter,
+              radius: BorderRadius.circular(100),
+              boxShadow: const <BoxShadow>[],
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 15, color: Zine.ink),
             ),
           ),
         ],
@@ -854,13 +887,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _circleBtn(IconData i, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36, height: 36,
-          decoration: const BoxDecoration(color: AvaColors.soft, shape: BoxShape.circle),
-          child: Icon(i, size: 18, color: AvaColors.ink),
+  /// Bordered-circle avatar — zine avatars always sit inside an ink ring.
+  Widget _ring(Widget avatar) => Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Zine.ink, width: 2),
         ),
+        child: avatar,
       );
 
   Widget _statusItem() => Padding(
@@ -870,16 +903,25 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
               .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _statusCount = l.length); })),
           child: Column(children: [
-            Stack(children: [
-              Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56),
+            Stack(clipBehavior: Clip.none, children: [
+              _ring(Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56)),
               if (_statusCount > 0)
                 Positioned(right: 0, top: 0, child: Container(width: 14, height: 14,
-                    decoration: BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2)))),
-              const Positioned(right: 0, bottom: 0, child: Icon(Icons.add_circle, color: AvaColors.brand, size: 18)),
+                    decoration: BoxDecoration(color: Zine.coral, shape: BoxShape.circle,
+                        border: Border.all(color: Zine.ink, width: 2)))),
+              Positioned(
+                right: -2, bottom: -2,
+                child: Container(
+                  width: 20, height: 20,
+                  decoration: BoxDecoration(
+                      color: Zine.lime, shape: BoxShape.circle,
+                      border: Border.all(color: Zine.ink, width: 2)),
+                  child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 11, color: Zine.ink),
+                ),
+              ),
             ]),
             const SizedBox(height: 6),
-            const Text('Status', style: TextStyle(fontSize: 11, color: AvaColors.sub, fontWeight: FontWeight.w600)),
+            Text('STATUS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
           ]),
         ),
       );
@@ -894,12 +936,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               width: 56, height: 56,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: AvaColors.brand, width: 2, style: BorderStyle.solid),
+                color: Zine.card,
+                border: Border.all(color: Zine.ink, width: 2),
               ),
-              child: const Icon(Icons.add, color: AvaColors.brand, size: 24),
+              child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Zine.ink, size: 22),
             ),
             const SizedBox(height: 6),
-            const Text('Add', style: TextStyle(fontSize: 11, color: AvaColors.sub, fontWeight: FontWeight.w600)),
+            Text('ADD', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
           ],
         ),
       ),
@@ -912,23 +955,23 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           child: Column(
             children: [
               Stack(children: [
-                Avatar(seed: c.seed, name: c.name, size: 56, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+                _ring(Avatar(seed: c.seed, name: c.name, size: 56, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
                 Positioned(
                   bottom: 2, right: 2,
                   child: Container(
                     width: 14, height: 14,
                     decoration: BoxDecoration(
-                        color: AvaColors.success, shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2)),
+                        color: Zine.mint, shape: BoxShape.circle,
+                        border: Border.all(color: Zine.ink, width: 2)),
                   ),
                 ),
               ]),
               const SizedBox(height: 6),
               SizedBox(
                 width: 60,
-                child: Text(c.name.split(' ').first,
+                child: Text(c.name.split(' ').first.toUpperCase(),
                     maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 11, color: AvaColors.sub, fontWeight: FontWeight.w600)),
+                    style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
               ),
             ],
           ),
@@ -955,15 +998,23 @@ class _ChatRow extends StatelessWidget {
         child: Row(
           children: [
             Stack(children: [
-              Avatar(seed: chat.seed, name: chat.name, size: 54, avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl),
+              // Bordered circle avatar (zine §6).
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Zine.ink, width: 2),
+                ),
+                child: Avatar(seed: chat.seed, name: chat.name, size: 54,
+                    avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl),
+              ),
               if (chat.online)
                 Positioned(
                   bottom: 1, right: 1,
                   child: Container(
                     width: 13, height: 13,
                     decoration: BoxDecoration(
-                        color: AvaColors.success, shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2)),
+                        color: Zine.mint, shape: BoxShape.circle,
+                        border: Border.all(color: Zine.ink, width: 2)),
                   ),
                 ),
             ]),
@@ -975,19 +1026,19 @@ class _ChatRow extends StatelessWidget {
                   Row(children: [
                     Flexible(child: Text(chat.name,
                         maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5))),
-                    if (muted) const Padding(padding: EdgeInsets.only(left: 4),
-                        child: Icon(Icons.notifications_off, size: 13, color: AvaColors.sub)),
-                    if (pinned) const Padding(padding: EdgeInsets.only(left: 4),
-                        child: Icon(Icons.push_pin, size: 13, color: AvaColors.sub)),
+                        style: ZineText.value(size: 15.5))),
+                    if (muted) Padding(padding: const EdgeInsets.only(left: 4),
+                        child: PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.bold),
+                            size: 13, color: Zine.inkSoft)),
+                    if (pinned) Padding(padding: const EdgeInsets.only(left: 4),
+                        child: PhosphorIcon(PhosphorIcons.pushPin(PhosphorIconsStyle.fill),
+                            size: 13, color: Zine.inkSoft)),
                   ]),
                   const SizedBox(height: 3),
                   Text(chat.last,
                       maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: chat.unread > 0 ? AvaColors.ink : AvaColors.sub,
-                          fontSize: 13.5,
-                          fontWeight: chat.unread > 0 ? FontWeight.w600 : FontWeight.w400)),
+                      style: ZineText.sub(size: 13.5,
+                          color: chat.unread > 0 ? Zine.ink : Zine.inkSoft)),
                 ],
               ),
             ),
@@ -995,23 +1046,28 @@ class _ChatRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(chat.time,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        color: chat.unread > 0 ? AvaColors.brand : AvaColors.sub,
-                        fontWeight: chat.unread > 0 ? FontWeight.w700 : FontWeight.w400)),
+                // Mono timestamp.
+                Text(chat.time.toUpperCase(),
+                    style: ZineText.tag(size: 10,
+                        color: chat.unread > 0 ? Zine.blueInk : Zine.inkSoft)),
                 const SizedBox(height: 6),
                 if (chat.unread > 0)
+                  // Unread badge — lime circle with ink border + ink count.
                   Container(
-                    padding: const EdgeInsets.all(6),
-                    constraints: const BoxConstraints(minWidth: 20),
-                    decoration: const BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle),
-                    child: Text('${chat.unread}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                    decoration: BoxDecoration(
+                        color: Zine.lime, shape: BoxShape.circle,
+                        border: Border.all(color: Zine.ink, width: 2)),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Text('${chat.unread}',
+                          textAlign: TextAlign.center,
+                          style: ZineText.tag(size: 10)),
+                    ),
                   )
                 else
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 22),
               ],
             ),
           ],

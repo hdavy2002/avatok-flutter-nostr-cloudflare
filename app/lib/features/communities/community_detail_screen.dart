@@ -1,12 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/community_store.dart';
 import '../../core/config.dart';
 import '../../core/group_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../sync/legacy_stubs.dart';
@@ -71,12 +73,13 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New channel'),
-        content: TextField(controller: ctrl, autofocus: true,
-            decoration: const InputDecoration(hintText: 'Channel name (e.g. General)')),
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('New channel', style: ZineText.cardTitle(size: 21)),
+        content: ZineField(controller: ctrl, autofocus: true, hint: 'Channel name (e.g. General)'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Create')),
+          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
+          ZineButton(label: 'Create', variant: ZineButtonVariant.blue, fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
         ],
       ),
     );
@@ -99,8 +102,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final picked = await showModalBottomSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      backgroundColor: Zine.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        side: BorderSide(color: Zine.ink, width: Zine.bw),
+      ),
       builder: (ctx) => _MemberPicker(contacts: widget.contacts, already: _c.members.toSet()),
     );
     if (picked == null || picked.isEmpty) return;
@@ -127,13 +133,25 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
 
   void _shareCode() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Community code'),
+      backgroundColor: Zine.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+      title: Text('Community code', style: ZineText.cardTitle(size: 21)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Share this code so others can join:'),
-        const SizedBox(height: 10),
-        SelectableText(_c.id, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700)),
+        Text('Share this code so others can join:', style: ZineText.sub(size: 14)),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: Zine.paper2,
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            border: Zine.border,
+          ),
+          child: SelectableText(_c.id, style: ZineText.tag(size: 13)),
+        ),
       ]),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
+      actions: [
+        ZineButton(label: 'Done', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
+      ],
     ));
   }
 
@@ -154,75 +172,119 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: Text(_c.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: _c.name,
+        tag: '${_c.members.length} members · ${_c.groups.length} channels',
         actions: [
           PopupMenuButton<String>(
+            color: Zine.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Zine.rSm),
+              side: const BorderSide(color: Zine.ink, width: 2),
+            ),
             onSelected: (v) {
               if (v == 'code') _shareCode();
               if (v == 'members') _addMembers();
               if (v == 'leave') _leave();
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'members', child: Text('Add members')),
-              PopupMenuItem(value: 'code', child: Text('Share code')),
-              PopupMenuItem(value: 'leave', child: Text('Leave community')),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'members', child: Text('Add members', style: ZineText.value(size: 14))),
+              PopupMenuItem(value: 'code', child: Text('Share code', style: ZineText.value(size: 14))),
+              PopupMenuItem(value: 'leave', child: Text('Leave community', style: ZineText.value(size: 14, color: Zine.coral))),
             ],
+            child: Container(
+              width: 42, height: 42,
+              decoration: BoxDecoration(
+                color: Zine.card,
+                shape: BoxShape.circle,
+                border: Zine.border,
+                boxShadow: Zine.shadowXs,
+              ),
+              child: Center(
+                child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+              ),
+            ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AvaColors.brand,
-        onPressed: _addChannel,
-        child: const Icon(Icons.add, color: Colors.white),
+      floatingActionButton: ZinePressable(
+        onTap: _addChannel,
+        color: Zine.lime,
+        radius: BorderRadius.circular(100),
+        child: SizedBox(
+          width: 56, height: 56,
+          child: Center(
+            child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 24, color: Zine.ink),
+          ),
+        ),
       ),
       body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
         children: [
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(18)),
+          // Community header card — zine band: blue fill, ink border, hard shadow.
+          ZineCard(
+            color: Zine.blue,
             child: Row(children: [
-              Container(
-                width: 56, height: 56,
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                child: const Icon(Icons.groups_2, color: AvaColors.brand, size: 30),
-              ),
+              ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: Zine.card, size: 52),
               const SizedBox(width: 14),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(_c.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(_c.name, style: ZineText.cardTitle(size: 20)),
                 const SizedBox(height: 4),
                 Text(_c.about.isNotEmpty ? _c.about : '${_c.members.length} members',
-                    style: const TextStyle(color: AvaColors.sub)),
+                    style: ZineText.sub(size: 13.5, color: Zine.ink)),
               ])),
             ]),
           ),
-          const Padding(padding: EdgeInsets.fromLTRB(20, 4, 20, 6),
-              child: Text('CHANNELS', style: TextStyle(color: AvaColors.sub, fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700))),
-          for (final g in _channels)
-            ListTile(
-              leading: Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.tag, color: AvaColors.brand),
-              ),
-              title: Text(g.name.contains(' · ') ? g.name.split(' · ').last : g.name,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text('${g.members.length} members', style: const TextStyle(color: AvaColors.sub)),
-              onTap: () => _openChannel(g),
-            ),
-          if (_channels.isEmpty)
-            const Padding(padding: EdgeInsets.all(20),
-                child: Center(child: Text('No channels yet — tap + to add one', style: TextStyle(color: AvaColors.sub)))),
-          const SizedBox(height: 8),
-          ListTile(
-            leading: const Icon(Icons.person_add_alt_1, color: AvaColors.brand),
-            title: const Text('Add members', style: TextStyle(fontWeight: FontWeight.w700)),
-            onTap: _addMembers,
+          const SizedBox(height: 18),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 9),
+            child: Text('CHANNELS', style: ZineText.kicker()),
           ),
-          const SizedBox(height: 80),
+          for (var i = 0; i < _channels.length; i++) ...[
+            ZineCard(
+              radius: Zine.rSm,
+              padding: const EdgeInsets.all(12),
+              boxShadow: Zine.shadowXs,
+              onTap: () => _openChannel(_channels[i]),
+              child: Row(children: [
+                ZineIconBadge(
+                  icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+                  color: Zine.accents[i % Zine.accents.length],
+                  size: 40,
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text(
+                    _channels[i].name.contains(' · ') ? _channels[i].name.split(' · ').last : _channels[i].name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.cardTitle(size: 16))),
+                const SizedBox(width: 8),
+                Text('${_channels[i].members.length} MEMBERS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+              ]),
+            ),
+            const SizedBox(height: 11),
+          ],
+          if (_channels.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(child: ZineEmptyState(
+                icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+                text: 'No channels yet — tap + to start one.',
+              )),
+            ),
+          const SizedBox(height: 8),
+          ZineCard(
+            radius: Zine.rSm,
+            padding: const EdgeInsets.all(12),
+            boxShadow: Zine.shadowXs,
+            onTap: _addMembers,
+            child: Row(children: [
+              ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.mint, size: 40),
+              const SizedBox(width: 12),
+              Expanded(child: Text('Add members', style: ZineText.cardTitle(size: 16))),
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+            ]),
+          ),
         ],
       ),
     );
@@ -246,20 +308,22 @@ class _MemberPickerState extends State<_MemberPicker> {
     return SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           child: Row(children: [
-            const Text('Add members', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            Text('Add members', style: ZineText.cardTitle(size: 19)),
             const Spacer(),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AvaColors.brand),
+            ZineButton(
+              label: 'Add (${_picked.length})',
+              fontSize: 15,
               onPressed: _picked.isEmpty ? null : () => Navigator.pop(context, _picked),
-              child: Text('Add (${_picked.length})'),
             ),
           ]),
         ),
         if (selectable.isEmpty)
-          const Padding(padding: EdgeInsets.all(24),
-              child: Text('No more contacts to add', style: TextStyle(color: AvaColors.sub))),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('No more contacts to add', style: ZineText.sub(size: 14)),
+          ),
         Flexible(
           child: ListView.builder(
             shrinkWrap: true,
@@ -267,14 +331,26 @@ class _MemberPickerState extends State<_MemberPicker> {
             itemBuilder: (_, i) {
               final c = selectable[i];
               final on = _picked.contains(c.npub);
-              return CheckboxListTile(
-                value: on,
-                activeColor: AvaColors.brand,
-                controlAffinity: ListTileControlAffinity.trailing,
-                onChanged: (v) => setState(() => v == true ? _picked.add(c.npub) : _picked.remove(c.npub)),
-                secondary: Avatar(seed: c.seed, name: c.name, size: 42),
-                title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: c.subtitle.isNotEmpty ? Text(c.subtitle, style: const TextStyle(color: AvaColors.sub)) : null,
+              return ListTile(
+                onTap: () => setState(() => on ? _picked.remove(c.npub) : _picked.add(c.npub)),
+                leading: Container(
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+                  child: Avatar(seed: c.seed, name: c.name, size: 42),
+                ),
+                title: Text(c.name, style: ZineText.value(size: 15)),
+                subtitle: c.subtitle.isNotEmpty ? Text(c.subtitle, style: ZineText.sub(size: 12.5)) : null,
+                trailing: Container(
+                  width: 26, height: 26,
+                  decoration: BoxDecoration(
+                    color: on ? Zine.lime : Zine.card,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Zine.ink, width: 2),
+                    boxShadow: on ? Zine.shadowXs : null,
+                  ),
+                  child: on
+                      ? Center(child: PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 14, color: Zine.ink))
+                      : null,
+                ),
               );
             },
           ),

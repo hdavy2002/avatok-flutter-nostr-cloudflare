@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/community_store.dart';
 import '../../core/config.dart';
 import '../../core/group_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../sync/legacy_stubs.dart';
 import '../avatok/contacts.dart';
@@ -58,17 +60,17 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New community'),
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('New community', style: ZineText.cardTitle(size: 21)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: nameCtrl, autofocus: true,
-              decoration: const InputDecoration(hintText: 'Community name')),
-          const SizedBox(height: 10),
-          TextField(controller: aboutCtrl,
-              decoration: const InputDecoration(hintText: 'What is it about? (optional)')),
+          ZineField(controller: nameCtrl, autofocus: true, hint: 'Community name'),
+          const SizedBox(height: 12),
+          ZineField(controller: aboutCtrl, hint: 'What is it about? (optional)'),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
+          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx, false)),
+          ZineButton(label: 'Create', fontSize: 15, onPressed: () => Navigator.pop(ctx, true)),
         ],
       ),
     );
@@ -125,12 +127,13 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     final code = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Join a community'),
-        content: TextField(controller: ctrl, autofocus: true,
-            decoration: const InputDecoration(hintText: 'Community code')),
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('Join a community', style: ZineText.cardTitle(size: 21)),
+        content: ZineField(controller: ctrl, autofocus: true, hint: 'Community code'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Join')),
+          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
+          ZineButton(label: 'Join', variant: ZineButtonVariant.blue, fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
         ],
       ),
     );
@@ -153,42 +156,62 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('Communities', style: TextStyle(fontWeight: FontWeight.w800)),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'Communities',
+        markWord: 'Communities',
+        tag: 'groups that belong together',
+        showBack: Navigator.of(context).canPop(),
         actions: [
-          IconButton(onPressed: _joinByCode, icon: const Icon(Icons.login), tooltip: 'Join with code'),
+          ZineBackButton(
+            icon: PhosphorIcons.signIn(PhosphorIconsStyle.bold),
+            onTap: _joinByCode,
+          ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AvaColors.brand,
+      floatingActionButton: ZineButton(
+        label: 'New community',
+        fontSize: 17,
+        icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+        trailingIcon: false,
         onPressed: _createCommunity,
-        icon: const Icon(Icons.group_add, color: Colors.white),
-        label: const Text('New community', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AvaColors.brand))
+          ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
           : _communities.isEmpty
               ? _empty()
-              : ListView.builder(
-                  padding: const EdgeInsets.only(top: 6, bottom: 90),
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
                   itemCount: _communities.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (_, i) {
                     final c = _communities[i];
-                    return ListTile(
-                      leading: Container(
-                        width: 52, height: 52,
-                        decoration: BoxDecoration(
-                            color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
-                        child: const Icon(Icons.groups_2, color: AvaColors.brand),
-                      ),
-                      title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: Text(
-                          c.about.isNotEmpty ? c.about : '${c.members.length} members · ${c.groups.length} channels',
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: AvaColors.sub)),
+                    return ZineCard(
+                      radius: Zine.rSm,
+                      padding: const EdgeInsets.all(13),
                       onTap: () => _openDetail(c),
+                      child: Row(children: [
+                        ZineIconBadge(
+                          icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                          color: Zine.accents[i % Zine.accents.length],
+                          size: 48,
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                          Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: ZineText.cardTitle(size: 17)),
+                          const SizedBox(height: 3),
+                          Text(c.about.isNotEmpty ? c.about : 'A place for your people',
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: ZineText.sub(size: 13)),
+                        ])),
+                        const SizedBox(width: 10),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                          Text('${c.members.length} MEMBERS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+                          const SizedBox(height: 3),
+                          Text('${c.groups.length} CHANNELS', style: ZineText.tag(size: 9.5, color: Zine.inkMute)),
+                        ]),
+                      ]),
                     );
                   },
                 ),
@@ -199,20 +222,18 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.groups_2_outlined, size: 64, color: AvaColors.sub),
-            const SizedBox(height: 16),
-            const Text('No communities yet',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-            const SizedBox(height: 8),
-            const Text(
-                'Communities keep related groups together — like a school, a team, or a neighbourhood.',
-                textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub)),
+            ZineEmptyState(
+              icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+              text: 'No communities yet — communities keep related groups together, like a school, a team, or a neighbourhood.',
+            ),
             const SizedBox(height: 20),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: AvaColors.brand),
+            ZineButton(
+              label: 'Start a community',
+              variant: ZineButtonVariant.blue,
+              icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              fontSize: 17,
               onPressed: _createCommunity,
-              icon: const Icon(Icons.group_add),
-              label: const Text('Start a community'),
             ),
           ]),
         ),

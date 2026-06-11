@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/config.dart';
 import '../../core/group_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../sync/legacy_stubs.dart';
@@ -70,51 +72,43 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: const Text('New group'),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'New group',
+        markWord: 'group',
         actions: [
-          TextButton(
-            onPressed: _canCreate ? _create : null,
-            child: Text('Create',
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: _canCreate ? AvaColors.brand : const Color(0xFFBFC4CC))),
+          // The ONE lime primary action on this screen.
+          ZineButton(
+            label: _creating ? '…' : 'Create',
+            fontSize: 16,
+            onPressed: _canCreate && !_creating ? _create : null,
           ),
         ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                  color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-              child: TextField(
-                controller: _name,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                    hintText: 'Group name', border: InputBorder.none,
-                    icon: Icon(Icons.groups_outlined, color: AvaColors.sub)),
-              ),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: ZineField(
+              controller: _name,
+              hint: 'Group name',
+              leadIcon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+              onChanged: (_) => setState(() {}),
             ),
           ),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
             child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: Text('ADD MEMBERS',
-                  style: TextStyle(color: AvaColors.sub, fontSize: 11,
-                      letterSpacing: 1, fontWeight: FontWeight.w700)),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+              child: Text('ADD MEMBERS', style: ZineText.kicker()),
             ),
           ),
           Expanded(
             child: widget.contacts.isEmpty
-                ? const Center(
-                    child: Text('Add contacts first to build a group',
-                        style: TextStyle(color: AvaColors.sub)))
+                ? Center(
+                    child: ZineEmptyState(
+                        icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                        text: 'Add contacts first to build a group'))
                 : ListView.builder(
                     itemCount: widget.contacts.length,
                     itemBuilder: (_, i) {
@@ -122,15 +116,22 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                       final on = _picked.contains(c.npub);
                       return CheckboxListTile(
                         value: on,
-                        activeColor: AvaColors.brand,
+                        activeColor: Zine.ink,
+                        checkColor: Zine.lime,
+                        side: const BorderSide(color: Zine.ink, width: 2),
                         controlAffinity: ListTileControlAffinity.trailing,
                         onChanged: (v) => setState(() =>
                             v == true ? _picked.add(c.npub) : _picked.remove(c.npub)),
-                        secondary: Avatar(seed: c.seed, name: c.name, size: 42),
-                        title: Text(c.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                        secondary: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Zine.ink, width: 2),
+                          ),
+                          child: Avatar(seed: c.seed, name: c.name, size: 42),
+                        ),
+                        title: Text(c.name, style: ZineText.value(size: 15)),
                         subtitle: c.handle.isNotEmpty
-                            ? Text(c.atHandle, style: const TextStyle(color: AvaColors.sub))
+                            ? Text(c.atHandle, style: ZineText.sub(size: 12.5))
                             : null,
                       );
                     },

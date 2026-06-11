@@ -2,12 +2,14 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_storage.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/notifications_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../core/verse_api.dart';
 import '../../identity/identity.dart';
 import '../avabrain/agent_inbox_screen.dart';
@@ -148,67 +150,72 @@ class _InboxScreenState extends State<InboxScreen> {
   // ---- UI ---------------------------------------------------------------
 
   static const _chipDefs = [
-    ('all', 'All', Icons.all_inbox),
-    ('event', 'Events', Icons.event),
-    ('channel', 'Channels', Icons.podcasts),
-    ('consult', 'Consults', Icons.video_call_outlined),
-    ('dm', 'DMs', Icons.chat_bubble_outline),
-    ('system', 'System', Icons.notifications_none),
+    ('all', 'All'),
+    ('event', 'Events'),
+    ('channel', 'Channels'),
+    ('consult', 'Consults'),
+    ('dm', 'DMs'),
+    ('system', 'System'),
   ];
 
-  static const _sourceColor = <String, Color>{
-    'event': Color(0xFFF59E0B), 'channel': Color(0xFF8B5CF6), 'consult': Color(0xFF0EA5E9),
-    'dm': AvaColors.brand, 'system': AvaColors.sub,
+  // Accent rotation per source (§6) — flat zine fills only.
+  static const _sourceAccent = <String, Color>{
+    'event': Zine.lime, 'channel': Zine.lilac, 'consult': Zine.blue,
+    'dm': Zine.mint, 'system': Zine.coral,
   };
   static const _sourceLabel = <String, String>{
-    'event': 'Event inquiry', 'channel': 'Channel', 'consult': 'Consult', 'dm': 'DM', 'system': 'System',
+    'event': 'Event', 'channel': 'Channel', 'consult': 'Consult', 'dm': 'DM', 'system': 'System',
   };
 
   @override
   Widget build(BuildContext context) {
     final shown = _filter == 'all' ? _rows : _rows.where((r) => r.source == _filter).toList();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AvaInbox', style: TextStyle(fontWeight: FontWeight.w800)),
-        backgroundColor: const Color(0xFF0EA5E9), foregroundColor: Colors.white,
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'AvaInbox',
+        markWord: 'Inbox',
+        tag: 'every message · one list',
         actions: [
-          IconButton(
-            tooltip: 'Agent inbox',
-            icon: const Icon(Icons.smart_toy_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentInboxScreen())),
+          ZineBackButton(
+            icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentInboxScreen())),
           ),
         ],
       ),
       body: Column(children: [
         SizedBox(
-          height: 52,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), children: [
+          height: 56,
+          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9), children: [
             for (final c in _chipDefs)
               Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  avatar: Icon(c.$3, size: 15),
-                  label: Text(c.$2),
-                  selected: _filter == c.$1,
-                  onSelected: (_) => setState(() => _filter = c.$1),
+                padding: const EdgeInsets.only(right: 9),
+                child: ZineChip(
+                  label: c.$2,
+                  active: _filter == c.$1,
+                  onTap: () => setState(() => _filter = c.$1),
                 ),
               ),
           ]),
         ),
-        const Divider(height: 1),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
               : RefreshIndicator(
                   onRefresh: _load,
+                  color: Zine.blueInk,
                   child: shown.isEmpty
-                      ? ListView(children: const [
-                          SizedBox(height: 120),
-                          Center(child: Text('Nothing here yet', style: TextStyle(color: AvaColors.sub))),
+                      ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [
+                          const SizedBox(height: 120),
+                          Center(child: ZineEmptyState(
+                              icon: PhosphorIcons.tray(PhosphorIconsStyle.bold),
+                              text: 'All caught up')),
                         ])
                       : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
                           itemCount: shown.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+                          separatorBuilder: (_, __) => const SizedBox(height: 11),
                           itemBuilder: (_, i) => _tile(shown[i]),
                         ),
                 ),
@@ -218,40 +225,70 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   Widget _tile(_Row r) {
-    final color = _sourceColor[r.source] ?? AvaColors.sub;
-    return ListTile(
-      leading: r.conv != null
-          ? Avatar(seed: r.conv!.id, name: r.title, size: 44, avatarUrl: r.conv!.avatarUrl)
-          : CircleAvatar(backgroundColor: color.withValues(alpha: .14),
-              child: Icon(r.notice != null ? _noticeIcon(r.notice!.type) : Icons.notifications_none, color: color, size: 20)),
-      title: Row(children: [
-        Expanded(child: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontWeight: r.unread ? FontWeight.w800 : FontWeight.w600, fontSize: 14))),
-        Text(_when(r.ts), style: const TextStyle(color: AvaColors.sub, fontSize: 11)),
-      ]),
-      subtitle: Row(children: [
-        Container(
-          margin: const EdgeInsets.only(right: 6, top: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-          decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
-          child: Text(_sourceLabel[r.source] ?? r.source,
-              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
-        ),
-        Expanded(child: Text(r.snippet, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12.5, color: AvaColors.sub))),
-        if (r.unread)
-          Container(width: 9, height: 9, decoration: const BoxDecoration(color: AvaColors.brand, shape: BoxShape.circle)),
-      ]),
+    final accent = _sourceAccent[r.source] ?? Zine.blue;
+    return ZinePressable(
       onTap: () => _open(r),
+      radius: BorderRadius.circular(Zine.rSm),
+      boxShadow: Zine.shadowXs,
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        if (r.conv != null)
+          Container(
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+            child: Avatar(seed: r.conv!.id, name: r.title, size: 42, avatarUrl: r.conv!.avatarUrl),
+          )
+        else
+          ZineIconBadge(
+            icon: r.notice != null ? _noticeIcon(r.notice!.type) : PhosphorIcons.bell(PhosphorIconsStyle.bold),
+            color: accent,
+            size: 42,
+          ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Expanded(child: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 14.5, weight: r.unread ? FontWeight.w900 : FontWeight.w800))),
+              const SizedBox(width: 8),
+              Text(_when(r.ts).toUpperCase(), style: ZineText.tag(size: 10, color: Zine.inkMute)),
+            ]),
+            const SizedBox(height: 4),
+            Row(children: [
+              Container(
+                margin: const EdgeInsets.only(right: 7),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: Zine.ink, width: 2),
+                ),
+                child: Text((_sourceLabel[r.source] ?? r.source).toUpperCase(),
+                    style: ZineText.tag(size: 9, color: accent == Zine.coral ? Colors.white : Zine.ink)),
+              ),
+              Expanded(child: Text(r.snippet, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.sub(size: 12.5))),
+              if (r.unread)
+                Container(
+                  margin: const EdgeInsets.only(left: 7),
+                  width: 11, height: 11,
+                  decoration: BoxDecoration(
+                    color: Zine.lime, shape: BoxShape.circle,
+                    border: Border.all(color: Zine.ink, width: 2),
+                  ),
+                ),
+            ]),
+          ]),
+        ),
+      ]),
     );
   }
 
   IconData _noticeIcon(String type) => switch (type) {
-        'wallet' || 'payment' => Icons.account_balance_wallet_outlined,
-        'moderation' => Icons.shield_outlined,
-        'social' => Icons.favorite_outline,
-        'brain' => Icons.psychology_outlined,
-        _ => Icons.notifications_none,
+        'wallet' || 'payment' => PhosphorIcons.wallet(PhosphorIconsStyle.bold),
+        'moderation' => PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
+        'social' => PhosphorIcons.heart(PhosphorIconsStyle.bold),
+        'brain' => PhosphorIcons.brain(PhosphorIconsStyle.bold),
+        _ => PhosphorIcons.bell(PhosphorIconsStyle.bold),
       };
 
   String _when(int ts) {
