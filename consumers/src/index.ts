@@ -14,13 +14,16 @@ import { moneySweep } from "./money_sweep";
 export default {
   // Queue consumer — dispatch by queue name; ack on success, retry on transient error.
   async queue(batch: MessageBatch, env: Env): Promise<void> {
+    // Staging queues are suffixed "-staging" (e.g. wallet-transactions-staging);
+    // normalize so the same dispatch table serves prod AND staging.
+    const q = batch.queue.replace(/-staging$/, "");
     // Analytics: send the whole batch to PostHog in ONE /batch call (50× fewer HTTP calls).
-    if (batch.queue === "analytics") { await captureBatch(batch, env); return; }
+    if (q === "analytics") { await captureBatch(batch, env); return; }
 
     let ok = 0, fail = 0;
     for (const msg of batch.messages) {
       try {
-        switch (batch.queue) {
+        switch (q) {
           case "moderation": await handleModeration(msg.body as ModerationMsg, env); break;
           case "push-notifications": await handlePush(msg.body as PushMsg, env); break;
           case "email": await sendEmail(msg.body as EmailMsg, env); break;
