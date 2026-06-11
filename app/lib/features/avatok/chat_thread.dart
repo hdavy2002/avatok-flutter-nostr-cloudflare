@@ -101,7 +101,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _recording = false;
   String? _recPath;
 
-  // Real end-to-end DM (NIP-44 over the relay) for npub contacts.
+  // Server-routed DM (Cloudflare-native transport) for contacts.
   AvaDm? _dm;
   AvaGroupDm? _gdm;
   Group? _group;

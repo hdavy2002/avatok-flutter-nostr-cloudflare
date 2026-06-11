@@ -13,7 +13,7 @@ import '../../sync/legacy_stubs.dart';
 import 'contacts.dart';
 
 /// Group details + member management: add from contacts, remove, leave.
-/// Membership changes re-broadcast a NIP-17 ginfo to members (and gkick to
+/// Membership changes re-broadcast a ginfo to members (and gkick to
 /// anyone removed). Pops `true` if you left the group.
 class GroupInfoScreen extends StatefulWidget {
   final Group group;

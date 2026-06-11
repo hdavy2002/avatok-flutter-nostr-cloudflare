@@ -9,7 +9,7 @@ import 'api_auth.dart';
 import 'config.dart';
 
 /// A community = a named hub owning a member list and one or more channels
-/// (each channel is a regular AvaTok group, so messaging reuses NIP-17 fan-out).
+/// (each channel is a regular AvaTok group, so messaging reuses the group fan-out).
 class Community {
   final String id;
   final String name;

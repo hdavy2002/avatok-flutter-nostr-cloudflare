@@ -1,4 +1,4 @@
-/// AvaTok chat/contact model. Static now; backed by Nostr NIP-17 DMs + contacts later.
+/// AvaTok chat/contact model. Static now; backed by the Cloudflare-native DM transport + contacts later.
 class Chat {
   final String name;
   final String seed;

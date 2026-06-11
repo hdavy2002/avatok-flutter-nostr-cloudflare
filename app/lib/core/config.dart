@@ -161,7 +161,7 @@ const String kAccountDeleteUrl = 'https://$kSignalingHost/api/account/delete';
 /// In-app notification feed (system/transactional — wallet, moderation, briefings). (NIP-98 + Clerk)
 const String kNotificationsUrl = 'https://$kSignalingHost/api/notifications';
 
-/// Kind for AvaTok 1:1 chat messages (NIP-17 chat-message kind, NIP-44 content).
+/// Kind tag for AvaTok 1:1 chat messages (legacy value, retained for routing).
 const int kDmKind = 14;
 
 /// Short-video clip cap — capture auto-stops at this length.

@@ -18,8 +18,8 @@ String _short(String s) => s.length <= 14 ? s : '${s.substring(0, 8)}…${s.subs
 enum MediaKind { image, video, audio, file }
 
 /// A media attachment in a chat — references ciphertext on R2 by content hash,
-/// plus the per-blob AES key (held locally; in full E2E this key travels inside
-/// the NIP-44/MLS-encrypted message envelope).
+/// plus the per-blob AES key (held locally; sent alongside the message over the
+/// Cloudflare-native transport).
 class ChatMedia {
   final MediaKind kind;
   final String id;        // sha256 of ciphertext (R2 key)

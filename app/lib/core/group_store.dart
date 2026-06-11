@@ -7,7 +7,7 @@ import 'account_storage.dart';
 import 'disk_cache.dart';
 
 /// A group: stable id, name, and member pubkeys (hex, x-only). Messages are
-/// fan-out gift-wrapped to every member (NIP-17), routed locally by [id].
+/// fanned out to every member over the Cloudflare-native transport, routed locally by [id].
 class Group {
   final String id;
   final String name;
