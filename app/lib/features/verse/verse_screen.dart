@@ -162,7 +162,7 @@ class _VerseScreenState extends State<VerseScreen> {
               child: Text(value, style: ZineText.value(size: 13, weight: FontWeight.w900)),
             )
           else
-            Text(value, style: ZineText.value(size: 13.5, weight: FontWeight.w900, color: color)),
+            Text(value, style: ZineText.value(size: 13.5, weight: FontWeight.w900, color: color ?? Zine.ink)),
         ]),
       );
 

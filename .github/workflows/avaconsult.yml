@@ -30,6 +30,9 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Pin to the last stable BEFORE Flutter 3.44 (which marked IconData
+          # `final` and broke phosphor_flutter 2.1.0). Matches android.yml.
+          flutter-version: 3.41.x
           channel: stable
           cache: true
 

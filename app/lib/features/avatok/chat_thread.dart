@@ -1276,7 +1276,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           Text('Forward to', style: ZineText.cardTitle(size: 18)),
           const SizedBox(height: 8),
           if (contacts.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 20),
+            Padding(padding: const EdgeInsets.symmetric(vertical: 20),
                 child: Text('No contacts yet — add someone first', style: ZineText.sub()))
           else
             ConstrainedBox(
@@ -1385,7 +1385,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       context: context, backgroundColor: Zine.paper,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Padding(padding: EdgeInsets.all(14),
+        Padding(padding: const EdgeInsets.all(14),
             child: Text('Disappearing messages', style: ZineText.cardTitle(size: 17))),
         for (final opt in [['Off', 0], ['1 hour', 3600], ['1 day', 86400], ['1 week', 604800]])
           ListTile(

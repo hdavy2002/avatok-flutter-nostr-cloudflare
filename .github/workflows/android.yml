@@ -37,6 +37,12 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Pin to the last stable BEFORE Flutter 3.44. 3.44 marked IconData
+          # `final` (breaking-changes/icondata-class-marked-final), which breaks
+          # phosphor_flutter 2.1.0 (it does `class PhosphorIconData extends
+          # IconData`). 3.41.x ships Dart 3.9 (>= the repo's 3.7 floor) and keeps
+          # the existing PhosphorIcons.name(PhosphorIconsStyle.x) API working.
+          flutter-version: 3.41.x
           channel: stable
           cache: true
 
