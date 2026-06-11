@@ -9,6 +9,7 @@ import '../core/theme.dart';
 import '../identity/identity.dart';
 import '../features/avachat/avachat_screen.dart';
 import '../features/avalive/avalive_discovery.dart';
+import '../features/avavoice/avavoice_home.dart';
 import '../features/avatok/chat_list.dart';
 import '../features/booking/avabooking_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
@@ -86,6 +87,9 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'avalive':
         _push(const AvaLiveDiscovery());
+        return;
+      case 'avavoice':
+        _push(const AvaVoiceHome());
         return;
       case 'verse':
         _push(const VerseScreen());

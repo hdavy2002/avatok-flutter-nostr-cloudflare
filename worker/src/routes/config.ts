@@ -24,6 +24,8 @@ export interface PlatformConfig {
   // Live voice translation (Gemini 3.5 Live Translate, $3/h in AvaCoins).
   translationEnabled: boolean;       // master switch for /api/translate/*
   translationGroupEnabled: boolean;  // group conferences (multi-speaker caveat)
+  // AvaVoice — creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md).
+  avavoiceEnabled: boolean;          // master switch for /api/avavoice/*
   minAppBuild: number;
 }
 
@@ -41,6 +43,7 @@ const DEFAULTS: PlatformConfig = {
   simOnlyPhoneEnabled: true,
   translationEnabled: true,
   translationGroupEnabled: true,
+  avavoiceEnabled: true,
   minAppBuild: 0,
 };
 

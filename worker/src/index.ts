@@ -35,6 +35,12 @@ import { wsInbox, sendMsg, syncMsg, receiptMsg, convList, convCreate } from "./r
 import { getConfig, putConfig } from "./routes/config";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook } from "./routes/conference";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
+import {
+  avavoiceVoices, avavoiceMarketplace, avavoiceMine, avavoiceCreateAgent, avavoiceGetAgent,
+  avavoiceUpdateAgent, avavoicePublish, avavoiceDeleteAgent, avavoiceUploadFile, avavoiceDeleteFile,
+  avavoiceAvailability, avavoiceStats, avavoiceBook, avavoiceMyBookings, avavoiceCancelBooking,
+  avavoiceCallNow, avavoiceSessionStart, avavoiceHeartbeat, avavoiceSessionStop,
+} from "./routes/avavoice";
 import { marketplaceStub } from "./routes/stubs";
 import { verseSummary, verseAnnounce, verseStatement, reviewReply } from "./routes/verse";
 import {
@@ -344,6 +350,38 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           if (act === "donate" && req.method === "POST") return await liveDonate(req, env);
           if (act === "mod" && req.method === "POST") return await liveMod(req, env);
           if (act === "state" && req.method === "GET") return await liveState(req, env);
+        }
+      }
+
+      // --- AvaVoice: creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md) ---
+      if (p === "/api/avavoice/voices" && req.method === "GET") return avavoiceVoices();
+      if (p === "/api/avavoice/marketplace" && req.method === "GET") return await avavoiceMarketplace(req, env);
+      if (p === "/api/avavoice/agents/mine" && req.method === "GET") return await avavoiceMine(req, env);
+      if (p === "/api/avavoice/agents" && req.method === "POST") return await avavoiceCreateAgent(req, env);
+      if (p === "/api/avavoice/bookings" && req.method === "POST") return await avavoiceBook(req, env);
+      if (p === "/api/avavoice/bookings/mine" && req.method === "GET") return await avavoiceMyBookings(req, env);
+      if (p === "/api/avavoice/calls/now" && req.method === "POST") return await avavoiceCallNow(req, env);
+      if (p === "/api/avavoice/sessions/start" && req.method === "POST") return await avavoiceSessionStart(req, env);
+      if (p === "/api/avavoice/sessions/heartbeat" && req.method === "POST") return await avavoiceHeartbeat(req, env);
+      if (p === "/api/avavoice/sessions/stop" && req.method === "POST") return await avavoiceSessionStop(req, env);
+      {
+        const bk = p.match(/^\/api\/avavoice\/bookings\/([A-Za-z0-9-]{1,64})\/cancel$/);
+        if (bk && req.method === "POST") return await avavoiceCancelBooking(req, env, bk[1]);
+        const af = p.match(/^\/api\/avavoice\/agents\/([A-Za-z0-9-]{1,64})\/files\/([A-Za-z0-9-]{1,64})$/);
+        if (af && req.method === "DELETE") return await avavoiceDeleteFile(req, env, af[1], af[2]);
+        const aa = p.match(/^\/api\/avavoice\/agents\/([A-Za-z0-9-]{1,64})\/(publish|unpublish|files|availability|stats)$/);
+        if (aa) {
+          if (aa[2] === "publish" && req.method === "POST") return await avavoicePublish(req, env, aa[1], true);
+          if (aa[2] === "unpublish" && req.method === "POST") return await avavoicePublish(req, env, aa[1], false);
+          if (aa[2] === "files" && req.method === "POST") return await avavoiceUploadFile(req, env, aa[1]);
+          if (aa[2] === "availability" && req.method === "GET") return await avavoiceAvailability(req, env, aa[1]);
+          if (aa[2] === "stats" && req.method === "GET") return await avavoiceStats(req, env, aa[1]);
+        }
+        const ag = p.match(/^\/api\/avavoice\/agents\/([A-Za-z0-9-]{1,64})$/);
+        if (ag) {
+          if (req.method === "GET") return await avavoiceGetAgent(req, env, ag[1]);
+          if (req.method === "PUT") return await avavoiceUpdateAgent(req, env, ag[1]);
+          if (req.method === "DELETE") return await avavoiceDeleteAgent(req, env, ag[1]);
         }
       }
 
