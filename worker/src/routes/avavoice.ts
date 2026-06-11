@@ -41,9 +41,14 @@ import { track, metric } from "../hooks";
 import { readConfig } from "./config";
 
 const APP = "avavoice";
-// Gemini Live native-audio dialog model (owner-confirmed 2026-06-11).
-// Override with env.AVAVOICE_MODEL if Google renames the preview.
+// Gemini Live models (owner-confirmed 2026-06-11). Vision agents use the 3.1
+// live preview — it takes VIDEO input (camera / screen share), so "agents that
+// can see your computer or see you through the camera" work best on it.
+// Voice-only agents stay on the native-audio dialog model for voice quality.
+// Both token-mint verified against our key. Env overrides: AVAVOICE_MODEL /
+// AVAVOICE_VISION_MODEL.
 const DEFAULT_MODEL = "gemini-live-2.5-flash-native-audio";
+const DEFAULT_VISION_MODEL = "gemini-3.1-flash-live-preview";
 export const MAX_SESSION_MIN = 60;
 export const MAX_CONCURRENT = 10;
 export const SESSION_LIMITS = new Set([5, 10, 30, 60]);
@@ -130,7 +135,9 @@ function composePrompt(a: AgentRow, limitMin: number, language: string): string 
 async function mintToken(env: Env, a: AgentRow, limitMin: number, language: string):
     Promise<{ token: string; expires_at: number; model: string } | { error: string }> {
   if (!env.GEMINI_API_KEY) return { error: "avavoice unavailable: GEMINI_API_KEY unset" };
-  const model = (env as any).AVAVOICE_MODEL || DEFAULT_MODEL;
+  const model = a.vision_enabled
+      ? ((env as any).AVAVOICE_VISION_MODEL || DEFAULT_VISION_MODEL)
+      : ((env as any).AVAVOICE_MODEL || DEFAULT_MODEL);
   // Token cannot outlive the session hard cap (+90 s grace) — spec §3.3.
   const expireMs = Date.now() + limitMin * 60_000 + 90_000;
   const setup: any = {
