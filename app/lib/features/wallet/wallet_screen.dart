@@ -1,12 +1,15 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/db.dart';
 import '../../core/money_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
+import '../payout/payout_screen.dart';
 import 'admin_money_screen.dart';
 
 // ── AvaWallet (Phase 2) ───────────────────────────────────────────────────────
@@ -16,16 +19,16 @@ import 'admin_money_screen.dart';
 // the drift wallet_ledger_cache (per-account DB file) paints instantly, then the
 // network refresh merges in.
 
-const _kTypes = <String, ({String label, IconData icon, bool inflow})>{
-  'topup': (label: 'Top-up', icon: Icons.add_card, inflow: true),
-  'purchase_hold': (label: 'Purchase', icon: Icons.shopping_bag_outlined, inflow: false),
-  'escrow_release': (label: 'Earning', icon: Icons.workspace_premium_outlined, inflow: true),
-  'refund': (label: 'Refund', icon: Icons.replay_circle_filled_outlined, inflow: true),
-  'fee': (label: 'Fee', icon: Icons.percent, inflow: false),
-  'payout': (label: 'Payout', icon: Icons.account_balance_outlined, inflow: false),
-  'donation': (label: 'Donation', icon: Icons.favorite_outline, inflow: false),
-  'storage_charge': (label: 'Storage', icon: Icons.cloud_outlined, inflow: false),
-  'adjustment': (label: 'Adjustment', icon: Icons.build_circle_outlined, inflow: true),
+final _kTypes = <String, ({String label, IconData icon, bool inflow})>{
+  'topup': (label: 'Top-up', icon: PhosphorIcons.creditCard(PhosphorIconsStyle.bold), inflow: true),
+  'purchase_hold': (label: 'Purchase', icon: PhosphorIcons.shoppingBag(PhosphorIconsStyle.bold), inflow: false),
+  'escrow_release': (label: 'Earning', icon: PhosphorIcons.medal(PhosphorIconsStyle.bold), inflow: true),
+  'refund': (label: 'Refund', icon: PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), inflow: true),
+  'fee': (label: 'Fee', icon: PhosphorIcons.percent(PhosphorIconsStyle.bold), inflow: false),
+  'payout': (label: 'Payout', icon: PhosphorIcons.bank(PhosphorIconsStyle.bold), inflow: false),
+  'donation': (label: 'Donation', icon: PhosphorIcons.heart(PhosphorIconsStyle.bold), inflow: false),
+  'storage_charge': (label: 'Storage', icon: PhosphorIcons.cloud(PhosphorIconsStyle.bold), inflow: false),
+  'adjustment': (label: 'Adjustment', icon: PhosphorIcons.wrench(PhosphorIconsStyle.bold), inflow: true),
 };
 
 String _usd(num coins) {
@@ -152,36 +155,37 @@ class _WalletScreenState extends State<WalletScreen> {
     final cents = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (c) => Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 20),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Top up wallet', style: Theme.of(c).textTheme.titleLarge),
+          Text('Top up wallet', style: ZineText.cardTitle(size: 21)),
           const SizedBox(height: 4),
-          const Text('Any amount. 1 AvaCoin = \$0.01.', style: TextStyle(color: AvaColors.sub)),
+          Text('Any amount. 1 AvaCoin = \$0.01.', style: ZineText.sub(size: 14)),
           const SizedBox(height: 16),
-          TextField(
+          ZineField(
             controller: ctrl,
             autofocus: true,
+            leadText: '\$',
+            hint: '10.00',
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(prefixText: '\$ ', hintText: '10.00', border: OutlineInputBorder()),
           ),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: [
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
             for (final v in [5, 10, 25, 50])
-              ActionChip(label: Text('\$$v'), onPressed: () => ctrl.text = v.toStringAsFixed(2)),
+              ZineSticker('\$$v', onTap: () => ctrl.text = v.toStringAsFixed(2)),
           ]),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () {
-                final d = double.tryParse(ctrl.text.trim());
-                if (d == null || d < 0.5 || d > 500) return;
-                Navigator.pop(c, (d * 100).round());
-              },
-              child: const Text('Continue to payment'),
-            ),
+          const SizedBox(height: 18),
+          ZineButton(
+            label: 'Continue to payment',
+            fullWidth: true,
+            icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+            onPressed: () {
+              final d = double.tryParse(ctrl.text.trim());
+              if (d == null || d < 0.5 || d > 500) return;
+              Navigator.pop(c, (d * 100).round());
+            },
           ),
         ]),
       ),
@@ -199,9 +203,20 @@ class _WalletScreenState extends State<WalletScreen> {
       await showDialog<void>(
         context: context,
         builder: (c) => AlertDialog(
-          title: const Text('Finishing payment…'),
-          content: const Text('Complete the payment in your browser, then come back and tap Done.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Done'))],
+          backgroundColor: Zine.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          ),
+          title: Text('Finishing payment…', style: ZineText.cardTitle()),
+          content: Text('Complete the payment in your browser, then come back and tap Done.',
+              style: ZineText.sub(size: 14)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: Text('Done', style: ZineText.link(size: 14)),
+            ),
+          ],
         ),
       );
       final before = _balance;
@@ -262,29 +277,32 @@ class _WalletScreenState extends State<WalletScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (c) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              CircleAvatar(
-                backgroundColor: (amount >= 0 ? AvaColors.success : AvaColors.danger).withValues(alpha: .12),
-                child: Icon(t?.icon ?? Icons.swap_horiz, color: amount >= 0 ? AvaColors.success : AvaColors.danger),
+              ZineIconBadge(
+                icon: t?.icon ?? PhosphorIcons.swap(PhosphorIconsStyle.bold),
+                color: amount >= 0 ? Zine.mint : Zine.coral,
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${entry['title'] ?? t?.label ?? entry['type']}',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  Text(_fullDate(((entry['created_at'] as num?) ?? 0).toInt()), style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
+                      style: ZineText.value(size: 16), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  Text(_fullDate(((entry['created_at'] as num?) ?? 0).toInt()).toUpperCase(),
+                      style: ZineText.kicker(size: 10, color: Zine.inkMute)),
                 ]),
               ),
               Text('${amount >= 0 ? '+' : '−'}${_usd(amount)}',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: amount >= 0 ? AvaColors.success : AvaColors.danger)),
+                  style: ZineText.value(size: 18, weight: FontWeight.w900,
+                      color: amount >= 0 ? Zine.mintInk : Zine.coral)),
             ]),
             const SizedBox(height: 16),
-            const Divider(height: 1),
+            Container(height: Zine.bw, color: Zine.ink),
             const SizedBox(height: 12),
             _kv('From', '${entry['debit'] ?? '—'}'),
             _kv('To', '${entry['credit'] ?? '—'}'),
@@ -295,17 +313,18 @@ class _WalletScreenState extends State<WalletScreen> {
             if (entry['ref'] != null) _kv('Reference', '${entry['ref']}'),
             _kv('Coins', '${amount.abs()}'),
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.mail_outline, size: 18),
-                label: const Text('Email me this receipt'),
-                onPressed: () async {
-                  final r = await MoneyApi.resendReceipt(id);
-                  if (c.mounted) Navigator.pop(c);
-                  _snack(r['sent'] == true ? 'Receipt sent to your email.' : 'Could not send the receipt.');
-                },
-              ),
+            ZineButton(
+              label: 'Email me this receipt',
+              variant: ZineButtonVariant.ghost,
+              fullWidth: true,
+              fontSize: 16,
+              trailingIcon: false,
+              icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
+              onPressed: () async {
+                final r = await MoneyApi.resendReceipt(id);
+                if (c.mounted) Navigator.pop(c);
+                _snack(r['sent'] == true ? 'Receipt sent to your email.' : 'Could not send the receipt.');
+              },
             ),
           ]),
         ),
@@ -319,11 +338,19 @@ class _WalletScreenState extends State<WalletScreen> {
     return '${_dateShort(ms)} ${d.year == DateTime.now().year ? d.year : ''} · ${p(d.hour)}:${p(d.minute)}'.replaceAll('  ', ' ');
   }
 
+  /// Ledger-style key/value row (§7.10): label + dotted leader + value.
   Widget _kv(String k, String v) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 110, child: Text(k, style: const TextStyle(color: AvaColors.sub))),
-          Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w600))),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text(k, style: ZineText.sub(size: 13.5)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
+                style: ZineText.sub(size: 13, color: Zine.inkMute)),
+          ),
+          const SizedBox(width: 6),
+          Flexible(child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ZineText.value(size: 14, weight: FontWeight.w900))),
         ]),
       );
 
@@ -332,19 +359,22 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget build(BuildContext context) {
     final (inn, out) = _monthInOut();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AvaWallet'),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'AvaWallet',
+        markWord: 'Wallet',
+        tag: 'your avacoins',
         actions: [
           if (_admin)
-            IconButton(
-              tooltip: 'Money ops console',
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminMoneyScreen())),
+            ZineBackButton(
+              icon: PhosphorIcons.shieldStar(PhosphorIconsStyle.bold),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminMoneyScreen())),
             ),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
+        color: Zine.blueInk,
         child: CustomScrollView(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -352,21 +382,32 @@ class _WalletScreenState extends State<WalletScreen> {
             SliverToBoxAdapter(child: _header(inn, out)),
             SliverToBoxAdapter(child: _filterBar()),
             if (_entries.isEmpty && !_loading)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: Text('No transactions yet', style: TextStyle(color: AvaColors.sub))),
+                child: Center(
+                  child: ZineEmptyState(
+                    icon: PhosphorIcons.receipt(PhosphorIconsStyle.bold),
+                    text: 'No transactions yet — top up to get rolling.',
+                  ),
+                ),
               )
             else
-              SliverList.separated(
-                itemCount: _entries.length + (_exhausted ? 0 : 1),
-                separatorBuilder: (_, __) => const Divider(height: 1, indent: 68),
-                itemBuilder: (c, i) {
-                  if (i >= _entries.length) {
-                    _loadMore();
-                    return const Padding(padding: EdgeInsets.all(16), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))));
-                  }
-                  return _row(_entries[i]);
-                },
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+                sliver: SliverList.separated(
+                  itemCount: _entries.length + (_exhausted ? 0 : 1),
+                  separatorBuilder: (_, __) => const SizedBox(height: 2),
+                  itemBuilder: (c, i) {
+                    if (i >= _entries.length) {
+                      _loadMore();
+                      return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(child: SizedBox(width: 20, height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))));
+                    }
+                    return _row(_entries[i]);
+                  },
+                ),
               ),
           ],
         ),
@@ -376,89 +417,131 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Widget _header(int inn, int out) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
       child: Column(children: [
-        Container(
-          width: double.infinity,
+        // Hero balance — MINT money card (§7.10 reference: Earnings leans mint).
+        ZineCard(
+          color: Zine.mint,
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [AvaColors.brand, Color(0xFF0AA3A3)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(20),
-          ),
+          boxShadow: Zine.shadow,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Balance', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(_usd(_balance), style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800)),
-            Text('$_balance AvaCoins${_held > 0 ? '  ·  ${_usd(_held)} pending (7-day hold)' : ''}',
-                style: const TextStyle(color: Colors.white70, fontSize: 13)),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AvaColors.ink),
-              onPressed: _topupFlow,
-              icon: const Icon(Icons.add),
-              label: const Text('Top up'),
+            ZineCardHead(
+              icon: PhosphorIcons.wallet(PhosphorIconsStyle.bold),
+              accent: Zine.card,
+              title: 'Balance',
+              tag: 'avacoins',
             ),
+            const SizedBox(height: 14),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(_usd(_balance), style: ZineText.stat(size: 48)),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$_balance AvaCoins${_held > 0 ? '  ·  ${_usd(_held)} pending (7-day hold)' : ''}',
+              style: ZineText.value(size: 14, weight: FontWeight.w900),
+            ),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(
+                child: ZineButton(
+                  label: 'Top up',
+                  fontSize: 17,
+                  trailingIcon: false,
+                  icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+                  onPressed: _topupFlow,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ZineButton(
+                  label: 'Withdraw',
+                  variant: ZineButtonVariant.blue,
+                  fontSize: 17,
+                  trailingIcon: false,
+                  icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
+                  onPressed: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const PayoutScreen())),
+                ),
+              ),
+            ]),
           ]),
         ),
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: _miniCard('This month in', '+${_usd(inn)}', AvaColors.success)),
+        const SizedBox(height: 14),
+        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: _miniCard('This month in', '+${_usd(inn)}',
+              PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), Zine.mint, Zine.mintInk)),
           const SizedBox(width: 10),
-          Expanded(child: _miniCard('This month out', '−${_usd(out)}', AvaColors.danger)),
+          Expanded(child: _miniCard('This month out', '−${_usd(out)}',
+              PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), Zine.coral, Zine.coral)),
         ]),
       ]),
     );
   }
 
-  Widget _miniCard(String label, String value, Color color) => Container(
+  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  Widget _miniCard(String label, String value, IconData icon, Color accent, Color valueColor) => ZineCard(
+        radius: Zine.rSm,
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
+        boxShadow: Zine.shadowXs,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-          const SizedBox(height: 2),
-          Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 16)),
+          ZineIconBadge(icon: icon, color: accent, size: 30),
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, style: ZineText.stat(size: 24, color: valueColor)),
+          ),
+          const SizedBox(height: 3),
+          Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
         ]),
       );
 
   Widget _filterBar() {
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: TextField(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+        child: ZineField(
           controller: _searchCtrl,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            hintText: 'Search by event or consult name',
-            prefixIcon: const Icon(Icons.search, size: 20),
-            suffixIcon: _query.isEmpty ? null : IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { _searchCtrl.clear(); setState(() => _query = ''); _applyFilters(); }),
-            isDense: true,
-            filled: true,
-            fillColor: AvaColors.soft,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          ),
+          hint: 'Search by event or consult name',
+          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+          trailing: _query.isEmpty
+              ? null
+              : GestureDetector(
+                  onTap: () { _searchCtrl.clear(); setState(() => _query = ''); _applyFilters(); },
+                  child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                ),
           onSubmitted: (v) { setState(() => _query = v.trim()); _applyFilters(); },
         ),
       ),
       SizedBox(
-        height: 48,
+        height: 52,
         child: ListView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           children: [
-            FilterChip(
-              label: Text(_range == null ? 'Dates' : '${_dateShort(_range!.start.millisecondsSinceEpoch)} – ${_dateShort(_range!.end.millisecondsSinceEpoch)}'),
-              selected: _range != null,
-              avatar: const Icon(Icons.calendar_today_outlined, size: 14),
-              onSelected: (_) => _pickRange(),
-              onDeleted: _range == null ? null : () { setState(() => _range = null); _applyFilters(); },
+            ZineChip(
+              label: _range == null
+                  ? 'Dates'
+                  : '${_dateShort(_range!.start.millisecondsSinceEpoch)} – ${_dateShort(_range!.end.millisecondsSinceEpoch)}',
+              active: _range != null,
+              onTap: _pickRange,
             ),
+            if (_range != null) ...[
+              const SizedBox(width: 8),
+              ZineChip(
+                label: 'Clear dates',
+                onTap: () { setState(() => _range = null); _applyFilters(); },
+              ),
+            ],
             const SizedBox(width: 8),
             for (final t in _kTypes.entries.where((e) => e.key != 'storage_charge')) ...[
-              FilterChip(
-                label: Text(t.value.label),
-                selected: _typeFilter.contains(t.key),
-                onSelected: (s) {
-                  setState(() => s ? _typeFilter.add(t.key) : _typeFilter.remove(t.key));
+              ZineChip(
+                label: t.value.label,
+                active: _typeFilter.contains(t.key),
+                onTap: () {
+                  setState(() => _typeFilter.contains(t.key) ? _typeFilter.remove(t.key) : _typeFilter.add(t.key));
                   _applyFilters();
                 },
               ),
@@ -470,22 +553,39 @@ class _WalletScreenState extends State<WalletScreen> {
     ]);
   }
 
+  /// Transaction row — ledger style (§7.10): label + dotted leader + value.
+  /// Credits in mint-ink, debits in coral.
   Widget _row(Map<String, dynamic> e) {
     final amount = ((e['amount'] as num?) ?? 0).toInt();
     final t = _kTypes['${e['type']}'];
     final positive = amount >= 0;
-    return ListTile(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => _showDetail(e),
-      leading: CircleAvatar(
-        backgroundColor: (positive ? AvaColors.success : AvaColors.danger).withValues(alpha: .10),
-        child: Icon(t?.icon ?? Icons.swap_horiz, size: 20, color: positive ? AvaColors.success : AvaColors.danger),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            Flexible(
+              child: Text('${e['title'] ?? t?.label ?? e['type']}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 14, weight: FontWeight.w800)),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
+                  style: ZineText.sub(size: 13, color: Zine.inkMute)),
+            ),
+            const SizedBox(width: 6),
+            Text('${positive ? '+' : '−'}${_usd(amount)}',
+                style: ZineText.value(size: 14.5, weight: FontWeight.w900,
+                    color: positive ? Zine.mintInk : Zine.coral)),
+          ]),
+          const SizedBox(height: 2),
+          Text('${t?.label ?? e['type']} · ${_dateShort(((e['created_at'] as num?) ?? 0).toInt())}'.toUpperCase(),
+              style: ZineText.kicker(size: 9.5, color: Zine.inkMute)),
+        ]),
       ),
-      title: Text('${e['title'] ?? t?.label ?? e['type']}', maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text('${t?.label ?? e['type']} · ${_dateShort(((e['created_at'] as num?) ?? 0).toInt())}',
-          style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-      trailing: Text('${positive ? '+' : '−'}${_usd(amount)}',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: positive ? AvaColors.success : AvaColors.danger)),
     );
   }
 }

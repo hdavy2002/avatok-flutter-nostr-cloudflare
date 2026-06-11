@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/money_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 
 /// Money ops console (Phase 2, audit A2) — admin-only (`/admin/money`).
 /// User lookup → live balance/holds/KYC/strikes + ledger table → refund /
@@ -53,15 +55,23 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Manual refund'),
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.r),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('Manual refund', style: ZineText.cardTitle()),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: order, decoration: const InputDecoration(labelText: 'Order id')),
-          TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (coins)')),
-          TextField(controller: reason, decoration: const InputDecoration(labelText: 'Reason (required, audited)')),
+          ZineField(controller: order, label: 'Order id'),
+          const SizedBox(height: 12),
+          ZineField(controller: amount, keyboardType: TextInputType.number, label: 'Amount (coins)'),
+          const SizedBox(height: 12),
+          ZineField(controller: reason, label: 'Reason (required, audited)'),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Refund')),
+          TextButton(onPressed: () => Navigator.pop(c, false),
+              child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+          ZineButton(label: 'Refund', fontSize: 15, onPressed: () => Navigator.pop(c, true)),
         ],
       ),
     );
@@ -77,14 +87,21 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text('Adjust $uid'),
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.r),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('Adjust $uid', style: ZineText.cardTitle()),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(signed: true), decoration: const InputDecoration(labelText: 'Amount (coins, ± allowed)')),
-          TextField(controller: reason, decoration: const InputDecoration(labelText: 'Reason (required, audited)')),
+          ZineField(controller: amount, keyboardType: const TextInputType.numberWithOptions(signed: true), label: 'Amount (coins, ± allowed)'),
+          const SizedBox(height: 12),
+          ZineField(controller: reason, label: 'Reason (required, audited)'),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Apply')),
+          TextButton(onPressed: () => Navigator.pop(c, false),
+              child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+          ZineButton(label: 'Apply', fontSize: 15, onPressed: () => Navigator.pop(c, true)),
         ],
       ),
     );
@@ -102,56 +119,151 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
   Widget build(BuildContext context) {
     final a = _account;
     return Scaffold(
-      appBar: AppBar(title: const Text('Money ops console')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(
+        title: 'Money ops',
+        markWord: 'ops',
+        tag: 'admin console',
+      ),
+      body: ListView(padding: const EdgeInsets.fromLTRB(18, 16, 18, 32), children: [
+        ZineField(
           controller: _userCtrl,
-          decoration: InputDecoration(
-            labelText: 'User id (Clerk uid)',
-            suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: _lookup),
-          ),
+          label: 'User id (Clerk uid)',
+          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
           onSubmitted: (_) => _lookup(),
+          trailing: GestureDetector(
+            onTap: _lookup,
+            child: PhosphorIcon(PhosphorIcons.arrowRight(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+          ),
         ),
-        if (_busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+        if (_busy)
+          const Padding(padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator(color: Zine.blueInk))),
         if (a != null) ...[
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Balance ${_usd((a['balance'] as num?) ?? 0)} · held ${_usd((a['held'] as num?) ?? 0)}',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              Text('KYC: ${a['kyc']} · strikes: ${a['strikes']}', style: const TextStyle(color: AvaColors.sub)),
-              const SizedBox(height: 10),
-              Row(children: [
-                OutlinedButton(onPressed: _refundDialog, child: const Text('Refund')),
-                const SizedBox(width: 8),
-                OutlinedButton(onPressed: _adjustDialog, child: const Text('Adjust')),
-              ]),
-            ]),
-          ),
+          const SizedBox(height: 18),
+          // Metric cards (§7.11) — accent rotation.
+          Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _stat('Balance', _usd((a['balance'] as num?) ?? 0),
+                PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint, money: true),
+            const SizedBox(width: 12),
+            _stat('Held', _usd((a['held'] as num?) ?? 0),
+                PhosphorIcons.lock(PhosphorIconsStyle.bold), Zine.blue),
+          ]),
           const SizedBox(height: 12),
-          const Text('Ledger', style: TextStyle(fontWeight: FontWeight.w800)),
-          for (final e in _ledger)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text('${e['type']}  ${_usd((e['amount'] as num?) ?? 0)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text('${e['debit']} → ${e['credit']}\nref ${e['ref'] ?? '—'} · ${DateTime.fromMillisecondsSinceEpoch(((e['created_at'] as num?) ?? 0).toInt())}',
-                  style: const TextStyle(fontSize: 11, color: AvaColors.sub)),
+          Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _stat('KYC', '${a['kyc']}', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold), Zine.lilac),
+            const SizedBox(width: 12),
+            _stat('Strikes', '${a['strikes']}', PhosphorIcons.warning(PhosphorIconsStyle.bold), Zine.coral),
+          ]),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+              child: ZineButton(
+                label: 'Refund',
+                variant: ZineButtonVariant.ghost,
+                fontSize: 16,
+                onPressed: _refundDialog,
+              ),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ZineButton(
+                label: 'Adjust',
+                variant: ZineButtonVariant.blue,
+                fontSize: 16,
+                onPressed: _adjustDialog,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 22),
+          Text('LEDGER', style: ZineText.kicker(size: 11.5)),
+          const SizedBox(height: 8),
+          for (final e in _ledger) _ledgerRow(e),
         ],
-        const SizedBox(height: 16),
-        const Text('Reconciliation runs', style: TextStyle(fontWeight: FontWeight.w800)),
-        if (_recon.isEmpty) const Padding(padding: EdgeInsets.all(8), child: Text('No runs yet', style: TextStyle(color: AvaColors.sub))),
-        for (final r in _recon)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(r['ok'] == 1 ? Icons.check_circle : Icons.error, color: r['ok'] == 1 ? AvaColors.success : AvaColors.danger, size: 20),
-            title: Text('${r['date']}'),
-            subtitle: r['ok'] == 1 ? null : Text('${r['diff_json']}', maxLines: 3, style: const TextStyle(fontSize: 11)),
+        const SizedBox(height: 22),
+        Text('RECONCILIATION RUNS', style: ZineText.kicker(size: 11.5)),
+        const SizedBox(height: 8),
+        if (_recon.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: ZineEmptyState(
+              icon: PhosphorIcons.scales(PhosphorIconsStyle.bold),
+              text: 'No runs yet',
+            ),
           ),
+        for (final r in _recon) _reconRow(r),
+      ]),
+    );
+  }
+
+  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  Widget _stat(String label, String value, IconData icon, Color accent, {bool money = false}) => Expanded(
+        child: ZineCard(
+          radius: Zine.rSm,
+          padding: const EdgeInsets.all(14),
+          boxShadow: Zine.shadowXs,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ZineIconBadge(icon: icon, color: accent, size: 30),
+            const SizedBox(height: 10),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value, style: ZineText.stat(size: 24, color: money ? Zine.mintInk : Zine.ink)),
+            ),
+            const SizedBox(height: 3),
+            Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+          ]),
+        ),
+      );
+
+  /// Ledger row (§7.10): label + dotted leader + Nunito 900 value.
+  Widget _ledgerRow(Map<String, dynamic> e) {
+    final amount = ((e['amount'] as num?) ?? 0).toInt();
+    final positive = amount >= 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Flexible(
+            child: Text('${e['type']}', maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: ZineText.value(size: 14, weight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
+                style: ZineText.sub(size: 13, color: Zine.inkMute)),
+          ),
+          const SizedBox(width: 6),
+          Text(_usd(amount),
+              style: ZineText.value(size: 14, weight: FontWeight.w900,
+                  color: positive ? Zine.mintInk : Zine.coral)),
+        ]),
+        const SizedBox(height: 2),
+        Text(
+          '${e['debit']} → ${e['credit']} · ref ${e['ref'] ?? '—'} · '
+          '${DateTime.fromMillisecondsSinceEpoch(((e['created_at'] as num?) ?? 0).toInt())}',
+          maxLines: 2,
+          style: ZineText.kicker(size: 9, color: Zine.inkMute),
+        ),
+      ]),
+    );
+  }
+
+  Widget _reconRow(Map<String, dynamic> r) {
+    final ok = r['ok'] == 1;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineSticker(ok ? 'ok' : 'diff', kind: ok ? ZineStickerKind.ok : ZineStickerKind.no),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${r['date']}', style: ZineText.value(size: 13.5, weight: FontWeight.w800)),
+            if (!ok)
+              Text('${r['diff_json']}', maxLines: 3, overflow: TextOverflow.ellipsis,
+                  style: ZineText.kicker(size: 9, color: Zine.coral)),
+          ]),
+        ),
       ]),
     );
   }

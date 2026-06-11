@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../identity/identity_api.dart';
 import '../identity/identity_gate.dart';
 import 'payout_api.dart';
@@ -65,6 +67,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final added = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => const _AddBankSheet(),
     );
     if (added == true) _refresh();
@@ -78,6 +82,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final amount = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _AmountSheet(max: _balance, currency: (acct['currency'] ?? 'INR').toString()),
     );
     if (amount == null || !mounted) return;
@@ -111,28 +117,44 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: .8,
         builder: (_, ctrl) => Padding(
           padding: const EdgeInsets.all(20),
           child: Column(children: [
-            Text('Creator agreement (v$version)',
-                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text('Creator agreement (v$version)', style: ZineText.cardTitle(size: 20)),
             const SizedBox(height: 12),
             Expanded(
               child: SingleChildScrollView(
                 controller: ctrl,
-                child: Text(doc ??
-                    'Please review the AvaTOK creator agreement at avatok.ai/legal/creator-agreement. '
-                        'By accepting you confirm you have read and agree to it.'),
+                child: Text(
+                    doc ??
+                        'Please review the AvaTOK creator agreement at avatok.ai/legal/creator-agreement. '
+                            'By accepting you confirm you have read and agree to it.',
+                    style: ZineText.sub(size: 14, color: Zine.ink)),
               ),
             ),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Decline'))),
+              Expanded(
+                child: ZineButton(
+                  label: 'Decline',
+                  variant: ZineButtonVariant.ghost,
+                  fontSize: 17,
+                  onPressed: () => Navigator.pop(ctx, false),
+                ),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('I agree'))),
+              Expanded(
+                child: ZineButton(
+                  label: 'I agree',
+                  fontSize: 17,
+                  onPressed: () => Navigator.pop(ctx, true),
+                ),
+              ),
             ]),
           ]),
         ),
@@ -146,107 +168,173 @@ class _PayoutScreenState extends State<PayoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('AvaPayout')),
+      backgroundColor: Zine.paper,
+      appBar: const ZineAppBar(
+        title: 'AvaPayout',
+        markWord: 'Payout',
+        tag: 'straight to your bank',
+      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
+        color: Zine.blueInk,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
             : ListView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
                 children: [
-                  Row(children: [
-                    Expanded(child: _card('Wallet balance', _usd(_balance), Icons.account_balance_wallet, const Color(0xFF10B981))),
+                  Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Expanded(child: _card('Wallet balance', _usd(_balance),
+                        PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint)),
                     const SizedBox(width: 12),
-                    Expanded(child: _card('Available to withdraw', _usd(_balance), Icons.payments, const Color(0xFF0A66C2),
+                    Expanded(child: _card('Available to withdraw', _usd(_balance),
+                        PhosphorIcons.bank(PhosphorIconsStyle.bold), Zine.blue,
                         footnote: _held > 0 ? '+ ${_usd(_held)} on 7-day hold' : null)),
                   ]),
                   if (!_enabled) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: .12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'Bank transfers are not live yet — you can link a bank and your balance keeps accruing.',
-                        style: TextStyle(fontSize: 13),
-                      ),
+                    const SizedBox(height: 14),
+                    ZineCard(
+                      color: Zine.paper2,
+                      radius: Zine.rSm,
+                      boxShadow: Zine.shadowXs,
+                      padding: const EdgeInsets.all(14),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const ZineSticker('coming soon', kind: ZineStickerKind.hint),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Bank transfers are not live yet — you can link a bank and your balance keeps accruing.',
+                          style: ZineText.sub(size: 13.5),
+                        ),
+                      ]),
                     ),
                   ],
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 26),
                   Row(children: [
-                    Expanded(child: Text('Bank accounts', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-                    TextButton.icon(onPressed: _addBank, icon: const Icon(Icons.add), label: const Text('Add bank')),
+                    Expanded(child: Text('BANK ACCOUNTS', style: ZineText.kicker(size: 11.5))),
+                    ZineLink('+ ADD BANK', onTap: _addBank),
                   ]),
+                  const SizedBox(height: 10),
                   if (_accounts.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No bank linked yet. Add one to withdraw your earnings.',
-                          style: TextStyle(color: cs.onSurfaceVariant)),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: ZineEmptyState(
+                        icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
+                        text: 'No bank linked yet. Add one to withdraw your earnings.',
+                      ),
                     )
                   else
-                    ..._accounts.map((a) => Card(
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          child: ListTile(
-                            leading: const Icon(Icons.account_balance),
-                            title: Text((a['label'] ?? 'Bank ****${a['account_number_last4'] ?? ''}').toString()),
-                            subtitle: Text('${a['currency'] ?? ''} · ${a['status'] ?? ''}'
-                                '${a['tax_form_status'] == 'collected' ? '' : ' · tax info missing'}'),
-                            trailing: FilledButton.tonal(
-                              onPressed: _balance >= _kMinCoins ? () => _withdraw(a) : null,
-                              child: const Text('Withdraw'),
-                            ),
-                          ),
-                        )),
-                  const SizedBox(height: 24),
-                  Text('History', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
+                    ..._accounts.map(_accountCard),
+                  const SizedBox(height: 26),
+                  Text('HISTORY', style: ZineText.kicker(size: 11.5)),
+                  const SizedBox(height: 10),
                   if (_history.isEmpty)
-                    Text('No withdrawals yet.', style: TextStyle(color: cs.onSurfaceVariant))
+                    Text('No withdrawals yet.', style: ZineText.sub(size: 13.5))
                   else
-                    ..._history.map(_historyTile),
+                    ..._history.map(_historyRow),
                 ],
               ),
       ),
     );
   }
 
-  Widget _card(String label, String value, IconData icon, Color color, {String? footnote}) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: .25)),
-      ),
+  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  Widget _card(String label, String value, IconData icon, Color accent, {String? footnote}) {
+    return ZineCard(
+      radius: Zine.rSm,
+      padding: const EdgeInsets.all(14),
+      boxShadow: Zine.shadowXs,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, color: color, size: 22),
-        const SizedBox(height: 8),
-        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-        Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-        if (footnote != null) Text(footnote, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11)),
+        ZineIconBadge(icon: icon, color: accent, size: 30),
+        const SizedBox(height: 10),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(value, style: ZineText.stat(size: 26, color: Zine.mintInk)),
+        ),
+        const SizedBox(height: 3),
+        Text(label.toUpperCase(), style: ZineText.kicker(size: 9.5)),
+        if (footnote != null) ...[
+          const SizedBox(height: 2),
+          Text(footnote.toUpperCase(), style: ZineText.kicker(size: 9, color: Zine.inkMute)),
+        ],
       ]),
     );
   }
 
-  Widget _historyTile(Map<String, dynamic> r) {
+  Widget _accountCard(Map<String, dynamic> a) {
+    final status = (a['status'] ?? '').toString();
+    final taxMissing = a['tax_form_status'] != 'collected';
+    final statusKind = switch (status) {
+      'verified' || 'active' => ZineStickerKind.ok,
+      'blocked' || 'failed' => ZineStickerKind.no,
+      _ => ZineStickerKind.hint,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.all(14),
+        boxShadow: Zine.shadowXs,
+        child: Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.bank(PhosphorIconsStyle.bold), color: Zine.mint),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text((a['label'] ?? 'Bank ****${a['account_number_last4'] ?? ''}').toString(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 14.5)),
+              const SizedBox(height: 5),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                ZineSticker('${a['currency'] ?? ''} · $status', kind: statusKind),
+                if (taxMissing) const ZineSticker('tax info missing', kind: ZineStickerKind.no),
+              ]),
+            ]),
+          ),
+          const SizedBox(width: 10),
+          ZineButton(
+            label: 'Withdraw',
+            fontSize: 15,
+            onPressed: _balance >= _kMinCoins ? () => _withdraw(a) : null,
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Payout history — ledger row (§7.10): label + dotted leader + value.
+  Widget _historyRow(Map<String, dynamic> r) {
     final status = (r['status'] ?? '').toString();
-    final (icon, color) = switch (status) {
-      'completed' => (Icons.check_circle, const Color(0xFF10B981)),
-      'failed' || 'refunded' => (Icons.error, Colors.redAccent),
-      _ => (Icons.hourglass_top, Colors.amber),
+    final color = switch (status) {
+      'completed' => Zine.mintInk,
+      'failed' || 'refunded' => Zine.coral,
+      _ => Zine.inkSoft,
     };
     final when = DateTime.fromMillisecondsSinceEpoch(((r['created_at'] as num?) ?? 0).toInt());
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: color),
-      title: Text('${_usd(((r['amount_coins'] as num?) ?? 0))} → ${r['target_currency'] ?? ''}'),
-      subtitle: Text('${when.day}/${when.month}/${when.year} · $status'
-          '${r['failure_reason'] != null ? ' — ${r['failure_reason']}' : ''}'),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Flexible(
+            child: Text('${_usd(((r['amount_coins'] as num?) ?? 0))} → ${r['target_currency'] ?? ''}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: ZineText.value(size: 14, weight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('·' * 80, maxLines: 1, overflow: TextOverflow.clip,
+                style: ZineText.sub(size: 13, color: Zine.inkMute)),
+          ),
+          const SizedBox(width: 6),
+          Text(status.toUpperCase(), style: ZineText.tag(size: 11, color: color)),
+        ]),
+        const SizedBox(height: 2),
+        Text(
+          '${when.day}/${when.month}/${when.year}'
+                  '${r['failure_reason'] != null ? ' — ${r['failure_reason']}' : ''}'
+              .toUpperCase(),
+          style: ZineText.kicker(size: 9.5, color: Zine.inkMute),
+        ),
+      ]),
     );
   }
 }
@@ -321,29 +409,26 @@ class _AddBankSheetState extends State<_AddBankSheet> {
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Add a bank account',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 14),
-          TextField(controller: _holder, decoration: const InputDecoration(labelText: 'Account holder name')),
-          const SizedBox(height: 10),
-          TextField(controller: _ifsc, decoration: const InputDecoration(labelText: 'IFSC code')),
-          const SizedBox(height: 10),
-          TextField(
-              controller: _number,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Account number')),
-          const SizedBox(height: 10),
-          TextField(controller: _label, decoration: const InputDecoration(labelText: 'Label (optional)')),
-          const SizedBox(height: 18),
-          Text('Tax details', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+          Text('Add a bank account', style: ZineText.cardTitle(size: 21)),
+          const SizedBox(height: 16),
+          ZineField(controller: _holder, label: 'Account holder name'),
+          const SizedBox(height: 12),
+          ZineField(controller: _ifsc, label: 'IFSC code', textCapitalization: TextCapitalization.characters),
+          const SizedBox(height: 12),
+          ZineField(controller: _number, label: 'Account number', keyboardType: TextInputType.number),
+          const SizedBox(height: 12),
+          ZineField(controller: _label, label: 'Label (optional)'),
+          const SizedBox(height: 20),
+          Text('Tax details', style: ZineText.cardTitle(size: 16)),
+          const SizedBox(height: 4),
           Text('Needed once for year-end reporting. We store only the type and last 4 digits.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-          const SizedBox(height: 10),
-          Row(children: [
+              style: ZineText.sub(size: 12.5)),
+          const SizedBox(height: 12),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: _taxCountry,
-                decoration: const InputDecoration(labelText: 'Tax residency'),
+              child: ZineDropdown<String>(
+                label: 'Tax residency',
+                value: _taxCountry,
                 items: const [
                   DropdownMenuItem(value: 'IN', child: Text('India')),
                   DropdownMenuItem(value: 'US', child: Text('United States')),
@@ -358,9 +443,9 @@ class _AddBankSheetState extends State<_AddBankSheet> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: _taxIdType,
-                decoration: const InputDecoration(labelText: 'ID type'),
+              child: ZineDropdown<String>(
+                label: 'ID type',
+                value: _taxIdType,
                 items: const [
                   DropdownMenuItem(value: 'pan', child: Text('PAN')),
                   DropdownMenuItem(value: 'ssn', child: Text('SSN')),
@@ -372,20 +457,15 @@ class _AddBankSheetState extends State<_AddBankSheet> {
               ),
             ),
           ]),
-          const SizedBox(height: 10),
-          TextField(controller: _taxId, decoration: const InputDecoration(labelText: 'Tax ID')),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13)),
-          ],
-          const SizedBox(height: 18),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 14)),
+          const SizedBox(height: 12),
+          ZineField(controller: _taxId, label: 'Tax ID', error: _error != null),
+          if (_error != null) ZineErrorMsg(_error!),
+          const SizedBox(height: 20),
+          ZineButton(
+            label: 'Save bank account',
+            fullWidth: true,
+            loading: _busy,
             onPressed: _busy ? null : _save,
-            child: _busy
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save bank account'),
           ),
         ]),
       ),
@@ -414,43 +494,44 @@ class _AmountSheetState extends State<_AmountSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final valid = _amount >= _kMinCoins && _amount <= widget.max;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Withdraw to bank', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          Text('Withdraw to bank', style: ZineText.cardTitle(size: 21)),
           const SizedBox(height: 4),
           Text('Available: ${_usd(widget.max)} · minimum ${_usd(_kMinCoins)}',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-          const SizedBox(height: 14),
-          TextField(
+              style: ZineText.sub(size: 13.5)),
+          const SizedBox(height: 16),
+          ZineField(
             controller: _ctrl,
             autofocus: true,
+            label: 'Amount in coins (1 coin = \$0.01)',
+            leadIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Amount in coins (1 coin = \$0.01)'),
             onChanged: (v) => setState(() => _amount = int.tryParse(v.trim()) ?? 0),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           if (_amount > 0)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+            ZineCard(
+              color: Zine.paper2,
+              radius: Zine.rSm,
+              boxShadow: Zine.shadowXs,
+              padding: const EdgeInsets.all(13),
               child: Text(
                 'You\'ll receive ≈ ${_usd(_amount)} in ${widget.currency}. '
                 'The Wise transfer fee is deducted from this amount; the exact '
                 'rate is locked when the transfer is created.',
-                style: const TextStyle(fontSize: 13, height: 1.35),
+                style: ZineText.sub(size: 13, color: Zine.mintInk),
               ),
             ),
-          const SizedBox(height: 16),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 14)),
+          const SizedBox(height: 18),
+          ZineButton(
+            label: valid ? 'Withdraw ${_usd(_amount)}' : 'Enter an amount',
+            fullWidth: true,
             onPressed: valid ? () => Navigator.pop(context, _amount) : null,
-            child: Text(valid ? 'Withdraw ${_usd(_amount)}' : 'Enter an amount'),
           ),
         ]),
       ),
