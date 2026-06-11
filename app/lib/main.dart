@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'auth/clerk_client.dart';
 import 'core/account_gate.dart';
@@ -19,6 +20,7 @@ import 'core/prefs_sync.dart';
 import 'core/profile_store.dart';
 import 'core/remote_config.dart';
 import 'core/theme.dart';
+import 'core/ui/zine_widgets.dart';
 import 'firebase_options.dart';
 import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
@@ -358,7 +360,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
   Widget _stageBody() {
     switch (_stage) {
       case _Stage.loading:
-        return const Scaffold(body: Center(child: CircularProgressIndicator(color: AvaColors.brand)));
+        return const Scaffold(body: Center(child: CircularProgressIndicator(color: Zine.blueInk)));
       case _Stage.welcome:
         // Handle-first onboarding (Trust Ladder L0): pick a handle BEFORE any
         // signup wall; it is reserved server-side and merged after Clerk auth.
@@ -398,27 +400,31 @@ class _UpdateRequiredScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 36),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 84, height: 84,
-              decoration: BoxDecoration(color: AvaColors.brand50, borderRadius: BorderRadius.circular(24)),
-              child: const Icon(Icons.system_update, color: AvaColors.brand, size: 40),
+      body: ZinePaper(
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 36),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                ZineCrest(
+                  size: 116,
+                  child: PhosphorIcon(PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), size: 52, color: Zine.ink),
+                ),
+                const SizedBox(height: 24),
+                const ZineMarkTitle(pre: 'Update ', mark: 'required', fontSize: 34),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 300),
+                  child: Text(
+                    'This version of AvaTOK is taking a rest. '
+                    'Grab the latest update to pick up where you left off.',
+                    textAlign: TextAlign.center,
+                    style: ZineText.sub(size: 14.5),
+                  ),
+                ),
+              ]),
             ),
-            const SizedBox(height: 20),
-            const Text('Update required',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
-            const SizedBox(height: 8),
-            const Text(
-              'This version of AvaTOK is no longer supported. '
-              'Please install the latest update to continue.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5),
-            ),
-          ]),
+          ),
         ),
       ),
     );

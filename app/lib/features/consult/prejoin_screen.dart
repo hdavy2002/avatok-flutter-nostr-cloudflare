@@ -8,9 +8,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/session_api.dart';
 import '../../core/theme.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../avalive/live_viewer_screen.dart';
 import 'consult_room_screen.dart';
 
@@ -121,76 +123,86 @@ class _PrejoinScreenState extends State<PrejoinScreen> {
     final startsAt = (_join?['starts_at'] as num?)?.toInt();
     final startsIn = startsAt != null ? startsAt - now : null;
     final verdict = _probe?.verdict;
-    final vColor = switch (verdict) { 'green' => Colors.green, 'yellow' => Colors.amber, 'red' => Colors.red, _ => Colors.grey };
+    final vColor = switch (verdict) { 'green' => Zine.mint, 'yellow' => Zine.lime, 'red' => Zine.coral, _ => Zine.paper2 };
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // cam preview
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+      appBar: ZineAppBar(title: widget.title, showBack: Navigator.of(context).canPop()),
+      body: ZinePaper(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // cam preview — ink-bordered tile (video content stays).
+            Expanded(
               child: Container(
-                color: Colors.black,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: _stream != null ? Colors.black : Zine.paper2,
+                  borderRadius: BorderRadius.circular(Zine.r),
+                  border: Zine.border,
+                  boxShadow: Zine.shadowSm,
+                ),
                 child: _stream != null
                     ? RTCVideoView(_renderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                    : const Center(child: Icon(Icons.videocam_off, color: Colors.white38, size: 48)),
+                    : Center(child: PhosphorIcon(PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold), color: Zine.inkMute, size: 48)),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // mic level
-          Row(children: [
-            const Icon(Icons.mic, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(value: _stream != null ? .25 + _micLevel * .6 : 0, minHeight: 8, color: AvaColors.brand),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 12),
-          // network verdict
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: vColor.withOpacity(.12), borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [
-              _probing
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Icon(Icons.network_check, color: vColor),
+            const SizedBox(height: 16),
+            // mic level
+            Row(children: [
+              PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  _probing
-                      ? 'Checking your connection…'
-                      : _probe == null
-                          ? 'Could not check the connection — joining may still work.'
-                          : '${_probe!.tip}  (${_probe!.rttMs} ms · ${_probe!.kbps} kbps)',
-                  style: const TextStyle(fontSize: 13),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(100),
+                  child: LinearProgressIndicator(value: _stream != null ? .25 + _micLevel * .6 : 0, minHeight: 9,
+                      backgroundColor: Zine.paper2, color: Zine.blueInk),
                 ),
               ),
             ]),
-          ),
-          const SizedBox(height: 16),
-          if (_error != null)
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center)),
-          if (_opensAt != null)
-            Text('The room opens ${fmtIn(_opensAt! - now)} before the start.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600])),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 14)),
-            icon: const Icon(Icons.video_call),
-            label: Text(
-              _join != null
+            const SizedBox(height: 14),
+            // network verdict
+            ZineCard(
+              radius: Zine.rSm,
+              boxShadow: Zine.shadowXs,
+              padding: const EdgeInsets.all(12),
+              child: Row(children: [
+                _probing
+                    ? const SizedBox(width: 34, height: 34, child: Center(child: SizedBox(width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.blueInk))))
+                    : ZineIconBadge(icon: PhosphorIcons.wifiHigh(PhosphorIconsStyle.bold), color: vColor, size: 34),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    _probing
+                        ? 'Checking your connection…'
+                        : _probe == null
+                            ? 'Could not check the connection — joining may still work.'
+                            : '${_probe!.tip}  (${_probe!.rttMs} ms · ${_probe!.kbps} kbps)',
+                    style: ZineText.sub(size: 13),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 16),
+            if (_error != null)
+              Padding(padding: const EdgeInsets.only(bottom: 12), child: ZineErrorMsg(_error!)),
+            if (_opensAt != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text('The room opens ${fmtIn(_opensAt! - now)} before the start.',
+                    textAlign: TextAlign.center, style: ZineText.sub(size: 13, color: Zine.inkMute)),
+              ),
+            ZineButton(
+              fullWidth: true,
+              icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              label: _join != null
                   ? (startsIn != null && startsIn > 0 ? 'Join — starts in ${fmtIn(startsIn)}' : 'Join now')
                   : (_opensAt != null ? 'Too early — check again' : 'Checking…'),
-              style: const TextStyle(fontWeight: FontWeight.w800),
+              onPressed: _join != null ? _enter : (_error == null ? _checkJoin : null),
             ),
-            onPressed: _join != null ? _enter : (_error == null ? _checkJoin : null),
-          ),
-        ]),
+          ]),
+        ),
       ),
     );
   }

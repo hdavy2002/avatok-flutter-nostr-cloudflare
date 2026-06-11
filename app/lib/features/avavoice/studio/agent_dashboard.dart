@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/avatar.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/theme.dart';
+import '../../../core/ui/zine_widgets.dart';
 import '../widgets.dart';
 
 /// Per-agent earnings dashboard (AvaVerse creator dashboard surface).
@@ -39,102 +41,97 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
   Widget build(BuildContext context) {
     final s = _stats;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0,
-          foregroundColor: AvaColors.ink, title: Text('${a.name} — dashboard')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  Row(children: [
-                    Avatar(seed: a.id, name: a.name, size: 56, avatarUrl: a.avatarUrl),
-                    const SizedBox(width: 14),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(a.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-                      Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: AvaColors.sub, fontSize: 12.5)),
-                    ])),
-                  ]),
-                  const SizedBox(height: 20),
-                  const Text('Last 24 hours',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                  const SizedBox(height: 10),
-                  if (s == null)
-                    const Padding(padding: EdgeInsets.all(24), child: Center(
-                        child: Text('No stats yet — they appear after your first booking or call.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: AvaColors.sub, fontSize: 13))))
-                  else ...[
+      appBar: ZineAppBar(
+        title: a.name,
+        tag: 'DASHBOARD · EARNINGS',
+        showBack: Navigator.of(context).canPop(),
+      ),
+      body: ZinePaper(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: Zine.lilac))
+            : RefreshIndicator(
+                color: Zine.blueInk,
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
                     Row(children: [
-                      _stat('Bookings', '${s.bookings}', Icons.event_available_outlined),
-                      const SizedBox(width: 10),
-                      _stat('Calls', '${s.calls}', Icons.call_outlined),
+                      Avatar(seed: a.id, name: a.name, size: 56, avatarUrl: a.avatarUrl),
+                      const SizedBox(width: 14),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(a.name, style: ZineText.cardTitle(size: 19)),
+                        Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: ZineText.sub(size: 12.5)),
+                      ])),
                     ]),
-                    const SizedBox(height: 10),
-                    Row(children: [
-                      _stat('Minutes talked', '${s.minutes}', Icons.timer_outlined),
-                      const SizedBox(width: 10),
-                      _stat('Refunds', fmtCoins(s.refundsCoins), Icons.replay_outlined),
-                    ]),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                            colors: [Color(0xFFA06AF0), Color(0xFFD08BF5)],
-                            begin: Alignment.topLeft, end: Alignment.bottomRight),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Text('You earned', style: TextStyle(color: Colors.white70,
-                            fontWeight: FontWeight.w700, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Text(fmtCoins(s.netCoins), style: const TextStyle(color: Colors.white,
-                            fontWeight: FontWeight.w800, fontSize: 32)),
-                        const SizedBox(height: 4),
-                        Text(a.isFreeForCallers
-                            ? 'Sponsored agent — callers talk free; usage billed to your AvaWallet.'
-                            : 'Gross ${fmtCoins(s.grossCoins)} · your 50% share after the platform fee. Paid to your AvaWallet on settlement.',
-                            style: const TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.4)),
-                      ]),
-                    ),
-                    // ── Audience (last 30 days) — who's looking at this agent ──
                     const SizedBox(height: 22),
-                    const Text('Audience — last 30 days',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    Text('LAST 24 HOURS', style: ZineText.kicker()),
                     const SizedBox(height: 10),
-                    Row(children: [
-                      _stat('Page views', '${s.views30d}', Icons.visibility_outlined),
-                      const SizedBox(width: 10),
-                      _stat('Unique viewers', '${s.uniqueViewers30d}', Icons.group_outlined),
-                    ]),
-                    if (s.viewsByCountry.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      const Text('Top countries',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                      const SizedBox(height: 6),
-                      for (final c in s.viewsByCountry) _rank(c.key, c.value,
-                          s.viewsByCountry.first.value),
+                    if (s == null)
+                      Padding(padding: const EdgeInsets.all(24), child: Center(
+                          child: Text('No stats yet — they appear after your first booking or call.',
+                              textAlign: TextAlign.center, style: ZineText.sub(size: 13))))
+                    else ...[
+                      Row(children: [
+                        _stat('Bookings', '${s.bookings}', PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), Zine.blue),
+                        const SizedBox(width: 10),
+                        _stat('Calls', '${s.calls}', PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.lilac),
+                      ]),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        _stat('Minutes talked', '${s.minutes}', PhosphorIcons.timer(PhosphorIconsStyle.bold), Zine.mint),
+                        const SizedBox(width: 10),
+                        _stat('Refunds', fmtCoins(s.refundsCoins), PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), Zine.coral),
+                      ]),
+                      const SizedBox(height: 16),
+                      // Earnings hero — money = mint (§7.10/§7.11).
+                      ZineCard(
+                        color: Zine.mint,
+                        padding: const EdgeInsets.all(18),
+                        boxShadow: Zine.shadow,
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('YOU EARNED', style: ZineText.kicker(color: Zine.ink)),
+                          const SizedBox(height: 6),
+                          Text(fmtCoins(s.netCoins), style: ZineText.stat(size: 38)),
+                          const SizedBox(height: 6),
+                          Text(a.isFreeForCallers
+                              ? 'Sponsored agent — callers talk free; usage billed to your AvaWallet.'
+                              : 'Gross ${fmtCoins(s.grossCoins)} · your 50% share after the platform fee. Paid to your AvaWallet on settlement.',
+                              style: ZineText.sub(size: 12, color: Zine.ink)),
+                        ]),
+                      ),
+                      // ── Audience (last 30 days) — who's looking at this agent ──
+                      const SizedBox(height: 22),
+                      Text('AUDIENCE — LAST 30 DAYS', style: ZineText.kicker()),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        _stat('Page views', '${s.views30d}', PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.blue),
+                        const SizedBox(width: 10),
+                        _stat('Unique viewers', '${s.uniqueViewers30d}', PhosphorIcons.users(PhosphorIconsStyle.bold), Zine.lilac),
+                      ]),
+                      if (s.viewsByCountry.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text('Top countries', style: ZineText.cardTitle(size: 15)),
+                        const SizedBox(height: 8),
+                        for (final c in s.viewsByCountry) _rank(c.key, c.value,
+                            s.viewsByCountry.first.value),
+                      ],
+                      if (s.viewsByAgeGroup.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text('Age groups', style: ZineText.cardTitle(size: 15)),
+                        const SizedBox(height: 8),
+                        for (final g in s.viewsByAgeGroup) _rank(g.key, g.value, s.views30d),
+                      ],
                     ],
-                    if (s.viewsByAgeGroup.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      const Text('Age groups',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                      const SizedBox(height: 6),
-                      for (final g in s.viewsByAgeGroup) _rank(g.key, g.value, s.views30d),
-                    ],
+                    const SizedBox(height: 18),
+                    Text(
+                      "📬 You'll also get a morning digest with these numbers for all your agents.",
+                      style: ZineText.sub(size: 12),
+                    ),
                   ],
-                  const SizedBox(height: 16),
-                  const Text(
-                    '📬 You\'ll also get a morning digest with these numbers for all your agents.',
-                    style: TextStyle(fontSize: 12, color: AvaColors.sub),
-                  ),
-                ],
+                ),
               ),
-            ),
+      ),
     );
   }
 
@@ -144,38 +141,37 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
   }
 
   Widget _rank(String label, int value, int max) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(children: [
           SizedBox(width: 90, child: Text(
               label.length == 2 ? '${_flag(label)}  $label' : label,
               maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+              style: ZineText.value(size: 12.5, weight: FontWeight.w800))),
           Expanded(child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(100),
             child: LinearProgressIndicator(
-              value: max > 0 ? value / max : 0, minHeight: 8,
-              backgroundColor: AvaColors.soft,
-              valueColor: const AlwaysStoppedAnimation(kAvaVoicePurple),
+              value: max > 0 ? value / max : 0, minHeight: 9,
+              backgroundColor: Zine.paper2,
+              valueColor: const AlwaysStoppedAnimation(Zine.lilac),
             ),
           )),
           const SizedBox(width: 8),
           SizedBox(width: 32, child: Text('$value', textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
+              style: ZineText.value(size: 12.5, weight: FontWeight.w900))),
         ]),
       );
 
-  Widget _stat(String label, String value, IconData icon) => Expanded(
-        child: Container(
+  Widget _stat(String label, String value, IconData icon, Color accent) => Expanded(
+        child: ZineCard(
+          radius: Zine.rSm,
+          boxShadow: Zine.shadowXs,
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            border: Border.all(color: AvaColors.line),
-            borderRadius: BorderRadius.circular(14),
-          ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(icon, size: 18, color: kAvaVoicePurple),
-            const SizedBox(height: 8),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
-            Text(label, style: const TextStyle(fontSize: 11.5, color: AvaColors.sub)),
+            ZineIconBadge(icon: icon, color: accent, size: 34),
+            const SizedBox(height: 10),
+            Text(value, style: ZineText.stat(size: 26)),
+            const SizedBox(height: 2),
+            Text(label.toUpperCase(), style: ZineText.kicker(size: 10)),
           ]),
         ),
       );

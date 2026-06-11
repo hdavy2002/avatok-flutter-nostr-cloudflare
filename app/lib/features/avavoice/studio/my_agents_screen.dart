@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/avatar.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/theme.dart';
+import '../../../core/ui/zine_widgets.dart';
 import '../widgets.dart';
 import 'agent_dashboard.dart';
 import 'agent_form_flow.dart';
@@ -73,32 +75,42 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
   }
 
   void _menu(VoiceAgent a) {
-    showModalBottomSheet(context: context, builder: (s) => SafeArea(
+    showModalBottomSheet(context: context, backgroundColor: Zine.paper, builder: (s) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Edit agent'),
+        ListTile(
+            leading: PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), color: Zine.ink),
+            title: Text('Edit agent', style: ZineText.value(size: 15)),
             onTap: () { Navigator.pop(s); _edit(a); }),
-        ListTile(leading: const Icon(Icons.insights_outlined), title: const Text('Dashboard & earnings'),
+        ListTile(
+            leading: PhosphorIcon(PhosphorIcons.chartLineUp(PhosphorIconsStyle.bold), color: Zine.ink),
+            title: Text('Dashboard & earnings', style: ZineText.value(size: 15)),
             onTap: () { Navigator.pop(s); Navigator.push(context,
                 MaterialPageRoute(builder: (_) => AgentDashboardScreen(agent: a))); }),
         if (a.status == 'draft')
-          ListTile(leading: const Icon(Icons.publish_outlined, color: AvaColors.success),
-              title: const Text('Publish to marketplace'),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold), color: Zine.mintInk),
+              title: Text('Publish to marketplace', style: ZineText.value(size: 15)),
               onTap: () { Navigator.pop(s); _act(a, 'publish'); }),
         if (a.status == 'published')
-          ListTile(leading: const Icon(Icons.visibility_off_outlined),
-              title: const Text('Unpublish (back to draft)'),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold), color: Zine.ink),
+              title: Text('Unpublish (back to draft)', style: ZineText.value(size: 15)),
               onTap: () { Navigator.pop(s); _act(a, 'unpublish'); }),
-        ListTile(leading: const Icon(Icons.delete_outline, color: AvaColors.danger),
-            title: const Text('Delete agent'),
+        ListTile(
+            leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: Zine.coral),
+            title: Text('Delete agent', style: ZineText.value(size: 15, color: Zine.coral)),
             onTap: () async {
               Navigator.pop(s);
               final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-                title: Text('Delete ${a.name}?'),
-                content: const Text('Its listing, knowledge files and availability are removed. Past earnings are kept in your ledger.'),
+                backgroundColor: Zine.card,
+                title: Text('Delete ${a.name}?', style: ZineText.cardTitle()),
+                content: Text('Its listing, knowledge files and availability are removed. Past earnings are kept in your ledger.',
+                    style: ZineText.sub(size: 14)),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep')),
+                  TextButton(onPressed: () => Navigator.pop(d, false),
+                      child: Text('Keep', style: ZineText.tag(size: 13, color: Zine.inkSoft))),
                   TextButton(onPressed: () => Navigator.pop(d, true),
-                      child: const Text('Delete', style: TextStyle(color: AvaColors.danger))),
+                      child: Text('Delete', style: ZineText.tag(size: 13, color: Zine.coral))),
                 ],
               ));
               if (ok == true) _act(a, 'delete');
@@ -107,68 +119,85 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
     ));
   }
 
+  // Status pill fill (zine poster colors).
   Color _statusColor(String s) => switch (s) {
-        'published' => AvaColors.success,
-        'suspended' => AvaColors.danger,
-        _ => AvaColors.sub,
+        'published' => Zine.mint,
+        'suspended' => Zine.coral,
+        _ => Zine.paper2,
       };
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0,
-          foregroundColor: AvaColors.ink, title: const Text('My voice agents')),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: kAvaVoicePurple,
-        onPressed: _create,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('New agent',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+      appBar: ZineAppBar(
+        title: 'My voice agents',
+        markWord: 'voice',
+        tag: 'AVAVOICE STUDIO',
+        showBack: Navigator.of(context).canPop(),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _agents.isEmpty
-              ? _empty()
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
-                    itemCount: _agents.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final a = _agents[i];
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                        leading: Avatar(seed: a.id, name: a.name, size: 52, avatarUrl: a.avatarUrl),
-                        title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Row(children: [
-                          Container(
-                            margin: const EdgeInsets.only(top: 2),
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                                color: _statusColor(a.status).withValues(alpha: .12),
-                                borderRadius: BorderRadius.circular(8)),
-                            child: Text(a.status.toUpperCase(), style: TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.w800,
-                                color: _statusColor(a.status))),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(child: Text(
-                            a.isFreeForCallers
-                                ? 'Free to callers · you pay ${fmtCoins(kCreatorPaysRateCoinsPerHour)}/hr'
-                                : '${fmtCoins(a.ratePerHourCoins)}/hr · you earn ${fmtCoins(creatorNetPerHour(a.ratePerHourCoins))}/hr',
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: AvaColors.sub),
-                          )),
-                        ]),
-                        trailing: IconButton(icon: const Icon(Icons.more_vert), onPressed: () => _menu(a)),
-                        onTap: () => _menu(a),
-                      );
-                    },
+      floatingActionButton: ZineButton(
+        label: 'New agent',
+        icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+        trailingIcon: false,
+        onPressed: _create,
+      ),
+      body: ZinePaper(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: Zine.lilac))
+            : _agents.isEmpty
+                ? _empty()
+                : RefreshIndicator(
+                    color: Zine.blueInk,
+                    onRefresh: _load,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                      itemCount: _agents.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (_, i) {
+                        final a = _agents[i];
+                        final suspended = a.status == 'suspended';
+                        return ZinePressable(
+                          onTap: () => _menu(a),
+                          radius: BorderRadius.circular(Zine.rSm),
+                          boxShadow: Zine.shadowXs,
+                          padding: const EdgeInsets.all(12),
+                          child: Row(children: [
+                            Avatar(seed: a.id, name: a.name, size: 52, avatarUrl: a.avatarUrl),
+                            const SizedBox(width: 12),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: ZineText.value(size: 15, weight: FontWeight.w800)),
+                              const SizedBox(height: 5),
+                              Row(children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: _statusColor(a.status),
+                                    borderRadius: BorderRadius.circular(100),
+                                    border: Border.all(color: Zine.ink, width: 2),
+                                  ),
+                                  child: Text(a.status.toUpperCase(),
+                                      style: ZineText.tag(size: 9.5, color: suspended ? Colors.white : Zine.ink)),
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(child: Text(
+                                  a.isFreeForCallers
+                                      ? 'Free to callers · you pay ${fmtCoins(kCreatorPaysRateCoinsPerHour)}/hr'
+                                      : '${fmtCoins(a.ratePerHourCoins)}/hr · you earn ${fmtCoins(creatorNetPerHour(a.ratePerHourCoins))}/hr',
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: ZineText.sub(size: 12),
+                                )),
+                              ]),
+                            ])),
+                            const SizedBox(width: 6),
+                            PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
+                                size: 22, color: Zine.inkSoft),
+                          ]),
+                        );
+                      },
+                    ),
                   ),
-                ),
+      ),
     );
   }
 
@@ -179,26 +208,29 @@ class _MyAgentsScreenState extends State<MyAgentsScreen> {
             Container(
               width: 72, height: 72,
               decoration: BoxDecoration(
-                  color: kAvaVoicePurple.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(22)),
-              child: const Icon(Icons.smart_toy_outlined, size: 36, color: kAvaVoicePurple),
+                color: Zine.lilac,
+                borderRadius: BorderRadius.circular(Zine.r),
+                border: Zine.border,
+                boxShadow: Zine.shadowSm,
+              ),
+              child: Center(child: PhosphorIcon(PhosphorIcons.robot(PhosphorIconsStyle.fill), size: 36, color: Zine.ink)),
             ),
-            const SizedBox(height: 18),
-            const Text('Create your first AI voice agent',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-            const SizedBox(height: 8),
-            const Text(
+            const SizedBox(height: 20),
+            Text('Create your first AI voice agent',
+                style: ZineText.hero(size: 26), textAlign: TextAlign.center),
+            const SizedBox(height: 10),
+            Text(
               'Give it a name, a personality and knowledge files, pick a voice, set your hourly rate — and publish. You earn 50% of every minute people talk to it.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AvaColors.sub, fontSize: 13, height: 1.5),
+              style: ZineText.sub(size: 14),
             ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: kAvaVoicePurple),
+            const SizedBox(height: 20),
+            ZineButton(
+              label: 'Create an agent',
+              variant: ZineButtonVariant.blue,
+              icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+              trailingIcon: false,
               onPressed: _create,
-              icon: const Icon(Icons.add),
-              label: const Text('Create an agent',
-                  style: TextStyle(fontWeight: FontWeight.w800)),
             ),
           ]),
         ),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/platform_api.dart';
 import '../../core/theme.dart';
+import '../../core/ui/zine_widgets.dart';
 
 /// AvaBrain — 5th screen: the Agent Inbox (§20). The single surface for the
 /// agentic layer: WhatsApp-style, color-coded per app. Shows agent-to-agent
@@ -19,11 +21,11 @@ class _AgentInboxScreenState extends State<AgentInboxScreen> {
   bool _loading = true;
   String? _error;
 
-  // Per-app accent (color-coded per §20).
+  // Per-app accent (color-coded per §20) — flat poster colors, ink-bordered pills.
   static const _appColors = <String, Color>{
-    'avadate': Color(0xFFFF6FA5), 'avamatri': Color(0xFFB06AF0),
-    'avalinked': Color(0xFF4F8DFD), 'avaolx': Color(0xFFFFA24D),
-    'avachat': AvaColors.brand, 'avalive': AvaColors.coral, 'avatube': AvaColors.danger,
+    'avadate': Color(0xFFFF6FA5), 'avamatri': Zine.lilac,
+    'avalinked': Zine.blue, 'avaolx': Color(0xFFFFA24D),
+    'avachat': Zine.blue, 'avalive': Zine.coral, 'avatube': Zine.coral,
   };
 
   @override
@@ -52,26 +54,42 @@ class _AgentInboxScreenState extends State<AgentInboxScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Agent Inbox'), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: AvaColors.danger)))
-              : _items.isEmpty
-                  ? const _Empty()
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _InboxCard(
-                          item: _items[i],
-                          accent: _appColors[_items[i]['app_name']] ?? AvaColors.brand,
-                          onAction: _act,
+      appBar: ZineAppBar(
+        title: 'Agent Inbox',
+        markWord: 'Inbox',
+        tag: 'AVABRAIN · AGENTIC LAYER',
+        showBack: Navigator.of(context).canPop(),
+        actions: [
+          ZineBackButton(
+            icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold),
+            onTap: _load,
+          ),
+        ],
+      ),
+      body: ZinePaper(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: Zine.lilac))
+            : _error != null
+                ? Center(child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: ZineErrorMsg(_error!)))
+                : _items.isEmpty
+                    ? const Center(child: _Empty())
+                    : RefreshIndicator(
+                        color: Zine.blueInk,
+                        onRefresh: _load,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _items.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 14),
+                          itemBuilder: (_, i) => _InboxCard(
+                            item: _items[i],
+                            accent: _appColors[_items[i]['app_name']] ?? Zine.lilac,
+                            onAction: _act,
+                          ),
                         ),
                       ),
-                    ),
+      ),
     );
   }
 }
@@ -79,16 +97,11 @@ class _AgentInboxScreenState extends State<AgentInboxScreen> {
 class _Empty extends StatelessWidget {
   const _Empty();
   @override
-  Widget build(BuildContext context) => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.smart_toy_outlined, size: 56, color: AvaColors.sub),
-            SizedBox(height: 12),
-            Text('Your agent is on it.', style: TextStyle(fontWeight: FontWeight.w600)),
-            SizedBox(height: 4),
-            Text('Matches and suggestions will appear here.', style: TextStyle(color: AvaColors.sub)),
-          ]),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.all(32),
+        child: ZineEmptyState(
+          icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+          text: 'Your agent is on it.\nMatches and suggestions show up here.',
         ),
       );
 }
@@ -107,53 +120,42 @@ class _InboxCard extends StatelessWidget {
     final canUndo = autoApproved && undoUntil != null && DateTime.now().millisecondsSinceEpoch < undoUntil;
     final action = (item['proposed_action'] ?? 'review') as String;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AvaColors.bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AvaColors.line),
-        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 2))],
-      ),
+    return ZineCard(
+      padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          height: 4,
-          decoration: BoxDecoration(color: accent, borderRadius: const BorderRadius.vertical(top: Radius.circular(14))),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              _Pill(text: (item['app_name'] ?? '').toString(), color: accent),
-              const Spacer(),
-              if (autoApproved) _Pill(text: canUndo ? 'auto · undoable' : 'auto', color: AvaColors.sub),
-              if (status == 'approved') const _Pill(text: 'approved', color: AvaColors.success),
-              if (status == 'dismissed') const _Pill(text: 'dismissed', color: AvaColors.sub),
-            ]),
-            const SizedBox(height: 8),
-            Text((item['title'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-            if ((item['summary'] ?? '').toString().isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(item['summary'].toString(), style: const TextStyle(color: AvaColors.sub)),
-            ],
-            const SizedBox(height: 12),
-            Row(children: [
-              if (item['conversation_id'] != null)
-                _ListenButton(conversationId: item['conversation_id'] as String),
-              const Spacer(),
-              if (canUndo)
-                TextButton(onPressed: () => onAction(item, 'undo'), child: const Text('Undo'))
-              else if (status == 'pending') ...[
-                TextButton(onPressed: () => onAction(item, 'dismiss'), child: const Text('Dismiss', style: TextStyle(color: AvaColors.sub))),
-                const SizedBox(width: 6),
-                FilledButton(
-                  onPressed: () => onAction(item, 'approve'),
-                  style: FilledButton.styleFrom(backgroundColor: accent),
-                  child: Text(_label(action)),
-                ),
-              ],
-            ]),
-          ]),
-        ),
+        Row(children: [
+          _Pill(text: (item['app_name'] ?? '').toString(), color: accent),
+          const Spacer(),
+          if (autoApproved) _Pill(text: canUndo ? 'auto · undoable' : 'auto', color: Zine.paper2),
+          if (status == 'approved') _Pill(text: 'approved', color: Zine.mint),
+          if (status == 'dismissed') _Pill(text: 'dismissed', color: Zine.paper2),
+        ]),
+        const SizedBox(height: 11),
+        Text((item['title'] ?? '').toString(), style: ZineText.cardTitle(size: 17)),
+        if ((item['summary'] ?? '').toString().isNotEmpty) ...[
+          const SizedBox(height: 5),
+          Text(item['summary'].toString(), style: ZineText.sub(size: 14.5)),
+        ],
+        const SizedBox(height: 14),
+        Row(children: [
+          if (item['conversation_id'] != null)
+            _ListenButton(conversationId: item['conversation_id'] as String),
+          const Spacer(),
+          if (canUndo)
+            ZineLink('Undo', onTap: () => onAction(item, 'undo'))
+          else if (status == 'pending') ...[
+            ZineLink('Dismiss', onTap: () => onAction(item, 'dismiss')),
+            const SizedBox(width: 14),
+            ZineButton(
+              label: _label(action),
+              variant: ZineButtonVariant.blue,
+              fontSize: 15,
+              trailingIcon: false,
+              icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
+              onPressed: () => onAction(item, 'approve'),
+            ),
+          ],
+        ]),
       ]),
     );
   }
@@ -172,11 +174,19 @@ class _Pill extends StatelessWidget {
   const _Pill({required this.text, required this.color});
   final String text; final Color color;
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-        child: Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-      );
+  Widget build(BuildContext context) {
+    final fg = color == Zine.coral ? Colors.white : Zine.ink;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: Zine.ink, width: Zine.bw),
+        boxShadow: Zine.shadowXs,
+      ),
+      child: Text(text.toUpperCase(), style: ZineText.tag(size: 10.5, color: fg)),
+    );
+  }
 }
 
 /// "Listen" — lazily synthesizes the conversation audio on tap (TTS is never
@@ -191,12 +201,14 @@ class _ListenButton extends StatefulWidget {
 class _ListenButtonState extends State<_ListenButton> {
   bool _busy = false;
   @override
-  Widget build(BuildContext context) => TextButton.icon(
+  Widget build(BuildContext context) => ZineButton(
+        label: 'Listen',
+        variant: ZineButtonVariant.ghost,
+        fontSize: 14,
+        trailingIcon: false,
+        loading: _busy,
+        icon: PhosphorIcons.play(PhosphorIconsStyle.fill),
         onPressed: _busy ? null : _listen,
-        icon: _busy
-            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.play_circle_outline, size: 20),
-        label: const Text('Listen'),
       );
 
   Future<void> _listen() async {

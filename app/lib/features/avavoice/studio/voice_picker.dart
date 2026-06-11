@@ -1,9 +1,11 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/theme.dart';
+import '../../../core/ui/zine_widgets.dart';
 import '../widgets.dart';
 
 /// Voice catalog list — fetched from /avavoice/voices (Gemini Live prebuilt
@@ -69,25 +71,28 @@ class _VoicePickerState extends State<VoicePicker> {
     return Column(children: _voices.map((v) {
       final sel = v.name == widget.selected;
       final playing = _playing == v.name;
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          border: Border.all(color: sel ? kAvaVoicePurple : AvaColors.line, width: sel ? 2 : 1),
-          borderRadius: BorderRadius.circular(14),
-          color: sel ? kAvaVoicePurple.withValues(alpha: .05) : null,
-        ),
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-          leading: Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: sel ? kAvaVoicePurple : AvaColors.sub, size: 20),
-          title: Text(v.label, style: TextStyle(
-              fontWeight: sel ? FontWeight.w800 : FontWeight.w600, fontSize: 14)),
-          trailing: IconButton(
-            icon: Icon(playing ? Icons.stop_circle_outlined : Icons.play_circle_outline,
-                color: kAvaVoicePurple, size: 26),
-            onPressed: () => _preview(v),
-          ),
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ZinePressable(
           onTap: () => widget.onSelected(v.name),
+          color: sel ? Zine.lilac : Zine.card,
+          radius: BorderRadius.circular(Zine.rSm),
+          boxShadow: sel ? Zine.shadowXs : const <BoxShadow>[],
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(children: [
+            PhosphorIcon(
+                sel ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill) : PhosphorIcons.circle(PhosphorIconsStyle.bold),
+                color: sel ? Zine.ink : Zine.inkMute, size: 22),
+            const SizedBox(width: 11),
+            Expanded(child: Text(v.label,
+                style: ZineText.value(size: 14.5, weight: sel ? FontWeight.w900 : FontWeight.w800))),
+            ZineBackButton(
+              icon: playing
+                  ? PhosphorIcons.stop(PhosphorIconsStyle.fill)
+                  : PhosphorIcons.play(PhosphorIconsStyle.fill),
+              onTap: () => _preview(v),
+            ),
+          ]),
         ),
       );
     }).toList());

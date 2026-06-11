@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/theme.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../wallet/wallet_screen.dart';
 import 'widgets.dart';
 
@@ -12,8 +14,9 @@ Future<bool?> showBookingSheet(BuildContext context, VoiceAgent agent) {
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
+    backgroundColor: Zine.paper,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
     builder: (_) => _BookingSheet(agent: agent),
   );
 }
@@ -122,99 +125,87 @@ class _BookingSheetState extends State<_BookingSheet> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Book ${a.name}',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-            const SizedBox(height: 14),
+            Text('Book ${a.name}', style: ZineText.cardTitle(size: 21)),
+            const SizedBox(height: 16),
             Row(children: [
-              Expanded(child: _picker(Icons.calendar_today_outlined,
+              Expanded(child: _picker(PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
                   '${_date.day}/${_date.month}/${_date.year}', _pickDate)),
               const SizedBox(width: 10),
-              Expanded(child: _picker(Icons.schedule, _time.format(context), _pickTime)),
+              Expanded(child: _picker(PhosphorIcons.clock(PhosphorIconsStyle.bold), _time.format(context), _pickTime)),
             ]),
-            const SizedBox(height: 14),
-            const Text('Session length', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, children: _durationChoices.map((m) {
-              final sel = m == _minutes;
-              return ChoiceChip(
-                label: Text('$m min'),
-                selected: sel,
-                selectedColor: kAvaVoicePurple.withValues(alpha: .15),
-                labelStyle: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: sel ? kAvaVoicePurple : AvaColors.sub),
-                onSelected: (_) => setState(() => _minutes = m),
+            const SizedBox(height: 16),
+            Text('SESSION LENGTH', style: ZineText.kicker()),
+            const SizedBox(height: 9),
+            Wrap(spacing: 8, runSpacing: 8, children: _durationChoices.map((m) {
+              return ZineChip(
+                label: '$m min',
+                active: m == _minutes,
+                onTap: () => setState(() => _minutes = m),
               );
             }).toList()),
-            const SizedBox(height: 14),
-            _picker(Icons.translate, 'Agent speaks: ${languageLabel(_language)}', _pickLang),
             const SizedBox(height: 16),
+            _picker(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                'Agent speaks: ${languageLabel(_language)}', _pickLang),
+            const SizedBox(height: 18),
             // Itemized total.
-            Container(
+            ZineCard(
+              color: Zine.paper2,
+              radius: Zine.rSm,
+              boxShadow: Zine.shadowXs,
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                  color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
               child: Column(children: [
                 if (a.isFreeForCallers)
-                  const Row(children: [
-                    Icon(Icons.celebration_outlined, size: 18, color: AvaColors.success),
-                    SizedBox(width: 8),
-                    Expanded(child: Text('Free — this agent\'s creator covers the call.',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                  Row(children: [
+                    PhosphorIcon(PhosphorIcons.confetti(PhosphorIconsStyle.bold), size: 18, color: Zine.mintInk),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text("Free — this agent's creator covers the call.",
+                        style: ZineText.value(size: 13, weight: FontWeight.w800))),
                   ])
                 else ...[
                   _row('${a.name} · $_minutes min × ${fmtCoins(perMin)}/min', fmtCoins(_totalCoins)),
-                  const SizedBox(height: 6),
-                  const Divider(height: 1),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1, color: Color(0x40231B14)),
+                  const SizedBox(height: 8),
                   _row('Held in escrow now', fmtCoins(_totalCoins), bold: true),
-                  const SizedBox(height: 4),
-                  const Align(alignment: Alignment.centerLeft, child: Text(
-                      'You\'re only charged for minutes you actually talk — unused minutes are refunded after the call.',
-                      style: TextStyle(fontSize: 11, color: AvaColors.sub))),
+                  const SizedBox(height: 6),
+                  Align(alignment: Alignment.centerLeft, child: Text(
+                      "You're only charged for minutes you actually talk — unused minutes are refunded after the call.",
+                      style: ZineText.sub(size: 11, color: Zine.inkMute))),
                 ],
               ]),
             ),
-            const SizedBox(height: 16),
-            SizedBox(width: double.infinity, child: FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: kAvaVoicePurple),
+            const SizedBox(height: 18),
+            ZineButton(
+              label: a.isFreeForCallers ? 'Confirm booking' : 'Pay ${fmtCoins(_totalCoins)} & book',
+              fullWidth: true,
+              loading: _working,
+              icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
               onPressed: _working ? null : _confirm,
-              child: _working
-                  ? const SizedBox(width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(a.isFreeForCallers
-                      ? 'Confirm booking'
-                      : 'Pay ${fmtCoins(_totalCoins)} & book',
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-            )),
+            ),
           ]),
         ),
       ),
     );
   }
 
-  Widget _picker(IconData icon, String label, VoidCallback onTap) => InkWell(
+  Widget _picker(IconData icon, String label, VoidCallback onTap) => ZinePressable(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-              border: Border.all(color: AvaColors.line),
-              borderRadius: BorderRadius.circular(12)),
-          child: Row(children: [
-            Icon(icon, size: 17, color: kAvaVoicePurple),
-            const SizedBox(width: 8),
-            Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-            const Icon(Icons.expand_more, size: 18, color: AvaColors.sub),
-          ]),
-        ),
+        radius: BorderRadius.circular(Zine.rField),
+        boxShadow: Zine.shadowXs,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        child: Row(children: [
+          PhosphorIcon(icon, size: 17, color: Zine.blueInk),
+          const SizedBox(width: 9),
+          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ZineText.value(size: 13, weight: FontWeight.w800))),
+          PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+        ]),
       );
 
   Widget _row(String l, String r, {bool bold = false}) => Row(children: [
-        Expanded(child: Text(l, style: TextStyle(
-            fontSize: 12.5, fontWeight: bold ? FontWeight.w800 : FontWeight.w600))),
-        Text(r, style: TextStyle(
-            fontSize: 13, fontWeight: bold ? FontWeight.w800 : FontWeight.w700)),
+        Expanded(child: Text(l, style: ZineText.value(size: 12.5,
+            weight: bold ? FontWeight.w900 : FontWeight.w700))),
+        Text(r, style: ZineText.value(size: 13.5,
+            color: bold ? Zine.mintInk : Zine.ink, weight: FontWeight.w900)),
       ]);
 }

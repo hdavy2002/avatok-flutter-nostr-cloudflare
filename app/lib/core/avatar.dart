@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 import 'avatar_cache.dart';
 import 'theme.dart';
+import 'ui/zine.dart';
 
 /// Avatar: shows the user's uploaded photo (cached, Cloudflare AVIF/q60) when
-/// [avatarUrl] is set, otherwise a deterministic gradient with initials.
+/// [avatarUrl] is set, otherwise a deterministic flat accent fill with initials
+/// (zine: bordered circle, flat poster color — no gradients).
 class Avatar extends StatelessWidget {
   final String seed;
   final String name;
@@ -29,14 +31,27 @@ class Avatar extends StatelessWidget {
     return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
   }
 
-  Widget _initialsCircle() => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(gradient: AvaColors.thumbGradients[_g], shape: BoxShape.circle),
-        alignment: Alignment.center,
-        child: Text(_initials,
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * 0.38)),
-      );
+  Widget _initialsCircle() {
+    // thumbGradients are flat same-color stops — use the first color as a
+    // flat fill. White text only on coral; ink everywhere else.
+    final fill = AvaColors.thumbGradients[_g].colors.first;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: fill,
+        shape: BoxShape.circle,
+        border: Border.all(color: Zine.ink, width: 2),
+      ),
+      alignment: Alignment.center,
+      child: Text(_initials,
+          style: TextStyle(
+              fontFamily: ZineText.display,
+              color: fill == Zine.coral ? Colors.white : Zine.ink,
+              fontWeight: FontWeight.w600,
+              fontSize: size * 0.38)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
