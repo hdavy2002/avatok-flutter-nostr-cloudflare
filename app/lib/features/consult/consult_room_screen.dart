@@ -9,11 +9,15 @@
 // infrastructure). Host extras: waiting-room indicator ("waiting for buyer…
 // 12:43 left of 20:00 wait" — feeds refund rule R2), extend-session offer
 // (calendar-checked), mark-complete on leave. Post-session: rate → review.
+//
+// Zine: video is content; waiting room = full paper screen; chrome = ink-alpha
+// bands, mono timer sticker, bordered circle controls (hang up = coral).
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -21,7 +25,8 @@ import '../../core/config.dart';
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
 import '../../core/session_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/data.dart';
 import '../translation/translate_overlay.dart';
@@ -345,27 +350,34 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
       builder: (sheetCtx) => Padding(
         padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
         child: StatefulBuilder(builder: (_, setSheet) {
           return Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('Rate this session', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Text('Rate this session', style: ZineText.cardTitle()),
             const SizedBox(height: 12),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               for (var i = 1; i <= 5; i++)
                 IconButton(
-                  icon: Icon(i <= rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 32),
+                  icon: PhosphorIcon(
+                      i <= rating
+                          ? PhosphorIcons.star(PhosphorIconsStyle.fill)
+                          : PhosphorIcons.star(PhosphorIconsStyle.bold),
+                      color: Zine.coral, size: 32),
                   onPressed: () => setSheet(() => rating = i),
                 ),
             ]),
-            TextField(controller: body, decoration: const InputDecoration(hintText: 'Anything to add? (optional)')),
-            const SizedBox(height: 12),
-            FilledButton(
+            ZineField(controller: body, hint: 'Anything to add? (optional)'),
+            const SizedBox(height: 14),
+            ZineButton(
+              label: 'Done',
+              fullWidth: true,
               onPressed: () async {
                 if (rating > 0) { try { await ListingsApi.review(listingId, rating, body.text.trim()); } catch (_) {} }
                 if (sheetCtx.mounted) Navigator.pop(sheetCtx);
               },
-              child: const Text('Done'),
             ),
           ]);
         }),
@@ -393,31 +405,38 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     final remaining = (_endsAt - now).clamp(0, 1 << 62);
     final waitLeft = (_startsAt + _kWaitWindowMs - now).clamp(0, _kWaitWindowMs);
     final ready = _peers.values.where((p) => p.ready).toList();
+    final inkScrim = Zine.ink.withValues(alpha: 0.55);
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Zine.ink,
       body: Stack(fit: StackFit.expand, children: [
         // remote grid (1 = full bleed; 2-8 grid)
         if (ready.isEmpty)
-          Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const CircularProgressIndicator(color: Colors.white54),
-              const SizedBox(height: 16),
-              Text(
-                _waitingRoom
-                    ? (_hostRole
-                        ? 'Waiting for ${widget.join['peer_name'] ?? 'the buyer'}… ${fmtMmSs(waitLeft)} left of ${fmtMmSs(_kWaitWindowMs)} wait'
-                        : 'Waiting for the host to join…')
-                    : 'Connecting…',
-                style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center,
+          // waiting / connecting — full zine paper state
+          ZinePaper(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const CircularProgressIndicator(color: Zine.blueInk),
+                  const SizedBox(height: 18),
+                  Text(
+                    _waitingRoom
+                        ? (_hostRole
+                            ? 'Waiting for ${widget.join['peer_name'] ?? 'the buyer'}… ${fmtMmSs(waitLeft)} left of ${fmtMmSs(_kWaitWindowMs)} wait'
+                            : 'Waiting for the host to join…')
+                        : 'Connecting…',
+                    style: ZineText.sub(), textAlign: TextAlign.center,
+                  ),
+                  if (_hostRole && _waitingRoom)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text('NO-SHOW RULE PAYS YOUR WAIT AUTOMATICALLY',
+                          style: ZineText.kicker(size: 10), textAlign: TextAlign.center),
+                    ),
+                ]),
               ),
-              if (_hostRole && _waitingRoom)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text('If they never show up, the no-show rule pays your wait automatically.',
-                      style: TextStyle(color: Colors.white38, fontSize: 12)),
-                ),
-            ]),
+            ),
           )
         else if (ready.length == 1)
           RTCVideoView(ready.first.renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
@@ -428,63 +447,96 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
               for (final p in ready)
                 Container(
                   margin: const EdgeInsets.all(2),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Zine.ink, width: 2),
+                  ),
                   child: RTCVideoView(p.renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
                 ),
             ],
           ),
-        // local preview
+        // local preview — ink-bordered tile
         Positioned(
           right: 16, top: 90, width: 100, height: 150,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Zine.ink, width: 2),
+              boxShadow: Zine.shadowXs,
+            ),
             child: RTCVideoView(_localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
           ),
         ),
-        // top bar: title + countdown
+        // top bar: title + countdown — flat ink-alpha band, mono timer sticker
         Positioned(
           left: 0, right: 0, top: 0,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(children: [
-                Expanded(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: remaining < 5 * 60_000 ? AvaColors.coral : Colors.black45,
-                    borderRadius: BorderRadius.circular(14),
+          child: Container(
+            color: inkScrim,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(children: [
+                  Expanded(child: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: ZineText.value(size: 15, color: Colors.white))),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: remaining < 5 * 60_000 ? Zine.coral : inkScrim,
+                      borderRadius: BorderRadius.circular(100),
+                      border: remaining < 5 * 60_000
+                          ? Border.all(color: Zine.ink, width: 2)
+                          : null,
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), color: Colors.white, size: 13),
+                      const SizedBox(width: 4),
+                      Text(fmtMmSs(remaining), style: ZineText.tag(size: 12, color: Colors.white)),
+                    ]),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.timer_outlined, color: Colors.white, size: 14),
-                    const SizedBox(width: 4),
-                    Text(fmtMmSs(remaining), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                  ]),
-                ),
-              ]),
+                ]),
+              ),
             ),
           ),
         ),
         // Live voice translation — transparent "Translate" menu (both sides;
         // the listener pays: $3/h in AvaCoins, never shared with the creator).
         TranslateOverlay(context: 'consult', refId: widget.bookingId),
-        // bottom controls
+        // bottom controls — bordered circle buttons (hang up = coral)
         Positioned(
           left: 0, right: 0, bottom: 16,
           child: SafeArea(
             top: false,
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-              _ctl(_micOn ? Icons.mic : Icons.mic_off, _toggleMic),
-              _ctl(_camOn ? Icons.videocam : Icons.videocam_off, _toggleCam),
-              _ctl(Icons.cameraswitch, _flip),
-              _ctl(_speakerOn ? Icons.volume_up : Icons.hearing, _toggleSpeaker),
-              _ctl(Icons.attach_file, _sendFile, tooltip: 'Send file (opens your AvaTok thread)'),
-              if (_hostRole) _ctl(Icons.more_time, _extend, tooltip: 'Extend +15 min'),
-              FloatingActionButton(
-                heroTag: 'hangup',
-                backgroundColor: AvaColors.coral,
-                onPressed: () => _leave(),
-                child: const Icon(Icons.call_end, color: Colors.white),
+              _ctl(_micOn
+                  ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
+                  : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold), _toggleMic, off: !_micOn),
+              _ctl(_camOn
+                  ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                  : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold), _toggleCam, off: !_camOn),
+              _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold), _flip),
+              _ctl(_speakerOn
+                  ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
+                  : PhosphorIcons.ear(PhosphorIconsStyle.bold), _toggleSpeaker, off: !_speakerOn),
+              _ctl(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), _sendFile,
+                  tooltip: 'Send file (opens your AvaTok thread)'),
+              if (_hostRole)
+                _ctl(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), _extend, tooltip: 'Extend +15 min'),
+              // hang up — coral circle
+              GestureDetector(
+                onTap: () => _leave(),
+                child: Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    color: Zine.coral,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Zine.ink, width: Zine.bw),
+                    boxShadow: Zine.shadowSm,
+                  ),
+                  child: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill), color: Colors.white, size: 24),
+                ),
               ),
             ]),
           ),
@@ -493,10 +545,24 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
     );
   }
 
-  Widget _ctl(IconData ic, VoidCallback onTap, {String? tooltip}) => Material(
-        color: Colors.white12, shape: const CircleBorder(),
-        child: IconButton(icon: Icon(ic, color: Colors.white), onPressed: onTap, tooltip: tooltip),
-      );
+  /// Bordered circle control — card fill; coral when the toggle is off (danger).
+  Widget _ctl(IconData ic, VoidCallback onTap, {String? tooltip, bool off = false}) {
+    final core = GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 46, height: 46,
+        decoration: BoxDecoration(
+          color: off ? Zine.coral : Zine.card,
+          shape: BoxShape.circle,
+          border: Border.all(color: Zine.ink, width: Zine.bw),
+          boxShadow: Zine.shadowXs,
+        ),
+        child: Icon(ic, color: off ? Colors.white : Zine.ink, size: 21),
+      ),
+    );
+    if (tooltip == null) return core;
+    return Tooltip(message: tooltip, child: core);
+  }
 }
 
 String fmtMmSs(int ms) {

@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../explore/widgets.dart' show CoverImage;
 import '../wallet/wallet_screen.dart';
 import 'booking_sheet.dart';
@@ -125,14 +127,18 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Widget build(BuildContext context) {
     final a = _agent;
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0,
-          foregroundColor: AvaColors.ink, title: Text(a?.name ?? 'Voice agent')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : a == null
-              ? const Center(child: Text('Agent not found', style: TextStyle(color: AvaColors.sub)))
-              : _body(a),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(title: a?.name ?? 'Voice agent', tag: 'ai voice agent'),
+      body: ZinePaper(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
+            : a == null
+                ? Center(
+                    child: ZineEmptyState(
+                        icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+                        text: 'Agent not found'))
+                : _body(a),
+      ),
       bottomNavigationBar: a == null ? null : _actions(a),
     );
   }
@@ -140,9 +146,9 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Widget _body(VoiceAgent a) {
     final busy = _avail?.busy ?? a.busy;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
       children: [
-        // Listing photos (1–5) — swipeable strip.
+        // Listing photos (1–5) — swipeable strip, ink-framed.
         if (a.images.isNotEmpty) ...[
           SizedBox(
             height: 180,
@@ -150,114 +156,154 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
               scrollDirection: Axis.horizontal,
               itemCount: a.images.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) => CoverImage(
-                  url: a.images[i], seed: i,
-                  width: a.images.length == 1 ? MediaQuery.of(context).size.width - 40 : 260,
-                  height: 180),
+              itemBuilder: (_, i) => Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(Zine.rSm),
+                  border: Zine.border,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: CoverImage(
+                    url: a.images[i], seed: i,
+                    width: a.images.length == 1 ? MediaQuery.of(context).size.width - 36 : 260,
+                    height: 180),
+              ),
             ),
           ),
           const SizedBox(height: 16),
         ],
         Row(children: [
-          Avatar(seed: a.id, name: a.name, size: 72, avatarUrl: a.avatarUrl),
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Zine.border,
+              boxShadow: Zine.shadowXs,
+            ),
+            child: Avatar(seed: a.id, name: a.name, size: 72, avatarUrl: a.avatarUrl),
+          ),
           const SizedBox(width: 16),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(a.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
+            Text(a.name, style: ZineText.cardTitle(size: 20)),
             const SizedBox(height: 4),
-            Text(a.role, style: const TextStyle(color: AvaColors.sub, fontSize: 13.5)),
+            Text(a.role, style: ZineText.sub(size: 13.5)),
             const SizedBox(height: 8),
-            Row(children: [
-              AvailabilityChip(busy: busy),
-              const SizedBox(width: 8),
-              if (a.visionEnabled) const VisionBadge(),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              busy
+                  ? _sticker('agent busy', Zine.coral, Colors.white)
+                  : _sticker('call now', Zine.mint, Zine.ink),
+              if (a.visionEnabled) _sticker('vision', Zine.lilac, Zine.ink),
             ]),
           ])),
         ]),
         const SizedBox(height: 20),
-        _infoTile(Icons.payments_outlined, 'Price',
+        _infoTile(PhosphorIcons.coins(PhosphorIconsStyle.bold), Zine.mint, 'Price',
             a.isFreeForCallers
                 ? 'Free — the creator covers this agent\'s calls'
                 : '${a.rateLabel}\nBilled per minute (rounded up). Held in escrow; unused minutes refunded.'),
-        _infoTile(Icons.timer_outlined, 'Session length',
+        _infoTile(PhosphorIcons.timer(PhosphorIconsStyle.bold), Zine.blue, 'Session length',
             'Up to ${a.sessionLimitMin} minutes. The agent wraps up politely before time runs out.'),
-        _infoTile(Icons.translate, 'Languages',
+        _infoTile(PhosphorIcons.translate(PhosphorIconsStyle.bold), Zine.lilac, 'Languages',
             'Choose the language the agent speaks when you start the call — ${kVoiceLanguages.length}+ available.'),
         if (a.visionEnabled)
-          _infoTile(Icons.visibility_outlined, 'Vision',
+          _infoTile(PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.coral, 'Vision',
               'This agent can see your screen or camera (with your permission) and help with what it sees.'),
         if (a.files.isNotEmpty)
-          _infoTile(Icons.psychology_outlined, 'Knowledge',
+          _infoTile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'Knowledge',
               'Trained on ${a.files.length} document${a.files.length == 1 ? '' : 's'} provided by the creator.'),
         if (a.creatorName != null)
-          _infoTile(Icons.person_outline, 'Creator', a.creatorName!),
+          _infoTile(PhosphorIcons.user(PhosphorIconsStyle.bold), Zine.blue, 'Creator', a.creatorName!),
         const SizedBox(height: 8),
-        if (a.systemProfile.isNotEmpty) ...[
-          const Text('About this agent', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          const SizedBox(height: 6),
-          Text(a.systemProfile, style: const TextStyle(color: AvaColors.ink, fontSize: 13.5, height: 1.45)),
-        ],
+        if (a.systemProfile.isNotEmpty)
+          ZineCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              ZineCardHead(
+                  icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+                  accent: Zine.lilac,
+                  title: 'About this agent'),
+              const SizedBox(height: 10),
+              Text(a.systemProfile, style: ZineText.sub(size: 13.5, color: Zine.ink)),
+            ]),
+          ),
       ],
     );
   }
 
-  Widget _infoTile(IconData icon, String title, String body) => Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-                color: kAvaVoicePurple.withValues(alpha: .1),
-                borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, size: 18, color: kAvaVoicePurple),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-            const SizedBox(height: 2),
-            Text(body, style: const TextStyle(color: AvaColors.sub, fontSize: 12.5, height: 1.4)),
-          ])),
-        ]),
+  Widget _sticker(String text, Color fill, Color fg) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: Zine.ink, width: 2),
+          boxShadow: Zine.shadowXs,
+        ),
+        child: Text(text.toUpperCase(), style: ZineText.tag(size: 10.5, color: fg)),
+      );
+
+  Widget _infoTile(IconData icon, Color accent, String title, String body) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: ZineCard(
+          padding: const EdgeInsets.all(14),
+          radius: Zine.rSm,
+          boxShadow: Zine.shadowXs,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ZineIconBadge(icon: icon, color: accent, size: 32),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title.toUpperCase(), style: ZineText.kicker()),
+              const SizedBox(height: 3),
+              Text(body, style: ZineText.sub(size: 12.5)),
+            ])),
+          ]),
+        ),
       );
 
   Widget _actions(VoiceAgent a) {
     final busy = _avail?.busy ?? a.busy;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: widget.bookingId != null
-            ? FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: kAvaVoicePurple),
-                onPressed: _joinBooking,
-                icon: const Icon(Icons.call),
-                label: const Text('Join your booked session'),
-              )
-            : Row(children: [
-                Expanded(child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kAvaVoicePurple,
-                    side: const BorderSide(color: kAvaVoicePurple),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    return Container(
+      decoration: const BoxDecoration(
+        color: Zine.paper2,
+        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: widget.bookingId != null
+              ? ZineButton(
+                  label: 'Join your booked session',
+                  icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                  trailingIcon: false,
+                  fullWidth: true,
+                  fontSize: 17,
+                  onPressed: _joinBooking,
+                )
+              : Row(children: [
+                  Expanded(
+                    child: ZineButton(
+                      label: 'Book a time',
+                      variant: ZineButtonVariant.blue,
+                      icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+                      trailingIcon: false,
+                      fullWidth: true,
+                      fontSize: 16,
+                      onPressed: _book,
+                    ),
                   ),
-                  onPressed: _book,
-                  icon: const Icon(Icons.event_outlined),
-                  label: const Text('Book a time', style: TextStyle(fontWeight: FontWeight.w800)),
-                )),
-                const SizedBox(width: 10),
-                Expanded(child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: busy ? AvaColors.sub : AvaColors.success,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ZineButton(
+                      label: busy ? 'Agent busy' : 'Call now',
+                      icon: busy
+                          ? PhosphorIcons.phoneSlash(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      trailingIcon: false,
+                      fullWidth: true,
+                      fontSize: 16,
+                      loading: _working,
+                      onPressed: busy || _working ? null : _callNow,
+                    ),
                   ),
-                  onPressed: busy || _working ? null : _callNow,
-                  icon: _working
-                      ? const SizedBox(width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Icon(busy ? Icons.phone_disabled : Icons.call),
-                  label: Text(busy ? 'Agent busy' : 'Call now',
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-                )),
-              ]),
+                ]),
+        ),
       ),
     );
   }

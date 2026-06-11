@@ -1,5 +1,5 @@
-// TranslateOverlay — the on-call "Translate" menu (transparent, sits on top of
-// the video). Drop into the call screen's Stack:
+// TranslateOverlay — the on-call "Translate" menu (sits on top of the video).
+// Drop into the call screen's Stack:
 //
 //   TranslateOverlay(context: 'consult', refId: bookingId)
 //
@@ -7,12 +7,17 @@
 // language. Billing: $3/hour in AvaCoins (5/min). The two owner-specified
 // pop-ups (no AvaCoins to start / AvaCoins utilized mid-call) both offer an
 // in-call wallet top-up so translation can continue.
+//
+// Zine: AI = lilac. The pill is an ink-bordered card pill (lilac when active);
+// the billing notice is a mono sticker; sheets/dialogs live on paper.
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/money_api.dart';
 import '../../core/remote_config.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'translation_api.dart';
 import 'translation_engine.dart';
 import 'translation_langs.dart';
@@ -106,19 +111,22 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     await showDialog<void>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [
-          Icon(Icons.account_balance_wallet_outlined, color: AvaColors.coral),
-          SizedBox(width: 8),
-          Expanded(child: Text('AvaCoins needed', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+        backgroundColor: Zine.paper,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.coins(PhosphorIconsStyle.bold), color: Zine.mint),
+          const SizedBox(width: 10),
+          Expanded(child: Text('AvaCoins needed', style: ZineText.cardTitle(size: 17))),
         ]),
-        content: Text(message, style: const TextStyle(height: 1.4)),
+        content: Text(message, style: ZineText.sub(size: 14.5)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Not now')),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: AvaColors.brand),
-            icon: const Icon(Icons.add_card, size: 18),
-            label: const Text('Top up wallet'),
+          TextButton(onPressed: () => Navigator.pop(dCtx),
+              child: Text('NOT NOW', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+          ZineButton(
+            label: 'Top up wallet',
+            fontSize: 16,
             onPressed: () async {
               Navigator.pop(dCtx);
               final done = await _topupSheet();
@@ -142,19 +150,23 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     int? cents = await showModalBottomSheet<int>(
       context: context, backgroundColor: Colors.transparent,
       builder: (sCtx) => Container(
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        decoration: BoxDecoration(
+          color: Zine.paper,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(Zine.r)),
+          border: const Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Top up AvaCoins', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          const Text('Voice translation costs \$3 per hour (5 AvaCoins per minute).',
-              style: TextStyle(color: AvaColors.sub, fontSize: 13)),
+          Text('Top up AvaCoins', style: ZineText.cardTitle()),
+          const SizedBox(height: 6),
+          const ZineSticker('\$3 PER HOUR · 5 AVACOINS / MIN', kind: ZineStickerKind.hint),
           const SizedBox(height: 14),
           Wrap(spacing: 10, runSpacing: 10, children: [
             for (final usd in const [3, 5, 10, 20])
-              ActionChip(
-                label: Text('\$$usd', style: const TextStyle(fontWeight: FontWeight.w800)),
-                onPressed: () => Navigator.pop(sCtx, usd * 100),
+              ZineSticker(
+                '\$$usd',
+                kind: ZineStickerKind.ok, // lime = pay action on a paper sheet
+                onTap: () => Navigator.pop(sCtx, usd * 100),
               ),
           ]),
         ]),
@@ -173,11 +185,17 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: const Text('Finish the top-up'),
-        content: const Text('Complete the payment in your browser, then come back and tap Done.'),
+        backgroundColor: Zine.paper,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('Finish the top-up', style: ZineText.cardTitle(size: 17)),
+        content: Text('Complete the payment in your browser, then come back and tap Done.',
+            style: ZineText.sub(size: 14.5)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Done')),
+          TextButton(onPressed: () => Navigator.pop(dCtx, false),
+              child: Text('CANCEL', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+          ZineButton(label: 'Done', fontSize: 16, onPressed: () => Navigator.pop(dCtx, true)),
         ],
       ),
     );
@@ -197,28 +215,29 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     final lang = _engine.targetLang.value;
 
     final content = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-          // The transparent "Translate" pill menu.
-          Material(
-            color: active ? AvaColors.brand.withValues(alpha: 0.85) : Colors.black38,
-            borderRadius: BorderRadius.circular(22),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(22),
-              onTap: _busy ? null : (active ? _stop : _openMenu),
-              onLongPress: active ? _openMenu : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  _busy || s == TranslationState.connecting
-                      ? const SizedBox(width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.translate, color: Colors.white, size: 17),
-                  const SizedBox(width: 6),
-                  Text(
-                    active ? '${translationLangLabel(lang ?? '')} · tap to stop' : 'Translate',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-                  ),
-                ]),
+          // The "Translate" pill — ink-bordered card pill, lilac when active (AI).
+          GestureDetector(
+            onTap: _busy ? null : (active ? _stop : _openMenu),
+            onLongPress: active ? _openMenu : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: active ? Zine.lilac : Zine.card,
+                borderRadius: BorderRadius.circular(100),
+                border: Border.all(color: Zine.ink, width: Zine.bw),
+                boxShadow: Zine.shadowXs,
               ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                _busy || s == TranslationState.connecting
+                    ? const SizedBox(width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
+                    : PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold), color: Zine.ink, size: 17),
+                const SizedBox(width: 6),
+                Text(
+                  active ? '${translationLangLabel(lang ?? '')} · tap to stop' : 'Translate',
+                  style: ZineText.value(size: 13, color: Zine.ink, weight: FontWeight.w700),
+                ),
+              ]),
             ),
           ),
           if (active)
@@ -228,10 +247,15 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
                 valueListenable: _engine.billedMinutes,
                 builder: (_, min, __) => Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(
+                    color: Zine.card,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: Zine.ink, width: 2),
+                    boxShadow: Zine.shadowXs,
+                  ),
                   child: Text(
-                    '$min min · ${TranslationApi.quoteCoins(min)} AvaCoins (\$3/h)',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                    '$min MIN · ${TranslationApi.quoteCoins(min)} AVACOINS (\$3/H)',
+                    style: ZineText.tag(size: 10.5, color: Zine.inkSoft),
                   ),
                 ),
               ),
@@ -264,24 +288,29 @@ class _LanguageSheetState extends State<_LanguageSheet> {
         .toList();
     return Container(
       height: MediaQuery.of(context).size.height * 0.65,
-      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      decoration: const BoxDecoration(
+        color: Zine.paper,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
+        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      ),
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Center(child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(color: AvaColors.line, borderRadius: BorderRadius.circular(2)))),
-        const Text('Select language', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 2),
-        const Text('Incoming voice will be translated live · \$3 per hour in AvaCoins',
-            style: TextStyle(color: AvaColors.sub, fontSize: 12.5)),
+            decoration: BoxDecoration(color: Zine.inkMute, borderRadius: BorderRadius.circular(2)))),
+        Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.translate(PhosphorIconsStyle.bold), color: Zine.lilac),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Select language', style: ZineText.cardTitle())),
+        ]),
+        const SizedBox(height: 6),
+        Text('Incoming voice translated live · \$3 per hour in AvaCoins',
+            style: ZineText.sub(size: 13)),
         const SizedBox(height: 10),
-        TextField(
+        ZineField(
           controller: _search,
+          hint: 'Search 70+ languages',
+          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
           onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
-          decoration: InputDecoration(
-            hintText: 'Search 70+ languages', isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 19),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
         ),
         const SizedBox(height: 6),
         Expanded(
@@ -292,8 +321,13 @@ class _LanguageSheetState extends State<_LanguageSheet> {
               final sel = l.code == widget.current;
               return ListTile(
                 dense: true,
-                title: Text(l.label, style: TextStyle(fontWeight: sel ? FontWeight.w800 : FontWeight.w500)),
-                trailing: sel ? const Icon(Icons.check, color: AvaColors.brand, size: 18) : null,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.rSm)),
+                tileColor: sel ? Zine.lilac : null,
+                title: Text(l.label,
+                    style: ZineText.value(size: 14.5, weight: sel ? FontWeight.w800 : FontWeight.w600)),
+                trailing: sel
+                    ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.ink, size: 18)
+                    : null,
                 onTap: () => Navigator.pop(context, l.code),
               );
             },

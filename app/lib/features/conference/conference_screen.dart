@@ -13,18 +13,24 @@
 // WebRTC stack is added to the APK.
 //
 // 1:1 calls do NOT use this screen — they stay on the P2P CallRoom-DO path.
+//
+// Zine: paper chrome everywhere; participant tiles get 2px ink borders
+// (lime when speaking); control bar = paper-2 band with bordered circle
+// buttons (leave = coral); sheets on paper.
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:livekit_client/livekit_client.dart' as lk;
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/ava_log.dart';
 import '../../core/disk_cache.dart';
 import '../../core/remote_config.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../translation/translate_overlay.dart';
 import 'conference_api.dart';
 
@@ -193,11 +199,16 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
     if (conf.starter) {
       final choice = await showModalBottomSheet<String>(
         context: context,
+        backgroundColor: Zine.paper,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
         builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: const Icon(Icons.logout), title: const Text('Leave call'),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.signOut(PhosphorIconsStyle.bold), color: Zine.ink),
+              title: Text('Leave call', style: ZineText.value(size: 15)),
               onTap: () => Navigator.pop(ctx, 'leave')),
-          ListTile(leading: const Icon(Icons.call_end, color: AvaColors.danger),
-              title: const Text('End call for everyone', style: TextStyle(color: AvaColors.danger)),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.bold), color: Zine.coral),
+              title: Text('End call for everyone', style: ZineText.value(size: 15, color: Zine.coral)),
               onTap: () => Navigator.pop(ctx, 'end')),
         ])),
       );
@@ -218,15 +229,21 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
     final ps = _participants(conf);
     showModalBottomSheet<void>(
       context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
       builder: (ctx) => SafeArea(child: ListView(shrinkWrap: true, children: [
         Padding(padding: const EdgeInsets.all(14),
-            child: Text('In call · ${ps.length} of 25', style: const TextStyle(fontWeight: FontWeight.w800))),
+            child: Text('In call · ${ps.length} of 25', style: ZineText.cardTitle(size: 17))),
         for (final p in ps)
           ListTile(
             leading: Avatar(seed: p.identity, name: _nameOf(p), size: 36),
-            title: Text(_nameOf(p) + (p is lk.LocalParticipant ? ' (you)' : '')),
-            trailing: Icon(p.isMuted ? Icons.mic_off : Icons.mic,
-                size: 18, color: p.isMuted ? AvaColors.sub : AvaColors.success),
+            title: Text(_nameOf(p) + (p is lk.LocalParticipant ? ' (you)' : ''),
+                style: ZineText.value(size: 15, weight: FontWeight.w700)),
+            trailing: PhosphorIcon(
+                p.isMuted
+                    ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                size: 18, color: p.isMuted ? Zine.inkMute : Zine.mintInk),
           ),
       ])),
     );
@@ -255,21 +272,24 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
   Widget build(BuildContext context) {
     if (_error != null) {
       return Scaffold(
-        backgroundColor: const Color(0xFF101418),
-        body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.error_outline, color: Colors.white54, size: 42),
-          const SizedBox(height: 10),
-          Text(_error!, style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 16),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        ])),
+        backgroundColor: Zine.paper,
+        body: ZinePaper(
+          child: SafeArea(
+            child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ZineEmptyState(icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), text: _error!),
+              const SizedBox(height: 16),
+              ZineButton(label: 'Close', variant: ZineButtonVariant.ghost, fontSize: 16,
+                  onPressed: () => Navigator.pop(context)),
+            ])),
+          ),
+        ),
       );
     }
     final conf = _conf;
     if (conf == null) {
       return const Scaffold(
-        backgroundColor: Color(0xFF101418),
-        body: Center(child: CircularProgressIndicator(color: Colors.white70)),
+        backgroundColor: Zine.paper,
+        body: Center(child: CircularProgressIndicator(color: Zine.blueInk)),
       );
     }
 
@@ -280,88 +300,127 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
     return PopScope(
       canPop: true, // back = minimize (room stays connected)
       child: Scaffold(
-        backgroundColor: const Color(0xFF101418),
-        body: SafeArea(
-          child: Column(children: [
-            // top bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Row(children: [
-                IconButton(icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 28),
-                    onPressed: _minimize, tooltip: 'Minimize'),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(conf.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-                  Text('${ps.length} in call · max 25',
-                      style: const TextStyle(color: Colors.white54, fontSize: 11.5)),
-                ])),
-                // Live voice translation ($3/h in AvaCoins) — group conferences.
-                if (RemoteConfig.translationGroupEnabled)
-                  TranslateOverlay(context: 'conference', refId: conf.gid, inline: true),
-                IconButton(icon: const Icon(Icons.people_outline, color: Colors.white),
-                    onPressed: _participantsSheet, tooltip: 'Participants'),
-              ]),
-            ),
-            // tiles: grid (≤8) or paginated grid (9+)
-            Expanded(
-              child: pages == 1
-                  ? _grid(ps)
-                  : Column(children: [
-                      Expanded(
-                        child: PageView.builder(
-                          itemCount: pages,
-                          onPageChanged: (i) => setState(() => _page = i),
-                          itemBuilder: (_, i) {
-                            final end = i * _perPage + _perPage;
-                            return _grid(ps.sublist(i * _perPage, end > ps.length ? ps.length : end));
-                          },
+        backgroundColor: Zine.paper,
+        body: ZinePaper(
+          child: SafeArea(
+            child: Column(children: [
+              // top bar — paper band
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Row(children: [
+                  ZineBackButton(
+                      icon: PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                      onTap: _minimize),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(conf.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: ZineText.cardTitle(size: 18)),
+                    Text('${ps.length} IN CALL · MAX 25', style: ZineText.kicker(size: 10.5)),
+                  ])),
+                  // Live voice translation ($3/h in AvaCoins) — group conferences.
+                  if (RemoteConfig.translationGroupEnabled)
+                    TranslateOverlay(context: 'conference', refId: conf.gid, inline: true),
+                  const SizedBox(width: 8),
+                  ZineBackButton(
+                      icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                      onTap: _participantsSheet),
+                ]),
+              ),
+              // tiles: grid (≤8) or paginated grid (9+)
+              Expanded(
+                child: pages == 1
+                    ? _grid(ps)
+                    : Column(children: [
+                        Expanded(
+                          child: PageView.builder(
+                            itemCount: pages,
+                            onPageChanged: (i) => setState(() => _page = i),
+                            itemBuilder: (_, i) {
+                              final end = i * _perPage + _perPage;
+                              return _grid(ps.sublist(i * _perPage, end > ps.length ? ps.length : end));
+                            },
+                          ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          for (var i = 0; i < pages; i++)
-                            Container(
-                              width: 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 3),
-                              decoration: BoxDecoration(shape: BoxShape.circle,
-                                  color: i == page ? Colors.white : Colors.white24),
-                            ),
-                        ]),
-                      ),
-                    ]),
-            ),
-            // controls
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                _ctl(_mic ? Icons.mic : Icons.mic_off, _mic ? 'Mute' : 'Unmute', _toggleMic, active: _mic),
-                if (_video) _ctl(_cam ? Icons.videocam : Icons.videocam_off, 'Camera', _toggleCam, active: _cam),
-                if (_video && _cam) _ctl(Icons.flip_camera_ios_outlined, 'Flip', _flipCam, active: true),
-                _ctl(_speaker ? Icons.volume_up : Icons.hearing, 'Speaker', _toggleSpeaker, active: _speaker),
-                // leave / end
-                GestureDetector(
-                  onTap: _leave,
-                  child: Container(
-                    width: 56, height: 56,
-                    decoration: const BoxDecoration(color: AvaColors.danger, shape: BoxShape.circle),
-                    child: const Icon(Icons.call_end, color: Colors.white),
-                  ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            for (var i = 0; i < pages; i++)
+                              Container(
+                                width: 8, height: 8, margin: const EdgeInsets.symmetric(horizontal: 3),
+                                decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: i == page ? Zine.coral : Zine.card,
+                                    border: Border.all(color: Zine.ink, width: 2)),
+                              ),
+                          ]),
+                        ),
+                      ]),
+              ),
+              // controls — paper-2 band with bordered circle buttons
+              Container(
+                decoration: const BoxDecoration(
+                  color: Zine.paper2,
+                  border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
                 ),
-              ]),
-            ),
-          ]),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                  _ctl(
+                      _mic
+                          ? PhosphorIcons.microphone(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold),
+                      _mic ? 'Mute' : 'Unmute', _toggleMic, active: _mic),
+                  if (_video)
+                    _ctl(
+                        _cam
+                            ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
+                        'Camera', _toggleCam, active: _cam),
+                  if (_video && _cam)
+                    _ctl(PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold), 'Flip', _flipCam, active: true),
+                  _ctl(
+                      _speaker
+                          ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.ear(PhosphorIconsStyle.bold),
+                      'Speaker', _toggleSpeaker, active: _speaker),
+                  // leave / end — coral circle
+                  GestureDetector(
+                    onTap: _leave,
+                    child: Container(
+                      width: 56, height: 56,
+                      decoration: BoxDecoration(
+                        color: Zine.coral,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Zine.ink, width: Zine.bw),
+                        boxShadow: Zine.shadowSm,
+                      ),
+                      child: PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill),
+                          color: Colors.white, size: 24),
+                    ),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
         ),
       ),
     );
   }
 
-  Widget _ctl(IconData icon, String tip, VoidCallback onTap, {required bool active}) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 48, height: 48,
-          decoration: BoxDecoration(
-              color: active ? Colors.white12 : Colors.white, shape: BoxShape.circle),
-          child: Icon(icon, color: active ? Colors.white : const Color(0xFF101418), size: 22),
+  /// Bordered circle control — card fill when on, coral (danger) when off.
+  Widget _ctl(IconData icon, String tip, VoidCallback onTap, {required bool active}) => Tooltip(
+        message: tip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+              color: active ? Zine.card : Zine.coral,
+              shape: BoxShape.circle,
+              border: Border.all(color: Zine.ink, width: Zine.bw),
+              boxShadow: Zine.shadowXs,
+            ),
+            child: Icon(icon, color: active ? Zine.ink : Colors.white, size: 22),
+          ),
         ),
       );
 
@@ -391,9 +450,10 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF1C232B),
+        color: Zine.paper2,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: speaking ? AvaColors.success : Colors.transparent, width: 2),
+        // 2px ink borders on tiles; lime = active speaker.
+        border: Border.all(color: speaking ? Zine.lime : Zine.ink, width: speaking ? Zine.bw : 2),
       ),
       child: Stack(fit: StackFit.expand, children: [
         if (track != null)
@@ -401,16 +461,29 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
         else
           Center(child: Avatar(seed: p.identity, name: _nameOf(p), size: 64)),
         Positioned(
-          left: 8, bottom: 6, right: 8,
+          left: 6, bottom: 6, right: 6,
           child: Row(children: [
-            Flexible(child: Text(
-              p is lk.LocalParticipant ? 'You' : _nameOf(p),
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700,
-                  shadows: [Shadow(blurRadius: 4, color: Colors.black87)]),
-            )),
-            const SizedBox(width: 4),
-            if (p.isMuted) const Icon(Icons.mic_off, color: Colors.white70, size: 14),
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Zine.ink.withValues(alpha: 0.55), // ink-alpha pill over video
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Flexible(child: Text(
+                    p is lk.LocalParticipant ? 'You' : _nameOf(p),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.value(size: 11.5, color: Colors.white, weight: FontWeight.w700),
+                  )),
+                  if (p.isMuted) ...[
+                    const SizedBox(width: 4),
+                    PhosphorIcon(PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold),
+                        color: Colors.white, size: 12),
+                  ],
+                ]),
+              ),
+            ),
           ]),
         ),
       ]),

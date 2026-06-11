@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -13,7 +14,8 @@ import '../../core/call_log_store.dart';
 import '../../core/call_telemetry.dart';
 import '../../core/config.dart';
 import '../../core/ice_cache.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../push/push_service.dart';
 
 /// True while a 1:1 call is on this device — used to auto-reply "busy" to a
@@ -425,149 +427,155 @@ class _CallScreenState extends State<CallScreen> {
   @override
   Widget build(BuildContext context) {
     final showVideo = _video && _camOn;
-    final light = !showVideo;
-    final fg = light ? AvaColors.ink : Colors.white;
-    return Scaffold(
-      backgroundColor: light ? const Color(0xFFEFEDF6) : const Color(0xFF1A1A1F),
-      body: Stack(
-        children: [
-          if (showVideo) ...[
-            Positioned.fill(
-              child: _connected
-                  ? RTCVideoView(_remote, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                  : Container(color: const Color(0xFF26262C)),
-            ),
-            // top gradient
-            Positioned(top: 0, left: 0, right: 0, height: 160, child: Container(
-              decoration: const BoxDecoration(gradient: LinearGradient(
-                begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                colors: [Color(0x8C000000), Colors.transparent])))),
-            // self thumbnail
-            Positioned(
-              top: 56, right: 16, width: 78, height: 112,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  decoration: BoxDecoration(border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2),
-                      borderRadius: BorderRadius.circular(16)),
-                  child: RTCVideoView(_local, mirror: true,
-                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
-                ),
+    final light = !showVideo; // audio call → zine paper screen
+    final failed = _phase == 'declined' || _phase == 'busy' || _phase == 'no-answer';
+    final stack = Stack(
+      children: [
+        if (showVideo) ...[
+          Positioned.fill(
+            child: _connected
+                ? RTCVideoView(_remote, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+                : Container(color: Zine.ink),
+          ),
+          // Flat ink-alpha top band (no gradient scrims — zine rule).
+          Positioned(top: 0, left: 0, right: 0, height: 128,
+              child: Container(color: Zine.ink.withValues(alpha: 0.45))),
+          // Self thumbnail — ink ring + hard offset shadow.
+          Positioned(
+            top: 56, right: 16, width: 78, height: 112,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(Zine.rSm),
+                border: Zine.border,
+                boxShadow: Zine.shadowSm,
               ),
-            ),
-          ],
-
-          // header: back + name + timer
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.chevron_left, color: fg, size: 28),
-                    onPressed: _hangup,
-                  ),
-                  Expanded(
-                    child: Transform.translate(
-                      offset: const Offset(-18, 0),
-                      child: Column(
-                        children: [
-                          Text(widget.title,
-                              style: TextStyle(color: fg, fontSize: 17, fontWeight: FontWeight.w800,
-                                  shadows: light ? null : const [Shadow(color: Colors.black54, blurRadius: 6)])),
-                          const SizedBox(height: 2),
-                          Text(_connected ? _clock : _statusText,
-                              style: TextStyle(
-                                  color: light ? AvaColors.sub : Colors.white.withValues(alpha: 0.9),
-                                  fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              clipBehavior: Clip.antiAlias,
+              child: RTCVideoView(_local, mirror: true,
+                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
             ),
           ),
+        ],
 
-          // audio: centered avatar
-          if (light)
-            Center(
+        // header: zine back circle + (video chrome) name + mono state/timer
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            child: Row(
+              children: [
+                ZineBackButton(onTap: _hangup),
+                const SizedBox(width: 12),
+                if (showVideo)
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(widget.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          // White text only inside the ink-alpha band over video.
+                          style: ZineText.cardTitle(size: 18, color: Colors.white)),
+                      const SizedBox(height: 2),
+                      Text((_connected ? _clock : _statusText).toUpperCase(),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: ZineText.tag(size: 11, color: Colors.white)),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
+        ),
+
+        // audio call: paper screen — ink-ringed avatar w/ hard shadow, Fredoka
+        // name, mono call-state sticker ('RINGING…', timer, …).
+        if (light)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-                      BoxShadow(color: const Color(0x40503C78), blurRadius: 40, offset: const Offset(0, 18)),
-                    ]),
-                    child: Avatar(seed: widget.seed, name: widget.title, size: 132, avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Zine.borderLg,
+                      boxShadow: Zine.shadow,
+                    ),
+                    child: Avatar(seed: widget.seed, name: widget.title, size: 132,
+                        avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
                   ),
-                  const SizedBox(height: 20),
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(width: 8, height: 8, decoration: BoxDecoration(
-                        color: _connected
-                            ? AvaColors.success
-                            : (_phase == 'declined' || _phase == 'busy' || _phase == 'no-answer')
-                                ? AvaColors.danger
-                                : AvaColors.sub,
-                        shape: BoxShape.circle)),
-                    const SizedBox(width: 8),
-                    Text(_statusText,
-                        style: const TextStyle(color: AvaColors.sub, fontSize: 13)),
-                  ]),
+                  const SizedBox(height: 24),
+                  Text(widget.title, textAlign: TextAlign.center,
+                      style: ZineText.hero(size: 30)),
+                  const SizedBox(height: 16),
+                  ZineSticker(
+                    _connected ? _clock : _statusText,
+                    kind: failed ? ZineStickerKind.no : ZineStickerKind.plain,
+                  ),
                 ],
               ),
             ),
-
-          // control bar
-          Positioned(
-            left: 0, right: 0, bottom: 28,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: light ? Colors.white : Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(40),
-                  boxShadow: light ? [BoxShadow(color: const Color(0x2E503C78), blurRadius: 30, offset: const Offset(0, 10))] : null,
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  _btn(Icons.chat_bubble_outline, light, onTap: () {}),
-                  const SizedBox(width: 14),
-                  _btn(_speaker ? Icons.volume_up : Icons.volume_off, light,
-                      active: _speaker, onTap: _toggleSpeaker),
-                  const SizedBox(width: 14),
-                  GestureDetector(
-                    onTap: _hangup,
-                    child: Container(
-                      width: 58, height: 58,
-                      decoration: const BoxDecoration(color: Color(0xFFF0353B), shape: BoxShape.circle),
-                      child: Transform.rotate(
-                        angle: 2.356,
-                        child: const Icon(Icons.call, color: Colors.white, size: 26)),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  _btn(_video && _camOn ? Icons.videocam : Icons.videocam_off, light,
-                      active: _video && _camOn, onTap: _toggleCam),
-                  const SizedBox(width: 14),
-                  _btn(_muted ? Icons.mic_off : Icons.mic, light, active: !_muted, onTap: _toggleMute),
-                ]),
-              ),
-            ),
           ),
-        ],
-      ),
+
+        // control row — bordered zine circles; hang-up = coral circle.
+        Positioned(
+          left: 0, right: 0, bottom: 0,
+          child: Container(
+            color: light ? null : Zine.ink.withValues(alpha: 0.45),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: () {}),
+              const SizedBox(width: 14),
+              _btn(
+                  _speaker
+                      ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.bold)
+                      : PhosphorIcons.speakerSlash(PhosphorIconsStyle.bold),
+                  active: _speaker, onTap: _toggleSpeaker),
+              const SizedBox(width: 14),
+              ZinePressable(
+                onTap: _hangup,
+                color: Zine.coral,
+                radius: BorderRadius.circular(100),
+                boxShadow: Zine.shadowSm,
+                child: SizedBox(
+                  width: 60, height: 60,
+                  child: Center(
+                    child: PhosphorIcon(
+                        PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
+                        size: 27, color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              _btn(
+                  _video && _camOn
+                      ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                      : PhosphorIcons.videoCameraSlash(PhosphorIconsStyle.bold),
+                  active: _video && _camOn, onTap: _toggleCam),
+              const SizedBox(width: 14),
+              _btn(
+                  _muted
+                      ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
+                      : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                  active: !_muted, onTap: _toggleMute),
+            ]),
+          ),
+        ),
+      ],
+    );
+    return Scaffold(
+      backgroundColor: light ? Zine.paper : Zine.ink,
+      body: light ? ZinePaper(child: stack) : stack,
     );
   }
 
-  Widget _btn(IconData icon, bool light, {bool active = false, required VoidCallback onTap}) {
-    final bg = light ? const Color(0xFFF3F1F8) : Colors.white.withValues(alpha: 0.22);
-    final ic = light ? AvaColors.ink : Colors.white;
-    return GestureDetector(
+  // Zine control circle — ink border, card fill, hard shadow; active = lime.
+  Widget _btn(IconData icon, {bool active = false, required VoidCallback onTap}) {
+    return ZinePressable(
       onTap: onTap,
-      child: Container(
-        width: 46, height: 46,
-        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-        child: Icon(icon, color: ic, size: 21),
+      color: active ? Zine.lime : Zine.card,
+      pressedColor: Zine.lime,
+      radius: BorderRadius.circular(100),
+      boxShadow: Zine.shadowXs,
+      child: SizedBox(
+        width: 48, height: 48,
+        child: Center(child: PhosphorIcon(icon, size: 21, color: Zine.ink)),
       ),
     );
   }

@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
 import '../../core/remote_config.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
+import '../explore/widgets.dart' show CoverImage;
 import 'agent_detail.dart';
 import 'studio/my_agents_screen.dart';
-import 'widgets.dart';
+import 'widgets.dart' show fmtWhenMs;
 
 /// AvaVoice landing — marketplace of AI voice agents + my bookings + creator
 /// studio entry. Spec: Specs/AVAVOICE-PROPOSAL.md.
@@ -33,6 +36,7 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
         Analytics.capture('avavoice_tab_switched',
             {'tab': _tabs.index == 0 ? 'marketplace' : 'my_bookings'});
       }
+      if (mounted) setState(() {}); // keep the zine tab chips in sync
     });
     _load();
   }
@@ -74,66 +78,85 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     if (!RemoteConfig.avavoiceEnabled) {
       return Scaffold(
-        appBar: AppBar(title: const Text('AvaVoice')),
-        body: const Center(child: Padding(padding: EdgeInsets.all(24),
-            child: Text('AvaVoice is temporarily unavailable. Please check back soon.',
-                textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub)))),
+        backgroundColor: Zine.paper,
+        appBar: const ZineAppBar(title: 'AvaVoice', markWord: 'Voice'),
+        body: ZinePaper(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ZineEmptyState(
+                  icon: PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                  text: 'AvaVoice is temporarily unavailable — check back soon.'),
+            ),
+          ),
+        ),
       );
     }
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: Row(children: [
-          Container(
-            width: 30, height: 30,
-            decoration: BoxDecoration(
-                color: kAvaVoicePurple.withValues(alpha: .14),
-                borderRadius: BorderRadius.circular(9)),
-            child: const Icon(Icons.mic, size: 18, color: kAvaVoicePurple),
-          ),
-          const SizedBox(width: 10),
-          const Text('AvaVoice'),
-        ]),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: 'AvaVoice',
+        markWord: 'Voice',
+        tag: 'ai voice agents',
         actions: [
-          IconButton(
-            tooltip: 'My agents (creator studio)',
-            icon: const Icon(Icons.smart_toy_outlined),
-            onPressed: () => Navigator.push(context,
+          // Create-agent CTA — the ONE lime action on this screen.
+          ZinePressable(
+            onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const MyAgentsScreen())).then((_) => _load()),
+            color: Zine.lime,
+            radius: BorderRadius.circular(100),
+            boxShadow: Zine.shadowXs,
+            child: SizedBox(
+              width: 42, height: 42,
+              child: Center(
+                child: PhosphorIcon(PhosphorIcons.robot(PhosphorIconsStyle.bold),
+                    size: 20, color: Zine.ink),
+              ),
+            ),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabs,
-          labelColor: kAvaVoicePurple,
-          indicatorColor: kAvaVoicePurple,
-          unselectedLabelColor: AvaColors.sub,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w800),
-          tabs: const [Tab(text: 'Marketplace'), Tab(text: 'My bookings')],
-        ),
       ),
-      body: TabBarView(controller: _tabs, children: [
-        _marketplace(),
-        _myBookings(),
-      ]),
+      body: ZinePaper(
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: Row(children: [
+              Expanded(
+                child: ZineChip(
+                    label: 'Marketplace',
+                    active: _tabs.index == 0,
+                    onTap: () => _tabs.animateTo(0)),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: ZineChip(
+                    label: 'My bookings',
+                    active: _tabs.index == 1,
+                    onTap: () => _tabs.animateTo(1)),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: TabBarView(controller: _tabs, children: [
+              _marketplace(),
+              _myBookings(),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 
   Widget _marketplace() {
     return RefreshIndicator(
       onRefresh: _load,
+      color: Zine.blueInk,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          TextField(
-            decoration: InputDecoration(
-              hintText: 'Search voice agents — interview coach, tech support…',
-              prefixIcon: const Icon(Icons.search),
-              isDense: true,
-              filled: true, fillColor: AvaColors.soft,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-            ),
+          ZineField(
+            leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+            hint: 'Search voice agents…',
             onSubmitted: (v) {
               _q = v;
               Analytics.capture('avavoice_search', {'q_len': v.trim().length});
@@ -141,84 +164,182 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
             },
           ),
           const SizedBox(height: 14),
-          // Hero strip — what AvaVoice is.
+          // Hero strip — lilac (AI accent), flat fill, ink border, hard shadow.
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [Color(0xFFA06AF0), Color(0xFFD08BF5)],
-                  begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.circular(16),
+              color: Zine.lilac,
+              borderRadius: BorderRadius.circular(Zine.rSm),
+              border: Zine.border,
+              boxShadow: Zine.shadowXs,
             ),
-            child: const Row(children: [
-              Icon(Icons.record_voice_over, color: Colors.white, size: 30),
-              SizedBox(width: 12),
-              Expanded(child: Text(
-                'Talk to AI voice agents built by creators — interview practice, tech help, tutoring & more. Pay per minute, max 1 hour.',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
-              )),
+            child: Row(children: [
+              PhosphorIcon(PhosphorIcons.robot(PhosphorIconsStyle.fill),
+                  size: 28, color: Zine.ink),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Talk to AI voice agents built by creators — interview practice, tech help, tutoring & more. Pay per minute, max 1 hour.',
+                  style: ZineText.sub(size: 12.5, color: Zine.ink),
+                ),
+              ),
             ]),
           ),
           const SizedBox(height: 16),
           if (_loading)
             const Padding(padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator()))
+                child: Center(child: CircularProgressIndicator(color: Zine.blueInk)))
           else if (_agents.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(40),
-              child: Center(child: Text(
-                'No voice agents yet.\nBe the first — tap the robot icon to create one!',
-                textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub))),
+            Padding(
+              padding: const EdgeInsets.all(40),
+              child: Center(
+                child: ZineEmptyState(
+                    icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+                    text: 'No voice agents yet — tap the robot to create the first one.'),
+              ),
             )
           else
             ..._agents.map((a) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: AgentCard(agent: a, onTap: () => _openAgent(a)))),
+                child: _agentCard(a))),
         ],
       ),
     );
   }
 
+  // Marketplace agent card — zine card with a lilac AI badge + mono stickers.
+  Widget _agentCard(VoiceAgent a) {
+    return ZinePressable(
+      onTap: () => _openAgent(a),
+      radius: BorderRadius.circular(Zine.rSm),
+      boxShadow: Zine.shadowXs,
+      padding: const EdgeInsets.all(12),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Zine.ink, width: 2),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: a.images.isNotEmpty
+              ? CoverImage(url: a.images.first, seed: a.id.hashCode, width: 52, height: 52)
+              : Avatar(seed: a.id, name: a.name, size: 52, avatarUrl: a.avatarUrl),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.cardTitle(size: 16)),
+              ),
+              const SizedBox(width: 8),
+              ZineIconBadge(
+                  icon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+                  color: Zine.lilac, size: 26),
+            ]),
+            const SizedBox(height: 2),
+            Text(a.role, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: ZineText.sub(size: 12.5)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              if (a.activeCalls != null)
+                a.busy
+                    ? _miniSticker('busy', Zine.coral, Colors.white)
+                    : _miniSticker('call now', Zine.mint, Zine.ink),
+              if (a.isFreeForCallers) _miniSticker('free', Zine.mint, Zine.ink),
+              if (a.visionEnabled) _miniSticker('vision', Zine.lilac, Zine.ink),
+              _miniSticker(
+                  a.isFreeForCallers
+                      ? 'up to ${a.sessionLimitMin} min'
+                      : '${a.rateLabel} · ${a.sessionLimitMin} min',
+                  Zine.card, Zine.inkSoft),
+            ]),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _miniSticker(String text, Color fill, Color fg) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: Zine.ink, width: 2),
+        ),
+        child: Text(text.toUpperCase(), style: ZineText.tag(size: 9.5, color: fg)),
+      );
+
   Widget _myBookings() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: Zine.blueInk));
+    }
     if (_bookings.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(24),
-          child: Text('No bookings yet.\nBook a session with any agent in the marketplace.',
-              textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub))));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ZineEmptyState(
+              icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+              text: 'No bookings yet — book a session with any agent in the marketplace.'),
+        ),
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,
+      color: Zine.blueInk,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _bookings.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (_, i) {
           final b = _bookings[i];
           final upcoming = b.status == 'booked' &&
               b.scheduledAt > DateTime.now().millisecondsSinceEpoch - 10 * 60 * 1000;
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(vertical: 6),
-            leading: Avatar(seed: b.agentId, name: b.agentName, size: 46, avatarUrl: b.agentAvatar),
-            title: Text(b.agentName, style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(
-              '${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
-              '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}',
-              style: const TextStyle(fontSize: 12, color: AvaColors.sub),
-            ),
-            trailing: upcoming
-                ? FilledButton(
-                    style: FilledButton.styleFrom(
-                        backgroundColor: kAvaVoicePurple,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(
-                            builder: (_) => AgentDetailScreen(agentId: b.agentId, bookingId: b.id)))
-                        .then((_) => _load()),
-                    child: const Text('Join'),
-                  )
-                : null,
+          return ZinePressable(
             onTap: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => AgentDetailScreen(agentId: b.agentId)))
                 .then((_) => _load()),
+            radius: BorderRadius.circular(Zine.rSm),
+            boxShadow: Zine.shadowXs,
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Zine.ink, width: 2),
+                ),
+                child: Avatar(seed: b.agentId, name: b.agentName, size: 44, avatarUrl: b.agentAvatar),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(b.agentName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: ZineText.value(size: 15)),
+                  const SizedBox(height: 3),
+                  Text(
+                    ('${fmtWhenMs(b.scheduledAt)} · ${b.bookedMinutes} min'
+                            '${b.escrowCoins > 0 ? ' · ${fmtCoins(b.escrowCoins)} held' : ''} · ${b.status}')
+                        .toUpperCase(),
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: ZineText.tag(size: 10, color: Zine.inkSoft),
+                  ),
+                ]),
+              ),
+              if (upcoming) ...[
+                const SizedBox(width: 8),
+                ZinePressable(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => AgentDetailScreen(agentId: b.agentId, bookingId: b.id)))
+                      .then((_) => _load()),
+                  color: Zine.mint,
+                  radius: BorderRadius.circular(100),
+                  boxShadow: Zine.shadowXs,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Text('Join', style: ZineText.button(size: 14)),
+                ),
+              ],
+            ]),
           );
         },
       ),

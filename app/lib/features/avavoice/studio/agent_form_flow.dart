@@ -3,14 +3,15 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/api_auth.dart';
 import '../../../core/avavoice_api.dart';
 import '../../../core/config.dart';
-import '../../../core/theme.dart';
+import '../../../core/ui/zine.dart';
+import '../../../core/ui/zine_widgets.dart';
 import '../../explore/widgets.dart' show CoverImage;
-import '../widgets.dart';
 import 'voice_picker.dart';
 
 /// Create / edit an AI voice agent — a friendly 4-step wizard:
@@ -180,7 +181,12 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
     });
     if (r.isEmpty) {
       showDialog(context: context, builder: (d) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        titleTextStyle: ZineText.cardTitle(size: 20),
+        contentTextStyle: ZineText.sub(size: 14),
         title: const Text('🎉 Your agent is live!'),
         content: Text('${_name.text.trim()} is now in the AvaVoice marketplace. '
             'Check your dashboard each morning for bookings, calls and earnings.'),
@@ -224,297 +230,429 @@ class _AgentFormFlowState extends State<AgentFormFlow> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, foregroundColor: AvaColors.ink,
-        title: Text(widget.existing == null ? 'New voice agent' : 'Edit ${widget.existing!.name}'),
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(
+        title: widget.existing == null ? 'New voice agent' : 'Edit ${widget.existing!.name}',
+        markWord: 'voice',
+        tag: 'creator studio · ${_step + 1} / 4',
       ),
-      body: Column(children: [
-        // Step header.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: List.generate(4, (i) => Expanded(
-              child: Container(
-                height: 4,
-                margin: EdgeInsets.only(right: i < 3 ? 6 : 0),
-                decoration: BoxDecoration(
-                    color: i <= _step ? kAvaVoicePurple : AvaColors.line,
-                    borderRadius: BorderRadius.circular(4)),
+      body: ZinePaper(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+          children: [
+            for (var i = 0; i < 4; i++) _stepBlock(i),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- zine stepper chrome (ink rail + numbered dots) ----------------------
+
+  Widget _stepBlock(int i) {
+    final state = i == _step ? _WizState.active : (i < _step ? _WizState.done : _WizState.todo);
+    final last = i == 3;
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // rail: numbered dot + connector line
+        SizedBox(
+          width: 36,
+          child: Column(children: [
+            _stepDot(i, state),
+            if (!last)
+              Expanded(
+                child: Container(width: 2.5, color: Zine.ink.withValues(alpha: 0.25),
+                    margin: const EdgeInsets.symmetric(vertical: 4)),
               ),
-            ))),
-            const SizedBox(height: 14),
-            Text('Step ${_step + 1} of 4',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AvaColors.sub)),
-            const SizedBox(height: 2),
-            Text(_titles[_step],
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 19)),
           ]),
         ),
-        Expanded(child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: switch (_step) {
-            0 => _stepIdentity(),
-            1 => _stepVoice(),
-            2 => _stepBrain(),
-            _ => _stepPricing(),
-          },
-        )),
-        _footer(),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: last ? 0 : 18),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              GestureDetector(
+                // can only jump to current or already-reached steps
+                onTap: state == _WizState.todo || _working
+                    ? null
+                    : () => setState(() => _step = i),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Text(_titles[i],
+                      style: ZineText.cardTitle(
+                          color: state == _WizState.todo ? Zine.inkMute : Zine.ink)),
+                ),
+              ),
+              if (state == _WizState.active) ...[
+                const SizedBox(height: 8),
+                ZineCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    _stepBody(i),
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      Expanded(
+                        child: i == 3
+                            ? ZineButton(
+                                label: 'Publish',
+                                icon: PhosphorIcons.rocketLaunch(PhosphorIconsStyle.bold),
+                                fullWidth: true,
+                                fontSize: 18,
+                                loading: _working,
+                                onPressed: _working ? null : _publish,
+                              )
+                            : ZineButton(
+                                label: 'Continue',
+                                icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+                                fullWidth: true,
+                                fontSize: 18,
+                                loading: _working,
+                                onPressed: _working ? null : _next,
+                              ),
+                      ),
+                      const SizedBox(width: 12),
+                      ZineLink(
+                        i == 0 ? 'cancel' : 'back',
+                        fontSize: 14,
+                        onTap: _working
+                            ? null
+                            : () {
+                                if (i == 0) {
+                                  Navigator.pop(context);
+                                } else {
+                                  setState(() => _step--);
+                                }
+                              },
+                      ),
+                    ]),
+                    if (i == 3) ...[
+                      const SizedBox(height: 14),
+                      Center(
+                        child: ZineLink('save as draft', fontSize: 13,
+                            onTap: _working ? null : _next),
+                      ),
+                    ],
+                  ]),
+                ),
+              ],
+            ]),
+          ),
+        ),
       ]),
     );
   }
 
+  Widget _stepDot(int i, _WizState state) {
+    final (fill, fg) = switch (state) {
+      _WizState.active => (Zine.lime, Zine.ink),
+      _WizState.done => (Zine.ink, Zine.paper),
+      _WizState.todo => (Zine.card, Zine.inkMute),
+    };
+    return Container(
+      width: 34, height: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: fill,
+        border: Border.all(color: state == _WizState.todo ? Zine.inkMute : Zine.ink, width: Zine.bw),
+        boxShadow: state == _WizState.active ? Zine.shadowXs : null,
+      ),
+      child: Center(
+        child: state == _WizState.done
+            ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 16, color: fg)
+            : Text('${i + 1}',
+                style: TextStyle(fontFamily: ZineText.display, fontWeight: FontWeight.w600,
+                    fontSize: 16, color: fg)),
+      ),
+    );
+  }
+
+  Widget _stepBody(int i) => switch (i) {
+        0 => _stepIdentity(),
+        1 => _stepVoice(),
+        2 => _stepBrain(),
+        _ => _stepPricing(),
+      };
+
   // ── Step 1: identity ──────────────────────────────────────────────────
   Widget _stepIdentity() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _label('Agent name'),
-        TextField(controller: _name, maxLength: 40,
-            decoration: _dec('e.g. Ava the Interview Coach')),
-        const SizedBox(height: 8),
-        _label('Role it plays'),
-        TextField(controller: _role, maxLength: 80,
-            decoration: _dec('e.g. Mock US-visa interviewer · Tech support · Receptionist')),
-        const SizedBox(height: 8),
-        _label('System profile — who is this agent and what\'s expected?'),
-        TextField(
-          controller: _profile, minLines: 6, maxLines: 12, maxLength: 4000,
-          decoration: _dec(
-              'You are a friendly but rigorous job-interview coach. Greet the caller, ask about the role they\'re applying for, then run a realistic mock interview with follow-up questions. End with constructive feedback…'),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          '💡 The better you describe the personality, tone and tasks, the better your agent performs. Time-keeping and polite wrap-up are handled automatically by the platform.',
-          style: TextStyle(fontSize: 12, color: AvaColors.sub, height: 1.4),
+        ZineField(
+          controller: _name,
+          label: 'agent name',
+          labelIcon: PhosphorIcons.robot(PhosphorIconsStyle.bold),
+          hint: 'e.g. Ava the Interview Coach',
+          maxLength: 40,
+          textCapitalization: TextCapitalization.words,
         ),
         const SizedBox(height: 16),
-        _label('Listing photos (1–5)'),
-        Wrap(spacing: 10, runSpacing: 10, children: [
+        ZineField(
+          controller: _role,
+          label: 'role it plays',
+          labelIcon: PhosphorIcons.identificationBadge(PhosphorIconsStyle.bold),
+          hint: 'e.g. Mock US-visa interviewer · Tech support',
+          maxLength: 80,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: 16),
+        ZineField(
+          controller: _profile,
+          label: 'system profile — who is this agent?',
+          labelIcon: PhosphorIcons.brain(PhosphorIconsStyle.bold),
+          hint: 'You are a friendly but rigorous job-interview coach. Greet the caller, ask about the role they\'re applying for, then run a realistic mock interview with follow-up questions. End with constructive feedback…',
+          maxLines: 7,
+          maxLength: 4000,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '💡 The better you describe the personality, tone and tasks, the better your agent performs. Time-keeping and polite wrap-up are handled automatically by the platform.',
+          style: ZineText.sub(size: 12),
+        ),
+        const SizedBox(height: 16),
+        Text('LISTING PHOTOS (1–5)', style: ZineText.kicker()),
+        const SizedBox(height: 9),
+        Wrap(spacing: 12, runSpacing: 12, children: [
           for (var i = 0; i < _images.length; i++)
-            Stack(children: [
-              CoverImage(url: _images[i], seed: i, width: 90, height: 90),
-              Positioned(right: 0, top: 0, child: GestureDetector(
-                onTap: () => setState(() => _images.removeAt(i)),
-                child: Container(
-                    decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                    padding: const EdgeInsets.all(3),
-                    child: const Icon(Icons.close, size: 14, color: Colors.white)),
-              )),
+            Stack(clipBehavior: Clip.none, children: [
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(Zine.rSm),
+                  border: Zine.border,
+                  boxShadow: Zine.shadowXs,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: CoverImage(url: _images[i], seed: i, width: 88, height: 88),
+              ),
+              Positioned(
+                right: -7, top: -7,
+                child: GestureDetector(
+                  onTap: () => setState(() => _images.removeAt(i)),
+                  child: Container(
+                    width: 26, height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle, color: Zine.coral,
+                      border: Border.all(color: Zine.ink, width: 2),
+                    ),
+                    child: const Icon(Icons.close, size: 14, color: Colors.white),
+                  ),
+                ),
+              ),
             ]),
           if (_images.length < 5)
             GestureDetector(
               onTap: _pickImage,
               child: Container(
-                width: 90, height: 90,
-                decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+                width: 88, height: 88,
+                decoration: BoxDecoration(
+                  color: Zine.paper2,
+                  borderRadius: BorderRadius.circular(Zine.rSm),
+                  border: Border.all(color: Zine.ink.withValues(alpha: 0.45), width: 2),
+                ),
                 child: _imgUploading
-                    ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-                    : const Icon(Icons.add_a_photo_outlined, color: AvaColors.sub),
+                    ? const Center(child: SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)))
+                    : PhosphorIcon(PhosphorIcons.cameraPlus(PhosphorIconsStyle.bold),
+                        size: 26, color: Zine.inkSoft),
               ),
             ),
         ]),
-        const SizedBox(height: 6),
-        const Text('At least one photo is required to publish. Shown on your marketplace card and agent page.',
-            style: TextStyle(fontSize: 11.5, color: AvaColors.sub)),
+        const SizedBox(height: 8),
+        Text('At least one photo is required to publish. Shown on your marketplace card and agent page.',
+            style: ZineText.sub(size: 11.5)),
       ]);
 
   // ── Step 2: voice ─────────────────────────────────────────────────────
   Widget _stepVoice() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Choose how your agent sounds. Tap ▶ to hear a sample.',
-            style: TextStyle(fontSize: 13, color: AvaColors.sub)),
+        Row(children: [
+          ZineIconBadge(
+              icon: PhosphorIcons.waveform(PhosphorIconsStyle.bold),
+              color: Zine.lilac, size: 30),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('Choose how your agent sounds. Tap ▶ to hear a sample.',
+                style: ZineText.sub(size: 13)),
+          ),
+        ]),
         const SizedBox(height: 14),
         VoicePicker(selected: _voice, onSelected: (v) => setState(() => _voice = v)),
       ]);
 
   // ── Step 3: brain files ───────────────────────────────────────────────
   Widget _stepBrain() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text(
+        Text(
           'Upload documents your agent should know — FAQs, scripts, product info, schedules. During calls it consults these files to answer accurately instead of guessing.',
-          style: TextStyle(fontSize: 13, color: AvaColors.sub, height: 1.45),
+          style: ZineText.sub(size: 13),
         ),
         const SizedBox(height: 16),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: kAvaVoicePurple,
-            side: const BorderSide(color: kAvaVoicePurple),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+        ZineButton(
+          label: _uploading ? 'Uploading…' : 'Add knowledge file',
+          variant: ZineButtonVariant.blue,
+          icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold),
+          trailingIcon: false,
+          fontSize: 16,
+          loading: _uploading,
           onPressed: _uploading ? null : _addFile,
-          icon: _uploading
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.upload_file),
-          label: Text(_uploading ? 'Uploading…' : 'Add knowledge file',
-              style: const TextStyle(fontWeight: FontWeight.w800)),
         ),
         const SizedBox(height: 14),
         if (_files.isEmpty)
-          const Text('No files yet — that\'s OK, you can add them anytime. Agents work without files too.',
-              style: TextStyle(fontSize: 12, color: AvaColors.sub))
+          Text('No files yet — that\'s OK, you can add them anytime. Agents work without files too.',
+              style: ZineText.sub(size: 12))
         else
-          ..._files.map((f) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.description_outlined, color: kAvaVoicePurple),
-                title: Text(f.filename, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                subtitle: Text(
-                    f.indexed ? 'Indexed — ready' : 'Indexing…',
-                    style: TextStyle(fontSize: 11.5,
-                        color: f.indexed ? AvaColors.success : AvaColors.sub)),
-                trailing: IconButton(icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => _removeFile(f)),
-              )),
+          for (final f in _files)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                decoration: BoxDecoration(
+                  color: Zine.card,
+                  borderRadius: BorderRadius.circular(Zine.rSm),
+                  border: Zine.border,
+                  boxShadow: Zine.shadowXs,
+                ),
+                child: Row(children: [
+                  ZineIconBadge(
+                      icon: PhosphorIcons.fileText(PhosphorIconsStyle.bold),
+                      color: Zine.lilac, size: 30),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(f.filename, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: ZineText.value(size: 13.5)),
+                      const SizedBox(height: 2),
+                      Text(f.indexed ? 'INDEXED — READY' : 'INDEXING…',
+                          style: ZineText.tag(size: 10,
+                              color: f.indexed ? Zine.mintInk : Zine.inkSoft)),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _removeFile(f),
+                    child: Container(
+                      width: 28, height: 28,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Zine.card,
+                        border: Border.all(color: Zine.ink, width: 2),
+                      ),
+                      child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold),
+                          size: 13, color: Zine.ink),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
       ]);
 
   // ── Step 4: pricing & publish ─────────────────────────────────────────
   Widget _stepPricing() {
     final userPays = _payerMode == 'user_pays';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _label('Who pays for calls?'),
+      Text('WHO PAYS FOR CALLS?', style: ZineText.kicker()),
+      const SizedBox(height: 9),
       _payerCard('user_pays', 'Callers pay you',
           'You set an hourly rate. Callers are billed per minute; you earn 50% after the platform fee.'),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
       _payerCard('creator_pays', 'You cover the calls (free for callers)',
           'Great for business agents — receptionists, support lines. You pay a flat ${fmtCoins(kCreatorPaysRateCoinsPerHour)}/hour of talk time from your AvaWallet.'),
       const SizedBox(height: 18),
       if (userPays) ...[
-        _label('Your hourly rate (USD)'),
-        TextField(
+        ZineField(
           controller: _rate,
+          label: 'your hourly rate (usd)',
+          labelIcon: PhosphorIcons.coins(PhosphorIconsStyle.bold),
+          leadText: r'$',
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: _dec('20').copyWith(prefixText: '\$ ', suffixText: '/hour'),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
+        // "You earn" math — mint (money accent).
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-              color: AvaColors.soft, borderRadius: BorderRadius.circular(12)),
+            color: Zine.mint,
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            border: Zine.border,
+            boxShadow: Zine.shadowXs,
+          ),
           child: Row(children: [
-            const Icon(Icons.account_balance_wallet_outlined, size: 18, color: kAvaVoicePurple),
+            PhosphorIcon(PhosphorIcons.wallet(PhosphorIconsStyle.bold),
+                size: 18, color: Zine.ink),
             const SizedBox(width: 10),
-            Expanded(child: Text(
-              _rateCoins >= 100
-                  ? 'Callers pay ${fmtCoins(perMinuteCoins(_rateCoins))}/min · You earn ${fmtCoins(creatorNetPerHour(_rateCoins))}/hr after the 50% platform fee'
-                  : 'Enter your hourly rate to see what you\'ll earn',
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-            )),
+            Expanded(
+              child: Text(
+                _rateCoins >= 100
+                    ? 'Callers pay ${fmtCoins(perMinuteCoins(_rateCoins))}/min · You earn ${fmtCoins(creatorNetPerHour(_rateCoins))}/hr after the 50% platform fee'
+                    : 'Enter your hourly rate to see what you\'ll earn',
+                style: ZineText.value(size: 12.5),
+              ),
+            ),
           ]),
         ),
         const SizedBox(height: 18),
       ],
-      _label('Maximum session length'),
-      const Text('Your agent works toward a polite close as this limit approaches. 1 hour is the platform maximum.',
-          style: TextStyle(fontSize: 12, color: AvaColors.sub)),
-      const SizedBox(height: 8),
-      Wrap(spacing: 8, children: kSessionLimitChoices.map((m) {
-        final sel = m == _sessionLimit;
-        return ChoiceChip(
-          label: Text(m == 60 ? '1 hour' : '$m min'),
-          selected: sel,
-          selectedColor: kAvaVoicePurple.withValues(alpha: .15),
-          labelStyle: TextStyle(fontWeight: FontWeight.w800,
-              color: sel ? kAvaVoicePurple : AvaColors.sub),
-          onSelected: (_) => setState(() => _sessionLimit = m),
-        );
-      }).toList()),
+      Text('MAXIMUM SESSION LENGTH', style: ZineText.kicker()),
+      const SizedBox(height: 4),
+      Text('Your agent works toward a polite close as this limit approaches. 1 hour is the platform maximum.',
+          style: ZineText.sub(size: 12)),
+      const SizedBox(height: 9),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final m in kSessionLimitChoices)
+          ZineChip(
+            label: m == 60 ? '1 hour' : '$m min',
+            active: m == _sessionLimit,
+            onTap: () => setState(() => _sessionLimit = m),
+          ),
+      ]),
       const SizedBox(height: 18),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        activeTrackColor: kAvaVoicePurple,
-        title: const Text('Vision (screen & camera)',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-        subtitle: const Text(
-            'Let callers share their screen or camera so the agent can see and help — e.g. step-by-step tech support.',
-            style: TextStyle(fontSize: 12, color: AvaColors.sub)),
-        value: _vision,
-        onChanged: (v) => setState(() => _vision = v),
-      ),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Vision (screen & camera)', style: ZineText.value(size: 14.5)),
+            const SizedBox(height: 3),
+            Text(
+                'Let callers share their screen or camera so the agent can see and help — e.g. step-by-step tech support.',
+                style: ZineText.sub(size: 12)),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        ZineToggle(value: _vision, onChanged: (v) => setState(() => _vision = v)),
+      ]),
     ]);
   }
 
   Widget _payerCard(String mode, String title, String body) {
     final sel = _payerMode == mode;
-    return InkWell(
+    return ZinePressable(
       onTap: () => setState(() => _payerMode = mode),
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          border: Border.all(color: sel ? kAvaVoicePurple : AvaColors.line, width: sel ? 2 : 1),
-          borderRadius: BorderRadius.circular(14),
-          color: sel ? kAvaVoicePurple.withValues(alpha: .05) : null,
+      color: sel ? Zine.blue : Zine.card,
+      radius: BorderRadius.circular(Zine.rSm),
+      boxShadow: sel ? Zine.shadowSm : const <BoxShadow>[],
+      padding: const EdgeInsets.all(14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 22, height: 22,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Zine.card,
+            border: Border.all(color: Zine.ink, width: Zine.bw),
+          ),
+          child: sel
+              ? Center(
+                  child: Container(width: 9, height: 9,
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Zine.ink)))
+              : null,
         ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: sel ? kAvaVoicePurple : AvaColors.sub, size: 20),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: ZineText.cardTitle(size: 15.5)),
             const SizedBox(height: 3),
-            Text(body, style: const TextStyle(fontSize: 12, color: AvaColors.sub, height: 1.4)),
-          ])),
-        ]),
-      ),
-    );
-  }
-
-  Widget _footer() => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-          child: Row(children: [
-            if (_step > 0)
-              TextButton(
-                onPressed: _working ? null : () => setState(() => _step--),
-                child: const Text('Back', style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-            const Spacer(),
-            if (_step == 3) ...[
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kAvaVoicePurple,
-                  side: const BorderSide(color: kAvaVoicePurple),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: _working ? null : _next,
-                child: const Text('Save draft', style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-              const SizedBox(width: 10),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: kAvaVoicePurple,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-                onPressed: _working ? null : _publish,
-                icon: _working
-                    ? const SizedBox(width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.rocket_launch_outlined, size: 18),
-                label: const Text('Publish', style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
-            ] else
-              FilledButton(
-                style: FilledButton.styleFrom(
-                    backgroundColor: kAvaVoicePurple,
-                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12)),
-                onPressed: _working ? null : _next,
-                child: _working
-                    ? const SizedBox(width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Continue', style: TextStyle(fontWeight: FontWeight.w800)),
-              ),
+            Text(body, style: ZineText.sub(size: 12, color: sel ? Zine.ink : Zine.inkSoft)),
           ]),
         ),
-      );
-
-  Widget _label(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-      );
-
-  InputDecoration _dec(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(fontSize: 13, color: AvaColors.sub),
-        filled: true, fillColor: AvaColors.soft,
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      );
+      ]),
+    );
+  }
 }
+
+enum _WizState { active, done, todo }

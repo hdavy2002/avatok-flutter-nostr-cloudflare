@@ -4,16 +4,22 @@
 // donation/reaction feed, pinned-message + slow-mode controls, long-press chat
 // → Mute / Ban / Report (A1), publish-health indicator + auto-reconnect loop
 // (A4), end-stream → settlement-pending.
+//
+// Zine: pre-live setup + ended/settlement states are full paper screens; the
+// live HUD chrome is flat ink-alpha bands + bordered circle buttons over the
+// video (the video itself is content and stays full-bleed).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/session_api.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'live_room_widgets.dart';
 
 class LiveHostScreen extends StatefulWidget {
@@ -34,6 +40,8 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
   String? _whip;
 
   String _status = 'preparing…';
+  bool _ready = false;       // pre-live setup done, waiting on "Go live"
+  bool _started = false;     // host tapped "Go live"
   bool _live = false;
   bool _ended = false;
   bool _reconnecting = false;
@@ -54,11 +62,13 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
   void initState() {
     super.initState();
     _renderer.initialize();
-    _start();
+    _prepare();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); });
   }
 
-  Future<void> _start() async {
+  /// Pre-live setup: permissions, session creation, room socket, camera
+  /// preview. Publishing waits for the explicit "Go live" tap.
+  Future<void> _prepare() async {
     try {
       final s = await [Permission.camera, Permission.microphone].request();
       if (!s.values.every((x) => x.isGranted)) throw 'Camera & mic permission required';
@@ -68,13 +78,24 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
       _endsAt = (j['ends_at'] as num?)?.toInt() ?? 0;
       if (_whip == null) throw 'No WHIP URL (Stream not ready)';
       _openRoom(j['room_token'].toString());
-      await _publish();
-      Analytics.capture('live_host_started', {'listing_id': widget.listingId});
-      _refreshEarnings();
+      _stream ??= await navigator.mediaDevices.getUserMedia({'audio': true, 'video': {'facingMode': 'user'}});
+      _renderer.srcObject = _stream;
+      if (mounted) setState(() { _ready = true; _status = 'ready'; });
     } on SessionApiError catch (e) {
       setState(() => _status = e.status == 503 ? 'Streaming is not configured yet (server creds missing).' : 'error: ${e.message}');
     } catch (e) {
       setState(() => _status = 'error: $e');
+    }
+  }
+
+  Future<void> _goLive() async {
+    setState(() => _started = true);
+    try {
+      await _publish();
+      Analytics.capture('live_host_started', {'listing_id': widget.listingId});
+      _refreshEarnings();
+    } catch (e) {
+      if (mounted) setState(() { _started = false; _status = 'error: $e'; });
     }
   }
 
@@ -186,21 +207,26 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     if (uid.isEmpty) return;
     showModalBottomSheet<void>(
       context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r))),
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800))),
+          ListTile(title: Text(name, style: ZineText.cardTitle(size: 17))),
           ListTile(
-            leading: const Icon(Icons.volume_off), title: const Text('Mute'),
-            subtitle: const Text('No more messages — can keep watching'),
+            leading: PhosphorIcon(PhosphorIcons.bellSlash(PhosphorIconsStyle.bold), color: Zine.ink),
+            title: Text('Mute', style: ZineText.value(size: 15)),
+            subtitle: Text('No more messages — can keep watching', style: ZineText.sub(size: 13)),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'mute', target: uid); },
           ),
           ListTile(
-            leading: const Icon(Icons.block, color: Colors.red), title: const Text('Ban'),
-            subtitle: const Text('Kicked — join token revoked, no re-entry'),
+            leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
+            title: Text('Ban', style: ZineText.value(size: 15, color: Zine.coral)),
+            subtitle: Text('Kicked — join token revoked, no re-entry', style: ZineText.sub(size: 13)),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'ban', target: uid); },
           ),
           ListTile(
-            leading: const Icon(Icons.flag), title: const Text('Report'),
+            leading: PhosphorIcon(PhosphorIcons.flag(PhosphorIconsStyle.bold), color: Zine.ink),
+            title: Text('Report', style: ZineText.value(size: 15)),
             onTap: () { Navigator.pop(sheetCtx); SessionApi.mod(widget.listingId, 'ban', target: uid); },
           ),
         ]),
@@ -213,11 +239,16 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     final t = await showDialog<String>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: const Text('Pin a message'),
-        content: TextField(controller: ctl, maxLength: 200),
+        backgroundColor: Zine.paper,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('Pin a message', style: ZineText.cardTitle()),
+        content: ZineField(controller: ctl, maxLength: 200, hint: 'Say it loud…'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx, ''), child: const Text('Unpin')),
-          FilledButton(onPressed: () => Navigator.pop(dCtx, ctl.text.trim()), child: const Text('Pin')),
+          TextButton(onPressed: () => Navigator.pop(dCtx, ''),
+              child: Text('UNPIN', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+          ZineButton(label: 'Pin', fontSize: 16, onPressed: () => Navigator.pop(dCtx, ctl.text.trim())),
         ],
       ),
     );
@@ -230,11 +261,18 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: const Text('End stream?'),
-        content: const Text('The event moves to settlement — your 80% lands in the wallet after the rules pass.'),
+        backgroundColor: Zine.paper,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('End stream?', style: ZineText.cardTitle()),
+        content: Text('The event moves to settlement — your 80% lands in the wallet after the rules pass.',
+            style: ZineText.sub(size: 14.5)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Keep going')),
-          FilledButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('End stream')),
+          TextButton(onPressed: () => Navigator.pop(dCtx, false),
+              child: Text('KEEP GOING', style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+          ZineButton(label: 'End stream', fontSize: 16, variant: ZineButtonVariant.coral,
+              onPressed: () => Navigator.pop(dCtx, true)),
         ],
       ),
     );
@@ -257,92 +295,130 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     super.dispose();
   }
 
-  Color get _healthColor => !_live ? Colors.red : (_bitrateKbps > 800 ? Colors.green : (_bitrateKbps > 250 ? Colors.amber : Colors.red));
+  Color get _healthColor => !_live ? Zine.coral : (_bitrateKbps > 800 ? Zine.lime : (_bitrateKbps > 250 ? Zine.blue : Zine.coral));
 
   @override
   Widget build(BuildContext context) {
+    if (_ended) return _settlementScreen();
+    if (!_started) return _preLiveScreen();
+
     final now = DateTime.now().millisecondsSinceEpoch;
     final elapsed = _wentLiveAt > 0 ? now - _wentLiveAt : 0;
     final remaining = _endsAt > 0 ? (_endsAt - now).clamp(0, 1 << 62) : 0;
     final earnings = (_ticketGross * 0.8).round() + (_donationsTotal * 0.8).round();
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Zine.ink,
       body: Stack(fit: StackFit.expand, children: [
         RTCVideoView(_renderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
         if (_reconnecting)
           Container(
-            color: Colors.black54, alignment: Alignment.center,
-            child: Text('Reconnecting in $_reconnectIn…', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+            color: kInkScrimHeavy, alignment: Alignment.center,
+            child: Text('Reconnecting in $_reconnectIn…', style: ZineText.value(size: 15, color: Colors.white)),
           ),
         // feed (doubles as moderation surface — long-press a line)
         Positioned(
-          left: 12, right: 12, bottom: 76, height: 170,
+          left: 12, right: 12, bottom: 86, height: 170,
           child: ChatOverlay(lines: _feed, meta: _feedMeta, onLongPress: _modSheet),
         ),
-        // top HUD
+        // top HUD — one flat ink-alpha band
         Positioned(
           left: 0, right: 0, top: 0,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Column(children: [
-                Row(children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: _live ? AvaColors.coral : Colors.grey, borderRadius: BorderRadius.circular(6)),
-                    child: Text(_live ? 'LIVE' : _status.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11)),
-                  ),
-                  const SizedBox(width: 8),
-                  _pill(Icons.visibility, '$_watching watching · $_joined joined'),
-                  const Spacer(),
-                  Icon(Icons.circle, size: 10, color: _healthColor),
-                  const SizedBox(width: 4),
-                  Text('$_bitrateKbps kbps', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          child: Container(
+            color: kInkScrim,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Column(children: [
+                  Row(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _live ? Zine.coral : Zine.paper2,
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(color: Zine.ink, width: 2),
+                      ),
+                      child: Text(_live ? 'LIVE' : _status.toUpperCase(),
+                          style: ZineText.tag(size: 11, color: _live ? Colors.white : Zine.ink)),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(child: LiveInkPill('$_watching watching · $_joined joined', icon: PhosphorIcons.eye(PhosphorIconsStyle.bold))),
+                    const Spacer(),
+                    Container(
+                      width: 10, height: 10,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: _healthColor),
+                    ),
+                    const SizedBox(width: 4),
+                    Text('$_bitrateKbps KBPS', style: ZineText.tag(size: 10.5, color: Colors.white)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    LiveInkPill('${fmtClock(elapsed)} · ${fmtClock(remaining)} left', icon: PhosphorIcons.timer(PhosphorIconsStyle.bold)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Zine.mint,
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(color: Zine.ink, width: 2),
+                      ),
+                      child: Text('~\$${(earnings / 100).toStringAsFixed(2)} SO FAR',
+                          style: ZineText.tag(size: 11, color: Zine.ink)),
+                    ),
+                  ]),
                 ]),
-                const SizedBox(height: 6),
-                Row(children: [
-                  _pill(Icons.timer, '${fmtClock(elapsed)} · ${fmtClock(remaining)} left'),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: AvaColors.brand, borderRadius: BorderRadius.circular(12)),
-                    child: Text('~\$${(earnings / 100).toStringAsFixed(2)} so far',
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
-                  ),
-                ]),
-              ]),
+              ),
             ),
           ),
         ),
-        // bottom toolbar
+        // bottom toolbar — bordered circle buttons (end = coral)
         Positioned(
           left: 12, right: 12, bottom: 12,
           child: SafeArea(
             top: false,
             child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              IconButton(
-                icon: const Icon(Icons.cameraswitch, color: Colors.white),
-                onPressed: () {
+              LiveCircleButton(
+                icon: PhosphorIcons.cameraRotate(PhosphorIconsStyle.bold),
+                tooltip: 'Flip camera',
+                onTap: () {
                   final v = _stream?.getVideoTracks();
                   if (v != null && v.isNotEmpty) Helper.switchCamera(v.first);
                 },
               ),
-              IconButton(icon: const Icon(Icons.push_pin, color: Colors.white), tooltip: 'Pin message', onPressed: _pinDialog),
-              PopupMenuButton<int>(
-                icon: Icon(Icons.speed, color: _slowSec > 0 ? Colors.amber : Colors.white),
-                tooltip: 'Slow mode',
-                onSelected: (s) { setState(() => _slowSec = s); SessionApi.mod(widget.listingId, 'slow', sec: s); },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 0, child: Text('Slow mode off')),
-                  PopupMenuItem(value: 5, child: Text('1 msg / 5 s')),
-                  PopupMenuItem(value: 30, child: Text('1 msg / 30 s')),
-                ],
+              LiveCircleButton(
+                icon: PhosphorIcons.pushPin(PhosphorIconsStyle.bold),
+                tooltip: 'Pin message',
+                onTap: _pinDialog,
               ),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: AvaColors.coral),
-                icon: const Icon(Icons.stop_circle),
-                label: Text(_ended ? 'Ended' : 'End stream'),
-                onPressed: _ended ? null : _end,
+              PopupMenuButton<int>(
+                tooltip: 'Slow mode',
+                color: Zine.paper,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Zine.rSm),
+                    side: const BorderSide(color: Zine.ink, width: 2)),
+                onSelected: (s) { setState(() => _slowSec = s); SessionApi.mod(widget.listingId, 'slow', sec: s); },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 0, child: Text('Slow mode off', style: ZineText.value(size: 14))),
+                  PopupMenuItem(value: 5, child: Text('1 msg / 5 s', style: ZineText.value(size: 14))),
+                  PopupMenuItem(value: 30, child: Text('1 msg / 30 s', style: ZineText.value(size: 14))),
+                ],
+                child: Container(
+                  width: 46, height: 46,
+                  decoration: BoxDecoration(
+                    color: _slowSec > 0 ? Zine.lime : Zine.card,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Zine.ink, width: Zine.bw),
+                    boxShadow: Zine.shadowXs,
+                  ),
+                  child: PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 21, color: Zine.ink),
+                ),
+              ),
+              LiveCircleButton(
+                icon: PhosphorIcons.stopCircle(PhosphorIconsStyle.fill),
+                fill: Zine.coral,
+                size: 54,
+                tooltip: 'End stream',
+                onTap: _end,
               ),
             ]),
           ),
@@ -351,13 +427,79 @@ class _LiveHostScreenState extends State<LiveHostScreen> {
     );
   }
 
-  Widget _pill(IconData ic, String t) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(12)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(ic, color: Colors.white, size: 13),
-          const SizedBox(width: 4),
-          Text(t, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-        ]),
-      );
+  /// Pre-live setup — full zine paper screen with the camera preview in an
+  /// ink-bordered tile and the lime "Go live" action.
+  Widget _preLiveScreen() {
+    final isError = _status.startsWith('error') || _status.startsWith('Streaming');
+    return Scaffold(
+      backgroundColor: Zine.paper,
+      body: ZinePaper(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                ZineBackButton(onTap: () => Navigator.of(context).maybePop()),
+                const SizedBox(width: 14),
+                Expanded(child: ZineMarkTitle(pre: 'Go ', mark: 'live', fontSize: 30, textAlign: TextAlign.left)),
+                const ZineSticker('AVALIVE', kind: ZineStickerKind.hint),
+              ]),
+              const SizedBox(height: 6),
+              Text(widget.title, style: ZineText.sub(), maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 14),
+              Expanded(
+                child: Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: Zine.paper2,
+                    borderRadius: BorderRadius.circular(Zine.r),
+                    border: Zine.border,
+                    boxShadow: Zine.shadowSm,
+                  ),
+                  child: _ready
+                      ? RTCVideoView(_renderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+                      : Center(
+                          child: isError
+                              ? Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: ZineEmptyState(
+                                      icon: PhosphorIcons.warning(PhosphorIconsStyle.bold), text: _status),
+                                )
+                              : const CircularProgressIndicator(color: Zine.blueInk),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Center(child: ZineSticker(_status, kind: isError ? ZineStickerKind.no : ZineStickerKind.hint)),
+              const SizedBox(height: 14),
+              ZineButton(
+                label: "Go live",
+                fullWidth: true,
+                fontSize: 21,
+                icon: PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
+                onPressed: _ready ? _goLive : null,
+              ),
+              const SizedBox(height: 10),
+              Center(child: Text('YOUR 80% · STRAIGHT TO YOUR WALLET', style: ZineText.kicker(size: 10.5))),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Ended — settlement pending, full zine paper screen.
+  Widget _settlementScreen() {
+    return Scaffold(
+      backgroundColor: Zine.paper,
+      body: ZineSuccessOverlay(
+        icon: Icons.check_rounded,
+        headline: "That's a wrap",
+        accentLine: 'SETTLEMENT PENDING',
+        sub: 'Your 80% lands in the wallet after the rules pass.',
+        ctaLabel: 'Back to AvaLive',
+        onCta: () => Navigator.of(context).maybePop(),
+      ),
+    );
+  }
 }

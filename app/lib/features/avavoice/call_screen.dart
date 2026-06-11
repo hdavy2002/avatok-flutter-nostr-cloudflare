@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avavoice_api.dart';
-import '../../core/theme.dart';
-import 'widgets.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 
 /// In-call UI for a voice agent session.
 ///
@@ -130,7 +131,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     if (!mounted) return;
     final billed = (_elapsedSec / 60).ceil();
     showDialog(context: context, barrierDismissible: false, builder: (d) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      backgroundColor: Zine.card,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+      titleTextStyle: ZineText.cardTitle(size: 20),
+      contentTextStyle: ZineText.sub(size: 14),
       title: const Text('Call ended'),
       content: Text(a.isFreeForCallers
           ? 'You talked with ${a.name} for ${_fmt(_elapsedSec)}. This call was free — the creator covered it.'
@@ -149,101 +155,138 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   @override
   Widget build(BuildContext context) {
     final remaining = (_limitMinutes * 60 - _elapsedSec).clamp(0, kMaxSessionMinutes * 60);
+    // Voice-agent call = paper screen: lilac AI crest, mono state stickers,
+    // zine bordered control circles, coral hang-up.
     return Scaffold(
-      backgroundColor: const Color(0xFF14101F),
-      body: SafeArea(
-        child: Column(children: [
-          const SizedBox(height: 12),
-          // Top bar: language + timer chips.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(children: [
-              _chip(Icons.translate, languageLabel(widget.language)),
-              const Spacer(),
-              _chip(Icons.timer_outlined,
-                  _state == 'live' || _state == 'wrapup' ? '-${_fmt(remaining)}' : '--:--',
-                  color: _state == 'wrapup' ? AvaColors.coral : null),
-            ]),
-          ),
-          const Spacer(),
-          // Agent identity + animated ring.
-          _PulsingRing(active: _state == 'live' || _state == 'wrapup',
-              child: Avatar(seed: a.id, name: a.name, size: 120, avatarUrl: a.avatarUrl)),
-          const SizedBox(height: 20),
-          Text(a.name, style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22)),
-          const SizedBox(height: 6),
-          Text(a.role, textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white60, fontSize: 13)),
-          const SizedBox(height: 14),
-          Text(
-            switch (_state) {
-              'connecting' => 'Connecting…',
-              'live' => _fmt(_elapsedSec),
-              'wrapup' => '${_fmt(_elapsedSec)} · wrapping up soon',
-              'error' => _error ?? 'Connection failed',
-              _ => 'Call ended',
-            },
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: _state == 'error' ? AvaColors.coral : Colors.white70,
-                fontWeight: FontWeight.w700, fontSize: 15),
-          ),
-          if (_state == 'wrapup')
-            const Padding(
-              padding: EdgeInsets.fromLTRB(32, 10, 32, 0),
-              child: Text('Time is almost up — the agent will wrap up politely. You can book another session to continue.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54, fontSize: 12)),
+      backgroundColor: Zine.paper,
+      body: ZinePaper(
+        child: SafeArea(
+          child: Column(children: [
+            const SizedBox(height: 14),
+            // Top bar: language + timer mono stickers.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(children: [
+                _chip(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                    languageLabel(widget.language)),
+                const Spacer(),
+                _chip(PhosphorIcons.timer(PhosphorIconsStyle.bold),
+                    _state == 'live' || _state == 'wrapup' ? '-${_fmt(remaining)}' : '--:--',
+                    alert: _state == 'wrapup'),
+              ]),
             ),
-          const Spacer(),
-          // Controls.
-          Padding(
-            padding: const EdgeInsets.only(bottom: 28),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              if (a.visionEnabled) ...[
-                _roundBtn(Icons.screen_share_outlined, Colors.white12, () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Screen sharing arrives with the live audio engine (Phase 4).')));
-                }),
+            const Spacer(),
+            // Agent identity — lilac AI crest with ink ring + hard shadow.
+            _PulsingRing(
+              active: _state == 'live' || _state == 'wrapup',
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Zine.lilac,
+                  border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
+                  boxShadow: Zine.shadow,
+                ),
+                child: Avatar(seed: a.id, name: a.name, size: 116, avatarUrl: a.avatarUrl),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text(a.name, textAlign: TextAlign.center, style: ZineText.hero(size: 28)),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(a.role, textAlign: TextAlign.center, style: ZineText.sub(size: 13)),
+            ),
+            const SizedBox(height: 16),
+            if (_state == 'error')
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(_error ?? 'Connection failed',
+                    textAlign: TextAlign.center,
+                    style: ZineText.tag(size: 12, color: Zine.coral)),
+              )
+            else
+              ZineSticker(
+                switch (_state) {
+                  'connecting' => 'connecting…',
+                  'live' => _fmt(_elapsedSec),
+                  'wrapup' => '${_fmt(_elapsedSec)} · wrapping up',
+                  _ => 'call ended',
+                },
+                kind: _state == 'wrapup' ? ZineStickerKind.no : ZineStickerKind.plain,
+              ),
+            if (_state == 'wrapup')
+              Padding(
+                padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
+                child: Text(
+                    'Time is almost up — the agent will wrap up politely. You can book another session to continue.',
+                    textAlign: TextAlign.center,
+                    style: ZineText.sub(size: 12)),
+              ),
+            const Spacer(),
+            // Controls — bordered circles; hang-up = coral.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 30),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (a.visionEnabled) ...[
+                  _roundBtn(PhosphorIcons.monitor(PhosphorIconsStyle.bold), () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Screen sharing arrives with the live audio engine (Phase 4).')));
+                  }),
+                  const SizedBox(width: 18),
+                ],
+                _roundBtn(
+                    _muted
+                        ? PhosphorIcons.microphoneSlash(PhosphorIconsStyle.bold)
+                        : PhosphorIcons.microphone(PhosphorIconsStyle.bold),
+                    () => setState(() => _muted = !_muted),
+                    active: _muted),
                 const SizedBox(width: 18),
-              ],
-              _roundBtn(_muted ? Icons.mic_off : Icons.mic, Colors.white12,
-                  () => setState(() => _muted = !_muted)),
-              const SizedBox(width: 18),
-              _roundBtn(Icons.call_end, AvaColors.danger,
-                  _state == 'error' || _state == 'ended'
-                      ? () => Navigator.pop(context)
-                      : () => _end(reason: 'user'),
-                  large: true),
-            ]),
-          ),
-        ]),
+                _roundBtn(
+                    PhosphorIcons.phoneDisconnect(PhosphorIconsStyle.bold),
+                    _state == 'error' || _state == 'ended'
+                        ? () => Navigator.pop(context)
+                        : () => _end(reason: 'user'),
+                    large: true, danger: true),
+              ]),
+            ),
+          ]),
+        ),
       ),
     );
   }
 
-  Widget _chip(IconData icon, String label, {Color? color}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+  // Mono sticker chip — ink border, hard shadow; coral when alerting.
+  Widget _chip(IconData icon, String label, {bool alert = false}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         decoration: BoxDecoration(
-            color: (color ?? Colors.white).withValues(alpha: .12),
-            borderRadius: BorderRadius.circular(20)),
+          color: alert ? Zine.coral : Zine.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: Zine.ink, width: 2),
+          boxShadow: Zine.shadowXs,
+        ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 14, color: color ?? Colors.white70),
+          PhosphorIcon(icon, size: 14, color: alert ? Colors.white : Zine.ink),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(
-              color: color ?? Colors.white70, fontWeight: FontWeight.w800, fontSize: 12)),
+          Text(label.toUpperCase(),
+              style: ZineText.tag(size: 11, color: alert ? Colors.white : Zine.ink)),
         ]),
       );
 
-  Widget _roundBtn(IconData icon, Color bg, VoidCallback onTap, {bool large = false}) =>
-      InkWell(
+  // Zine control circle — card fill (lime when active toggle), coral = hang-up.
+  Widget _roundBtn(IconData icon, VoidCallback onTap,
+          {bool large = false, bool danger = false, bool active = false}) =>
+      ZinePressable(
         onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: large ? 70 : 56, height: large ? 70 : 56,
-          decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-          child: Icon(icon, color: Colors.white, size: large ? 30 : 24),
+        color: danger ? Zine.coral : (active ? Zine.lime : Zine.card),
+        radius: BorderRadius.circular(100),
+        boxShadow: large ? Zine.shadowSm : Zine.shadowXs,
+        child: SizedBox(
+          width: large ? 64 : 52, height: large ? 64 : 52,
+          child: Center(
+            child: PhosphorIcon(icon,
+                size: large ? 28 : 22, color: danger ? Colors.white : Zine.ink),
+          ),
         ),
       );
 }
@@ -277,7 +320,8 @@ class _PulsingRingState extends State<_PulsingRing>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: kAvaVoicePurple.withValues(alpha: .25 + .35 * (1 - (_c.value - .5).abs() * 2)),
+            // Flat lilac ring (AI accent), alpha-pulsed — no gradients.
+            color: Zine.lilac.withValues(alpha: .25 + .45 * (1 - (_c.value - .5).abs() * 2)),
             width: 3 + 3 * (1 - (_c.value - .5).abs() * 2),
           ),
         ),

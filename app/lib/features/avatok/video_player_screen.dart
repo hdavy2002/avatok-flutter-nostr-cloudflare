@@ -3,9 +3,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:video_player/video_player.dart';
 
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import 'media.dart';
 
 /// Plays a chat video: fetches the encrypted blob, decrypts it to a temp file,
@@ -56,21 +58,99 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final c = _ctrl;
+    final ready = c != null && c.value.isInitialized;
+    // Video is content — ink letterbox; chrome = flat ink-alpha bands + zine
+    // bordered circles (no gradients, no blurred shadows).
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, elevation: 0),
-      body: Center(
-        child: c != null && c.value.isInitialized
-            ? GestureDetector(
-                onTap: () => setState(() => c.value.isPlaying ? c.pause() : c.play()),
-                child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c)),
-              )
-            : Column(mainAxisSize: MainAxisSize.min, children: [
-                const CircularProgressIndicator(color: AvaColors.brand),
-                const SizedBox(height: 12),
-                Text(_status, style: const TextStyle(color: Colors.white70)),
-              ]),
-      ),
+      backgroundColor: Zine.ink,
+      body: Stack(children: [
+        Positioned.fill(
+          child: Center(
+            child: ready
+                ? GestureDetector(
+                    onTap: () => setState(() => c.value.isPlaying ? c.pause() : c.play()),
+                    child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c)),
+                  )
+                : Column(mainAxisSize: MainAxisSize.min, children: [
+                    const CircularProgressIndicator(color: Zine.lime),
+                    const SizedBox(height: 14),
+                    Text(_status.toUpperCase(),
+                        textAlign: TextAlign.center,
+                        // White text only inside ink bands over video areas.
+                        style: ZineText.tag(size: 12, color: Colors.white)),
+                  ]),
+          ),
+        ),
+        // Top band: flat ink-alpha, zine back circle + mono tag.
+        Positioned(
+          top: 0, left: 0, right: 0,
+          child: Container(
+            color: Zine.ink.withValues(alpha: 0.45),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 8, 18, 10),
+                child: Row(children: [
+                  const ZineBackButton(),
+                  const Spacer(),
+                  Text('VIDEO', style: ZineText.tag(size: 11, color: Colors.white)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        // Bottom band: play/pause bordered circle + flat lime scrub bar.
+        if (ready)
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: Container(
+              color: Zine.ink.withValues(alpha: 0.45),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                  child: Row(children: [
+                    ZinePressable(
+                      onTap: () => setState(() => c.value.isPlaying ? c.pause() : c.play()),
+                      pressedColor: Zine.lime,
+                      radius: BorderRadius.circular(100),
+                      boxShadow: Zine.shadowXs,
+                      child: SizedBox(
+                        width: 46, height: 46,
+                        child: Center(
+                          child: PhosphorIcon(
+                              c.value.isPlaying
+                                  ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
+                                  : PhosphorIcons.play(PhosphorIconsStyle.fill),
+                              size: 20, color: Zine.ink),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: SizedBox(
+                          height: 8,
+                          child: VideoProgressIndicator(
+                            c,
+                            allowScrubbing: true,
+                            padding: EdgeInsets.zero,
+                            colors: VideoProgressColors(
+                              playedColor: Zine.lime,
+                              bufferedColor: Colors.white.withValues(alpha: 0.35),
+                              backgroundColor: Colors.white.withValues(alpha: 0.18),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+      ]),
     );
   }
 }
