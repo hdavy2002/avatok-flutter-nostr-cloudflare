@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../core/verification_api.dart';
 
 /// Data collected on the verification step.
@@ -339,19 +341,22 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _iconTile(Icons.verified_user_outlined),
+                ZineIconBadge(
+                    icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
+                    color: Zine.mint, size: 44),
                 const SizedBox(height: 16),
-                Text('Verify it\'s you',
-                    style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28)),
-                const SizedBox(height: 6),
-                const Text(
+                ZineMarkTitle(
+                    pre: "Verify it's ", mark: 'you',
+                    fontSize: 28, textAlign: TextAlign.left),
+                const SizedBox(height: 8),
+                Text(
                     'A few quick details keep AvaTOK safe for everyone. We verify your '
                     'phone and email, and never share them.',
-                    style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+                    style: ZineText.sub(size: 14.5)),
                 const SizedBox(height: 22),
 
                 _label('Age group'),
@@ -361,11 +366,11 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
                   Analytics.capture('onboarding_age_provided', {'age_group': v});
                 }),
                 if (_ageGroup == 'Under 18')
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
                     child: Text(
                         'Under-18 accounts may need a parent to set things up.',
-                        style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+                        style: ZineText.sub(size: 12)),
                   ),
                 const SizedBox(height: 20),
 
@@ -379,12 +384,16 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
 
                 _verifyCard(
                   title: 'Phone number',
+                  icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                  accent: Zine.blue,
                   verified: _phoneVerified,
                   child: _phoneSection(),
                 ),
                 const SizedBox(height: 16),
                 _verifyCard(
                   title: 'Email address',
+                  icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
+                  accent: Zine.lilac,
                   verified: _emailVerified,
                   child: _emailSection(),
                 ),
@@ -394,28 +403,28 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _ready
-                  ? () {
-                      if (!_phoneVerified) {
-                        Analytics.capture('phone_verification_skipped',
-                            {'after_error': _phoneError != null});
-                      }
-                      widget.onComplete(VerifyData(
-                        ageGroup: _ageGroup!,
-                        gender: _gender!,
-                        // Only persist the number if it was actually verified.
-                        phone: _phoneVerified ? _phoneCtrl.text.trim() : '',
-                        phoneVerified: _phoneVerified,
-                        email: _emailCtrl.text.trim(),
-                        emailVerified: _emailVerified,
-                      ));
+          child: ZineButton(
+            label: 'Keep going',
+            icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+            fullWidth: true,
+            fontSize: 21,
+            onPressed: _ready
+                ? () {
+                    if (!_phoneVerified) {
+                      Analytics.capture('phone_verification_skipped',
+                          {'after_error': _phoneError != null});
                     }
-                  : null,
-              child: const Text('Continue'),
-            ),
+                    widget.onComplete(VerifyData(
+                      ageGroup: _ageGroup!,
+                      gender: _gender!,
+                      // Only persist the number if it was actually verified.
+                      phone: _phoneVerified ? _phoneCtrl.text.trim() : '',
+                      phoneVerified: _phoneVerified,
+                      email: _emailCtrl.text.trim(),
+                      emailVerified: _emailVerified,
+                    ));
+                  }
+                : null,
           ),
         ),
       ],
@@ -426,22 +435,23 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
     if (_phoneVerified) return _verifiedRow(_phoneCtrl.text.trim());
     if (_phoneSkipped) {
       return Row(children: [
-        const Icon(Icons.schedule, size: 18, color: AvaColors.sub),
+        PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
         const SizedBox(width: 8),
-        const Expanded(
+        Expanded(
             child: Text('Skipped — you can verify your phone later in Settings.',
-                style: TextStyle(color: AvaColors.sub))),
-        TextButton(onPressed: () => setState(() => _phoneSkipped = false), child: const Text('Undo')),
+                style: ZineText.sub(size: 13.5))),
+        const SizedBox(width: 8),
+        ZineLink('undo', onTap: () => setState(() => _phoneSkipped = false)),
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Optional — verify now, or add it later in Settings.',
-          style: TextStyle(color: AvaColors.sub, fontSize: 12)),
+      Text('Optional — verify now, or add it later in Settings.',
+          style: ZineText.sub(size: 12)),
       const SizedBox(height: 8),
       _field(
         controller: _phoneCtrl,
         hint: '+234 800 000 0000',
-        icon: Icons.phone_outlined,
+        icon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
         keyboardType: TextInputType.phone,
         enabled: !_phoneCodeSent,
       ),
@@ -453,7 +463,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         _field(
           controller: _phoneCodeCtrl,
           hint: '6-digit code',
-          icon: Icons.sms_outlined,
+          icon: PhosphorIcons.chatText(PhosphorIconsStyle.bold),
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
         ),
@@ -462,28 +472,25 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
           Expanded(
             child: _secondary(_phoneVerifying ? 'Verifying…' : 'Verify', _phoneVerifying ? null : _verifyPhoneCode),
           ),
-          const SizedBox(width: 10),
-          TextButton(
-            onPressed: _phoneSending ? null : () => _sendPhoneCode(resend: true),
-            child: const Text('Resend'),
-          ),
+          const SizedBox(width: 14),
+          ZineLink('resend',
+              onTap: _phoneSending ? null : () => _sendPhoneCode(resend: true)),
         ]),
       ],
       if (_phoneError != null) _errorText(_phoneError!),
-      const SizedBox(height: 4),
+      const SizedBox(height: 10),
       Align(
         alignment: Alignment.centerLeft,
-        child: TextButton(
-          style: TextButton.styleFrom(padding: EdgeInsets.zero),
-          onPressed: () {
+        child: ZineLink(
+          _phoneError != null ? 'skip phone verification →' : 'skip for now',
+          underline: Zine.coral,
+          onTap: () {
             Analytics.capture('phone_verification_skip_tapped', {'after_error': _phoneError != null});
             setState(() {
               _phoneSkipped = true;
               _phoneError = null;
             });
           },
-          child: Text(_phoneError != null ? 'Skip phone verification →' : 'Skip for now',
-              style: const TextStyle(fontWeight: FontWeight.w600)),
         ),
       ),
     ]);
@@ -495,7 +502,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
       _field(
         controller: _emailCtrl,
         hint: 'you@example.com',
-        icon: Icons.mail_outline,
+        icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
         keyboardType: TextInputType.emailAddress,
         enabled: !_emailCodeSent,
       ),
@@ -507,7 +514,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         _field(
           controller: _emailCodeCtrl,
           hint: 'code from your inbox',
-          icon: Icons.confirmation_number_outlined,
+          icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(8)],
         ),
@@ -516,11 +523,9 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
           Expanded(
             child: _secondary(_emailVerifying ? 'Verifying…' : 'Verify', _emailVerifying ? null : _verifyEmailOtp),
           ),
-          const SizedBox(width: 10),
-          TextButton(
-            onPressed: _emailSending ? null : () => _sendEmailOtp(resend: true),
-            child: const Text('Resend'),
-          ),
+          const SizedBox(width: 14),
+          ZineLink('resend',
+              onTap: _emailSending ? null : () => _sendEmailOtp(resend: true)),
         ]),
       ],
       if (_emailError != null) _errorText(_emailError!),
@@ -529,50 +534,36 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
 
   // ───────────────────────── shared UI ─────────────────────────
 
-  Widget _label(String t) => Text(t, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13));
+  Widget _label(String t) => Text(t.toUpperCase(), style: ZineText.kicker());
 
   Widget _chips(List<String> options, String? selected, ValueChanged<String> onPick) => Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: options.map((o) {
-          final on = o == selected;
-          return GestureDetector(
-            onTap: () => onPick(o),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
-                color: on ? AvaColors.brand.withValues(alpha: 0.10) : AvaColors.soft,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: on ? AvaColors.brand : Colors.transparent, width: 1.4),
-              ),
-              child: Text(o,
-                  style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                      color: on ? AvaColors.brand : AvaColors.ink)),
-            ),
-          );
-        }).toList(),
+        children: options
+            .map((o) => ZineChip(label: o, active: o == selected, onTap: () => onPick(o)))
+            .toList(),
       );
 
-  Widget _verifyCard({required String title, required bool verified, required Widget child}) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AvaColors.soft,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: verified ? AvaColors.success : Colors.transparent, width: 1.4),
-        ),
+  Widget _verifyCard({
+    required String title,
+    required IconData icon,
+    required Color accent,
+    required bool verified,
+    required Widget child,
+  }) =>
+      ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.all(16),
+        boxShadow: Zine.shadowXs,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            const Spacer(),
+            ZineIconBadge(icon: icon, color: verified ? Zine.mint : accent, size: 30),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title, style: ZineText.cardTitle(size: 17))),
             if (verified)
-              Row(children: const [
-                Icon(Icons.check_circle, size: 16, color: AvaColors.success),
-                SizedBox(width: 4),
-                Text('Verified',
-                    style: TextStyle(color: AvaColors.success, fontSize: 12.5, fontWeight: FontWeight.w700)),
-              ]),
+              ZineSticker('verified',
+                  kind: ZineStickerKind.ok,
+                  icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)),
           ]),
           const SizedBox(height: 12),
           child,
@@ -580,11 +571,15 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
       );
 
   Widget _verifiedRow(String value) => Row(children: [
-        const Icon(Icons.check_circle, size: 18, color: AvaColors.success),
+        PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+            size: 18, color: Zine.mintInk),
         const SizedBox(width: 8),
-        Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
+        Expanded(child: Text(value, style: ZineText.value(size: 15))),
       ]);
 
+  /// Zine field chrome with inputFormatters support (the shared ZineField
+  /// doesn't expose formatters): ink border, 18px radius, hard shadow, lime
+  /// lead-icon cell, Nunito 800 input.
   Widget _field({
     required TextEditingController controller,
     required String hint,
@@ -594,47 +589,56 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
     bool enabled = true,
   }) =>
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+          color: enabled ? Zine.card : Zine.paper2,
+          borderRadius: BorderRadius.circular(Zine.rField),
+          border: Zine.border,
+          boxShadow: Zine.shadowXs,
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Row(children: [
-          Icon(icon, size: 18, color: const Color(0xFF9AA1AC)),
-          const SizedBox(width: 8),
+          Container(
+            width: 46,
+            constraints: const BoxConstraints(minHeight: 52),
+            decoration: const BoxDecoration(
+              color: Zine.lime,
+              border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 20, color: Zine.ink),
+          ),
           Expanded(
             child: TextField(
               controller: controller,
               enabled: enabled,
               keyboardType: keyboardType,
               inputFormatters: inputFormatters,
+              cursorColor: Zine.blueInk,
+              style: ZineText.input(size: 16),
               decoration: InputDecoration(
                 hintText: hint,
+                hintStyle: ZineText.input(size: 16)
+                    .copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
                 border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                filled: false,
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 13),
-                hintStyle: const TextStyle(color: Color(0xFF9AA1AC)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               ),
             ),
           ),
         ]),
       );
 
-  Widget _secondary(String text, VoidCallback? onTap) => SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-              backgroundColor: AvaColors.brand, padding: const EdgeInsets.symmetric(vertical: 13)),
-          onPressed: onTap,
-          child: Text(text),
-        ),
+  Widget _secondary(String text, VoidCallback? onTap) => ZineButton(
+        label: text,
+        onPressed: onTap,
+        variant: ZineButtonVariant.blue,
+        fullWidth: true,
+        fontSize: 17,
       );
 
-  Widget _errorText(String t) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(t, style: const TextStyle(color: AvaColors.danger, fontSize: 12.5)),
-      );
-
-  Widget _iconTile(IconData icon) => Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(color: AvaColors.brand50, borderRadius: BorderRadius.circular(16)),
-      child: Icon(icon, color: AvaColors.brand, size: 26));
+  Widget _errorText(String t) => ZineErrorMsg(t);
 }

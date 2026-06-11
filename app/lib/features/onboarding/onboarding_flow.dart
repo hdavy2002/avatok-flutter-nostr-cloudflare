@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
@@ -14,7 +15,8 @@ import '../../core/guest_session.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/prefs_sync.dart';
 import '../../core/profile_store.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../avatok/contacts.dart';
 import 'verify_identity_step.dart';
@@ -197,33 +199,23 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            _dots(),
-            Expanded(child: _body()),
-          ],
+      body: ZinePaper(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+                child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  ZineStepPips(total: _steps, active: _step + 1),
+                ]),
+              ),
+              Expanded(child: _body()),
+            ],
+          ),
         ),
       ),
     );
   }
-
-  Widget _dots() => Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(_steps, (i) {
-          final on = i == _step;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            width: on ? 22 : 7, height: 7,
-            decoration: BoxDecoration(
-                color: on ? AvaColors.brand : AvaColors.line,
-                borderRadius: BorderRadius.circular(4)),
-          );
-        }),
-      );
 
   Widget _body() {
     // Dispatch by step NAME, not index — the list shrinks when the
@@ -255,41 +247,44 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _iconTileSmall(Icons.workspace_premium_outlined, AvaColors.brand50, AvaColors.brand),
+                ZineIconBadge(
+                    icon: PhosphorIcons.crownSimple(PhosphorIconsStyle.fill),
+                    color: Zine.blue, size: 44),
                 const SizedBox(height: 16),
-                Text('How will you use AvaTOK?',
-                    style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28)),
-                const SizedBox(height: 6),
-                const Text(
+                ZineMarkTitle(
+                    pre: 'How will you ', mark: 'use', post: ' AvaTOK?',
+                    fontSize: 28, textAlign: TextAlign.left),
+                const SizedBox(height: 8),
+                Text(
                     'This sets up your account. Parent and Business accounts unlock extra '
                     'management tools in the sidebar. You can change this later in Settings.',
-                    style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+                    style: ZineText.sub(size: 14.5)),
                 const SizedBox(height: 22),
                 _kindCard(
                   kind: AccountKind.personal,
-                  icon: Icons.person_outline,
-                  color: AvaColors.brand,
+                  icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+                  color: Zine.blue,
                   title: 'Just me',
                   sub: 'A personal account with all the standard AvaVerse apps.',
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 _kindCard(
                   kind: AccountKind.parent,
-                  icon: Icons.family_restroom,
-                  color: const Color(0xFF7C5CFC),
+                  icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+                  color: Zine.lilac,
                   title: 'Parent / family',
                   sub: 'Create and manage accounts for your kids — app controls, '
                       'contact approvals, screen time and safety alerts.',
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 _kindCard(
                   kind: AccountKind.enterprise,
-                  icon: Icons.apartment,
-                  color: const Color(0xFF0A66C2),
+                  icon: PhosphorIcons.buildings(PhosphorIconsStyle.bold),
+                  color: Zine.mint,
                   title: 'Business / enterprise',
                   sub: 'Provision accounts for your team — employees, teams & roles, '
                       'app grants, billing and an audit log.',
@@ -300,7 +295,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-          child: _primary('Continue', _selectedKind != null ? _next : null),
+          child: _primary("Keep going", _selectedKind != null ? _next : null),
         ),
       ],
     );
@@ -314,44 +309,34 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     required String sub,
   }) {
     final selected = _selectedKind == kind;
-    return GestureDetector(
+    return ZinePressable(
       onTap: () {
         setState(() => _selectedKind = kind);
         Analytics.capture('onboarding_account_kind_selected', {'account_kind': kind.wire});
       },
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.06) : AvaColors.soft,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? color : Colors.transparent,
-            width: 1.6,
-          ),
+      color: selected ? Zine.lime : Zine.card,
+      radius: BorderRadius.circular(Zine.rSm),
+      boxShadow: selected ? Zine.shadowSm : Zine.shadowXs,
+      padding: const EdgeInsets.all(14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ZineIconBadge(icon: icon, color: color, size: 42),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: ZineText.cardTitle(size: 18)),
+            const SizedBox(height: 4),
+            Text(sub, style: ZineText.sub(size: 12.5)),
+          ]),
         ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 42, height: 42,
-            decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              const SizedBox(height: 4),
-              Text(sub, style: const TextStyle(color: AvaColors.sub, fontSize: 12.5, height: 1.4)),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          Icon(
-            selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-            color: selected ? color : AvaColors.line,
-            size: 22,
-          ),
-        ]),
-      ),
+        const SizedBox(width: 8),
+        PhosphorIcon(
+          selected
+              ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+              : PhosphorIcons.circle(PhosphorIconsStyle.bold),
+          color: selected ? Zine.ink : Zine.inkMute,
+          size: 22,
+        ),
+      ]),
     );
   }
 
@@ -361,50 +346,45 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _iconTileSmall(Icons.alternate_email, AvaColors.brand50, AvaColors.brand),
+                ZineIconBadge(
+                    icon: PhosphorIcons.at(PhosphorIconsStyle.bold),
+                    color: Zine.lime, size: 44),
                 const SizedBox(height: 16),
-                Text('Claim your handle', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 30)),
-                const SizedBox(height: 6),
-                const Text('Your @handle is how people find and tag you. Names repeat — a handle is uniquely yours.',
-                    style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
-                const SizedBox(height: 24),
-                const Text('Display name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                ZineMarkTitle(
+                    pre: 'Claim your ', mark: 'handle',
+                    fontSize: 30, textAlign: TextAlign.left),
                 const SizedBox(height: 8),
+                Text('Your @handle is how people find and tag you. Names repeat — a handle is uniquely yours.',
+                    style: ZineText.sub(size: 14.5)),
+                const SizedBox(height: 24),
                 _field(
                   controller: _nameCtrl,
+                  label: 'display name',
                   hint: 'e.g. Jordan Rivers',
-                  icon: Icons.person_outline,
+                  leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
                   onChanged: (_) => setState(() {}),
                   textCapitalization: TextCapitalization.words,
                 ),
                 const SizedBox(height: 18),
-                const Text('Handle', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                const SizedBox(height: 8),
                 _field(
                   controller: _handleCtrl,
+                  label: 'handle',
                   hint: 'yourname',
-                  icon: Icons.alternate_email,
+                  leadText: '@',
                   onChanged: _onHandleChanged,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
                     LengthLimitingTextInputFormatter(20),
                   ],
                   trailing: _handleTrailing(),
+                  error: _handleAvail == false,
                 ),
-                const SizedBox(height: 8),
-                if (_handleMsg != null)
-                  Text(_handleMsg!, style: TextStyle(
-                      color: _handleAvail == true ? AvaColors.success : AvaColors.danger, fontSize: 12.5))
-                else if (_handleAvail == true)
-                  Text('@${_handleCtrl.text.trim().toLowerCase()} is available',
-                      style: const TextStyle(color: AvaColors.success, fontSize: 12.5))
-                else
-                  const Text('3–20 characters: letters, numbers or _, starting with a letter.',
-                      style: TextStyle(color: AvaColors.sub, fontSize: 12.5)),
+                const SizedBox(height: 12),
+                _handleStatus(),
               ],
             ),
           ),
@@ -412,86 +392,171 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
           child: _primary(
-            _savingProfile ? 'Saving…' : 'Continue',
+            'Keep going',
             _profileReady ? _saveProfileAndNext : null,
+            loading: _savingProfile,
           ),
         ),
       ],
     );
   }
 
+  Widget _handleStatus() {
+    if (_handleMsg != null) {
+      return ZineSticker(
+        _handleMsg!,
+        kind: _handleAvail == true ? ZineStickerKind.ok : ZineStickerKind.no,
+        icon: _handleAvail == true
+            ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+            : PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
+      );
+    }
+    if (_handleAvail == true) {
+      return ZineSticker(
+        '@${_handleCtrl.text.trim().toLowerCase()} is available',
+        kind: ZineStickerKind.ok,
+        icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+      );
+    }
+    return ZineSticker(
+      '3–20 letters, numbers or _',
+      kind: ZineStickerKind.hint,
+      icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.fill),
+    );
+  }
+
   Widget? _handleTrailing() {
     if (_checkingHandle) {
       return const SizedBox(width: 18, height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2, color: AvaColors.sub));
+          child: CircularProgressIndicator(strokeWidth: 2.4, color: Zine.blueInk));
     }
-    if (_handleAvail == true) return const Icon(Icons.check_circle, size: 20, color: AvaColors.success);
-    if (_handleAvail == false) return const Icon(Icons.cancel, size: 20, color: AvaColors.danger);
+    if (_handleAvail == true) {
+      return PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+          size: 20, color: Zine.mintInk);
+    }
+    if (_handleAvail == false) {
+      return PhosphorIcon(PhosphorIcons.xCircle(PhosphorIconsStyle.fill),
+          size: 20, color: Zine.coral);
+    }
     return null;
   }
 
+  /// Zine-styled field that still supports inputFormatters (which the shared
+  /// ZineField doesn't expose) — same chrome: ink border, 18px radius, hard
+  /// shadow, lime lead cell, Space Mono label, Nunito 800 input.
   Widget _field({
     required TextEditingController controller,
     required String hint,
-    required IconData icon,
     required ValueChanged<String> onChanged,
+    String? label,
+    String? leadText,
+    IconData? leadIcon,
     Widget? trailing,
+    bool error = false,
     List<TextInputFormatter>? inputFormatters,
     TextCapitalization textCapitalization = TextCapitalization.none,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(14)),
-      child: Row(children: [
-        Icon(icon, size: 18, color: const Color(0xFF9AA1AC)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: TextField(
-            controller: controller,
-            onChanged: onChanged,
-            inputFormatters: inputFormatters,
-            textCapitalization: textCapitalization,
-            decoration: InputDecoration(
-                hintText: hint, border: InputBorder.none, isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                hintStyle: const TextStyle(color: Color(0xFF9AA1AC))),
-          ),
+    final hasLead = leadText != null || leadIcon != null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (label != null) ...[
+        Text(label.toUpperCase(), style: ZineText.kicker()),
+        const SizedBox(height: 9),
+      ],
+      Container(
+        decoration: BoxDecoration(
+          color: Zine.card,
+          borderRadius: BorderRadius.circular(Zine.rField),
+          border: Zine.border,
+          boxShadow: error ? Zine.shadowError : Zine.shadowSm,
         ),
-        if (trailing != null) ...[const SizedBox(width: 8), trailing],
-      ]),
-    );
+        clipBehavior: Clip.antiAlias,
+        child: Row(children: [
+          if (hasLead)
+            Container(
+              width: 50,
+              constraints: const BoxConstraints(minHeight: 56),
+              decoration: const BoxDecoration(
+                color: Zine.lime,
+                border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+              ),
+              alignment: Alignment.center,
+              child: leadText != null
+                  ? Text(leadText,
+                      style: const TextStyle(
+                          fontFamily: ZineText.display, fontWeight: FontWeight.w600,
+                          fontSize: 24, color: Zine.ink))
+                  : Icon(leadIcon, size: 22, color: Zine.ink),
+            ),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              inputFormatters: inputFormatters,
+              textCapitalization: textCapitalization,
+              cursorColor: Zine.blueInk,
+              style: ZineText.input(),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: ZineText.input()
+                    .copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: trailing,
+            ),
+        ]),
+      ),
+    ]);
   }
 
   // ---- Step 1: notifications ----
   Widget _notifications() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
           const Spacer(flex: 2),
-          _iconTile(Icons.notifications_none_rounded, badge: _notifEnabled),
-          const SizedBox(height: 22),
-          Text('Stay in the loop', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 32)),
+          ZineCrest(
+            child: PhosphorIcon(
+                _notifEnabled
+                    ? PhosphorIcons.bellRinging(PhosphorIconsStyle.fill)
+                    : PhosphorIcons.bell(PhosphorIconsStyle.bold),
+                size: 46, color: Zine.ink),
+          ),
+          const SizedBox(height: 18),
+          const ZineMarkTitle(pre: 'Stay in the ', mark: 'loop', fontSize: 32),
           const SizedBox(height: 12),
-          const Text('Get notified when creators you follow post, when you earn a payout, or when someone tips your work.',
-              textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Text(
+                'Get notified when creators you follow post, when you earn a payout, or when someone tips your work.',
+                textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+          ),
           const SizedBox(height: 28),
-          _featureRow(Icons.favorite_border, 'New followers & tips'),
+          _featureRow(PhosphorIcons.heart(PhosphorIconsStyle.bold), Zine.coral, 'New followers & tips'),
           const SizedBox(height: 12),
-          _featureRow(Icons.account_balance_wallet_outlined, 'Payouts & wallet activity'),
+          _featureRow(PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint, 'Payouts & wallet activity'),
           const SizedBox(height: 12),
-          _featureRow(Icons.chat_bubble_outline, 'Replies & mentions'),
+          _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue, 'Replies & mentions'),
           const Spacer(flex: 3),
           if (_notifEnabled)
-            _primary('Continue', _next)
+            _primary('Keep going', _next)
           else ...[
-            _primary('Allow Notifications', () async {
+            _primary('Turn on notifications', () async {
               await Permission.notification.request();
               setState(() => _notifEnabled = true);
-            }, icon: Icons.notifications_none_rounded),
-            const SizedBox(height: 8),
-            TextButton(onPressed: _next, child: const Text('Not now',
-                style: TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w600))),
+            }, icon: PhosphorIcons.bell(PhosphorIconsStyle.bold)),
+            const SizedBox(height: 14),
+            ZineLink('not now', fontSize: 14, onTap: _next),
           ],
         ],
       ),
@@ -507,13 +572,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Terms & Conditions', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 30)),
-                const SizedBox(height: 4),
-                const Text('Please review before continuing', style: TextStyle(color: AvaColors.sub)),
+                ZineMarkTitle(
+                    pre: 'Terms & ', mark: 'Conditions',
+                    fontSize: 30, textAlign: TextAlign.left),
+                const SizedBox(height: 6),
+                Text('PLEASE REVIEW BEFORE CONTINUING', style: ZineText.kicker()),
                 const SizedBox(height: 20),
                 _termSection('1. Your Account', '$para $para'),
                 _termSection('2. Content & Ownership', '$para $para'),
@@ -525,19 +592,39 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Container(
-          padding: const EdgeInsets.fromLTRB(28, 8, 28, 20),
-          decoration: const BoxDecoration(border: Border(top: BorderSide(color: AvaColors.line))),
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
+          decoration: const BoxDecoration(
+            color: Zine.paper2,
+            border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+          ),
           child: Column(
             children: [
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                activeColor: AvaColors.brand,
-                value: _agreedTerms,
-                onChanged: (v) => setState(() => _agreedTerms = v ?? false),
-                title: const Text('I have read and agree to the Terms & Conditions', style: TextStyle(fontSize: 14)),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _agreedTerms = !_agreedTerms),
+                child: Row(children: [
+                  Container(
+                    width: 26, height: 26,
+                    decoration: BoxDecoration(
+                      color: _agreedTerms ? Zine.lime : Zine.card,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Zine.border,
+                      boxShadow: _agreedTerms ? Zine.shadowXs : null,
+                    ),
+                    child: _agreedTerms
+                        ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                            size: 15, color: Zine.ink)
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text('I have read and agree to the Terms & Conditions',
+                        style: ZineText.value(size: 14)),
+                  ),
+                ]),
               ),
-              _primary('Continue', _agreedTerms ? _next : null),
+              const SizedBox(height: 14),
+              _primary('Keep going', _agreedTerms ? _next : null),
             ],
           ),
         ),
@@ -548,47 +635,55 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Widget _termSection(String title, String body) => Padding(
         padding: const EdgeInsets.only(bottom: 18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          Text(title, style: ZineText.cardTitle(size: 17)),
           const SizedBox(height: 6),
-          Text(body, style: const TextStyle(color: AvaColors.sub, fontSize: 13.5, height: 1.5)),
+          Text(body, style: ZineText.sub(size: 13.5)),
         ]),
       );
 
   // ---- Step 5: contacts ----
   Widget _contacts() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(children: [
         const Spacer(flex: 2),
-        Container(
-          width: 70, height: 44,
+        SizedBox(
+          width: 74, height: 46,
           child: Stack(alignment: Alignment.center, children: [
-            Positioned(left: 0, child: _dot(const Color(0xFF4F8DFD))),
-            Positioned(right: 0, child: _dot(const Color(0xFFC98BF5))),
-            _dot(const Color(0xFFFF6F6F), big: true),
+            Positioned(left: 0, child: _dot(Zine.blue)),
+            Positioned(right: 0, child: _dot(Zine.lilac)),
+            _dot(Zine.coral, big: true),
           ]),
         ),
         const SizedBox(height: 22),
-        Text('Find people you know', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28)),
+        const ZineMarkTitle(pre: 'Find people you ', mark: 'know', fontSize: 28),
         const SizedBox(height: 12),
-        const Text('Upload your contacts to instantly connect with friends already creating on AvaTOK. We never store your contacts.',
-            textAlign: TextAlign.center, style: TextStyle(color: AvaColors.sub, fontSize: 14, height: 1.5)),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+              'Upload your contacts to instantly connect with friends already creating on AvaTOK. We never store your contacts.',
+              textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+        ),
         const Spacer(flex: 3),
-        _primary('Upload Contacts', () async {
+        _primary('Find my people', () async {
           await Permission.contacts.request();
           // TODO: read + upload contacts in background once granted.
           _next();
-        }, icon: Icons.upload),
-        const SizedBox(height: 8),
-        TextButton(onPressed: _next, child: const Text('Skip for now',
-            style: TextStyle(color: AvaColors.sub, fontWeight: FontWeight.w600))),
+        }, icon: PhosphorIcons.uploadSimple(PhosphorIconsStyle.bold)),
+        const SizedBox(height: 14),
+        ZineLink('skip for now', fontSize: 14, onTap: _next),
       ]),
     );
   }
 
   Widget _dot(Color c, {bool big = false}) => Container(
         width: big ? 30 : 24, height: big ? 30 : 24,
-        decoration: BoxDecoration(color: c, shape: BoxShape.circle));
+        decoration: BoxDecoration(
+          color: c,
+          shape: BoxShape.circle,
+          border: Border.all(color: Zine.ink, width: 2),
+        ),
+      );
 
   // ---- Step 6: app selection (standard-tier apps only) ----
   late final List<AppDef> _offeredApps =
@@ -598,75 +693,76 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(28, 12, 28, 4),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Set up your apps', style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 28)),
-            const SizedBox(height: 4),
-            const Text('Toggle the AvaVerse apps you want. Change these anytime.',
-                style: TextStyle(color: AvaColors.sub, fontSize: 14)),
+            ZineMarkTitle(
+                pre: 'Set up your ', mark: 'apps',
+                fontSize: 28, textAlign: TextAlign.left),
+            const SizedBox(height: 6),
+            Text('Toggle the AvaVerse apps you want. Change these anytime.',
+                style: ZineText.sub(size: 14)),
           ]),
         ),
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
             itemCount: _offeredApps.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, color: AvaColors.line),
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (c, i) {
               final a = _offeredApps[i];
               final on = _enabled.contains(a.key);
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                leading: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(color: a.color, borderRadius: BorderRadius.circular(12)),
-                  child: Icon(a.icon, color: Colors.white, size: 20)),
-                title: Text(a.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(a.tagline, style: const TextStyle(color: AvaColors.sub, fontSize: 12)),
-                trailing: Switch(
-                  value: on, activeColor: Colors.white, activeTrackColor: AvaColors.brand,
-                  onChanged: (v) => setState(() => v ? _enabled.add(a.key) : _enabled.remove(a.key)),
-                ),
+              return ZineCard(
+                radius: Zine.rSm,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                boxShadow: on ? Zine.shadowSm : Zine.shadowXs,
+                child: Row(children: [
+                  ZineIconBadge(icon: a.icon, color: Zine.accents[i % Zine.accents.length], size: 40),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(a.name, style: ZineText.cardTitle(size: 16)),
+                      const SizedBox(height: 2),
+                      Text(a.tagline, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: ZineText.sub(size: 12)),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  ZineToggle(
+                    value: on,
+                    onChanged: (v) => setState(() => v ? _enabled.add(a.key) : _enabled.remove(a.key)),
+                  ),
+                ]),
               );
             },
           ),
         ),
-        Padding(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), child: _primary('Done', _finish)),
+        Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+            child: _primary("Let's go", _finish)),
       ],
     );
   }
 
   // ---- shared bits ----
-  Widget _iconTile(IconData icon, {bool badge = false}) => Stack(clipBehavior: Clip.none, children: [
-        Container(width: 96, height: 96,
-            decoration: BoxDecoration(color: AvaColors.brand50, borderRadius: BorderRadius.circular(26)),
-            child: Icon(icon, color: AvaColors.brand, size: 46)),
-        if (badge) Positioned(right: -4, top: -4, child: Container(
-            width: 26, height: 26,
-            decoration: BoxDecoration(color: AvaColors.success, shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2)),
-            child: const Icon(Icons.check, color: Colors.white, size: 15))),
-      ]);
-
-  Widget _iconTileSmall(IconData icon, Color bg, Color fg) => Container(
-      width: 56, height: 56, decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
-      child: Icon(icon, color: fg, size: 26));
-
-  Widget _featureRow(IconData icon, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(color: AvaColors.soft, borderRadius: BorderRadius.circular(16)),
+  Widget _featureRow(IconData icon, Color accent, String label) => ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        boxShadow: Zine.shadowXs,
         child: Row(children: [
-          Icon(icon, color: AvaColors.brand, size: 22),
+          ZineIconBadge(icon: icon, color: accent),
           const SizedBox(width: 14),
-          Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          Expanded(child: Text(label, style: ZineText.value(size: 15))),
         ]),
       );
 
-  Widget _primary(String text, VoidCallback? onTap, {IconData? icon}) => SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: onTap,
-          icon: icon != null ? Icon(icon, size: 20) : const SizedBox.shrink(),
-          label: Text(text),
-        ),
+  Widget _primary(String text, VoidCallback? onTap, {IconData? icon, bool loading = false}) =>
+      ZineButton(
+        label: text,
+        onPressed: onTap,
+        fullWidth: true,
+        fontSize: 21,
+        loading: loading,
+        icon: icon ?? PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+        trailingIcon: icon == null,
       );
 }

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../auth/clerk_client.dart';
 import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
 import '../core/onboarding_store.dart';
-import '../core/theme.dart';
+import '../core/ui/zine.dart';
 import '../identity/identity.dart';
 import '../features/avachat/avachat_screen.dart';
 import '../features/avalive/avalive_discovery.dart';
@@ -141,7 +142,11 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'billing':
       case 'invite':
-        _push(ComingSoon(title: dest[0].toUpperCase() + dest.substring(1), subtitle: 'Coming soon', icon: Icons.bolt, color: AvaColors.brand));
+        _push(ComingSoon(
+            title: dest[0].toUpperCase() + dest.substring(1),
+            subtitle: 'Coming soon',
+            icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill),
+            color: Zine.blue));
         return;
       default:
         // Parent/Enterprise management tools (dummy → coming soon for now).

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/account_restore.dart';
-import '../../core/logo.dart';
-import '../../core/theme.dart';
+import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 
 /// Shown ONLY when the server couldn't be reached while checking the signed-in
 /// account (RestoreOutcome.unavailable). Signing in is the account credential —
@@ -28,35 +29,77 @@ class RestoreScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = (state.displayName ?? '').trim();
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(28, 40, 28, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 24),
-              const AvaLogo(size: 52),
-              const SizedBox(height: 22),
-              Text(name.isNotEmpty ? 'One moment, $name' : 'Can’t reach AvaTOK',
-                  style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 32)),
-              const SizedBox(height: 10),
-              const Text(
-                  'We couldn’t load your account just now. Check your connection and '
-                  'try again — everything on your account comes back automatically '
-                  'once we’re connected. We won’t set you up as a new user.',
-                  style: TextStyle(color: AvaColors.sub, fontSize: 15, height: 1.5)),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(onPressed: onRetry, child: const Text('Try again')),
+      body: ZinePaper(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                Text('RECONNECTING', style: ZineText.kicker()),
+              ]),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    const SizedBox(height: 30),
+                    Center(
+                      child: ZineCrest(
+                        child: PhosphorIcon(
+                            PhosphorIcons.wifiSlash(PhosphorIconsStyle.bold),
+                            size: 46, color: Zine.ink),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      name.isNotEmpty ? 'One moment,\n$name' : 'Can’t reach\nAvaTOK',
+                      style: ZineText.hero(size: 34),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 14),
+                    Center(
+                      child: ZineSticker(
+                        'connection hiccup',
+                        kind: ZineStickerKind.no,
+                        icon: PhosphorIcons.plugs(PhosphorIconsStyle.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 300),
+                        child: Text(
+                          'We couldn’t load your account just now. Check your '
+                          'connection and try again — everything on your account '
+                          'comes back automatically once we’re connected. '
+                          'We won’t set you up as a new user.',
+                          style: ZineText.sub(),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                  ]),
+                ),
               ),
-              const SizedBox(height: 12),
-              Center(
-                  child: TextButton(
-                      onPressed: onSignOut,
-                      child: const Text('Sign out', style: TextStyle(color: AvaColors.sub)))),
-            ],
+              ZineButton(
+                label: 'Try again',
+                icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+                fullWidth: true,
+                fontSize: 21,
+                onPressed: onRetry,
+              ),
+              const SizedBox(height: 18),
+              Center(child: ZineLink('sign out', underline: Zine.coral, fontSize: 14, onTap: onSignOut)),
+              const SizedBox(height: 16),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
+                    size: 14, color: Zine.blueInk),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text('your account is safe — nothing is lost',
+                      style: ZineText.kicker(), textAlign: TextAlign.center),
+                ),
+              ]),
+            ]),
           ),
         ),
       ),
