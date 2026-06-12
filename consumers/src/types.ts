@@ -29,6 +29,7 @@ export interface Env {
   AI_DAILY_CALL_BUDGET?: string; // daily Workers AI call budget (default 5000); cron alarms past it
   STORAGE_COINS_PER_GB?: string; // AvaStorage over-quota price (coins/GB/month, default 20)
   ALERT_EMAIL?: string;          // ops alert recipient (default hdavy2005@gmail.com)
+  RECON_DRILL_ACCOUNTS?: string; // comma-sep accounts deliberately tampered for the A2 acceptance drill; a run touching ONLY these gets a [DRILL] subject instead of a real alert
   // secrets
   FCM_SERVICE_ACCOUNT?: string;
   BREVO_API_KEY?: string;        // transactional email (replaces Resend)

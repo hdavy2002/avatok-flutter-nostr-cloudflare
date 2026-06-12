@@ -114,11 +114,22 @@ export async function reconWallet(env: Env): Promise<void> {
 async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> {
   if (!env.BREVO_API_KEY) { console.error("[recon] MISMATCH but BREVO_API_KEY unset:", JSON.stringify(diffs)); return; }
   const to = env.ALERT_EMAIL || "hdavy2005@gmail.com";
+  // Drill mode: the A2 acceptance test seeds a mismatch via a manual UPDATE on a
+  // known account. If EVERY diff is on a RECON_DRILL_ACCOUNTS entry, this is that
+  // rehearsal — tag it [DRILL] so it can't be mistaken for a real incident. If
+  // even ONE diff is off the drill list, it's treated as a genuine alert (a drill
+  // that accidentally surfaces a real mismatch must still scream).
+  const drillSet = new Set((env.RECON_DRILL_ACCOUNTS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  const isDrill = drillSet.size > 0 && diffs.every((d) => drillSet.has(d.account));
+  const tag = isDrill ? "🧪 [DRILL]" : "⚠️";
   const rows = diffs.map((d) => `<tr><td style="padding:4px 12px 4px 0">${d.kind}</td><td style="padding:4px 12px 4px 0"><code>${d.account}</code></td><td style="padding:4px 12px 4px 0;text-align:right">${d.expected}</td><td style="padding:4px 0;text-align:right">${d.actual}</td></tr>`).join("");
+  const banner = isDrill
+    ? `<p style="background:#eef;padding:8px 12px;border-radius:6px"><b>This is a reconciliation DRILL</b> — every flagged account is in <code>RECON_DRILL_ACCOUNTS</code>. No real money is affected; no action needed. (A real mismatch would omit this banner.)</p>`
+    : `<p>${diffs.length} invariant violation(s). Ledger and balances disagree — investigate before more money moves.</p>`;
   const html = `
   <div style="font-family:system-ui,sans-serif">
-    <h2>⚠️ AvaWallet reconciliation mismatch — ${date}</h2>
-    <p>${diffs.length} invariant violation(s). Ledger and balances disagree — investigate before more money moves.</p>
+    <h2>${tag} AvaWallet reconciliation ${isDrill ? "drill" : "mismatch"} — ${date}</h2>
+    ${banner}
     <table style="border-collapse:collapse"><tr><th align="left">kind</th><th align="left">account</th><th align="right">expected (ledger Σ)</th><th align="right">actual</th></tr>${rows}</table>
     <p>Option: freeze money ops via remote config (<code>PUT /api/admin/config</code> kill switch) until resolved.<br>
     Runs are stored in <code>recon_runs</code>; inspect via <code>GET /api/admin/recon</code>.</p>
@@ -127,7 +138,7 @@ async function alertEmail(env: Env, date: string, diffs: Diff[]): Promise<void> 
     await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: { "api-key": env.BREVO_API_KEY, "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ sender: { name: "AvaTok Ops", email: "noreply@avatok.ai" }, to: [{ email: to }], subject: `⚠️ Wallet recon mismatch — ${date} (${diffs.length})`, htmlContent: html }),
+      body: JSON.stringify({ sender: { name: "AvaTok Ops", email: "noreply@avatok.ai" }, to: [{ email: to }], subject: `${tag} Wallet recon ${isDrill ? "drill" : "mismatch"} — ${date} (${diffs.length})`, htmlContent: html }),
     });
   } catch (e) { console.error("[recon] alert email failed:", String(e)); }
 }
