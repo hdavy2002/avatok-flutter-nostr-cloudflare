@@ -9,6 +9,7 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../explore/widgets.dart' show CoverImage;
 import 'agent_detail.dart';
+import 'studio/agent_form_flow.dart';
 import 'studio/my_agents_screen.dart';
 import 'widgets.dart' show fmtWhenMs;
 
@@ -62,6 +63,14 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  // Direct shortcut into the create-agent wizard (skips the studio list).
+  Future<void> _createAgent() async {
+    Analytics.capture('avavoice_new_agent_shortcut', {'from': 'home'});
+    final created = await Navigator.push<bool>(context,
+        MaterialPageRoute(builder: (_) => const AgentFormFlow()));
+    if (created == true && mounted) _load();
   }
 
   void _openAgent(VoiceAgent a) {
@@ -184,6 +193,19 @@ class _AvaVoiceHomeState extends State<AvaVoiceHome> with SingleTickerProviderSt
                 ),
               ),
             ]),
+          ),
+          const SizedBox(height: 12),
+          // Small creator shortcut — jump straight into the new-agent wizard.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ZineButton(
+              label: 'New AI agent',
+              variant: ZineButtonVariant.blue,
+              icon: PhosphorIcons.plus(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              fontSize: 14,
+              onPressed: _createAgent,
+            ),
           ),
           const SizedBox(height: 16),
           if (_loading)

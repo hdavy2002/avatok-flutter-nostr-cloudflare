@@ -1,8 +1,10 @@
 name: Android build
 
 # All app builds run on GitHub Actions — never on a local machine.
-# Builds the calling test app under app/, then publishes the APK to a
-# Release tagged "calltest-latest" so there's a stable direct download link.
+# Builds the app under app/ as a Play Store Android App Bundle (.aab) — the
+# ONLY artifact we ship — and publishes it to a Release tagged
+# "calltest-latest" (prod) / "staging-latest" so there's a stable download
+# link. No APK or other formats are produced.
 
 # Staging lane (creator-marketplace Phase 1, A1): pushes to the `staging`
 # branch build with --dart-define=AVATOK_ENV=staging (app talks to
@@ -68,60 +70,26 @@ jobs:
 
       # Cloudflare-native pivot: the Nostr-era tests (nip44, relay diags) are
       # retired with the crypto/relay code. Run whatever tests remain; the
-      # release APK build below stays the real compile gate.
+      # release .aab build below stays the real compile gate.
       - name: Test (compile gate)
         working-directory: app
         run: |
-          if ls test/*_test.dart >/dev/null 2>&1; then flutter test; else echo "no tests — APK build is the compile gate"; fi
+          if ls test/*_test.dart >/dev/null 2>&1; then flutter test; else echo "no tests — .aab build is the compile gate"; fi
 
-      # Sign every debug build with the SAME committed debug keystore so a new
-      # APK installs over an existing one (Android refuses updates when the
-      # signing certificate changes). Without this, `flutter create` lets AGP
-      # auto-generate a fresh, random debug keystore on each CI run, so every
-      # build had a different signature and required uninstalling first.
-      - name: Pin stable debug keystore
-        run: |
-          mkdir -p ~/.android
-          base64 -d app/android-keystore/debug.keystore.base64 > ~/.android/debug.keystore
-          keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -i sha || true
+      # Give every CI build a strictly-increasing versionCode derived from the
+      # run number. The pubspec versionCode is pinned, so without this Play would
+      # reject each upload as a duplicate; $((10000 + run_number)) guarantees each
+      # new .aab is strictly newer. Signature stability is handled by
+      # postcreate.py: it pins the committed keystore for the debug signingConfig
+      # and points the release buildType at the upload keystore when the secret
+      # env vars are set (falling back to the committed keystore otherwise).
 
-      # Give every CI build a strictly-increasing versionCode. The pubspec is
-      # pinned at +18, so without this every APK shipped versionCode 18 and
-      # Android rejected the update ("conflicts with existing package" / "app not
-      # installed") because it looked like the same version. Deriving the build
-      # number from the run number guarantees each new APK is strictly newer, so
-      # it installs over the top — no uninstall needed. (Signature already stable
-      # via the pinned debug keystore above; both are required for clean updates.)
-      # RELEASE + split-per-ABI: the debug APK bundled all 4 CPU architectures +
-      # the JIT engine + no shrinking → ~200 MB. Release is AOT + R8 shrunk, and
-      # split-per-ABI ships ONE architecture per file, so the arm64 APK (every
-      # phone from the last ~7 years, incl. the test devices) is ~30–50 MB.
-      # Release is signed with the SAME committed keystore as debug (postcreate
-      # points signingConfigs.debug at it and the release buildType reuses it),
-      # so this installs straight over the existing build — no uninstall.
-      - name: Build release APK (split per ABI)
-        working-directory: app
-        run: flutter build apk --release --split-per-abi --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
-        env:
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-
-      # Safety net: also build the debug APK as a fallback, in case the release
-      # build misbehaves on a device (release is AOT + can differ from debug).
-      # The small release arm64 is the primary download; debug is the backup.
-      - name: Build debug APK (fallback)
-        working-directory: app
-        run: flutter build apk --debug --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
-        env:
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-
-      # Play Store .aab build (prod track only). Gated on the upload keystore
-      # secret being set so PRs/forks/staging don't fail when it's missing. The
-      # release signingConfig in postcreate.py reads these env vars; when
-      # ANDROID_UPLOAD_KEYSTORE_PATH is empty the release buildType falls back to
-      # the debug keystore (used by the APK builds above), so adding this step
-      # does NOT change those.
+      # Decode the Play upload keystore when the secret is configured. When it's
+      # absent (e.g. before the secret is added) the release signingConfig in
+      # postcreate.py falls back to the committed keystore, so the .aab still
+      # builds — re-key with your real upload keystore before going live.
       - name: Decode upload keystore
-        if: env.AVATOK_ENV == 'prod' && env.ANDROID_UPLOAD_KEYSTORE_BASE64 != ''
+        if: env.ANDROID_UPLOAD_KEYSTORE_BASE64 != ''
         id: keystore
         run: |
           echo "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/avatok-upload.jks"
@@ -130,8 +98,9 @@ jobs:
         env:
           ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
 
+      # Android App Bundle (.aab) — the ONLY artifact we ship. Upload to Play
+      # Console. Play splits per-ABI/density server-side, so no APK is needed.
       - name: Build release App Bundle (.aab) for Play Store
-        if: steps.keystore.outputs.path != ''
         working-directory: app
         run: flutter build appbundle --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
         env:
@@ -141,25 +110,14 @@ jobs:
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
 
-      - name: Stage APKs with stable names
+      - name: Stage .aab with a stable name
         run: |
           mkdir -p dist
-          ls -la app/build/app/outputs/flutter-apk/
-          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call.apk
-          cp app/build/app/outputs/flutter-apk/app-debug.apk dist/avatok-call-debug.apk
-          if [ -f app/build/app/outputs/bundle/release/app-release.aab ]; then
-            cp app/build/app/outputs/bundle/release/app-release.aab dist/avatok-call.aab
-          fi
-          echo "sizes:"; ls -lh dist/
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: avatok-call-apk
-          path: dist/avatok-call.apk
+          ls -la app/build/app/outputs/bundle/release/
+          cp app/build/app/outputs/bundle/release/app-release.aab dist/avatok-call.aab
+          echo "size:"; ls -lh dist/
 
       - name: Upload .aab artifact (Play Store)
-        if: steps.keystore.outputs.path != ''
         uses: actions/upload-artifact@v4
         with:
           name: avatok-call-aab
@@ -171,16 +129,13 @@ jobs:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
-            dist/avatok-call.apk
-            dist/avatok-call-debug.apk
             dist/avatok-call.aab
           fail_on_unmatched_files: false
           body: |
-            Debug APK for on-device call testing. Built by CI from `app/`.
-            Install on Android (allow "install from unknown sources"), open it,
-            enter a room code, and join the same room on a second device or the
-            browser test page at the signaling URL.
+            Play Store Android App Bundle, built by CI from `app/`.
+            Download `avatok-call.aab` and upload it in Play Console → pick a
+            track (Internal testing / Production) → Create new release.
 
-            Play Store builds: `avatok-call.aab` (present only on prod when the
-            upload keystore secret is configured). Upload it to Play Console →
-            Internal testing → Create new release.
+            Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
+            (+ store/alias/key password) secrets are set; otherwise signed with
+            the committed fallback keystore so the build still succeeds.

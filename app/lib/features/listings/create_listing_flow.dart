@@ -10,6 +10,7 @@ import '../../core/config.dart';
 import '../../core/listings_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../avavoice/studio/agent_form_flow.dart';
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import '../identity/identity_gate.dart';
@@ -134,6 +135,17 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
   }
 
   void _continue() {
+    // AI voice agents have their own dedicated create + publish wizard
+    // (name/voice/brain files/pricing). Hand off to it from the type step
+    // rather than forcing the generic listing fields onto a voice agent.
+    if (_step == 0 && _kind == 'ai_agent') {
+      Analytics.capture('listing_pipeline_ai_agent_handoff');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AgentFormFlow()),
+      );
+      return;
+    }
     if (!_validStep(_step)) {
       setState(() => _error = _step == 1
           ? 'A title is required.'
@@ -350,6 +362,10 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         const SizedBox(height: 10),
         _radioCard('consult', 'Consultation', 'Bookable 1:1 or small-group sessions from your availability',
             PhosphorIcons.user(PhosphorIconsStyle.bold), Zine.lilac),
+        const SizedBox(height: 10),
+        _radioCard('ai_agent', 'AI voice agent',
+            'A Gemini-powered voice agent callers can talk to 24/7 (AvaVoice)',
+            PhosphorIcons.robot(PhosphorIconsStyle.bold), Zine.blueInk),
       ]);
 
   Widget _radioCard(String value, String title, String sub, IconData icon, Color accent) {
