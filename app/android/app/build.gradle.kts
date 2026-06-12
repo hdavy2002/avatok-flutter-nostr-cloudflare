@@ -14,6 +14,18 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        create("release") {
+            // CI exports these env vars for the Play Store .aab build. If absent
+            // (e.g. APK side-load build), the release buildType below falls back
+            // to the debug keystore so that lane still works.
+            val uploadStore = System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH")
+            if (!uploadStore.isNullOrEmpty()) {
+                storeFile = file(uploadStore)
+                storePassword = System.getenv("ANDROID_UPLOAD_STORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_UPLOAD_KEY_PASSWORD")
+            }
+        }
     }
     namespace = "ai.avatok.avatok_call"
     compileSdk = 36
@@ -51,9 +63,14 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // CI exports ANDROID_UPLOAD_KEYSTORE_PATH for Play Store .aab builds → use
+            // the upload keystore. Otherwise (local builds, side-load APK lane) keep
+            // signing with the committed debug keystore so a new APK installs over
+            // the previous one without uninstall.
+            signingConfig = if (System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH").isNullOrEmpty())
+                signingConfigs.getByName("debug")
+            else
+                signingConfigs.getByName("release")
         }
     }
 }
