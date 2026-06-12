@@ -292,7 +292,14 @@ def patch_signing() -> None:
     committed keystore), which is exactly why every install hit "package conflicts
     with an existing package" and forced an uninstall. We decode the committed
     keystore into android/app/ and point an EXPLICIT signingConfig at it with the
-    standard debug credentials, so the signature is identical on every build."""
+    standard debug credentials, so the signature is identical on every build.
+
+    ALSO injects a `release` signingConfig that reads env vars
+    (ANDROID_UPLOAD_KEYSTORE_PATH/ALIAS/STORE_PASSWORD/KEY_PASSWORD). The release
+    buildType picks the upload keystore when those env vars are set
+    (CI .aab build for Play Store) and falls back to the debug keystore when
+    they're not (CI APK build for side-loading). That way both lanes keep working
+    out of the same generated android/ project."""
     b64 = APP / "android-keystore/debug.keystore.base64"
     if not b64.exists():
         print("!! debug.keystore.base64 not found — signing NOT pinned")
@@ -314,13 +321,31 @@ def patch_signing() -> None:
             '            keyAlias = "androiddebugkey"\n'
             '            keyPassword = "android"\n'
             '        }\n'
+            '        create("release") {\n'
+            '            // CI exports these for the Play Store .aab build. If absent\n'
+            '            // (e.g. APK side-load build), the release buildType below\n'
+            '            // falls back to the debug keystore so the lane still works.\n'
+            '            val uploadStore = System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH")\n'
+            '            if (!uploadStore.isNullOrEmpty()) {\n'
+            '                storeFile = file(uploadStore)\n'
+            '                storePassword = System.getenv("ANDROID_UPLOAD_STORE_PASSWORD")\n'
+            '                keyAlias = System.getenv("ANDROID_UPLOAD_KEY_ALIAS")\n'
+            '                keyPassword = System.getenv("ANDROID_UPLOAD_KEY_PASSWORD")\n'
+            '            }\n'
+            '        }\n'
             '    }\n'
         )
         t2 = re.sub(r"(android\s*\{\s*\n)", r"\1" + block, t, count=1)
         if t2 == t:
             print("!! could not inject signingConfigs into build.gradle.kts"); sys.exit(1)
+        # Switch the release buildType to the upload keystore WHEN the env var is
+        # set; otherwise keep the existing debug-key fallback so APK builds work.
+        t2 = re.sub(
+            r'release\s*\{\s*\n(?:\s*//[^\n]*\n)*\s*signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
+            'release {\n            signingConfig = if (System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH").isNullOrEmpty()) signingConfigs.getByName("debug") else signingConfigs.getByName("release")',
+            t2, count=1)
         kts.write_text(t2)
-        print("signing: pinned committed debug keystore (build.gradle.kts)")
+        print("signing: pinned debug keystore + env-var release keystore (build.gradle.kts)")
     elif groovy.exists():
         t = groovy.read_text()
         if "avatok-debug.keystore" in t:

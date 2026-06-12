@@ -114,12 +114,42 @@ jobs:
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
 
+      # Play Store .aab build (prod track only). Gated on the upload keystore
+      # secret being set so PRs/forks/staging don't fail when it's missing. The
+      # release signingConfig in postcreate.py reads these env vars; when
+      # ANDROID_UPLOAD_KEYSTORE_PATH is empty the release buildType falls back to
+      # the debug keystore (used by the APK builds above), so adding this step
+      # does NOT change those.
+      - name: Decode upload keystore
+        if: env.AVATOK_ENV == 'prod' && env.ANDROID_UPLOAD_KEYSTORE_BASE64 != ''
+        id: keystore
+        run: |
+          echo "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/avatok-upload.jks"
+          echo "path=$RUNNER_TEMP/avatok-upload.jks" >> $GITHUB_OUTPUT
+          ls -la "$RUNNER_TEMP/avatok-upload.jks"
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+
+      - name: Build release App Bundle (.aab) for Play Store
+        if: steps.keystore.outputs.path != ''
+        working-directory: app
+        run: flutter build appbundle --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+
       - name: Stage APKs with stable names
         run: |
           mkdir -p dist
           ls -la app/build/app/outputs/flutter-apk/
           cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call.apk
           cp app/build/app/outputs/flutter-apk/app-debug.apk dist/avatok-call-debug.apk
+          if [ -f app/build/app/outputs/bundle/release/app-release.aab ]; then
+            cp app/build/app/outputs/bundle/release/app-release.aab dist/avatok-call.aab
+          fi
           echo "sizes:"; ls -lh dist/
 
       - name: Upload artifact
@@ -127,6 +157,13 @@ jobs:
         with:
           name: avatok-call-apk
           path: dist/avatok-call.apk
+
+      - name: Upload .aab artifact (Play Store)
+        if: steps.keystore.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: avatok-call-aab
+          path: dist/avatok-call.aab
 
       - name: Publish to Release (stable link)
         uses: softprops/action-gh-release@v2
@@ -136,8 +173,14 @@ jobs:
           files: |
             dist/avatok-call.apk
             dist/avatok-call-debug.apk
+            dist/avatok-call.aab
+          fail_on_unmatched_files: false
           body: |
             Debug APK for on-device call testing. Built by CI from `app/`.
             Install on Android (allow "install from unknown sources"), open it,
             enter a room code, and join the same room on a second device or the
             browser test page at the signaling URL.
+
+            Play Store builds: `avatok-call.aab` (present only on prod when the
+            upload keystore secret is configured). Upload it to Play Console →
+            Internal testing → Create new release.
