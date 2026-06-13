@@ -8,7 +8,7 @@
  * we only create and manage the agent listing.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { cfImage } from '../../lib/config';
 import { Spinner } from '../../components/Spinner';
 import * as visionApi from '../vision/avavisionApi';
@@ -139,6 +139,6 @@ function Inner({ service }: { service: 'vision' | 'voice' }) {
 }
 
 export function CreatorAgents({ service }: { service: 'vision' | 'voice' }) {
-  return <ClerkIsland><Inner service={service} /></ClerkIsland>;
+  return <Inner service={service} />;
 }
 export default CreatorAgents;

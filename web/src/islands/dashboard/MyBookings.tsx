@@ -8,7 +8,7 @@
  * dashboard is a destination, not a gated action.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { ClerkIsland, getActiveToken, SignInButton } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken, SignInButton } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -165,9 +165,9 @@ function DashboardInner() {
 /** Hydrated dashboard island. Wrapped in ClerkIsland for live-session reads. */
 export function MyBookings() {
   return (
-    <ClerkIsland>
+    
       <DashboardInner />
-    </ClerkIsland>
+    
   );
 }
 

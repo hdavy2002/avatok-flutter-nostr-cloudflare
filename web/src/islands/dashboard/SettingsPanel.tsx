@@ -3,7 +3,7 @@
  * level and the upgrade path; deep identity/KYC steps still complete in the app.
  */
 import { useEffect, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Card } from '../../components/Card';
 import { Spinner } from '../../components/Spinner';
@@ -87,9 +87,9 @@ function Inner() {
 
 export function SettingsPanel() {
   return (
-    <ClerkIsland>
+    
       <Inner />
-    </ClerkIsland>
+    
   );
 }
 

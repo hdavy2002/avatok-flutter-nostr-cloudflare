@@ -12,7 +12,7 @@
  * the phone app's job — here we only manage the listings themselves.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { cfImage } from '../../lib/config';
 import { Spinner } from '../../components/Spinner';
@@ -165,14 +165,14 @@ function Inner({ kind, createHref, emptyTitle, emptyBody }: {
 
 export function CreatorListings(props: { kind?: string; createHref?: string; emptyTitle?: string; emptyBody?: string }) {
   return (
-    <ClerkIsland>
+    
       <Inner
         kind={props.kind}
         createHref={props.createHref ?? '/dashboard/listings/new'}
         emptyTitle={props.emptyTitle ?? 'No listings yet'}
         emptyBody={props.emptyBody ?? 'Publish a live event, a 1:1 consult or a class — fans book and pay right from the web.'}
       />
-    </ClerkIsland>
+    
   );
 }
 

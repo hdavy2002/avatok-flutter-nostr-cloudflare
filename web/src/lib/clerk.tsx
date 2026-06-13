@@ -81,6 +81,23 @@ export async function getActiveToken(): Promise<string | null> {
 }
 
 /**
+ * Like getActiveToken, but tolerant of the cross-island race on dashboard pages:
+ * the body panels mount alongside <SidebarUser/> (the page's single ClerkProvider),
+ * whose ClerkBridge populates the module-level token getter a beat later. We poll
+ * briefly so a Clerk-only session (no guest token yet) resolves instead of reading
+ * null on first paint. Returns null only if nothing resolves within `timeoutMs`.
+ */
+export async function getActiveTokenWaited(timeoutMs = 5000): Promise<string | null> {
+  const start = Date.now();
+  for (;;) {
+    const t = await getActiveToken();
+    if (t) return t;
+    if (Date.now() - start >= timeoutMs) return null;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
+/**
  * THE gate. Resolves to a session JWT, opening the email/OTP modal only when no
  * session exists. Call at the point of a gated action (book / talk / join /
  * enter), then retry the action with the returned token.

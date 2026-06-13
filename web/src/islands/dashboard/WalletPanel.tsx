@@ -5,7 +5,7 @@
  * All MASTER §4 endpoints. Read-only display + a top-up redirect.
  */
 import { useEffect, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -136,9 +136,9 @@ function Inner() {
 
 export function WalletPanel() {
   return (
-    <ClerkIsland>
+    
       <Inner />
-    </ClerkIsland>
+    
   );
 }
 

@@ -6,7 +6,7 @@
  * availability and see what's booked.
  */
 import { useEffect, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
 
@@ -107,5 +107,5 @@ function Inner() {
   );
 }
 
-export function CalendarPanel() { return <ClerkIsland><Inner /></ClerkIsland>; }
+export function CalendarPanel() { return <Inner />; }
 export default CalendarPanel;

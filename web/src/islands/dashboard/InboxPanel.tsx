@@ -2,7 +2,7 @@
  * { items:[{id,type,title,body,read,created_at}] }; POST /api/notifications/read.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
 
@@ -63,5 +63,5 @@ function Inner() {
   );
 }
 
-export function InboxPanel() { return <ClerkIsland><Inner /></ClerkIsland>; }
+export function InboxPanel() { return <Inner />; }
 export default InboxPanel;

@@ -5,7 +5,7 @@
  * is server-tracked via PostHog); it auto-refreshes every 45s so it reads live.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
 
@@ -242,5 +242,5 @@ function Inner() {
   );
 }
 
-export function Overview() { return <ClerkIsland><Inner /></ClerkIsland>; }
+export function Overview() { return <Inner />; }
 export default Overview;

@@ -7,8 +7,7 @@
  * AvaVision) are managed from their own studios.
  */
 import { useEffect, useState } from 'react';
-import { RequireAccount } from '../auth/RequireAccount';
-import { getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
@@ -111,9 +110,9 @@ function Form() {
 
 export function CreateListing() {
   return (
-    <RequireAccount label="Creating a listing">
+    
       <Form />
-    </RequireAccount>
+    
   );
 }
 

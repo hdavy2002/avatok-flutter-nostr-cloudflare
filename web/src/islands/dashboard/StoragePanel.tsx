@@ -2,7 +2,7 @@
  * read defensively (used/quota bytes + optional per-type breakdown).
  */
 import { useEffect, useState } from 'react';
-import { ClerkIsland, getActiveToken } from '../../lib/clerk';
+import { getActiveTokenWaited as getActiveToken } from '../../lib/clerk';
 import { request } from '../../lib/apiClient';
 import { Spinner } from '../../components/Spinner';
 
@@ -72,5 +72,5 @@ function Inner() {
   );
 }
 
-export function StoragePanel() { return <ClerkIsland><Inner /></ClerkIsland>; }
+export function StoragePanel() { return <Inner />; }
 export default StoragePanel;
