@@ -1,0 +1,16 @@
+---
+// AvaAdmin — Users & accounts (§5.3).
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import UserSearch from '../../islands/admin/UserSearch.tsx';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const TABS = [['Overview','/admin'],['Live','/admin/live'],['Users','/admin/users'],['Money','/admin/money'],['Creators','/admin/creators'],['Analytics','/admin/analytics'],['System','/admin/system']];
+const current = '/admin/users';
+---
+<Base title="AvaAdmin · Users" description="User & account administration.">
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <header class="mb-6"><span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">AvaAdmin</span><h1 class="mt-2 font-display font-semibold text-[34px] leading-tight text-ink">Users &amp; accounts</h1></header>
+    <nav class="mb-6 flex flex-wrap gap-2">{TABS.map(([label, href]) => (<a href={href} class={`rounded-full border-zine border-ink px-3 py-1 font-mono font-bold uppercase text-[12px] tracking-[0.04em] ${href === current ? 'bg-lime text-ink shadow-zine-xs' : 'bg-card text-inkSoft'}`}>{label}</a>))}</nav>
+    <UserSearch client:load />
+  </main>
+</Base>

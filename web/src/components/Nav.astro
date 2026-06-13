@@ -1,0 +1,88 @@
+---
+// Top nav — wired in Phase Z now that every route exists.
+//
+// Links point only at real, owned routes (see MASTER §6 route map):
+//   Explore  -> /explore        (Phase A)
+//   Vision   -> /vision         (AvaVision marketplace)
+//   Dashboard-> /dashboard      (Phase B)
+//   Sign in  -> /sign-in        (Phase B, Clerk)
+// Logo -> / . Mobile collapses the links into a hamburger sheet toggled by a
+// tiny inline script (no React island — keeps the shell static + cacheable).
+const links: { href: string; label: string }[] = [
+  { href: '/explore', label: 'Explore' },
+  { href: '/vision', label: 'Vision' },
+  { href: '/dashboard', label: 'Dashboard' },
+];
+const linkClass =
+  'rounded-full px-3 py-1.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-inkSoft hover:text-ink no-underline';
+---
+
+<nav class="sticky top-0 z-40 border-b-zine border-ink bg-paper2">
+  <div class="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
+    <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
+      <!-- The AvaTOK mark: Λ + coral dot, in ink (mirrors ZineLogoMark). -->
+      <svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true">
+        <path
+          d="M3 21 L13 3 L23 21"
+          fill="none"
+          stroke="var(--zine-ink)"
+          stroke-width="4.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
+        <circle cx="13" cy="16.2" r="1.9" fill="var(--zine-coral)"></circle>
+      </svg>
+      <span class="font-display font-semibold text-[22px] leading-none tracking-[-0.4px] text-ink">
+        ava<span class="text-blueInk">tok</span>
+      </span>
+    </a>
+
+    <!-- Desktop links (hidden on small screens) -->
+    <div class="ml-auto hidden items-center gap-1.5 sm:flex">
+      {links.map((l) => <a href={l.href} class={linkClass}>{l.label}</a>)}
+      <a
+        href="/sign-in"
+        class="ml-1 rounded-full border-zine border-ink bg-lime px-3.5 py-1.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"
+      >
+        Sign in
+      </a>
+    </div>
+
+    <!-- Mobile hamburger -->
+    <button
+      id="nav-burger"
+      type="button"
+      aria-label="Open menu"
+      aria-expanded="false"
+      class="ml-auto flex h-9 w-9 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs sm:hidden"
+    >
+      <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true">
+        <path d="M1 1h16M1 7h16M1 13h16" stroke="var(--zine-ink)" stroke-width="2.4" stroke-linecap="round"></path>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Mobile sheet (collapsed by default) -->
+  <div id="nav-sheet" class="hidden border-t-zine border-ink bg-paper2 sm:hidden">
+    <div class="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-3">
+      {links.map((l) => (
+        <a href={l.href} class="rounded-zineField px-3 py-2.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline hover:bg-card">{l.label}</a>
+      ))}
+      <a
+        href="/sign-in"
+        class="mt-1 rounded-zineField border-zine border-ink bg-lime px-3 py-2.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline shadow-zine-xs"
+      >
+        Sign in
+      </a>
+    </div>
+  </div>
+
+  <script>
+    const burger = document.getElementById('nav-burger');
+    const sheet = document.getElementById('nav-sheet');
+    burger?.addEventListener('click', () => {
+      const open = sheet?.classList.toggle('hidden') === false;
+      burger.setAttribute('aria-expanded', String(open));
+      burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    });
+  </script>
+</nav>

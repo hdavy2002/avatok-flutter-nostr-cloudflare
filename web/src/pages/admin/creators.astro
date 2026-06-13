@@ -1,0 +1,18 @@
+---
+// AvaAdmin — Creators, agents & moderation (§5.5/§5.6/§5.11). Agent performance
+// (Voice + Vision) renders here; moderation/takedown is noted as a follow-up
+// against the existing user_reports + listings endpoints (Phase Z links).
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import AgentsPanel from '../../islands/admin/AgentsPanel.tsx';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const TABS = [['Overview','/admin'],['Live','/admin/live'],['Users','/admin/users'],['Money','/admin/money'],['Creators','/admin/creators'],['Analytics','/admin/analytics'],['System','/admin/system']];
+const current = '/admin/creators';
+---
+<Base title="AvaAdmin · Creators" description="Creators, agents & moderation.">
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <header class="mb-6"><span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">AvaAdmin</span><h1 class="mt-2 font-display font-semibold text-[34px] leading-tight text-ink">Creators &amp; agents</h1></header>
+    <nav class="mb-6 flex flex-wrap gap-2">{TABS.map(([label, href]) => (<a href={href} class={`rounded-full border-zine border-ink px-3 py-1 font-mono font-bold uppercase text-[12px] tracking-[0.04em] ${href === current ? 'bg-lime text-ink shadow-zine-xs' : 'bg-card text-inkSoft'}`}>{label}</a>))}</nav>
+    <section><h2 class="mb-3 font-display font-semibold text-[22px] text-ink">AI agents (Voice + Vision)</h2><AgentsPanel client:load /></section>
+  </main>
+</Base>

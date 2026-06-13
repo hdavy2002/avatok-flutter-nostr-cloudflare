@@ -1,0 +1,20 @@
+---
+// Clerk sign-in page (full-account path). Minimal by design — guest checkout
+// means most fans never see this. Uses Phase 0's Clerk provider via the island.
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import SignInPanel from '../islands/auth/SignInPanel.tsx';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Base title="Sign in · avatok.ai" description="Sign in to avatok.ai.">
+  <main class="mx-auto max-w-md px-4 py-12">
+    <header class="mb-6 text-center">
+      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Welcome back</span>
+      <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Sign in</h1>
+    </header>
+    <SignInPanel client:load />
+  </main>
+</Base>

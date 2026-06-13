@@ -1,0 +1,27 @@
+---
+// 1:1 consult room (Phase D). Pure client island — no SSR of media, no public
+// data fetched here (the room is gated and entirely real-time). The shell ships
+// a thin HTML frame and hydrates ConsultRoom immediately (client:load) so the
+// PreJoin green-room can request camera/mic without waiting.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import ConsultRoom from '../../islands/consult/ConsultRoom.tsx';
+
+const { booking } = Astro.params;
+
+if (!booking) {
+  return new Response('Booking required', { status: 400 });
+}
+
+// Never cache or index a private room.
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Base
+  title="Your 1:1 session · avatok.ai"
+  description="Join your booked 1:1 consult."
+>
+  <meta name="robots" content="noindex, nofollow" slot="head" />
+  <ConsultRoom client:load booking={booking} />
+</Base>

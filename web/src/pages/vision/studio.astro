@@ -1,0 +1,30 @@
+---
+// AvaVision studio — /vision/studio.
+//
+// Create/edit a vision agent. Template-first flow (Category → Use-Case → prefilled
+// form → publish), identical to the app (MASTER §6 / Phase 2). The publish action
+// is gated behind requireGuestAuth() inside the form island (creator must be
+// authed). SSR shell + a single client island (StudioFlow) that owns the steps.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import StudioFlow from '../../islands/vision/StudioFlow.tsx';
+---
+
+<Base
+  title="Create a vision agent · AvaVision · avatok.ai"
+  description="Build an AI coaching agent that sees and talks. Pick a use-case template, tune the prompt and rate, publish in minutes."
+>
+  <main class="mx-auto max-w-5xl px-4 py-8">
+    <header class="mb-6">
+      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">AvaVision Studio</span>
+      <h1 class="mt-2 font-display font-semibold text-[32px] leading-tight text-ink">Create a vision agent</h1>
+      <p class="mt-1 max-w-xl font-body font-bold text-[15px] text-inkSoft">
+        Pick a use-case, tune the coaching prompt and rate, and publish. The platform safety + vision layer
+        is added automatically.
+      </p>
+    </header>
+
+    <StudioFlow client:load />
+  </main>
+</Base>

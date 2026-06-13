@@ -1,0 +1,35 @@
+{
+  "name": "avatok-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "avatok.ai public web client — consume-side (browse, book, pay, watch, consult, talk to AI). Astro + React islands + Tailwind on Cloudflare Pages, rendered in the app's zine visual language.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "export-tokens": "node scripts/export-zine-tokens.mjs",
+    "predev": "node scripts/export-zine-tokens.mjs",
+    "dev": "astro dev",
+    "prebuild": "node scripts/export-zine-tokens.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "12.6.13",
+    "@astrojs/react": "4.4.2",
+    "@astrojs/tailwind": "6.0.2",
+    "@clerk/clerk-react": "5.61.3",
+    "astro": "5.18.2",
+    "hls.js": "1.6.16",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "tailwindcss": "3.4.19"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

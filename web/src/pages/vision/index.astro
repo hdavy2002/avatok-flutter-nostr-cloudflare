@@ -1,0 +1,44 @@
+---
+// AvaVision marketplace — /vision.
+//
+// Light SSR shell that ships fast, then hydrates the MarketplaceGrid island
+// (client:visible). Mirrors /explore (Phase A): static header + lazy island,
+// edge-cached shell, the island fetches fresh data + polls availability.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import MarketplaceGrid from '../../islands/vision/MarketplaceGrid.tsx';
+
+const q = Astro.url.searchParams.get('q') ?? '';
+
+// Edge-cache the shell; the island fetches live data client-side.
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+---
+
+<Base
+  title="AvaVision · avatok.ai"
+  description="Talk to AI coaching agents that can see you. Live camera + voice form coaching — football, golf, yoga, guitar, cooking and more, right in your browser."
+>
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">AvaVision</span>
+        <h1 class="mt-2 font-display font-semibold text-[34px] leading-tight text-ink">
+          AI agents that <span class="text-blueInk">see</span> you
+        </h1>
+        <p class="mt-1 max-w-xl font-body font-bold text-[15px] text-inkSoft">
+          Camera + voice coaching with a live on-screen score — no app needed. The overlay runs on your
+          device and is never uploaded.
+        </p>
+      </div>
+      <a
+        href="/vision/studio"
+        class="inline-flex items-center justify-center gap-2 rounded-full border-zine border-ink bg-lime px-5 py-3 font-display font-semibold text-[17px] text-ink shadow-zine-sm no-underline transition-transform duration-zine hover:-translate-x-[1px] hover:-translate-y-[1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+      >
+        Create a vision agent →
+      </a>
+    </header>
+
+    <MarketplaceGrid client:visible initialQuery={q} />
+  </main>
+</Base>

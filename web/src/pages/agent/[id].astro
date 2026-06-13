@@ -1,0 +1,88 @@
+---
+// Public AvaVoice agent call page — /agent/<id>.
+//
+// PUBLIC & UNGATED (MASTER-PROMPT §4b): opens for any fresh visitor with NO
+// auth prompt on load and renders the agent card + valid link-preview meta.
+// The gate fires only when the visitor taps "Talk now" (handled by the island).
+//
+// SSR for instant first paint + correct OG tags. We seed the card from the
+// PUBLIC marketplace read (GET /api/avavoice/marketplace, no auth) — the authed
+// agent-detail endpoint (GET /api/avavoice/agents/:id) needs requireUser, so it
+// is only used client-side AFTER the gate. The same URL is the shareable
+// creator web-call link.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import { cfImage } from '../../lib/config';
+import { getMarketplace, isFreeForCallers, rateLabel, type VoiceAgent } from '../../islands/agent/api';
+import AgentCall, { type AgentSeed } from '../../islands/agent/AgentCall';
+
+const { id } = Astro.params;
+
+// Best-effort PUBLIC lookup for instant paint + meta. Never blocks the page:
+// if the agent isn't in the marketplace slice (or the read fails), the island
+// still drives the call by id after the gate.
+let agent: VoiceAgent | null = null;
+try {
+  const agents = await getMarketplace();
+  agent = agents.find((a) => a.id === id) ?? null;
+} catch {
+  agent = null;
+}
+
+// Public reads are edge-cacheable, mirroring the rest of the marketplace.
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const SITE = 'avatok.ai';
+const name = agent?.name ?? 'AI voice agent';
+const role = agent?.role ?? '';
+const free = agent ? isFreeForCallers(agent) : false;
+const priceText = agent ? rateLabel(agent) : null;
+
+const title = agent ? `Talk to ${name} · ${SITE}` : `AI voice agent · ${SITE}`;
+const description = agent
+  ? `${role ? role + ' — ' : ''}${free ? 'Free to call' : (priceText ?? 'AI voice agent')}. Tap to talk live in your browser on ${SITE}, no app needed.`
+  : `Talk live to an AI voice agent in your browser on ${SITE} — no app needed.`;
+const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70 }) : undefined;
+
+const seed: AgentSeed | null = agent
+  ? {
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      avatarUrl: agent.avatarUrl,
+      payerMode: agent.payerMode,
+      ratePerHourCoins: agent.ratePerHourCoins,
+      visionEnabled: agent.visionEnabled,
+      busy: (agent.activeCalls ?? 0) >= 10,
+    }
+  : null;
+---
+
+<Base title={title} description={description} image={image}>
+  <meta property="og:type" content="product" slot="head" />
+
+  <main class="mx-auto max-w-2xl px-4 py-10">
+    {agent?.busy && (
+      <div class="mx-auto mb-6 max-w-md rounded-zine border-zine border-ink bg-coral px-4 py-2.5 text-center font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-white shadow-zine-xs">
+        All lines are busy right now — try again shortly
+      </div>
+    )}
+
+    <AgentCall client:load agentId={id!} seed={seed} />
+
+    {/* Crawlable / no-JS fallback so the shared link always shows context. */}
+    <noscript>
+      <div class="mx-auto mt-6 max-w-md rounded-zine border-zine border-ink bg-card p-5 text-center shadow-zine-sm">
+        <p class="font-display font-semibold text-[20px] text-ink">{name}</p>
+        {role && <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">{role}</p>}
+        {priceText && (
+          <p class="mt-2 font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink">{priceText}</p>
+        )}
+        <p class="mt-3 font-body text-[13px] text-inkMute">
+          Enable JavaScript to talk to this AI voice agent live in your browser.
+        </p>
+      </div>
+    </noscript>
+  </main>
+</Base>

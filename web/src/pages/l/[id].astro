@@ -1,0 +1,157 @@
+---
+// Public listing detail — SSR, edge-cached, link-preview friendly.
+// Fetches GET /api/listings/:id server-side so the HTML ships fully populated
+// (instant first paint + correct OG tags) and rides the edge cache.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import { Avatar, Pill } from '../../components';
+import { cfImage } from '../../lib/config';
+import { getListing } from '../../lib/apiClient';
+import { ApiError } from '../../lib/apiClient';
+import { listingOg } from '../../lib/og';
+import type { Listing } from '../../lib/types';
+
+const { id } = Astro.params;
+
+let listing: Listing | null = null;
+let notFound = false;
+try {
+  listing = await getListing(id!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
+  else throw e;
+}
+
+if (notFound || !listing) {
+  return new Response('Listing not found', { status: 404 });
+}
+
+// Ride the edge cache, mirroring the Worker's own public-read cache policy.
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const og = listingOg(listing);
+
+// ── CTA routing (cross-phase paths are just strings — we do not build them) ──
+const kind = (listing.kind ?? 'content') as string;
+const isLive = listing.live === true || (listing as { status?: string }).status === 'live';
+const bookHref = `/book/${encodeURIComponent(listing.id)}`;
+const watchHref = `/watch/${encodeURIComponent(listing.id)}`;
+const agentHref = `/agent/${encodeURIComponent(listing.id)}`;
+
+type Cta = { href: string; label: string; variant: 'lime' | 'blue' };
+let primary: Cta;
+let secondary: Cta | null = null;
+if (kind === 'agent') {
+  primary = { href: agentHref, label: 'Talk now', variant: 'lime' };
+  secondary = { href: bookHref, label: 'Book a session', variant: 'blue' };
+} else if (isLive) {
+  primary = { href: watchHref, label: 'Watch live', variant: 'lime' };
+} else if (kind === 'live' || kind === 'event') {
+  primary = { href: bookHref, label: 'Get a ticket', variant: 'lime' };
+} else {
+  primary = { href: bookHref, label: 'Book', variant: 'lime' };
+}
+
+const FILL = { lime: 'bg-lime text-ink', blue: 'bg-blue text-ink' } as const;
+const ctaClass = (v: 'lime' | 'blue') =>
+  [
+    'inline-flex items-center justify-center gap-2.5 select-none no-underline',
+    'rounded-full border-zine border-ink shadow-zine-sm',
+    'transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed',
+    'px-7 py-4 font-display font-semibold text-[19px] leading-none tracking-[-0.2px]',
+    FILL[v],
+  ].join(' ');
+
+function priceLabel(l: Listing): string | null {
+  if (l.price == null) return null;
+  const cur = (l.currency ?? 'USD').toUpperCase();
+  const major = l.price >= 1000 ? (l.price / 100).toFixed(0) : String(l.price);
+  return `${cur === 'USD' ? '$' : cur + ' '}${major}`;
+}
+const price = priceLabel(listing);
+const stats = listing.creator_stats;
+const reviews = listing.reviews ?? [];
+const ratingVal = listing.rating ?? stats?.rating ?? null;
+---
+
+<Base title={og.title} description={og.description} image={og.image}>
+  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+
+  <main class="mx-auto max-w-5xl px-4 py-8">
+    <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,380px)_1fr]">
+      <!-- Poster -->
+      <div class="md:sticky md:top-20 self-start">
+        <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
+          <div class="relative aspect-[4/5] w-full">
+            {listing.poster ? (
+              <img
+                src={cfImage(listing.poster, { width: 760, fit: 'cover' })}
+                alt={listing.title}
+                class="h-full w-full object-cover"
+              />
+            ) : (
+              <div class="flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[13px] tracking-[0.08em]">
+                {kind}
+              </div>
+            )}
+            {isLive && <span class="absolute left-3 top-3"><Pill kind="no">● Live</Pill></span>}
+            {listing.category && <span class="absolute right-3 top-3"><Pill kind="plain">{listing.category}</Pill></span>}
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail -->
+      <div class="flex flex-col gap-5">
+        <div>
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">{kind}</span>
+          <h1 class="mt-2 font-display font-semibold text-[32px] leading-tight text-ink">{listing.title}</h1>
+        </div>
+
+        {listing.creator && (
+          <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
+            <Avatar src={listing.creator.avatar} name={listing.creator.name ?? listing.creator.handle} size={48} />
+            <div class="flex flex-col">
+              <span class="font-display font-semibold text-[17px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
+              {listing.creator.handle && <span class="font-mono text-[12px] uppercase tracking-[0.06em] text-inkSoft">@{listing.creator.handle}</span>}
+            </div>
+          </a>
+        )}
+
+        <div class="flex flex-wrap items-center gap-2.5">
+          {price && <Pill kind="plain">{price}</Pill>}
+          {ratingVal != null && <Pill kind="ok">★ {Number(ratingVal).toFixed(1)}</Pill>}
+          {stats?.reviews != null && <Pill kind="hint">{stats.reviews} reviews</Pill>}
+        </div>
+
+        <!-- Primary CTA(s) → cross-phase routes (Phase B/C/E own the targets) -->
+        <div class="flex flex-wrap gap-3 pt-1">
+          <a href={primary.href} class={ctaClass(primary.variant)}>{primary.label}</a>
+          {secondary && <a href={secondary.href} class={ctaClass(secondary.variant)}>{secondary.label}</a>}
+        </div>
+
+        {listing.description && (
+          <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
+            <p class="whitespace-pre-line font-body font-bold text-[15px] leading-relaxed text-inkSoft">{listing.description}</p>
+          </div>
+        )}
+
+        {reviews.length > 0 && (
+          <section class="flex flex-col gap-3">
+            <h2 class="font-display font-semibold text-[20px] text-ink">Reviews</h2>
+            {reviews.slice(0, 8).map((r) => (
+              <div class="rounded-zine border-zine border-ink bg-card p-4 shadow-zine-xs">
+                <div class="flex items-center gap-2.5">
+                  <Avatar src={r.author?.avatar} name={r.author?.name ?? r.author?.handle} size={32} />
+                  <span class="font-display font-semibold text-[14px] text-ink">{r.author?.name ?? r.author?.handle ?? 'Guest'}</span>
+                  <span class="ml-auto font-mono text-[12px] text-mintInk">★ {r.rating.toFixed(1)}</span>
+                </div>
+                {r.text && <p class="mt-2 font-body font-bold text-[14px] text-inkSoft">{r.text}</p>}
+              </div>
+            ))}
+          </section>
+        )}
+      </div>
+    </div>
+  </main>
+</Base>

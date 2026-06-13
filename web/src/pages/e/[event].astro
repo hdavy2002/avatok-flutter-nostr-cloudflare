@@ -1,0 +1,148 @@
+---
+// Public scheduled-event page — SSR, edge-cached, share-friendly.
+// An event is a listing; we fetch GET /api/listings/:id and present the
+// date/time, a live countdown, an "Add to calendar" link, and a Book CTA.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import { Avatar, Pill } from '../../components';
+import { cfImage } from '../../lib/config';
+import { getListing } from '../../lib/apiClient';
+import { ApiError } from '../../lib/apiClient';
+import { listingOg } from '../../lib/og';
+import type { Listing } from '../../lib/types';
+
+const { event } = Astro.params;
+
+let listing: Listing | null = null;
+let notFound = false;
+try {
+  listing = await getListing(event!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
+  else throw e;
+}
+
+if (notFound || !listing) {
+  return new Response('Event not found', { status: 404 });
+}
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const og = listingOg(listing);
+
+/** Worker timestamps may be seconds or ms — normalise to ms. */
+function toMs(t?: number | null): number | null {
+  if (t == null) return null;
+  return t < 1e12 ? t * 1000 : t;
+}
+const startMs = toMs(listing.starts_at);
+const endMs = toMs(listing.ends_at);
+const isLive = listing.live === true || (listing as { status?: string }).status === 'live';
+const bookHref = `/book/${encodeURIComponent(listing.id)}`;
+const watchHref = `/watch/${encodeURIComponent(listing.id)}`;
+
+const startDate = startMs ? new Date(startMs) : null;
+const dateLabel = startDate
+  ? startDate.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+  : 'Date to be announced';
+
+// Google Calendar template link (static, no API). Times in UTC basic format.
+function gcalStamp(ms: number): string {
+  return new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+let calHref: string | null = null;
+if (startMs) {
+  const end = endMs ?? startMs + 60 * 60 * 1000;
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: listing.title,
+    dates: `${gcalStamp(startMs)}/${gcalStamp(end)}`,
+    details: (listing.description ?? `${listing.title} on avatok.ai`).slice(0, 500),
+  });
+  calHref = `https://www.google.com/calendar/render?${p.toString()}`;
+}
+
+const ctaClass =
+  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[19px] leading-none tracking-[-0.2px] bg-lime text-ink';
+const calClass =
+  'inline-flex items-center justify-center gap-2 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-5 py-3.5 font-display font-semibold text-[16px] leading-none bg-blue text-ink';
+---
+
+<Base title={og.title} description={og.description} image={og.image}>
+  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+
+  <main class="mx-auto max-w-4xl px-4 py-10">
+    <div class="overflow-hidden rounded-zine border-zine border-ink bg-card shadow-zine">
+      {listing.poster && (
+        <div class="relative aspect-[16/7] w-full border-b-zine border-ink bg-paper2">
+          <img src={cfImage(listing.poster, { width: 1280, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />
+          <span class="absolute left-4 top-4"><Pill kind={isLive ? 'no' : 'plain'}>{isLive ? '● Live now' : 'Scheduled event'}</Pill></span>
+        </div>
+      )}
+
+      <div class="flex flex-col gap-5 p-6 sm:p-8">
+        <div>
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Event</span>
+          <h1 class="mt-2 font-display font-semibold text-[32px] leading-tight text-ink">{listing.title}</h1>
+        </div>
+
+        {listing.creator && (
+          <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
+            <Avatar src={listing.creator.avatar} name={listing.creator.name ?? listing.creator.handle} size={44} />
+            <span class="font-display font-semibold text-[16px] text-ink">{listing.creator.name ?? `@${listing.creator.handle}`}</span>
+          </a>
+        )}
+
+        <!-- Date + countdown -->
+        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-5">
+          <div class="flex items-center gap-2.5">
+            <Pill kind="plain">🗓</Pill>
+            <span class="font-display font-semibold text-[18px] text-ink">{dateLabel}</span>
+          </div>
+          {startMs && !isLive && (
+            <div id="countdown" data-start={startMs} class="font-mono text-[15px] font-bold uppercase tracking-[0.04em] text-mintInk">
+              Starting soon…
+            </div>
+          )}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 pt-1">
+          <a href={isLive ? watchHref : bookHref} class={ctaClass}>{isLive ? 'Watch live' : 'Get a ticket'}</a>
+          {calHref && <a href={calHref} target="_blank" rel="noopener" class={calClass}>＋ Add to calendar</a>}
+        </div>
+
+        {listing.description && (
+          <div class="rounded-zine border-zine border-ink bg-card p-5 shadow-zine-sm">
+            <p class="whitespace-pre-line font-body font-bold text-[15px] leading-relaxed text-inkSoft">{listing.description}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  </main>
+
+  <script is:inline>
+    (function () {
+      var el = document.getElementById('countdown');
+      if (!el) return;
+      var start = parseInt(el.getAttribute('data-start') || '0', 10);
+      function tick() {
+        var diff = start - Date.now();
+        if (diff <= 0) {
+          el.textContent = 'Starting now';
+          return;
+        }
+        var s = Math.floor(diff / 1000);
+        var d = Math.floor(s / 86400);
+        var h = Math.floor((s % 86400) / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var sec = s % 60;
+        el.textContent = 'Starts in ' + (d > 0 ? d + 'd ' : '') + h + 'h ' + m + 'm ' + sec + 's';
+        requestAnimationFrame(function () {
+          setTimeout(tick, 1000);
+        });
+      }
+      tick();
+    })();
+  </script>
+</Base>

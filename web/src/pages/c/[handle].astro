@@ -1,0 +1,75 @@
+---
+// Public creator channel — SSR, edge-cached, share-friendly.
+// Fetches GET /api/creators/:id (handle or id accepted) server-side.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import { Avatar, Pill, ListingTile } from '../../components';
+import { getCreator } from '../../lib/apiClient';
+import { ApiError } from '../../lib/apiClient';
+import { creatorOg } from '../../lib/og';
+import type { Creator } from '../../lib/types';
+
+const { handle } = Astro.params;
+
+let creator: Creator | null = null;
+let notFound = false;
+try {
+  creator = await getCreator(handle!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
+  else throw e;
+}
+
+if (notFound || !creator) {
+  return new Response('Creator not found', { status: 404 });
+}
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const og = creatorOg(creator);
+const stats = creator.stats;
+const listings = creator.listings ?? [];
+
+function fmt(n?: number | null): string {
+  if (n == null) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+---
+
+<Base title={og.title} description={og.description} image={og.image}>
+  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <!-- Channel header -->
+    <header class="flex flex-col items-start gap-5 rounded-zine border-zine border-ink bg-card p-6 shadow-zine sm:flex-row sm:items-center">
+      <Avatar src={creator.avatar} name={creator.name ?? creator.handle} size={96} />
+      <div class="flex flex-col gap-2">
+        <h1 class="font-display font-semibold text-[30px] leading-tight text-ink">{creator.name ?? `@${creator.handle}`}</h1>
+        <span class="font-mono text-[13px] uppercase tracking-[0.06em] text-inkSoft">@{creator.handle}{creator.country ? ` · ${creator.country}` : ''}</span>
+        {creator.bio && <p class="max-w-xl font-body font-bold text-[15px] text-inkSoft">{creator.bio}</p>}
+        <div class="mt-1 flex flex-wrap gap-2.5">
+          <Pill kind="plain">{fmt(stats?.followers)} followers</Pill>
+          <Pill kind="plain">{fmt(stats?.listings ?? listings.length)} listings</Pill>
+          {stats?.rating != null && <Pill kind="ok">★ {Number(stats.rating).toFixed(1)}</Pill>}
+        </div>
+      </div>
+    </header>
+
+    <!-- Listings grid -->
+    <section class="mt-8">
+      <h2 class="mb-4 font-display font-semibold text-[22px] text-ink">Listings</h2>
+      {listings.length === 0 ? (
+        <div class="rounded-zine border-zine border-ink bg-paper2 p-8 text-center">
+          <p class="font-body font-bold text-[15px] text-inkSoft">No public listings yet.</p>
+        </div>
+      ) : (
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {listings.map((l) => <ListingTile listing={l} />)}
+        </div>
+      )}
+    </section>
+  </main>
+</Base>

@@ -1,0 +1,67 @@
+---
+import '../styles/tokens.css';
+import '../styles/global.css';
+import Nav from '../components/Nav.astro';
+
+export interface Props {
+  title?: string;
+  description?: string;
+  /** Absolute or path OpenGraph image. */
+  image?: string;
+  /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
+  chrome?: boolean;
+}
+
+const {
+  title = 'avatok.ai',
+  description = 'Browse, book, watch and talk — avatok.ai.',
+  image,
+  chrome = true,
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="canonical" href={canonical} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <!-- Per-page social meta — pages can add more via the `head` slot. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {image && <meta property="og:image" content={image} />}
+    <meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    {image && <meta name="twitter:image" content={image} />}
+
+    <!-- Preload the two most-used font faces to cut first-paint FOUT. -->
+    <link rel="preload" href="/fonts/Fredoka-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Nunito-Bold.woff2" as="font" type="font/woff2" crossorigin />
+
+    <slot name="head" />
+  </head>
+  <body class="min-h-screen bg-paper text-ink font-body">
+    {chrome && <Nav />}
+    <slot />
+    {
+      chrome && (
+        <footer class="mt-16 border-t-zine border-ink bg-paper2">
+          <div class="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-8">
+            <span class="font-display font-semibold text-[18px] text-ink">avatok.ai</span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.06em] text-inkSoft">
+              Browse · Book · Watch · Consult · Talk
+            </span>
+          </div>
+        </footer>
+      )
+    }
+  </body>
+</html>

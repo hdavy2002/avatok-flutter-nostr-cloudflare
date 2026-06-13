@@ -1,0 +1,93 @@
+---
+// Public AvaVision live vision session — /vision/session/<id>.
+//
+// PUBLIC & UNGATED (mirrors web-client Phase E / agent/[id].astro): opens for any
+// fresh visitor with NO auth prompt on load and renders the agent card + a valid
+// link-preview. The gate fires only when the visitor taps "Start vision session"
+// (handled by the island via requireGuestAuth).
+//
+// The SessionRoom island is mounted client:only="react" — a vision session needs
+// the camera, the Gemini Live WebSocket, and the on-device MediaPipe/MoveNet
+// engine, none of which can be server-rendered. We still SSR the agent card +
+// OG tags from the PUBLIC marketplace read for instant paint and a good share card.
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import { cfImage } from '../../../lib/config';
+import { getMarketplace, isFreeForCallers, rateLabel, type VisionAgent } from '../../../islands/vision/session/avavisionApi';
+import SessionRoom, { type VisionAgentSeed } from '../../../islands/vision/session/SessionRoom';
+
+const { id } = Astro.params;
+
+// Best-effort PUBLIC lookup for instant paint + meta. Never blocks: if the agent
+// isn't in the marketplace slice (or the read fails), the island still drives the
+// session by id after the gate.
+let agent: VisionAgent | null = null;
+try {
+  const agents = await getMarketplace();
+  agent = agents.find((a) => a.id === id) ?? null;
+} catch {
+  agent = null;
+}
+
+// Public reads are edge-cacheable, like the rest of the marketplace.
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const SITE = 'avatok.ai';
+const name = agent?.name ?? 'AI vision coach';
+const role = agent?.role ?? '';
+const free = agent ? isFreeForCallers(agent) : false;
+const priceText = agent ? rateLabel(agent) : null;
+const busy = (agent?.activeCalls ?? 0) >= 10;
+
+const title = agent ? `Train with ${name} · ${SITE}` : `AI vision coach · ${SITE}`;
+const description = agent
+  ? `${role ? role + ' — ' : ''}${free ? 'Free to start' : (priceText ?? 'AI vision coach')}. Turn on your camera and get live, on-screen coaching in your browser on ${SITE}, no app needed.`
+  : `Get live AI vision coaching with your camera in your browser on ${SITE} — no app needed.`;
+const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70 }) : undefined;
+
+const seed: VisionAgentSeed | null = agent
+  ? {
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      avatarUrl: agent.avatarUrl,
+      payerMode: agent.payerMode,
+      ratePerHourCoins: agent.ratePerHourCoins,
+      capability: agent.capability,
+      overlayStyle: agent.overlayStyle,
+      scoringMode: agent.scoringMode,
+      scoreLabel: agent.scoreLabel,
+      agenticSnapshotEnabled: agent.agenticSnapshotEnabled,
+      busy,
+    }
+  : null;
+---
+
+<Base title={title} description={description} image={image}>
+  <meta property="og:type" content="product" slot="head" />
+
+  <main class="mx-auto max-w-2xl px-4 py-10">
+    {busy && (
+      <div class="mx-auto mb-6 max-w-md rounded-zine border-zine border-ink bg-coral px-4 py-2.5 text-center font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-white shadow-zine-xs">
+        All lines are busy right now — try again shortly
+      </div>
+    )}
+
+    <SessionRoom client:only="react" agentId={id!} seed={seed} />
+
+    {/* Crawlable / no-JS fallback so the shared link always shows context. */}
+    <noscript>
+      <div class="mx-auto mt-6 max-w-md rounded-zine border-zine border-ink bg-card p-5 text-center shadow-zine-sm">
+        <p class="font-display font-semibold text-[20px] text-ink">{name}</p>
+        {role && <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">{role}</p>}
+        {priceText && (
+          <p class="mt-2 font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink">{priceText}</p>
+        )}
+        <p class="mt-3 font-body text-[13px] text-inkMute">
+          Enable JavaScript to start a live AI vision coaching session in your browser.
+        </p>
+      </div>
+    </noscript>
+  </main>
+</Base>

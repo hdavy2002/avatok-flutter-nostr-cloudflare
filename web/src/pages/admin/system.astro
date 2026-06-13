@@ -1,0 +1,23 @@
+---
+// AvaAdmin — System: kill switches (§5.8), alerts+rules+roles (§5.12/§5.14),
+// audit log (§5.13).
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import FlagsPanel from '../../islands/admin/FlagsPanel.tsx';
+import AlertsInbox from '../../islands/admin/AlertsInbox.tsx';
+import AuditLog from '../../islands/admin/AuditLog.tsx';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const TABS = [['Overview','/admin'],['Live','/admin/live'],['Users','/admin/users'],['Money','/admin/money'],['Creators','/admin/creators'],['Analytics','/admin/analytics'],['System','/admin/system']];
+const current = '/admin/system';
+---
+<Base title="AvaAdmin · System" description="Flags, alerts, roles, audit.">
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <header class="mb-6"><span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">AvaAdmin</span><h1 class="mt-2 font-display font-semibold text-[34px] leading-tight text-ink">System</h1></header>
+    <nav class="mb-6 flex flex-wrap gap-2">{TABS.map(([label, href]) => (<a href={href} class={`rounded-full border-zine border-ink px-3 py-1 font-mono font-bold uppercase text-[12px] tracking-[0.04em] ${href === current ? 'bg-lime text-ink shadow-zine-xs' : 'bg-card text-inkSoft'}`}>{label}</a>))}</nav>
+    <div class="flex flex-col gap-10">
+      <section><h2 class="mb-3 font-display font-semibold text-[22px] text-ink">Kill switches &amp; config</h2><FlagsPanel client:load /></section>
+      <section><h2 class="mb-3 font-display font-semibold text-[22px] text-ink">Alerts, rules &amp; roles</h2><AlertsInbox client:visible /></section>
+      <section><h2 class="mb-3 font-display font-semibold text-[22px] text-ink">Audit log</h2><AuditLog client:visible /></section>
+    </div>
+  </main>
+</Base>

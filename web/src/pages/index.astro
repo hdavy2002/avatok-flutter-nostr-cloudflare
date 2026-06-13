@@ -1,0 +1,96 @@
+---
+// avatok.ai landing — the REAL `/` (overwrites Phase 0 placeholder).
+// Hero in the zine language + a live-now rail (island) + category tiles +
+// the "creators get the app / fans browse here" split. SSR with a generous
+// edge cache so it stays static-fast while picking up fresh categories.
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import LiveNowRail from '../islands/marketplace/LiveNowRail.tsx';
+import { getCategories } from '../islands/marketplace/api';
+import type { MarketCategory } from '../islands/marketplace/api';
+
+let categories: MarketCategory[] = [];
+try {
+  categories = await getCategories();
+} catch {
+  categories = [];
+}
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+
+const ctaLime =
+  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[19px] leading-none tracking-[-0.2px] bg-lime text-ink';
+const ctaBlue =
+  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[19px] leading-none tracking-[-0.2px] bg-blue text-ink';
+---
+
+<Base
+  title="avatok.ai — watch, book and talk to creators"
+  description="Browse live streams, 1:1 sessions, events and AI voice agents from creators worldwide. No app required — just open the link."
+>
+  <main class="mx-auto max-w-6xl px-4">
+    <!-- Hero -->
+    <section class="py-12 sm:py-16">
+      <div class="max-w-2xl">
+        <span class="font-mono font-bold uppercase text-[12px] tracking-[0.12em] text-blueInk">The creator marketplace</span>
+        <h1 class="mt-3 font-display font-semibold text-[44px] leading-[1.05] text-ink sm:text-[60px]">
+          Watch live, book a 1:1, or talk to their AI.
+        </h1>
+        <p class="mt-4 max-w-xl font-body font-bold text-[17px] leading-relaxed text-inkSoft">
+          A fan opens a link and they're in — browse creators, grab an event ticket, sit in a private session,
+          or talk to a voice agent. No install, no friction.
+        </p>
+        <div class="mt-7 flex flex-wrap gap-3">
+          <a href="/explore" class={ctaLime}>Browse the marketplace</a>
+          <a href="/explore?kind=live" class={ctaBlue}>See who's live</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live now rail -->
+    <section class="pb-12">
+      <LiveNowRail client:visible />
+    </section>
+
+    <!-- Category tiles -->
+    {categories.length > 0 && (
+      <section class="pb-12">
+        <h2 class="mb-4 font-display font-semibold text-[22px] text-ink">Browse by category</h2>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {categories.map((c) => (
+            <a
+              href={`/explore?category=${encodeURIComponent(c.id)}`}
+              class="flex flex-col gap-2 rounded-zine border-zine border-ink bg-card p-4 no-underline shadow-zine-sm transition-transform duration-zine ease-out hover:-translate-x-[1px] hover:-translate-y-[1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+            >
+              <span class="text-[28px] leading-none">{c.emoji ?? '◆'}</span>
+              <span class="font-display font-semibold text-[16px] text-ink">{c.label}</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <!-- Creators vs fans split -->
+    <section class="pb-16">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For fans</span>
+          <h3 class="font-display font-semibold text-[24px] text-ink">Browse right here</h3>
+          <p class="font-body font-bold text-[15px] text-inkSoft">
+            Everything works in your browser — explore, book and watch without downloading a thing.
+          </p>
+          <div class="pt-1"><a href="/explore" class={ctaLime}>Start browsing</a></div>
+        </div>
+        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-7 shadow-zine">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For creators</span>
+          <h3 class="font-display font-semibold text-[24px] text-ink">Go live from the app</h3>
+          <p class="font-body font-bold text-[15px] text-inkSoft">
+            Broadcasting, scheduling and your studio live in the AvaTOK app. Get it to start earning.
+          </p>
+          <div class="pt-1"><a href="/explore" class={ctaBlue}>Learn more</a></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>

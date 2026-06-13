@@ -1,0 +1,80 @@
+---
+// Checkout shell. SSR-loads the listing so the page shows WHAT is being booked
+// instantly (and rides the edge cache), then hydrates the BookingFlow island
+// (client:load — checkout is interactive immediately). Browsing the listing is
+// free; the email gate fires inside BookingFlow at the identify step, not here.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import { Avatar, Pill } from '../../components';
+import { cfImage } from '../../lib/config';
+import { getListing, ApiError } from '../../lib/apiClient';
+import type { Listing } from '../../lib/types';
+import BookingFlow from '../../islands/checkout/BookingFlow.tsx';
+
+const { id } = Astro.params;
+
+let listing: Listing | null = null;
+let notFound = false;
+try {
+  listing = await getListing(id!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
+  else throw e;
+}
+
+if (notFound || !listing) {
+  return new Response('Listing not found', { status: 404 });
+}
+
+// The checkout shell itself is public/cacheable; the island handles auth.
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const kind = (listing.kind ?? 'content') as string;
+const verb =
+  kind === 'agent' ? 'Book a session' : kind === 'event' || kind === 'live' ? 'Get your ticket' : 'Book';
+---
+
+<Base title={`${verb} · ${listing.title} · avatok.ai`} description={`${verb} with ${listing.creator?.name ?? 'a creator'} on avatok.ai.`}>
+  <main class="mx-auto max-w-5xl px-4 py-8">
+    <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
+      <!-- What you're booking (server-rendered, instant) -->
+      <aside class="md:sticky md:top-20 self-start">
+        <div class="overflow-hidden rounded-zine border-zine border-ink bg-paper2 shadow-zine">
+          <div class="relative aspect-[4/5] w-full">
+            {listing.poster ? (
+              <img src={cfImage(listing.poster, { width: 680, fit: 'cover' })} alt={listing.title} class="h-full w-full object-cover" />
+            ) : (
+              <div class="flex h-full w-full items-center justify-center font-mono uppercase text-inkMute text-[13px] tracking-[0.08em]">
+                {kind}
+              </div>
+            )}
+            {listing.category && <span class="absolute right-3 top-3"><Pill kind="plain">{listing.category}</Pill></span>}
+          </div>
+        </div>
+        <div class="mt-4 flex flex-col gap-2">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">{kind}</span>
+          <h1 class="font-display font-semibold text-[26px] leading-tight text-ink">{listing.title}</h1>
+          {listing.creator && (
+            <a href={`/c/${encodeURIComponent(listing.creator.handle ?? listing.creator.id)}`} class="flex items-center gap-3 no-underline">
+              <Avatar src={listing.creator.avatar} name={listing.creator.name ?? listing.creator.handle} size={40} />
+              <span class="font-display font-semibold text-[16px] text-ink">{listing.creator.name ?? listing.creator.handle}</span>
+            </a>
+          )}
+        </div>
+      </aside>
+
+      <!-- The interactive checkout (pick → identify → pay → confirm) -->
+      <section>
+        <header class="mb-5">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Checkout</span>
+          <h2 class="mt-1 font-display font-semibold text-[28px] leading-tight text-ink">{verb}</h2>
+          <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">
+            No app, no account hassle — just your email to send the confirmation.
+          </p>
+        </header>
+        <BookingFlow client:load listing={listing} />
+      </section>
+    </div>
+  </main>
+</Base>

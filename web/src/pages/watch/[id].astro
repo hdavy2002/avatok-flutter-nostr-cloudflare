@@ -1,0 +1,53 @@
+---
+// /watch/<id> — live-stream viewer (PHASE-C). The page loads UNGATED: it
+// server-renders a poster/teaser from the public listing read (instant first
+// paint + correct link preview), then hydrates the LiveViewer island
+// (client:load) which handles join/gating, WHEP/HLS playback, chat and donate.
+//
+// The stream itself is client-only (WebRTC/HLS); only the shell is SSR.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import LiveViewer from '../../islands/live/LiveViewer.tsx';
+import { getListing, ApiError } from '../../lib/apiClient';
+import { listingOg } from '../../lib/og';
+import type { Listing } from '../../lib/types';
+
+const { id } = Astro.params;
+
+// Public read for the loading state. The viewer page must still open even if
+// this fails (the island re-fetches the live state on Join), so we degrade
+// gracefully rather than 404.
+let listing: Listing | null = null;
+try {
+  listing = await getListing(id!);
+} catch (e) {
+  if (!(e instanceof ApiError)) throw e;
+}
+
+const title = listing?.title ?? 'Live stream';
+const poster = listing?.poster ?? null;
+const creatorHandle = listing?.creator?.handle ?? null;
+
+const og = listing
+  ? listingOg(listing)
+  : { title: `${title} · avatok.ai`, description: 'Watch live on avatok.ai.', image: undefined, extra: [] as Array<{ property?: string; name?: string; content: string }> };
+
+// The shell is cacheable; the island fetches live state per-viewer.
+Astro.response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+---
+
+<Base title={og.title} description={og.description} image={og.image} chrome={false}>
+  {og.extra.map((m) => (m.property ? <meta property={m.property} content={m.content} slot="head" /> : <meta name={m.name} content={m.content} slot="head" />))}
+  <!-- Preconnect to the API/media origin to shave the first WHEP/HLS round-trip. -->
+  <link rel="preconnect" href="https://api.avatok.ai" crossorigin slot="head" />
+
+  <main class="min-h-screen bg-paper">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      <a href="/explore" class="font-display font-semibold text-[18px] text-ink no-underline">avatok.ai</a>
+      <a href="/explore" class="font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-blueInk no-underline">← Explore</a>
+    </div>
+
+    <LiveViewer client:load listingId={id!} title={title} poster={poster} creatorHandle={creatorHandle} />
+  </main>
+</Base>

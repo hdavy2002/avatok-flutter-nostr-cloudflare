@@ -1,0 +1,145 @@
+---
+// Public AvaVision agent page — /vision/agent/<id>.
+//
+// PUBLIC & UNGATED (MASTER §4b, mirrors /agent/<id> from Phase E): opens for any
+// visitor with NO auth prompt, server-rendered for instant context + a good link
+// preview. The "Talk now / Book" CTA routes to the Phase-5 session route
+// `/vision/session/<id>`; the gate fires there, at the action — not here.
+//
+// We seed the page from the PUBLIC marketplace read (no auth). The authed
+// agent-detail endpoint needs requireUser, so it is only used client-side after
+// the gate (on the session page).
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import { cfImage } from '../../../lib/config';
+import { Avatar } from '../../../components/Avatar';
+import { Pill } from '../../../components/Pill';
+import AgentCta from '../../../islands/vision/AgentCta.tsx';
+import {
+  getMarketplace,
+  isFreeForCallers,
+  rateLabel,
+  type Capability,
+  type VisionAgent,
+} from '../../../islands/vision/avavisionApi';
+
+const { id } = Astro.params;
+
+// Best-effort PUBLIC lookup for instant paint + meta. Never blocks the page.
+let agent: VisionAgent | null = null;
+try {
+  const agents = await getMarketplace();
+  agent = agents.find((a) => a.id === id) ?? null;
+} catch {
+  agent = null;
+}
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const CAPABILITY_LABEL: Record<Capability, string> = {
+  pose: 'Body & movement',
+  hand: 'Hands & dexterity',
+  face_landmark: 'Face & expression',
+  face_detect: 'Face framing',
+  gesture: 'Gestures',
+  object: 'Object detection',
+  image_class: 'Scene',
+  segmentation: 'Segmentation',
+  holistic: 'Full body + hands + face',
+  gemini_only: 'Looks at the scene',
+};
+
+const SITE = 'avatok.ai';
+const name = agent?.name ?? 'AI vision agent';
+const role = agent?.role ?? '';
+const free = agent ? isFreeForCallers(agent) : false;
+const priceText = agent ? rateLabel(agent) : null;
+const busy = (agent?.activeCalls ?? 0) >= 10;
+
+const title = agent ? `${name} · AvaVision · ${SITE}` : `AI vision agent · ${SITE}`;
+const description = agent
+  ? `${role ? role + ' — ' : ''}${free ? 'Free to use' : (priceText ?? 'AI vision coach')}. Camera + voice coaching with a live on-screen score, in your browser on ${SITE}.`
+  : `Talk to an AI vision coaching agent — camera + voice, live score — in your browser on ${SITE}.`;
+const image = agent?.avatarUrl ? cfImage(agent.avatarUrl, { width: 1200, fit: 'cover', quality: 70 }) : undefined;
+
+const overlayLabel = agent?.overlayEnabled
+  ? {
+      skeleton: 'Skeleton overlay',
+      hand_mesh: 'Hand-mesh overlay',
+      face_mesh: 'Face-mesh overlay',
+      bounding_box: 'Object boxes',
+      segmentation_mask: 'Segmentation mask',
+      none: null,
+    }[agent.overlayStyle]
+  : null;
+---
+
+<Base title={title} description={description} image={image}>
+  <meta property="og:type" content="product" slot="head" />
+
+  <main class="mx-auto max-w-2xl px-4 py-10">
+    {busy && (
+      <div class="mx-auto mb-6 max-w-md rounded-zine border-zine border-ink bg-coral px-4 py-2.5 text-center font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-white shadow-zine-xs">
+        All sessions are busy right now — try again shortly
+      </div>
+    )}
+
+    <div class="flex flex-col items-center gap-6">
+      {/* identity */}
+      <div class="flex flex-col items-center gap-3 text-center">
+        <div class="rounded-full border-zine border-ink bg-lilac p-1.5 shadow-zine">
+          <Avatar src={agent?.avatarUrl} name={name} size={108} fallbackClassName="bg-card" />
+        </div>
+        <h1 class="font-display font-semibold text-[28px] leading-tight text-ink">{name}</h1>
+        {role && <p class="max-w-xs font-body font-bold text-[14px] text-inkSoft">{role}</p>}
+        {priceText && (
+          <span class="inline-flex items-center rounded-full border-zine border-ink bg-card px-3 py-1 font-mono font-bold uppercase text-[11px] tracking-[0.08em] text-ink shadow-zine-xs">
+            {priceText}
+          </span>
+        )}
+      </div>
+
+      {/* capability summary */}
+      {agent && (
+        <div class="flex flex-wrap justify-center gap-2">
+          <Pill kind="plain">{CAPABILITY_LABEL[agent.capability] ?? 'Vision'}</Pill>
+          {overlayLabel && <Pill kind="hint">{overlayLabel}</Pill>}
+          {agent.scoreLabel && <Pill kind="ok">{agent.scoreLabel}</Pill>}
+          {agent.agenticSnapshotEnabled && <Pill kind="hint">Analyze my form</Pill>}
+        </div>
+      )}
+
+      {/* how it works — static, crawlable */}
+      <div class="w-full rounded-zine border-zine border-ink bg-paper2 p-5 shadow-zine-sm">
+        <p class="font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-blueInk">How it works</p>
+        <ul class="mt-2 space-y-1.5 font-body font-bold text-[14px] text-inkSoft">
+          <li>• Your camera + voice connect live in the browser.</li>
+          <li>• An on-device overlay tracks your technique and shows a live score — never uploaded.</li>
+          <li>• The coach sees a coarse view and talks you through corrections.</li>
+        </ul>
+        <p class="mt-3 font-body text-[12px] text-inkMute">
+          Coaches technique only — never appearance, identity, or medical advice. Camera consent is required
+          and snapshots are off by default.
+        </p>
+      </div>
+
+      {/* the CTA island (routes to the Phase-5 session page; gate fires there) */}
+      <AgentCta client:load agentId={id!} free={free} initialBusy={busy} />
+    </div>
+
+    {/* Crawlable / no-JS fallback. */}
+    <noscript>
+      <div class="mx-auto mt-6 max-w-md rounded-zine border-zine border-ink bg-card p-5 text-center shadow-zine-sm">
+        <p class="font-display font-semibold text-[20px] text-ink">{name}</p>
+        {role && <p class="mt-1 font-body font-bold text-[14px] text-inkSoft">{role}</p>}
+        {priceText && (
+          <p class="mt-2 font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink">{priceText}</p>
+        )}
+        <p class="mt-3 font-body text-[13px] text-inkMute">
+          Enable JavaScript to talk to this AI vision agent live in your browser.
+        </p>
+      </div>
+    </noscript>
+  </main>
+</Base>

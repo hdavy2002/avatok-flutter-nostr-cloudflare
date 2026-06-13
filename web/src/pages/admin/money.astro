@@ -1,0 +1,22 @@
+---
+// AvaAdmin — Finance: ledger, payouts/DLQ, reconciliation (§5.4).
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import LedgerExplorer from '../../islands/admin/LedgerExplorer.tsx';
+import PayoutsQueue from '../../islands/admin/PayoutsQueue.tsx';
+import ReconPanel from '../../islands/admin/ReconPanel.tsx';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const TABS = [['Overview','/admin'],['Live','/admin/live'],['Users','/admin/users'],['Money','/admin/money'],['Creators','/admin/creators'],['Analytics','/admin/analytics'],['System','/admin/system']];
+const current = '/admin/money';
+---
+<Base title="AvaAdmin · Money" description="Finance, ledger, payouts, reconciliation.">
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <header class="mb-6"><span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">AvaAdmin</span><h1 class="mt-2 font-display font-semibold text-[34px] leading-tight text-ink">Money &amp; finance</h1></header>
+    <nav class="mb-6 flex flex-wrap gap-2">{TABS.map(([label, href]) => (<a href={href} class={`rounded-full border-zine border-ink px-3 py-1 font-mono font-bold uppercase text-[12px] tracking-[0.04em] ${href === current ? 'bg-lime text-ink shadow-zine-xs' : 'bg-card text-inkSoft'}`}>{label}</a>))}</nav>
+    <div class="flex flex-col gap-10">
+      <section><h2 class="mb-3 font-display font-semibold text-[22px] text-ink">Ledger explorer</h2><LedgerExplorer client:load /></section>
+      <section><h2 class="mb-3 font-display font-semibold text-[22px] text-ink">Payouts &amp; settlements</h2><PayoutsQueue client:visible /></section>
+      <section><h2 class="mb-3 font-display font-semibold text-[22px] text-ink">Reconciliation</h2><ReconPanel client:visible /></section>
+    </div>
+  </main>
+</Base>
