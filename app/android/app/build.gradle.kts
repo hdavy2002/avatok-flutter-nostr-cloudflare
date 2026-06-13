@@ -63,6 +63,14 @@ android {
 
     buildTypes {
         release {
+            // The AvaVision MediaPipe/TFLite deps drag R8 into the release build
+            // (this app shipped un-minified before). Run R8 deterministically as a
+            // pass-through via proguard-rules.pro (-dontshrink/-optimize/-obfuscate
+            // + -dontwarn for the phantom javax.lang.model.* classes) so the build
+            // succeeds without changing the shipped artifact's behavior.
+            isMinifyEnabled = true
+            isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
             // CI exports ANDROID_UPLOAD_KEYSTORE_PATH for Play Store .aab builds → use
             // the upload keystore. Otherwise (local builds, side-load APK lane) keep
             // signing with the committed debug keystore so a new APK installs over
