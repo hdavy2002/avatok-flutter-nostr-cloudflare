@@ -1,0 +1,17 @@
+# Cloudflare Pages config for the avatok.ai public web client.
+# Project: avatok-app (separate from the static marketing site on `avatok-web`).
+# The @astrojs/cloudflare adapter serves every route through `_worker.js`, which
+# auto-enables Astro sessions backed by a KV namespace bound as SESSION. The SSR
+# renderer (react-dom/server) relies on the runtime's global `MessageChannel`, so
+# we deliberately do NOT set `nodejs_compat` (that flag shadows the web global at
+# publish time and breaks the React renderer). A recent compatibility_date keeps
+# `MessageChannel` and other web APIs available.
+name = "avatok-app"
+compatibility_date = "2025-05-05"
+pages_build_output_dir = "./dist"
+
+# Astro sessions store (adapter default binding name). Namespace created in the
+# avatok.ai Cloudflare account.
+[[kv_namespaces]]
+binding = "SESSION"
+id = "831f68e696d443cb923f2d7afbd7e750"

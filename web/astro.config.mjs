@@ -26,9 +26,21 @@ export default defineConfig({
   ],
   vite: {
     ssr: {
-      // Clerk's React SDK ships browser globals; keep it out of the SSR bundle
-      // graph so prerendering the shell doesn't choke. Islands hydrate client-side.
-      external: ['@clerk/clerk-react'],
+      // Clerk's React SDK MUST be bundled into the SSR worker. Marking it
+      // `external` makes the Cloudflare worker `import '@clerk/clerk-react'` at
+      // runtime, but there is no node_modules on the edge → "No such module
+      // chunks/@clerk/clerk-react" and a 500 on every page that renders an island
+      // shell. `noExternal` forces Vite to bundle it into the worker instead.
+      noExternal: ['@clerk/clerk-react'],
+    },
+    resolve: {
+      // React 19's `react-dom/server.browser` constructs a `MessageChannel` at
+      // module-init time, which Cloudflare Workers do not expose during worker
+      // startup → "MessageChannel is not defined" and a 500 on every route.
+      // The `.edge` build is purpose-built for edge runtimes and avoids it.
+      alias: {
+        'react-dom/server': 'react-dom/server.edge',
+      },
     },
   },
 });

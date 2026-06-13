@@ -39,6 +39,7 @@ const linkClass =
     <!-- Desktop links (hidden on small screens) -->
     <div class="ml-auto hidden items-center gap-1.5 sm:flex">
       {links.map((l) => <a href={l.href} class={linkClass}>{l.label}</a>)}
+      <a href="/admin" data-admin-link hidden class={linkClass}>Admin</a>
       <a
         href="/sign-in"
         class="ml-1 rounded-full border-zine border-ink bg-lime px-3.5 py-1.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine"
@@ -67,6 +68,7 @@ const linkClass =
       {links.map((l) => (
         <a href={l.href} class="rounded-zineField px-3 py-2.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline hover:bg-card">{l.label}</a>
       ))}
+      <a href="/admin" data-admin-link hidden class="rounded-zineField px-3 py-2.5 font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline hover:bg-card">Admin</a>
       <a
         href="/sign-in"
         class="mt-1 rounded-zineField border-zine border-ink bg-lime px-3 py-2.5 text-center font-mono font-bold uppercase text-[13px] tracking-[0.06em] text-ink no-underline shadow-zine-xs"
@@ -84,5 +86,13 @@ const linkClass =
       burger.setAttribute('aria-expanded', String(open));
       burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
     });
+    // Admin link is admins-only: revealed only after the admin console confirmed
+    // access (sets localStorage 'avatok_is_admin'). The page itself is fail-closed
+    // server-side regardless, so this is convenience only.
+    try {
+      if (localStorage.getItem('avatok_is_admin') === '1') {
+        document.querySelectorAll('[data-admin-link]').forEach((el) => el.removeAttribute('hidden'));
+      }
+    } catch (_) { /* ignore */ }
   </script>
 </nav>

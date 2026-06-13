@@ -113,8 +113,11 @@ export function useAdminGate(): { state: GateState; error: string | null; retry:
       try {
         await getOverview();
         if (alive) setState('admin');
+        // Reveal the (otherwise hidden) Admin nav link for confirmed admins only.
+        try { localStorage.setItem('avatok_is_admin', '1'); } catch { /* ignore */ }
       } catch (e) {
         if (!alive) return;
+        try { localStorage.removeItem('avatok_is_admin'); } catch { /* ignore */ }
         if (e instanceof ApiError && (e.status === 403)) setState('forbidden');
         else if (e instanceof ApiError && e.status === 401) setState('anon');
         else { setError(e instanceof ApiError ? e.error : 'Could not verify admin access.'); setState('forbidden'); }

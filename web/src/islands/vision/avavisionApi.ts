@@ -45,7 +45,7 @@ export const MAX_CONCURRENT_CALLS = 10; // D1 active-session cap (avavoice basel
 export const MAX_SESSION_MINUTES = 60;
 export const SESSION_LIMITS = [5, 10, 30, 60] as const;
 export const CREATOR_PAYS_RATE_PER_HOUR = 500; // $5/hr flat, vision bundled
-export const MIN_RATE_PER_HOUR = 100; // $1/hr listing floor
+export const MIN_RATE_PER_HOUR = 300; // $3/hr AvaVision floor (PRICING.md §4; server enforces 300)
 
 // ─────────────────────────── template catalog ─────────────────────────────
 // Shape of `GET /api/avavision/templates?platform=web` (serves
