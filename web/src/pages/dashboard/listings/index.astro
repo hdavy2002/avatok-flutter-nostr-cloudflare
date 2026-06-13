@@ -1,18 +1,9 @@
 ---
-// /dashboard/listings — my listings pipeline (app: My Listings).
+// /dashboard/listings — the creator's full listing pipeline (all kinds).
 export const prerender = false;
-
 import Dashboard from '../../../layouts/Dashboard.astro';
-import MyListingsPanel from '../../../islands/dashboard/MyListingsPanel.tsx';
+import CreatorListings from '../../../islands/dashboard/CreatorListings.tsx';
 ---
-
-<Dashboard title="My listings · avatok.ai" active="listings">
-  <header class="mb-6 flex items-center justify-between gap-3">
-    <div>
-      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Dashboard</span>
-      <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">My listings</h1>
-    </div>
-    <a href="/dashboard/listings/new" class="rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">+ New listing</a>
-  </header>
-  <MyListingsPanel client:load />
+<Dashboard title="My listings · avatok.ai" heading="My listings" subtitle="Everything you sell — live events, consults and classes." active="listings">
+  <CreatorListings client:load />
 </Dashboard>

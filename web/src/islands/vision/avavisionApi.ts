@@ -536,3 +536,8 @@ export function callNow(agentId: string, language: string, auth: string) {
 // NOTE: session lifecycle (sessions/start, heartbeat, stop, snapshot) belongs to
 // Phase 5 (`islands/vision/session/`). This module exports only the shared types
 // and the discovery/creator/booking surface that Phase 4 owns.
+
+/** DELETE /api/avavision/agents/:id — remove a draft/agent. */
+export async function deleteAgent(id: string, auth: string): Promise<void> {
+  await request(`${BASE}/agents/${encodeURIComponent(id)}`, { method: 'DELETE', auth });
+}

@@ -1,0 +1,12 @@
+---
+// On-brand placeholder for dashboard sections still being built out on the web.
+// Honest, not a dead link: explains what's coming and points to the app for now.
+interface Props { title: string; body: string; icon?: string; }
+const { title, body, icon = '✦' } = Astro.props;
+---
+<div class="flex flex-col items-start gap-4 rounded-zine border-zine border-ink bg-paper2 p-8 shadow-zine">
+  <span class="flex h-12 w-12 items-center justify-center rounded-zine border-zine border-ink bg-lime text-[22px] shadow-zine-xs">{icon}</span>
+  <h2 class="font-display font-semibold text-[24px] text-ink">{title}</h2>
+  <p class="max-w-xl font-body font-bold text-[15px] leading-relaxed text-inkSoft">{body}</p>
+  <span class="rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft shadow-zine-xs">Building this now</span>
+</div>

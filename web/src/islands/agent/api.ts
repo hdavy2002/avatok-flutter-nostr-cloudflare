@@ -189,3 +189,22 @@ export async function sessionHeartbeat(sessionId: string, auth: string) {
 export function sessionStop(sessionId: string, auth: string, reason = 'user') {
   return money<{ ok: boolean }>(`${BASE}/sessions/stop`, { session_id: sessionId, reason }, auth);
 }
+
+// ── Creator management (mirrors the avavision creator routes 1:1) ──
+/** GET /api/avavoice/agents/mine — the creator's own agents (all statuses). */
+export async function getMine(auth: string, signal?: AbortSignal): Promise<VoiceAgent[]> {
+  const r = await request<{ agents?: Record<string, unknown>[] }>(`${BASE}/agents/mine`, { auth, signal });
+  return (r.agents ?? []).map(agentFromJson);
+}
+/** POST /api/avavoice/agents/:id/publish */
+export async function publishAgent(id: string, auth: string): Promise<void> {
+  await request(`${BASE}/agents/${encodeURIComponent(id)}/publish`, { method: 'POST', auth });
+}
+/** POST /api/avavoice/agents/:id/unpublish */
+export async function unpublishAgent(id: string, auth: string): Promise<void> {
+  await request(`${BASE}/agents/${encodeURIComponent(id)}/unpublish`, { method: 'POST', auth });
+}
+/** DELETE /api/avavoice/agents/:id */
+export async function deleteAgent(id: string, auth: string): Promise<void> {
+  await request(`${BASE}/agents/${encodeURIComponent(id)}`, { method: 'DELETE', auth });
+}

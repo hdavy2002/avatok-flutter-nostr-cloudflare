@@ -1,0 +1,8 @@
+---
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import PayoutPanel from '../../islands/dashboard/PayoutPanel.tsx';
+---
+<Dashboard title="Payout · avatok.ai" heading="Payout" subtitle="Withdraw your earnings to your bank." active="payout">
+  <PayoutPanel client:load />
+</Dashboard>

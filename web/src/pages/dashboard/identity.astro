@@ -1,0 +1,8 @@
+---
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import IdentityPanel from '../../islands/dashboard/IdentityPanel.tsx';
+---
+<Dashboard title="AvaIdentity · avatok.ai" heading="AvaIdentity" subtitle="Verify your identity and unlock creator payouts." active="identity">
+  <IdentityPanel client:load />
+</Dashboard>

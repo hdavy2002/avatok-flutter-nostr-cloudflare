@@ -1,0 +1,8 @@
+---
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import StoragePanel from '../../islands/dashboard/StoragePanel.tsx';
+---
+<Dashboard title="AvaStorage · avatok.ai" heading="AvaStorage" subtitle="Your storage usage and analytics." active="storage">
+  <StoragePanel client:load />
+</Dashboard>

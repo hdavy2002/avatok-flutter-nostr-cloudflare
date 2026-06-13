@@ -1,0 +1,11 @@
+---
+// AvaConsult — manage 1:1 consult listings (the video room itself is phone-only).
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import CreatorListings from '../../islands/dashboard/CreatorListings.tsx';
+---
+<Dashboard title="AvaConsult · avatok.ai" heading="AvaConsult" subtitle="Sell your time 1:1 — fans book a slot and pay up front." active="consult">
+  <CreatorListings client:load kind="consult" createHref="/dashboard/listings/new?kind=consult"
+    emptyTitle="No consults yet"
+    emptyBody="Create a 1:1 consult listing — set a price and the calendar fans can book. The session runs in the app." />
+</Dashboard>

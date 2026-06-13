@@ -8,6 +8,7 @@
 import { SignIn } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
+import { clerkAppearance } from '../../lib/clerkAppearance';
 import { Card } from '../../components/Card';
 
 export function SignInPanel() {
@@ -40,7 +41,7 @@ export function SignInPanel() {
   return (
     <ClerkIsland>
       <div className="flex justify-center">
-        <SignIn routing="hash" signUpUrl="/sign-up" forceRedirectUrl={next} signInForceRedirectUrl={next} />
+        <SignIn routing="hash" signUpUrl="/sign-up" forceRedirectUrl={next} signInForceRedirectUrl={next} appearance={clerkAppearance} />
       </div>
     </ClerkIsland>
   );

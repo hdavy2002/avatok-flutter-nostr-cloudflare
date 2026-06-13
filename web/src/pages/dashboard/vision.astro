@@ -1,0 +1,8 @@
+---
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import CreatorAgents from '../../islands/dashboard/CreatorAgents.tsx';
+---
+<Dashboard title="AvaVision · avatok.ai" heading="AvaVision" subtitle="Your AI vision coaches — create, publish, archive." active="vision">
+  <CreatorAgents client:load service="vision" />
+</Dashboard>

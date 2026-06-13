@@ -1,0 +1,8 @@
+---
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import InboxPanel from '../../islands/dashboard/InboxPanel.tsx';
+---
+<Dashboard title="AvaInbox · avatok.ai" heading="AvaInbox" subtitle="Notifications and updates, one place." active="inbox">
+  <InboxPanel client:load />
+</Dashboard>
