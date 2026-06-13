@@ -1,171 +1,107 @@
 ---
-// avatok.ai landing — the marketing pitch (rebuilt from the marketing/ site,
-// pic 1), in the unified SiteHeader/SiteFooter chrome. Hero: "Go live. Get
-// booked. Build your AI. / Keep 80%", badges, handle-first waitlist capture,
-// social proof, and the app phone mockup. SSR with a generous edge cache.
+// avatok.ai landing — the marketplace browse surface (formerly /marketplace) is
+// now the home page. Hero ("Watch live, book a 1:1, or talk to their AI"), the
+// live-now rail, category tiles, a for-fans/for-creators split, then the live
+// listings search + grid. Mirrors the app's AvaExplore home. Shared SiteHeader/
+// SiteFooter chrome via Base. Light SSR shell + hydrated islands.
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
+import LiveNowRail from '../islands/marketplace/LiveNowRail.tsx';
+import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
+import { getCategories } from '../islands/marketplace/api';
+import type { MarketCategory } from '../islands/marketplace/api';
 
-Astro.response.headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+const category = Astro.url.searchParams.get('category') ?? undefined;
+const kind = Astro.url.searchParams.get('kind') ?? undefined;
+
+let categories: MarketCategory[] = [];
+try {
+  categories = await getCategories();
+} catch {
+  categories = [];
+}
+
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 
 const ctaLime =
   'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[18px] leading-none tracking-[-0.2px] bg-lime text-ink';
+const ctaBlue =
+  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[18px] leading-none tracking-[-0.2px] bg-blue text-ink';
 ---
 
 <Base
-  title="avaTOK — the unified creator marketplace · earn from day one"
-  description="Go live, get booked for 1:1 & group consults, launch AI agents, and keep 80%. The creator marketplace where you earn from day one. Payouts via PayPal & Wise."
+  title="avaTOK — the creator marketplace · watch live, book a 1:1, talk to their AI"
+  description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide — no app required."
 >
   <main class="mx-auto max-w-6xl px-4">
     <!-- Hero -->
-    <section class="grid grid-cols-1 items-center gap-10 py-12 lg:grid-cols-2 lg:py-16">
-      <!-- Left: pitch -->
-      <div>
-        <!-- Badge row -->
-        <div class="mb-6 flex flex-wrap gap-3">
-          <span class="inline-flex items-center gap-2 rounded-full border-zine border-ink bg-card px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.04em] text-ink shadow-zine-xs">
-            <span class="text-blueInk">◆</span> 44 + apps and counting, one login
-          </span>
-          <span class="inline-flex items-center gap-2 rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.04em] text-ink shadow-zine-xs">
-            🔒 Payouts via PayPal & Wise
-          </span>
-        </div>
-
-        <h1 class="font-display font-semibold text-[52px] leading-[0.98] tracking-[-1px] text-ink sm:text-[64px]">
-          Go live.<br />
-          <span class="bg-lime box-decoration-clone px-1">Get booked.</span><br />
-          Build your AI.
+    <section class="py-10 sm:py-14">
+      <div class="max-w-2xl">
+        <span class="font-mono font-bold uppercase text-[12px] tracking-[0.12em] text-blueInk">The creator marketplace</span>
+        <h1 class="mt-3 font-display font-semibold text-[40px] leading-[1.05] text-ink sm:text-[52px]">
+          Watch live, book a 1:1, or talk to their AI.
         </h1>
-        <p class="mt-7 font-display font-semibold text-[44px] leading-none tracking-[-1px] text-blueInk sm:text-[54px]">Keep 80%.</p>
-
-        <p class="mt-7 max-w-xl font-body font-bold text-[17px] leading-relaxed text-inkSoft">
-          The marketplace where creators get paid: stream to paying fans, sell 1:1 and group consults, and
-          launch an <b class="text-ink">AI voice agent</b> that earns while you sleep — plus
-          <b class="text-ink">44 + apps and counting</b> for everything else. You keep <b class="text-ink">80%</b>
-          from day one.
+        <p class="mt-4 max-w-xl font-body font-bold text-[16px] leading-relaxed text-inkSoft">
+          A fan opens a link and they're in — browse creators, grab an event ticket, sit in a private session,
+          or talk to a voice agent. No install, no friction.
         </p>
-
-        <!-- Handle-first waitlist / sign-up capture -->
-        <form id="join-form" class="mt-7 flex max-w-md items-center gap-2 rounded-full border-zine border-ink bg-card p-1.5 shadow-zine-sm">
-          <input
-            id="join-email"
-            type="text"
-            placeholder="you@email — grab your @handle"
-            class="min-w-0 flex-1 bg-transparent px-4 py-3 font-body font-extrabold text-[15px] text-ink outline-none placeholder:font-bold placeholder:text-placeholder"
-          />
-          <button
-            type="submit"
-            aria-label="Join"
-            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-zine border-ink bg-coral text-paper shadow-zine-xs"
-          >→</button>
-        </form>
-
-        <!-- Social proof -->
-        <div class="mt-5 flex items-center gap-3">
-          <div class="flex -space-x-2">
-            {[
-              { i: 'K', c: 'bg-mint' },
-              { i: 'M', c: 'bg-coral' },
-              { i: 'J', c: 'bg-blue' },
-              { i: 'R', c: 'bg-lilac' },
-            ].map((a) => (
-              <span class={`flex h-7 w-7 items-center justify-center rounded-full border-zine border-ink ${a.c} font-display font-semibold text-[12px] text-ink`}>{a.i}</span>
-            ))}
-          </div>
-          <span class="font-mono text-[13px] text-inkSoft">
-            <b class="text-ink">128,400</b> creators already in line — keep 80%, get paid via PayPal or Wise.
-          </span>
-        </div>
-      </div>
-
-      <!-- Right: phone mockup -->
-      <div class="relative mx-auto hidden w-full max-w-[340px] lg:block">
-        <!-- decorative blobs -->
-        <div class="absolute left-6 top-16 -z-10 h-40 w-40 rounded-full bg-blue/60"></div>
-        <div class="absolute bottom-10 right-2 -z-10 h-28 w-28 rounded-full bg-coral/70"></div>
-
-        <!-- floating badges -->
-        <span class="absolute -left-3 top-6 z-10 rotate-[-4deg] rounded-full border-zine border-ink bg-coral px-3 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-paper shadow-zine-xs">⚡ Your AI runs it</span>
-        <span class="absolute -right-3 bottom-24 z-10 rotate-[3deg] rounded-full border-zine border-ink bg-card px-3 py-1.5 font-mono font-bold uppercase text-[11px] tracking-[0.04em] text-ink shadow-zine-xs">🌐 Host your site</span>
-
-        <!-- phone -->
-        <div class="rounded-[34px] border-[3px] border-ink bg-paper p-3 shadow-zine">
-          <div class="rounded-[24px] border-zine border-ink bg-card p-3">
-            <!-- app bar -->
-            <div class="mb-3 flex items-center justify-between">
-              <span class="font-display font-semibold text-[16px] text-ink">ava<span class="text-blueInk">TOK</span></span>
-              <div class="flex gap-1.5">
-                <span class="rounded-full border-zine border-ink bg-lime px-2 py-0.5 font-mono font-bold text-[10px] text-ink">FEED</span>
-                <span class="rounded-full border-zine border-ink bg-paper px-2 py-0.5 font-mono font-bold text-[10px] text-inkSoft">FOR YOU</span>
-              </div>
-            </div>
-            <!-- post 1 -->
-            <div class="mb-3 rounded-zineSm border-zine border-ink bg-paper p-2.5">
-              <div class="mb-2 flex items-center gap-2">
-                <span class="flex h-6 w-6 items-center justify-center rounded-full border-zine border-ink bg-coral font-display text-[11px] text-paper">M</span>
-                <div class="leading-tight">
-                  <div class="font-display font-semibold text-[12px] text-ink">maya ✓</div>
-                  <div class="font-mono text-[10px] text-inkMute">@maya.builds</div>
-                </div>
-              </div>
-              <div class="flex h-20 items-center justify-center rounded-zineSm border-zine border-ink bg-blue/40 font-mono text-[11px] text-ink">[ photo ]</div>
-              <div class="mt-2 flex gap-3 text-[13px] text-inkSoft">♡ 💬 ➤</div>
-            </div>
-            <!-- post 2 -->
-            <div class="rounded-zineSm border-zine border-ink bg-paper p-2.5">
-              <div class="mb-2 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="flex h-6 w-6 items-center justify-center rounded-full border-zine border-ink bg-mint font-display text-[11px] text-ink">J</span>
-                  <div class="leading-tight">
-                    <div class="font-display font-semibold text-[12px] text-ink">jonas</div>
-                    <div class="font-mono text-[10px] text-inkMute">@jonas.irl</div>
-                  </div>
-                </div>
-                <span class="rounded-full border-zine border-ink bg-card px-2 py-0.5 font-mono font-bold text-[10px] text-ink">♥ SELLING</span>
-              </div>
-              <div class="flex items-center rounded-zineSm border-zine border-ink bg-lime px-3 py-2 font-mono font-bold text-[11px] text-ink">[ film camera · $80 ]</div>
-            </div>
-          </div>
+        <div class="mt-7 flex flex-wrap gap-3">
+          <a href="#listings" class={ctaLime}>Browse the marketplace</a>
+          <a href="/?kind=live" class={ctaBlue}>See who's live</a>
         </div>
       </div>
     </section>
 
-    <!-- Value strip -->
-    <section class="grid grid-cols-1 gap-4 pb-16 md:grid-cols-3">
-      {[
-        { t: 'Go live', d: 'Stream to paying fans. Ticketed live events, no platform cut games — keep 80%.' },
-        { t: 'Get booked', d: 'Sell 1:1 and group consults from a calendar fans can book and pay in a tap.' },
-        { t: 'Build your AI', d: 'Launch a voice or vision agent that talks to fans and earns while you sleep.' },
-      ].map((c) => (
-        <div class="flex flex-col gap-2 rounded-zine border-zine border-ink bg-card p-6 shadow-zine-sm">
-          <h3 class="font-display font-semibold text-[20px] text-ink">{c.t}</h3>
-          <p class="font-body font-bold text-[15px] text-inkSoft">{c.d}</p>
-        </div>
-      ))}
+    <!-- Live now rail -->
+    <section class="pb-10">
+      <LiveNowRail client:visible />
     </section>
 
-    <!-- Browse CTA -->
-    <section id="how" class="scroll-mt-20 pb-20">
-      <div class="flex flex-col items-start gap-4 rounded-zine border-zine border-ink bg-paper2 p-8 shadow-zine md:flex-row md:items-center md:justify-between">
-        <div class="max-w-lg">
+    <!-- Category tiles -->
+    {categories.length > 0 && (
+      <section class="pb-10">
+        <h2 class="mb-4 font-display font-semibold text-[22px] text-ink">Browse by category</h2>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {categories.map((c) => (
+            <a
+              href={`/?category=${encodeURIComponent(c.id)}#listings`}
+              class="flex flex-col gap-2 rounded-zine border-zine border-ink bg-card p-4 no-underline shadow-zine-sm transition-transform duration-zine ease-out hover:-translate-x-[1px] hover:-translate-y-[1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+            >
+              <span class="text-[28px] leading-none">{c.emoji ?? '◆'}</span>
+              <span class="font-display font-semibold text-[16px] text-ink">{c.label}</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <!-- For fans / For creators split -->
+    <section class="pb-12">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
           <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For fans</span>
-          <h2 class="mt-2 font-display font-semibold text-[28px] text-ink">Browse without installing a thing</h2>
-          <p class="mt-2 font-body font-bold text-[15px] text-inkSoft">Watch live, book a 1:1, grab a ticket or talk to an AI agent — right in your browser.</p>
+          <h3 class="font-display font-semibold text-[24px] text-ink">Browse right here</h3>
+          <p class="font-body font-bold text-[15px] text-inkSoft">
+            Everything works in your browser — explore, book and watch without downloading a thing.
+          </p>
+          <div class="pt-1"><a href="#listings" class={ctaLime}>Start browsing</a></div>
         </div>
-        <a href="/marketplace" class={ctaLime}>Browse the marketplace</a>
+        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-7 shadow-zine">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For creators</span>
+          <h3 class="font-display font-semibold text-[24px] text-ink">Go live from the app</h3>
+          <p class="font-body font-bold text-[15px] text-inkSoft">
+            Broadcasting, scheduling and your studio live in the AvaTOK app. Get it to start earning.
+          </p>
+          <div class="pt-1"><a href="/sign-up" class={ctaBlue}>Become a creator</a></div>
+        </div>
       </div>
+    </section>
+
+    <!-- Live listings grid -->
+    <section id="listings" class="scroll-mt-20 pb-16">
+      <h2 class="mb-5 font-display font-semibold text-[26px] text-ink">Explore listings</h2>
+      <ExploreGrid client:visible initialCategory={category} initialKind={kind} />
     </section>
   </main>
-
-  <script>
-    // Handle-first capture → send to sign-up (which runs the @handle + email flow).
-    const f = document.getElementById('join-form');
-    f?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const v = (document.getElementById('join-email') as HTMLInputElement)?.value?.trim();
-      const q = v ? `?prefill=${encodeURIComponent(v)}` : '';
-      location.href = `/sign-up${q}`;
-    });
-  </script>
 </Base>
