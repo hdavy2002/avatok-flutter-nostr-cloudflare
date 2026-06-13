@@ -1,9 +1,8 @@
 ---
 export const prerender = false;
 import Dashboard from '../../layouts/Dashboard.astro';
-import DashSoon from '../../components/DashSoon.astro';
+import CalendarPanel from '../../islands/dashboard/CalendarPanel.tsx';
 ---
-<Dashboard title="AvaCalendar · avatok.ai" heading="AvaCalendar" subtitle="Availability, slots and upcoming sessions." active="calendar">
-  <DashSoon icon="◷" title="Your calendar, on the web"
-    body="Set availability rules, open bookable slots, sync Google Calendar and see upcoming sessions — all wired to your existing calendar. Coming in the next update." />
+<Dashboard title="AvaCalendar · avatok.ai" heading="AvaCalendar" subtitle="Set your availability and see what's booked." active="calendar">
+  <CalendarPanel client:load />
 </Dashboard>
