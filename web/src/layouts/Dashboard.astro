@@ -1,152 +1,235 @@
 ---
-// Dashboard shell — the signed-in surface, mirroring the Flutter app's
-// AvaShell + AvaSidebar (app/lib/shell/ava_shell.dart, ava_sidebar.dart):
-// a persistent left sidebar (slide-over on mobile) with the profile card, the
-// three featured destinations, a manage section, the apps section and a footer.
-// The marketing Nav is intentionally hidden here (chrome={false}); the dashboard
-// has its own chrome, exactly like the app is sidebar-only when signed in.
+// Dashboard shell — ported from the old avatok "v2" creator studio design
+// (avatok/src/components/avatok-v2/AvatokShell + AvatokSidebar): a left rail with
+// section headers, icon+label nav rows (active = ink fill, brand-coloured icon),
+// count pills, and a profile card at the bottom. Content sits in a framed
+// "page card". The menu mirrors the Flutter app's AvaShell sidebar
+// (app/lib/shell/ava_sidebar.dart): Featured / Studio / Apps / Account. Items
+// without a web page yet show a greyed "Soon" badge. Auth guard + sign-out live
+// in <SidebarUser/> (single Clerk provider on the page).
 import Base from './Base.astro';
 import SidebarUser from '../islands/shell/SidebarUser.tsx';
 
 export interface Props {
   title?: string;
-  /** Which sidebar item is active (matches an item `key` below). */
+  /** Which sidebar item is active (matches an item `key`). */
   active?: string;
 }
 const { title = 'Dashboard · avatok.ai', active = 'overview' } = Astro.props;
 
-// Per-user surface — never edge-cache content.
+// Per-user surface — never edge-cache.
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-type Item = { key: string; href: string; label: string; chip: string; tone: string };
+type Item = { key: string; label: string; icon: string; href?: string; pill?: string; soon?: boolean };
+
+// ── Inline icon set (stroke icons, viewBox 24) — matches the av2 language. ──
+const I = {
+  grid: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  store: '<path d="M3 9l1.5-5h15L21 9M4 9v10a1 1 0 001 1h14a1 1 0 001-1V9M4 9h16"/>',
+  folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  check: '<path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+  broadcast: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>',
+  video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/>',
+  chat: '<path d="M21 11.5a8.38 8.38 0 01-8.5 8.5 8.5 8.5 0 01-3.8-.9L3 21l1.9-5.7A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.38 8.38 0 0121 11.5z"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13l3.5 7v6a1 1 0 01-1 1H3a1 1 0 01-1-1v-6z"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  storage: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/>',
+  megaphone: '<path d="M3 11v2a1 1 0 001 1h2l4 4V6L6 10H4a1 1 0 00-1 1z"/><path d="M14 8a4 4 0 010 8M10 6l9-3v18l-9-3"/>',
+  wallet: '<rect x="2" y="6" width="20" height="14" rx="3"/><path d="M16 13h2"/>',
+  dollar: '<line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9a3 3 0 100 6h6a3 3 0 110 6H6"/>',
+  id: '<rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2.2"/><path d="M5 16c.6-1.6 2-2.4 3-2.4s2.4.8 3 2.4M14 9h5M14 13h5"/>',
+  card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 16a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 008 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09A1.65 1.65 0 0016 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0020.4 9c.14.46.5.86 1.01 1H22a2 2 0 110 4h-.09c-.51.14-.87.54-1.01 1z"/>',
+};
 
 const featured: Item[] = [
-  { key: 'overview', href: '/dashboard', label: 'Your dashboard', chip: '▦', tone: 'bg-lilac' },
-  { key: 'marketplace', href: '/marketplace', label: 'Marketplace', chip: '▣', tone: 'bg-blue' },
-  { key: 'library', href: '/dashboard/library', label: 'Library', chip: '▤', tone: 'bg-mint' },
+  { key: 'overview', label: 'Your dashboard', icon: I.grid, href: '/dashboard' },
+  { key: 'marketplace', label: 'Marketplace', icon: I.store, href: '/marketplace' },
+  { key: 'library', label: 'Library', icon: I.folder, href: '/dashboard/library' },
 ];
-const manage: Item[] = [
-  { key: 'listings', href: '/dashboard/listings', label: 'My listings', chip: '≡', tone: 'bg-card' },
-  { key: 'bookings', href: '/dashboard/bookings', label: 'Bookings', chip: '◷', tone: 'bg-card' },
-  { key: 'wallet', href: '/dashboard/wallet', label: 'Wallet', chip: '⛁', tone: 'bg-card' },
+const studio: Item[] = [
+  { key: 'listings', label: 'My listings', icon: I.list, href: '/dashboard/listings' },
+  { key: 'bookings', label: 'Bookings', icon: I.check, href: '/dashboard/bookings' },
+  { key: 'live', label: 'AvaLive · Live streaming', icon: I.broadcast, href: '/marketplace?kind=live' },
 ];
 const apps: Item[] = [
-  { key: 'vision', href: '/vision', label: 'AvaVision', chip: '◉', tone: 'bg-card' },
-  { key: 'live', href: '/marketplace?kind=live', label: 'AvaLive', chip: '◐', tone: 'bg-card' },
-  { key: 'consult', href: '/marketplace?kind=consult', label: 'AvaConsult', chip: '◑', tone: 'bg-card' },
-  { key: 'agent', href: '/marketplace?kind=agent', label: 'AvaVoice', chip: '◎', tone: 'bg-card' },
+  { key: 'vision', label: 'AvaVision', icon: I.eye, href: '/vision' },
+  { key: 'voice', label: 'AvaVoice', icon: I.mic, href: '/marketplace?kind=agent' },
+  { key: 'consult', label: 'AvaConsult', icon: I.video, soon: true },
+  { key: 'avatok', label: 'AvaTOK', icon: I.chat, soon: true },
+  { key: 'chat', label: 'AvaChat', icon: I.chat, soon: true },
+  { key: 'inbox', label: 'AvaInbox', icon: I.inbox, soon: true },
+  { key: 'calendar', label: 'AvaCalendar', icon: I.calendar, soon: true },
+  { key: 'storage', label: 'AvaStorage', icon: I.storage, soon: true },
+  { key: 'affiliate', label: 'AvaAffiliate', icon: I.megaphone, soon: true },
+];
+const account: Item[] = [
+  { key: 'wallet', label: 'Wallet', icon: I.wallet, href: '/dashboard/wallet' },
+  { key: 'payout', label: 'Payout', icon: I.dollar, soon: true },
+  { key: 'identity', label: 'AvaIdentity', icon: I.id, soon: true },
+  { key: 'billing', label: 'Billing', icon: I.card, soon: true },
+  { key: 'settings', label: 'Settings', icon: I.gear, href: '/dashboard/settings' },
 ];
 
-const rowBase =
-  'flex items-center gap-3 rounded-zineField px-3 py-2.5 no-underline font-body font-extrabold text-[15px] transition-transform duration-zine hover:-translate-y-[1px]';
-const chipBase =
-  'flex h-8 w-8 shrink-0 items-center justify-center rounded-zineBadge border-zine border-ink text-[14px] leading-none shadow-zine-xs';
-
-function rowClass(k: string) {
-  return active === k
-    ? `${rowBase} bg-paper2 text-ink border-zine border-ink shadow-zine-xs`
-    : `${rowBase} text-inkSoft hover:text-ink`;
-}
+const sections: { title: string; items: Item[] }[] = [
+  { title: 'Featured', items: featured },
+  { title: 'Studio', items: studio },
+  { title: 'Apps', items: apps },
+  { title: 'Account', items: account },
+];
 ---
 
 <Base title={title} chrome={false}>
-  <!-- The auth guard lives inside <SidebarUser/> (shares one Clerk provider). -->
-  <div class="min-h-screen bg-paper">
-    <!-- Slim top bar (logo + mobile menu) -->
-    <header class="sticky top-0 z-40 flex items-center gap-3 border-b-zine border-ink bg-paper2 px-4 py-3">
-      <button
-        id="dash-burger"
-        type="button"
-        aria-label="Open menu"
-        class="flex h-9 w-9 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden"
-      >
-        <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true">
-          <path d="M1 1h16M1 7h16M1 13h16" stroke="var(--zine-ink)" stroke-width="2.4" stroke-linecap="round"></path>
-        </svg>
+  <div class="av2dash">
+    <!-- Slim top bar (logo + New + mobile menu) -->
+    <header class="av2-top">
+      <button id="dash-burger" type="button" aria-label="Open menu" class="av2-burger">
+        <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true"><path d="M1 1h16M1 7h16M1 13h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg>
       </button>
-      <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
-        <svg width="24" height="22" viewBox="0 0 26 24" aria-hidden="true">
-          <path d="M3 21 L13 3 L23 21" fill="none" stroke="var(--zine-ink)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"></path>
-          <circle cx="13" cy="16.2" r="1.9" fill="var(--zine-coral)"></circle>
-        </svg>
-        <span class="font-display font-semibold text-[20px] leading-none tracking-[-0.4px] text-ink">ava<span class="text-blueInk">tok</span></span>
+      <a href="/" class="av2-brand" aria-label="avatok.ai home">
+        <svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true"><path d="M3 21 L13 3 L23 21" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="13" cy="16.2" r="1.9" fill="#FF5350"></circle></svg>
+        <span>ava<b>TOK</b></span>
       </a>
-      <a href="/dashboard/listings/new" class="ml-auto rounded-full border-zine border-ink bg-lime px-3.5 py-1.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">
-        + New
-      </a>
+      <a href="/dashboard/listings/new" class="av2-new">+ New</a>
     </header>
 
-    <div class="mx-auto flex max-w-6xl gap-6 px-4 py-6">
-      <!-- Sidebar (static markup; user card + sign-out are an island) -->
-      <aside
-        id="dash-sidebar"
-        class="fixed inset-0 z-50 hidden w-[280px] flex-col gap-5 border-r-zine border-ink bg-paper2 p-4 lg:static lg:z-auto lg:flex lg:w-[260px] lg:shrink-0 lg:rounded-zine lg:border-zine lg:bg-paper2 lg:p-4 lg:shadow-zine-sm"
-      >
-        <button
-          id="dash-close"
-          type="button"
-          aria-label="Close menu"
-          class="ml-auto flex h-8 w-8 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden"
-        >✕</button>
+    <div class="av2-body">
+      <div id="dash-scrim" class="av2-scrim"></div>
+      <aside id="dash-sidebar" class="av2-side">
+        <button id="dash-close" type="button" aria-label="Close menu" class="av2-close">✕</button>
 
-        <SidebarUser client:load />
-
-        <nav class="flex flex-col gap-1">
-          {featured.map((i) => (
-            <a href={i.href} class={rowClass(i.key)}>
-              <span class={`${chipBase} ${i.tone}`}>{i.chip}</span>
-              <span>{i.label}</span>
-            </a>
-          ))}
-        </nav>
-
-        <div>
-          <span class="px-1 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkMute">Manage</span>
-          <nav class="mt-1.5 flex flex-col gap-1">
-            {manage.map((i) => (
-              <a href={i.href} class={rowClass(i.key)}>
-                <span class={`${chipBase} ${i.tone}`}>{i.chip}</span>
-                <span>{i.label}</span>
-              </a>
+        {sections.map((sec) => (
+          <div class="av2-sec-group">
+            <div class="av2-sec">{sec.title}</div>
+            {sec.items.map((it) => (
+              it.soon ? (
+                <div class="av2-nv soon" aria-disabled="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={it.icon} />
+                  <span>{it.label}</span>
+                  <span class="pill soon-pill">Soon</span>
+                </div>
+              ) : (
+                <a href={it.href} class={`av2-nv${active === it.key ? ' active' : ''}`}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={it.icon} />
+                  <span>{it.label}</span>
+                  {it.pill && <span class="pill">{it.pill}</span>}
+                </a>
+              )
             ))}
-          </nav>
-        </div>
+          </div>
+        ))}
 
-        <div>
-          <span class="px-1 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkMute">Apps</span>
-          <nav class="mt-1.5 flex flex-col gap-1">
-            {apps.map((i) => (
-              <a href={i.href} class={rowClass(i.key)}>
-                <span class={`${chipBase} ${i.tone}`}>{i.chip}</span>
-                <span>{i.label}</span>
-              </a>
-            ))}
-          </nav>
+        <div class="av2-foot">
+          <SidebarUser client:load />
         </div>
-
-        <div class="mt-auto flex flex-col gap-1 border-t-zine border-ink pt-3">
-          <a href="/dashboard/settings" class={rowClass('settings')}>
-            <span class={`${chipBase} bg-card`}>⚙</span>
-            <span>Settings</span>
-          </a>
-        </div>
+        <div class="av2-copyright">© {new Date().getFullYear()} AvaTOK</div>
       </aside>
 
-      <!-- Page content -->
-      <main class="min-w-0 flex-1">
-        <slot />
-      </main>
+      <div class="av2-main-col">
+        <div class="av2-page-card">
+          <main class="av2-main"><slot /></main>
+        </div>
+      </div>
     </div>
   </div>
 
+  <style>
+    .av2dash {
+      --av2-ink: #0a0a0a;
+      --av2-bg: #F3FAFC;
+      --av2-sunken: #EAF9FC;
+      --av2-raised: #FFFFFF;
+      --av2-line: #0a0a0a;
+      --av2-brand: #4DCFE0;
+      --av2-lavender: #E8E4FF;
+      --av2-pink: #FFD6E8;
+      --av2-t2: #1a1a1a;
+      --av2-t3: #5a5560;
+      --site-header-height: 60px;
+      min-height: 100vh;
+      background: var(--av2-bg);
+      color: var(--av2-ink);
+      font-family: 'Nunito', sans-serif;
+    }
+
+    /* top bar */
+    .av2-top { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 12px; height: var(--site-header-height); padding: 0 16px; background: var(--av2-sunken); border-bottom: 2px solid var(--av2-ink); }
+    .av2-burger { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 2px solid var(--av2-ink); border-radius: 10px; background: #fff; color: var(--av2-ink); box-shadow: 2px 2px 0 0 var(--av2-ink); cursor: pointer; }
+    .av2-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--av2-ink); text-decoration: none; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 21px; letter-spacing: -0.02em; }
+    .av2-brand b { color: var(--av2-brand-ink, #1A7F8E); }
+    .av2-new { margin-left: auto; border: 2px solid var(--av2-ink); border-radius: 999px; background: #BFEB56; color: var(--av2-ink); padding: 8px 16px; font-family: 'Space Mono', monospace; font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.06em; text-decoration: none; box-shadow: 2px 2px 0 0 var(--av2-ink); }
+    @media (min-width: 1024px) { .av2-burger, .av2-close { display: none; } }
+
+    /* layout grid */
+    .av2-body { max-width: 1480px; margin: 0 auto; }
+    @media (min-width: 1024px) {
+      .av2-body { display: grid; grid-template-columns: 256px 1fr; align-items: start; }
+    }
+
+    /* sidebar */
+    .av2-side {
+      background: var(--av2-sunken);
+      padding: 16px 12px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    @media (min-width: 1024px) {
+      .av2-side {
+        position: sticky; top: var(--site-header-height);
+        height: calc(100vh - var(--site-header-height));
+        overflow-y: auto;
+        border-right: 2px solid var(--av2-ink);
+        box-shadow: 4px 0 0 0 var(--av2-ink), 8px 0 18px rgba(10,10,10,.08);
+        z-index: 1;
+      }
+    }
+    /* mobile slide-over */
+    @media (max-width: 1023px) {
+      .av2-side { position: fixed; inset: 0 auto 0 0; width: 280px; height: 100vh; z-index: 60; transform: translateX(-100%); transition: transform .25s ease-out; overflow-y: auto; border-right: 2px solid var(--av2-ink); }
+      .av2dash.menu-open .av2-side { transform: translateX(0); }
+      .av2-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 55; opacity: 0; pointer-events: none; transition: opacity .2s; }
+      .av2dash.menu-open .av2-scrim { opacity: 1; pointer-events: auto; }
+    }
+    .av2-scrim { display: none; }
+    @media (max-width: 1023px) { .av2-scrim { display: block; } }
+    .av2-close { align-self: flex-end; width: 32px; height: 32px; border: 2px solid var(--av2-ink); border-radius: 8px; background: #fff; box-shadow: 2px 2px 0 0 var(--av2-ink); cursor: pointer; }
+
+    .av2-sec-group { display: flex; flex-direction: column; gap: 2px; }
+    .av2-sec { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--av2-t3); padding: 14px 12px 6px; }
+
+    .av2-nv { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: var(--av2-t2); font-weight: 600; font-size: 14px; cursor: pointer; border: 2px solid transparent; text-decoration: none; }
+    .av2-nv svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .av2-nv:hover { background: var(--av2-lavender); color: var(--av2-ink); }
+    .av2-nv.active { background: var(--av2-ink); color: #fff; border-color: var(--av2-ink); box-shadow: 2px 2px 0 0 var(--av2-ink); }
+    .av2-nv.active svg { color: var(--av2-brand); }
+    .av2-nv.soon { cursor: default; color: var(--av2-t3); opacity: .7; }
+    .av2-nv.soon:hover { background: transparent; color: var(--av2-t3); }
+    .av2-nv .pill { margin-left: auto; background: var(--av2-pink); color: var(--av2-ink); font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; }
+    .av2-nv .soon-pill { background: #E5E1EA; color: #6a6a6a; }
+
+    .av2-foot { margin-top: 16px; }
+    .av2-copyright { margin-top: 12px; font-size: 12px; color: var(--av2-t3); text-align: center; padding: 0 10px 8px; }
+
+    /* main page card */
+    .av2-main-col { min-width: 0; display: flex; flex-direction: column; }
+    .av2-page-card { background: var(--av2-raised); border: 2px solid var(--av2-ink); border-radius: 22px; box-shadow: 4px 4px 0 0 var(--av2-ink); margin: 24px 24px 32px; overflow: hidden; }
+    @media (max-width: 1023px) { .av2-page-card { margin: 16px 12px 24px; border-radius: 16px; box-shadow: 3px 3px 0 0 var(--av2-ink); } }
+    .av2-main { width: 100%; margin: 0 auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; }
+    @media (max-width: 1023px) { .av2-main { padding: 18px 16px; gap: 20px; } }
+  </style>
+
   <script>
+    const root = document.querySelector('.av2dash');
     const burger = document.getElementById('dash-burger');
-    const sidebar = document.getElementById('dash-sidebar');
     const close = document.getElementById('dash-close');
-    const open = () => sidebar?.classList.remove('hidden');
-    const hide = () => sidebar?.classList.add('hidden');
+    const scrim = document.getElementById('dash-scrim');
+    const open = () => root?.classList.add('menu-open');
+    const hide = () => root?.classList.remove('menu-open');
     burger?.addEventListener('click', open);
     close?.addEventListener('click', hide);
-    sidebar?.querySelectorAll('a').forEach((a) => a.addEventListener('click', hide));
+    scrim?.addEventListener('click', hide);
+    document.querySelectorAll('.av2-side a').forEach((a) => a.addEventListener('click', hide));
   </script>
 </Base>
