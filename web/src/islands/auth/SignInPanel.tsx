@@ -29,10 +29,18 @@ export function SignInPanel() {
       </Card>
     );
   }
+  // Honour ?next=<path> appended by the dashboard guard; default to /dashboard.
+  let next = '/dashboard';
+  try {
+    const n = new URLSearchParams(location.search).get('next');
+    if (n && n.startsWith('/')) next = n;
+  } catch {
+    /* SSR / no location */
+  }
   return (
     <ClerkIsland>
       <div className="flex justify-center">
-        <SignIn routing="hash" signUpUrl="/sign-in" forceRedirectUrl="/dashboard" />
+        <SignIn routing="hash" signUpUrl="/sign-in" forceRedirectUrl={next} signInForceRedirectUrl={next} />
       </div>
     </ClerkIsland>
   );

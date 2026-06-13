@@ -1,0 +1,15 @@
+---
+// /dashboard/wallet — AvaCoins balance, ledger, top-up (app: Wallet).
+export const prerender = false;
+
+import Dashboard from '../../layouts/Dashboard.astro';
+import WalletPanel from '../../islands/dashboard/WalletPanel.tsx';
+---
+
+<Dashboard title="Wallet · avatok.ai" active="wallet">
+  <header class="mb-6">
+    <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Dashboard</span>
+    <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Wallet</h1>
+  </header>
+  <WalletPanel client:load />
+</Dashboard>

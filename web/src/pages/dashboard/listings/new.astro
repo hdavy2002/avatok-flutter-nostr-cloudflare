@@ -1,0 +1,17 @@
+---
+// /dashboard/listings/new — create a listing (live/consult/class/agent).
+// Gated: full account + KYC, same as the app. The CreateListing island wraps its
+// form in RequireAccount.
+export const prerender = false;
+
+import Dashboard from '../../../layouts/Dashboard.astro';
+import CreateListing from '../../../islands/dashboard/CreateListing.tsx';
+---
+
+<Dashboard title="New listing · avatok.ai" active="listings">
+  <header class="mb-6">
+    <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Create</span>
+    <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">New listing</h1>
+  </header>
+  <CreateListing client:load />
+</Dashboard>

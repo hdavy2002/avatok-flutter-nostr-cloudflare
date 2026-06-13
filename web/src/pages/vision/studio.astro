@@ -8,7 +8,7 @@
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
-import StudioFlow from '../../islands/vision/StudioFlow.tsx';
+import GatedStudio from '../../islands/vision/GatedStudio.tsx';
 ---
 
 <Base
@@ -25,6 +25,6 @@ import StudioFlow from '../../islands/vision/StudioFlow.tsx';
       </p>
     </header>
 
-    <StudioFlow client:load />
+    <GatedStudio client:load />
   </main>
 </Base>

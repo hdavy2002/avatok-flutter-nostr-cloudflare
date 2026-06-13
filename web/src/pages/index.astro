@@ -42,8 +42,8 @@ const ctaBlue =
           or talk to a voice agent. No install, no friction.
         </p>
         <div class="mt-7 flex flex-wrap gap-3">
-          <a href="/explore" class={ctaLime}>Browse the marketplace</a>
-          <a href="/explore?kind=live" class={ctaBlue}>See who's live</a>
+          <a href="/marketplace" class={ctaLime}>Browse the marketplace</a>
+          <a href="/marketplace?kind=live" class={ctaBlue}>See who's live</a>
         </div>
       </div>
     </section>
@@ -60,7 +60,7 @@ const ctaBlue =
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {categories.map((c) => (
             <a
-              href={`/explore?category=${encodeURIComponent(c.id)}`}
+              href={`/marketplace?category=${encodeURIComponent(c.id)}`}
               class="flex flex-col gap-2 rounded-zine border-zine border-ink bg-card p-4 no-underline shadow-zine-sm transition-transform duration-zine ease-out hover:-translate-x-[1px] hover:-translate-y-[1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
             >
               <span class="text-[28px] leading-none">{c.emoji ?? '◆'}</span>
@@ -80,7 +80,7 @@ const ctaBlue =
           <p class="font-body font-bold text-[15px] text-inkSoft">
             Everything works in your browser — explore, book and watch without downloading a thing.
           </p>
-          <div class="pt-1"><a href="/explore" class={ctaLime}>Start browsing</a></div>
+          <div class="pt-1"><a href="/marketplace" class={ctaLime}>Start browsing</a></div>
         </div>
         <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-7 shadow-zine">
           <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For creators</span>
@@ -88,7 +88,7 @@ const ctaBlue =
           <p class="font-body font-bold text-[15px] text-inkSoft">
             Broadcasting, scheduling and your studio live in the AvaTOK app. Get it to start earning.
           </p>
-          <div class="pt-1"><a href="/explore" class={ctaBlue}>Learn more</a></div>
+          <div class="pt-1"><a href="/marketplace" class={ctaBlue}>Learn more</a></div>
         </div>
       </div>
     </section>

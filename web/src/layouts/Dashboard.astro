@@ -1,0 +1,152 @@
+---
+// Dashboard shell — the signed-in surface, mirroring the Flutter app's
+// AvaShell + AvaSidebar (app/lib/shell/ava_shell.dart, ava_sidebar.dart):
+// a persistent left sidebar (slide-over on mobile) with the profile card, the
+// three featured destinations, a manage section, the apps section and a footer.
+// The marketing Nav is intentionally hidden here (chrome={false}); the dashboard
+// has its own chrome, exactly like the app is sidebar-only when signed in.
+import Base from './Base.astro';
+import SidebarUser from '../islands/shell/SidebarUser.tsx';
+
+export interface Props {
+  title?: string;
+  /** Which sidebar item is active (matches an item `key` below). */
+  active?: string;
+}
+const { title = 'Dashboard · avatok.ai', active = 'overview' } = Astro.props;
+
+// Per-user surface — never edge-cache content.
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+type Item = { key: string; href: string; label: string; chip: string; tone: string };
+
+const featured: Item[] = [
+  { key: 'overview', href: '/dashboard', label: 'Your dashboard', chip: '▦', tone: 'bg-lilac' },
+  { key: 'marketplace', href: '/marketplace', label: 'Marketplace', chip: '▣', tone: 'bg-blue' },
+  { key: 'library', href: '/dashboard/library', label: 'Library', chip: '▤', tone: 'bg-mint' },
+];
+const manage: Item[] = [
+  { key: 'listings', href: '/dashboard/listings', label: 'My listings', chip: '≡', tone: 'bg-card' },
+  { key: 'bookings', href: '/dashboard/bookings', label: 'Bookings', chip: '◷', tone: 'bg-card' },
+  { key: 'wallet', href: '/dashboard/wallet', label: 'Wallet', chip: '⛁', tone: 'bg-card' },
+];
+const apps: Item[] = [
+  { key: 'vision', href: '/vision', label: 'AvaVision', chip: '◉', tone: 'bg-card' },
+  { key: 'live', href: '/marketplace?kind=live', label: 'AvaLive', chip: '◐', tone: 'bg-card' },
+  { key: 'consult', href: '/marketplace?kind=consult', label: 'AvaConsult', chip: '◑', tone: 'bg-card' },
+  { key: 'agent', href: '/marketplace?kind=agent', label: 'AvaVoice', chip: '◎', tone: 'bg-card' },
+];
+
+const rowBase =
+  'flex items-center gap-3 rounded-zineField px-3 py-2.5 no-underline font-body font-extrabold text-[15px] transition-transform duration-zine hover:-translate-y-[1px]';
+const chipBase =
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-zineBadge border-zine border-ink text-[14px] leading-none shadow-zine-xs';
+
+function rowClass(k: string) {
+  return active === k
+    ? `${rowBase} bg-paper2 text-ink border-zine border-ink shadow-zine-xs`
+    : `${rowBase} text-inkSoft hover:text-ink`;
+}
+---
+
+<Base title={title} chrome={false}>
+  <!-- The auth guard lives inside <SidebarUser/> (shares one Clerk provider). -->
+  <div class="min-h-screen bg-paper">
+    <!-- Slim top bar (logo + mobile menu) -->
+    <header class="sticky top-0 z-40 flex items-center gap-3 border-b-zine border-ink bg-paper2 px-4 py-3">
+      <button
+        id="dash-burger"
+        type="button"
+        aria-label="Open menu"
+        class="flex h-9 w-9 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden"
+      >
+        <svg width="18" height="14" viewBox="0 0 18 14" aria-hidden="true">
+          <path d="M1 1h16M1 7h16M1 13h16" stroke="var(--zine-ink)" stroke-width="2.4" stroke-linecap="round"></path>
+        </svg>
+      </button>
+      <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
+        <svg width="24" height="22" viewBox="0 0 26 24" aria-hidden="true">
+          <path d="M3 21 L13 3 L23 21" fill="none" stroke="var(--zine-ink)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"></path>
+          <circle cx="13" cy="16.2" r="1.9" fill="var(--zine-coral)"></circle>
+        </svg>
+        <span class="font-display font-semibold text-[20px] leading-none tracking-[-0.4px] text-ink">ava<span class="text-blueInk">tok</span></span>
+      </a>
+      <a href="/dashboard/listings/new" class="ml-auto rounded-full border-zine border-ink bg-lime px-3.5 py-1.5 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine">
+        + New
+      </a>
+    </header>
+
+    <div class="mx-auto flex max-w-6xl gap-6 px-4 py-6">
+      <!-- Sidebar (static markup; user card + sign-out are an island) -->
+      <aside
+        id="dash-sidebar"
+        class="fixed inset-0 z-50 hidden w-[280px] flex-col gap-5 border-r-zine border-ink bg-paper2 p-4 lg:static lg:z-auto lg:flex lg:w-[260px] lg:shrink-0 lg:rounded-zine lg:border-zine lg:bg-paper2 lg:p-4 lg:shadow-zine-sm"
+      >
+        <button
+          id="dash-close"
+          type="button"
+          aria-label="Close menu"
+          class="ml-auto flex h-8 w-8 items-center justify-center rounded-zineBadge border-zine border-ink bg-card shadow-zine-xs lg:hidden"
+        >✕</button>
+
+        <SidebarUser client:load />
+
+        <nav class="flex flex-col gap-1">
+          {featured.map((i) => (
+            <a href={i.href} class={rowClass(i.key)}>
+              <span class={`${chipBase} ${i.tone}`}>{i.chip}</span>
+              <span>{i.label}</span>
+            </a>
+          ))}
+        </nav>
+
+        <div>
+          <span class="px-1 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkMute">Manage</span>
+          <nav class="mt-1.5 flex flex-col gap-1">
+            {manage.map((i) => (
+              <a href={i.href} class={rowClass(i.key)}>
+                <span class={`${chipBase} ${i.tone}`}>{i.chip}</span>
+                <span>{i.label}</span>
+              </a>
+            ))}
+          </nav>
+        </div>
+
+        <div>
+          <span class="px-1 font-mono font-bold uppercase text-[11px] tracking-[0.1em] text-inkMute">Apps</span>
+          <nav class="mt-1.5 flex flex-col gap-1">
+            {apps.map((i) => (
+              <a href={i.href} class={rowClass(i.key)}>
+                <span class={`${chipBase} ${i.tone}`}>{i.chip}</span>
+                <span>{i.label}</span>
+              </a>
+            ))}
+          </nav>
+        </div>
+
+        <div class="mt-auto flex flex-col gap-1 border-t-zine border-ink pt-3">
+          <a href="/dashboard/settings" class={rowClass('settings')}>
+            <span class={`${chipBase} bg-card`}>⚙</span>
+            <span>Settings</span>
+          </a>
+        </div>
+      </aside>
+
+      <!-- Page content -->
+      <main class="min-w-0 flex-1">
+        <slot />
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const burger = document.getElementById('dash-burger');
+    const sidebar = document.getElementById('dash-sidebar');
+    const close = document.getElementById('dash-close');
+    const open = () => sidebar?.classList.remove('hidden');
+    const hide = () => sidebar?.classList.add('hidden');
+    burger?.addEventListener('click', open);
+    close?.addEventListener('click', hide);
+    sidebar?.querySelectorAll('a').forEach((a) => a.addEventListener('click', hide));
+  </script>
+</Base>

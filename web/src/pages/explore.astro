@@ -1,29 +1,9 @@
 ---
-// Marketplace browse — a light SSR shell that ships fast, then hydrates the
-// ExploreGrid island (`client:visible`). Initial category/kind come from the
-// URL so a shared `/explore?category=music` link lands pre-filtered.
+// `/explore` is the OLD marketplace path. The marketplace now lives at
+// `/marketplace` (mobile-parity IA). Permanent-redirect, preserving any query
+// (?category=, ?kind=) so existing shared links keep working.
 export const prerender = false;
 
-import Base from '../layouts/Base.astro';
-import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
-
-const category = Astro.url.searchParams.get('category') ?? undefined;
-const kind = Astro.url.searchParams.get('kind') ?? undefined;
-
-// Edge-cache the shell; the island fetches fresh data client-side.
-Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+const qs = Astro.url.search; // includes leading "?" or ""
+return Astro.redirect(`/marketplace${qs}`, 301);
 ---
-
-<Base title="Explore · avatok.ai" description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide.">
-  <main class="mx-auto max-w-6xl px-4 py-8">
-    <header class="mb-6">
-      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Marketplace</span>
-      <h1 class="mt-2 font-display font-semibold text-[34px] leading-tight text-ink">Explore</h1>
-      <p class="mt-1 max-w-lg font-body font-bold text-[15px] text-inkSoft">
-        Watch live, book a 1:1, grab an event ticket, or talk to an AI agent — no app required.
-      </p>
-    </header>
-
-    <ExploreGrid client:visible initialCategory={category} initialKind={kind} />
-  </main>
-</Base>
