@@ -26,6 +26,9 @@ BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matche
 BRAIN_RETRO_DELETE = "1"                                    # Phase 9: toggle OFF ⇒ retro-delete indexed items
 POSTHOG_QUERY_HOST = "https://eu.posthog.com"               # investigate() reads (personal key) — EU: project 139917 lives on eu.posthog.com
 POSTHOG_PROJECT_ID = "139917"
+# AvaVision Agentic-Vision snapshot model ("Analyze my form", code execution on).
+# Phase 0 PRICING.md §3 verified the exact id; preview may roll to GA gemini-3-flash.
+AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"
 WALLET_TOPUP_ENABLED = "0"                                  # ⚠️ real money-in OFF pending legal (§10.1)
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 # Clerk JWT verification (public values, not secrets). Enabling these lets the
@@ -288,6 +291,7 @@ BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"
 BRAIN_RETRO_DELETE = "1"
 POSTHOG_QUERY_HOST = "https://eu.posthog.com"
 POSTHOG_PROJECT_ID = "139917"
+AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"   # AvaVision snapshot model (PRICING.md §3)
 WALLET_TOPUP_ENABLED = "1"   # staging: test-mode Stripe ON (2026-06-10)
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"

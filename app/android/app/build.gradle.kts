@@ -82,4 +82,16 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // AvaVision live session (Phase 3): native CameraX preview + on-device vision.
+    // CameraX (preview + image analysis) — VisionCameraView
+    implementation("androidx.camera:camera-core:1.4.0")
+    implementation("androidx.camera:camera-camera2:1.4.0")
+    implementation("androidx.camera:camera-lifecycle:1.4.0")
+    implementation("androidx.camera:camera-view:1.4.0")
+    // MediaPipe Tasks Vision (pose33 / hand / face / object / segmentation)
+    implementation("com.google.mediapipe:tasks-vision:0.10.14")
+    // TFLite (MoveNet single-pose Lightning — default pose engine, iOS-parity)
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 }

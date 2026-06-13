@@ -34,6 +34,7 @@ class RemoteConfig {
   static bool get translationEnabled => _b('translationEnabled', true);
   static bool get translationGroupEnabled => _b('translationGroupEnabled', true);
   static bool get avavoiceEnabled => _b('avavoiceEnabled', true);
+  static bool get avavisionEnabled => _b('avavisionEnabled', true);
   /// AvaAffiliate (PROPOSAL-AVA-AFFILIATE) — default OFF until launch, so a
   /// config-fetch failure never advertises a program the Worker isn't serving.
   static bool get avaAffiliateEnabled => _b('avaAffiliateEnabled', false);

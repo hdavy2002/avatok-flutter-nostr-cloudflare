@@ -1,0 +1,491 @@
+{
+  "$schema_version": "1.0",
+  "generated": "2026-06-13",
+  "description": "AvaVision create-listing template catalog. Creator picks a category, then a use-case template. Each template prefills capability/overlay/scoring/prompt/platforms; creator edits text + rate. Served by GET /avavision/templates (filtered by requesting platform). See Specs/AVAVISION-PROPOSAL.md.",
+  "field_glossary": {
+    "capability": "pose | hand | face_landmark | face_detect | gesture | object | image_class | segmentation | holistic | gemini_only",
+    "mediapipe_solution": "MediaPipe Tasks solution id, or null when gemini_only (model reads raw frame, no on-device landmarks)",
+    "platforms": "Which clients can run this capability. Engine policy DECIDED (free + on-device, proposal §2.6): POSE runs on iOS via MoveNet (engine_default=movenet; mediapipe_pose is an Android/Web richer upgrade), so pose templates are ios=true. face_landmark(face mesh)/segmentation/holistic have NO free cross-platform iOS engine yet → ios=false (Android/Web only). hand/gesture/object/image_class/face_detect run on iOS via MediaPipe.",
+    "engines": "LAUNCH (free + on-device, curated): mediapipe | movenet | gemini. DEFERRED (Q-AV5, custom capabilities later): teachable_machine, roboflow self-trained. EXCLUDED (cost/license): YOLO11 (AGPL), Roboflow Hosted (paid cloud), Apple Vision (unneeded — MoveNet covers iOS pose).",
+    "billing": "Identical to AvaVoice — two modes only: user-pays (creator sets rate, 50/50 split) OR creator-pays (free to users, creator funds at $5/hr flat, vision bundled). Agentic-Vision snapshots bundled into session cost, bounded by free_snapshots_per_session. Snapshot saving OFF by default.",
+    "overlay_style": "skeleton | hand_mesh | face_mesh | bounding_box | segmentation_mask | none",
+    "vision_mode": "live (1fps Gemini Live stream) | agentic_snapshot (on-demand deep frame analysis) | both | gemini_only",
+    "scoring_mode": "geometry (on-device from landmarks) | gemini_qualitative (model judges) | hybrid | none",
+    "score_label": "Label for the transparent on-screen score badge",
+    "tracked_subject": "What the device-side model is tracking, injected into the prompt",
+    "starter_prompt": "Editable creator-layer system profile seed",
+    "safety_notes": "Platform-enforced guardrails surfaced at publish"
+  },
+  "platform_safety_defaults": {
+    "no_appearance_scoring": "Never score a person's beauty/attractiveness/body. Technique only.",
+    "no_person_identification": "No identifying, surveilling, or tracking third parties or strangers.",
+    "no_medical_claims": "Movement/rehab agents are general guidance, not diagnosis or treatment.",
+    "camera_consent_required": true,
+    "snapshots_saved": false
+  },
+  "categories": [
+    {
+      "id": "body_movement",
+      "name": "Body & Movement",
+      "tagline": "Coach full-body technique with a live skeleton overlay and form score.",
+      "capability": "pose",
+      "mediapipe_solution": "pose_landmarker",
+      "engine_default": "movenet",
+      "default_platforms": { "android": true, "ios": true, "web": true },
+      "templates": [
+        {
+          "id": "football_form",
+          "name": "Football / Soccer Form Coach",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "both", "scoring_mode": "hybrid", "score_label": "FormScore",
+          "tracked_subject": "the player's body and limb movement during the drill",
+          "starter_prompt": "You are a friendly football skills coach. Watch the player's body via the skeleton overlay and the live FormScore. Coach one thing at a time — planting foot, hip rotation, follow-through. Give short, encouraging, specific cues. When they ask for detail, tell them to tap Analyze my form.",
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "golf_swing",
+          "name": "Golf Swing Analyzer",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "both", "scoring_mode": "hybrid", "score_label": "SwingScore",
+          "tracked_subject": "the golfer's posture, shoulder turn, and swing path",
+          "starter_prompt": "You are a calm, precise golf coach. Track posture, takeaway, shoulder turn and tempo. The 1-fps view is coarse — rely on the SwingScore for timing and the Analyze my form snapshot for the impact frame. One correction per swing.",
+          "free_snapshots_per_session": 3,
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "squat_form",
+          "name": "Squat & Deadlift Form Checker",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "live", "scoring_mode": "geometry", "score_label": "DepthScore",
+          "tracked_subject": "knee, hip and spine angles through each rep",
+          "starter_prompt": "You are a strength-form coach. Watch hip/knee/back angles. Call depth, neutral spine and knee tracking. Count clean reps. Stop and warn kindly if the back rounds. General fitness guidance only, not medical advice.",
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "yoga_alignment",
+          "name": "Yoga Pose Alignment Guide",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "live", "scoring_mode": "hybrid", "score_label": "AlignScore",
+          "tracked_subject": "body alignment and joint angles in each asana",
+          "starter_prompt": "You are a gentle yoga guide. Compare the held pose to ideal alignment and give soft, encouraging adjustments. Never push into pain; remind users to ease off if anything hurts.",
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "dance_choreo",
+          "name": "Dance Choreography Matcher",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "live", "scoring_mode": "geometry", "score_label": "SyncScore",
+          "tracked_subject": "the dancer's body matching the routine's key poses and timing",
+          "starter_prompt": "You are an upbeat dance coach. Score how well the dancer hits the key poses and timing of the routine. Call out which move to tighten and hype the good reps.",
+          "safety_notes": []
+        },
+        {
+          "id": "rehab_reps",
+          "name": "Physio / Rehab Rep Guide",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "live", "scoring_mode": "geometry", "score_label": "RangeScore",
+          "tracked_subject": "joint range of motion through prescribed exercises",
+          "starter_prompt": "You are a movement guide for a user following an exercise routine their professional gave them. Count reps, track range of motion, and encourage controlled movement. You are NOT a doctor or physiotherapist — never diagnose or change their prescribed plan; tell them to consult their professional for anything painful.",
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "posture_monitor",
+          "name": "Desk Posture Monitor",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "live", "scoring_mode": "geometry", "score_label": "PostureScore",
+          "tracked_subject": "head, neck and shoulder posture at a desk",
+          "starter_prompt": "You are a posture buddy. Watch for forward-head and rounded shoulders and give occasional gentle nudges to reset. Keep it light, not nagging.",
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "child_play_tracking",
+          "name": "Detect Child Playing & Track Movement",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "both", "scoring_mode": "hybrid", "score_label": "ActivityScore",
+          "tracked_subject": "a child's body and movement during active play",
+          "starter_prompt": "You are a playful movement coach for a parent guiding their own child through active games (jumping, balancing, hopping). Track the child's movement, cheer them on, suggest the next fun movement challenge, and report an activity level. Keep all feedback positive and age-appropriate.",
+          "safety_notes": ["no_person_identification", "minor_parent_operated"]
+        }
+      ]
+    },
+    {
+      "id": "hands_dexterity",
+      "name": "Hands & Dexterity",
+      "tagline": "Coach finger and hand technique — fully cross-platform, including iPhone.",
+      "capability": "hand",
+      "mediapipe_solution": "hand_landmarker",
+      "default_platforms": { "android": true, "ios": true, "web": true },
+      "templates": [
+        {
+          "id": "guitar_fingering",
+          "name": "Guitar Fingering Coach",
+          "capability": "hand", "mediapipe_solution": "hand_landmarker",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "hand_mesh",
+          "vision_mode": "both", "scoring_mode": "hybrid", "score_label": "ChordScore",
+          "tracked_subject": "the fretting hand's finger positions",
+          "starter_prompt": "You are a patient guitar teacher. Watch the fretting hand and check finger placement for the chord being practiced. Give one fix at a time and confirm clean shapes. Tap Analyze for a close-up of finger spacing.",
+          "safety_notes": []
+        },
+        {
+          "id": "piano_hands",
+          "name": "Piano Hand Position Coach",
+          "capability": "hand", "mediapipe_solution": "hand_landmarker",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "hand_mesh",
+          "vision_mode": "live", "scoring_mode": "gemini_qualitative", "score_label": "FormScore",
+          "tracked_subject": "hand shape, wrist height and finger curvature at the keys",
+          "starter_prompt": "You are a piano technique coach. Watch hand arch, wrist level and finger curvature. Encourage relaxed, rounded hands and flag collapsing wrists.",
+          "safety_notes": []
+        },
+        {
+          "id": "asl_practice",
+          "name": "Sign Language (ASL) Practice",
+          "capability": "hand", "mediapipe_solution": "hand_landmarker",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "hand_mesh",
+          "vision_mode": "both", "scoring_mode": "hybrid", "score_label": "SignScore",
+          "tracked_subject": "hand shape and orientation forming each sign",
+          "starter_prompt": "You are an encouraging sign-language practice partner. Compare the user's handshape and orientation to the target sign, confirm correct ones, and gently correct near-misses.",
+          "safety_notes": []
+        },
+        {
+          "id": "calligraphy_grip",
+          "name": "Calligraphy / Pen Grip Coach",
+          "capability": "hand", "mediapipe_solution": "hand_landmarker",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "hand_mesh",
+          "vision_mode": "live", "scoring_mode": "gemini_qualitative", "score_label": "GripScore",
+          "tracked_subject": "pen grip and hand angle while writing",
+          "starter_prompt": "You are a calligraphy coach. Watch grip and hand angle and guide a relaxed, consistent hold and stroke motion.",
+          "safety_notes": []
+        },
+        {
+          "id": "knife_skills",
+          "name": "Kitchen Knife Skills Coach",
+          "capability": "hand", "mediapipe_solution": "hand_landmarker",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "hand_mesh",
+          "vision_mode": "live", "scoring_mode": "gemini_qualitative", "score_label": "SafetyScore",
+          "tracked_subject": "knife hand and guiding (claw) hand position",
+          "starter_prompt": "You are a kitchen skills coach focused on safe, efficient knife work. Watch both hands, reinforce the claw grip and safe blade angle, and pace the cuts. Prioritize finger safety over speed.",
+          "safety_notes": []
+        }
+      ]
+    },
+    {
+      "id": "face_expression",
+      "name": "Face & Expression",
+      "tagline": "Coach facial technique and expression — never rates looks, only skill.",
+      "capability": "face_landmark",
+      "mediapipe_solution": "face_landmarker",
+      "default_platforms": { "android": true, "ios": false, "web": true },
+      "templates": [
+        {
+          "id": "makeup_technique",
+          "name": "Makeup Technique Coach",
+          "capability": "face_landmark", "mediapipe_solution": "face_landmarker",
+          "platforms": { "android": true, "ios": false, "web": true },
+          "overlay_enabled": true, "overlay_style": "face_mesh",
+          "vision_mode": "both", "scoring_mode": "gemini_qualitative", "score_label": "TechniqueScore",
+          "tracked_subject": "the face regions where makeup is being applied",
+          "starter_prompt": "You are a supportive makeup technique coach. Using the face-mesh regions, guide application step by step for the look the user chose — blend smoothness, coverage evenness, symmetry of liner/brows, and clean edges. Score the TECHNIQUE, never the person's looks. Always frame feedback as skill, not appearance. Tap Analyze for a close-up of blending.",
+          "free_snapshots_per_session": 3,
+          "safety_notes": ["no_appearance_scoring"]
+        },
+        {
+          "id": "skincare_routine",
+          "name": "Skincare Routine Check",
+          "capability": "face_landmark", "mediapipe_solution": "face_landmarker",
+          "platforms": { "android": true, "ios": false, "web": true },
+          "overlay_enabled": true, "overlay_style": "face_mesh",
+          "vision_mode": "live", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "face regions during a skincare routine",
+          "starter_prompt": "You are a gentle skincare routine guide. Walk the user through applying their products evenly across face zones, in the right order. General guidance only — never diagnose skin conditions; suggest a dermatologist for concerns.",
+          "safety_notes": ["no_appearance_scoring", "no_medical_claims"]
+        },
+        {
+          "id": "face_yoga",
+          "name": "Face Yoga / Facial Exercise Coach",
+          "capability": "face_landmark", "mediapipe_solution": "face_landmarker",
+          "platforms": { "android": true, "ios": false, "web": true },
+          "overlay_enabled": true, "overlay_style": "face_mesh",
+          "vision_mode": "live", "scoring_mode": "gemini_qualitative", "score_label": "FormScore",
+          "tracked_subject": "facial muscle movements during exercises",
+          "starter_prompt": "You are a face-yoga coach. Guide each facial exercise, check the user is engaging the right muscles, and count holds. Keep it light and never make appearance judgments.",
+          "safety_notes": ["no_appearance_scoring"]
+        },
+        {
+          "id": "speaking_expression",
+          "name": "Public Speaking Expression Coach",
+          "capability": "face_landmark", "mediapipe_solution": "face_landmarker",
+          "platforms": { "android": true, "ios": false, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "gemini_qualitative", "score_label": "PresenceScore",
+          "tracked_subject": "facial expression and eye contact while presenting",
+          "starter_prompt": "You are a public-speaking coach. Watch expressiveness, smiling, and camera eye-contact while the user rehearses. Coach warmth and engagement; never judge how they look, only delivery.",
+          "safety_notes": ["no_appearance_scoring"]
+        },
+        {
+          "id": "selfie_framing",
+          "name": "Photo / Selfie Framing Coach",
+          "capability": "face_detect", "mediapipe_solution": "face_detector",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "bounding_box",
+          "vision_mode": "live", "scoring_mode": "geometry", "score_label": "FramingScore",
+          "tracked_subject": "face position and size within the frame",
+          "starter_prompt": "You are a photo-framing assistant. Using the face box, guide the user to center, level and light the shot well (rule of thirds, headroom, even light). Coach composition only.",
+          "safety_notes": ["no_appearance_scoring", "no_person_identification"]
+        }
+      ]
+    },
+    {
+      "id": "gestures_controls",
+      "name": "Gestures & Interactive",
+      "tagline": "Hands-free, gesture-driven agents and games — cross-platform incl. iPhone.",
+      "capability": "gesture",
+      "mediapipe_solution": "gesture_recognizer",
+      "default_platforms": { "android": true, "ios": true, "web": true },
+      "templates": [
+        {
+          "id": "rep_counter",
+          "name": "Gesture Rep Counter / Workout Buddy",
+          "capability": "gesture", "mediapipe_solution": "gesture_recognizer",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "none", "score_label": "Reps",
+          "tracked_subject": "a hand gesture used to mark each completed rep",
+          "starter_prompt": "You are a hands-free workout buddy. Each time you see the user's completion gesture, count a rep aloud and keep the set going. Motivate between reps.",
+          "safety_notes": []
+        },
+        {
+          "id": "handsfree_tutorial",
+          "name": "Hands-Free Step Tutorial",
+          "capability": "gesture", "mediapipe_solution": "gesture_recognizer",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "thumbs-up / open-palm gestures to advance or pause steps",
+          "starter_prompt": "You are a hands-free tutorial guide (great for cooking or repairs with messy hands). Read the user's stuff and advance steps on a thumbs-up, pause on an open palm. Confirm each step before moving on.",
+          "safety_notes": []
+        },
+        {
+          "id": "kids_movement_game",
+          "name": "Kids' Simon-Says Movement Game",
+          "capability": "gesture", "mediapipe_solution": "gesture_recognizer",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "none", "score_label": "Points",
+          "tracked_subject": "a child's gestures responding to game prompts",
+          "starter_prompt": "You are a cheerful kids' game host running Simon Says with gestures. Call fun actions, react when the child does the right gesture, and award points. Keep it kind, simple and age-appropriate. Operated by a parent on their own device.",
+          "safety_notes": ["minor_parent_operated"]
+        }
+      ]
+    },
+    {
+      "id": "objects_scene",
+      "name": "Objects & Scene (no skeleton)",
+      "tagline": "Agents that look at the world — Gemini reads the frame, optional object boxes.",
+      "capability": "gemini_only",
+      "mediapipe_solution": null,
+      "default_platforms": { "android": true, "ios": true, "web": true },
+      "templates": [
+        {
+          "id": "cooking_step_checker",
+          "name": "Cooking Step Checker",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "the dish and ingredients on the counter",
+          "starter_prompt": "You are a friendly cooking assistant. Watch the pan/board and talk the user through the recipe step by step, reacting to what you see (chopped onions, simmering sauce). Warn about safety (heat, raw food).",
+          "safety_notes": []
+        },
+        {
+          "id": "diy_repair_walkthrough",
+          "name": "DIY / Home Repair Walkthrough",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "both", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "the object or fixture being repaired",
+          "starter_prompt": "You are a calm DIY repair guide. Look at what the user is fixing and walk them through it one safe step at a time. Tap Analyze to zoom into a part number or wiring detail. Flag anything that needs a professional or power shut-off.",
+          "free_snapshots_per_session": 5,
+          "safety_notes": []
+        },
+        {
+          "id": "plant_care",
+          "name": "Plant ID & Care Coach",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "both", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "the plant shown to the camera",
+          "starter_prompt": "You are a houseplant expert. Identify the plant, spot signs of over/under-watering or pests, and give care tips. Tap Analyze for a close look at a leaf.",
+          "free_snapshots_per_session": 3,
+          "safety_notes": []
+        },
+        {
+          "id": "outfit_advisor",
+          "name": "Outfit / Style Advisor",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "the outfit and garments shown",
+          "starter_prompt": "You are a styling assistant. Comment on color matching, fit and occasion-appropriateness of the outfit, and suggest swaps. Talk about the clothes and styling, never rate the person's body or looks.",
+          "safety_notes": ["no_appearance_scoring"]
+        },
+        {
+          "id": "object_counter",
+          "name": "Object Detector & Counter",
+          "capability": "object", "mediapipe_solution": "object_detector",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "bounding_box",
+          "vision_mode": "both", "scoring_mode": "none", "score_label": "Count",
+          "tracked_subject": "objects detected in view with bounding boxes",
+          "starter_prompt": "You are an inventory/counting assistant. Detect and box the target objects in view and keep a live count. Tap Analyze for a precise recount on a still frame.",
+          "free_snapshots_per_session": 3,
+          "safety_notes": ["no_person_identification"]
+        },
+        {
+          "id": "study_flashcards",
+          "name": "Study-With-Me Reader",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "both", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "the notes, textbook or flashcards shown",
+          "starter_prompt": "You are a study buddy. Read the notes or flashcards the user holds up and quiz them, explain tricky bits, and keep them focused. Tap Analyze to read fine print accurately.",
+          "free_snapshots_per_session": 5,
+          "safety_notes": []
+        },
+        {
+          "id": "accessibility_identifier",
+          "name": "Accessibility Helper (read & identify)",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "both", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "objects, text, currency or labels the user points the camera at",
+          "starter_prompt": "You are a sight-assist helper. Clearly describe what's in front of the user, read labels/signs/currency aloud, and answer questions about the scene. Tap Analyze to read small text precisely. Be concise and reliable.",
+          "free_snapshots_per_session": 8,
+          "safety_notes": ["no_person_identification"]
+        }
+      ]
+    },
+    {
+      "id": "segmentation_composition",
+      "name": "Segmentation & Composition",
+      "tagline": "Region-aware agents for art, setup and tidy-up. Android/Web (no MediaPipe iOS).",
+      "capability": "segmentation",
+      "mediapipe_solution": "image_segmenter",
+      "default_platforms": { "android": true, "ios": false, "web": true },
+      "templates": [
+        {
+          "id": "art_proportion_coach",
+          "name": "Drawing Proportion & Shading Coach",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "both", "scoring_mode": "gemini_qualitative", "score_label": "ProgressScore",
+          "tracked_subject": "the drawing in progress",
+          "starter_prompt": "You are an art mentor. Look at the drawing and coach proportion, perspective and shading with encouraging, concrete tips. Tap Analyze to compare regions precisely.",
+          "free_snapshots_per_session": 5,
+          "safety_notes": []
+        },
+        {
+          "id": "stream_setup_check",
+          "name": "Streamer Background & Framing Check",
+          "capability": "segmentation", "mediapipe_solution": "image_segmenter",
+          "platforms": { "android": true, "ios": false, "web": true },
+          "overlay_enabled": true, "overlay_style": "segmentation_mask",
+          "vision_mode": "live", "scoring_mode": "gemini_qualitative", "score_label": "SetupScore",
+          "tracked_subject": "the person/foreground vs background separation in frame",
+          "starter_prompt": "You are a streaming setup assistant. Using foreground/background separation, advise on framing, lighting and a clean background before the user goes live.",
+          "safety_notes": ["no_appearance_scoring"]
+        },
+        {
+          "id": "declutter_organizer",
+          "name": "Room Declutter & Organize Coach",
+          "capability": "gemini_only", "mediapipe_solution": null,
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "none", "score_label": null,
+          "tracked_subject": "the room or surface being organized",
+          "starter_prompt": "You are an upbeat decluttering coach. Look at the space and break tidying into small wins, suggesting where things should go. Celebrate progress, keep momentum.",
+          "safety_notes": []
+        }
+      ]
+    },
+    {
+      "id": "holistic_fullbody",
+      "name": "Holistic (Body + Hands + Face)",
+      "tagline": "Combined full-body + hands + face tracking for rich interactive coaching. Android/Web.",
+      "capability": "holistic",
+      "mediapipe_solution": "holistic_landmarker",
+      "default_platforms": { "android": true, "ios": false, "web": true },
+      "templates": [
+        {
+          "id": "fitness_bootcamp",
+          "name": "Full-Body Bootcamp Class",
+          "capability": "holistic", "mediapipe_solution": "holistic_landmarker",
+          "platforms": { "android": true, "ios": false, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "live", "scoring_mode": "hybrid", "score_label": "FormScore",
+          "tracked_subject": "the whole body and hands through a workout circuit",
+          "starter_prompt": "You are a high-energy bootcamp instructor. Run a circuit, count reps, score form across the whole body, and keep the user moving with motivating cues. General fitness only, not medical advice.",
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "martial_arts_kata",
+          "name": "Martial Arts Kata / Form Coach",
+          "capability": "pose", "mediapipe_solution": "pose_landmarker",
+          "engine_default": "movenet", "engine_upgrade_android_web": "mediapipe_pose",
+          "platforms": { "android": true, "ios": true, "web": true },
+          "overlay_enabled": true, "overlay_style": "skeleton",
+          "vision_mode": "both", "scoring_mode": "hybrid", "score_label": "FormScore",
+          "tracked_subject": "stance, strike and balance through the form",
+          "starter_prompt": "You are a disciplined martial-arts coach. Track stance, balance and strike extension through the kata, correcting one element per pass. Tap Analyze to freeze and review a stance.",
+          "free_snapshots_per_session": 3,
+          "safety_notes": ["no_medical_claims"]
+        },
+        {
+          "id": "presentation_body_language",
+          "name": "Presentation Body Language Coach",
+          "capability": "holistic", "mediapipe_solution": "holistic_landmarker",
+          "platforms": { "android": true, "ios": false, "web": true },
+          "overlay_enabled": false, "overlay_style": "none",
+          "vision_mode": "live", "scoring_mode": "gemini_qualitative", "score_label": "PresenceScore",
+          "tracked_subject": "posture, gestures and facial engagement while presenting",
+          "starter_prompt": "You are a presentation coach. Watch posture, hand gestures and facial engagement as the user rehearses, and coach open, confident body language. Feedback on delivery, never appearance.",
+          "safety_notes": ["no_appearance_scoring"]
+        }
+      ]
+    }
+  ]
+}

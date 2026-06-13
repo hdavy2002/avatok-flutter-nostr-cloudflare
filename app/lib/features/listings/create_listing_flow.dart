@@ -11,6 +11,7 @@ import '../../core/listings_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avavoice/studio/agent_form_flow.dart';
+import '../avavision/studio/agent_form_flow.dart' as avavision;
 import '../explore/listing_detail.dart';
 import '../explore/widgets.dart';
 import '../identity/identity_gate.dart';
@@ -143,6 +144,14 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const AgentFormFlow()),
+      );
+      return;
+    }
+    if (_step == 0 && _kind == 'ai_vision_agent') {
+      Analytics.capture('listing_pipeline_ai_vision_agent_handoff');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const avavision.AgentFormFlow()),
       );
       return;
     }
@@ -366,6 +375,10 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
         _radioCard('ai_agent', 'AI voice agent',
             'A Gemini-powered voice agent callers can talk to 24/7 (AvaVoice)',
             PhosphorIcons.robot(PhosphorIconsStyle.bold), Zine.blueInk),
+        const SizedBox(height: 10),
+        _radioCard('ai_vision_agent', 'AI vision agent',
+            'A camera coach that SEES the user — form, technique, live score (AvaVision)',
+            PhosphorIcons.eye(PhosphorIconsStyle.bold), Zine.lilac),
       ]);
 
   Widget _radioCard(String value, String title, String sub, IconData icon, Color accent) {

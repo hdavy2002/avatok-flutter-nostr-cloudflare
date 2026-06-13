@@ -35,6 +35,7 @@ const kAppRegistry = <AppEntry>[
   AppEntry('avalive', 'AvaLive', 'Live streaming', Icons.sensors, Color(0xFFFF3B30)),
   AppEntry('avaconsult', 'AvaConsult', 'Paid sessions', Icons.video_camera_front, Color(0xFF22C9C0)),
   AppEntry('avavoice', 'AvaVoice', 'AI voice agents', Icons.mic, Color(0xFFA06AF0)),
+  AppEntry('avavision', 'AvaVision', 'AI vision coaches', Icons.visibility, Color(0xFFA06AF0)),
   AppEntry('avainbox', 'AvaInbox', 'All messages, one inbox', Icons.inbox, Color(0xFF4F8DFD)),
   AppEntry('avachat', 'AvaChat', 'Your personal AI', Icons.auto_awesome, Color(0xFFA06AF0)),
   AppEntry('avaaffiliate', 'AvaAffiliate', 'Earn 10% for life', Icons.campaign, Color(0xFFF97316)),

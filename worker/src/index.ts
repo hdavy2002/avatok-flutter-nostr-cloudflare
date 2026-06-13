@@ -41,6 +41,18 @@ import {
   avavoiceAvailability, avavoiceStats, avavoiceBook, avavoiceMyBookings, avavoiceCancelBooking,
   avavoiceCallNow, avavoiceSessionStart, avavoiceHeartbeat, avavoiceSessionStop,
 } from "./routes/avavoice";
+import {
+  avavisionTemplates, avavisionVoices, avavisionMarketplace, avavisionMine, avavisionCreateAgent,
+  avavisionGetAgent, avavisionUpdateAgent, avavisionPublish, avavisionDeleteAgent, avavisionUploadFile,
+  avavisionDeleteFile, avavisionAvailability, avavisionStats, avavisionBook, avavisionMyBookings,
+  avavisionCancelBooking, avavisionCallNow, avavisionSessionStart, avavisionSessionToken,
+  avavisionHeartbeat, avavisionSessionStop, avavisionSnapshot,
+} from "./routes/avavision";
+import {
+  adminOverview, adminLive, adminAgents, adminHealth, adminAnalytics, adminAuditLog,
+  adminUserSearch, adminAlerts, adminAlertAck, adminAlertResolve, adminAlertEvaluate,
+  adminAlertRules, adminAlertRuleMutate, adminRoles, adminRoleSet,
+} from "./routes/admin_dashboard";
 import { marketplaceStub } from "./routes/stubs";
 import { verseSummary, verseAnnounce, verseStatement, reviewReply } from "./routes/verse";
 import {
@@ -238,6 +250,23 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/tax-export" && req.method === "GET") return await adminTaxExport(req, env);
       if (p === "/api/admin/escrow/hold" && req.method === "POST") return await adminEscrowHold(req, env);
       if (p === "/api/admin/escrow/release" && req.method === "POST") return await adminEscrowRelease(req, env);
+
+      // --- AvaAdmin dashboard (Phase 6) — read-mostly aggregation + alerts/roles. requireAdmin enforced inside. ---
+      if (p === "/api/admin/overview" && req.method === "GET") return await adminOverview(req, env);
+      if (p === "/api/admin/live" && req.method === "GET") return await adminLive(req, env);
+      if (p === "/api/admin/agents" && req.method === "GET") return await adminAgents(req, env);
+      if (p === "/api/admin/health" && req.method === "GET") return await adminHealth(req, env);
+      if (p === "/api/admin/analytics" && req.method === "GET") return await adminAnalytics(req, env);
+      if (p === "/api/admin/audit" && req.method === "GET") return await adminAuditLog(req, env);
+      if (p === "/api/admin/users/search" && req.method === "GET") return await adminUserSearch(req, env);
+      if (p === "/api/admin/alerts" && req.method === "GET") return await adminAlerts(req, env);
+      if (p === "/api/admin/alerts/evaluate" && req.method === "POST") return await adminAlertEvaluate(req, env);
+      { const m = p.match(/^\/api\/admin\/alerts\/([A-Za-z0-9-]{1,64})\/ack$/); if (m && req.method === "POST") return await adminAlertAck(req, env, m[1]); }
+      { const m = p.match(/^\/api\/admin\/alerts\/([A-Za-z0-9-]{1,64})\/resolve$/); if (m && req.method === "POST") return await adminAlertResolve(req, env, m[1]); }
+      if (p === "/api/admin/alert-rules" && (req.method === "GET" || req.method === "POST")) return await adminAlertRules(req, env);
+      { const m = p.match(/^\/api\/admin\/alert-rules\/([A-Za-z0-9-]{1,64})$/); if (m && (req.method === "PUT" || req.method === "DELETE")) return await adminAlertRuleMutate(req, env, m[1]); }
+      if (p === "/api/admin/roles" && req.method === "GET") return await adminRoles(req, env);
+      { const m = p.match(/^\/api\/admin\/roles\/([A-Za-z0-9_-]{1,64})$/); if (m && req.method === "PUT") return await adminRoleSet(req, env, m[1]); }
       {
         const aa = p.match(/^\/api\/admin\/account\/([A-Za-z0-9_-]{1,64})$/);
         if (aa && req.method === "GET") return await adminAccount(req, env, aa[1]);
@@ -389,6 +418,41 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           if (req.method === "GET") return await avavoiceGetAgent(req, env, ag[1]);
           if (req.method === "PUT") return await avavoiceUpdateAgent(req, env, ag[1]);
           if (req.method === "DELETE") return await avavoiceDeleteAgent(req, env, ag[1]);
+        }
+      }
+
+      // --- AvaVision: creator-built AI VISION coaching agents (Specs/AVAVISION-PROPOSAL.md) ---
+      if (p === "/api/avavision/templates" && req.method === "GET") return avavisionTemplates(req, env);
+      if (p === "/api/avavision/voices" && req.method === "GET") return avavisionVoices();
+      if (p === "/api/avavision/marketplace" && req.method === "GET") return await avavisionMarketplace(req, env);
+      if (p === "/api/avavision/agents/mine" && req.method === "GET") return await avavisionMine(req, env);
+      if (p === "/api/avavision/agents" && req.method === "POST") return await avavisionCreateAgent(req, env);
+      if (p === "/api/avavision/bookings" && req.method === "POST") return await avavisionBook(req, env);
+      if (p === "/api/avavision/bookings/mine" && req.method === "GET") return await avavisionMyBookings(req, env);
+      if (p === "/api/avavision/calls/now" && req.method === "POST") return await avavisionCallNow(req, env);
+      if (p === "/api/avavision/sessions/start" && req.method === "POST") return await avavisionSessionStart(req, env);
+      if (p === "/api/avavision/sessions/token" && req.method === "POST") return await avavisionSessionToken(req, env);
+      if (p === "/api/avavision/sessions/heartbeat" && req.method === "POST") return await avavisionHeartbeat(req, env);
+      if (p === "/api/avavision/sessions/stop" && req.method === "POST") return await avavisionSessionStop(req, env);
+      if (p === "/api/avavision/snapshot" && req.method === "POST") return await avavisionSnapshot(req, env);
+      {
+        const bk = p.match(/^\/api\/avavision\/bookings\/([A-Za-z0-9-]{1,64})\/cancel$/);
+        if (bk && req.method === "POST") return await avavisionCancelBooking(req, env, bk[1]);
+        const af = p.match(/^\/api\/avavision\/agents\/([A-Za-z0-9-]{1,64})\/files\/([A-Za-z0-9-]{1,64})$/);
+        if (af && req.method === "DELETE") return await avavisionDeleteFile(req, env, af[1], af[2]);
+        const aa = p.match(/^\/api\/avavision\/agents\/([A-Za-z0-9-]{1,64})\/(publish|unpublish|files|availability|stats)$/);
+        if (aa) {
+          if (aa[2] === "publish" && req.method === "POST") return await avavisionPublish(req, env, aa[1], true);
+          if (aa[2] === "unpublish" && req.method === "POST") return await avavisionPublish(req, env, aa[1], false);
+          if (aa[2] === "files" && req.method === "POST") return await avavisionUploadFile(req, env, aa[1]);
+          if (aa[2] === "availability" && req.method === "GET") return await avavisionAvailability(req, env, aa[1]);
+          if (aa[2] === "stats" && req.method === "GET") return await avavisionStats(req, env, aa[1]);
+        }
+        const ag = p.match(/^\/api\/avavision\/agents\/([A-Za-z0-9-]{1,64})$/);
+        if (ag) {
+          if (req.method === "GET") return await avavisionGetAgent(req, env, ag[1]);
+          if (req.method === "PUT") return await avavisionUpdateAgent(req, env, ag[1]);
+          if (req.method === "DELETE") return await avavisionDeleteAgent(req, env, ag[1]);
         }
       }
 
