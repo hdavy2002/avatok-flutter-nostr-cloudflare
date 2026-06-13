@@ -1,9 +1,9 @@
 ---
-// `/explore` is an OLD marketplace path. The marketplace now lives at the site
-// root `/`. Permanent-redirect, preserving any query (?category=, ?kind=) so
-// existing shared links keep working.
+// `/explore` is the OLD marketplace path. The marketplace now lives at
+// `/marketplace` (mobile-parity IA). Permanent-redirect, preserving any query
+// (?category=, ?kind=) so existing shared links keep working.
 export const prerender = false;
 
 const qs = Astro.url.search; // includes leading "?" or ""
-return Astro.redirect(`/${qs}`, 301);
+return Astro.redirect(`/marketplace${qs}`, 301);
 ---

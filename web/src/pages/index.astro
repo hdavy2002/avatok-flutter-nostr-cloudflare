@@ -1,107 +1,147 @@
 ---
-// avatok.ai landing — the marketplace browse surface (formerly /marketplace) is
-// now the home page. Hero ("Watch live, book a 1:1, or talk to their AI"), the
-// live-now rail, category tiles, a for-fans/for-creators split, then the live
-// listings search + grid. Mirrors the app's AvaExplore home. Shared SiteHeader/
-// SiteFooter chrome via Base. Light SSR shell + hydrated islands.
-export const prerender = false;
+// avatok.ai home — the full marketing landing, ported 1:1 from the standalone
+// marketing/ site (the editorial/zine "All your apps. One you." page with the
+// app grid, downloads and waitlist capture). Source of truth is themeContent.js
+// (BODY + SCRIPT), copied here as lib/marketingContent.js, with the marketing
+// styles inlined. This is a fully static page (no Base chrome — the marketing
+// markup ships its own header + footer). The Astro app keeps all its other
+// routes (/marketplace, /watch, /book, /sign-in, /dashboard, …).
+export const prerender = true;
 
-import Base from '../layouts/Base.astro';
-import LiveNowRail from '../islands/marketplace/LiveNowRail.tsx';
-import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
-import { getCategories } from '../islands/marketplace/api';
-import type { MarketCategory } from '../islands/marketplace/api';
+import { BODY, SCRIPT } from '../lib/marketingContent.js';
+import marketingCss from '../styles/marketing.css?raw';
 
-const category = Astro.url.searchParams.get('category') ?? undefined;
-const kind = Astro.url.searchParams.get('kind') ?? undefined;
+const title = 'avaTOK — The Unified Creator Marketplace · Earn From Day One';
+const description =
+  'avaTOK.ai is the unified creator marketplace where social media creators earn from day one — no waiting to get monetized. Go live, get booked for 1:1 & group consults, launch AI agents, and keep 80%. Payouts via PayPal & Wise.';
 
-let categories: MarketCategory[] = [];
-try {
-  categories = await getCategories();
-} catch {
-  categories = [];
-}
-
-Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-
-const ctaLime =
-  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[18px] leading-none tracking-[-0.2px] bg-lime text-ink';
-const ctaBlue =
-  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[18px] leading-none tracking-[-0.2px] bg-blue text-ink';
+const ldJson = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': 'https://avatok.ai/#organization',
+      name: 'avaTOK',
+      url: 'https://avatok.ai/',
+      logo: 'https://avatok.ai/og.jpg',
+      description:
+        'The unified creator marketplace where social media creators earn from day one and keep 80% of everything they make.',
+      sameAs: [],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://avatok.ai/#website',
+      url: 'https://avatok.ai/',
+      name: 'avaTOK — The Unified Creator Marketplace',
+      description:
+        'Earn from day one — no waiting to get monetized. Go live, get booked, launch AI agents, keep 80%.',
+      publisher: { '@id': 'https://avatok.ai/#organization' },
+      inLanguage: 'en-US',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'avaTOK',
+      applicationCategory: 'SocialNetworkingApplication',
+      operatingSystem: 'Android, iOS, Web',
+      url: 'https://avatok.ai/',
+      image: 'https://avatok.ai/og.jpg',
+      description:
+        'The unified creator marketplace where social media creators earn from day one. Paid live streams, 1:1 and group consults, and AI voice agents that earn while you sleep. Creators keep 80%, payouts via PayPal & Wise.',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'How much do creators keep on avaTOK?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Creators keep 80% and earn from day one — there is no payout threshold or follower count to clear first.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Do I need a minimum number of followers to get monetized?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'No. Unlike other platforms, avaTOK lets you earn from day one — no waiting for 1,000 subscribers or 4,000 views to get monetized.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'How do creators earn on avaTOK?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Go live to paying fans, sell 1:1 and group consultations, and launch an AI voice agent that earns while you sleep — all in one app, with payouts via PayPal and Wise.',
+          },
+        },
+      ],
+    },
+  ],
+};
 ---
 
-<Base
-  title="avaTOK — the creator marketplace · watch live, book a 1:1, talk to their AI"
-  description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide — no app required."
->
-  <main class="mx-auto max-w-6xl px-4">
-    <!-- Hero -->
-    <section class="py-10 sm:py-14">
-      <div class="max-w-2xl">
-        <span class="font-mono font-bold uppercase text-[12px] tracking-[0.12em] text-blueInk">The creator marketplace</span>
-        <h1 class="mt-3 font-display font-semibold text-[40px] leading-[1.05] text-ink sm:text-[52px]">
-          Watch live, book a 1:1, or talk to their AI.
-        </h1>
-        <p class="mt-4 max-w-xl font-body font-bold text-[16px] leading-relaxed text-inkSoft">
-          A fan opens a link and they're in — browse creators, grab an event ticket, sit in a private session,
-          or talk to a voice agent. No install, no friction.
-        </p>
-        <div class="mt-7 flex flex-wrap gap-3">
-          <a href="#listings" class={ctaLime}>Browse the marketplace</a>
-          <a href="/?kind=live" class={ctaBlue}>See who's live</a>
-        </div>
-      </div>
-    </section>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta
+      name="keywords"
+      content="creator marketplace, earn from day one, monetize content, creator monetization, live streaming platform, 1:1 consulting, AI agents for creators, keep 80%, sell to fans, avaTOK"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="author" content="avaTOK" />
+    <meta name="theme-color" content="#f7f3ea" />
+    <link rel="canonical" href="https://avatok.ai/" />
 
-    <!-- Live now rail -->
-    <section class="pb-10">
-      <LiveNowRail client:visible />
-    </section>
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="avaTOK" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://avatok.ai/" />
+    <meta property="og:title" content={title} />
+    <meta
+      property="og:description"
+      content="The unified creator marketplace where social media creators earn from day one — no waiting to get monetized. Go live, get booked, launch AI agents, and keep 80%."
+    />
+    <meta property="og:image" content="https://avatok.ai/og.jpg" />
+    <meta property="og:image:secure_url" content="https://avatok.ai/og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="avaTOK.ai — the unified creator marketplace. Earn from day one. Keep 80% revenue." />
 
-    <!-- Category tiles -->
-    {categories.length > 0 && (
-      <section class="pb-10">
-        <h2 class="mb-4 font-display font-semibold text-[22px] text-ink">Browse by category</h2>
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {categories.map((c) => (
-            <a
-              href={`/?category=${encodeURIComponent(c.id)}#listings`}
-              class="flex flex-col gap-2 rounded-zine border-zine border-ink bg-card p-4 no-underline shadow-zine-sm transition-transform duration-zine ease-out hover:-translate-x-[1px] hover:-translate-y-[1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
-            >
-              <span class="text-[28px] leading-none">{c.emoji ?? '◆'}</span>
-              <span class="font-display font-semibold text-[16px] text-ink">{c.label}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-    )}
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta
+      name="twitter:description"
+      content="Where social media creators earn from day one — no waiting to get monetized. Go live, get booked, launch AI agents, keep 80%."
+    />
+    <meta name="twitter:image" content="https://avatok.ai/og.jpg" />
+    <meta name="twitter:image:alt" content="avaTOK.ai — the unified creator marketplace. Earn from day one. Keep 80% revenue." />
 
-    <!-- For fans / For creators split -->
-    <section class="pb-12">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
-          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For fans</span>
-          <h3 class="font-display font-semibold text-[24px] text-ink">Browse right here</h3>
-          <p class="font-body font-bold text-[15px] text-inkSoft">
-            Everything works in your browser — explore, book and watch without downloading a thing.
-          </p>
-          <div class="pt-1"><a href="#listings" class={ctaLime}>Start browsing</a></div>
-        </div>
-        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-7 shadow-zine">
-          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For creators</span>
-          <h3 class="font-display font-semibold text-[24px] text-ink">Go live from the app</h3>
-          <p class="font-body font-bold text-[15px] text-inkSoft">
-            Broadcasting, scheduling and your studio live in the AvaTOK app. Get it to start earning.
-          </p>
-          <div class="pt-1"><a href="/sign-up" class={ctaBlue}>Become a creator</a></div>
-        </div>
-      </div>
-    </section>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Nunito:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 120 110%22%3E%3Cpath d=%22M 22 95 L 60 15 L 98 95%22 fill=%22none%22 stroke=%22%231FB5B0%22 stroke-width=%2222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3Ccircle cx=%2260%22 cy=%2278%22 r=%228%22 fill=%22%23FF5350%22/%3E%3C/svg%3E"
+    />
 
-    <!-- Live listings grid -->
-    <section id="listings" class="scroll-mt-20 pb-16">
-      <h2 class="mb-5 font-display font-semibold text-[26px] text-ink">Explore listings</h2>
-      <ExploreGrid client:visible initialCategory={category} initialKind={kind} />
-    </section>
-  </main>
-</Base>
+    <style set:html={marketingCss}></style>
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(ldJson)}></script>
+  </head>
+  <body>
+    <div id="root"><div set:html={BODY} /></div>
+    <script is:inline set:html={SCRIPT}></script>
+  </body>
+</html>
