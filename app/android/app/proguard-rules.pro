@@ -14,6 +14,13 @@
 -dontwarn autovalue.**
 -dontwarn com.google.auto.value.**
 
+# Flutter's embedding references the Play Core deferred-components / split-install
+# API (FlutterPlayStoreSplitApplication, PlayStoreDeferredComponentManager). We
+# don't use deferred components and don't depend on Play Core, so these classes
+# are absent — this is Flutter's documented R8 rule to silence them.
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }
+
 # On-device vision engines load classes via JNI/reflection. Keep + dontwarn so a
 # future minify pass can never drop or warn on them.
 -keep class com.google.mediapipe.** { *; }
