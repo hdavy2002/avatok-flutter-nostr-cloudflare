@@ -1,33 +1,106 @@
 ---
-// The marketplace — canonical public browse surface (mirrors the app's AvaExplore
-// home: pinned search, Live-now rail, category chips, the listing grid). A light
-// SSR shell that ships fast then hydrates the ExploreGrid island. Filters come
-// from the URL so a shared `/marketplace?category=music` link lands pre-filtered.
+// The marketplace (pic 2) — the public browse surface. Hero ("Watch live, book
+// a 1:1, or talk to their AI"), the live-now rail, category tiles, a for-fans/
+// for-creators split, then the live listings search + grid. Mirrors the app's
+// AvaExplore home. Light SSR shell + hydrated islands.
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
+import LiveNowRail from '../islands/marketplace/LiveNowRail.tsx';
 import ExploreGrid from '../islands/marketplace/ExploreGrid.tsx';
+import { getCategories } from '../islands/marketplace/api';
+import type { MarketCategory } from '../islands/marketplace/api';
 
 const category = Astro.url.searchParams.get('category') ?? undefined;
 const kind = Astro.url.searchParams.get('kind') ?? undefined;
 
-// Edge-cache the shell; the island fetches fresh data client-side.
+let categories: MarketCategory[] = [];
+try {
+  categories = await getCategories();
+} catch {
+  categories = [];
+}
+
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+
+const ctaLime =
+  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[18px] leading-none tracking-[-0.2px] bg-lime text-ink';
+const ctaBlue =
+  'inline-flex items-center justify-center gap-2.5 select-none no-underline rounded-full border-zine border-ink shadow-zine-sm transition-transform duration-zine ease-out active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed px-7 py-4 font-display font-semibold text-[18px] leading-none tracking-[-0.2px] bg-blue text-ink';
 ---
 
 <Base
   title="Marketplace · avatok.ai"
   description="Browse live streams, 1:1 sessions, events and AI agents from creators worldwide — no app required."
 >
-  <main class="mx-auto max-w-6xl px-4 py-8">
-    <header class="mb-6">
-      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">avatok.ai</span>
-      <h1 class="mt-2 font-display font-semibold text-[34px] leading-tight text-ink">Marketplace</h1>
-      <p class="mt-1 max-w-lg font-body font-bold text-[15px] text-inkSoft">
-        Watch live, book a 1:1, grab an event ticket, or talk to an AI agent — no app required.
-      </p>
-    </header>
+  <main class="mx-auto max-w-6xl px-4">
+    <!-- Hero -->
+    <section class="py-10 sm:py-14">
+      <div class="max-w-2xl">
+        <span class="font-mono font-bold uppercase text-[12px] tracking-[0.12em] text-blueInk">The creator marketplace</span>
+        <h1 class="mt-3 font-display font-semibold text-[40px] leading-[1.05] text-ink sm:text-[52px]">
+          Watch live, book a 1:1, or talk to their AI.
+        </h1>
+        <p class="mt-4 max-w-xl font-body font-bold text-[16px] leading-relaxed text-inkSoft">
+          A fan opens a link and they're in — browse creators, grab an event ticket, sit in a private session,
+          or talk to a voice agent. No install, no friction.
+        </p>
+        <div class="mt-7 flex flex-wrap gap-3">
+          <a href="#listings" class={ctaLime}>Browse the marketplace</a>
+          <a href="/marketplace?kind=live" class={ctaBlue}>See who's live</a>
+        </div>
+      </div>
+    </section>
 
-    <ExploreGrid client:visible initialCategory={category} initialKind={kind} />
+    <!-- Live now rail -->
+    <section class="pb-10">
+      <LiveNowRail client:visible />
+    </section>
+
+    <!-- Category tiles -->
+    {categories.length > 0 && (
+      <section class="pb-10">
+        <h2 class="mb-4 font-display font-semibold text-[22px] text-ink">Browse by category</h2>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {categories.map((c) => (
+            <a
+              href={`/marketplace?category=${encodeURIComponent(c.id)}#listings`}
+              class="flex flex-col gap-2 rounded-zine border-zine border-ink bg-card p-4 no-underline shadow-zine-sm transition-transform duration-zine ease-out hover:-translate-x-[1px] hover:-translate-y-[1px] active:translate-x-[2px] active:translate-y-[2px] active:shadow-zine-pressed"
+            >
+              <span class="text-[28px] leading-none">{c.emoji ?? '◆'}</span>
+              <span class="font-display font-semibold text-[16px] text-ink">{c.label}</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <!-- For fans / For creators split -->
+    <section class="pb-12">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-paper2 p-7 shadow-zine">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For fans</span>
+          <h3 class="font-display font-semibold text-[24px] text-ink">Browse right here</h3>
+          <p class="font-body font-bold text-[15px] text-inkSoft">
+            Everything works in your browser — explore, book and watch without downloading a thing.
+          </p>
+          <div class="pt-1"><a href="#listings" class={ctaLime}>Start browsing</a></div>
+        </div>
+        <div class="flex flex-col gap-3 rounded-zine border-zine border-ink bg-card p-7 shadow-zine">
+          <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">For creators</span>
+          <h3 class="font-display font-semibold text-[24px] text-ink">Go live from the app</h3>
+          <p class="font-body font-bold text-[15px] text-inkSoft">
+            Broadcasting, scheduling and your studio live in the AvaTOK app. Get it to start earning.
+          </p>
+          <div class="pt-1"><a href="/sign-up" class={ctaBlue}>Become a creator</a></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live listings grid -->
+    <section id="listings" class="scroll-mt-20 pb-16">
+      <h2 class="mb-5 font-display font-semibold text-[26px] text-ink">Explore listings</h2>
+      <ExploreGrid client:visible initialCategory={category} initialKind={kind} />
+    </section>
   </main>
 </Base>
