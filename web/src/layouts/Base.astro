@@ -2,6 +2,7 @@
 import '../styles/tokens.css';
 import '../styles/global.css';
 import Nav from '../components/Nav.astro';
+import SiteFooter from '../components/SiteFooter.astro';
 
 export interface Props {
   title?: string;
@@ -51,17 +52,6 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai')
   <body class="min-h-screen bg-paper text-ink font-body">
     {chrome && <Nav />}
     <slot />
-    {
-      chrome && (
-        <footer class="mt-16 border-t-zine border-ink bg-paper2">
-          <div class="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-8">
-            <span class="font-display font-semibold text-[18px] text-ink">avatok.ai</span>
-            <span class="font-mono text-[11px] uppercase tracking-[0.06em] text-inkSoft">
-              Browse · Book · Watch · Consult · Talk
-            </span>
-          </div>
-        </footer>
-      )
-    }
+    {chrome && <SiteFooter />}
   </body>
 </html>

@@ -1,0 +1,92 @@
+---
+// Site footer — replicates the old avatok.ai SiteFooter: a brand block on the
+// left (logo + one-line description + newsletter link) and four link columns
+// (Product / Creators / Company / Legal), then a thin bottom row with the
+// copyright and social links. Static Astro — no JS.
+type FooterLink = { label: string; href: string };
+const cols: { h: string; links: FooterLink[] }[] = [
+  {
+    h: 'Product',
+    links: [
+      { label: 'Live streaming', href: '/marketplace?kind=live' },
+      { label: '1:1 Bookings', href: '/marketplace?kind=consult' },
+      { label: 'Marketplace', href: '/marketplace' },
+      { label: 'AI agents', href: '/vision' },
+    ],
+  },
+  {
+    h: 'Creators',
+    links: [
+      { label: 'Become a creator', href: '/sign-up' },
+      { label: 'Create a listing', href: '/dashboard/listings/new' },
+      { label: 'Your dashboard', href: '/dashboard' },
+      { label: 'Wallet & payouts', href: '/dashboard/wallet' },
+    ],
+  },
+  {
+    h: 'Company',
+    links: [
+      { label: 'About', href: '/#how' },
+      { label: 'Earnings', href: '/#earnings' },
+      { label: 'FAQ', href: '/#faq' },
+      { label: 'Get the app', href: '/#how' },
+    ],
+  },
+  {
+    h: 'Account',
+    links: [
+      { label: 'Log in', href: '/sign-in' },
+      { label: 'Sign up', href: '/sign-up' },
+      { label: 'My bookings', href: '/dashboard/bookings' },
+      { label: 'Settings', href: '/dashboard/settings' },
+    ],
+  },
+];
+const socials = [
+  { label: 'Instagram', href: 'https://instagram.com' },
+  { label: 'TikTok', href: 'https://tiktok.com' },
+  { label: 'YouTube', href: 'https://youtube.com' },
+  { label: 'X', href: 'https://x.com' },
+];
+const year = new Date().getFullYear();
+const colLink = 'block font-body font-bold text-[14px] text-inkSoft hover:text-ink no-underline';
+---
+
+<footer class="mt-20 border-t-zine border-ink bg-paper2">
+  <div class="mx-auto max-w-6xl px-4 py-12">
+    <div class="grid grid-cols-2 gap-8 md:grid-cols-5">
+      <!-- Brand block -->
+      <div class="col-span-2 flex flex-col gap-4 md:col-span-1">
+        <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
+          <img src="/avatok-logo.svg" alt="" width="44" height="40" class="h-[40px] w-auto" />
+          <span class="font-display font-semibold text-[20px] leading-none tracking-[-0.4px] text-ink">ava<span class="text-blueInk">tok</span></span>
+        </a>
+        <p class="font-body font-bold text-[14px] leading-relaxed text-inkSoft">
+          The creator platform for live streaming, 1:1 bookings and AI agents — built so anyone with an
+          audience, or a skill, can get paid.
+        </p>
+        <a href="/#newsletter" class="w-fit border-b-2 border-ink pb-0.5 font-mono font-bold text-[13px] text-ink no-underline">
+          ✦ Get the weekly playbook →
+        </a>
+      </div>
+
+      <!-- Link columns -->
+      {cols.map((c) => (
+        <div class="flex flex-col gap-2.5">
+          <h5 class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-ink">{c.h}</h5>
+          {c.links.map((l) => <a href={l.href} class={colLink}>{l.label}</a>)}
+        </div>
+      ))}
+    </div>
+
+    <!-- Bottom row -->
+    <div class="mt-10 flex flex-col items-start justify-between gap-3 border-t-zine border-ink pt-5 sm:flex-row sm:items-center">
+      <span class="font-mono text-[12px] text-inkSoft">© {year} Avatok, Inc. — Made for creators, everywhere.</span>
+      <div class="flex items-center gap-4">
+        {socials.map((s) => (
+          <a href={s.href} target="_blank" rel="noopener noreferrer" class="font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft hover:text-ink no-underline">{s.label}</a>
+        ))}
+      </div>
+    </div>
+  </div>
+</footer>

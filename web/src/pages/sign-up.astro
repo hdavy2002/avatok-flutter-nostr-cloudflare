@@ -1,0 +1,21 @@
+---
+// Clerk sign-up page (full-account path). Most fans never need this — guest
+// checkout captures email at the point of booking — but creators sign up here
+// to get the dashboard and create listings. Redirects to /dashboard (or ?next).
+export const prerender = false;
+
+import Base from '../layouts/Base.astro';
+import SignUpPanel from '../islands/auth/SignUpPanel.tsx';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Base title="Sign up · avatok.ai" description="Create your avatok.ai account — sell live events, 1:1s, classes and AI agents.">
+  <main class="mx-auto max-w-md px-4 py-12">
+    <header class="mb-6 text-center">
+      <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Join avatok</span>
+      <h1 class="mt-2 font-display font-semibold text-[30px] leading-tight text-ink">Create your account</h1>
+    </header>
+    <SignUpPanel client:load />
+  </main>
+</Base>
