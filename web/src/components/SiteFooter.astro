@@ -1,92 +1,120 @@
 ---
-// Site footer — replicates the old avatok.ai SiteFooter: a brand block on the
-// left (logo + one-line description + newsletter link) and four link columns
-// (Product / Creators / Company / Legal), then a thin bottom row with the
-// copyright and social links. Static Astro — no JS.
-type FooterLink = { label: string; href: string };
-const cols: { h: string; links: FooterLink[] }[] = [
-  {
-    h: 'Product',
-    links: [
-      { label: 'Live streaming', href: '/marketplace?kind=live' },
-      { label: '1:1 Bookings', href: '/marketplace?kind=consult' },
-      { label: 'Marketplace', href: '/marketplace' },
-      { label: 'AI agents', href: '/vision' },
-    ],
-  },
-  {
-    h: 'Creators',
-    links: [
-      { label: 'Become a creator', href: '/sign-up' },
-      { label: 'Create a listing', href: '/dashboard/listings/new' },
-      { label: 'Your dashboard', href: '/dashboard' },
-      { label: 'Wallet & payouts', href: '/dashboard/wallet' },
-    ],
-  },
-  {
-    h: 'Company',
-    links: [
-      { label: 'About', href: '/#how' },
-      { label: 'Earnings', href: '/#earnings' },
-      { label: 'FAQ', href: '/#faq' },
-      { label: 'Get the app', href: '/#how' },
-    ],
-  },
-  {
-    h: 'Account',
-    links: [
-      { label: 'Log in', href: '/sign-in' },
-      { label: 'Sign up', href: '/sign-up' },
-      { label: 'My bookings', href: '/dashboard/bookings' },
-      { label: 'Settings', href: '/dashboard/settings' },
-    ],
-  },
-];
-const socials = [
-  { label: 'Instagram', href: 'https://instagram.com' },
-  { label: 'TikTok', href: 'https://tiktok.com' },
-  { label: 'YouTube', href: 'https://youtube.com' },
-  { label: 'X', href: 'https://x.com' },
-];
-const year = new Date().getFullYear();
-const colLink = 'block font-body font-bold text-[14px] text-inkSoft hover:text-ink no-underline';
+// Universal site footer — the marketing-site footer, ported into the Astro app
+// so every PUBLIC page (sign-in/up, marketplace, blogs, etc.) shares it. It is
+// rendered by Base.astro only when `chrome` is true; the dashboard mounts Base
+// with `chrome={false}`, so this footer never appears inside /dashboard.
+//
+// Self-contained: the styles are scoped to this component and define the few
+// marketing design tokens they need locally, so nothing leaks into app pages.
+// Fonts (Fredoka / Nunito / Space Mono) are already @font-face'd in global.css.
+//
+// In-page anchors from the marketing markup are rewritten to root-absolute
+// (/#section) so they resolve to the home page's sections from any route.
 ---
 
-<footer class="mt-20 border-t-zine border-ink bg-paper2">
-  <div class="mx-auto max-w-6xl px-4 py-12">
-    <div class="grid grid-cols-2 gap-8 md:grid-cols-5">
-      <!-- Brand block -->
-      <div class="col-span-2 flex flex-col gap-4 md:col-span-1">
-        <a href="/" class="flex items-center gap-2 no-underline" aria-label="avatok.ai home">
-          <img src="/avatok-logo.svg" alt="" width="44" height="40" class="h-[40px] w-auto" />
-          <span class="font-display font-semibold text-[20px] leading-none tracking-[-0.4px] text-ink">ava<span class="text-blueInk">tok</span></span>
+<footer class="mkt-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <a class="brand" href="/">
+          <svg class="logo-mark" viewBox="0 0 120 110" aria-hidden="true"><path d="M 22 95 L 60 15 L 98 95" fill="none" stroke="#1FB5B0" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="60" cy="78" r="8" fill="#FF5350"></circle></svg>
+          <span class="wm">ava<span class="tok">TOK</span></span>
         </a>
-        <p class="font-body font-bold text-[14px] leading-relaxed text-inkSoft">
-          The creator platform for live streaming, 1:1 bookings and AI agents — built so anyone with an
-          audience, or a skill, can get paid.
-        </p>
-        <a href="/#newsletter" class="w-fit border-b-2 border-ink pb-0.5 font-mono font-bold text-[13px] text-ink no-underline">
-          ✦ Get the weekly playbook →
-        </a>
-      </div>
-
-      <!-- Link columns -->
-      {cols.map((c) => (
-        <div class="flex flex-col gap-2.5">
-          <h5 class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-ink">{c.h}</h5>
-          {c.links.map((l) => <a href={l.href} class={colLink}>{l.label}</a>)}
+        <p class="foot-desc">The creator marketplace — go live, get booked, launch your AI voice agent, and keep 80% of everything you earn. Real people only.</p>
+        <div class="foot-social">
+          <a class="soc tw" href="/" aria-label="AvaTweet" data-tip="AvaTweet"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7.5L7 21.4V17H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"></path></svg></a>
+          <a class="soc in" href="/" aria-label="AvaLinked" data-tip="AvaLinked"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="7" width="20" height="12.5" rx="2"></rect><path d="M8.5 7V5.6a1.6 1.6 0 0 1 1.6-1.6h3.8a1.6 1.6 0 0 1 1.6 1.6V7h-1.8V5.8h-3.4V7H8.5z"></path></svg></a>
+          <a class="soc yt" href="/" aria-label="AvaTube" data-tip="AvaTube"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm5.5 3.5v7l6-3.5-6-3.5z"></path></svg></a>
+          <a class="soc fb" href="/" aria-label="AvaBook" data-tip="AvaBook"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="8" r="3.3"></circle><path d="M9 12.5c-3.3 0-6 2.2-6 5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5c0-2.8-2.7-5-6-5z"></path><circle cx="17.2" cy="8.8" r="2.5"></circle><path d="M17.2 12.8c-.5 0-1 .08-1.45.22A7.2 7.2 0 0 1 17.5 17.5V20H21a1 1 0 0 0 1-1v-1c0-2.6-2.2-4.7-4.8-4.7z"></path></svg></a>
+          <a class="soc ig" href="/" aria-label="AvaGram" data-tip="AvaGram"><svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M9.2 3l-1.3 2.2H4.5A2.5 2.5 0 0 0 2 7.7V18a2.5 2.5 0 0 0 2.5 2.5h15A2.5 2.5 0 0 0 22 18V7.7a2.5 2.5 0 0 0-2.5-2.5h-3.4L14.8 3H9.2zm2.8 4.8a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4zm0 2.2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z"></path></svg></a>
         </div>
-      ))}
+      </div>
+      <div class="foot-col"><h4>Product</h4><a href="/#apps">All-in-one</a><a href="/#safety">Safety</a><a href="/#agents">AI voice agents</a><a href="/#affiliate">Affiliate</a><a href="/#creators">For creators</a></div>
+      <div class="foot-col"><h4>Company</h4><a href="/">About us</a><a href="/">Careers</a><a href="/">Press</a><a href="/">Blog</a><a href="/">Contact</a></div>
+      <div class="foot-col"><h4>Support</h4><a href="/#faq">Help center</a><a href="/#faq">FAQ</a><a href="/">Report a problem</a><a href="/#safety">Trust &amp; Safety</a><a href="/">Status</a></div>
+      <div class="foot-col"><h4>Legal</h4><a href="/">Privacy Policy</a><a href="/">Terms of Service</a><a href="/">Community Guidelines</a><a href="/">DMCA / Copyright</a><a href="/">Cookie Policy</a></div>
     </div>
 
-    <!-- Bottom row -->
-    <div class="mt-10 flex flex-col items-start justify-between gap-3 border-t-zine border-ink pt-5 sm:flex-row sm:items-center">
-      <span class="font-mono text-[12px] text-inkSoft">© {year} Avatok, Inc. — Made for creators, everywhere.</span>
-      <div class="flex items-center gap-4">
-        {socials.map((s) => (
-          <a href={s.href} target="_blank" rel="noopener noreferrer" class="font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft hover:text-ink no-underline">{s.label}</a>
-        ))}
-      </div>
+    <div class="foot-mid">
+      <span class="flags">🇺🇸 🇮🇳 🇬🇧 🇩🇪 🇻🇳</span>
+      <span>Made with ❤️ by developers across the USA, India, the UK, Germany &amp; Vietnam.</span>
+    </div>
+
+    <div class="foot-bottom">
+      <span>© 2026 <b>AvaGlobal International, Inc.</b> — a Delaware corporation, USA. All rights reserved.</span>
+      <span class="legal"><a href="/">Privacy</a><a href="/">Terms</a><a href="/">Cookies</a><a href="/">DMCA</a></span>
     </div>
   </div>
 </footer>
+
+<style>
+  .mkt-footer {
+    /* local marketing tokens — kept on the footer root so nothing leaks out */
+    --paper: oklch(0.975 0.013 95);
+    --paper-2: oklch(0.955 0.018 92);
+    --card: oklch(0.995 0.004 95);
+    --ink: oklch(0.23 0.018 60);
+    --ink-soft: oklch(0.42 0.02 62);
+    --blue: oklch(0.92 0.085 190);
+    --blue-ink: oklch(0.52 0.12 196);
+    --coral: oklch(0.70 0.19 32);
+    --lime: oklch(0.88 0.18 124);
+    --shadow-sm: 3px 3px 0 var(--ink);
+    --maxw: 1180px;
+
+    border-top: 2.5px solid var(--ink);
+    background: var(--paper-2);
+    padding: 60px 0 34px;
+    font-family: 'Nunito', sans-serif;
+    color: var(--ink);
+  }
+  .mkt-footer a { text-decoration: none; transition: color .15s ease; }
+
+  .mkt-footer .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 26px; }
+
+  .mkt-footer .foot-top { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; gap: 34px; }
+
+  .mkt-footer .foot-brand { max-width: 320px; }
+  .mkt-footer .brand { display: flex; align-items: center; gap: 9px; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 16px; }
+  .mkt-footer .brand .tok { color: var(--blue-ink); }
+  .mkt-footer .brand .logo-mark { width: 34px; height: 32px; flex: none; display: block; }
+
+  .mkt-footer .foot-desc { font-size: 17px; font-weight: 700; color: var(--ink-soft); line-height: 1.5; text-wrap: pretty; }
+
+  .mkt-footer .foot-social { display: flex; gap: 12px; margin-top: 22px; }
+  .mkt-footer .foot-social a { width: 46px; height: 46px; border-radius: 13px; border: 2.5px solid var(--ink); background: var(--card); display: grid; place-items: center; box-shadow: var(--shadow-sm); transition: transform .12s ease, box-shadow .12s ease, background .15s ease; position: relative; color: var(--ink); }
+  .mkt-footer .foot-social a svg { width: 21px; height: 21px; display: block; }
+  .mkt-footer .foot-social a:hover { transform: translate(-2px,-2px); box-shadow: 4px 5px 0 var(--ink); background: var(--lime); }
+  .mkt-footer .foot-social a.tw:hover, .mkt-footer .foot-social a.in:hover, .mkt-footer .foot-social a.fb:hover { background: var(--blue); }
+  .mkt-footer .foot-social a.yt:hover, .mkt-footer .foot-social a.ig:hover { background: var(--coral); color: #fff; }
+  .mkt-footer .foot-social a::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 9px); left: 50%; transform: translateX(-50%) translateY(4px); background: var(--ink); color: var(--paper); font-family: 'Space Mono', monospace; font-weight: 700; font-size: 12px; letter-spacing: 0.02em; padding: 5px 10px; border-radius: 8px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s ease, transform .15s ease; z-index: 5; }
+  .mkt-footer .foot-social a::before { content: ""; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--ink); opacity: 0; transition: opacity .15s ease; }
+  .mkt-footer .foot-social a:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .mkt-footer .foot-social a:hover::before { opacity: 1; }
+
+  .mkt-footer .foot-col { display: flex; flex-direction: column; gap: 12px; }
+  .mkt-footer .foot-col h4 { font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 21px; letter-spacing: -0.01em; color: var(--ink); margin: 0 0 6px; }
+  .mkt-footer .foot-col a { font-weight: 700; font-size: 17px; color: var(--ink-soft); }
+  .mkt-footer .foot-col a:hover { color: var(--blue-ink); }
+
+  .mkt-footer .foot-mid { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 44px 0; padding-top: 32px; border-top: 2px dashed var(--ink); font-size: 18px; font-weight: 800; color: var(--ink); flex-wrap: wrap; text-align: center; }
+  .mkt-footer .foot-mid .flags { font-size: 22px; letter-spacing: 2px; }
+
+  .mkt-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; font-size: 16px; font-weight: 700; color: var(--ink-soft); }
+  .mkt-footer .foot-bottom b { color: var(--ink); }
+  .mkt-footer .foot-bottom .legal { display: flex; gap: 22px; }
+  .mkt-footer .foot-bottom .legal a { color: var(--ink-soft); }
+  .mkt-footer .foot-bottom .legal a:hover { color: var(--blue-ink); }
+
+  @media (max-width: 900px) {
+    .mkt-footer .foot-top { grid-template-columns: 1fr 1fr 1fr; }
+    .mkt-footer .foot-brand { grid-column: 1 / -1; max-width: 460px; }
+  }
+  @media (max-width: 560px) {
+    .mkt-footer { padding: 44px 0 28px; }
+    .mkt-footer .wrap { padding: 0 18px; }
+    .mkt-footer .foot-top { grid-template-columns: 1fr 1fr; gap: 22px; }
+    .mkt-footer .foot-col { min-width: 44%; }
+    .mkt-footer .foot-bottom { font-size: 15.5px; }
+  }
+</style>
