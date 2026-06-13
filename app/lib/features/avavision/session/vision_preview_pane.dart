@@ -11,7 +11,8 @@
 // Public symbol contract (master §6 / Phase-3): VisionPreviewPane is exported
 // unchanged with signature `VisionPreviewPane({required String capability,
 // required String overlayStyle})`.
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, Factory;
+import 'package:flutter/gestures.dart' show OneSequenceGestureRecognizer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 

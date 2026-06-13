@@ -244,7 +244,7 @@ class VisionAgent {
 
   // vision additions (PHASE-1 §A)
   final String templateId, capability, overlayStyle, scoringMode, visionMode, mediaResolution;
-  final String? mediapipeSolution, engineDefault, scoreLabel;
+  final String? mediapipeSolution, engineDefault, engineUpgradeAndroidWeb, scoreLabel;
   final bool overlayEnabled, agenticSnapshotEnabled, saveSnapshots;
   final int freeSnapshotsPerSession;
   final VisionPlatforms platforms;
@@ -280,6 +280,7 @@ class VisionAgent {
         mediaResolution = (j['media_resolution'] ?? 'LOW').toString(),
         mediapipeSolution = j['mediapipe_solution']?.toString(),
         engineDefault = j['engine_default']?.toString(),
+        engineUpgradeAndroidWeb = j['engine_upgrade_android_web']?.toString(),
         scoreLabel = j['score_label']?.toString(),
         overlayEnabled = j['overlay_enabled'] == true,
         agenticSnapshotEnabled = j['agentic_snapshot_enabled'] == true,

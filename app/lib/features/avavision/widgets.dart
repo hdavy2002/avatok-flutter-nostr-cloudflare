@@ -45,7 +45,7 @@ class MiniPill extends StatelessWidget {
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[
-            PhosphorIcon(icon, size: 11, color: fg),
+            PhosphorIcon(icon!, size: 11, color: fg),
             const SizedBox(width: 4),
           ],
           Text(text.toUpperCase(), style: ZineText.tag(size: 9.5, color: fg)),
