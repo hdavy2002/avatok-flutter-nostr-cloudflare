@@ -5,11 +5,12 @@
  * Phase 0's ClerkProvider (ClerkIsland). When no Clerk key is configured yet we
  * fall back to a friendly note + a link back to browsing.
  */
-import { SignIn } from '@clerk/clerk-react';
+import { SignIn, ClerkLoading, ClerkLoaded } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { clerkAppearance } from '../../lib/clerkAppearance';
 import { Card } from '../../components/Card';
+import { AuthPanelSkeleton } from './AuthPanelSkeleton';
 
 export function SignInPanel() {
   if (!CLERK_PUBLISHABLE_KEY) {
@@ -41,7 +42,12 @@ export function SignInPanel() {
   return (
     <ClerkIsland>
       <div className="flex justify-center">
-        <SignIn routing="hash" signUpUrl="/sign-up" forceRedirectUrl={next} signInForceRedirectUrl={next} appearance={clerkAppearance} />
+        <ClerkLoading>
+          <AuthPanelSkeleton />
+        </ClerkLoading>
+        <ClerkLoaded>
+          <SignIn routing="hash" signUpUrl="/sign-up" forceRedirectUrl={next} signInForceRedirectUrl={next} appearance={clerkAppearance} />
+        </ClerkLoaded>
       </div>
     </ClerkIsland>
   );

@@ -3,11 +3,12 @@
  * a link back to browsing (guest checkout still covers most fans). Honours
  * ?next= for post-signup redirect, defaulting to /dashboard.
  */
-import { SignUp } from '@clerk/clerk-react';
+import { SignUp, ClerkLoading, ClerkLoaded } from '@clerk/clerk-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/config';
 import { clerkAppearance } from '../../lib/clerkAppearance';
 import { Card } from '../../components/Card';
+import { AuthPanelSkeleton } from './AuthPanelSkeleton';
 
 export function SignUpPanel() {
   if (!CLERK_PUBLISHABLE_KEY) {
@@ -38,7 +39,12 @@ export function SignUpPanel() {
   return (
     <ClerkIsland>
       <div className="flex justify-center">
-        <SignUp routing="hash" signInUrl="/sign-in" forceRedirectUrl={next} signUpForceRedirectUrl={next} appearance={clerkAppearance} />
+        <ClerkLoading>
+          <AuthPanelSkeleton />
+        </ClerkLoading>
+        <ClerkLoaded>
+          <SignUp routing="hash" signInUrl="/sign-in" forceRedirectUrl={next} signUpForceRedirectUrl={next} appearance={clerkAppearance} />
+        </ClerkLoaded>
       </div>
     </ClerkIsland>
   );

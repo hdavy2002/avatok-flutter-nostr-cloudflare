@@ -5,11 +5,26 @@ export const prerender = false;
 
 import Base from '../layouts/Base.astro';
 import SignInPanel from '../islands/auth/SignInPanel.tsx';
+import { clerkFapiHost } from '../lib/config';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+// Host clerk-js will load from, decoded from the publishable key (prod/staging/
+// pk_test previews all resolve correctly; undefined when no key is configured).
+const clerkHost = clerkFapiHost();
 ---
 
 <Base title="Sign in · avatok.ai" description="Sign in to avatok.ai." navStatic={true}>
+  {clerkHost && (
+    <Fragment slot="head">
+      <!-- Warm the connection to Clerk's frontend API before the island mounts
+           so clerk-js starts downloading on an already-open TLS connection (cuts
+           the blank-then-slow first paint on /sign-in). Host is derived from the
+           publishable key, so it's correct in every environment. -->
+      <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />
+      <link rel="dns-prefetch" href={`https://${clerkHost}`} />
+    </Fragment>
+  )}
   <main class="mx-auto max-w-md px-4 py-12">
     <header class="mb-6 text-center">
       <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Welcome back</span>

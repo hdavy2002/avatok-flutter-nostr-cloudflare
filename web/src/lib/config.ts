@@ -9,6 +9,32 @@ export const API_BASE: string = import.meta.env.PUBLIC_API_BASE ?? 'https://api.
 export const CLERK_PUBLISHABLE_KEY: string | undefined = import.meta.env.PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 /**
+ * Frontend-API host for the configured Clerk instance, derived from the
+ * publishable key. A `pk_live_…` / `pk_test_…` key is `pk_<env>_` followed by a
+ * base64 encoding of `<fapi-host>$` (e.g. `clerk.avatok.ai$`). We decode it so
+ * the <link rel="preconnect"> on the auth pages always points at the host
+ * clerk-js will actually load from — correct in prod, staging and pk_test
+ * previews alike, with no hard-coded domain to drift. Returns undefined when no
+ * (or a placeholder) key is set.
+ */
+export function clerkFapiHost(): string | undefined {
+  const key = CLERK_PUBLISHABLE_KEY;
+  if (!key) return undefined;
+  const b64 = key.replace(/^pk_(live|test)_/, '');
+  if (!b64 || b64 === key) return undefined; // not a real pk_ key
+  try {
+    const decode =
+      typeof atob === 'function'
+        ? atob(b64)
+        : Buffer.from(b64, 'base64').toString('utf8');
+    const host = decode.replace(/\$+$/, '').trim();
+    return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host) ? host : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Cloudflare image-transform helper — the avatar/poster URL pattern used across
  * the kit. Produces `/cdn-cgi/image/format=avif,quality=60,width=N,fit=cover/<path>`.
  * Pass an already-absolute origin path or a full URL.

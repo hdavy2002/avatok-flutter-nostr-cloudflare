@@ -6,11 +6,23 @@ export const prerender = false;
 
 import Base from '../layouts/Base.astro';
 import SignUpPanel from '../islands/auth/SignUpPanel.tsx';
+import { clerkFapiHost } from '../lib/config';
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+// Host clerk-js will load from, decoded from the publishable key.
+const clerkHost = clerkFapiHost();
 ---
 
 <Base title="Sign up · avatok.ai" description="Create your avatok.ai account — sell live events, 1:1s, classes and AI agents." navStatic={true}>
+  {clerkHost && (
+    <Fragment slot="head">
+      <!-- Warm the connection to Clerk's frontend API before the island mounts.
+           Host derived from the publishable key, so it's correct in every env. -->
+      <link rel="preconnect" href={`https://${clerkHost}`} crossorigin />
+      <link rel="dns-prefetch" href={`https://${clerkHost}`} />
+    </Fragment>
+  )}
   <main class="mx-auto max-w-md px-4 py-12">
     <header class="mb-6 text-center">
       <span class="font-mono font-bold uppercase text-[12px] tracking-[0.1em] text-blueInk">Join avatok</span>
