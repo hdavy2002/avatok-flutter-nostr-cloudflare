@@ -1,0 +1,13 @@
+---
+// In-dashboard marketplace (logged-in). Same browse surface as the public
+// /marketplace, wrapped in the dashboard shell. Cards link to /dashboard/l/<id>.
+export const prerender = false;
+import Dashboard from '../../layouts/Dashboard.astro';
+import MarketplaceBrowse from '../../components/MarketplaceBrowse.astro';
+
+const category = Astro.url.searchParams.get('category') ?? undefined;
+const kind = Astro.url.searchParams.get('kind') ?? undefined;
+---
+<Dashboard title="Marketplace · avatok.ai" heading="Marketplace" subtitle="Browse live, book a 1:1, grab a ticket or talk to an AI." active="marketplace">
+  <MarketplaceBrowse hrefBase="/dashboard" category={category} kind={kind} />
+</Dashboard>

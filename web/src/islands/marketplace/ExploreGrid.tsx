@@ -16,6 +16,8 @@ export interface ExploreGridProps {
   pageSize?: number;
   /** Render the live rail above the grid (default true). */
   showLiveRail?: boolean;
+  /** Prefix for listing links, e.g. "/dashboard" to keep authed users in the dashboard. */
+  hrefBase?: string;
 }
 
 const PAGE = 24;
@@ -26,7 +28,7 @@ const PAGE = 24;
  * `cursor` field, and renders a responsive ListingTile grid. A query switches
  * the fetch to the search endpoint; clearing it returns to browse.
  */
-export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, showLiveRail = true }: ExploreGridProps) {
+export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, showLiveRail = true, hrefBase = '' }: ExploreGridProps) {
   const [q, setQ] = useState('');
   const [filters, setFilters] = useState<FilterState>({
     category: initialCategory,
@@ -124,7 +126,7 @@ export function ExploreGrid({ initialCategory, initialKind, pageSize = PAGE, sho
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {items.map((l) => (
-          <ListingTile key={l.id} listing={l} />
+          <ListingTile key={l.id} listing={l} href={hrefBase ? `${hrefBase}/l/${encodeURIComponent(l.id)}` : undefined} />
         ))}
       </div>
 

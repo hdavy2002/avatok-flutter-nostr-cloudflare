@@ -1,0 +1,22 @@
+---
+// Drop into a PUBLIC page that has a dashboard-wrapped twin at /dashboard<path>.
+// If the visitor is logged in (Clerk session cookie or a stored guest token),
+// it replaces the URL with /dashboard<path> so authed users see the in-dashboard
+// version of the same page (same query + hash preserved). Runs before paint to
+// minimise flash. Logged-out visitors stay on the public page.
+---
+<script is:inline>
+  (function () {
+    try {
+      var authed = false;
+      try { if (localStorage.getItem('avatok_guest_jwt')) authed = true; } catch (e) {}
+      if (!authed) {
+        var m = document.cookie.match(/(?:^|;\s*)__client_uat=([^;]*)/);
+        if (m && Number(m[1]) > 0) authed = true;
+      }
+      if (authed && location.pathname.indexOf('/dashboard') !== 0) {
+        location.replace('/dashboard' + location.pathname + location.search + location.hash);
+      }
+    } catch (e) {}
+  })();
+</script>

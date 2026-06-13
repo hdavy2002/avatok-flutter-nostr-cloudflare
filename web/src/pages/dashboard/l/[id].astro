@@ -1,0 +1,27 @@
+---
+// In-dashboard listing detail (logged-in). Same listing, wrapped in the
+// dashboard shell, with the real booking CTAs. This is where users land after
+// signing up from the public detail (?next=/l/<id> → authed → routed here).
+export const prerender = false;
+
+import Dashboard from '../../../layouts/Dashboard.astro';
+import ListingDetailView from '../../../components/ListingDetailView.astro';
+import { getListing, ApiError } from '../../../lib/apiClient';
+import type { Listing } from '../../../lib/types';
+
+const { id } = Astro.params;
+
+let listing: Listing | null = null;
+let notFound = false;
+try {
+  listing = await getListing(id!);
+} catch (e) {
+  if (e instanceof ApiError && (e.status === 404 || e.status === 410)) notFound = true;
+  else throw e;
+}
+if (notFound || !listing) return new Response('Listing not found', { status: 404 });
+---
+
+<Dashboard title={`${listing.title} · avatok.ai`} heading={listing.title} subtitle="Listing details" active="marketplace">
+  <ListingDetailView listing={listing} mode="dashboard" />
+</Dashboard>
