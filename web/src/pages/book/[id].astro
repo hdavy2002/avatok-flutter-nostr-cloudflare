@@ -35,7 +35,7 @@ const verb =
   kind === 'agent' ? 'Book a session' : kind === 'event' || kind === 'live' ? 'Get your ticket' : 'Book';
 ---
 
-<Base title={`${verb} · ${listing.title} · avatok.ai`} description={`${verb} with ${listing.creator?.name ?? 'a creator'} on avatok.ai.`}>
+<Base title={`${verb} · ${listing.title} · avatok.ai`} description={`${verb} with ${listing.creator?.name ?? 'a creator'} on avatok.ai.`} navStatic={true}>
   <main class="mx-auto max-w-5xl px-4 py-8">
     <div class="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,340px)_1fr]">
       <!-- What you're booking (server-rendered, instant) -->

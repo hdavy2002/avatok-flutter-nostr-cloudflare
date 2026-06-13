@@ -11,6 +11,12 @@ export interface Props {
   image?: string;
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
   chrome?: boolean;
+  /**
+   * Render header CTAs as static Log in / Sign up links (no Clerk island).
+   * REQUIRED on pages whose body mounts its own Clerk island, to avoid the
+   * "multiple <ClerkProvider>" crash. See Nav.astro.
+   */
+  navStatic?: boolean;
 }
 
 const {
@@ -18,6 +24,7 @@ const {
   description = 'Browse, book, watch and talk — avatok.ai.',
   image,
   chrome = true,
+  navStatic = false,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
@@ -50,7 +57,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai')
     <slot name="head" />
   </head>
   <body class="min-h-screen bg-paper text-ink font-body">
-    {chrome && <Nav />}
+    {chrome && <Nav staticCtas={navStatic} />}
     <slot />
     {chrome && <SiteFooter />}
   </body>

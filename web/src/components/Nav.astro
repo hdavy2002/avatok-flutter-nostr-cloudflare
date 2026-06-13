@@ -6,6 +6,24 @@
 // right side is a small React island (HeaderCtas) since it depends on session.
 import HeaderCtas from '../islands/site/HeaderCtas.tsx';
 
+interface Props {
+  /**
+   * Render the right-side CTAs as plain Log in / Sign up links instead of the
+   * Clerk-backed HeaderCtas island. REQUIRED on any page whose body already
+   * mounts a Clerk island (sign-in/up, book, consult, watch, agent, vision):
+   * @clerk/clerk-react throws "multiple <ClerkProvider>" if two islands each
+   * mount a provider on the same page, which blanks the page. Static CTAs keep
+   * the header to a single (body) provider.
+   */
+  staticCtas?: boolean;
+}
+const { staticCtas = false } = Astro.props;
+
+const ghostCta =
+  'rounded-full border-zine border-ink bg-card px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine';
+const primaryCta =
+  'rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine';
+
 // Primary nav — mirrors the old site (Live streaming · Marketplace · How it
 // works · Earnings · FAQ). The last three are landing-page anchors.
 const links: { href: string; label: string }[] = [
@@ -36,7 +54,14 @@ const linkClass =
     <!-- Right CTAs -->
     <div class="ml-auto hidden items-center gap-2 sm:flex">
       <a href="/admin" data-admin-link hidden class="font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft no-underline">Admin</a>
-      <HeaderCtas client:load />
+      {staticCtas ? (
+        <>
+          <a href="/sign-in" class={ghostCta}>Log in</a>
+          <a href="/sign-up" class={primaryCta}>Sign up</a>
+        </>
+      ) : (
+        <HeaderCtas client:load />
+      )}
     </div>
 
     <!-- Mobile hamburger -->
