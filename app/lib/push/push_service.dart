@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:app_badge_plus/app_badge_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -152,6 +153,13 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
 
 class PushService {
   static Future<void> init() async {
+    // Desktop (macOS) test build: no APNs and no native incoming-call UI
+    // (flutter_callkit_incoming is mobile-only). Skip push/CallKit wiring so the
+    // app runs cleanly; messaging still works over the live socket while open.
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      AvaLog.I.log('app', 'push/CallKit disabled on desktop (${Platform.operatingSystem})');
+      return;
+    }
     AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
     await FirebaseMessaging.instance.requestPermission();
     await _local.initialize(

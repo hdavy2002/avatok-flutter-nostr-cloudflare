@@ -60,6 +60,16 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
   }
 
   Future<void> _begin() async {
+    // Video liveness needs the front camera + permission_handler, which are
+    // mobile-only. On desktop, point the user to their phone instead of crashing.
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      setState(() {
+        _phase = _Phase.intro;
+        _error = 'Video verification is available on the AvaTok mobile app. '
+            'Please complete this step on your phone.';
+      });
+      return;
+    }
     setState(() { _phase = _Phase.preparing; _error = null; });
     Analytics.capture('liveness_started', const {});
 

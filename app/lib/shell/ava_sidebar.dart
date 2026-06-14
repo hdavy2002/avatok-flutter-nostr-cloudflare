@@ -21,6 +21,9 @@ class AvaSidebar extends StatefulWidget {
   final String current;
   final ValueChanged<String> onSelect;
   final VoidCallback onSignOut;
+  /// Desktop: render as a fixed left rail (no Drawer chrome, no close button)
+  /// instead of a slide-over drawer.
+  final bool permanent;
   const AvaSidebar({
     super.key,
     required this.enabledApps,
@@ -30,6 +33,7 @@ class AvaSidebar extends StatefulWidget {
     required this.current,
     required this.onSelect,
     required this.onSignOut,
+    this.permanent = false,
   });
   @override
   State<AvaSidebar> createState() => _AvaSidebarState();
@@ -60,12 +64,27 @@ class _AvaSidebarState extends State<AvaSidebar> {
     final apps = AppRegistry.standard
         .where((a) => a.id != 'explore' && a.id != 'verse' && a.id != 'avalibrary')
         .toList();
+    final body = SafeArea(child: _column(context, apps));
+    if (widget.permanent) {
+      return Container(
+        width: 300,
+        decoration: const BoxDecoration(
+          color: Zine.paper2,
+          border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+        ),
+        child: body,
+      );
+    }
     return Drawer(
       backgroundColor: Zine.paper2,
       shape: const Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
       width: MediaQuery.of(context).size.width * 0.82,
-      child: SafeArea(
-        child: Column(children: [
+      child: body,
+    );
+  }
+
+  Widget _column(BuildContext context, List<AppEntry> apps) {
+    return Column(children: [
           // header — wordmark + close
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 14, 8),
@@ -84,10 +103,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 ),
               ),
               const Spacer(),
-              ZineBackButton(
-                icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
-                onTap: () => Navigator.pop(context),
-              ),
+              if (!widget.permanent)
+                ZineBackButton(
+                  icon: PhosphorIcons.x(PhosphorIconsStyle.bold),
+                  onTap: () => Navigator.pop(context),
+                ),
             ]),
           ),
           // profile (tap → public profile)
@@ -140,7 +160,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
                 accent: Zine.lime,
                 title: 'Invite',
-                onTap: () { Navigator.pop(context); DeviceContactsService.shareGenericInvite(); },
+                onTap: () { if (!widget.permanent) Navigator.pop(context); DeviceContactsService.shareGenericInvite(); },
               ),
               const SizedBox(height: 6),
               _plainRow(
@@ -149,7 +169,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 title: 'Diagnostics',
                 subtitle: 'App logs — copy & share',
                 onTap: () {
-                  Navigator.pop(context);
+                  if (!widget.permanent) Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
                 },
               ),
@@ -173,9 +193,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               ]),
             ),
           ),
-        ]),
-      ),
-    );
+        ]);
   }
 
   Widget _special(String key, String name, String sub, IconData icon, Color color) {

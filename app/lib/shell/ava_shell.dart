@@ -174,19 +174,37 @@ class _AvaShellState extends State<AvaShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      drawerEnableOpenDragGesture: true,
-      drawer: AvaSidebar(
+    return LayoutBuilder(builder: (context, constraints) {
+      // Desktop (wide window): the sidebar is a permanent left rail beside the
+      // content. Phone/narrow: it stays a slide-over drawer. Same widgets, same
+      // destinations — only the chrome changes.
+      final desktop = constraints.maxWidth >= 900;
+      final sidebar = AvaSidebar(
         enabledApps: _enabled,
         accountKind: _kind,
         name: _id?.shortNpub ?? 'Account',
         seed: _id?.npub ?? 'avatok',
         current: _current,
-        onSelect: _select,
-        onSignOut: () { Navigator.pop(context); widget.onSignOut(); },
-      ),
-      body: ExploreHome(onMenu: _openDrawer),
-    );
+        // On desktop there's no drawer to close, so go straight to the dest.
+        onSelect: (d) { if (desktop) { _openDest(d); } else { _select(d); } },
+        onSignOut: () { if (!desktop) Navigator.pop(context); widget.onSignOut(); },
+        permanent: desktop,
+      );
+      if (desktop) {
+        return Scaffold(
+          key: _scaffoldKey,
+          body: Row(children: [
+            sidebar,
+            Expanded(child: ExploreHome(onMenu: () {})),
+          ]),
+        );
+      }
+      return Scaffold(
+        key: _scaffoldKey,
+        drawerEnableOpenDragGesture: true,
+        drawer: sidebar,
+        body: ExploreHome(onMenu: _openDrawer),
+      );
+    });
   }
 }

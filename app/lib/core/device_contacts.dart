@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
@@ -60,6 +61,8 @@ class DeviceContactsService {
 
   /// True if contacts permission is already granted (no prompt).
   static Future<bool> hasPermission() async {
+    // flutter_contacts is mobile-only — no device address book on desktop.
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
     try {
       return await FlutterContacts.requestPermission(readonly: true);
     } catch (_) {
@@ -72,6 +75,7 @@ class DeviceContactsService {
 
   /// Read raw contacts from the phone (name + emails + phones). Empty on denial.
   static Future<List<DeviceContact>> readDevice() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return [];
     try {
       if (!await FlutterContacts.requestPermission(readonly: true)) return [];
       final raw = await FlutterContacts.getContacts(
