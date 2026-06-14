@@ -17,6 +17,12 @@ export interface Props {
    * "multiple <ClerkProvider>" crash. See Nav.astro.
    */
   navStatic?: boolean;
+  /**
+   * Emit <meta name="robots" content="noindex,nofollow">. Used for the app-only
+   * surfaces (dashboard / vision / admin): they stay reachable by URL but are
+   * kept out of search results — web is the public booking funnel.
+   */
+  noindex?: boolean;
 }
 
 const {
@@ -25,6 +31,7 @@ const {
   image,
   chrome = true,
   navStatic = false,
+  noindex = false,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
@@ -36,6 +43,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai')
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <title>{title}</title>
     <meta name="description" content={description} />
 

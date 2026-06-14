@@ -15,7 +15,7 @@ const q = Astro.url.searchParams.get('q') ?? '';
 Astro.response.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
 ---
 
-<Base
+<Base noindex
   title="AvaVision · avatok.ai"
   description="Talk to AI coaching agents that can see you. Live camera + voice form coaching — football, golf, yoga, guitar, cooking and more, right in your browser."
 >

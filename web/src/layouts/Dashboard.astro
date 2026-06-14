@@ -79,7 +79,7 @@ const groups: { title: string; items: Item[] }[] = [
 const heads = heading ?? (title.split(' · ')[0]);
 ---
 
-<Base title={title} chrome={false}>
+<Base title={title} chrome={false} noindex={true}>
   <div class="flex min-h-screen bg-paper">
     <!-- Scrim (mobile) -->
     <div id="dash-scrim" class="fixed inset-0 z-40 hidden bg-ink/40 lg:hidden"></div>

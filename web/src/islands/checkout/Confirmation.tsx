@@ -14,6 +14,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Pill } from '../../components/Pill';
 import { UpgradePrompt } from '../auth/UpgradePrompt';
+import { AppDownloadCta } from '../../components/AppDownloadCta';
 import type { BookingResult, BookSelection } from './types';
 
 function fmtWhen(ms?: number): string | null {
@@ -101,6 +102,10 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
       >
         All my bookings
       </a>
+
+      {/* Web-first: the viewer link above works in-browser now. The app is the
+          upgrade — renders only once a store listing is live (else nothing). */}
+      <AppDownloadCta compact title="" subtitle="" className="pt-1" />
 
       {showUpgrade && (
         <UpgradePrompt

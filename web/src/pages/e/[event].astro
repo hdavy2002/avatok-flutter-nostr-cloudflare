@@ -6,6 +6,7 @@ export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
 import { Avatar, Pill } from '../../components';
+import AppDownloadCta from '../../components/AppDownloadCta';
 import { cfImage } from '../../lib/config';
 import { getListing } from '../../lib/apiClient';
 import { ApiError } from '../../lib/apiClient';
@@ -118,6 +119,12 @@ const calClass =
           </div>
         )}
       </div>
+    </div>
+
+    {/* Public funnel: book here as a guest, then watch in-browser or get the
+        app. Renders only once a store listing is live (else nothing). */}
+    <div class="mx-auto mt-8 max-w-2xl">
+      <AppDownloadCta title="Watch on the go" subtitle="Book here in seconds — then watch in your browser, or get the app for live chat, reminders and the best viewing." />
     </div>
   </main>
 

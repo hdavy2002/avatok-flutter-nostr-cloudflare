@@ -1,0 +1,9 @@
+# avatok.ai — web is the public booking funnel. The authenticated app-only
+# surfaces (creator dashboard, AvaVision, admin ops) stay reachable by URL but
+# are kept out of search. Per-page <meta name="robots" content="noindex"> is the
+# authoritative signal; these rules are a belt-and-suspenders for crawlers.
+User-agent: *
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vision
+Allow: /
