@@ -1,0 +1,126 @@
+name: macOS build (.dmg)
+
+# Builds the app under app/ as an UNSIGNED, styled .dmg for direct-download
+# testing, and publishes it to a Release tagged "mac-latest" so there's a stable
+# download link. Mirrors android.yml (which generates the platform folder on the
+# runner, so macos/ is never committed).
+#
+# UNSIGNED: first launch on any Mac needs right-click -> Open once (Gatekeeper),
+# or:  xattr -dr com.apple.quarantine /Applications/AvaTok.app
+
+on:
+  push:
+    branches: [main, staging]
+    paths:
+      - 'app/**'
+      - 'packaging/macos-dmg/**'
+      - '.github/workflows/macos.yml'
+  workflow_dispatch:
+
+env:
+  AVATOK_ENV: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Pinned to match android.yml — 3.44 marks IconData final and breaks
+          # phosphor_flutter 2.1.0. 3.41.x ships Dart 3.9 (>= repo floor).
+          flutter-version: 3.41.x
+          channel: stable
+          cache: true
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Generate macos/ platform files
+        working-directory: app
+        run: flutter create --platforms=macos --org ai.avatok --project-name avatok_call .
+
+      - name: Configure macOS (entitlements, Info.plist, window size)
+        working-directory: app
+        run: python3 tool/postcreate_macos.py
+
+      - name: Pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Generate code (drift / build_runner)
+        working-directory: app
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze (non-blocking)
+        working-directory: app
+        run: flutter analyze || true
+
+      - name: Build macOS app (release)
+        working-directory: app
+        run: flutter build macos --release --dart-define=AVATOK_ENV=$AVATOK_ENV
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Stage AvaTok.app (rename + ad-hoc sign, unsigned)
+        run: |
+          set -euo pipefail
+          BUILT="app/build/macos/Build/Products/Release/avatok_call.app"
+          if [ ! -d "$BUILT" ]; then
+            echo "::error::build not found at $BUILT"; ls -la app/build/macos/Build/Products/Release/ || true; exit 1
+          fi
+          rm -rf dist && mkdir -p dist
+          cp -R "$BUILT" "dist/AvaTok.app"
+          xattr -cr "dist/AvaTok.app" || true
+          codesign --force --deep --sign - "dist/AvaTok.app" || true
+
+      - name: Package styled .dmg
+        run: |
+          set -euo pipefail
+          create-dmg \
+            --volname "AvaTok" \
+            --background "packaging/macos-dmg/assets/dmg-background.png" \
+            --window-pos 200 120 \
+            --window-size 660 420 \
+            --icon-size 128 \
+            --icon "AvaTok.app" 175 212 \
+            --app-drop-link 486 212 \
+            --hide-extension "AvaTok.app" \
+            --no-internet-enable \
+            "dist/AvaTok.dmg" \
+            "dist/AvaTok.app" \
+          || create-dmg \
+            --volname "AvaTok" \
+            --window-size 660 420 \
+            --icon "AvaTok.app" 175 212 \
+            --app-drop-link 486 212 \
+            "dist/AvaTok.dmg" "dist/AvaTok.app"
+          ls -lh dist/
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AvaTok-dmg
+          path: dist/AvaTok.dmg
+
+      - name: Publish to Release (stable link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mac-latest
+          name: AvaTok for Mac (latest, unsigned test)
+          files: |
+            dist/AvaTok.dmg
+          fail_on_unmatched_files: false
+          body: |
+            Unsigned macOS test build, packaged by CI from `app/`.
+
+            Install: open AvaTok.dmg, drag AvaTok to Applications.
+            First launch (unsigned): right-click AvaTok.app -> Open, or run
+            `xattr -dr com.apple.quarantine /Applications/AvaTok.app`.
