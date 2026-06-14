@@ -97,6 +97,24 @@ def patch_podfile():
         print("  ok (unchanged) Podfile")
 
 
+def patch_project_deployment_target():
+    """Bump the Runner app's own deployment target to 11.0. The Podfile hook only
+    covers pod targets; the Runner.xcodeproj stays at Flutter's default (10.15),
+    which then can't import pods like app_badge_plus that require macOS 11.0."""
+    pbx = MACOS / "Runner.xcodeproj" / "project.pbxproj"
+    if not pbx.exists():
+        print("  ! project.pbxproj missing", file=sys.stderr)
+        return
+    src = pbx.read_text()
+    new = re.sub(r"MACOSX_DEPLOYMENT_TARGET = [\d.]+;",
+                 "MACOSX_DEPLOYMENT_TARGET = 11.0;", src)
+    if new != src:
+        pbx.write_text(new)
+        print("  patched Runner.xcodeproj (deployment target 11.0)")
+    else:
+        print("  ok (unchanged) Runner.xcodeproj")
+
+
 def patch_window():
     """Set a sensible minimum + default window size for desktop."""
     sw = RUNNER / "MainFlutterWindow.swift"
@@ -137,6 +155,7 @@ def main():
     patch_plist(RUNNER / "Release.entitlements", ENTITLEMENTS_ADDITIONS)
     patch_plist(RUNNER / "DebugProfile.entitlements", ENTITLEMENTS_ADDITIONS)
     patch_podfile()
+    patch_project_deployment_target()
     patch_window()
     print("done.")
 
