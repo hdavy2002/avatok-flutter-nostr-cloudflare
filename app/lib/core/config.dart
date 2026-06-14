@@ -98,6 +98,7 @@ const String kInboxWsUrl = 'wss://$kSignalingHost/api/inbox';
 const String kMsgSendUrl = 'https://$kSignalingHost/api/msg/send';
 const String kMsgSyncUrl = 'https://$kSignalingHost/api/msg/sync';
 const String kMsgReceiptUrl = 'https://$kSignalingHost/api/msg/receipt';
+const String kMsgReadUrl = 'https://$kSignalingHost/api/msg/read';
 const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
 
 /// Deterministic 1:1 conversation id — MUST match server authz.dmConvId.
@@ -113,6 +114,15 @@ String? dmPeer(String conv, String myUid) {
   final parts = conv.substring(3).split('__');
   if (parts.length != 2) return null;
   return parts[0] == myUid ? parts[1] : parts[0];
+}
+
+/// Map a local conversation key ('1:<peerHex>' DM, 'g:<gid>' group) to the
+/// server conversation id used by the InboxDO. Inverse of the convKey derivation
+/// in SyncHub. Returns null for unknown shapes.
+String? serverConvFromKey(String convKey, String myUid) {
+  if (convKey.startsWith('1:')) return dmConvId(myUid, convKey.substring(2));
+  if (convKey.startsWith('g:')) return convKey.substring(2);
+  return null;
 }
 
 /// Account backup: export your relay data → download link (media excluded). (NIP-98)

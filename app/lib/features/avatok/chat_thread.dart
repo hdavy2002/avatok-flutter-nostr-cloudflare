@@ -142,8 +142,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   List<String> _mentionMatches = [];
 
   void _markRead() {
-    if (_convKey != null) {
-      ReadStateStore().setRead(_convKey!, DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    final key = _convKey;
+    if (key == null) return;
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    // Local: drives unread badges on THIS device (instant).
+    ReadStateStore().setRead(key, nowSec);
+    // Server: persist MY read position in my own InboxDO so a fresh login or a
+    // second device (e.g. desktop) restores it and stops recounting already-read
+    // messages as new. Best-effort — never blocks the UI.
+    final myUid = _meId?.uid;
+    if (myUid != null && myUid.isNotEmpty) {
+      final conv = serverConvFromKey(key, myUid);
+      if (conv != null) {
+        ApiAuth.postJson(kMsgReadUrl, {'conv': conv, 'read_ts': nowSec})
+            .then((_) {}, onError: (_) {});
+      }
     }
   }
 

@@ -8,6 +8,7 @@ import 'package:web_socket_channel/io.dart';
 
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
+import '../core/chat_state.dart' show ReadStateStore;
 import '../core/config.dart';
 import '../core/db.dart';
 import '../identity/identity.dart';
@@ -175,6 +176,21 @@ class SyncHub {
       case 'pong':
         break;
       case 'sync':
+        // Apply MY read high-water marks FIRST, before any message is replayed,
+        // so a full re-sync (cursor=0 on every launch) doesn't recount already-
+        // read messages as unread. Restores read state on a fresh/2nd device.
+        // Bulk-merge to ReadStateStore (one file write) to avoid a load-modify-
+        // write race, then emit per-conv events so an open chat list updates now.
+        {
+          final bulk = <String, int>{};
+          for (final r in (m['reads'] as List? ?? const [])) {
+            final pair = _readKeyTs((r as Map).cast<String, dynamic>());
+            if (pair == null) continue;
+            bulk[pair.$1] = pair.$2;
+            _emitRead(pair.$1, pair.$2);
+          }
+          if (bulk.isNotEmpty) ReadStateStore().mergeBulk(bulk);
+        }
         for (final row in (m['messages'] as List? ?? const [])) {
           _ingestMsg((row as Map).cast<String, dynamic>());
         }
@@ -187,6 +203,9 @@ class SyncHub {
         break;
       case 'receipt':
         _ingestReceipt(m);
+        break;
+      case 'read':
+        _ingestRead(m);
         break;
       case 'storage':
         // AvaStorage live summary (Phase 4): transient system event — fan to any
@@ -245,6 +264,35 @@ class SyncHub {
     final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? peer}' : 'g:$conv';
     final payload = jsonEncode({'t': 'receipt', 'status': status, 'ts': ts});
     _incoming.add(HubEvent(convKey, peer, myUid, false, 'rcpt_${conv}_$ts', payload, ts));
+  }
+
+  /// Parse a server read row → (convKey, readSec). Null if unusable.
+  (String, int)? _readKeyTs(Map<String, dynamic> r) {
+    final conv = (r['conv'] ?? '').toString();
+    if (conv.isEmpty) return null;
+    final tsRaw = (r['read_ts'] as num?)?.toInt() ?? 0;
+    if (tsRaw <= 0) return null;
+    final readSec = tsRaw > 2000000000 ? tsRaw ~/ 1000 : tsRaw; // tolerate s/ms
+    final myUid = _myUid ?? '';
+    final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? conv}' : 'g:$conv';
+    return (convKey, readSec);
+  }
+
+  /// Emit a 'read' HubEvent so an open chat list clears that conv's badge now.
+  void _emitRead(String convKey, int readSec) {
+    final myUid = _myUid ?? '';
+    _incoming.add(HubEvent(
+        convKey, myUid, myUid, true, 'read_${convKey}_$readSec',
+        jsonEncode({'t': 'read', 'read_ts': readSec}), readSec));
+  }
+
+  /// A single live 'read' frame (MY read high-water, e.g. from a 2nd device).
+  /// Persists to ReadStateStore + emits the event.
+  void _ingestRead(Map<String, dynamic> r) {
+    final pair = _readKeyTs(r);
+    if (pair == null) return;
+    ReadStateStore().setRead(pair.$1, pair.$2); // single conv → no bulk race
+    _emitRead(pair.$1, pair.$2);
   }
 
   /// Messages for a conversation seen this session (instant, in-memory).

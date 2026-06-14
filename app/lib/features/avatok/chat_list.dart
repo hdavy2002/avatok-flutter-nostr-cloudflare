@@ -426,6 +426,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             final read = (env['status'] ?? '').toString() == 'read';
             if (rts > 0) ReceiptStore().bump('1:${u.senderPub}', delivered: read ? 0 : rts, read: read ? rts : 0);
           }
+        } else if (t == 'read') {
+          // MY server-authoritative read high-water for this conv (from another
+          // device or restored on login) — advance the local marker and clear
+          // this conv's unread badge. Arrives before message replays on sync.
+          final key = u.convKey;
+          final ts = (env['read_ts'] as num?)?.toInt() ?? 0;
+          if (ts > (_lastRead[key] ?? 0)) {
+            _lastRead[key] = ts;
+            if (mounted) setState(() => _unread.remove(key));
+          }
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
           if (u.senderPub == id.uid) return; // my own message
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';

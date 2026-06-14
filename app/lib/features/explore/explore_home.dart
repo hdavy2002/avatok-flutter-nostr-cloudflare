@@ -240,16 +240,18 @@ class _ExploreHomeState extends State<ExploreHome> {
   Widget _chips() {
     final labels = ['All', for (final c in _cats) '${c.emoji} ${c.label}'];
     return SizedBox(
-      height: 58,
+      height: 66,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         itemCount: labels.length,
         separatorBuilder: (_, __) => const SizedBox(width: 9),
-        itemBuilder: (c, i) => ZineChip(
-          label: labels[i],
-          active: i == _cat,
-          onTap: () => _pickCat(i),
+        itemBuilder: (c, i) => Center(
+          child: ZineChip(
+            label: labels[i],
+            active: i == _cat,
+            onTap: () => _pickCat(i),
+          ),
         ),
       ),
     );

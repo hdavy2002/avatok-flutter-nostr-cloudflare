@@ -54,6 +54,16 @@ export class InboxDO {
          unread INTEGER NOT NULL DEFAULT 0,
          peer TEXT,
          updated_at INTEGER
+       );
+       -- The OWNER's own read high-water per conversation (a unix-SECONDS ts,
+       -- matching the client createdAt unit). Distinct from the receipts table,
+       -- which tracks the PEER's read state of MY messages (for the tick marks).
+       -- This restores what I have already read on a fresh login / second device,
+       -- so old messages do not re-appear as unread after a full re-sync.
+       CREATE TABLE IF NOT EXISTS read_state (
+         conv TEXT PRIMARY KEY,
+         read_ts INTEGER NOT NULL DEFAULT 0,
+         updated_at INTEGER
        );`,
     );
   }
@@ -69,6 +79,7 @@ export class InboxDO {
         });
       }
       if (url.pathname.endsWith("/receipt")) return this.receipt(await req.json());
+      if (url.pathname.endsWith("/read")) return this.markRead(await req.json());
       if (url.pathname.endsWith("/event")) return this.event(await req.json());
       // GDPR deletion cascade (Phase 9 A1): wipe ALL DO storage for this user.
       // Peers keep their own copies in their own InboxDOs (their side of the
@@ -79,6 +90,7 @@ export class InboxDO {
         this.sql.exec("DELETE FROM messages");
         this.sql.exec("DELETE FROM receipts");
         this.sql.exec("DELETE FROM conv_meta");
+        this.sql.exec("DELETE FROM read_state");
         return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
       }
     } catch (e: any) {
@@ -121,7 +133,7 @@ export class InboxDO {
     return new Response(JSON.stringify({ id, live }), { headers: { "content-type": "application/json" } });
   }
 
-  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[] } {
+  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[] } {
     const messages = this.sql.exec(
       `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at
        FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`,
@@ -129,7 +141,26 @@ export class InboxDO {
     ).toArray();
     const receipts = this.sql.exec(`SELECT conv, peer, delivered_id, read_id FROM receipts`).toArray();
     const convs = this.sql.exec(`SELECT conv, last_id, unread, peer FROM conv_meta`).toArray();
-    return { type: "sync", messages, receipts, convs };
+    // OWNER read high-water per conv — lets a fresh client restore its unread
+    // state instead of recounting the whole re-synced backlog as new.
+    const reads = this.sql.exec(`SELECT conv, read_ts FROM read_state`).toArray();
+    return { type: "sync", messages, receipts, convs, reads };
+  }
+
+  // Owner marks a conversation read up to `read_ts` (unix seconds). Monotonic —
+  // never moves backwards. Zeroes the server unread counter for the conv so it
+  // can't resurrect, and broadcasts to the owner's OTHER open sockets (a second
+  // device) so their badge clears live too.
+  private markRead(b: { conv: string; read_ts?: number }): Response {
+    const ts = Math.max(0, Math.floor(Number(b.read_ts) || 0));
+    this.sql.exec(
+      `INSERT INTO read_state (conv, read_ts, updated_at) VALUES (?1, ?2, ?3)
+       ON CONFLICT(conv) DO UPDATE SET read_ts=MAX(read_ts, ?2), updated_at=?3`,
+      b.conv, ts, Date.now(),
+    );
+    this.sql.exec(`UPDATE conv_meta SET unread=0 WHERE conv=?1`, b.conv);
+    const live = this.broadcast(JSON.stringify({ type: "read", conv: b.conv, read_ts: ts }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
 
   private receipt(b: { conv: string; peer: string; delivered_id?: number; read_id?: number }): Response {
@@ -172,6 +203,11 @@ export class InboxDO {
     let m: any;
     try { m = JSON.parse(message); } catch { return; }
     if (m.type === "ping") { try { ws.send(JSON.stringify({ type: "pong" })); } catch { /* */ } return; }
+    if (m.type === "read" && typeof m.conv === "string") {
+      // Persist + fan out to the owner's other sockets. Same path as POST /read.
+      this.markRead({ conv: m.conv, read_ts: Number(m.read_ts) || 0 });
+      return;
+    }
     if (m.type === "hello" || m.type === "sync") {
       try { ws.send(JSON.stringify(this.syncPayload(Number(m.cursor || 0)))); } catch { /* */ }
     }

@@ -32,6 +32,19 @@ class ReadStateStore {
       await DiskCache.write(_key, jsonEncode(m));
     }
   }
+
+  /// Monotonic bulk merge — ONE load+write for many conversations. Use when
+  /// seeding the server's read high-water marks on sync; calling [setRead] in a
+  /// loop would race on the shared file (load-modify-write) and lose updates.
+  Future<void> mergeBulk(Map<String, int> updates) async {
+    if (updates.isEmpty) return;
+    final m = await load();
+    var changed = false;
+    updates.forEach((k, ts) {
+      if ((m[k] ?? 0) < ts) { m[k] = ts; changed = true; }
+    });
+    if (changed) await DiskCache.write(_key, jsonEncode(m));
+  }
 }
 
 /// Per-conversation last-message preview: a short snippet of the most recent

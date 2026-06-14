@@ -193,6 +193,24 @@ export async function receiptMsg(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// ---- POST /api/msg/read -----------------------------------------------------
+// The owner marks a conversation read up to `read_ts` (unix seconds) in their
+// OWN InboxDO. Unlike /receipt (which targets the PEER's inbox for ✓✓ ticks),
+// this persists MY read position so a fresh login / second device restores it
+// and stops recounting old messages as unread.
+export async function readMsg(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  if (!b.conv) return json({ error: "conv required" }, 400);
+  const stub = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
+  await stub.fetch("https://inbox/read", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ conv: String(b.conv), read_ts: Number(b.read_ts) || 0 }),
+  });
+  return json({ ok: true });
+}
+
 // ---- conversations ----------------------------------------------------------
 export async function convList(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
