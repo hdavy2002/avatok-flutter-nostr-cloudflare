@@ -58,6 +58,45 @@ def patch_plist(path: Path, additions: dict):
         print(f"  ok (unchanged) {path.relative_to(APP)}")
 
 
+def patch_podfile():
+    """Firebase macOS SDK needs a modern deployment target; Flutter defaults to
+    10.14 which is too low (and trips FirebaseCoreInternal). Bump to 11.0 and
+    force every Pod target's MACOSX_DEPLOYMENT_TARGET so the privacy-bundle
+    sub-targets stop defaulting to 10.11."""
+    pf = MACOS / "Podfile"
+    if not pf.exists():
+        print("  ! Podfile missing", file=sys.stderr)
+        return
+    src = pf.read_text()
+    new = re.sub(r"platform :osx, '[\d.]+'", "platform :osx, '11.0'", src)
+    if "AVATOK_DEPLOYMENT_TARGET" not in new:
+        hook = (
+            "\n# AVATOK_DEPLOYMENT_TARGET — force a modern target on every pod\n"
+            "post_install do |installer|\n"
+            "  installer.pods_project.targets.each do |target|\n"
+            "    flutter_additional_macos_build_settings(target)\n"
+            "    target.build_configurations.each do |config|\n"
+            "      config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '11.0'\n"
+            "    end\n"
+            "  end\n"
+            "end\n"
+        )
+        # Drop in our own post_install; remove the stock one Flutter generated to
+        # avoid defining it twice.
+        new = re.sub(
+            r"post_install do \|installer\|.*?\nend\n",
+            "",
+            new,
+            flags=re.DOTALL,
+        )
+        new = new + hook
+    if new != src:
+        pf.write_text(new)
+        print("  patched Podfile (deployment target 11.0)")
+    else:
+        print("  ok (unchanged) Podfile")
+
+
 def patch_window():
     """Set a sensible minimum + default window size for desktop."""
     sw = RUNNER / "MainFlutterWindow.swift"
@@ -97,6 +136,7 @@ def main():
     patch_plist(RUNNER / "Info.plist", INFO_ADDITIONS)
     patch_plist(RUNNER / "Release.entitlements", ENTITLEMENTS_ADDITIONS)
     patch_plist(RUNNER / "DebugProfile.entitlements", ENTITLEMENTS_ADDITIONS)
+    patch_podfile()
     patch_window()
     print("done.")
 
