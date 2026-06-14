@@ -41,7 +41,7 @@ class GroupStore {
   // Bulk, non-secret → plain per-account file (DiskCache), not encrypted storage
   // (whose reads are slow on Samsung and were part of the ~1.2s cold-start load).
   static const _key = 'avatok_groups';
-  static const _legacy = FlutterSecureStorage(
+  static const _legacy = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 

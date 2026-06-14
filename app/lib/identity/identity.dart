@@ -50,7 +50,7 @@ class IdentityStore {
 
   IdentityStore([FlutterSecureStorage? s])
       : _storage = s ??
-            const FlutterSecureStorage(
+            const FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
 

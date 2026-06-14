@@ -54,7 +54,7 @@ class DeviceContact {
 /// user invite anyone who isn't.
 class DeviceContactsService {
   static const _cacheKey = 'avatok_device_contacts_v1';
-  static final _store = const FlutterSecureStorage(
+  static final _store = const FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 

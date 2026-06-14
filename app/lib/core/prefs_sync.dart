@@ -18,7 +18,7 @@ class PrefsSync {
   // Device-global preference keys that should still follow the user.
   static const _global = <String>['avatok_custom_filters', 'avatok_stars', 'avatok_chatflags'];
 
-  static const _s = FlutterSecureStorage(
+  static const _s = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 

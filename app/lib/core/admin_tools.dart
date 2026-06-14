@@ -97,7 +97,7 @@ class AccountKindStore {
   final FlutterSecureStorage _s;
   AccountKindStore([FlutterSecureStorage? s])
       : _s = s ??
-            const FlutterSecureStorage(
+            const FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
 

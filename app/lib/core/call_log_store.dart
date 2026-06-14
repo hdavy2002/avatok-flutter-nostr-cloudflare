@@ -40,7 +40,7 @@ class CallLogStore {
   final FlutterSecureStorage _s;
   CallLogStore([FlutterSecureStorage? s])
       : _s = s ??
-            const FlutterSecureStorage(
+            const FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
 

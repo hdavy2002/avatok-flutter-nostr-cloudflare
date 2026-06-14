@@ -39,7 +39,7 @@ class StripeKycSession {
 }
 
 class IdentityApi {
-  static const _storage = FlutterSecureStorage();
+  static const _storage = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
   static const _cacheKey = 'avaidentity_kyc_status';
 
   static Map<String, dynamic> _json(String body) {

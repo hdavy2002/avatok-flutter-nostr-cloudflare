@@ -31,7 +31,7 @@ class ProfileStore {
   final FlutterSecureStorage _s;
   ProfileStore([FlutterSecureStorage? s])
       : _s = s ??
-            const FlutterSecureStorage(
+            const FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
 

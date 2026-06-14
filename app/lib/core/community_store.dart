@@ -53,7 +53,7 @@ class CommunityStore {
   final FlutterSecureStorage _s;
   CommunityStore([FlutterSecureStorage? s])
       : _s = s ??
-            const FlutterSecureStorage(
+            const FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
 

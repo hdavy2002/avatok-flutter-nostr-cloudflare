@@ -23,7 +23,7 @@ class ExploreSearchScreen extends StatefulWidget {
 }
 
 class _ExploreSearchScreenState extends State<ExploreSearchScreen> {
-  static const _storage = FlutterSecureStorage();
+  static const _storage = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
   final _q = TextEditingController();
   Timer? _debounce;
   List<ListingCard> _results = [];

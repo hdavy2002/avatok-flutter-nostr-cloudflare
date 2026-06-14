@@ -37,7 +37,7 @@ const kBrainCapabilities = <BrainCapability>[
 /// (`/api/brain/consent`) so the ingestion pipeline can gate on it. Booleans are
 /// non-sensitive, so the server stores them in the clear.
 class BrainConsent {
-  static const _s = FlutterSecureStorage(
+  static const _s = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const _key = 'brain_consent';

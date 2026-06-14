@@ -20,7 +20,7 @@ class ClerkClient {
 
   ClerkClient([FlutterSecureStorage? s])
       : _storage = s ??
-            const FlutterSecureStorage(
+            const FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             ),
         _domain = _deriveDomain(kClerkPublishableKey);

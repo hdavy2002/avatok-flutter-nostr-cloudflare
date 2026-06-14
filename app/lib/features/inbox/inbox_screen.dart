@@ -39,7 +39,7 @@ class _Row {
 }
 
 class _InboxScreenState extends State<InboxScreen> {
-  static const _store = FlutterSecureStorage();
+  static const _store = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
   static const _cacheKey = 'avainbox_cache_v1';        // per-account via scopedKey
   static final _listingTitles = <String, String>{};    // listingId → title (session cache)
 

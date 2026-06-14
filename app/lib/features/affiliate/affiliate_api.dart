@@ -187,7 +187,7 @@ class AffiliateSubscriber {
 }
 
 class AffiliateApi {
-  static const _storage = FlutterSecureStorage();
+  static const _storage = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
   static const _meCacheKey = 'affiliate_me_v1'; // per-account scoped (rulebook)
 
   static Map<String, dynamic> _j(String body) {

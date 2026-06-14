@@ -104,7 +104,7 @@ class AppNode {
 /// the server scopes everything to the caller's npub. Tree is cached local-first
 /// (account-scoped) so the screen paints instantly before the network returns.
 class LibraryApi {
-  static const _s = FlutterSecureStorage(
+  static const _s = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const _treeCacheKey = 'avalibrary_tree';

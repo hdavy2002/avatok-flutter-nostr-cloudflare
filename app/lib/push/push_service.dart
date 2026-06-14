@@ -38,7 +38,7 @@ const _msgChannel = AndroidNotificationChannel(
 // account-scoping rule's explicit exception for device-level values). Stored in
 // secure storage so the BACKGROUND isolate (no app state) can read + bump it.
 const _kBadgeKey = 'avatok_badge_count';
-const _badgeStore = FlutterSecureStorage();
+const _badgeStore = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
 
 Future<int> _bumpBadge() async {
   final cur = int.tryParse(await _badgeStore.read(key: _kBadgeKey) ?? '0') ?? 0;

@@ -65,7 +65,7 @@ class IceCache {
 /// Device-level call diagnostics flags (NOT per-account: these are tester knobs,
 /// the explicit device-level exception in the scoping rule).
 class CallDiag {
-  static const _store = FlutterSecureStorage();
+  static const _store = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
   static const _kTurnOnly = 'diag_turn_only';
   static bool turnOnly = false;
 

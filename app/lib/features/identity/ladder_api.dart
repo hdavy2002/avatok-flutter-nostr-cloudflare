@@ -16,7 +16,7 @@ class LadderState {
 }
 
 class LadderApi {
-  static const _storage = FlutterSecureStorage();
+  static const _storage = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
   static const _cacheKey = 'identity_level_v1'; // per-account scoped
 
   /// GET /api/identity/level — server truth; caches per account for instant paint.

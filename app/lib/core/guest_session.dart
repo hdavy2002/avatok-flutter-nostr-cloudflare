@@ -15,7 +15,7 @@ import 'config.dart';
 /// reservation exists before any account, so there is no AccountScope yet.
 /// They are wiped on upgrade, so they never leak across signed-in accounts.
 class GuestSession {
-  static const _storage = FlutterSecureStorage();
+  static const _storage = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), );
   static const _kToken = 'guest_token_v1';
   static const _kHandle = 'guest_handle_v1';
 

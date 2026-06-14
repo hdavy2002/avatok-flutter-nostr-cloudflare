@@ -13,7 +13,7 @@ import 'disk_cache.dart';
 class OnboardingStore {
   static const _kDone = 'onboarding_done';
   static const _kApps = 'enabled_apps';
-  static const _legacy = FlutterSecureStorage(
+  static const _legacy = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
