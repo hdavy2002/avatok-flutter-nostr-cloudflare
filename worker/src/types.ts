@@ -92,6 +92,11 @@ export interface Env {
   // Clerk Backend API (account deletion cascade, Phase 1). Gated.
   CLERK_SECRET_KEY?: string;
 
+  // Store-review login bypass (routes/review.ts). When set, the allowlisted
+  // reviewer account signs in with email+password and NO email OTP. Unset →
+  // the route returns 404 and the bypass is fully disabled.
+  REVIEW_PASSWORD?: string;
+
   // Phase 5 — AvaCalendar/AvaBooking. Google Calendar OAuth (gated; unset →
   // /api/calendar/gcal/* returns 503), token-encryption key, join-link signer.
   GOOGLE_CLIENT_ID?: string;

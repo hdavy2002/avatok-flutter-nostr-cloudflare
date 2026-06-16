@@ -45,6 +45,13 @@ const String kConferenceBase = 'https://$kSignalingHost/api/conference';
 /// AvaTok public directory (NIP-05-style) — find people by @handle / name / npub.
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)
 const String kMeUrl = 'https://$kSignalingHost/api/me'; // GET — restore my account by Clerk session
+
+/// Store-review login bypass. The allowlisted reviewer account (App Store /
+/// Google Play reviewers) signs in with email+password and NO email OTP: the
+/// Worker checks the password and returns a Clerk sign-in token, which the app
+/// redeems via the `ticket` strategy. Only this exact email triggers the path.
+const String kReviewerEmail = 'googleplay@avatok.ai';
+const String kReviewLoginUrl = 'https://$kSignalingHost/api/review/login'; // POST {email,password} → {ticket}
 const String kVaultUrl = 'https://$kSignalingHost/api/vault'; // GET/POST — encrypted cross-device blobs (contacts)
 const String kResolveUrl = 'https://$kSignalingHost/api/resolve'; // GET ?q= (public)
 const String kSearchUrl = 'https://$kSignalingHost/api/search';   // GET ?q= (public)

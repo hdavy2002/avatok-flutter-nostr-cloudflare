@@ -116,6 +116,16 @@ class ClerkClient {
 
   /// Sign in with email + password; falls back to email-code if needed.
   Future<ClerkStep> signIn(String email, String password) async {
+    // Store-review bypass: the allowlisted reviewer account skips the email
+    // second factor. The Worker verifies the password and hands back a Clerk
+    // sign-in token, which we redeem via the `ticket` strategy (bypasses all
+    // factors → NO OTP). Only this exact email reaches here; everyone else
+    // takes the normal password / email-code path below.
+    if (email.trim().toLowerCase() == kReviewerEmail && password.isNotEmpty) {
+      final step = await _tryReviewTicket(email.trim(), password);
+      if (step != null) return step;
+      // Bypass unavailable (offline / route disabled) → fall through to normal.
+    }
     await _send('/client', body: {});
     if (password.isNotEmpty) {
       final body = await _send('/client/sign_ins',
@@ -136,6 +146,31 @@ class ClerkClient {
     final step = await _prepareSignInEmailCode(body2['response'] as Map<String, dynamic>?);
     if (step != null) return step;
     return ClerkStep.error(_firstError(body2) ?? 'Sign-in is not available for this account');
+  }
+
+  /// Store-review bypass: ask the Worker for a Clerk sign-in token for the
+  /// reviewer account, then complete a real session via the `ticket` strategy.
+  /// Returns a completed step on success, or null to fall back to normal login.
+  Future<ClerkStep?> _tryReviewTicket(String email, String password) async {
+    try {
+      final r = await http.post(
+        Uri.parse(kReviewLoginUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+      if (r.statusCode != 200) return null;
+      final ticket = (jsonDecode(r.body) as Map<String, dynamic>)['ticket']?.toString();
+      if (ticket == null || ticket.isEmpty) return null;
+      await _send('/client', body: {});
+      final body = await _send('/client/sign_ins', body: {'strategy': 'ticket', 'ticket': ticket});
+      final su = body['response'] as Map<String, dynamic>?;
+      if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
+        return ClerkStep.complete();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<ClerkStep?> _prepareSignInEmailCode(Map<String, dynamic>? su) async {

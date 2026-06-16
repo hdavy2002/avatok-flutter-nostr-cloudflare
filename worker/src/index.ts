@@ -33,6 +33,7 @@ import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, convList, convCreate } from "./routes/messaging";
 import { getConfig, putConfig } from "./routes/config";
+import { reviewLogin } from "./routes/review";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook } from "./routes/conference";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import {
@@ -126,6 +127,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     // Remote kill switches (Phase 1, A2) — public read, admin write.
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
+
+    // Store-review login bypass (public; password-gated inside). Lets ONE
+    // allowlisted reviewer account sign in with email+password and no email OTP.
+    if (p === "/api/review/login" && req.method === "POST") return await reviewLogin(req, env);
 
     // Group-call signaling → CallRoom DO (thin router, no logic). The location
     // hint places the room near the FIRST opener (the caller) — hints only apply
