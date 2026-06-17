@@ -65,7 +65,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Zine.card,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.rSm), side: Zine.border),
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
         title: Text('Disconnect Ava AI?', style: ZineText.cardTitle()),
         content: Text(
             'This removes your Gemini API key and the linked Google account from '

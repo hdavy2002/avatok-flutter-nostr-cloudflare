@@ -28,6 +28,7 @@ import '../../core/ava_ai_store.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/ava_tools/ava_tool.dart';
 import '../../core/config.dart';
+import '../../identity/identity.dart';
 
 /// Build the full `/api/ava/image` URL from the API origin + the Phase-0 path
 /// (mirrors AvaTurnController._turnUrl so the path is never re-declared).
