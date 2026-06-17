@@ -1210,11 +1210,36 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  // Upload caps (owner rule): photos/videos ≤ 25 MB each; ≤ 8 photos per pick.
+  static const int _kMediaMaxBytes = 25 * 1024 * 1024;
+  static const int _kMaxPhotosPerPick = 8;
+
+  void _capNote(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // Camera → one photo. (Gallery multi-select uses _pickPhotos.)
   Future<void> _pickImage(ImageSource source) async {
     final x = await _picker.pickImage(source: source, imageQuality: 85);
     if (x == null) return;
     final bytes = await x.readAsBytes();
+    if (bytes.length > _kMediaMaxBytes) { _capNote('That photo is over 25 MB — please pick a smaller one.'); return; }
     await _sendMedia(MediaKind.image, bytes, 'image/jpeg', x.name);
+  }
+
+  // Gallery → up to 8 photos in one go; each capped at 25 MB.
+  Future<void> _pickPhotos() async {
+    final xs = await _picker.pickMultiImage(imageQuality: 85);
+    if (xs.isEmpty) return;
+    final take = xs.length > _kMaxPhotosPerPick ? xs.sublist(0, _kMaxPhotosPerPick) : xs;
+    if (xs.length > _kMaxPhotosPerPick) _capNote('Up to 8 photos at a time — sending the first 8.');
+    var skipped = 0;
+    for (final x in take) {
+      final bytes = await x.readAsBytes();
+      if (bytes.length > _kMediaMaxBytes) { skipped++; continue; }
+      await _sendMedia(MediaKind.image, bytes, 'image/jpeg', x.name);
+    }
+    if (skipped > 0) _capNote('$skipped photo(s) skipped — over the 25 MB limit.');
   }
 
   Future<void> _pickVideo(ImageSource source) async {
@@ -1222,6 +1247,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final x = await _picker.pickVideo(source: source, maxDuration: kVideoClipMax);
     if (x == null) return;
     final bytes = await x.readAsBytes();
+    if (bytes.length > _kMediaMaxBytes) { _capNote('Videos must be under 25 MB. Trim the clip and try again.'); return; }
     await _sendMedia(MediaKind.video, bytes, 'video/mp4', x.name);
   }
 
@@ -1549,7 +1575,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Wrap(spacing: 18, runSpacing: 18, children: [
-            _attachItem(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photo', Zine.accents[0], () => _pickImage(ImageSource.gallery)),
+            _attachItem(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photos', Zine.accents[0], _pickPhotos),
             _attachItem(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), 'Camera', Zine.accents[1], () => _pickImage(ImageSource.camera)),
             _attachItem(ctx, PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), 'Video', Zine.accents[2], () => _pickVideo(ImageSource.camera)),
             _attachItem(ctx, PhosphorIcons.file(PhosphorIconsStyle.bold), 'File', Zine.accents[3], _pickFile),

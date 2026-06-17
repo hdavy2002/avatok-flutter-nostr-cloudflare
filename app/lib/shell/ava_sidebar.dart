@@ -169,8 +169,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Featured tiles — hidden in focus mode (those apps live outside
               // AvaTOK + account essentials). Shown normally when focus is OFF.
               if (!focus) ...[
-                // AvaExplore + AvaVerse hidden from the sidebar (owner decision
-                // 2026-06-17). AvaLibrary stays as the featured tile.
+                // Two major apps: AvaChat (talk privately to Ava) + AvaTOK
+                // (message people). AvaExplore/AvaVerse hidden (owner 2026-06-17).
+                _special('avachat', 'AvaChat', 'Talk privately with Ava',
+                    PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
                 _special('library', 'AvaLibrary', 'Saved media & files',
                     PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
                 _special('avaapps', 'AvaApps', 'Gmail, Docs, Drive & more',
