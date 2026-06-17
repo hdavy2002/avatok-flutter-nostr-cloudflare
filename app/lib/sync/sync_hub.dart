@@ -11,6 +11,7 @@ import '../core/ava_log.dart';
 import '../core/chat_state.dart' show ReadStateStore;
 import '../core/config.dart';
 import '../core/db.dart';
+import '../core/disk_cache.dart';
 import '../identity/identity.dart';
 import 'dm.dart' show DmMessage;
 import 'legacy_stubs.dart';
@@ -50,7 +51,10 @@ class SyncHub {
   bool _wantConnected = false;
   bool _connecting = false;
   int _retry = 0;
-  int _cursor = 0; // highest InboxDO message id ingested this session
+  int _cursor = 0; // highest InboxDO message id ingested (persisted per account)
+  static const String _kCursorKey = 'ava_inbox_cursor';
+  String? _cursorUid;       // account the in-memory _cursor was loaded for
+  Timer? _cursorPersistTimer;
 
   final Map<String, List<DmMessage>> _byConv = {};
   final Set<String> _seen = {}; // dedup by client_id (or server id)
@@ -127,6 +131,14 @@ class SyncHub {
         cancelOnError: true,
       );
       _retry = 0;
+      // Resume from the PERSISTED cursor (once per account) so we don't
+      // re-download the entire backlog on every launch — the server returns
+      // only messages with id > cursor. SQLite already holds the rest.
+      if (_cursorUid != _myUid) {
+        final raw = await DiskCache.read(_kCursorKey);
+        _cursor = int.tryParse(raw ?? '') ?? 0;
+        _cursorUid = _myUid;
+      }
       _send({'type': 'hello', 'cursor': _cursor}); // request backlog since cursor
       _pingTimer?.cancel();
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) => _send({'type': 'ping'}));
@@ -217,7 +229,7 @@ class SyncHub {
 
   void _ingestMsg(Map<String, dynamic> r) {
     final id = (r['id'] as num?)?.toInt() ?? 0;
-    if (id > _cursor) _cursor = id;
+    if (id > _cursor) { _cursor = id; _scheduleCursorPersist(); }
     final conv = (r['conv'] ?? '').toString();
     final sender = (r['sender'] ?? '').toString();
     final body = (r['body'] ?? '').toString();           // our app envelope JSON
@@ -293,6 +305,15 @@ class SyncHub {
     if (pair == null) return;
     ReadStateStore().setRead(pair.$1, pair.$2); // single conv → no bulk race
     _emitRead(pair.$1, pair.$2);
+  }
+
+  /// Persist the cursor shortly after the last message of a burst (debounced —
+  /// one small file write per sync, not one per message). On the next launch we
+  /// resume from here instead of re-pulling everything.
+  void _scheduleCursorPersist() {
+    _cursorPersistTimer?.cancel();
+    _cursorPersistTimer = Timer(const Duration(seconds: 2),
+        () => DiskCache.write(_kCursorKey, _cursor.toString()));
   }
 
   /// Messages for a conversation seen this session (instant, in-memory).

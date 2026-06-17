@@ -280,6 +280,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _markRead();
     _loadChatExtras();
     _loadCachedMessages();
+    // Durable group history from local SQLite — the source of truth that
+    // survives restarts WITHOUT re-downloading the backlog (cursor sync). The
+    // row stores `mine` but not the peer id, so senderPub is best-effort here
+    // ('' → no per-sender label); live frames carry the real sender. _onGroupMsg
+    // dedups by rumor id, so this never double-renders what's already shown.
+    Db.I.messagesFor(_convKey!).then((rows) {
+      if (!mounted) return;
+      for (final m in rows) {
+        _onGroupMsg(GroupMessage(
+            rumorId: m.rumorId, senderPub: '', mine: m.mine,
+            payload: m.payload, createdAt: m.createdAt));
+      }
+    });
     // Let replayed group history settle before indexing LIVE messages into RAG.
     Future.delayed(const Duration(seconds: 3), () { if (mounted) _ragLive = true; });
   }
