@@ -46,6 +46,9 @@ LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
 # applicationId from app/android/app/build.gradle.kts). APP_STORE_ID is
 # deliberately NOT set (Android-only launch): unset ⇒ no App Store badge.
 PLAY_PACKAGE_ID = "ai.avatok.avatok_call"
+# Ava tool layer — Klavis Strata (self-hosted) base URL (P5). Placeholder; set to
+# the real self-host origin before P5 ships. Unset/empty ⇒ tool routes 503.
+STRATA_URL = ""
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
@@ -95,6 +98,13 @@ bucket_name = "avatok-digital"
 [[r2_buckets]]
 binding = "AGENT_AUDIO"        # avatok-agent-audio — lazy agent-conversation TTS cache (Phase 8)
 bucket_name = "avatok-agent-audio"
+
+# Ava backup/sync (P10): premium cross-device sync + generated-image store
+# (Nano Banana 2 outputs, P9). Encrypted at rest; no egress fees (we hold it).
+# Create: wrangler r2 bucket create avatok-backup
+[[r2_buckets]]
+binding = "BACKUP_R2"
+bucket_name = "avatok-backup"
 
 # ---------------------------------------------------------------------------
 # KV — ephemeral tokens ONLY (Golden Rule 5). 5 allowed uses, nothing else.
@@ -234,6 +244,23 @@ class_name = "ConversationDO"
 name = "INBOX"
 class_name = "InboxDO"
 
+# ---------------------------------------------------------------------------
+# Ava in-chat AI (Phase 0 — Foundations). Bindings wired now; the DO classes
+# are IMPLEMENTED by later phases (AvaAgentDO = P3 in-thread agent loop;
+# BackupDO = P10 R2 premium sync). The worker will not fully typecheck until
+# those classes are exported from src/index.ts — expected & accepted (see
+# Specs/ava-build/INTEGRATION-NOTES.md). Phase 11 reconciles before deploy.
+# ---------------------------------------------------------------------------
+# Per-user in-thread Ava agent loop (P3): summarisation, gate, posts ava/ava_status.
+[[durable_objects.bindings]]
+name = "AVA_AGENT"
+class_name = "AvaAgentDO"
+
+# Per-user backup/sync coordinator (P10): R2 premium cross-device sync.
+[[durable_objects.bindings]]
+name = "BACKUP"
+class_name = "BackupDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -253,6 +280,13 @@ new_sqlite_classes = ["AgentDO", "ConversationDO"]
 [[migrations]]
 tag = "v5"
 new_sqlite_classes = ["InboxDO"]
+
+# Ava in-chat AI (Phase 0). New SQLite-backed DOs land with their classes in P3
+# (AvaAgentDO) / P10 (BackupDO). The migration is declared here so the binding
+# contract is complete; the deploy that introduces the classes applies it.
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["AvaAgentDO", "BackupDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -298,6 +332,7 @@ CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.avatok.ai"
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 PLAY_PACKAGE_ID = "ai.avatok.avatok_call"   # staging APK = applicationIdSuffix .staging, but the Play listing is the prod package
+STRATA_URL = ""   # Ava tool layer (Klavis Strata self-host) — set before P5
 
 [[env.staging.d1_databases]]
 binding = "DB_META"
@@ -339,6 +374,10 @@ bucket_name = "avatok-digital-staging"
 [[env.staging.r2_buckets]]
 binding = "AGENT_AUDIO"
 bucket_name = "avatok-agent-audio-staging"
+
+[[env.staging.r2_buckets]]
+binding = "BACKUP_R2"
+bucket_name = "avatok-backup-staging"
 
 [[env.staging.kv_namespaces]]
 binding = "TOKENS"
@@ -436,6 +475,15 @@ class_name = "ConversationDO"
 name = "INBOX"
 class_name = "InboxDO"
 
+# Ava in-chat AI (Phase 0) — see prod section for the typecheck caveat.
+[[env.staging.durable_objects.bindings]]
+name = "AVA_AGENT"
+class_name = "AvaAgentDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "BACKUP"
+class_name = "BackupDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -455,3 +503,7 @@ new_sqlite_classes = ["AgentDO", "ConversationDO"]
 [[env.staging.migrations]]
 tag = "v5"
 new_sqlite_classes = ["InboxDO"]
+
+[[env.staging.migrations]]
+tag = "v6"
+new_sqlite_classes = ["AvaAgentDO", "BackupDO"]

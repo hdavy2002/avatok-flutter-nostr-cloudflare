@@ -18,6 +18,7 @@ import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
+import '../ava_ai/ava_ai_setup.dart';
 import '../avatok/contacts.dart';
 import 'verify_identity_step.dart';
 
@@ -38,11 +39,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // kAccountTypeStepEnabled is false the flow starts at notifications and every
   // signup is AccountKind.personal. Step indices in analytics re-index with the
   // list, so onboarding_step_viewed/completed stay consistent.
-  static const _allStepNames = [
-    'account_kind', 'notifications', 'terms', 'profile', 'verify_identity', 'contacts', 'apps'
-  ];
-  static final List<String> _stepNames =
-      kAccountTypeStepEnabled ? _allStepNames : _allStepNames.sublist(1);
+  // 'add_ai' offers the BYO Gemini key flow (skippable). Both 'account_kind'
+  // and 'add_ai' are flag-gated; step indices in analytics re-index with the
+  // list so onboarding_step_viewed/completed stay consistent.
+  static List<String> _composeSteps() {
+    final s = <String>[
+      'account_kind', 'notifications', 'terms', 'profile', 'verify_identity',
+      'contacts', 'add_ai', 'apps',
+    ];
+    if (!kAccountTypeStepEnabled) s.remove('account_kind');
+    if (!kAddAiStepEnabled) s.remove('add_ai');
+    return s;
+  }
+  static final List<String> _stepNames = _composeSteps();
   static final int _steps = _stepNames.length;
   int _step = 0;
 
@@ -227,9 +236,22 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 'profile': return _profileStep();
       case 'verify_identity': return _verifyStep();
       case 'contacts': return _contacts();
+      case 'add_ai': return _addAiStep();
       default: return _appsSetup();
     }
   }
+
+  // ---- Step: add AI (BYO Gemini key) — fully skippable ----
+  Widget _addAiStep() => AvaAiSetupBody(
+        onSaved: () {
+          Analytics.capture('onboarding_ai_connected', const {});
+          _next();
+        },
+        onSkip: () {
+          Analytics.capture('onboarding_ai_skipped', const {});
+          _next();
+        },
+      );
 
   // ---- Step 6: verify identity (age / gender / phone OTP / email OTP) ----
   Widget _verifyStep() => VerifyIdentityStep(

@@ -5,10 +5,12 @@ import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/avatar.dart';
 import '../core/device_contacts.dart';
+import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine.dart';
 import '../core/ui/zine_widgets.dart';
 import '../features/diagnostics/log_page.dart';
+import 'focus_mode.dart';
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
 /// 'explore' | 'verse' | 'library' | 'settings' | 'wallet' | 'profile' |
@@ -50,6 +52,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
     ProfileStore().load().then((p) {
       if (mounted) setState(() { _displayName = p.displayName; _handle = p.handle; });
     });
+    // Refresh focus-mode for the current account whenever the sidebar mounts
+    // (account may have switched). The ValueListenableBuilder in build() then
+    // reflects the loaded value + any later Settings-toggle change.
+    FocusMode.load();
   }
 
   /// Real display name if set, else the short npub passed in.
@@ -58,32 +64,51 @@ class _AvaSidebarState extends State<AvaSidebar> {
 
   @override
   Widget build(BuildContext context) {
-    // Phase 1: the sidebar renders STANDARD-tier apps only (hidden tier stays
-    // registered in AppRegistry for later). Explore/Verse/Library render as the
-    // featured tiles above, so the APPS list excludes them.
-    final apps = AppRegistry.standard
-        .where((a) => a.id != 'explore' && a.id != 'verse' && a.id != 'avalibrary')
-        .toList();
-    final body = SafeArea(child: _column(context, apps));
-    if (widget.permanent) {
-      return Container(
-        width: 300,
-        decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
-        ),
-        child: body,
-      );
-    }
-    return Drawer(
-      backgroundColor: Zine.paper2,
-      shape: const Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
-      width: MediaQuery.of(context).size.width * 0.82,
-      child: body,
+    // Phase 1: rebuild when focus mode flips (Settings toggle) so the menu shows
+    // AvaTOK + account essentials only (ON) or the full app list (OFF) live.
+    return ValueListenableBuilder<bool>(
+      valueListenable: FocusMode.enabled,
+      builder: (context, focus, _) {
+        // When focus mode is ON the menu shows AvaTOK + account essentials only
+        // (AppRegistry.focusMode). When OFF it behaves exactly as before:
+        // STANDARD-tier apps (hidden tier stays registered for later). In both
+        // modes Explore/Verse/Library render as featured tiles above (OFF only),
+        // so the APPS list excludes them. Hidden-tier entries are never deleted.
+        final source = focus ? AppRegistry.focusMode : AppRegistry.standard;
+        final apps = source
+            .where((a) => a.id != 'explore' && a.id != 'verse' && a.id != 'avalibrary')
+            .toList();
+        final body = SafeArea(child: _column(context, apps, focus));
+        if (widget.permanent) {
+          return Container(
+            width: 300,
+            decoration: const BoxDecoration(
+              color: Zine.paper2,
+              border: Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+            ),
+            child: body,
+          );
+        }
+        return Drawer(
+          backgroundColor: Zine.paper2,
+          shape: const Border(right: BorderSide(color: Zine.ink, width: Zine.bw)),
+          width: MediaQuery.of(context).size.width * 0.82,
+          child: body,
+        );
+      },
     );
   }
 
-  Widget _column(BuildContext context, List<AppEntry> apps) {
+  /// Premium/paid-gated app entries — show a PAID badge in the APPS list. These
+  /// are the AI/generative surfaces that spend AvaCoins at the point of use;
+  /// AvaTOK core + account items stay free (no badge). Kept deliberately light.
+  static const Set<String> _paidAppIds = {
+    'avachat',   // personal AI (generative)
+    'avavoice',  // AI voice agents
+    'avavision', // AI vision coaches
+  };
+
+  Widget _column(BuildContext context, List<AppEntry> apps, bool focus) {
     return Column(children: [
           // header — wordmark + close
           Padding(
@@ -141,14 +166,18 @@ class _AvaSidebarState extends State<AvaSidebar> {
           ),
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), children: [
-              _special('explore', 'AvaExplore', 'Marketplace',
-                  PhosphorIcons.storefront(PhosphorIconsStyle.bold), Zine.blue),
-              _special('verse', 'AvaVerse', 'Your dashboard',
-                  PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), Zine.lilac),
-              // AvaInbox rides the registry row ('avainbox') in the APPS section
-              // below — the shell routes it to the real InboxScreen (Phase 8).
-              _special('library', 'AvaLibrary', 'Saved media & files',
-                  PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
+              // Featured tiles — hidden in focus mode (those apps live outside
+              // AvaTOK + account essentials). Shown normally when focus is OFF.
+              if (!focus) ...[
+                _special('explore', 'AvaExplore', 'Marketplace',
+                    PhosphorIcons.storefront(PhosphorIconsStyle.bold), Zine.blue),
+                _special('verse', 'AvaVerse', 'Your dashboard',
+                    PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), Zine.lilac),
+                // AvaInbox rides the registry row ('avainbox') in the APPS section
+                // below — the shell routes it to the real InboxScreen (Phase 8).
+                _special('library', 'AvaLibrary', 'Saved media & files',
+                    PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
+              ],
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),
               Padding(
@@ -255,9 +284,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
         ),
       );
 
-  Widget _appRow(AppEntry a) => Padding(
+  Widget _appRow(AppEntry a) {
+    final paid = _paidAppIds.contains(a.id);
+    return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: ZinePressable(
+          // The row still opens the app; the PAID badge shows it needs a top-up.
+          // The actual spend gate (PaidFeature) lives at the feature's point of
+          // use, so we don't block navigation from the menu.
           onTap: () => widget.onSelect(a.route),
           radius: BorderRadius.circular(14),
           boxShadow: const <BoxShadow>[],
@@ -266,11 +300,16 @@ class _AvaSidebarState extends State<AvaSidebar> {
             ZineIconBadge(icon: a.icon, color: a.color, size: 30),
             const SizedBox(width: 11),
             Expanded(child: Text(a.title, style: ZineText.value(size: 14))),
+            if (paid) ...[
+              const PaidBadge(),
+              const SizedBox(width: 8),
+            ],
             PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
                 size: 14, color: Zine.inkMute),
           ]),
         ),
       );
+  }
 
   Widget _plainRow({
     required IconData icon,

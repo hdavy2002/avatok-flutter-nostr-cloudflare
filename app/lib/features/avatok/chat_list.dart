@@ -30,6 +30,7 @@ import '../../sync/sync_hub.dart';
 import '../../sync/presence.dart';
 import '../../push/push_service.dart';
 import '../../shell/ava_sidebar.dart';
+import '../ava_companion/companion_home.dart';
 import '../communities/communities_tab.dart';
 import '../status/status_screen.dart';
 import 'add_contact_sheet.dart';
@@ -542,7 +543,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         MaterialPageRoute(builder: (_) => NewGroupScreen(contacts: _contacts)));
   }
 
-  /// New-chat menu (the green FAB): message, group, community, or invite.
+  /// Open a fresh companion chat with Ava (persona picker → free-form chat).
+  /// Runs entirely through the existing Ava endpoints (no new worker route).
+  void _openAvaChat() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanionHome()));
+  }
+
+  /// New-chat menu (the green FAB): chat with Ava, message, group, community, or invite.
   void _openNewChatMenu() {
     showModalBottomSheet(
       context: context,
@@ -552,6 +559,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 8),
+        ListTile(
+          leading: ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac),
+          title: Text('Chat with Ava', style: ZineText.value(size: 15)),
+          subtitle: Text('Brainstorm, practise a language, or just talk', style: ZineText.sub(size: 12.5)),
+          onTap: () { Navigator.pop(ctx); _openAvaChat(); }),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.blue),
           title: Text('New chat', style: ZineText.value(size: 15)),
@@ -753,6 +765,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   const Expanded(
                     child: ZineMarkTitle(pre: 'Ava', mark: 'Talk', fontSize: 24, textAlign: TextAlign.left),
                   ),
+                  // Chat with Ava — companion / blank Ava chat (Phase 6).
+                  ZineBackButton(
+                      onTap: _openAvaChat,
+                      icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold)),
+                  const SizedBox(width: 8),
                   ZineBackButton(
                       onTap: _openSearch,
                       icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)),

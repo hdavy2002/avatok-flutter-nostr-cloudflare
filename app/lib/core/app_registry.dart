@@ -67,4 +67,19 @@ class AppRegistry {
 
   /// Apps not in the registry (legacy keys) count as hidden.
   static bool isStandard(String id) => byId(id)?.tier == AppTier.standard;
+
+  /// Ava in-chat "focus mode" (proposal §10): AvaTOK + account essentials only.
+  /// When focus mode is on (see `kFocusModeDefault`), the sidebar renders THIS
+  /// set instead of `standard`, hiding non-AvaTOK apps. Fully reversible — no
+  /// registry mutation. Wallet/payout/identity stay visible (paid features need
+  /// the wallet). Order follows the registry's declaration order. P1 consumes it.
+  static const Set<String> _focusIds = {
+    'avatok',
+    'avawallet',
+    'avapayout',
+    'avaidentity',
+  };
+
+  static List<AppEntry> get focusMode =>
+      kAppRegistry.where((a) => _focusIds.contains(a.id)).toList();
 }

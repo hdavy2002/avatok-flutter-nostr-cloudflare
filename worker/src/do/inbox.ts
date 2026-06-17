@@ -17,6 +17,7 @@
 //   server → {type:'msg', ...row}               (live delivery)
 //   server → {type:'receipt', conv, peer, delivered_id?, read_id?}
 import type { Env } from "../types";
+import { type MessageScope, scopeAudience } from "../lib/ava_kinds";
 
 const SYNC_LIMIT = 500;
 
@@ -40,6 +41,11 @@ export class InboxDO {
        );
        CREATE INDEX IF NOT EXISTS idx_msg_id ON messages(id);
        CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conv, id);
+       -- Ava visibility scope (Phase 0 contract). NULL = thread-scoped (the
+       -- default, every existing row); a uid = private-to-that-uid (ava_private,
+       -- Guardian warnings). The worker decides WHICH InboxDO a private message
+       -- is written to (server-side enforcement); this column lets the client
+       -- render/withhold correctly. See worker/src/lib/ava_kinds.ts.
        CREATE TABLE IF NOT EXISTS receipts (
          conv TEXT NOT NULL,
          peer TEXT NOT NULL,
@@ -66,6 +72,13 @@ export class InboxDO {
          updated_at INTEGER
        );`,
     );
+    // Additive migration for the Ava visibility scope. Guarded: on a fresh DO
+    // the column is created by the (extended) CREATE above's absence — SQLite has
+    // no "ADD COLUMN IF NOT EXISTS", so we try and swallow the "duplicate column"
+    // error on already-migrated DOs. Backward compatible: existing rows get NULL
+    // (= thread-scoped). New `messages` tables created after this code ships
+    // still need the column, so we ALTER unconditionally inside the try.
+    try { this.sql.exec(`ALTER TABLE messages ADD COLUMN audience TEXT`); } catch { /* already present */ }
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -81,6 +94,8 @@ export class InboxDO {
       if (url.pathname.endsWith("/receipt")) return this.receipt(await req.json());
       if (url.pathname.endsWith("/read")) return this.markRead(await req.json());
       if (url.pathname.endsWith("/event")) return this.event(await req.json());
+      // Transient "Ava is working…" chip — broadcast only, never persisted.
+      if (url.pathname.endsWith("/ava_status")) return this.avaStatus(await req.json());
       // GDPR deletion cascade (Phase 9 A1): wipe ALL DO storage for this user.
       // Peers keep their own copies in their own InboxDOs (their side of the
       // conversation survives, as the spec requires).
@@ -107,15 +122,24 @@ export class InboxDO {
   }
 
   // ---- internal ops ----------------------------------------------------------
+  // `scope` (Phase 0 contract): 'thread' (default) fans out normally; `to:<uid>`
+  // marks the row private to that uid. PRIVACY ENFORCEMENT IS SERVER-SIDE: the
+  // avatok-api Worker decides which InboxDO(s) to append a private message to (it
+  // only writes the intended recipient's InboxDO). This DO just persists the
+  // `audience` on the row + echoes it on the frame/sync so the client renders or
+  // withholds correctly. `kind` may be a new Ava kind ('ava' | 'ava_private');
+  // 'ava_status' must NOT be persisted — use `avaStatus()`/`event()` for that.
   private append(b: {
     conv: string; sender: string; owner: string; kind?: string;
     body?: string; media_ref?: string; client_id?: string; created_at?: number;
+    scope?: MessageScope;
   }): Response {
     const created = b.created_at || Date.now();
+    const audience = scopeAudience(b.scope); // null = thread-scoped (default)
     const row = this.sql.exec(
-      `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id ?? null, created,
+      `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id ?? null, created, audience,
     ).one();
     const id = Number(row.id);
     const incoming = b.sender !== b.owner;
@@ -127,15 +151,29 @@ export class InboxDO {
     );
     const frame = JSON.stringify({
       type: "msg", id, conv: b.conv, sender: b.sender, kind: b.kind || "text",
-      body: b.body ?? null, media_ref: b.media_ref ?? null, client_id: b.client_id ?? null, created_at: created,
+      body: b.body ?? null, media_ref: b.media_ref ?? null, client_id: b.client_id ?? null,
+      created_at: created, audience,
     });
     const live = this.broadcast(frame);
     return new Response(JSON.stringify({ id, live }), { headers: { "content-type": "application/json" } });
   }
 
+  // Transient "Ava is working…" chip (Phase 0 contract). Broadcast-only, NEVER
+  // persisted (reuses the `event` fan-out path). The frame carries the
+  // AvaStatusBody fields so the client can show/replace/clear the chip. Reached
+  // via POST /event with {type:'ava_status', ...} too — this helper is the
+  // typed entry point the agent loop (P3) / Guardian (P8) / image gen (P9) call.
+  private avaStatus(b: { conv: string; label: string; status_id?: string; phase?: "start" | "end"; source?: string }): Response {
+    const live = this.broadcast(JSON.stringify({
+      type: "ava_status", conv: b.conv, label: b.label,
+      status_id: b.status_id ?? null, phase: b.phase ?? "start", source: b.source ?? null,
+    }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
   private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[] } {
     const messages = this.sql.exec(
-      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at
+      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience
        FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`,
       cursor, SYNC_LIMIT,
     ).toArray();

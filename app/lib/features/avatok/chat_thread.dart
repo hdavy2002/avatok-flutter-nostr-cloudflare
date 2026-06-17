@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/api_auth.dart';
+import '../../core/ava_contracts.dart';
 import '../../core/ava_log.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
@@ -36,6 +37,7 @@ import '../../sync/presence.dart';
 import '../../sync/sync_hub.dart';
 import '../../push/push_service.dart';
 import '../../core/remote_config.dart';
+import '../ava/ava_invoke.dart';
 import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
 import 'call_screen.dart';
@@ -208,6 +210,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_sharePresence) _presence!.sendOnline();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
+    onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     // Seed instantly from the shared hub's in-memory store (this session).
     for (final m in SyncHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
     // Durable history from the local SQLite DB — the source of truth. Covers
@@ -272,6 +275,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _presence!.events.listen(_onPresence);
     _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
+    onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _markRead();
     _loadChatExtras();
     _loadCachedMessages();
@@ -323,7 +327,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'gmedia') {
@@ -416,7 +420,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'media') {
@@ -595,9 +599,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     super.dispose();
   }
 
+  // Phase 3 fills this: a hook to summon Ava from the composer. When non-null
+  // and the outgoing text mentions @ava (see [_avaWakeWord]), Phase 3 routes the
+  // turn to the in-thread agent (POST AvaApi.threadTurn) instead of / in addition
+  // to sending the human message. Phase 0 only wires the hook + detection point;
+  // it does NOT implement any behavior. Leave null here.
+  Future<void> Function(String text)? onSummonAva;
+
+  /// The wake word the composer watches for (proposal open-decision #3:
+  /// `@ava` + button). Phase 3 owns the actual trigger + UI affordance.
+  static const String _avaWakeWord = '@ava';
+
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    // Phase 3 fills this: if the message summons Ava (@ava) and a hook is wired,
+    // route it to the in-thread agent. No-op in Phase 0 (onSummonAva stays null).
+    if (onSummonAva != null && t.toLowerCase().contains(_avaWakeWord)) {
+      // ignore: unawaited_futures
+      onSummonAva!(t); // Phase 3 decides whether to also send the human message
+    }
     // Tapping the send button steals focus from the field; grab it back so the
     // keyboard stays up and the user can keep typing without re-tapping the box.
     _composerFocus.requestFocus();
@@ -848,6 +869,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         'poll' => '📊 ${e['q'] ?? 'Poll'}',
         'sticker' => (e['emoji'] ?? '🙂').toString(),
         'gcall' => e['kind'] == 'audio' ? '🎙️ Audio call' : '📹 Video call',
+        // Ava kinds (Phase 0 contract) — caption used for chat-list previews etc.
+        'ava' || 'ava_private' => (e['text'] ?? e['body'] ?? 'Ava').toString(),
+        'ava_status' => (e['label'] ?? 'Ava is working…').toString(),
         _ => '',
       };
 
@@ -1040,9 +1064,50 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ]),
             )),
         ]);
+      case 'ava':
+      case 'ava_private':
+        // Ava's turn. The feminine bubble color + "AVA" label are applied in
+        // _bubble; here we just render the body (text + optional media ref).
+        // Generic: any phase posting an 'ava'/'ava_private' kind with a {text}
+        // body renders here with no further UI change.
+        final body = (e['text'] ?? e['body'] ?? m.text).toString();
+        return Text(body, style: ZineText.sub(size: 13.5, color: fg));
       default:
         return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
     }
+  }
+
+  /// True when this message is one of Ava's persisted bubble kinds. Uses the
+  /// Phase 0 contract (app/lib/core/ava_contracts.dart) so the kind strings stay
+  /// in one place.
+  bool _isAvaBubble(_Msg m) => AvaKind.isBubble(m.special);
+
+  /// The inline "Ava is working…" chip row (kind 'ava_status'). Not a normal
+  /// bubble — a subtle lilac pill with a tiny spinner. Generic: any phase that
+  /// posts an 'ava_status' frame gets this with no extra UI work.
+  Widget _avaStatusChip(_Msg m) {
+    final label = (m.extra?['label'] ?? m.text).toString();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: Zine.lilac,
+          borderRadius: BorderRadius.circular(100),
+          border: Zine.border,
+          boxShadow: Zine.shadowXs,
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(width: 12, height: 12,
+              child: CircularProgressIndicator(strokeWidth: 1.6, color: Zine.ink)),
+          const SizedBox(width: 8),
+          Text(label.isEmpty ? 'Ava is working…' : label,
+              style: ZineText.sub(size: 12.5, color: Zine.ink)
+                  .copyWith(fontStyle: FontStyle.italic)),
+        ]),
+      ),
+    );
   }
 
   Future<void> _addSharedContact(Map e) async {
@@ -1779,13 +1844,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       );
 
   Widget _bubble(_Msg m) {
+    // Ava "working…" chip (kind 'ava_status') — inline, not a bubble.
+    if (m.special == 'ava_status') return _avaStatusChip(m);
     final hasMedia = m.media != null || m.localBytes != null;
+    // Ava bubbles always render on the LEFT (she is a participant, not "me"),
+    // in a distinct feminine lilac fill — visually separate from my lime and
+    // peers' card bubbles.
+    final isAva = _isAvaBubble(m);
+    final onRight = m.me && !isAva;
     return Align(
-      alignment: m.me ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: onRight ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onLongPress: () => _onBubbleLongPress(m),
         child: Column(
-          crossAxisAlignment: m.me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: onRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Container(
               margin: EdgeInsets.only(bottom: m.reaction == null ? 8 : 2),
@@ -1796,19 +1868,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               // Chat bubble (§7.14): 2.5px ink border, radius 16 with one
               // squared corner toward the sender; me = lime, them = card.
               decoration: BoxDecoration(
-                color: m.me ? Zine.lime : Zine.card,
+                // me = lime, Ava = lilac (feminine accent), them = card.
+                color: isAva ? Zine.lilac : (onRight ? Zine.lime : Zine.card),
                 border: Zine.border,
                 boxShadow: Zine.shadowXs,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(m.me ? 16 : 4),
-                  bottomRight: Radius.circular(m.me ? 4 : 16),
+                  bottomLeft: Radius.circular(onRight ? 16 : 4),
+                  bottomRight: Radius.circular(onRight ? 4 : 16),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Ava label — a small "AVA" tag on her bubbles. ava_private
+                  // adds a "· private" hint so the recipient knows it is just
+                  // for them (consent/disclosure, proposal §9).
+                  if (isAva)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                            size: 11, color: Zine.ink),
+                        const SizedBox(width: 4),
+                        Text(
+                            m.special == 'ava_private' ? 'AVA · PRIVATE' : 'AVA',
+                            style: ZineText.tag(size: 9.5, color: Zine.ink)),
+                      ]),
+                    ),
                   if (m.forwarded)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 1),

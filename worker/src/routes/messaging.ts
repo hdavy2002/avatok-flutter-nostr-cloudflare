@@ -6,6 +6,8 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
+import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
+import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -164,6 +166,13 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
       }
     }
   } catch { /* brain feed is best-effort, never blocks the send */ }
+
+  // Ava delegate (P7) + guardian (P8) post-fanout scans. Both self-gate on cheap
+  // string heuristics → ZERO model cost for clean / non-monitored messages. Run
+  // detached (no ctx.waitUntil in this route signature) so they never block the
+  // send. `payload` is the exact fanned-out object; `mem` the member list.
+  void delegateScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid });
+  void guardianScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid });
 
   return json({ id: mine.id, conv, created_at: created });
 }

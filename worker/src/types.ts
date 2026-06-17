@@ -12,6 +12,7 @@ export interface Env {
   VERIFICATION: R2Bucket;
   DIGITAL: R2Bucket;     // avatok-digital — PRIVATE; OLX digital goods (signed reads)
   AGENT_AUDIO: R2Bucket; // avatok-agent-audio — lazy agent-conversation TTS cache
+  BACKUP_R2: R2Bucket;   // avatok-backup — Ava premium cross-device sync + gen-image store (P9/P10)
 
   // KV — ephemeral tokens ONLY (Golden Rule 5)
   TOKENS: KVNamespace;
@@ -54,6 +55,15 @@ export interface Env {
   // Durable Object — per-user messaging inbox (Cloudflare-native pivot; Nostr
   // deprecated). Hibernatable WS + DO-local SQLite message log. Keyed by uid.
   INBOX: DurableObjectNamespace;
+
+  // ---- Ava in-chat AI bindings (Phase 0 — Foundations; part of the bindings
+  // contract). The DO CLASSES are implemented by later phases (AvaAgentDO = P3,
+  // BackupDO = P10), so the worker will not fully typecheck until those classes
+  // are exported from index.ts — expected & accepted (see INTEGRATION-NOTES.md).
+  // Durable Object — per-user in-thread Ava agent loop (P3).
+  AVA_AGENT: DurableObjectNamespace;
+  // Durable Object — per-user backup/sync coordinator (P10).
+  BACKUP: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;
@@ -173,4 +183,12 @@ export interface Env {
   TEST_CLOCK_OFFSET_MS?: string;
   // DLQ alert recipient (defaults to hdavy2005@gmail.com).
   ALERT_EMAIL?: string;
+
+  // Ava tool layer — Klavis Strata (self-hosted) base URL (P5). Unset/empty ⇒
+  // /api/ava/tools/* returns 503 until the self-host origin is configured.
+  STRATA_URL?: string;
+  // AES-GCM key material for the per-user MCP OAuth token store (P5
+  // ava_tool_tokens). Read via (env as any) until now; declared here for type
+  // visibility. Falls back to GCAL_TOKEN_KEY, then a dev constant.
+  STRATA_TOKEN_KEY?: string;
 }

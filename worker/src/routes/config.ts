@@ -31,6 +31,20 @@ export interface PlatformConfig {
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
   affiliateAssetKitEnabled: boolean; // v2 Gemini promo-image kit (flag only; no code in v1)
+  // Ava in-chat AI kill-switches (Phase 0 — Foundations). These gate the
+  // SERVER-SIDE Ava surfaces/tiers; the client mirrors the defaults in
+  // app/lib/core/feature_flags.dart. NOTE: runtime "is Ava on for THIS user" is
+  // BYO/our-keys connection state, separate from `aiEnabled` (which is the
+  // platform-wide master switch / panic button).
+  aiEnabled: boolean;                // master switch for ALL Ava features (panic off)
+  focusMode: boolean;                // hide non-AvaTOK apps in the drawer (reversible)
+  webSearchEnabled: boolean;         // premium-only; our-keys free tier never gets it
+  fileAnalysisEnabled: boolean;      // premium-only
+  openChatUncapped: boolean;         // premium removes the daily cap
+  dailyAvaTurnLimit: number;         // our-keys free-tier cap (turns/account/day)
+  guardianEnabled: boolean;          // Guardian safety surfaces (basic free, deep premium)
+  companionEnabled: boolean;         // blank "New chat with Ava" + personas
+  generativeEnabled: boolean;        // in-thread image gen (each gen is a PaidFeature)
   minAppBuild: number;
 }
 
@@ -52,6 +66,16 @@ const DEFAULTS: PlatformConfig = {
   avavisionEnabled: true,
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
+  // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
+  aiEnabled: true,
+  focusMode: true,
+  webSearchEnabled: false,         // premium unlocks
+  fileAnalysisEnabled: false,      // premium unlocks
+  openChatUncapped: false,         // premium removes the cap
+  dailyAvaTurnLimit: 25,
+  guardianEnabled: true,
+  companionEnabled: true,
+  generativeEnabled: true,
   minAppBuild: 0,
 };
 
@@ -84,9 +108,10 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // Whitelist merge — unknown keys are rejected so a typo can't ship a dead flag.
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...DEFAULTS, ...current };
+  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
-    if (k === "minAppBuild" ? typeof v !== "number" : typeof v !== "boolean") {
+    if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
       return json({ error: `bad type for ${k}` }, 400);
     }
     next[k] = v;

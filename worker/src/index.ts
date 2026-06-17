@@ -69,6 +69,20 @@ import {
   affiliateBind, adminAffiliates, adminAffiliateSuspend,
 } from "./routes/affiliate";
 import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate_assets";
+// --- Ava in-chat AI (Phase 0 — Foundations) ---
+// These handler modules + DO classes are created by LATER phases (see master-plan
+// §4: P2 gemini, P3 thread, P5 tools, P8 guardian, P9 image, P10 backup). The
+// routes are registered now so feature phases just drop in the named handler.
+// CONSEQUENCE: the worker will NOT typecheck/build until those files exist — this
+// is expected and accepted for Phase 0 (Phase 11 reconciles). See
+// Specs/ava-build/INTEGRATION-NOTES.md.
+import { avaGemini } from "./routes/ava_gemini";        // P2
+import { avaThreadTurn } from "./routes/ava_thread";    // P3
+import { avaTools } from "./routes/ava_tools";          // P5
+import { avaGuardianScan } from "./routes/ava_guardian"; // P8
+import { avaImage } from "./routes/ava_image";          // P9
+import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
+import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
 
 export { CallRoom } from "./do/call_room";
 export { InboxDO } from "./do/inbox";
@@ -77,6 +91,11 @@ export { WalletDO } from "./do/wallet";
 export { StreamSessionDO } from "./do/stream_session";
 export { AgentDO } from "./do/agent";
 export { ConversationDO } from "./do/conversation";
+// Ava in-chat AI DOs (Phase 0 binding contract; classes implemented later —
+// AvaAgentDO by P3, BackupDO by P10). These exports are required by the
+// wrangler.toml DO bindings + v6 migration; the files arrive with their phases.
+export { AvaAgentDO } from "./do/ava_agent"; // P3
+export { BackupDO } from "./do/backup";      // P10
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -164,6 +183,19 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/read" && req.method === "POST") return await readMsg(req, env);
       if (p === "/api/conversations" && req.method === "GET") return await convList(req, env);
       if (p === "/api/conversations" && req.method === "POST") return await convCreate(req, env);
+
+      // --- Ava in-chat AI (Phase 0 registered routes; handlers filled by the
+      // owner phases — master-plan §4). Order: most-specific first. ---
+      if (p === "/api/ava/gemini" && req.method === "POST") return await avaGemini(req, env);          // P2
+      if (p === "/api/ava/thread/turn" && req.method === "POST") return await avaThreadTurn(req, env); // P3
+      if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
+      if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env);            // P9
+      if (p.startsWith("/api/ava/tools/")) return await avaTools(req, env, p.slice("/api/ava/tools/".length)); // P5
+      if (p === "/api/ava/delegate") return await delegateHandler(req, env); // P7 (GET reads prefs, POST writes)
+      // Backup & sync (P10): GET pull, PUT push, GET status.
+      if (p === "/api/backup/status" && req.method === "GET") return await backupStatus(req, env);
+      if (p === "/api/backup" && req.method === "GET") return await backupGet(req, env);
+      if (p === "/api/backup" && req.method === "PUT") return await backupPut(req, env);
 
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);

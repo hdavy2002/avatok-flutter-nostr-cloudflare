@@ -1,0 +1,1 @@
+Feature phases drop their Settings section files here (one per phase) and register a `SettingsSection` with `SettingsSectionRegistry.register(...)` (see `../settings_registry.dart`) — `settings_screen.dart` renders them automatically after its built-in sections, so no phase edits `settings_screen.dart`.

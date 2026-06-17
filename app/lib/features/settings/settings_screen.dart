@@ -7,11 +7,14 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/admin_tools.dart';
 import '../../core/api_auth.dart';
+import '../../core/ava_ai_store.dart';
 import '../../core/brain_consent.dart';
 import '../../core/config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
+import '../ava_ai/ava_ai_setup.dart';
+import 'settings_registry.dart';
 
 /// Account settings — Backup, Manage keys, Delete account.
 class SettingsScreen extends StatefulWidget {
@@ -32,11 +35,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Map<String, bool> _brain = {};
 
+  final _aiStore = AvaAiStore();
+  bool _aiConnected = false;
+  String? _aiEmail;
+
   @override
   void initState() {
     super.initState();
     _kindStore.load().then((k) { if (mounted) setState(() => _kind = k); });
     BrainConsent.pull().then((_) => BrainConsent.all()).then((m) { if (mounted) setState(() => _brain = m); });
+    _refreshAi();
+  }
+
+  Future<void> _refreshAi() async {
+    final connected = await _aiStore.isConnected();
+    final email = await _aiStore.googleEmail();
+    if (mounted) setState(() { _aiConnected = connected; _aiEmail = email; });
+  }
+
+  Future<void> _setupAi() async {
+    final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const AvaAiSetupScreen()));
+    if (saved == true) await _refreshAi();
+  }
+
+  void _removeAi() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.rSm), side: Zine.border),
+        title: Text('Disconnect Ava AI?', style: ZineText.cardTitle()),
+        content: Text(
+            'This removes your Gemini API key and the linked Google account from '
+            'this device. AvaTOK goes back to plain messaging. You can connect a '
+            'different account anytime.',
+            style: ZineText.sub(size: 13.5)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: ZineText.value(size: 14))),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _aiStore.clear();
+              await _refreshAi();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ava AI disconnected')));
+              }
+            },
+            child: Text('Disconnect', style: ZineText.value(size: 14, color: Zine.coral)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _setBrain(String key, bool v) async {
@@ -206,6 +259,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
         ),
         const SizedBox(height: 24),
+        _section('Ava AI'),
+        _aiCard(),
+        const SizedBox(height: 24),
         _section('AvaBrain'),
         ZineCard(
           radius: Zine.rSm,
@@ -244,6 +300,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Delete account',
             'Permanently remove your account', _delete, danger: true),
         const SizedBox(height: 24),
+        // Pluggable sections (Phase 0 contract): feature phases register a
+        // SettingsSection from their own file under settings/sections/ and it
+        // renders here, ordered, WITHOUT editing this screen.
+        for (final s in SettingsSectionRegistry.sections) ...[
+          _section(s.title),
+          s.builder(context),
+          const SizedBox(height: 24),
+        ],
         ZineButton(
           label: 'Log out',
           variant: ZineButtonVariant.ghost,
@@ -255,6 +319,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 18),
         Center(child: Text('AVATOK · YOU OWN IT ALL', style: ZineText.kicker(size: 10, color: Zine.inkMute))),
+      ]),
+    );
+  }
+
+  Widget _aiCard() {
+    if (!_aiConnected) {
+      return Column(children: [
+        ZineCard(
+          radius: Zine.rSm,
+          padding: const EdgeInsets.all(14),
+          boxShadow: Zine.shadowXs,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Turn AvaTOK into an AI-powered chat. Ava finds files, summarizes, '
+                'translates and more — running on your own free Google Gemini key, '
+                'so it stays free for you.',
+                style: ZineText.sub(size: 12.5)),
+            const SizedBox(height: 12),
+            ZineButton(
+              label: 'Set up Ava AI (free)',
+              onPressed: _setupAi,
+              fullWidth: true,
+              fontSize: 16,
+              icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+            ),
+          ]),
+        ),
+      ]);
+    }
+    return ZineCard(
+      radius: Zine.rSm,
+      padding: const EdgeInsets.all(14),
+      boxShadow: Zine.shadowXs,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          ZineIconBadge(
+              icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+              color: Zine.lilac, size: 34),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Ava AI is on', style: ZineText.value(size: 15)),
+            const SizedBox(height: 2),
+            Text(_aiEmail?.isNotEmpty == true ? _aiEmail! : 'Your own Gemini key',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: ZineText.sub(size: 12)),
+          ])),
+          ZineSticker('FREE', kind: ZineStickerKind.ok,
+              icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(child: ZineButton(
+            label: 'Replace key',
+            onPressed: _setupAi,
+            fullWidth: true,
+            fontSize: 14,
+            variant: ZineButtonVariant.ghost,
+            icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+            trailingIcon: false,
+          )),
+          const SizedBox(width: 10),
+          Expanded(child: ZineButton(
+            label: 'Disconnect',
+            onPressed: _removeAi,
+            fullWidth: true,
+            fontSize: 14,
+            variant: ZineButtonVariant.coral,
+            icon: PhosphorIcons.plugs(PhosphorIconsStyle.bold),
+            trailingIcon: false,
+          )),
+        ]),
       ]),
     );
   }

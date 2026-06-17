@@ -73,6 +73,21 @@ dependencies:
   # the same on every device; with split-per-ABI it adds ~1.5MB.
   drift: ^2.16.0
   sqlite3_flutter_libs: ^0.5.18
+  # Phase 4 (Two-Lane Memory) — on-device vector + embedder deps DEFERRED here by
+  # Phase 0. DECISION: NO new packages are needed for the free on-device lane.
+  #   • FTS5 keyword search → already available (sqlite3_flutter_libs bundles
+  #     SQLite with FTS5; the ava_fts virtual table is created via raw SQL on the
+  #     existing drift connection — see core/ava_memory/local_index.dart).
+  #   • Vector search → 256-D embeddings stored as BLOB rows in the SAME per-
+  #     account sqlite file and ranked by BRUTE-FORCE COSINE in pure Dart. At
+  #     on-device message volumes this needs no native vector engine (no
+  #     sqlite-vec / ObjectBox / ZVEC), so none is added.
+  #   • Embedder runtime → on-device model INFERENCE is stubbed (deterministic
+  #     256-D hashing embedder) because wiring a native ML runtime (LiteRT/ONNX)
+  #     can't be compiled/verified headless and pinning an un-buildable native ML
+  #     dep would risk the APK build. The interface + download-on-first-use
+  #     scaffolding ship now; adding the runtime later is a one-class change with
+  #     NO pubspec churn beyond that single runtime package. See INTEGRATION-NOTES.
 
 dev_dependencies:
   flutter_lints: ^4.0.0

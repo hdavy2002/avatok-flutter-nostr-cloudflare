@@ -27,6 +27,7 @@ import '../features/wallet/wallet_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'ava_sidebar.dart';
 import 'coming_soon.dart';
+import 'focus_mode.dart';
 
 /// The signed-in app shell: AvaExplore landing + sidebar drawer.
 class AvaShell extends StatefulWidget {
@@ -58,6 +59,11 @@ class _AvaShellState extends State<AvaShell> {
     final apps = await _onb.enabledApps();
     final id = await _idStore.load();
     final kind = await _kindStore.load();
+    // Warm the per-account focus-mode value before the drawer opens so the
+    // sidebar paints the correct menu (no default-then-correct flicker for
+    // accounts whose stored value differs from kFocusModeDefault). The sidebar
+    // listens to FocusMode.enabled and rebuilds on any later change.
+    await FocusMode.load();
     if (mounted) setState(() { _enabled = apps; _id = id; _kind = kind; });
   }
 

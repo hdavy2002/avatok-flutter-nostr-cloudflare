@@ -1,0 +1,197 @@
+<!doctype html>
+<!-- AvaVision Phase 0 spike — THROWAWAY, not shipped. Deleted by Phase Z. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AvaVision Phase 0 spike</title>
+<style>
+  body { font: 14px/1.45 system-ui, sans-serif; margin: 16px; background:#111; color:#eee; }
+  h1 { font-size: 16px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; }
+  .panel { border:1px solid #444; padding:10px; }
+  #wrap { position:relative; width:480px; height:360px; }
+  video, canvas { position:absolute; left:0; top:0; width:480px; height:360px; }
+  canvas { pointer-events:none; }
+  input { width:340px; background:#000; color:#0f0; border:1px solid #555; padding:4px; }
+  button { padding:6px 12px; margin:4px 0; cursor:pointer; }
+  pre { white-space:pre-wrap; max-width:480px; background:#000; padding:8px; max-height:240px; overflow:auto; }
+  .score { position:absolute; right:8px; top:8px; background:#000a; padding:4px 8px; font-weight:700; }
+</style>
+</head>
+<body>
+<h1>AvaVision Phase 0 spike — proves overlay + Gemini Live + snapshot</h1>
+
+<div class="panel">
+  <div>Ephemeral Live token: <input id="liveToken" placeholder="paste ephemeral auth_token (Live)"></div>
+  <div>API key (snapshot only, stays in tab): <input id="apiKey" placeholder="paste API key for snapshot call"></div>
+</div>
+
+<div class="row">
+  <div class="panel">
+    <div id="wrap">
+      <video id="vid" autoplay muted playsinline></video>
+      <canvas id="overlay" width="480" height="360"></canvas>
+      <div class="score" id="scoreBadge">score —</div>
+    </div>
+    <div>
+      <button id="btnCam">1) Start camera + MediaPipe overlay</button>
+      <button id="btnLive">2) Connect Gemini Live (voice + 1fps LOW video)</button>
+      <button id="btnSnap">3) Analyze my form (snapshot)</button>
+    </div>
+  </div>
+  <div class="panel" style="min-width:320px">
+    <strong>Usage / log</strong>
+    <pre id="log"></pre>
+  </div>
+</div>
+
+<!-- MediaPipe Tasks (vision) + drawing utils, on-device, free -->
+<script type="module">
+import { FilesetResolver, PoseLandmarker, DrawingUtils }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+
+const LIVE_MODEL = "gemini-3.1-flash-live-preview";
+const SNAPSHOT_MODEL = "gemini-3-flash-preview";
+
+const $ = (id) => document.getElementById(id);
+const log = (...a) => { $("log").textContent += a.join(" ") + "\n"; $("log").scrollTop = 1e9; };
+
+const vid = $("vid"), overlay = $("overlay"), octx = overlay.getContext("2d");
+let poseLandmarker = null, drawer = null, running = false, lastVideoTs = -1;
+let mediaStream = null, liveWS = null, liveUsage = { count:0 }, frameTimer = null;
+
+// ---------- Layer 1: camera + MediaPipe pose overlay + trivial geometry score ----------
+function angle(a, b, c) { // angle at b (deg)
+  const ab = [a.x-b.x, a.y-b.y], cb = [c.x-b.x, c.y-b.y];
+  const dot = ab[0]*cb[0]+ab[1]*cb[1];
+  const m = Math.hypot(...ab)*Math.hypot(...cb) || 1e-6;
+  return Math.acos(Math.max(-1, Math.min(1, dot/m)))*180/Math.PI;
+}
+async function initPose() {
+  const fileset = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+  poseLandmarker = await PoseLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath:
+      "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate: "GPU" },
+    runningMode: "VIDEO", numPoses: 1 });
+  drawer = new DrawingUtils(octx);
+  log("MediaPipe pose_landmarker loaded (free, on-device, 30fps).");
+}
+function loop() {
+  if (!running) return;
+  if (vid.currentTime !== lastVideoTs && poseLandmarker) {
+    lastVideoTs = vid.currentTime;
+    const res = poseLandmarker.detectForVideo(vid, performance.now());
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    if (res.landmarks?.[0]) {
+      const lm = res.landmarks[0];
+      drawer.drawLandmarks(lm, { radius: 3 });
+      drawer.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS);
+      // trivial score: left knee angle (hip 23, knee 25, ankle 27) → 0..100
+      if (lm[23] && lm[25] && lm[27]) {
+        const knee = angle(lm[23], lm[25], lm[27]);
+        const score = Math.round(Math.max(0, Math.min(100, (knee-90)/0.9)));
+        $("scoreBadge").textContent = "knee " + knee.toFixed(0) + "° · score " + score;
+      }
+    }
+  }
+  requestAnimationFrame(loop);
+}
+$("btnCam").onclick = async () => {
+  mediaStream = await navigator.mediaDevices.getUserMedia({ video:{ width:480, height:360 }, audio:true });
+  vid.srcObject = mediaStream;
+  await vid.play();
+  if (!poseLandmarker) await initPose();
+  running = true; loop();
+  log("Camera + overlay running.");
+};
+
+// ---------- Layer 2: Gemini Live (voice + 1fps LOW-res video) ----------
+$("btnLive").onclick = async () => {
+  const token = $("liveToken").value.trim();
+  if (!token) return log("ERROR: paste an ephemeral Live token first.");
+  if (!mediaStream) return log("ERROR: start the camera first.");
+  // Ephemeral tokens authenticate via access_token query param on the Live WS endpoint.
+  const url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha." +
+              "GenerativeService.BidiGenerateContent?access_token=" + encodeURIComponent(token);
+  liveWS = new WebSocket(url);
+  liveWS.onopen = () => {
+    liveWS.send(JSON.stringify({ setup: {
+      model: "models/" + LIVE_MODEL,
+      generationConfig: { responseModalities: ["AUDIO"], mediaResolution: "MEDIA_RESOLUTION_LOW" },
+      systemInstruction: { parts: [{ text:
+        "You are a vision coach. You can see ~1 frame/sec. Briefly say what you see and coach the technique. Never make medical or appearance judgments." }] }
+    }}));
+    log("Live WS open · model " + LIVE_MODEL + " · MEDIA_RESOLUTION_LOW. Talk to it.");
+    startMicAndFrames();
+  };
+  liveWS.onmessage = async (ev) => {
+    const txt = ev.data instanceof Blob ? await ev.data.text() : ev.data;
+    try {
+      const m = JSON.parse(txt);
+      if (m.usageMetadata) { liveUsage = m.usageMetadata;
+        log("USAGE " + JSON.stringify(m.usageMetadata)); }
+      if (m.serverContent?.modelTurn?.parts) log("(agent audio/text turn received)");
+    } catch { /* binary audio frames — ignore for the spike */ }
+  };
+  liveWS.onclose = (e) => log("Live WS closed " + e.code + " " + (e.reason||""));
+  liveWS.onerror = () => log("Live WS error (check token/expiry).");
+};
+function startMicAndFrames() {
+  // 1 fps LOW-res video frames as JPEG → realtimeInput
+  const fc = document.createElement("canvas"); fc.width = 256; fc.height = 192;
+  const fctx = fc.getContext("2d");
+  frameTimer = setInterval(() => {
+    if (liveWS?.readyState !== 1) return;
+    fctx.drawImage(vid, 0, 0, fc.width, fc.height);
+    const b64 = fc.toDataURL("image/jpeg", 0.5).split(",")[1];
+    liveWS.send(JSON.stringify({ realtimeInput: { mediaChunks: [{ mimeType:"image/jpeg", data:b64 }] }}));
+    liveUsage.count = (liveUsage.count||0)+1;
+  }, 1000); // ~1 fps
+  // Mic → PCM16 16k → realtimeInput audio
+  const ac = new AudioContext({ sampleRate: 16000 });
+  const src = ac.createMediaStreamSource(mediaStream);
+  const proc = ac.createScriptProcessor(4096, 1, 1);
+  src.connect(proc); proc.connect(ac.destination);
+  proc.onaudioprocess = (e) => {
+    if (liveWS?.readyState !== 1) return;
+    const f = e.inputBuffer.getChannelData(0);
+    const pcm = new Int16Array(f.length);
+    for (let i=0;i<f.length;i++){ const s=Math.max(-1,Math.min(1,f[i])); pcm[i]=s<0?s*0x8000:s*0x7fff; }
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+    liveWS.send(JSON.stringify({ realtimeInput: { mediaChunks: [{ mimeType:"audio/pcm;rate=16000", data:b64 }] }}));
+  };
+  log("Streaming mic (16k PCM) + ~1 fps LOW-res JPEG frames.");
+}
+
+// ---------- Layer 3: Agentic-Vision snapshot (gemini-3-flash-preview + code execution) ----------
+$("btnSnap").onclick = async () => {
+  const key = $("apiKey").value.trim();
+  if (!key) return log("ERROR: paste an API key for the snapshot call.");
+  const fc = document.createElement("canvas"); fc.width = 960; fc.height = 720;
+  fc.getContext("2d").drawImage(vid, 0, 0, fc.width, fc.height);
+  const b64 = fc.toDataURL("image/jpeg", 0.9).split(",")[1];
+  const t0 = performance.now();
+  log("Snapshot → " + SNAPSHOT_MODEL + " (code execution on)…");
+  const r = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/" + SNAPSHOT_MODEL + ":generateContent?key=" + key,
+    { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify({
+      contents: [{ role:"user", parts: [
+        { text: "Analyze this athlete's form. Use code execution to crop/annotate, then give a precise breakdown and a 0-100 technique score. Coach technique only — no medical or appearance claims." },
+        { inlineData: { mimeType:"image/jpeg", data:b64 } } ] }],
+      tools: [{ codeExecution: {} }] }) });
+  const j = await r.json();
+  const dt = ((performance.now()-t0)/1000).toFixed(1);
+  if (j.usageMetadata) log("SNAPSHOT USAGE " + JSON.stringify(j.usageMetadata) + " · " + dt + "s");
+  const parts = j.candidates?.[0]?.content?.parts || [];
+  const text = parts.filter(p=>p.text).map(p=>p.text).join("\n");
+  log("SNAPSHOT RESULT (" + dt + "s):\n" + (text || JSON.stringify(j).slice(0,800)));
+  const img = parts.find(p=>p.inlineData);
+  if (img) { const el = new Image(); el.src = "data:image/png;base64,"+img.inlineData.data;
+    el.style.maxWidth="480px"; document.body.appendChild(el); log("(annotated image rendered below)"); }
+};
+</script>
+</body>
+</html>

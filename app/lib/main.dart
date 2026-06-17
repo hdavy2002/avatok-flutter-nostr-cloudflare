@@ -12,6 +12,7 @@ import 'core/analytics.dart';
 import 'core/api_auth.dart';
 import 'core/app_registry.dart';
 import 'core/apps.dart';
+import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
 import 'core/disk_cache.dart';
 import 'core/guest_session.dart';
@@ -50,6 +51,9 @@ void main() async {
   } catch (e, st) {
     Analytics.captureException(e, st, screen: 'startup_firebase_init');
   }
+  // Ava in-chat layer init (Phase 0). Single startup hook — later phases plug in
+  // tools/memory/settings sections via their own files. Non-blocking + guarded.
+  try { await AvaBootstrap.init(); } catch (_) {/* never block boot on Ava init */}
   // Remote kill switches (A2): fetch in the background; never blocks startup.
   unawaited(RemoteConfig.start());
   // Push is separate: a messaging failure must not block the app.
