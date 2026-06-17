@@ -62,6 +62,13 @@ class AvaApi {
   static const String ragIngest = '/api/ava/rag/ingest';
   static const String ragStore = '/api/ava/rag/store';
 
+  /// AvaApps (PREMIUM) — operate the user's Google apps via Composio, driven by
+  /// the user's own Gemini key. connect → OAuth URLs; status → connected apps;
+  /// run → natural-language action.
+  static const String appsConnect = '/api/ava/apps/connect';
+  static const String appsStatus = '/api/ava/apps/status';
+  static const String appsRun = '/api/ava/apps/run';
+
   /// P5 — tool broker / Strata progressive disclosure (prefix; sub-paths vary).
   static const String toolsPrefix = '/api/ava/tools/';
 

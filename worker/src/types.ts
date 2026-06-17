@@ -84,6 +84,9 @@ export interface Env {
   // secrets (wrangler secret put)
   CLERK_JWKS_URL?: string;
   CLERK_ISSUER?: string;
+  // AvaApps (PREMIUM) — Composio tool-calling for the user's Google apps
+  // (Gmail/Docs/Sheets/Drive/Calendar). Unset → AvaApps routes return 503.
+  COMPOSIO_API_KEY?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
   FCM_SERVICE_ACCOUNT?: string;

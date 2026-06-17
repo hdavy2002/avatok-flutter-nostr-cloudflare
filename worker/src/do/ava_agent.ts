@@ -33,6 +33,7 @@ import { json, aiText } from "../util";
 import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, type AiTier } from "../lib/ai_gate"; // P2 gate
 import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
+import { runAppsToolLoop } from "../lib/composio"; // AvaApps (premium) — Composio tools
 
 const REASONER = "@cf/google/gemma-4-26b-a4b-it"; // our-keys fallback (no BYO key)
 // BYO (free tier): the user's own Gemini key. Plain chat runs free Gemma 4; a
@@ -226,6 +227,13 @@ export class AvaAgentDO {
     return /\b(my|our|the)\s+(notes?|files?|docs?|documents?|pdfs?|library|chat|conversation|messages?)\b|\b(remember|recall|earlier|we\s+(said|discussed|decided|talked)|did\s+(i|we)\s+say|according\s+to|in\s+(the|my)\s+(doc|file|notes?)|from\s+(the|my)\s+(doc|file|notes?))\b/i.test(text);
   }
 
+  // Does this turn want to ACT on the user's Google apps (AvaApps, premium)?
+  // e.g. "@ava email Bob…", "create a doc with…", "what's on my calendar",
+  // "save this to drive", "add a row to my sheet". Runs the Composio tool loop.
+  private looksLikeApps(text: string): boolean {
+    return /\b(e?mail|gmail|inbox|send (it|this|an? e?mail)|draft|reply to|calendar|schedule|meeting|appointment|event|google ?doc|create (a )?(doc|document|sheet|spreadsheet)|spreadsheet|google ?sheet|add a row|google ?drive|upload|save (this|it|that) (to|in) (drive|docs?|a doc))\b/i.test(text);
+  }
+
   // Build the system + single user prompt shared by both backends.
   private buildPrompt(
     summary: string, window: { mine: boolean; text: string }[],
@@ -339,6 +347,22 @@ export class AvaAgentDO {
       this.bumpSummaryCounter(conv, maxId, 1);
       const summary = await this.maybeSummarize(conv, window);
       const snippets = await this.brainSearch(uid, userText); // P4 no-op for now
+
+      // 2.5 AvaApps (premium): if the user wants to ACT on their Google apps and
+      // has a key + Composio is configured, run the Composio tool loop on their
+      // own key with the recent conversation as context. Falls through to chat
+      // on any failure (e.g. nothing connected → handled inside the loop).
+      if (byoKey && this.env.COMPOSIO_API_KEY && this.looksLikeApps(userText)) {
+        try {
+          const ctx = window.map((w) => `${w.mine ? "User" : "Other"}: ${w.text}`).join("\n");
+          const answer = await runAppsToolLoop(this.env, byoKey, uid, userText, ctx);
+          if (answer && answer.trim()) {
+            await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+            await this.postAva({ conv, uid, text: answer, private: priv, source: "apps" });
+            return { ok: true, status_id: statusId };
+          }
+        } catch (e) { /* fall through to normal chat generation */ }
+      }
 
       // 3. Generate THROUGH the P2 gate: kill-switch + intent gate + daily cap +
       //    input/output moderation (regenerate once → safe refusal). When the
