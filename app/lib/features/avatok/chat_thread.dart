@@ -24,6 +24,7 @@ import '../../core/wallpaper.dart';
 import '../../core/config.dart';
 import '../../core/ice_cache.dart';
 import '../../core/profile_store.dart';
+import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/group_store.dart';
 import '../../core/message_store.dart';
@@ -610,6 +611,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// `@ava` + button). Phase 3 owns the actual trigger + UI affordance.
   static const String _avaWakeWord = '@ava';
 
+  /// Buffer of the user's outgoing chat lines, flushed into their RAG store
+  /// (Gemini File Search) in batches so @ava can recall the conversation later.
+  final List<String> _ragBuffer = [];
+
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
@@ -618,6 +623,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (onSummonAva != null && t.toLowerCase().contains(_avaWakeWord)) {
       // ignore: unawaited_futures
       onSummonAva!(t); // Phase 3 decides whether to also send the human message
+    }
+    // RAG memory: batch the user's outgoing chat text and index it into their
+    // own File Search store so @ava can recall it later. Fire-and-forget, never
+    // blocks sending; skips @ava control lines.
+    if (!t.toLowerCase().contains(_avaWakeWord)) {
+      _ragBuffer.add(t);
+      if (_ragBuffer.length >= 10) {
+        final batch = _ragBuffer.join('\n');
+        _ragBuffer.clear();
+        // ignore: unawaited_futures
+        RagService.I.ingestText('Chat with ${widget.chat.name}:\n$batch',
+            name: 'chat-${widget.chat.name}');
+      }
     }
     // Tapping the send button steals focus from the field; grab it back so the
     // keyboard stays up and the user can keep typing without re-tapping the box.
@@ -1122,6 +1140,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         localBytes: bytes, uploading: true);
     setState(() => _msgs.add(msg));
     _jump();
+    // Index shared docs/images into the user's own RAG store (File Search
+    // supports text/PDF/Office/PNG/JPEG, not audio/video). Fire-and-forget.
+    if (kind == MediaKind.image || kind == MediaKind.file) {
+      // ignore: unawaited_futures
+      RagService.I.ingestFileBytes(bytes, ct, name);
+    }
     await _upload(msg, bytes, kind, ct, name);
   }
 

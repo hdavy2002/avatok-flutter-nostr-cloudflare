@@ -40,6 +40,8 @@ const REASONER = "@cf/google/gemma-4-26b-a4b-it"; // our-keys fallback (no BYO k
 // on the user's own project), so "@ava search the web for…" works for free.
 const BYO_CHAT_MODEL = "gemma-4-26b-a4b-it";
 const BYO_SEARCH_MODEL = "gemini-2.5-flash-lite";
+// File Search (RAG) runs on a Gemini model (Gemma is unsupported) — free Flash-Lite.
+const BYO_RAG_MODEL = "gemini-2.5-flash-lite";
 const GUARD = "@cf/meta/llama-guard-3-8b";
 const WINDOW = 12;          // recent turns fed to the model (bounded context)
 const SUMMARY_EVERY = 8;    // refresh the rolling summary roughly every N messages
@@ -217,6 +219,13 @@ export class AvaAgentDO {
     return /\b(search|google|internet|web|look\s?up|lookup|latest|news|today|currently|current|weather|price|stock|score|who\s+won|right\s+now|happening|online|what'?s\s+new|find\s+(me\s+)?(out|info))\b/i.test(text);
   }
 
+  // Does this turn want the user's OWN files/notes/chat history (RAG via File
+  // Search)? Only matters when the user has connected a store. File Search and
+  // Google Search can't combine, so RAG intent takes precedence over web intent.
+  private looksLikeRag(text: string): boolean {
+    return /\b(my|our|the)\s+(notes?|files?|docs?|documents?|pdfs?|library|chat|conversation|messages?)\b|\b(remember|recall|earlier|we\s+(said|discussed|decided|talked)|did\s+(i|we)\s+say|according\s+to|in\s+(the|my)\s+(doc|file|notes?)|from\s+(the|my)\s+(doc|file|notes?))\b/i.test(text);
+  }
+
   // Build the system + single user prompt shared by both backends.
   private buildPrompt(
     summary: string, window: { mine: boolean; text: string }[],
@@ -270,6 +279,34 @@ export class AvaAgentDO {
       throw new Error(`gemini ${res.status}: ${detail.slice(0, 200)}`);
     }
     const out: any = await res.json().catch(() => ({}));
+    return this.extractText(out);
+  }
+
+  // BYO RAG backend: query the user's own File Search store (their files + chat
+  // history, embedded + stored under THEIR Google key — we hold none of it).
+  // Runs on a Gemini model (Gemma unsupported). Can't combine with Google Search.
+  private async generateGeminiFileSearch(key: string, store: string, sys: string, user: string): Promise<string> {
+    const body: any = {
+      systemInstruction: { parts: [{ text: sys }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      tools: [{ file_search: { file_search_store_names: [store] } }],
+      generationConfig: { maxOutputTokens: 800, temperature: 0.4 },
+    };
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(BYO_RAG_MODEL)}:generateContent`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`filesearch ${res.status}: ${detail.slice(0, 200)}`);
+    }
+    return this.extractText(await res.json().catch(() => ({})));
+  }
+
+  // Pull answer text from a Gemini response, dropping Gemma/Flash "thought" parts.
+  private extractText(out: any): string {
     const parts = out?.candidates?.[0]?.content?.parts;
     if (Array.isArray(parts)) {
       return parts
@@ -282,12 +319,13 @@ export class AvaAgentDO {
   }
 
   // ---- the turn ---------------------------------------------------------------
-  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string }): Promise<any> {
+  private async turn(b: { conv: string; uid: string; text: string; private?: boolean; key?: string; store?: string }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
     const userText = String(b.text || "").trim();
     const priv = !!b.private;
     const byoKey = String(b.key || "").trim();
+    const store = String(b.store || "").trim();
     if (!conv || !uid || !userText) return { ok: false, error: "conv, uid, text required" };
 
     const statusId = crypto.randomUUID();
@@ -308,13 +346,17 @@ export class AvaAgentDO {
       //    own key (Gemma 4 chat; Flash-Lite + Google Search for search intent)
       //    and bypass the daily cap. No key → our-keys Workers-AI Gemma (capped).
       const tier: AiTier = byoKey ? "byo" : "ourkeys";
-      const wantSearch = !!byoKey && this.looksLikeSearch(userText)
+      // RAG over the user's own File Search store takes precedence over web
+      // search (the two tools can't combine). Both require the BYO key.
+      const wantRag = !!byoKey && !!store && this.looksLikeRag(userText);
+      const wantSearch = !!byoKey && !wantRag && this.looksLikeSearch(userText)
           && await webSearchAllowed(this.env, tier);
       const gated = await runGated(this.env, {
         uid, tier, userText,
         generate: (steer) => {
           const ut = steer ? `${userText}\n\n(${steer})` : userText;
-          const { sys, user } = this.buildPrompt(summary, window, ut, snippets, wantSearch);
+          const { sys, user } = this.buildPrompt(summary, window, ut, snippets, wantSearch || wantRag);
+          if (byoKey && wantRag) return this.generateGeminiFileSearch(byoKey, store, sys, user);
           if (byoKey) {
             return this.generateGemini(
               byoKey, wantSearch ? BYO_SEARCH_MODEL : BYO_CHAT_MODEL, sys, user, wantSearch);

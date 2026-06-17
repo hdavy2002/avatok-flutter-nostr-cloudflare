@@ -57,6 +57,11 @@ class AvaApi {
   /// P3 — in-thread agent turn (posts ava/ava_status into the existing conv).
   static const String threadTurn = '/api/ava/thread/turn';
 
+  /// RAG — index the user's files + chat text into their own File Search store
+  /// (under their Google key); @ava queries it automatically.
+  static const String ragIngest = '/api/ava/rag/ingest';
+  static const String ragStore = '/api/ava/rag/store';
+
   /// P5 — tool broker / Strata progressive disclosure (prefix; sub-paths vary).
   static const String toolsPrefix = '/api/ava/tools/';
 
