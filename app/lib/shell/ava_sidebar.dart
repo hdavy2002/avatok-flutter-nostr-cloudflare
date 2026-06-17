@@ -173,8 +173,6 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 // 2026-06-17). AvaLibrary stays as the featured tile.
                 _special('library', 'AvaLibrary', 'Saved media & files',
                     PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
-                _special('avaapps', 'AvaApps', 'Gmail, Calendar, Drive & more',
-                    PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), Zine.blue),
               ],
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),

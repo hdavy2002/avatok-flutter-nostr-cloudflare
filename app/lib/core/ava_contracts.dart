@@ -62,12 +62,6 @@ class AvaApi {
   static const String ragIngest = '/api/ava/rag/ingest';
   static const String ragStore = '/api/ava/rag/store';
 
-  /// AvaApps — drive the user's connected apps (Gmail, Calendar, …) via Klavis
-  /// MCP, with the model on the user's own Gemini key.
-  static const String appsConnect = '/api/ava/apps/connect';
-  static const String appsStatus = '/api/ava/apps/status';
-  static const String appsRun = '/api/ava/apps/run';
-
   /// P5 — tool broker / Strata progressive disclosure (prefix; sub-paths vary).
   static const String toolsPrefix = '/api/ava/tools/';
 

@@ -84,9 +84,6 @@ export interface Env {
   // secrets (wrangler secret put)
   CLERK_JWKS_URL?: string;
   CLERK_ISSUER?: string;
-  // AvaApps — Klavis MCP integration (Gmail, Google Calendar/Docs/Drive/Sheets/
-  // Forms/Jobs/Cloud, …). One account-wide secret; unset → AvaApps returns 503.
-  KLAVIS_API_KEY?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
   FCM_SERVICE_ACCOUNT?: string;
