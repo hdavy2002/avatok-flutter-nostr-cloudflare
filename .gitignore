@@ -80,3 +80,7 @@ graphify-out/cache/
 
 # vite crash leftovers
 *.timestamp-*.mjs
+
+# Build artifacts — CI builds the .aab fresh and publishes to the calltest-latest release
+apk/
+aab/
