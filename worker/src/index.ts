@@ -78,6 +78,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 // Specs/ava-build/INTEGRATION-NOTES.md.
 import { avaGemini } from "./routes/ava_gemini";        // P2
 import { avaRagIngest, avaRagStore } from "./routes/ava_rag"; // RAG (File Search)
+import { avaAppsConnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Klavis)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
 import { avaTools } from "./routes/ava_tools";          // P5
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
@@ -191,6 +192,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/thread/turn" && req.method === "POST") return await avaThreadTurn(req, env); // P3
       if (p === "/api/ava/rag/ingest" && req.method === "POST") return await avaRagIngest(req, env);   // RAG
       if (p === "/api/ava/rag/store" && req.method === "GET") return await avaRagStore(req, env);      // RAG
+      if (p === "/api/ava/apps/connect" && req.method === "POST") return await avaAppsConnect(req, env); // AvaApps
+      if (p === "/api/ava/apps/status" && req.method === "GET") return await avaAppsStatus(req, env);    // AvaApps
+      if (p === "/api/ava/apps/run" && req.method === "POST") return await avaAppsRun(req, env);         // AvaApps
       if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
       if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env);            // P9
       if (p.startsWith("/api/ava/tools/")) return await avaTools(req, env, p.slice("/api/ava/tools/".length)); // P5

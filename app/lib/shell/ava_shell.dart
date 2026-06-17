@@ -8,6 +8,7 @@ import '../core/apps.dart';
 import '../core/onboarding_store.dart';
 import '../core/ui/zine.dart';
 import '../identity/identity.dart';
+import '../features/avaapps/avaapps_screen.dart';
 import '../features/avachat/avachat_screen.dart';
 import '../features/avalive/avalive_discovery.dart';
 import '../features/affiliate/affiliate_home.dart';
@@ -117,6 +118,10 @@ class _AvaShellState extends State<AvaShell> {
       case 'library':
       case 'avalibrary':
         _push(const AvaLibraryScreen());
+        return;
+      case 'avaapps':
+      case 'apps':
+        _push(const AvaAppsScreen());
         return;
       case 'avastorage':
       case 'storage':
