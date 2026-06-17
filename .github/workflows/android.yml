@@ -123,6 +123,30 @@ jobs:
           name: avatok-call-aab
           path: dist/avatok-call.aab
 
+      # Release APK — installable directly on a device for testing (an .aab
+      # can't be sideloaded). Same release signing config as the bundle above.
+      - name: Build release APK (for testing)
+        working-directory: app
+        run: flutter build apk --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+
+      - name: Stage .apk with a stable name
+        run: |
+          ls -la app/build/app/outputs/flutter-apk/
+          cp app/build/app/outputs/flutter-apk/app-release.apk dist/avatok-call.apk
+          echo "size:"; ls -lh dist/
+
+      - name: Upload .apk artifact (testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: avatok-call-apk
+          path: dist/avatok-call.apk
+
       - name: Publish to Release (stable link)
         uses: softprops/action-gh-release@v2
         with:
@@ -130,11 +154,13 @@ jobs:
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
             dist/avatok-call.aab
+            dist/avatok-call.apk
           fail_on_unmatched_files: false
           body: |
             Play Store Android App Bundle, built by CI from `app/`.
             Download `avatok-call.aab` and upload it in Play Console → pick a
             track (Internal testing / Production) → Create new release.
+            Download `avatok-call.apk` to sideload directly on a device for testing.
 
             Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
             (+ store/alias/key password) secrets are set; otherwise signed with

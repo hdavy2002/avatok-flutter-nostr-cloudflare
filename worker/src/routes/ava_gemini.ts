@@ -22,8 +22,11 @@ import { runGated, type AiTier } from "../lib/ai_gate";
 
 // our-keys model — match P3/agent.ts/conversation.ts (cheap Workers-AI Gemma).
 const OURKEYS_MODEL = "@cf/google/gemma-4-26b-a4b-it";
-// BYO model — a fast/cheap Google Gemini Flash. Overridable per-request via mode.
-const BYO_MODEL_DEFAULT = "gemini-2.5-flash";
+// BYO model — AvaTOK FREE tier runs the user's own key on Gemma 4, which is
+// free-of-charge on the Gemini API (no paid tier), so it costs $0 for everyone.
+// Gemma 4 supports systemInstruction + multi-turn + image/audio input (256K ctx).
+// Overridable per-request via `mode` (a "gemma-*" or "gemini-*" model id).
+const BYO_MODEL_DEFAULT = "gemma-4-26b-a4b-it";
 const MAX_TOKENS = 600;
 
 const SYSTEM = [
@@ -89,7 +92,16 @@ async function generateBYO(
   }
   const out: any = await res.json().catch(() => ({}));
   const cand = out?.candidates?.[0]?.content?.parts;
-  if (Array.isArray(cand)) return cand.map((p: any) => String(p?.text ?? "")).join("").trim();
+  if (Array.isArray(cand)) {
+    // Gemma 4 streams an internal "thinking" part (`thought:true`) before the
+    // real answer; thinkingLevel can't disable it, so drop thought parts here
+    // or the user sees the model's raw reasoning prepended to every reply.
+    return cand
+      .filter((p: any) => p?.thought !== true)
+      .map((p: any) => String(p?.text ?? ""))
+      .join("")
+      .trim();
+  }
   return "";
 }
 
@@ -129,7 +141,9 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const key = byoKey(req, b);
   const tier: AiTier = key ? "byo" : "ourkeys";
   // `mode` only steers the BYO model id for now (our-keys is fixed Gemma).
-  const byoModel = (typeof b.mode === "string" && b.mode.startsWith("gemini-")) ? b.mode : BYO_MODEL_DEFAULT;
+  // Accept a "gemma-*" or "gemini-*" override; otherwise default to free Gemma 4.
+  const byoModel = (typeof b.mode === "string" && /^(gemma|gemini)-/.test(b.mode))
+      ? b.mode : BYO_MODEL_DEFAULT;
 
   // The model closure handed to the gate. The gate wraps it with input/output
   // moderation, the intent gate, and (our-keys only) the daily cap.

@@ -69,7 +69,7 @@ const DEFAULTS: PlatformConfig = {
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
   aiEnabled: true,
   focusMode: true,
-  webSearchEnabled: false,         // premium unlocks
+  webSearchEnabled: true,          // BYO (free) + premium; gated by webSearchAllowed
   fileAnalysisEnabled: false,      // premium unlocks
   openChatUncapped: false,         // premium removes the cap
   dailyAvaTurnLimit: 25,

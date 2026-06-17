@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../core/api_auth.dart';
+import '../../core/ava_ai_store.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
@@ -61,8 +62,16 @@ class AvaTurnController {
     }
     if (!_inFlight.add(convKey)) return; // a turn is already running for this conv
     try {
-      final res = await ApiAuth.postJson(_turnUrl, body,
-          timeout: const Duration(seconds: 20));
+      // Forward the user's own Gemini key (FREE BYO tier) per-request via header,
+      // same as AvaAiClient. The Worker passes it to the agent DO for THIS turn
+      // only (never stored). No key → server falls back to our-keys Workers-AI.
+      final extraHeaders = <String, String>{};
+      final byoKey = await AvaAiStore().apiKey();
+      if (byoKey != null && byoKey.isNotEmpty) {
+        extraHeaders['X-Ava-Gemini-Key'] = byoKey;
+      }
+      final res = await ApiAuth.postJsonH(_turnUrl, body, extraHeaders,
+          timeout: const Duration(seconds: 45)); // grounded search can be slow
       if (res.statusCode != 200) {
         AvaLog.I.log('ava', 'turn FAILED ${res.statusCode}: ${res.body}');
       }

@@ -40,6 +40,10 @@ export async function avaThreadTurn(req: Request, env: Env): Promise<Response> {
   const conv = resolveConv(ctx.uid, b);
   if (!conv) return json({ error: "conv or to required" }, 400);
   const priv = !!b.private;
+  // The caller may forward their own Gemini key (free BYO tier) per-request via
+  // the same header the /api/ava/gemini proxy uses. We pass it straight to the
+  // DO for this turn only — never stored. No key → our-keys Workers-AI fallback.
+  const byoKey = (req.headers.get("x-ava-gemini-key") || "").trim();
 
   // Forward to the caller's per-user agent DO. The DO posts the working chip,
   // runs the loop, and fans the answer out via InboxDO — so this returns fast.
@@ -47,7 +51,7 @@ export async function avaThreadTurn(req: Request, env: Env): Promise<Response> {
   try {
     const res = await agentOf(env, ctx.uid).fetch("https://ava-agent/turn", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ conv, uid: ctx.uid, text, private: priv }),
+      body: JSON.stringify({ conv, uid: ctx.uid, text, private: priv, key: byoKey }),
     });
     out = await res.json();
   } catch (e: any) {
