@@ -280,6 +280,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _markRead();
     _loadChatExtras();
     _loadCachedMessages();
+    // Let replayed group history settle before indexing LIVE messages into RAG.
+    Future.delayed(const Duration(seconds: 3), () { if (mounted) _ragLive = true; });
   }
 
   void _onPresence(Map<String, dynamic> e) {
@@ -355,6 +357,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           senderLabel: m.mine ? null : _shortPub(m.senderPub)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
+    // Full-thread RAG: index a member's LIVE group text into my own store.
+    // `_ragLive` gates out the history that replays on open (avoids re-indexing).
+    if (!m.mine && _ragLive && special == null && media == null) {
+      _ragAddLine(_shortPub(m.senderPub), text);
+    }
     _jump();
     _markRead();
     _schedulePersist();
@@ -448,6 +455,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           starred: _starred.contains(m.rumorId)));
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
+    // Full-thread RAG: index a peer's LIVE text into my own store (not seeded
+    // history, not media/special envelopes).
+    if (!m.mine && !seed && special == null && media == null) {
+      _ragAddLine(widget.chat.name, text);
+    }
     _jump();
     if (!m.mine && !seed) {
       // Live (just-arrived) message I'm looking at → tell the sender it's read,
@@ -611,9 +623,28 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// `@ava` + button). Phase 3 owns the actual trigger + UI affordance.
   static const String _avaWakeWord = '@ava';
 
-  /// Buffer of the user's outgoing chat lines, flushed into their RAG store
-  /// (Gemini File Search) in batches so @ava can recall the conversation later.
+  /// Buffer of conversation lines (everyone's), flushed into THIS member's own
+  /// RAG store (Gemini File Search) in batches so @ava can recall the whole
+  /// thread later. Group RAG = each member indexes the full thread into their
+  /// own store (owner decision 2026-06-18). `_ragLive` gates incoming messages
+  /// so reopening a chat doesn't re-index already-seen history.
   final List<String> _ragBuffer = [];
+  bool _ragLive = false;
+
+  /// Append one labelled line to the RAG batch; flush to the store every 10.
+  /// Skips empty lines and @ava control lines. Fire-and-forget — never blocks.
+  void _ragAddLine(String who, String text) {
+    final t = text.trim();
+    if (t.isEmpty || t.toLowerCase().contains(_avaWakeWord)) return;
+    _ragBuffer.add('$who: $t');
+    if (_ragBuffer.length >= 10) {
+      final batch = _ragBuffer.join('\n');
+      _ragBuffer.clear();
+      // ignore: unawaited_futures
+      RagService.I.ingestText('Chat with ${widget.chat.name}:\n$batch',
+          name: 'chat-${widget.chat.name}');
+    }
+  }
 
   void _send() {
     final t = _ctrl.text.trim();
@@ -624,19 +655,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       // ignore: unawaited_futures
       onSummonAva!(t); // Phase 3 decides whether to also send the human message
     }
-    // RAG memory: batch the user's outgoing chat text and index it into their
-    // own File Search store so @ava can recall it later. Fire-and-forget, never
-    // blocks sending; skips @ava control lines.
-    if (!t.toLowerCase().contains(_avaWakeWord)) {
-      _ragBuffer.add(t);
-      if (_ragBuffer.length >= 10) {
-        final batch = _ragBuffer.join('\n');
-        _ragBuffer.clear();
-        // ignore: unawaited_futures
-        RagService.I.ingestText('Chat with ${widget.chat.name}:\n$batch',
-            name: 'chat-${widget.chat.name}');
-      }
-    }
+    // RAG memory: index this outgoing line into the user's own File Search store
+    // (full-thread indexing — incoming lines are added in the receive handlers).
+    _ragAddLine('You', t);
     // Tapping the send button steals focus from the field; grab it back so the
     // keyboard stays up and the user can keep typing without re-tapping the box.
     _composerFocus.requestFocus();
