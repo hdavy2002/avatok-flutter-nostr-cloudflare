@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Block thin / utility routes from indexing
+Disallow: /j/
+Disallow: /api/
+Disallow: /.well-known/
+
+Sitemap: https://avatok.ai/sitemap.xml

@@ -1,0 +1,128 @@
+---
+export const prerender = true;
+import Content from '../layouts/Content.astro';
+
+const roles = [
+  {
+    id: 'senior-fullstack-engineer',
+    title: 'Senior Full-Stack Engineer',
+    team: 'Platform',
+    type: 'Full-time · Remote',
+    summary:
+      'Own features end to end across our TypeScript + Cloudflare Workers backend and Astro/React web client. You ship to production daily and care about performance at the edge.',
+    skills: ['TypeScript', 'Cloudflare Workers / D1', 'React + Astro', 'API design', 'SQL'],
+  },
+  {
+    id: 'flutter-mobile-engineer',
+    title: 'Flutter Mobile Engineer',
+    team: 'Apps',
+    type: 'Full-time · Remote',
+    summary:
+      'Build the avaTOK mobile experience in Flutter — live streaming, calls, payments, and AI features — with a local-first, offline-aware architecture across iOS and Android.',
+    skills: ['Flutter / Dart', 'iOS & Android', 'Realtime / WebRTC', 'State management', 'Native channels'],
+  },
+  {
+    id: 'machine-learning-engineer',
+    title: 'Machine Learning Engineer',
+    team: 'AI',
+    type: 'Full-time · Remote',
+    summary:
+      'Take models from prototype to production — voice agents, live translation, recommendations, and moderation. You build robust, low-latency ML pipelines that serve real users.',
+    skills: ['Python', 'PyTorch / TensorFlow', 'LLMs & speech', 'Inference optimization', 'MLOps'],
+  },
+  {
+    id: 'ai-research-engineer',
+    title: 'AI Research Engineer',
+    team: 'AI',
+    type: 'Full-time · Remote',
+    summary:
+      'Push the frontier of human–AI interaction. Prototype with the latest models, evaluate rigorously, and turn research into features that ship — from agentic workflows to multimodal understanding.',
+    skills: ['Applied ML research', 'LLM evaluation', 'RAG / agents', 'Prompt & model tuning', 'Multimodal'],
+  },
+  {
+    id: 'backend-platform-engineer',
+    title: 'Backend / Platform Engineer',
+    team: 'Platform',
+    type: 'Full-time · Remote',
+    summary:
+      'Design the systems that move money and media at scale — wallets, payouts, queues, and storage — on a serverless, globally distributed stack. Reliability and correctness are your craft.',
+    skills: ['TypeScript / Go', 'Distributed systems', 'Queues & workers', 'Payments', 'Observability'],
+  },
+];
+
+const applyHref = (title: string) =>
+  `mailto:support@avatok.ai?subject=${encodeURIComponent('Application: ' + title)}&body=${encodeURIComponent(
+    'Hi avaTOK team,\n\nI’d like to apply for the ' + title + ' role.\n\n- Name:\n- Location / timezone:\n- LinkedIn / portfolio / GitHub:\n- Link to CV/resume:\n- A note on why you’re a great fit:\n\nThanks!',
+  )}`;
+---
+
+<Content
+  kicker="Company"
+  title="Careers at avaTOK"
+  lead="Help us build an AI-first creator economy. We're a distributed team that ships fast and cares deeply about creators and craft."
+  width="wide"
+>
+  <p>
+    avaTOK is built by <strong>AvaGlobal International, Inc.</strong>, a Delaware company building
+    AI-first products. We hire builders who take ownership, communicate clearly, and want their work
+    in the hands of real users. Don't see a perfect match? Email us anyway at
+    <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
+  </p>
+
+  <div class="jobs">
+    {roles.map((r) => (
+      <section class="job" id={r.id}>
+        <div class="job-head">
+          <div>
+            <h3 class="job-title">{r.title}</h3>
+            <div class="job-meta"><span class="badge">{r.team}</span><span class="job-type">{r.type}</span></div>
+          </div>
+          <a class="apply" href={applyHref(r.title)}>Apply →</a>
+        </div>
+        <p class="job-sum">{r.summary}</p>
+        <div class="job-skills">{r.skills.map((s) => <span class="chip">{s}</span>)}</div>
+      </section>
+    ))}
+  </div>
+
+  <p class="hiring-note">
+    avaTOK / AvaGlobal International, Inc. is an equal-opportunity employer. We welcome applicants of
+    every background and are committed to a fair, inclusive hiring process. To apply, hit any
+    <strong>Apply</strong> button or email <a href="mailto:support@avatok.ai">support@avatok.ai</a>.
+  </p>
+</Content>
+
+<style>
+  .jobs { display: flex; flex-direction: column; gap: 18px; margin-top: 28px; }
+  .job {
+    border: 2.5px solid var(--ink, #231b14);
+    background: var(--card, #fff);
+    border-radius: 16px;
+    padding: 22px 24px;
+    box-shadow: 3px 3px 0 var(--ink, #231b14);
+  }
+  .job-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .job-title { margin: 0 !important; font-family: 'Fredoka', sans-serif; font-size: 22px; color: var(--ink, #231b14); }
+  .job-meta { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  .badge {
+    font-family: 'Space Mono', monospace; font-weight: 700; font-size: 12px; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--blue-ink, #007d7f); background: var(--blue, #cdeff0);
+    border: 2px solid var(--ink, #231b14); border-radius: 999px; padding: 2px 10px;
+  }
+  .job-type { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 13px; color: var(--ink-soft, #6a6258); }
+  .apply {
+    flex: none; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 13px;
+    text-transform: uppercase; letter-spacing: 0.04em; text-decoration: none !important;
+    color: var(--ink, #231b14) !important; background: var(--lime, #bfeb56);
+    border: 2.5px solid var(--ink, #231b14); border-radius: 999px; padding: 8px 16px;
+    box-shadow: 2px 2px 0 var(--ink, #231b14); transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .apply:hover { transform: translate(-1px,-1px); box-shadow: 3px 4px 0 var(--ink, #231b14); color: var(--ink, #231b14) !important; }
+  .job-sum { margin: 14px 0 0; font-size: 16px; font-weight: 600; color: var(--ink-soft, #6a6258); line-height: 1.55; }
+  .job-skills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip {
+    font-size: 13px; font-weight: 700; color: var(--ink, #231b14); background: var(--paper-2, #f0ece0);
+    border: 1.5px solid var(--ink, #231b14); border-radius: 8px; padding: 4px 10px;
+  }
+  .hiring-note { margin-top: 32px; }
+</style>

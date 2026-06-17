@@ -23,6 +23,8 @@ export interface Props {
    * kept out of search results — web is the public booking funnel.
    */
   noindex?: boolean;
+  /** Hide the header auth CTAs (Log in / Sign up) entirely. */
+  hideNavCtas?: boolean;
 }
 
 const {
@@ -32,6 +34,7 @@ const {
   chrome = true,
   navStatic = false,
   noindex = false,
+  hideNavCtas = false,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai').toString();
@@ -65,7 +68,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://avatok.ai')
     <slot name="head" />
   </head>
   <body class="min-h-screen bg-paper text-ink font-body">
-    {chrome && <Nav staticCtas={navStatic} />}
+    {chrome && <Nav staticCtas={navStatic} hideCtas={hideNavCtas} />}
     <slot />
     {chrome && <SiteFooter />}
   </body>

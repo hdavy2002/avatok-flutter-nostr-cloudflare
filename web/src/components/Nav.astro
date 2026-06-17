@@ -16,8 +16,11 @@ interface Props {
    * the header to a single (body) provider.
    */
   staticCtas?: boolean;
+  /** Hide the right-side auth CTAs entirely (used on the public marketing /
+   *  legal pages, consistent with the landing which no longer shows sign-up). */
+  hideCtas?: boolean;
 }
-const { staticCtas = false } = Astro.props;
+const { staticCtas = false, hideCtas = false } = Astro.props;
 
 const ghostCta =
   'rounded-full border-zine border-ink bg-card px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine';
@@ -54,7 +57,7 @@ const linkClass =
     <!-- Right CTAs -->
     <div class="ml-auto hidden items-center gap-2 sm:flex">
       <a href="/admin" data-admin-link hidden class="font-mono font-bold uppercase text-[11px] tracking-[0.06em] text-inkSoft no-underline">Admin</a>
-      {staticCtas ? (
+      {hideCtas ? null : staticCtas ? (
         <>
           <a href="/sign-in" class={ghostCta}>Log in</a>
           <a href="/sign-up" class={primaryCta}>Sign up</a>
@@ -84,10 +87,12 @@ const linkClass =
       {links.map((l) => (
         <a href={l.href} class="rounded-zineField px-3 py-2.5 font-body font-extrabold text-[15px] text-ink no-underline hover:bg-card">{l.label}</a>
       ))}
-      <div class="mt-2 flex gap-2 border-t-zine border-ink pt-3">
-        <a href="/sign-in" class="flex-1 rounded-full border-zine border-ink bg-card px-3 py-2.5 text-center font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Log in</a>
-        <a href="/sign-up" class="flex-1 rounded-full border-zine border-ink bg-lime px-3 py-2.5 text-center font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Sign up</a>
-      </div>
+      {!hideCtas && (
+        <div class="mt-2 flex gap-2 border-t-zine border-ink pt-3">
+          <a href="/sign-in" class="flex-1 rounded-full border-zine border-ink bg-card px-3 py-2.5 text-center font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Log in</a>
+          <a href="/sign-up" class="flex-1 rounded-full border-zine border-ink bg-lime px-3 py-2.5 text-center font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs">Sign up</a>
+        </div>
+      )}
     </div>
   </div>
 

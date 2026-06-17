@@ -1,0 +1,72 @@
+---
+export const prerender = true;
+import Content from '../../layouts/Content.astro';
+
+const posts = [
+  {
+    slug: 'earn-from-day-one',
+    title: 'Why creators should earn from day one',
+    date: '2026-06-16',
+    excerpt:
+      'Monetization thresholds and rented algorithms hold creators back. Here’s how avaTOK flips the model so you keep 80% from your very first post.',
+    tag: 'Creator economy',
+  },
+  {
+    slug: 'ai-voice-agents',
+    title: 'Your AI voice agent: earning while you sleep',
+    date: '2026-06-16',
+    excerpt:
+      'Turn what you know into an AI voice agent that answers fans 24/7 in 24+ languages — and puts money in your wallet around the clock.',
+    tag: 'AI',
+  },
+  {
+    slug: 'real-people-safety',
+    title: 'Building a community of real people',
+    date: '2026-06-16',
+    excerpt:
+      'Verification, control over your DMs, and fast enforcement — how we keep avaTOK genuine and safe, especially for women.',
+    tag: 'Trust & safety',
+  },
+];
+
+const fmt = (d: string) =>
+  new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+---
+
+<Content
+  kicker="Blog"
+  title="The avaTOK blog"
+  lead="Notes from the team on the creator economy, AI, and building avaTOK."
+  width="wide"
+>
+  <div class="posts">
+    {posts.map((p) => (
+      <a class="post" href={`/blog/${p.slug}`}>
+        <span class="badge">{p.tag}</span>
+        <h3 class="post-title">{p.title}</h3>
+        <p class="post-ex">{p.excerpt}</p>
+        <span class="post-date">{fmt(p.date)} · Read →</span>
+      </a>
+    ))}
+  </div>
+</Content>
+
+<style>
+  .posts { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; }
+  .post {
+    display: block; text-decoration: none !important;
+    border: 2.5px solid var(--ink, #231b14); background: var(--card, #fff);
+    border-radius: 16px; padding: 22px 24px; box-shadow: 3px 3px 0 var(--ink, #231b14);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .post:hover { transform: translate(-2px,-2px); box-shadow: 5px 6px 0 var(--ink, #231b14); }
+  .badge {
+    display: inline-block; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.04em; text-transform: uppercase; color: var(--blue-ink, #007d7f);
+    background: var(--blue, #cdeff0); border: 2px solid var(--ink, #231b14); border-radius: 999px; padding: 2px 10px;
+  }
+  .post-title { margin: 14px 0 0 !important; font-family: 'Fredoka', sans-serif; font-size: 22px; color: var(--ink, #231b14); }
+  .post-ex { margin: 10px 0 0; font-size: 16px; font-weight: 600; color: var(--ink-soft, #6a6258); line-height: 1.55; }
+  .post-date { display: inline-block; margin-top: 16px; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 13px; color: var(--blue-ink, #007d7f); }
+  @media (max-width: 640px) { .posts { grid-template-columns: 1fr; } }
+</style>

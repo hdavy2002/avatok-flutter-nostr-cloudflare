@@ -1,0 +1,176 @@
+---
+// Shared layout for long-form public content pages — legal policies, About,
+// Careers, Contact and blog posts. Wraps Base (nav + footer chrome) and renders
+// a centered, readable article column with the marketing "zine" look. Styles are
+// scoped here and define the few marketing tokens locally so nothing leaks into
+// app pages (same pattern as SiteFooter.astro).
+import Base from './Base.astro';
+
+export interface Props {
+  title: string;
+  description?: string;
+  /** Small eyebrow label above the title (e.g. "Legal", "Company"). */
+  kicker?: string;
+  /** Optional sub-headline under the title. */
+  lead?: string;
+  /** ISO date string shown as "Last updated …" (legal pages). */
+  updated?: string;
+  /** Constrain the prose width; "narrow" for legal, "wide" for listings. */
+  width?: 'narrow' | 'wide';
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description,
+  kicker,
+  lead,
+  updated,
+  width = 'narrow',
+  noindex = false,
+} = Astro.props;
+
+const updatedLabel = updated
+  ? new Date(updated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  : null;
+---
+
+<Base title={`${title} · avaTOK`} description={description} hideNavCtas noindex={noindex}>
+  <main class={`content ${width === 'wide' ? 'is-wide' : ''}`}>
+    <header class="content-head">
+      {kicker && <div class="kick">{kicker}</div>}
+      <h1>{title}</h1>
+      {lead && <p class="lead">{lead}</p>}
+      {updatedLabel && <p class="updated">Last updated {updatedLabel}</p>}
+    </header>
+    <article class="prose">
+      <slot />
+    </article>
+  </main>
+</Base>
+
+<style is:global>
+  /* Marketing tokens, scoped to .content so app pages are unaffected. */
+  .content {
+    --paper: oklch(0.975 0.013 95);
+    --paper-2: oklch(0.955 0.018 92);
+    --card: oklch(0.995 0.004 95);
+    --ink: oklch(0.23 0.018 60);
+    --ink-soft: oklch(0.42 0.02 62);
+    --blue: oklch(0.92 0.085 190);
+    --blue-ink: oklch(0.52 0.12 196);
+    --coral: oklch(0.70 0.19 32);
+    --lime: oklch(0.88 0.18 124);
+    --line: oklch(0.23 0.018 60 / 0.14);
+    --shadow-sm: 3px 3px 0 var(--ink);
+
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 64px 26px 88px;
+    color: var(--ink);
+    font-family: 'Nunito', sans-serif;
+  }
+  .content.is-wide { max-width: 1080px; }
+
+  .content-head { margin-bottom: 40px; }
+  .content-head .kick {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--blue-ink);
+    background: var(--blue);
+    border: 2.5px solid var(--ink);
+    border-radius: 999px;
+    padding: 4px 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 18px;
+  }
+  .content-head h1 {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 700;
+    font-size: clamp(32px, 5vw, 50px);
+    line-height: 1.04;
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  .content-head .lead {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin: 16px 0 0;
+    max-width: 60ch;
+    text-wrap: pretty;
+  }
+  .content-head .updated {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    margin: 18px 0 0;
+  }
+
+  .content .prose { font-size: 17px; line-height: 1.7; color: var(--ink-soft); }
+  .content .prose > * + * { margin-top: 18px; }
+  .content .prose h2 {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 600;
+    font-size: 26px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin: 44px 0 0;
+    padding-top: 8px;
+  }
+  .content .prose h3 {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    color: var(--ink);
+    margin: 30px 0 0;
+  }
+  .content .prose a { color: var(--blue-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+  .content .prose a:hover { color: var(--coral); }
+  .content .prose strong, .content .prose b { color: var(--ink); font-weight: 800; }
+  .content .prose ul, .content .prose ol { padding-left: 22px; }
+  .content .prose li { margin-top: 8px; }
+  .content .prose hr { border: none; border-top: 2px dashed var(--line); margin: 36px 0; }
+  .content .prose blockquote {
+    border-left: 4px solid var(--blue-ink);
+    background: var(--paper-2);
+    padding: 14px 18px;
+    border-radius: 0 12px 12px 0;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .content .prose .note {
+    border: 2.5px solid var(--ink);
+    background: var(--card);
+    border-radius: 14px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .content .prose code {
+    font-family: 'Space Mono', monospace;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 0.92em;
+  }
+  .content .prose table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+  .content .prose th, .content .prose td { border: 2px solid var(--ink); padding: 10px 12px; text-align: left; }
+  .content .prose th { background: var(--paper-2); font-family: 'Fredoka', sans-serif; color: var(--ink); }
+
+  @media (max-width: 560px) {
+    .content { padding: 44px 18px 64px; }
+    .content .prose { font-size: 16px; }
+  }
+</style>

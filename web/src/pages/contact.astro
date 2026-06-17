@@ -1,0 +1,110 @@
+---
+export const prerender = true;
+import Content from '../layouts/Content.astro';
+---
+
+<Content
+  kicker="Company"
+  title="Contact us"
+  lead="Questions, feedback, press, or a problem to report? Send us a message and we’ll get back to you."
+  width="wide"
+>
+  <p>
+    You can always email us directly at <a href="mailto:support@avatok.ai">support@avatok.ai</a>, or
+    use the form below. For copyright issues see our <a href="/dmca">DMCA / Copyright</a> policy; for
+    anything about your data, see our <a href="/privacy">Privacy Policy</a>.
+  </p>
+
+  <form id="contact-form" class="cform" novalidate>
+    <div class="row">
+      <label>
+        <span>Your name</span>
+        <input type="text" name="name" autocomplete="name" required maxlength="120" />
+      </label>
+      <label>
+        <span>Email</span>
+        <input type="email" name="email" autocomplete="email" required maxlength="200" />
+      </label>
+    </div>
+    <label>
+      <span>Subject</span>
+      <input type="text" name="subject" maxlength="160" placeholder="What’s this about?" />
+    </label>
+    <label>
+      <span>Message</span>
+      <textarea name="message" rows="6" required maxlength="5000" placeholder="How can we help?"></textarea>
+    </label>
+    <button type="submit" class="cbtn">Send message</button>
+    <p class="cstatus" id="contact-status" role="status" aria-live="polite"></p>
+  </form>
+</Content>
+
+<style>
+  .cform { margin-top: 28px; display: flex; flex-direction: column; gap: 18px; max-width: 680px; }
+  .cform .row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .cform label { display: flex; flex-direction: column; gap: 7px; font-weight: 800; color: var(--ink, #231b14); font-size: 15px; }
+  .cform input, .cform textarea {
+    font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 600; color: var(--ink, #231b14);
+    background: var(--card, #fff); border: 2.5px solid var(--ink, #231b14); border-radius: 12px;
+    padding: 12px 14px; outline: none; box-shadow: 2px 2px 0 var(--ink, #231b14); transition: box-shadow .12s ease, transform .12s ease;
+  }
+  .cform input:focus, .cform textarea:focus { box-shadow: 3px 4px 0 var(--blue-ink, #007d7f); transform: translate(-1px,-1px); }
+  .cform textarea { resize: vertical; }
+  .cbtn {
+    align-self: flex-start; font-family: 'Space Mono', monospace; font-weight: 700; font-size: 14px;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink, #231b14);
+    background: var(--lime, #bfeb56); border: 2.5px solid var(--ink, #231b14); border-radius: 999px;
+    padding: 12px 26px; cursor: pointer; box-shadow: 3px 3px 0 var(--ink, #231b14);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .cbtn:hover:not(:disabled) { transform: translate(-1px,-1px); box-shadow: 4px 5px 0 var(--ink, #231b14); }
+  .cbtn:disabled { opacity: .6; cursor: default; }
+  .cstatus { font-weight: 800; margin: 0; min-height: 1.2em; }
+  .cstatus.ok { color: var(--blue-ink, #007d7f); }
+  .cstatus.err { color: var(--coral, #fe674c); }
+  @media (max-width: 560px) { .cform .row { grid-template-columns: 1fr; } }
+</style>
+
+<script>
+  const form = document.getElementById('contact-form') as HTMLFormElement | null;
+  const statusEl = document.getElementById('contact-status');
+  if (form && statusEl) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      const data = Object.fromEntries(new FormData(form).entries());
+      if (!data.name || !data.email || !data.message) {
+        statusEl.className = 'cstatus err';
+        statusEl.textContent = 'Please fill in your name, email, and message.';
+        return;
+      }
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'Sending…';
+      statusEl.className = 'cstatus';
+      statusEl.textContent = '';
+      try {
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (res.ok && out.ok) {
+          form.reset();
+          statusEl.className = 'cstatus ok';
+          statusEl.textContent = 'Thanks! Your message is on its way — we’ll be in touch.';
+        } else {
+          statusEl.className = 'cstatus err';
+          statusEl.textContent = out.error || 'Could not send your message. Please email support@avatok.ai.';
+        }
+      } catch {
+        statusEl.className = 'cstatus err';
+        statusEl.textContent = 'Network error. Please email support@avatok.ai.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
+  }
+</script>
