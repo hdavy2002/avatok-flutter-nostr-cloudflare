@@ -17,11 +17,15 @@ class AvaAiStore {
     mOptions: MacOsOptions(useDataProtectionKeyChain: false),
   );
 
-  /// AI Studio keys look like `AIza...` (~39 chars). Loose check — we only
-  /// reject obviously-wrong paste, the worker does the real validation on use.
+  /// AI Studio keys come in two shapes:
+  ///   • new format — `AQ.` prefix (~50+ chars, e.g. `AQ.Ab8RN6…`)
+  ///   • legacy format — `AIza` prefix (~39 chars)
+  /// Accept either. This is a loose sanity check only — the Worker does the real
+  /// validation when it actually calls Gemini with the key.
   static bool looksValid(String raw) {
     final k = raw.trim();
-    return k.startsWith('AIza') && k.length >= 30 && !k.contains(' ');
+    if (k.isEmpty || k.contains(' ') || k.length < 30) return false;
+    return k.startsWith('AQ.') || k.startsWith('AIza');
   }
 
   Future<String?> apiKey() => readScoped(_s, _kKey);

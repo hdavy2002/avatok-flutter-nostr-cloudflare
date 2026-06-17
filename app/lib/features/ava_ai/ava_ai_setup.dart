@@ -7,8 +7,10 @@ import '../../core/ava_ai_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
-/// Where the user mints a free key. AI Studio auto-creates the project + key.
-const String kAiStudioKeyUrl = 'https://aistudio.google.com/apikey';
+/// Where the user mints a free key — the Google AI Studio "API Keys" page.
+/// Tapping "Create API key" → naming it → "Create key" (picking "Create key in
+/// a new project" when no project exists) makes a free Gemini key in seconds.
+const String kAiStudioKeyUrl = 'https://aistudio.google.com/app/api-keys';
 
 /// Reusable "bring your own free Gemini AI" body. Drop it inside an [Expanded]
 /// (onboarding step) or a Scaffold body ([AvaAiSetupScreen], from Settings).
@@ -61,7 +63,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
         mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not open the browser — visit aistudio.google.com/apikey')));
+          content: Text('Could not open the browser — visit aistudio.google.com/app/api-keys')));
     }
   }
 
@@ -104,10 +106,16 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
                 style: ZineText.sub(size: 14.5)),
             const SizedBox(height: 20),
 
-            // 1-2-3 steps
-            _step(1, 'Open Google AI Studio and sign in with your Google account.'),
-            _step(2, 'Tap "Get API key" → "Create API key in new project". Google sets it up for you.'),
-            _step(3, 'Copy the key, come back here, and paste it below.'),
+            // 1-2-3 steps, each with the matching AI Studio screenshot.
+            _shot(1, 'assets/ai_studio/step1.png',
+                'Tap the button below to open Google AI Studio and sign in. '
+                'On the API Keys page, tap "Create API key" (top-right).'),
+            _shot(2, 'assets/ai_studio/step2.png',
+                'Name your key, then pick a project. No project yet? Open the '
+                'dropdown and choose "Create key in a new project".'),
+            _shot(3, 'assets/ai_studio/step3.png',
+                'Tap "Copy key" (your key starts with "AQ.…"), come back here, '
+                'and paste it below.'),
             const SizedBox(height: 18),
 
             ZineButton(
@@ -125,7 +133,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
             const SizedBox(height: 9),
             _field(
               controller: _keyCtrl,
-              hint: 'AIza…',
+              hint: 'AQ.… or AIza…',
               leadIcon: PhosphorIcons.key(PhosphorIconsStyle.bold),
               onChanged: (_) => setState(() => _error = null),
               error: _error != null,
@@ -182,22 +190,38 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
     ]);
   }
 
-  Widget _step(int n, String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 26, height: 26,
-            decoration: BoxDecoration(
-              color: Zine.lime, shape: BoxShape.circle, border: Zine.border,
+  /// A numbered step with its matching Google AI Studio screenshot below the
+  /// caption, so the user sees exactly what each screen looks like.
+  Widget _shot(int n, String asset, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 26, height: 26,
+              decoration: BoxDecoration(
+                color: Zine.lime, shape: BoxShape.circle, border: Zine.border,
+              ),
+              alignment: Alignment.center,
+              child: Text('$n', style: ZineText.value(size: 13)),
             ),
-            alignment: Alignment.center,
-            child: Text('$n', style: ZineText.value(size: 13)),
+            const SizedBox(width: 12),
+            Expanded(child: Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text(text, style: ZineText.sub(size: 13.5)),
+            )),
+          ]),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Zine.border,
+                borderRadius: BorderRadius.circular(Zine.rSm),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Image.asset(asset, fit: BoxFit.fitWidth, width: double.infinity),
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(child: Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: Text(text, style: ZineText.sub(size: 13.5)),
-          )),
         ]),
       );
 

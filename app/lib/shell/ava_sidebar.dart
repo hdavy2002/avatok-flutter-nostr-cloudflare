@@ -169,12 +169,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Featured tiles — hidden in focus mode (those apps live outside
               // AvaTOK + account essentials). Shown normally when focus is OFF.
               if (!focus) ...[
-                _special('explore', 'AvaExplore', 'Marketplace',
-                    PhosphorIcons.storefront(PhosphorIconsStyle.bold), Zine.blue),
-                _special('verse', 'AvaVerse', 'Your dashboard',
-                    PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), Zine.lilac),
-                // AvaInbox rides the registry row ('avainbox') in the APPS section
-                // below — the shell routes it to the real InboxScreen (Phase 8).
+                // AvaExplore + AvaVerse hidden from the sidebar (owner decision
+                // 2026-06-17). AvaLibrary stays as the featured tile.
                 _special('library', 'AvaLibrary', 'Saved media & files',
                     PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
               ],
@@ -386,10 +382,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
         ),
       ),
       if (_accountOpen) ...[
-        _acct('wallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
-        _acct('identity', 'AvaIdentity', PhosphorIcons.identificationBadge(PhosphorIconsStyle.bold)),
+        // Wallet, AvaIdentity, Payout hidden from the ACCOUNT section
+        // (owner decision 2026-06-17).
         _acct('billing', 'Billing', PhosphorIcons.creditCard(PhosphorIconsStyle.bold)),
-        _acct('payout', 'Payout', PhosphorIcons.money(PhosphorIconsStyle.bold)),
         _acct('settings', 'Settings', PhosphorIcons.gearSix(PhosphorIconsStyle.bold)),
       ],
     ]);

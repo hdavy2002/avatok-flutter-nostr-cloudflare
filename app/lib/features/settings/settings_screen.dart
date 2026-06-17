@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
-import '../../core/admin_tools.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_ai_store.dart';
 import '../../core/brain_consent.dart';
@@ -30,9 +29,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _backingUp = false;
 
-  final _kindStore = AccountKindStore();
-  AccountKind _kind = AccountKind.personal;
-
   Map<String, bool> _brain = {};
 
   final _aiStore = AvaAiStore();
@@ -42,7 +38,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _kindStore.load().then((k) { if (mounted) setState(() => _kind = k); });
     BrainConsent.pull().then((_) => BrainConsent.all()).then((m) { if (mounted) setState(() => _brain = m); });
     _refreshAi();
   }
@@ -96,15 +91,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _setBrain(String key, bool v) async {
     setState(() => _brain[key] = v);
     await BrainConsent.set(key, v);
-  }
-
-  Future<void> _setKind(AccountKind k) async {
-    await _kindStore.set(k);
-    if (mounted) setState(() => _kind = k);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account type updated — reopen the sidebar to see its tools')));
-    }
   }
 
   void _backup() {
@@ -225,42 +211,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  static const _kindLabels = {
-    AccountKind.personal: 'Personal',
-    AccountKind.parent: 'Parent',
-    AccountKind.enterprise: 'Enterprise',
-  };
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Zine.paper,
       appBar: const ZineAppBar(title: 'Settings', markWord: 'Settings'),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        _section('Account type (preview)'),
-        ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.all(14),
-          boxShadow: Zine.shadowXs,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Switch product to preview its sidebar tools. Temporary — '
-                'real registration will set this later.',
-                style: ZineText.sub(size: 12.5)),
-            const SizedBox(height: 12),
-            Row(children: [
-              for (final k in _kindLabels.keys) ...[
-                Expanded(child: ZineChip(
-                  label: _kindLabels[k]!,
-                  active: _kind == k,
-                  onTap: () => _setKind(k),
-                )),
-                if (k != _kindLabels.keys.last) const SizedBox(width: 9),
-              ],
-            ]),
-          ]),
-        ),
-        const SizedBox(height: 24),
-        _section('Ava AI'),
+        // Account type (preview) section hidden (owner decision 2026-06-17).
+        _section('Google AI Studio'),
         _aiCard(),
         const SizedBox(height: 24),
         _section('AvaBrain'),
@@ -325,30 +283,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _aiCard() {
-    if (!_aiConnected) {
-      return Column(children: [
-        ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.all(14),
-          boxShadow: Zine.shadowXs,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Turn AvaTOK into an AI-powered chat. Ava finds files, summarizes, '
-                'translates and more — running on your own free Google Gemini key, '
-                'so it stays free for you.',
-                style: ZineText.sub(size: 12.5)),
-            const SizedBox(height: 12),
-            ZineButton(
-              label: 'Set up Ava AI (free)',
-              onPressed: _setupAi,
-              fullWidth: true,
-              fontSize: 16,
-              icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
-              trailingIcon: false,
-            ),
-          ]),
-        ),
-      ]);
-    }
     return ZineCard(
       radius: Zine.rSm,
       padding: const EdgeInsets.all(14),
@@ -360,37 +294,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: Zine.lilac, size: 34),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Ava AI is on', style: ZineText.value(size: 15)),
+            Text(_aiConnected ? 'Connected to Gemini' : 'Connect Google AI Studio',
+                style: ZineText.value(size: 15)),
             const SizedBox(height: 2),
-            Text(_aiEmail?.isNotEmpty == true ? _aiEmail! : 'Your own Gemini key',
-                maxLines: 1, overflow: TextOverflow.ellipsis,
+            Text(_aiConnected
+                    ? 'Ava runs on your own free Gemini key.'
+                    : 'Power Ava with your own free Google Gemini key.',
                 style: ZineText.sub(size: 12)),
           ])),
-          ZineSticker('FREE', kind: ZineStickerKind.ok,
-              icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
+          if (_aiConnected)
+            ZineSticker('ON', kind: ZineStickerKind.ok,
+                icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
         ]),
         const SizedBox(height: 14),
-        Row(children: [
-          Expanded(child: ZineButton(
-            label: 'Replace key',
-            onPressed: _setupAi,
-            fullWidth: true,
-            fontSize: 14,
-            variant: ZineButtonVariant.ghost,
-            icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
-            trailingIcon: false,
-          )),
-          const SizedBox(width: 10),
-          Expanded(child: ZineButton(
-            label: 'Disconnect',
-            onPressed: _removeAi,
-            fullWidth: true,
-            fontSize: 14,
-            variant: ZineButtonVariant.coral,
-            icon: PhosphorIcons.plugs(PhosphorIconsStyle.bold),
-            trailingIcon: false,
-          )),
-        ]),
+        // ONE button: Connect when off, Disconnect when on. Disconnecting clears
+        // the key + linked account and the label flips back to Connect.
+        ZineButton(
+          label: _aiConnected ? 'Disconnect' : 'Connect',
+          onPressed: _aiConnected ? _removeAi : _setupAi,
+          fullWidth: true,
+          fontSize: 16,
+          variant: _aiConnected ? ZineButtonVariant.coral : ZineButtonVariant.lime,
+          icon: _aiConnected
+              ? PhosphorIcons.plugs(PhosphorIconsStyle.bold)
+              : PhosphorIcons.plug(PhosphorIconsStyle.bold),
+          trailingIcon: false,
+        ),
+        // Below the button: the Google account this key is connected with.
+        if (_aiConnected) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            PhosphorIcon(PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
+                size: 15, color: Zine.inkSoft),
+            const SizedBox(width: 7),
+            Expanded(child: Text(
+                _aiEmail?.isNotEmpty == true
+                    ? 'Connected as ${_aiEmail!}'
+                    : 'Connected with your Gemini key',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: ZineText.sub(size: 12.5))),
+          ]),
+        ],
       ]),
     );
   }
