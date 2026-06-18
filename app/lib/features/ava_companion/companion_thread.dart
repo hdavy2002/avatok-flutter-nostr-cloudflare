@@ -13,7 +13,7 @@ import '../../core/drive_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../settings/sections/voice_section.dart';
-import '../ava_ai/ava_ai_setup.dart';
+import '../../core/paid_feature.dart';
 import 'persona.dart';
 
 /// CompanionThreadScreen (Phase 6 — Companion / Blank Ava Chat).
@@ -322,21 +322,21 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               ),
             ),
           // Premium upsell CTA — shown when a turn needs premium AI (attachments,
-          // tools) or coins. Routes to the free AI-Studio-key setup in Settings.
+          // tools) or coins. Opens the top-up sheet ($10 unlocks everything).
           if (isAva && (m.reason == 'premium_required' || m.reason == 'insufficient_coins'))
             Padding(
               padding: const EdgeInsets.only(top: 6, left: 2),
               child: ZinePressable(
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AvaAiSetupScreen())),
-                color: Zine.blue,
+                onTap: () => AvaWalletHook.instance
+                    .openTopUp(context, suggestedUsd: kMinTopUpUsd),
+                color: Zine.mint,
                 radius: BorderRadius.circular(12),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
+                  PhosphorIcon(PhosphorIcons.coins(PhosphorIconsStyle.fill),
                       size: 14, color: Zine.ink),
                   const SizedBox(width: 6),
-                  Text('Add your free AI key',
+                  Text('Top up to unlock',
                       style: ZineText.value(size: 13, weight: FontWeight.w600)),
                 ]),
               ),

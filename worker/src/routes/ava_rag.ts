@@ -1,65 +1,100 @@
-// ava_rag.ts — RAG ingestion routes (File Search under the user's own key).
-//   POST /api/ava/rag/ingest   { text? , name?, mime?, contentB64? }   (key header)
-//   GET  /api/ava/rag/store                                            (key header)
+// ava_rag.ts — Ava "memory & file search", now on Cloudflare AI Search (2026-06-18).
+//   POST /api/ava/rag/ingest   { text? , name?, mime?, contentB64? }
+//   GET  /api/ava/rag/store
+//   POST /api/ava/rag/search   { query }
 //
-// The user's BYO Gemini key is forwarded via `X-Ava-Gemini-Key` (same header the
-// gemini proxy + @ava turn use). The Worker is a pass-through: it creates the
-// user's File Search store on first use and uploads the given text/bytes into it.
-// Nothing is stored on our side except the store NAME (a string) in KV.
+// PREMIUM ONLY (top up). Google BYOK is gone — this runs entirely on Cloudflare
+// AI Search (managed RAG with built-in storage + vector index), routed through
+// the avatok-ai gateway. For per-user ISOLATION each premium user gets their OWN
+// AI Search instance (namespace binding `env.AI_SEARCH`), created on first use,
+// so one user can never search another's files.
 
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
-import { ensureStore, getStoreName, ingestText, ingestBytes } from "../lib/ava_rag";
+import { isPremiumAI, premiumUpsell } from "../lib/premium";
+import { chargeFeature } from "../feature_pricing";
+import { track } from "../hooks";
 
-function keyOf(req: Request): string {
-  return (req.headers.get("x-ava-gemini-key") || "").trim();
+// AI Search instance id for a user (lowercase alnum + hyphens, bounded length).
+function instanceId(uid: string): string {
+  return ("ava-" + uid.replace(/[^a-zA-Z0-9]/g, "-")).toLowerCase().slice(0, 50);
 }
 
-// POST /api/ava/rag/ingest — index a note/chat-batch (text) or a file (base64).
+// Get-or-create the user's own AI Search instance (built-in storage).
+async function userInstance(env: Env, uid: string): Promise<any> {
+  const id = instanceId(uid);
+  const ns: any = env.AI_SEARCH;
+  try {
+    const got = await ns.get(id);
+    if (got) return got;
+  } catch { /* not created yet */ }
+  try { return await ns.create({ id }); } catch { return ns.get(id); }
+}
+
+// POST /api/ava/rag/ingest — index a note (text) or a file (base64) into the
+// user's private AI Search instance.
 export async function avaRagIngest(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const key = keyOf(req);
-  // RAG / file-search runs on the user's OWN AI Studio key (File Search store is
-  // per-key), so this premium feature requires a connected key specifically — a
-  // top-up alone can't power it. Point free users to Settings.
-  if (!key) {
-    return json({ ok: false, blocked: true, reason: "premium_required", feature: "rag",
-      message: "Ava's memory & file search need your own AI Studio key. Add it in Settings (we show you how)." }, 200);
-  }
+
+  const { premium } = await isPremiumAI(req, env, ctx.uid);
+  if (!premium) return premiumUpsell(env, ctx.uid, "memory");
 
   let b: any;
   try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
-
   const text = typeof b.text === "string" ? b.text.trim() : "";
-  const name = String(b.name || "ava-memory").slice(0, 80);
+  const name = String(b.name || `note-${Date.now()}.txt`).slice(0, 80);
   const b64 = typeof b.contentB64 === "string" ? b.contentB64 : "";
   if (!text && !b64) return json({ error: "text or contentB64 required" }, 400);
 
   try {
-    const out = text
-      ? await ingestText(env, ctx.uid, key, name, text)
-      : await ingestBytes(env, ctx.uid, key, name, String(b.mime || "application/octet-stream"), b64);
-    return json({ ok: true, ...out });
+    const inst = await userInstance(env, ctx.uid);
+    const content: any = text ? text : Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const item = await inst.items.uploadAndPoll(name, content);
+    await chargeFeature(env, ctx.uid, "ava_memory", crypto.randomUUID()).catch(() => ({ ok: false }));
+    track(env, ctx.uid, "ava_memory_ingest", "avaai", { name });
+    return json({ ok: true, item });
   } catch (e: any) {
+    track(env, ctx.uid, "ai_error", "avaai", { route: "rag_ingest", detail: String(e?.message ?? e).slice(0, 200) });
     return json({ error: "ingest failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }
 
-// GET /api/ava/rag/store — get-or-create the user's store; returns its name.
+// GET /api/ava/rag/store — ensure the user's instance exists; return its id.
 export async function avaRagStore(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const key = keyOf(req);
+  const { premium } = await isPremiumAI(req, env, ctx.uid);
+  if (!premium) return premiumUpsell(env, ctx.uid, "memory");
   try {
-    if (!key) {
-      const existing = await getStoreName(env, ctx.uid);
-      return json({ ok: true, store: existing });
-    }
-    const store = await ensureStore(env, ctx.uid, key);
-    return json({ ok: true, store });
+    await userInstance(env, ctx.uid);
+    return json({ ok: true, store: instanceId(ctx.uid) });
   } catch (e: any) {
     return json({ error: "store failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
+  }
+}
+
+// POST /api/ava/rag/search — semantic search over the user's own indexed files.
+export async function avaRagSearch(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const { premium } = await isPremiumAI(req, env, ctx.uid);
+  if (!premium) return premiumUpsell(env, ctx.uid, "memory");
+
+  let b: any;
+  try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const query = String(b.query ?? "").trim();
+  if (!query) return json({ error: "query required" }, 400);
+
+  try {
+    const inst = await userInstance(env, ctx.uid);
+    const results = await inst.search({ messages: [{ role: "user", content: query }] });
+    await chargeFeature(env, ctx.uid, "ava_memory", crypto.randomUUID()).catch(() => ({ ok: false }));
+    track(env, ctx.uid, "ava_memory_search", "avaai", {});
+    return json({ ok: true, results });
+  } catch (e: any) {
+    track(env, ctx.uid, "ai_error", "avaai", { route: "rag_search", detail: String(e?.message ?? e).slice(0, 200) });
+    return json({ error: "search failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }

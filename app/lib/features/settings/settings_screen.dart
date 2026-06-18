@@ -246,9 +246,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: const ZineAppBar(title: 'Settings', markWord: 'Settings'),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         // Account type (preview) section hidden (owner decision 2026-06-17).
-        _section('Google AI Studio'),
-        _aiCard(),
-        const SizedBox(height: 24),
+        // Google AI Studio BYOK removed (owner decision 2026-06-18): premium is
+        // top-up only, everything runs on Cloudflare. The _aiCard() is no longer
+        // shown (kept in source for now; does nothing server-side).
         _section('AvaBrain'),
         ZineCard(
           radius: Zine.rSm,

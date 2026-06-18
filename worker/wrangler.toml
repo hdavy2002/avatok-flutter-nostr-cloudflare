@@ -179,6 +179,13 @@ max_retries = 3
 [ai]
 binding = "AI"
 
+# AI Search (managed RAG) — premium "memory & file search". Namespace binding
+# (env.AI_SEARCH) so we create a PER-USER instance at runtime for isolation.
+# Wrangler creates the 'default' namespace on deploy if missing.
+[[ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "default"
+
 # ---------------------------------------------------------------------------
 # Observability — Workers Logs (7-day retention, included in paid plan).
 # ---------------------------------------------------------------------------

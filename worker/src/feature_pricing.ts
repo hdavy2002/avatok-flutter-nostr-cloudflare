@@ -10,6 +10,7 @@ import { walletOp } from "./routes/wallet";
 
 export const FEATURE_COSTS: Record<string, number> = {
   ava_chat: 2,               // $0.002 — one Ava chat message (Workers-AI Gemma 4; 3x cost)
+  ava_memory: 2,             // $0.002 — one AI Search ingest or query (premium memory/file search)
   ava_image_free: 5,         // $0.005 — one free-tier image (Workers-AI Flux-1-schnell)
   ava_image_generate: 80,    // $0.08  — one premium image (Gemini "Nano Banana 2")
   ava_voice_reply: 20,       // $0.02  — Ava speaks a reply

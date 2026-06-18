@@ -262,35 +262,31 @@ export async function avaImage(req: Request, env: Env): Promise<Response> {
       message: "I can't create that image. Let's keep things safe — try a different idea." }, 200);
   }
 
-  // PREMIUM GATE: image generation is premium-only. Free users get the upsell.
-  const { premium, via } = await isPremiumAI(req, env, ctx.uid, b);
+  // PREMIUM GATE: image generation is premium-only (top up). Free users get the upsell.
+  const { premium } = await isPremiumAI(req, env, ctx.uid, b);
   if (!premium) return premiumUpsell(env, ctx.uid, "image_generation");
 
-  // Key + billing. BYO-key premium runs on the user's own quota (no coins);
-  // top-up premium runs on our key and is charged ava_image_generate coins.
-  const byoKey = req.headers.get("X-Ava-Gemini-Key") || undefined;
-  const key = via === "byo_key" ? (byoKey || env.GEMINI_API_KEY) : env.GEMINI_API_KEY;
+  // Premium runs on OUR Google key (the one place we touch Google), routed via the
+  // AI Gateway, and is charged ava_image_generate coins.
+  const key = env.GEMINI_API_KEY;
   if (!key) return json({ error: "image generation unavailable", reason: "no_gemini_key" }, 503);
-  const chargeCoins = via === "topup";
 
-  if (chargeCoins) {
-    // Pre-authorize coins (free daily grant first, then paid) before any work.
-    const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
-    const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
-    const cost = featureCost("ava_image_generate") ?? 0;
-    if (spendable < cost) {
-      return json({ ok: false, blocked: true, reason: "insufficient_coins",
-        message: "You're out of AvaCoins for images. Your free daily coins refresh tomorrow, or top up." }, 200);
-    }
+  // Pre-authorize coins (free daily grant first, then paid) before any work.
+  const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
+  const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
+  const cost = featureCost("ava_image_generate") ?? 0;
+  if (spendable < cost) {
+    return json({ ok: false, blocked: true, reason: "insufficient_coins",
+      message: "You're out of AvaCoins for images. Top up to keep creating." }, 200);
   }
 
   // (3) drop the working chip immediately so the thread shows "Ava is generating…".
   const statusId = await postChip(env, ctx.uid, conv, "Ava is generating an image…");
-  track(env, ctx.uid, "ava_image_request", "avaai", { premium_via: via });
+  track(env, ctx.uid, "ava_image_request", "avaai", {});
 
   // (4–6) heavy work runs detached — the HTTP call returns now while the image
   // is produced and posted into the SAME conversation when ready.
-  void fulfil(env, ctx.uid, conv, prompt, key, chargeCoins, statusId, editRef);
+  void fulfil(env, ctx.uid, conv, prompt, key, true, statusId, editRef);
 
-  return json({ ok: true, conv, status_id: statusId ?? null, async: true, tier: "premium", via });
+  return json({ ok: true, conv, status_id: statusId ?? null, async: true, tier: "premium" });
 }

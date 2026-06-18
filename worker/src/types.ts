@@ -31,6 +31,11 @@ export interface Env {
   // Workers AI — image moderation (public uploads)
   AI: Ai;
 
+  // AI Search (managed RAG) namespace binding — premium memory & file search.
+  // Per-user instances created at runtime (get/create); typed loosely (the
+  // platform types vary by runtime version). See routes/ava_rag.ts.
+  AI_SEARCH: any;
+
   // Analytics Engine — operational metrics (writeDataPoint)
   ANALYTICS: AnalyticsEngineDataset;
 
