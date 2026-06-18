@@ -78,7 +78,9 @@
                 <data android:scheme="avatok"/>
             </intent-filter>
         </activity>
-        <!-- Google-only auth: flutter_web_auth_2 OAuth callback (avatok://oauth-callback). -->
+        <!-- Google-only auth: flutter_web_auth_2 OAuth callback. DEDICATED scheme
+             (avatokauth://) so it never collides with the app's avatok:// deep
+             links — that collision caused the Android "Open with" picker + loop. -->
         <activity
             android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
             android:exported="true">
@@ -86,7 +88,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="avatok" android:host="oauth-callback" />
+                <data android:scheme="avatokauth" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
