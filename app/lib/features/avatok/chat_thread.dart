@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -25,7 +26,9 @@ import '../../core/config.dart';
 import '../../core/ice_cache.dart';
 import '../../core/profile_store.dart';
 import '../../core/drive_service.dart';
+import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
+import '../library/library_picker.dart';
 import '../../core/ui/zine.dart';
 import '../../core/group_store.dart';
 import '../../core/message_store.dart';
@@ -1259,6 +1262,37 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     await _sendMedia(MediaKind.file, f.bytes!, 'application/octet-stream', f.name);
   }
 
+  MediaKind _kindFromCategory(String c) => c == 'image'
+      ? MediaKind.image
+      : c == 'video'
+          ? MediaKind.video
+          : c == 'audio'
+              ? MediaKind.audio
+              : MediaKind.file;
+
+  // Browse AvaLibrary and attach an existing file into this chat. The picked
+  // file is downloaded and re-sent through the normal media path (so it's
+  // encrypted + shared like any attachment).
+  Future<void> _addFromLibrary() async {
+    final item = await Navigator.push<LibraryItem?>(
+        context, MaterialPageRoute(builder: (_) => const LibraryPickerScreen()));
+    if (item == null || !mounted) return;
+    if (item.displayUrl.isEmpty) { _capNote('This file can\'t be attached from here.'); return; }
+    _capNote('Attaching ${item.name}…');
+    try {
+      final resp = await http.get(Uri.parse(item.displayUrl)).timeout(const Duration(seconds: 60));
+      if (resp.statusCode != 200) { _capNote('Could not load that file.'); return; }
+      final bytes = resp.bodyBytes;
+      final kind = _kindFromCategory(item.category);
+      if ((kind == MediaKind.image || kind == MediaKind.video) && bytes.length > _kMediaMaxBytes) {
+        _capNote('That file is over 25 MB.'); return;
+      }
+      await _sendMedia(kind, bytes, item.mime, item.name);
+    } catch (_) {
+      _capNote('Could not attach from library.');
+    }
+  }
+
   // ---- voice note record ----
   Future<void> _toggleRecord() async {
     if (_recording) {
@@ -1594,6 +1628,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: Wrap(spacing: 18, runSpacing: 18, children: [
             _attachItem(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photos', Zine.accents[0], _pickPhotos),
             _attachItem(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), 'Camera', Zine.accents[1], () => _pickImage(ImageSource.camera)),
+            _attachItem(ctx, PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), 'Library', Zine.accents[4], _addFromLibrary),
             _attachItem(ctx, PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), 'Video', Zine.accents[2], () => _pickVideo(ImageSource.camera)),
             _attachItem(ctx, PhosphorIcons.file(PhosphorIconsStyle.bold), 'File', Zine.accents[3], _pickFile),
             _attachItem(ctx, PhosphorIcons.mapPin(PhosphorIconsStyle.bold), 'Location', Zine.accents[4], _shareLocation),
