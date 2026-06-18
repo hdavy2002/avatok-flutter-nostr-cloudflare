@@ -147,11 +147,22 @@ class ClerkClient {
       final result = await FlutterWebAuth2.authenticate(
           url: extUrl, callbackUrlScheme: kOAuthCallbackScheme);
       final nonce = Uri.parse(result).queryParameters['rotating_token_nonce'];
+      if (nonce == null || nonce.isEmpty) {
+        return ClerkStep.error('Google sign-in was cancelled');
+      }
 
-      // 3. Reload the client (with the nonce when present) to pick up the session.
-      await _send(
-          nonce != null && nonce.isNotEmpty ? '/client?rotating_token_nonce=$nonce' : '/client',
-          get: true);
+      // 3. Rotate the client token with the nonce as a REAL query param (this is
+      //    what picks up the completed OAuth verification + active session).
+      await _reloadClientWithNonce(nonce);
+      if (await currentUser() != null) return ClerkStep.complete();
+
+      // 4. First-time Google user: the OAuth sign-in/up is "transferable" — turn
+      //    it into a real account by completing the transfer (sign-up, then
+      //    sign-in as a fallback). Either path lands an active session.
+      final up = await _send('/client/sign_ups', body: {'transfer': 'true'});
+      if (_completed(up) && await currentUser() != null) return ClerkStep.complete();
+      final si = await _send('/client/sign_ins', body: {'transfer': 'true'});
+      if (_completed(si) && await currentUser() != null) return ClerkStep.complete();
 
       return (await currentUser()) != null
           ? ClerkStep.complete()
@@ -159,6 +170,30 @@ class ClerkClient {
     } catch (e) {
       return ClerkStep.error('Google sign-in failed: $e');
     }
+  }
+
+  bool _completed(Map<String, dynamic> body) {
+    final r = body['response'] as Map<String, dynamic>?;
+    return r?['status'] == 'complete' || _activeUser(body['client']) != null;
+  }
+
+  /// GET /v1/client with the OAuth `rotating_token_nonce` as a real query param,
+  /// so the FAPI token actually rotates and the new session is captured. (Passing
+  /// it inside the path string would percent-encode the `?` and drop the nonce.)
+  Future<void> _reloadClientWithNonce(String nonce) async {
+    await _loadToken();
+    final uri = Uri(
+      scheme: 'https',
+      host: _domain,
+      path: 'v1/client',
+      queryParameters: {
+        '_is_native': 'true',
+        '_clerk_js_version': _jsVersion,
+        'rotating_token_nonce': nonce,
+      },
+    );
+    final r = await http.get(uri, headers: _headers(get: true));
+    _capture(r);
   }
 
   /// Pull the external OAuth redirect URL out of a sign-in/up response.

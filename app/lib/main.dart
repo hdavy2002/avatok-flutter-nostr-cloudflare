@@ -200,7 +200,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
       signedIn = cu != null;
     } catch (_) {}
-    if (!signedIn) { _to(_Stage.welcome); return; }
+    if (!signedIn) { _to(_Stage.signIn); return; }
     await _route();
   }
 
@@ -344,7 +344,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     AccountScope.id = null;
     AuthSession.lastPassword = null;
     await DiskCache.deleteGlobal(_kAcct); // forget the remembered account
-    _to(_Stage.welcome);
+    _to(_Stage.signIn);
   }
 
   @override
