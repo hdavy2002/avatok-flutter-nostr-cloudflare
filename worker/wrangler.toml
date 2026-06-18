@@ -29,7 +29,7 @@ POSTHOG_PROJECT_ID = "139917"
 # AvaVision Agentic-Vision snapshot model ("Analyze my form", code execution on).
 # Phase 0 PRICING.md §3 verified the exact id; preview may roll to GA gemini-3-flash.
 AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"
-WALLET_TOPUP_ENABLED = "0"                                  # ⚠️ real money-in OFF pending legal (§10.1)
+WALLET_TOPUP_ENABLED = "1"   # TEST MODE 2026-06-18 (sk_test) — set LIVE Stripe keys before real money-in
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 # Clerk JWT verification (public values, not secrets). Enabling these lets the
 # Worker read the signed-in Clerk user id, which links the account to its Nostr
