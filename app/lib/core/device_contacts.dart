@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'account_storage.dart';
 import 'api_auth.dart';
 import 'config.dart';
+import 'referral_service.dart';
 
 /// One entry from the user's phone address book, optionally matched to an
 /// AvaTok account (npub) when the person already uses the app.
@@ -166,19 +167,25 @@ class DeviceContactsService {
   }
 
   /// Share the "join me on AvaTok" invite for [c] via the native share sheet.
-  static Future<void> invite(DeviceContact c) async {
+  /// Pass [myHandle] so the link carries your referral code (you earn coins when
+  /// they join). Falls back to the plain download link if omitted.
+  static Future<void> invite(DeviceContact c, {String? myHandle}) async {
     final who = c.name.isNotEmpty ? c.name.split(' ').first : 'there';
-    await Share.share(_inviteMessage(who), subject: 'Join me on AvaTok');
+    await Share.share(_inviteMessage(who, handle: myHandle), subject: 'Join me on AvaTok');
   }
 
   /// Generic invite (no specific contact) — used by the drawer "Invite" entry.
-  static Future<void> shareGenericInvite() async {
-    await Share.share(_inviteMessage('there'), subject: 'Join me on AvaTok');
+  static Future<void> shareGenericInvite({String? myHandle}) async {
+    await Share.share(_inviteMessage('there', handle: myHandle), subject: 'Join me on AvaTok');
   }
 
-  static String _inviteMessage(String who) =>
-      'Hey $who, I\'m on AvaTok now — come join me. It\'s a secure Nostr-based '
-      'messenger where you own your data, not some corporation. You can share a '
-      'photo with up to 25 people (not just 5), and it works better than what '
-      'you\'re using. Download it here: $kDownloadUrl';
+  static String _inviteMessage(String who, {String? handle}) {
+    final link = (handle != null && handle.isNotEmpty)
+        ? ReferralService.inviteLink(handle)
+        : kDownloadUrl;
+    return 'Hey $who, I\'m on AvaTok — come join me. It\'s an AI-powered messenger: '
+        'Ava, your in-chat assistant, can watch for scams, reply for you when '
+        'you\'re away, and pull up files mid-chat — and you can share with up to '
+        '25 people. Join with my link: $link';
+  }
 }

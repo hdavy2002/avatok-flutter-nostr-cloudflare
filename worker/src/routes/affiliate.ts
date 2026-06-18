@@ -698,6 +698,61 @@ export async function adminAffiliateSuspend(req: Request, env: Env, uid: string)
 // release, AvaVoice session settle). Idempotent end-to-end: walletOp op_id
 // `aff:<settlementId>` + affiliate_commissions PK `<settlementId>:aff`.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// TOP-UP COMMISSION — the live model (2026-06-18). An affiliate earns
+// TOPUP_AFFILIATE_RATE (10%) of every top-up their referred users ever make,
+// FOR LIFE. A user's "lifetime affiliate" is the FIRST affiliate who ever
+// referred them (earliest attribution). Funded platform:fees → affiliate, paid
+// into the standard 7-day hold (reversible), idempotent per top-up. Self-referral
+// blocked. Reuses the existing affiliate signup + link + attribution system.
+// ---------------------------------------------------------------------------
+const TOPUP_AFFILIATE_RATE = 0.10;
+
+export async function payAffiliateOnTopup(env: Env, referredUid: string, coins: number, topupId: string): Promise<number> {
+  try {
+    const cfg = await readConfig(env);
+    if (cfg.avaAffiliateEnabled !== true) return 0;
+    const gross = Math.trunc(Number(coins));
+    if (!(gross > 0) || !referredUid || !topupId) return 0;
+
+    // Lifetime affiliate = the first affiliate who ever referred this user.
+    const attr = await metaDb(env).prepare(
+      "SELECT link_id, affiliate_uid FROM affiliate_attributions WHERE referred_uid=?1 ORDER BY bound_at ASC LIMIT 1",
+    ).bind(referredUid).first<{ link_id: string; affiliate_uid: string }>();
+    if (!attr) return 0;
+    if (attr.affiliate_uid === referredUid) return 0; // self-referral
+    const affiliate = await loadAffiliate(env, attr.affiliate_uid);
+    if (!affiliate || affiliate.status !== "active") return 0;
+
+    const aff = Math.floor(gross * TOPUP_AFFILIATE_RATE);
+    if (!(aff > 0)) return 0;
+
+    const commId = `aff_topup:${topupId}`;
+    // Money first (WalletDO op_id dedupe = idempotent), then the reporting row.
+    await walletOp(env, attr.affiliate_uid, {
+      op: "earn", uid: attr.affiliate_uid, amount: aff, commission: 0,
+      app_name: APP, counterparty_npub: referredUid, ref: topupId, op_id: commId,
+      ledger: {
+        debit: ACCT_PLATFORM_FEES, credit: acctUser(attr.affiliate_uid),
+        type: "affiliate_topup_commission", ref: topupId,
+        meta: JSON.stringify({ link_id: attr.link_id, topup_id: topupId, coins: gross, rate: TOPUP_AFFILIATE_RATE }),
+      },
+    });
+    const ins = await env.DB_WALLET.prepare(
+      `INSERT INTO affiliate_commissions (id, order_id, link_id, affiliate_uid, referred_uid, listing_id, app, gross_coins, affiliate_coins, admin_coins, reversed_coins, status, created_at)
+       VALUES (?1,?2,?3,?4,?5,'topup','avawallet',?6,?7,0,0,'held',?8) ON CONFLICT(id) DO NOTHING`,
+    ).bind(commId, topupId, attr.link_id, attr.affiliate_uid, referredUid, gross, aff, Date.now()).run();
+    if ((ins.meta?.changes ?? 0) > 0) {
+      track(env, attr.affiliate_uid, "affiliate_topup_commission", APP, { coins: gross, affiliate_coins: aff, rate: TOPUP_AFFILIATE_RATE });
+      metric(env, "affiliate_topup_commission", [aff, gross]);
+    }
+    return aff;
+  } catch (e) {
+    console.error("payAffiliateOnTopup failed:", String(e));
+    return 0;
+  }
+}
+
 export async function settleAffiliate(env: Env, p: {
   settlementId: string;          // the settlement_log id (or `avv:<session>` for AvaVoice)
   orderId: string;               // escrow order ref (clawback lookup)
@@ -708,87 +763,11 @@ export async function settleAffiliate(env: Env, p: {
   listingId?: string;
   creatorId?: string;
 }): Promise<number> {
-  try {
-    const cfg = await readConfig(env);
-    if (cfg.avaAffiliateEnabled !== true) return 0;
-    const gross = Math.trunc(Number(p.gross));
-    const platformCut = Math.trunc(Number(p.platformCut));
-    if (!(gross > 0) || !(platformCut > 0)) return 0;
-
-    // Resolve buyer/listing/creator from the order when the caller didn't pass them.
-    let { buyerId, listingId, creatorId } = p;
-    if (!buyerId || !listingId) {
-      const o = await metaDb(env).prepare(
-        "SELECT buyer_id, listing_id, creator_id FROM orders WHERE id=?1",
-      ).bind(p.orderId).first<any>();
-      if (!o) return 0;
-      buyerId = buyerId || String(o.buyer_id);
-      listingId = listingId || String(o.listing_id);
-      creatorId = creatorId || String(o.creator_id);
-    }
-
-    const attr = await metaDb(env).prepare(
-      "SELECT link_id, affiliate_uid FROM affiliate_attributions WHERE referred_uid=?1 AND listing_id=?2",
-    ).bind(buyerId, listingId).first<{ link_id: string; affiliate_uid: string }>();
-    if (!attr) return 0;
-    // §10 re-checks at settle: suspended affiliate, self-referral, creator-self-promo.
-    if (attr.affiliate_uid === buyerId) return 0;
-    if (creatorId && attr.affiliate_uid === creatorId) return 0;
-    const affiliate = await loadAffiliate(env, attr.affiliate_uid);
-    if (!affiliate || affiliate.status !== "active") return 0;
-
-    const rate = await commissionRate(env, "affiliate_default"); // seeded 0.10, tunable
-    const aff = Math.min(Math.floor(gross * rate), platformCut); // cap: platform never negative
-    if (!(aff > 0)) return 0;
-
-    const commId = `${p.settlementId}:aff`;
-    // is_repeat BEFORE inserting this row.
-    const prior = await env.DB_WALLET.prepare(
-      "SELECT 1 AS x FROM affiliate_commissions WHERE referred_uid=?1 AND listing_id=?2 AND status!='reversed' AND id!=?3 LIMIT 1",
-    ).bind(buyerId, listingId, commId).first<any>();
-    const isRepeat = !!prior;
-
-    // Money FIRST (WalletDO op_id dedupe makes it idempotent), THEN the reporting
-    // row — a crash between the two retries safely, and the row's PK freshness
-    // gates the one-time telemetry (same ordering as money_engine.applyAction).
-    // Move: platform:fees → affiliate wallet, type 'affiliate_commission',
-    // through the standard 7-day earning hold.
-    await walletOp(env, attr.affiliate_uid, {
-      op: "earn", uid: attr.affiliate_uid, amount: aff, commission: 0,
-      app_name: APP, counterparty_npub: buyerId, ref: p.settlementId, op_id: `aff:${p.settlementId}`,
-      ledger: {
-        debit: ACCT_PLATFORM_FEES, credit: acctUser(attr.affiliate_uid),
-        type: "affiliate_commission", ref: p.settlementId,
-        meta: JSON.stringify({ link_id: attr.link_id, listing_id: listingId, app: p.app, gross, rate, order_id: p.orderId }),
-      },
-    });
-
-    const ins = await env.DB_WALLET.prepare(
-      `INSERT INTO affiliate_commissions (id, order_id, link_id, affiliate_uid, referred_uid, listing_id, app, gross_coins, affiliate_coins, admin_coins, reversed_coins, status, created_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,0,'held',?11) ON CONFLICT(id) DO NOTHING`,
-    ).bind(commId, p.orderId, attr.link_id, attr.affiliate_uid, buyerId, listingId, p.app,
-        gross, aff, platformCut - aff, Date.now()).run();
-    const fresh = (ins.meta?.changes ?? 0) > 0;
-
-    if (fresh) {
-      const referredHash = (await sha256Hex(buyerId)).slice(0, 16);
-      track(env, attr.affiliate_uid, "affiliate_commission_earned", APP, {
-        link_id: attr.link_id, affiliate_uid: attr.affiliate_uid, referred_uid_hash: referredHash,
-        listing_id: listingId, app: p.app, gross_coins: gross,
-        affiliate_coins: aff, admin_coins: platformCut - aff, is_repeat: isRepeat,
-      });
-      if (!isRepeat) {
-        track(env, attr.affiliate_uid, "affiliate_first_purchase", APP,
-            { link_id: attr.link_id, gross_coins: gross, app: p.app });
-      }
-      metric(env, "affiliate_commission", [aff, gross], [p.app]);
-    }
-    return aff;
-  } catch (e) {
-    // A commission failure must never break the creator/platform settlement.
-    console.error("settleAffiliate failed:", String(e));
-    return 0;
-  }
+  // PURCHASE COMMISSIONS RETIRED (2026-06-18). Affiliates now earn 10% of their
+  // referred users' TOP-UPS for life (payAffiliateOnTopup) instead of a cut of
+  // listing purchases. No-op so the existing callers (money_engine, avavision,
+  // avavoice) keep compiling without paying purchase commissions.
+  return 0;
 }
 
 /** Refund/reversal mirror (§6): claw back PROPORTIONALLY to the refunded share

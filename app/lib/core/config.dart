@@ -6,6 +6,12 @@ import 'feature_flags.dart';
 /// Clerk publishable key (existing avatok.ai tenant) — public, ships in app.
 const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 
+/// OAuth callback for Google sign-in (custom scheme — must match the
+/// `flutter_web_auth_2` CallbackActivity intent-filter in AndroidManifest and the
+/// allowed redirect in the Clerk dashboard). Login is moving to Google-only.
+const String kOAuthCallbackScheme = 'avatok';
+const String kOAuthRedirect = 'avatok://oauth-callback';
+
 /// Worker endpoint to register a device's push token against an npub. (NIP-98)
 const String kRegisterUrl = 'https://$kSignalingHost/api/register';
 
@@ -46,12 +52,6 @@ const String kConferenceBase = 'https://$kSignalingHost/api/conference';
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)
 const String kMeUrl = 'https://$kSignalingHost/api/me'; // GET — restore my account by Clerk session
 
-/// Store-review login bypass. The allowlisted reviewer account (App Store /
-/// Google Play reviewers) signs in with email+password and NO email OTP: the
-/// Worker checks the password and returns a Clerk sign-in token, which the app
-/// redeems via the `ticket` strategy. Only this exact email triggers the path.
-const String kReviewerEmail = 'googleplay@avatok.ai';
-const String kReviewLoginUrl = 'https://$kSignalingHost/api/review/login'; // POST {email,password} → {ticket}
 const String kVaultUrl = 'https://$kSignalingHost/api/vault'; // GET/POST — encrypted cross-device blobs (contacts)
 const String kResolveUrl = 'https://$kSignalingHost/api/resolve'; // GET ?q= (public)
 const String kSearchUrl = 'https://$kSignalingHost/api/search';   // GET ?q= (public)

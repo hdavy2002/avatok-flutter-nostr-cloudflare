@@ -366,9 +366,10 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       case _Stage.loading:
         return const Scaffold(body: Center(child: CircularProgressIndicator(color: Zine.blueInk)));
       case _Stage.welcome:
-        // Handle-first onboarding (Trust Ladder L0): pick a handle BEFORE any
-        // signup wall; it is reserved server-side and merged after Clerk auth.
-        return WelcomeScreen(onContinue: () => _to(_Stage.handleClaim));
+        // Google-only auth (2026-06-18): the welcome hero leads straight into
+        // Google sign-in. The handle is picked AFTER auth in OnboardingFlow's
+        // profile step (the pre-auth handle-claim screen is no longer in the flow).
+        return WelcomeScreen(onContinue: () => _to(_Stage.signIn));
       case _Stage.handleClaim:
         return HandleClaimScreen(
           onClaimed: _enterAsGuest, // claim a handle → browse as an L0 guest

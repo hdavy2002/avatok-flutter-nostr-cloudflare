@@ -57,6 +57,12 @@ secrets/
 wrangler.toml.local
 .dev.vars
 
+# Reviewer / access credentials — NEVER track (live login + bypass docs).
+# The canonical copy lives in secrets/ (gitignored above).
+GOOGLE-PLAY-REVIEWER-ACCESS.md
+**/*REVIEWER-ACCESS*.md
+**/*reviewer-access*.md
+
 # Logs
 *.log
 npm-debug.log*
@@ -84,3 +90,9 @@ graphify-out/cache/
 # Build artifacts — CI builds the .aab fresh and publishes to the calltest-latest release
 apk/
 aab/
+
+# Separate public repo (own .git) — not part of this monorepo
+avatok-app/
+
+# Internal scrub checklist — contains the live reviewer password + key; keep local only.
+/PUBLIC-REPO-SCRUB.md

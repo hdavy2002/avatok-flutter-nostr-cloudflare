@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
@@ -114,148 +115,66 @@ class ClerkClient {
     return null;
   }
 
-  /// Sign in with email + password; falls back to email-code if needed.
-  Future<ClerkStep> signIn(String email, String password) async {
-    // Store-review bypass: the allowlisted reviewer account skips the email
-    // second factor. The Worker verifies the password and hands back a Clerk
-    // sign-in token, which we redeem via the `ticket` strategy (bypasses all
-    // factors → NO OTP). Only this exact email reaches here; everyone else
-    // takes the normal password / email-code path below.
-    if (email.trim().toLowerCase() == kReviewerEmail && password.isNotEmpty) {
-      final step = await _tryReviewTicket(email.trim(), password);
-      if (step != null) return step;
-      // Bypass unavailable (offline / route disabled) → fall through to normal.
-    }
-    await _send('/client', body: {});
-    if (password.isNotEmpty) {
-      final body = await _send('/client/sign_ins',
-          body: {'identifier': email.trim(), 'password': password});
-      final su = body['response'] as Map<String, dynamic>?;
-      if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
-        return ClerkStep.complete();
-      }
-      final err = _firstError(body);
-      if (err != null && err.toLowerCase().contains('password') &&
-          !err.toLowerCase().contains('strategy')) {
-        return ClerkStep.error(err); // genuinely wrong password
-      }
-      // otherwise fall through to email-code
-    }
-    // Identifier-only sign-in → discover email_code factor → email a code.
-    final body2 = await _send('/client/sign_ins', body: {'identifier': email.trim()});
-    final step = await _prepareSignInEmailCode(body2['response'] as Map<String, dynamic>?);
-    if (step != null) return step;
-    return ClerkStep.error(_firstError(body2) ?? 'Sign-in is not available for this account');
-  }
-
-  /// Store-review bypass: ask the Worker for a Clerk sign-in token for the
-  /// reviewer account, then complete a real session via the `ticket` strategy.
-  /// Returns a completed step on success, or null to fall back to normal login.
-  Future<ClerkStep?> _tryReviewTicket(String email, String password) async {
+  /// Sign in / up with Google via Clerk's native OAuth flow — the Google-only
+  /// login path. Opens the Google consent screen in a secure in-app browser and
+  /// completes the Clerk session on return.
+  ///
+  /// Requires: the `flutter_web_auth_2` package, a Clerk "Google" social
+  /// connection enabled, and `kOAuthRedirect` allowlisted in the Clerk dashboard,
+  /// plus the CallbackActivity intent-filter in AndroidManifest. NEEDS DEVICE
+  /// TESTING before the old password/OTP paths are removed — see
+  /// Specs/AUTH-GOOGLE-ONLY.md.
+  Future<ClerkStep> signInWithGoogle() async {
     try {
-      final r = await http.post(
-        Uri.parse(kReviewLoginUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'password': password}),
-      );
-      if (r.statusCode != 200) return null;
-      final ticket = (jsonDecode(r.body) as Map<String, dynamic>)['ticket']?.toString();
-      if (ticket == null || ticket.isEmpty) return null;
       await _send('/client', body: {});
-      final body = await _send('/client/sign_ins', body: {'strategy': 'ticket', 'ticket': ticket});
-      final su = body['response'] as Map<String, dynamic>?;
-      if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
-        return ClerkStep.complete();
+      // 1. Start an OAuth sign-in; Clerk returns the Google consent URL.
+      final start = await _send('/client/sign_ins', body: {
+        'strategy': 'oauth_google',
+        'redirect_url': kOAuthRedirect,
+      });
+      var extUrl = _externalRedirectUrl(start['response'] as Map<String, dynamic>?);
+      // First-time Google users have no sign-in yet → start a sign-up instead.
+      if (extUrl == null) {
+        final startUp = await _send('/client/sign_ups', body: {
+          'strategy': 'oauth_google',
+          'redirect_url': kOAuthRedirect,
+        });
+        extUrl = _externalRedirectUrl(startUp['response'] as Map<String, dynamic>?);
       }
-      return null;
-    } catch (_) {
-      return null;
+      if (extUrl == null) return ClerkStep.error('Could not start Google sign-in');
+
+      // 2. Open the consent screen; returns the callback URL carrying a nonce.
+      final result = await FlutterWebAuth2.authenticate(
+          url: extUrl, callbackUrlScheme: kOAuthCallbackScheme);
+      final nonce = Uri.parse(result).queryParameters['rotating_token_nonce'];
+
+      // 3. Reload the client (with the nonce when present) to pick up the session.
+      await _send(
+          nonce != null && nonce.isNotEmpty ? '/client?rotating_token_nonce=$nonce' : '/client',
+          get: true);
+
+      return (await currentUser()) != null
+          ? ClerkStep.complete()
+          : ClerkStep.error('Google sign-in did not complete');
+    } catch (e) {
+      return ClerkStep.error('Google sign-in failed: $e');
     }
   }
 
-  Future<ClerkStep?> _prepareSignInEmailCode(Map<String, dynamic>? su) async {
+  /// Pull the external OAuth redirect URL out of a sign-in/up response.
+  String? _externalRedirectUrl(Map<String, dynamic>? su) {
     if (su == null) return null;
-    final id = su['id']?.toString();
-    final factors = (su['supported_first_factors'] as List?) ?? const [];
-    Map<String, dynamic>? email;
-    for (final f in factors) {
-      if ((f as Map)['strategy'] == 'email_code') { email = f.cast<String, dynamic>(); break; }
-    }
-    if (id == null || email == null) return null;
-    await _send('/client/sign_ins/$id/prepare_first_factor', body: {
-      'strategy': 'email_code',
-      if (email['email_address_id'] != null)
-        'email_address_id': email['email_address_id'].toString(),
-    });
-    return ClerkStep.needsCode('signin', id);
+    final ffv = su['first_factor_verification'] as Map<String, dynamic>?;
+    final url1 = ffv?['external_verification_redirect_url'];
+    if (url1 is String && url1.isNotEmpty) return url1;
+    final verif = (su['verifications'] as Map<String, dynamic>?)?['external_account'] as Map<String, dynamic>?;
+    final url2 = verif?['external_verification_redirect_url'];
+    if (url2 is String && url2.isNotEmpty) return url2;
+    return null;
   }
 
-  /// Sign up with email + password; returns a code step if verification needed.
-  Future<ClerkStep> signUp(String email, String password) async {
-    await _send('/client', body: {});
-    final body = await _send('/client/sign_ups',
-        body: {'email_address': email.trim(), 'password': password});
-    final err = _firstError(body);
-    if (err != null) return ClerkStep.error(err);
-    final su = body['response'] as Map<String, dynamic>?;
-    if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
-      return ClerkStep.complete();
-    }
-    final id = su?['id']?.toString();
-    if (id == null) return ClerkStep.error('Sign-up could not start');
-    await _send('/client/sign_ups/$id/prepare_verification', body: {'strategy': 'email_code'});
-    return ClerkStep.needsCode('signup', id);
-  }
-
-  /// Verify an emailed code (kind = 'signin' or 'signup'). Null on success.
-  Future<String?> verifyCode(String kind, String id, String code) async {
-    final path = kind == 'signup'
-        ? '/client/sign_ups/$id/attempt_verification'
-        : '/client/sign_ins/$id/attempt_first_factor';
-    final body = await _send(path, body: {'strategy': 'email_code', 'code': code.trim()});
-    final err = _firstError(body);
-    if (err != null) return err;
-    final r = body['response'] as Map<String, dynamic>?;
-    if (r?['status'] == 'complete' || _activeUser(body['client']) != null) return null;
-    return 'Verification incomplete';
-  }
-
-  /// Begin a password reset: emails a reset code to [email]. Returns a
-  /// needsCode('reset', id) step, or an error.
-  Future<ClerkStep> startPasswordReset(String email) async {
-    await _send('/client', body: {});
-    final body = await _send('/client/sign_ins', body: {'identifier': email.trim()});
-    final su = body['response'] as Map<String, dynamic>?;
-    final id = su?['id']?.toString();
-    final factors = (su?['supported_first_factors'] as List?) ?? const [];
-    Map<String, dynamic>? reset;
-    for (final f in factors) {
-      if ((f as Map)['strategy'] == 'reset_password_email_code') { reset = f.cast<String, dynamic>(); break; }
-    }
-    if (id == null || reset == null) {
-      return ClerkStep.error(_firstError(body) ?? 'Password reset is not available for this account');
-    }
-    await _send('/client/sign_ins/$id/prepare_first_factor', body: {
-      'strategy': 'reset_password_email_code',
-      if (reset['email_address_id'] != null) 'email_address_id': reset['email_address_id'].toString(),
-    });
-    return ClerkStep.needsCode('reset', id);
-  }
-
-  /// Complete a password reset with the emailed [code] + a [newPassword].
-  /// Null on success (the user is signed in), else an error message.
-  Future<String?> resetPassword(String id, String code, String newPassword) async {
-    final body = await _send('/client/sign_ins/$id/attempt_first_factor',
-        body: {'strategy': 'reset_password_email_code', 'code': code.trim(), 'password': newPassword});
-    final err = _firstError(body);
-    if (err != null) return err;
-    final r = body['response'] as Map<String, dynamic>?;
-    final status = r?['status'];
-    if (status == 'complete' || status == 'needs_second_factor' || _activeUser(body['client']) != null) {
-      return null;
-    }
-    return 'Could not reset password';
-  }
+  // Password / email-code / password-reset sign-in REMOVED 2026-06-18 — login is
+  // Google-only via signInWithGoogle() above. Do NOT reintroduce password auth.
 
   Future<void> signOut() async {
     await _send('/client'); // DELETE /client → sign out all sessions

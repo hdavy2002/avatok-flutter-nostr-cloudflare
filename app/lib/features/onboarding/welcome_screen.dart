@@ -19,7 +19,7 @@ class WelcomeScreen extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Spacer(flex: 3),
+              const Spacer(flex: 2),
               const Center(child: ZineCrest()),
               const SizedBox(height: 16),
               // Brand wordmark — "Ava" in ink + "TOK" in blue-ink (§3).
@@ -43,17 +43,24 @@ class WelcomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               const ZineMarkTitle(
-                pre: 'Everything you do,\n',
-                mark: 'one',
-                post: ' account.',
-                fontSize: 36,
+                pre: 'Meet ',
+                mark: 'Ava',
+                post: '.',
+                fontSize: 40,
+              ),
+              const SizedBox(height: 10),
+              Center(
+                child: Text('Way more than an assistant.',
+                    style: ZineText.cardTitle(size: 17), textAlign: TextAlign.center),
               ),
               const SizedBox(height: 14),
               Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300),
+                  constraints: const BoxConstraints(maxWidth: 320),
                   child: Text(
-                    'Calls, chat, social, market and storage — one app, in sync on every device.',
+                    "Ava replies to your group chats while you're away, talks to "
+                    "strangers while you sleep, keeps your records, calls for help in "
+                    "an emergency — and just talks when you're bored. The Siri of messaging.",
                     style: ZineText.sub(),
                     textAlign: TextAlign.center,
                   ),
@@ -62,11 +69,11 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 20),
               Center(
                 child: ZineSticker(
-                  'ALL YOUR APPS · ONE ACCOUNT',
-                  icon: PhosphorIcons.squaresFour(PhosphorIconsStyle.fill),
+                  'PRIVATE @ava · PUBLIC #ava',
+                  icon: PhosphorIcons.chatsCircle(PhosphorIconsStyle.fill),
                 ),
               ),
-              const Spacer(flex: 4),
+              const Spacer(flex: 2),
               ZineButton(
                 label: "Let's go",
                 icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),

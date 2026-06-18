@@ -30,8 +30,9 @@ class PlatformApi {
   /// Returns {checkout_url} on success, or {error, reason:'pending_legal_approval'} (503).
   static Future<Map<String, dynamic>> walletTopup(int coins) async =>
       _json((await ApiAuth.postJson('$kWalletBase/topup', {'amount': coins})).body);
-  static Future<Map<String, dynamic>> walletSpend({required int amount, required String app, String? toNpub, String? ref}) async =>
-      _json((await ApiAuth.postJson('$kWalletBase/spend', {'amount': amount, 'app_name': app, if (toNpub != null) 'to_npub': toNpub, if (ref != null) 'ref': ref})).body);
+  // walletSpend() REMOVED 2026-06-18 — the generic client-amount /api/wallet/spend
+  // endpoint is gone (a client must never set its own charge). Purchases go through
+  // their dedicated, server-priced endpoints (OLX buy, booking, vision/voice, etc.).
   static Future<List<Map<String, dynamic>>> walletTransactions() async =>
       _list(_json((await ApiAuth.getSigned('$kWalletBase/transactions')).body), 'transactions');
   static Future<Map<String, dynamic>> walletEarnings() async =>

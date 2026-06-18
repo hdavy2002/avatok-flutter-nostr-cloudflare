@@ -12,13 +12,18 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
-import { track, metric, brainFact } from "../hooks";
+import { track, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { withIdempotency, rateLimit, RL } from "../money";
 import { acctUser, sendReceipt } from "../ledger";
+import { payAffiliateOnTopup } from "./affiliate";
 
-const COIN_CENTS = 1;            // 1 AvaCoin = $0.01
-const MIN_TOPUP = 50, MAX_TOPUP = 50_000; // any amount ≥ Stripe's $0.50 floor, ≤ $500
+// Coin economics: 1 USD = 1000 coins (1 coin = $0.001). Deliberately low so
+// per-action prices and the invite reward stay cheap at scale, and wallet
+// balances look big (e.g. $10 = 10,000 coins).
+const COINS_PER_USD = 1000;
+const usdCentsForCoins = (coins: number) => Math.round((coins * 100) / COINS_PER_USD); // coins → USD cents
+const MIN_TOPUP = 500, MAX_TOPUP = 500_000; // in COINS: $0.50 (Stripe floor) .. $500
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
@@ -60,7 +65,10 @@ export async function transferCoins(
 }
 
 function topupEnabled(env: Env): boolean {
-  return env.WALLET_TOPUP_ENABLED === "1" && !!env.STRIPE_SECRET_KEY; // legal gate + creds
+  // Fail closed: also require the webhook signing secret. Without it, a forged
+  // webhook would be the only thing between an attacker and free coins, so
+  // top-ups must NOT be enableable until STRIPE_WEBHOOK_SECRET is configured.
+  return env.WALLET_TOPUP_ENABLED === "1" && !!env.STRIPE_SECRET_KEY && !!env.STRIPE_WEBHOOK_SECRET;
 }
 
 // POST /api/wallet/topup { amountUsdCents } (legacy { amount } in coins also accepted).
@@ -77,7 +85,7 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   const b = (await req.json().catch(() => ({}))) as any;
   // 1 coin = 1 cent, so amountUsdCents IS the coin amount.
   const amount = Math.trunc(Number(b.amountUsdCents ?? b.amount));
-  if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} cents` }, 400);
+  if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} coins` }, 400);
 
   if (!topupEnabled(env)) {
     // Infra is built; real money-in is held pending legal (§10.1). Honest 503.
@@ -85,7 +93,7 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   }
 
   const id = crypto.randomUUID();
-  const cents = amount * COIN_CENTS;
+  const cents = usdCentsForCoins(amount);
   // Stripe Checkout Session (server-side; client redirects to session.url).
   const form = new URLSearchParams();
   form.set("mode", "payment");
@@ -119,10 +127,11 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
 export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   const payload = await req.text();
   const sig = req.headers.get("stripe-signature");
-  if (env.STRIPE_WEBHOOK_SECRET) {
-    const ok = await verifyStripeSig(payload, sig, env.STRIPE_WEBHOOK_SECRET);
-    if (!ok) return json({ error: "bad signature" }, 400);
-  }
+  // Fail closed: a missing signing secret means we cannot trust this webhook, so
+  // refuse it rather than fall through (closes any unsigned "free coins" path).
+  if (!env.STRIPE_WEBHOOK_SECRET) return json({ error: "webhook not configured" }, 503);
+  const ok = await verifyStripeSig(payload, sig, env.STRIPE_WEBHOOK_SECRET);
+  if (!ok) return json({ error: "bad signature" }, 400);
   let event: any; try { event = JSON.parse(payload); } catch { return json({ error: "bad json" }, 400); }
   if (event.type !== "checkout.session.completed") return json({ received: true });
 
@@ -146,9 +155,12 @@ export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   const pi = (typeof s.payment_intent === "string" && s.payment_intent) || s.id || topupId;
   await walletOp(env, uid, {
     op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: pi, op_id: `topup:${topupId}`,
-    ledger: { debit: "external:stripe", credit: acctUser(uid), type: "topup", ref: pi, meta: JSON.stringify({ title: `Top-up ${coins} AvaCoins`, cents: coins * COIN_CENTS, session: s.id }) },
+    ledger: { debit: "external:stripe", credit: acctUser(uid), type: "topup", ref: pi, meta: JSON.stringify({ title: `Top-up ${coins} AvaCoins`, cents: usdCentsForCoins(coins), session: s.id }) },
   });
   await env.DB_WALLET.prepare("UPDATE topup_records SET status='paid', paid_at=?2 WHERE id=?1").bind(topupId, Date.now()).run();
+  // Lifetime affiliate commission: 10% of this top-up to whoever referred the user
+  // (idempotent per top-up; no-op if there's no affiliate). Never blocks the credit.
+  try { await payAffiliateOnTopup(env, uid, coins, topupId); } catch { /* best-effort */ }
   // A4: top-up receipt (best-effort, never blocks the credit).
   try { await sendReceipt(env, uid, "topup", { orderId: topupId, title: `${coins} AvaCoins`, lines: [{ label: `${coins} AvaCoins`, amount: coins }], total: coins }); } catch { /* best-effort */ }
   brainFact(env, uid, "wallet_topup", "avawallet", { coins });
@@ -157,34 +169,21 @@ export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   return json({ received: true, credited: coins });
 }
 
-// POST /api/wallet/spend { amount, app_name, to_npub, ref }
-export async function walletSpend(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as any;
-  const amount = Math.trunc(Number(b.amount));
-  const app = String(b.app_name || "avawallet");
-  if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
-
-  // 1. Debit the buyer atomically.
-  const debit = await walletOp(env, ctx.uid, { op: "spend", uid: ctx.uid, amount, app_name: app, counterparty_npub: b.to_npub ?? null, ref: b.ref ?? null });
-  if (debit.status !== 200) return json(debit.body, debit.status);
-
-  // 2. Credit the creator minus commission, into a 7-day hold.
-  let creatorNet = 0, commission = 0;
-  if (b.to_npub) {
-    const rate = await commissionRate(env, app);
-    commission = Math.round(amount * rate);
-    creatorNet = amount - commission;
-    await walletOp(env, b.to_npub, { op: "earn", uid: b.to_npub, amount: creatorNet, commission, app_name: app, counterparty_npub: ctx.uid, ref: b.ref ?? null });
-    brainFact(env, b.to_npub, "wallet_earned", app, { amount: creatorNet, from: "spend" });
-    try { await notifyUser(env, b.to_npub, { type: "wallet", title: `Earned ${creatorNet} AvaCoins`, body: "Available after a 7-day hold.", data: { deeplink: "/wallet", amount: creatorNet } }); } catch { /* best-effort */ }
-  }
-
-  brainFact(env, ctx.uid, "wallet_spent", app, { amount });
-  track(env, ctx.uid, "wallet_spend", app, { amount, commission, creator_net: creatorNet });
-  metric(env, "wallet_spend", [amount, commission]);
-  return json({ ok: true, spent: amount, balance: debit.body.balance, creator_net: creatorNet, commission });
+// POST /api/wallet/spend — DISABLED 2026-06-18 (financial hardening).
+//
+// This endpoint accepted a CLIENT-SUPPLIED `amount` (and an arbitrary `to_npub`),
+// which a re-coded client could use to UNDERPAY for goods/features. No client
+// flow uses it: every real purchase already goes through a dedicated,
+// SERVER-PRICED endpoint where the amount is derived from server records, never
+// from the request body —
+//   • AvaOLX            → listing.price_coins   (routes/olx.ts)
+//   • AvaBooking/Calendar → slot.price_coins    (routes/calendar.ts)
+//   • AvaVision/AvaVoice → server-metered gross  (routes/avavision.ts, avavoice.ts)
+//   • AvaTranslate       → server constant       (routes/translate.ts)
+// The server, never the client, decides the amount. Do NOT reintroduce a
+// client-amount spend route.
+export async function walletSpend(_req: Request, _env: Env): Promise<Response> {
+  return json({ error: "endpoint removed", reason: "purchases are priced server-side via their own endpoints" }, 410);
 }
 
 export async function walletBalance(req: Request, env: Env): Promise<Response> {

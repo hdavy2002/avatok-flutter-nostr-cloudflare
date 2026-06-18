@@ -33,7 +33,8 @@ import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, convList, convCreate } from "./routes/messaging";
 import { getConfig, putConfig } from "./routes/config";
-import { reviewLogin } from "./routes/review";
+import { referralClaim, referralSummary } from "./routes/referral";
+import { featureCostsRoute } from "./feature_pricing";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook } from "./routes/conference";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import {
@@ -151,9 +152,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     if (p === "/api/config" && req.method === "GET") return await getConfig(env);
     if (p === "/api/admin/config" && req.method === "PUT") return await putConfig(req, env);
 
-    // Store-review login bypass (public; password-gated inside). Lets ONE
-    // allowlisted reviewer account sign in with email+password and no email OTP.
-    if (p === "/api/review/login" && req.method === "POST") return await reviewLogin(req, env);
+    // Store-review login bypass REMOVED (2026-06-18). Login is moving to
+    // Google-only OAuth (no OTP), so reviewers sign in with a Gmail test
+    // account and no bypass is needed. The /api/review/login route is gone.
 
     // Group-call signaling → CallRoom DO (thin router, no logic). The location
     // hint places the room near the FIRST opener (the caller) — hints only apply
@@ -285,6 +286,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/wallet/topup" && req.method === "POST") return await walletTopup(req, env);
       if ((p === "/webhooks/stripe" || p === "/api/wallet/stripe-webhook") && req.method === "POST") return await stripeWebhook(req, env);
       if (p === "/api/wallet/spend" && req.method === "POST") return await walletSpend(req, env);
+      // --- AvaReferral (invite → coins; inviter-only, server-priced reward) ---
+      if (p === "/api/referral/claim" && req.method === "POST") return await referralClaim(req, env);
+      if (p === "/api/referral/summary" && req.method === "GET") return await referralSummary(req, env);
+      if (p === "/api/feature/costs" && req.method === "GET") return await featureCostsRoute(req, env);
       if (p === "/api/wallet/balance" && req.method === "GET") return await walletBalance(req, env);
       if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
       if (p === "/api/wallet/earnings" && req.method === "GET") return await walletEarnings(req, env);
