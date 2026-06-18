@@ -24,6 +24,7 @@ import '../../core/wallpaper.dart';
 import '../../core/config.dart';
 import '../../core/ice_cache.dart';
 import '../../core/profile_store.dart';
+import '../../core/drive_service.dart';
 import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/group_store.dart';
@@ -1352,6 +1353,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
             _action(ctx, PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', () => _startEdit(m)),
           _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
+          if (m.media != null)
+            _action(ctx, PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), 'Save to my AvaTOK Drive', () => _saveMediaToDrive(m)),
           _action(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), 'Delete for me', () => _deleteForMe(m)),
           _action(ctx, PhosphorIcons.trashSimple(PhosphorIconsStyle.bold), 'Delete for everyone', () => _deleteForEveryone(m), danger: true),
         ]),
@@ -1417,6 +1420,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _sfx.play(AssetSource('sounds/$file.wav'));
       }
     }
+  }
+
+  // Save a chat media file into the user's OWN AvaTOK Google Drive folder
+  // (Hybrid: their own copy in Drive; the shared original stays on encrypted R2).
+  Future<void> _saveMediaToDrive(_Msg m) async {
+    if (m.media == null) return;
+    _capNote('Saving to your AvaTOK Drive…');
+    final bytes = m.localBytes ?? await MediaService.downloadAndDecrypt(m.media!);
+    if (bytes == null) { _capNote('Could not load this file.'); return; }
+    final kind = m.media!.kind;
+    final bucket = kind == MediaKind.image ? 'Photos' : kind == MediaKind.video ? 'Videos' : 'Files';
+    final mime = kind == MediaKind.image ? 'image/jpeg' : kind == MediaKind.video ? 'video/mp4' : 'application/octet-stream';
+    final ok = await DriveService.I.upload(bucket, m.media!.name, mime, bytes);
+    if (mounted) _capNote(ok ? 'Saved to your AvaTOK Drive ✓' : "Couldn't save — connect Drive in AvaStorage.");
   }
 
   void _deleteForMe(_Msg m) => setState(() => _msgs.removeWhere((x) => x.id == m.id));

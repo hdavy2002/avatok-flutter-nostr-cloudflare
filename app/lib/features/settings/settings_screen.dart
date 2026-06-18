@@ -9,6 +9,7 @@ import '../../core/api_auth.dart';
 import '../../core/ava_ai_store.dart';
 import '../../core/brain_consent.dart';
 import '../../core/config.dart';
+import '../../core/drive_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
@@ -117,6 +118,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  // Run the account export, then save it into the user's AvaTOK Drive folder
+  // (Backups bucket). The export is small (media excluded), so this is cheap.
+  Future<void> _backupToDrive() async {
+    if (widget.identity == null || _backingUp) return;
+    setState(() => _backingUp = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Backing up to your Google Drive…')));
+    try {
+      final res = await ApiAuth.postJson(kBackupUrl, const {}, timeout: const Duration(seconds: 30));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final url = j['url']?.toString();
+      if (url == null) throw Exception('no url');
+      final dl = await ApiAuth.getBytes(url, timeout: const Duration(seconds: 30));
+      final name = 'avatok-backup-${DateTime.now().toIso8601String().split('T').first}.json';
+      final ok = await DriveService.I.upload('Backups', name, 'application/json', dl.bodyBytes);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok
+          ? 'Backed up to your AvaTOK Drive (Backups) ✓'
+          : 'Export done, but Drive isn\'t connected — connect it in AvaStorage.')));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup to Drive failed — check your connection.')));
+    } finally {
+      if (mounted) setState(() => _backingUp = false);
+    }
   }
 
   Future<void> _runBackup() async {
@@ -254,6 +282,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _section('Backup'),
         _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Back up account',
             'Email yourself a download of your account (media excluded)', _backup),
+        _tile(PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), Zine.mint, 'Back up to Google Drive',
+            'Save your account export to your AvaTOK Drive (Backups)', _backupToDrive),
         const SizedBox(height: 24),
         _section('Danger zone'),
         _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Delete account',

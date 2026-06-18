@@ -4,8 +4,12 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import 'package:file_picker/file_picker.dart';
+
 import '../../core/ava_ai_client.dart';
 import '../../core/ava_log.dart';
+import '../../core/chat_history_service.dart';
+import '../../core/drive_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../settings/sections/voice_section.dart';
@@ -52,6 +56,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   final List<_CompanionMsg> _msgs = [];
   bool _busy = false;
   String? _playingId;
+  // AvaChat history is saved locally + to D1 after each turn and on close.
+  final String _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';
 
   @override
   void initState() {
@@ -84,10 +90,38 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
 
   @override
   void dispose() {
+    _persist(); // save the session on close (local + D1)
     _input.dispose();
     _scroll.dispose();
     _audio.dispose();
     super.dispose();
+  }
+
+  /// Save this AvaChat session locally + to D1 (fire-and-forget).
+  void _persist() {
+    final msgs = <Map<String, String>>[];
+    for (final m in _msgs) {
+      if (m.id == 'intro') continue;
+      msgs.add({'role': m.me ? 'user' : 'ava', 'text': m.text});
+    }
+    if (msgs.isEmpty) return;
+    // ignore: unawaited_futures
+    ChatHistoryService.I.save(_sessionId, widget.persona.id, msgs);
+  }
+
+  /// Attach a file from the device → save it into the user's AvaTOK Drive
+  /// folder (own files go to Drive). Shows a confirmation bubble.
+  Future<void> _attachToDrive() async {
+    final res = await FilePicker.platform.pickFiles(withData: true);
+    final f = res?.files.single;
+    if (f == null || f.bytes == null) return;
+    setState(() => _msgs.add(_CompanionMsg('f${DateTime.now().microsecondsSinceEpoch}', '📎 ${f.name} — saving to your AvaTOK Drive…', true)));
+    _jumpToEnd();
+    final ok = await DriveService.I.upload('Files', f.name, 'application/octet-stream', f.bytes!);
+    if (!mounted) return;
+    setState(() => _msgs.add(_CompanionMsg('a${DateTime.now().microsecondsSinceEpoch}',
+        ok ? 'Saved "${f.name}" to your AvaTOK Drive folder ✓' : "I couldn't save that — is Google Drive connected? (AvaStorage → Connect)", false)));
+    _jumpToEnd();
   }
 
   /// History the proxy expects: [{role:'user'|'model', text:...}], excluding the
@@ -130,6 +164,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       _busy = false;
     });
     _jumpToEnd();
+    _persist(); // save history (local + D1) after each completed turn
   }
 
   void _jumpToEnd() {
@@ -296,6 +331,12 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
       ),
       child: Row(children: [
+        // Attach a file → saves it to the user's AvaTOK Google Drive folder.
+        IconButton(
+          icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: Zine.ink, size: 24),
+          onPressed: _busy ? null : _attachToDrive,
+          tooltip: 'Save a file to your AvaTOK Drive',
+        ),
         Expanded(
           child: Container(
             decoration: BoxDecoration(

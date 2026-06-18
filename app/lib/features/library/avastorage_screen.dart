@@ -4,10 +4,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
+import '../../core/drive_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../sync/sync_hub.dart';
@@ -115,6 +117,8 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               color: Zine.blueInk,
               onRefresh: _load,
               child: ListView(padding: const EdgeInsets.fromLTRB(18, 18, 18, 30), children: [
+                const _DriveSection(),
+                const SizedBox(height: 20),
                 _metricCards(total, quota, frac),
                 const SizedBox(height: 16),
                 _meterBar(frac, state),
@@ -368,4 +372,92 @@ class _DotLeaderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+/// Google Drive (AvaTOK folder) panel — the user's OWN files (AvaChat
+/// attachments, backups, saved media) live in their Google Drive; this shows the
+/// connection, AvaTOK usage, and the file list. Shared chat media is NOT here.
+class _DriveSection extends StatefulWidget {
+  const _DriveSection();
+  @override
+  State<_DriveSection> createState() => _DriveSectionState();
+}
+
+class _DriveSectionState extends State<_DriveSection> {
+  DriveStatus _s = const DriveStatus(false, 0, 0, 0);
+  List<DriveFile> _files = const [];
+  bool _loading = true, _connecting = false;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    final s = await DriveService.I.status();
+    final f = s.connected ? await DriveService.I.list() : const <DriveFile>[];
+    if (mounted) setState(() { _s = s; _files = f; _loading = false; });
+  }
+
+  Future<void> _connect() async {
+    setState(() => _connecting = true);
+    final url = await DriveService.I.connectUrl();
+    if (url != null) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (mounted) {
+      setState(() => _connecting = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Authorize Google Drive in your browser, then refresh.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ZineCard(
+      radius: Zine.rSm,
+      padding: const EdgeInsets.all(14),
+      boxShadow: Zine.shadowXs,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.fill), color: Zine.mint, size: 34),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Google Drive · AvaTOK', style: ZineText.value(size: 15)),
+            const SizedBox(height: 2),
+            Text(_s.connected ? '${_fmt(_s.avatokBytes)} in your AvaTOK folder' : 'Store your own files in your Drive',
+                style: ZineText.sub(size: 12)),
+          ])),
+          if (_s.connected)
+            ZineSticker('ON', kind: ZineStickerKind.ok, icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
+        ]),
+        if (_loading) ...[
+          const SizedBox(height: 12),
+          const Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))),
+        ] else if (!_s.connected) ...[
+          const SizedBox(height: 12),
+          ZineButton(
+            label: 'Connect Google Drive', onPressed: _connect, fullWidth: true, fontSize: 15,
+            loading: _connecting, icon: PhosphorIcons.plugsConnected(PhosphorIconsStyle.bold), trailingIcon: false,
+          ),
+        ] else ...[
+          if (_s.totalLimit > 0) ...[
+            const SizedBox(height: 10),
+            Text('Drive: ${_fmt(_s.totalUsage)} of ${_fmt(_s.totalLimit)} used', style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
+          ],
+          const SizedBox(height: 8),
+          if (_files.isEmpty)
+            Text('No AvaTOK files yet — anything you save to Drive appears here.', style: ZineText.sub(size: 12))
+          else
+            ...(_files.take(12).map((f) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(children: [
+                    PhosphorIcon(PhosphorIcons.file(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 13))),
+                    Text(_fmt(f.size), style: ZineText.sub(size: 11, color: Zine.inkMute)),
+                  ]),
+                ))),
+          const SizedBox(height: 6),
+          ZineLink('Refresh', fontSize: 13, onTap: () { setState(() => _loading = true); _load(); }),
+        ],
+      ]),
+    );
+  }
 }

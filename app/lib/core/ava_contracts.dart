@@ -69,6 +69,16 @@ class AvaApi {
   static const String appsStatus = '/api/ava/apps/status';
   static const String appsRun = '/api/ava/apps/run';
 
+  /// AvaTOK Drive — the user's OWN files in their Google Drive AvaTOK folder
+  /// (Hybrid storage; shared chat media stays on encrypted R2).
+  static const String driveConnect = '/api/ava/drive/connect';
+  static const String driveStatus = '/api/ava/drive/status';
+  static const String driveList = '/api/ava/drive/list';
+  static const String driveUpload = '/api/ava/drive/upload';
+
+  /// AvaChat — talk-to-Ava conversation history (cloud backup in D1).
+  static const String chatHistory = '/api/ava/chat/history';
+
   /// P5 — tool broker / Strata progressive disclosure (prefix; sub-paths vary).
   static const String toolsPrefix = '/api/ava/tools/';
 
