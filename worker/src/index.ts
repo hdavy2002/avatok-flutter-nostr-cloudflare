@@ -35,6 +35,7 @@ import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, convList, convCreate } 
 import { getConfig, putConfig } from "./routes/config";
 import { referralClaim, referralSummary } from "./routes/referral";
 import { featureCostsRoute } from "./feature_pricing";
+import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook } from "./routes/conference";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import {
@@ -290,6 +291,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/referral/claim" && req.method === "POST") return await referralClaim(req, env);
       if (p === "/api/referral/summary" && req.method === "GET") return await referralSummary(req, env);
       if (p === "/api/feature/costs" && req.method === "GET") return await featureCostsRoute(req, env);
+      if (p === "/api/auth/google" && req.method === "POST") return await googleAuth(req, env);
       if (p === "/api/wallet/balance" && req.method === "GET") return await walletBalance(req, env);
       if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
       if (p === "/api/wallet/earnings" && req.method === "GET") return await walletEarnings(req, env);

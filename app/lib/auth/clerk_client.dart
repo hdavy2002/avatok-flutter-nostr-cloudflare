@@ -115,10 +115,11 @@ class ClerkClient {
     return null;
   }
 
-  /// Sign in / up with Google — NATIVE (no browser tab). Uses the `google_sign_in`
-  /// plugin for the on-device account picker → Google ID token, then completes the
-  /// Clerk session with the `google_one_tap` strategy. Far more reliable than the
-  /// browser-redirect flow (no custom-scheme callback, no "Open with" picker).
+  /// Sign in / up with Google — NATIVE (no browser tab). `google_sign_in` gives the
+  /// on-device account picker → Google ID token; our server (`/api/auth/google`)
+  /// verifies it, finds/creates the Clerk user, and returns a sign-in TICKET which
+  /// we redeem here (strategy=ticket). Avoids Clerk's native One Tap (which fails
+  /// with "no account to transfer") and the browser-redirect flow entirely.
   ///
   /// One-time server setup required: the app's release SHA-1 must be registered in
   /// the Firebase / Google-Cloud project (otherwise Google throws DEVELOPER_ERROR),
@@ -139,22 +140,28 @@ class ClerkClient {
         return ClerkStep.error('Google did not return an ID token');
       }
 
-      // Hand the verified Google ID token to Clerk (One Tap strategy).
+      // Exchange the Google ID token for a Clerk sign-in ticket on our server
+      // (it verifies the token, finds/creates the Clerk user, mints the ticket).
+      final r = await http.post(
+        Uri.parse(kGoogleAuthUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'id_token': idToken}),
+      );
+      if (r.statusCode != 200) {
+        String msg = 'Sign-in failed (${r.statusCode})';
+        try { msg = (jsonDecode(r.body) as Map<String, dynamic>)['error']?.toString() ?? msg; } catch (_) {}
+        return ClerkStep.error(msg);
+      }
+      final ticket = (jsonDecode(r.body) as Map<String, dynamic>)['ticket']?.toString();
+      if (ticket == null || ticket.isEmpty) return ClerkStep.error('No sign-in ticket');
+
+      // Redeem the ticket → a real Clerk session (strategy=ticket).
       await _send('/client', body: {});
-      final body = await _send('/client/sign_ins', body: {
-        'strategy': 'google_one_tap',
-        'token': idToken,
-      });
+      final body = await _send('/client/sign_ins', body: {'strategy': 'ticket', 'ticket': ticket});
       if (_completed(body) && await currentUser() != null) return ClerkStep.complete();
-
-      // First-time user: transfer the verified identity into a real account.
-      final firstErr = _firstError(body);
-      final up = await _send('/client/sign_ups', body: {'transfer': 'true'});
-      if (_completed(up) && await currentUser() != null) return ClerkStep.complete();
-
       return (await currentUser()) != null
           ? ClerkStep.complete()
-          : ClerkStep.error(firstErr ?? 'Google sign-in did not complete');
+          : ClerkStep.error(_firstError(body) ?? 'Google sign-in did not complete');
     } catch (e) {
       return ClerkStep.error('Google sign-in failed: $e');
     }

@@ -14,6 +14,10 @@ const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 const String kGoogleServerClientId =
     '604131207750-atsjcb1f1annjp10qa6l9mtd8gj1e5ps.apps.googleusercontent.com';
 
+/// Server endpoint that exchanges a native Google ID token for a Clerk sign-in
+/// ticket (the app redeems it via strategy=ticket). Avoids Clerk native One Tap.
+const String kGoogleAuthUrl = '$kApiBase/auth/google';
+
 /// Worker endpoint to register a device's push token against an npub. (NIP-98)
 const String kRegisterUrl = 'https://$kSignalingHost/api/register';
 
