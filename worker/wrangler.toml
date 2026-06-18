@@ -19,6 +19,12 @@ pattern = "api.avatok.ai"
 custom_domain = true
 
 [vars]
+# Cloudflare AI Gateway (2026-06-18) — routes ALL AI (Workers-AI binding + Gemini
+# image) through the 'avatok-ai' gateway for per-user metering, caching, and a
+# spend cap. AI_GATEWAY_TOKEN (cf-aig-authorization for the authed gateway) is a
+# SECRET (`wrangler secret put AI_GATEWAY_TOKEN`), never in this file.
+AI_GATEWAY_ID = "avatok-ai"
+CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worker in path)
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"  # Gemma 4 26B-A4B MoE (~4B-class cost, thinking-mode reasoning)

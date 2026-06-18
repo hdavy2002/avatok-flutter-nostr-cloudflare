@@ -161,7 +161,8 @@ export interface Env {
   // cap. AI_GATEWAY_ID = the gateway name/id; AI_GATEWAY_TOKEN = optional
   // cf-aig-authorization for authenticated gateways (Google image path).
   AI_GATEWAY_ID?: string;
-  AI_GATEWAY_TOKEN?: string;
+  AI_GATEWAY_TOKEN?: string;   // cf-aig-authorization (authed gateway) — secret
+  CF_ACCOUNT_ID?: string;      // for the gateway.ai.cloudflare.com base URL
 
   // Live voice translation (Gemini 3.5 Live Translate). Unset → /api/translate/*
   // returns 503. The key never leaves the Worker — clients get ephemeral tokens.

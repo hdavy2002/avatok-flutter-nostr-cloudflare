@@ -122,9 +122,24 @@ async function endChip(env: Env, uid: string, conv: string, statusId?: string): 
   } catch { /* best-effort */ }
 }
 
+// Build the Gemini generateContent endpoint + headers, routed through the AI
+// Gateway (authed) when configured so premium image spend is metered per user.
+function geminiImageEndpoint(env: Env, key: string, uid: string): { url: string; headers: Record<string, string> } {
+  const headers: Record<string, string> = { "content-type": "application/json", "x-goog-api-key": key };
+  if (env.AI_GATEWAY_ID && env.AI_GATEWAY_TOKEN && env.CF_ACCOUNT_ID) {
+    headers["cf-aig-authorization"] = `Bearer ${env.AI_GATEWAY_TOKEN}`;
+    headers["cf-aig-metadata"] = JSON.stringify({ uid });
+    return {
+      url: `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/${env.AI_GATEWAY_ID}/google-ai-studio/v1beta/models/${IMAGE_MODEL}:generateContent`,
+      headers,
+    };
+  }
+  return { url: `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent`, headers };
+}
+
 // One Gemini generateContent call → PNG bytes. `editRef` (optional) supplies an
 // existing public image URL to edit ("make it blue") — fetched + sent inline.
-async function generateImage(env: Env, key: string, prompt: string, editRef?: string): Promise<Uint8Array> {
+async function generateImage(env: Env, key: string, prompt: string, uid: string, editRef?: string): Promise<Uint8Array> {
   const parts: any[] = [{ text: prompt }];
   // Edit support: pull the source image bytes and pass them inline so the model
   // edits rather than generates from scratch. Cheap + reuses the public bucket.
@@ -140,11 +155,12 @@ async function generateImage(env: Env, key: string, prompt: string, editRef?: st
       }
     } catch { /* fall back to text-only generation */ }
   }
+  const ep = geminiImageEndpoint(env, key, uid);
   const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent`,
+    ep.url,
     {
       method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      headers: ep.headers,
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: { responseModalities: ["IMAGE"] },
@@ -189,7 +205,7 @@ async function fulfil(
   chargeCoins: boolean, statusId: string | undefined, editRef?: string,
 ): Promise<void> {
   try {
-    const bytes = await generateImage(env, key, prompt, editRef);
+    const bytes = await generateImage(env, key, prompt, uid, editRef);
     // Charge AvaCoins only for top-up premium (our key). BYO-key users run on
     // their own quota, so no coins. Pre-authorized at request time.
     if (chargeCoins) {
