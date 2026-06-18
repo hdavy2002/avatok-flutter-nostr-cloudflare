@@ -67,3 +67,37 @@ ships only after verification clears.
   hide premium tool affordances for free users.
 - **Phase C (Google apps via REST):** scope expansion + verification, then Drive/Calendar/
   Gmail/Docs over REST with the user token; gate non-Google connectors as premium.
+
+---
+
+## Build log
+- **Phase A — DONE & DEPLOYED** (commit 24dfba0, worker version 1407ad41/a780c886):
+  `lib/premium.ts` gate (BYO key OR top-up); free chat = daily cap, no coins;
+  attachments/image-gen premium-gated with upsell; free Flux removed; per-user AI
+  Gateway metadata (`aiRunOpts(env, uid)`); PostHog `ai_error`/`premium_gate_shown`/
+  `free_chat_cap_hit` events; MIN_TOPUP → $10.
+- **Phase B — DONE & DEPLOYED/PUSHED** (commit 4844e09): upsell text returned in
+  `answer`; companion chat shows an "Add your free AI key" CTA → `AvaAiSetupScreen`;
+  client `kMinTopUpUsd` → 10.
+- **Phase C — PARTIALLY PRESENT, REMAINDER BLOCKED:**
+  - Already direct-REST on the user's OAuth token (free): **Drive** (`lib/drive.ts`,
+    `drive_service.dart`) and **Calendar** (`cal/gcal.ts`). These already satisfy
+    "free storage + calendar".
+  - **Remaining (net-new, verification-blocked):** Gmail + Docs/Sheets via direct REST.
+    Plan: a `lib/google_rest.ts` module (Drive/Gmail/Docs/Calendar clients reusing the
+    GCAL_TOKEN_KEY-encrypted refresh token), route AvaApps' Google path off Composio onto
+    it, and a function-calling loop. **HARD DEPENDENCY:** Google OAuth app verification for
+    the sensitive/restricted scopes (`gmail.*`, `documents`, `spreadsheets`, `drive`) —
+    external review, cannot be completed in code. Until verified, Gmail/Docs can't be
+    served free via REST.
+  - **Non-Google connectors = premium:** no code surface exists yet (only Google toolkits
+    are connectable today). The premium gate gets added when an "add-a-connector" feature
+    is built; for now there is nothing to gate.
+  - **AvaApps-on-Composio for Google should be retired** once `google_rest.ts` lands, so the
+    Google suite stops burning Composio credits (the whole point of "free Google apps").
+
+### Phase C — recommended next actions (owner)
+1. Start **Google OAuth verification** (consent screen + scope justification + security
+   review) for the Gmail/Docs/Sheets/Drive scopes. This is the long pole.
+2. In parallel I can scaffold `lib/google_rest.ts` (Drive/Calendar work today; Gmail/Docs
+   ready to flip on the moment verification clears) behind a `GOOGLE_REST_ENABLED` flag.
