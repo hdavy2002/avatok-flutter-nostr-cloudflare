@@ -156,7 +156,7 @@
     const rootName = rootNameForDocument(doc, location);
     runtime.markFetched(rootName);
     runtime.adoptParsed(rootName, parsed);
-    fetch(location.href).then((res) => res.ok ? res.text() : "").then((t) => {
+    Promise.resolve({ ok: false }).then((res) => res.ok ? res.text() : "").then((t) => {
       const raw = t ? parseDcText(t) : null;
       if (raw?.template) runtime.updateHtml(rootName, raw.template);
     }).catch(() => {
@@ -1292,6 +1292,7 @@
       const r = registry.get(name);
       if (r.fetched) return;
       r.fetched = true;
+      return;
       const url = COMPONENT_DIR + "/" + encodeURIComponent(name) + ".dc.html";
       fetch(url).then((res) => {
         if (!res.ok) {

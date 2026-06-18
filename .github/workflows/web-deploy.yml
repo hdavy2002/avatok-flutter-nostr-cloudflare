@@ -1,0 +1,53 @@
+# Build the avatok.ai web client (web/) and deploy it to the Cloudflare Pages
+# project `avatok-app`. This repo's Pages project is NOT wired to Cloudflare's
+# git integration, so a plain `git push` never updates the live site — this
+# workflow is what makes a push to `main` actually deploy the website (the
+# android.yml / macos.yml workflows only build the mobile apps).
+#
+# Requires two repo secrets:
+#   CLOUDFLARE_API_TOKEN  — token with "Cloudflare Pages: Edit" on the account
+#   CLOUDFLARE_ACCOUNT_ID — the account id that owns avatok-app
+name: Deploy web (Cloudflare Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'app/lib/core/ui/**'        # prebuild reads zine tokens from here
+      - '.github/workflows/web-deploy.yml'
+  workflow_dispatch:                  # allow manual "Run workflow"
+
+concurrency:
+  group: web-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build
+        working-directory: web
+        run: npm run build      # runs prebuild (zine tokens) + astro build
+
+      - name: Deploy to Cloudflare Pages (avatok-app)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web
+          command: pages deploy dist --project-name=avatok-app --branch=main --commit-hash=${{ github.sha }}
