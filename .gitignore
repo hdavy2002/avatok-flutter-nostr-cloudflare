@@ -96,3 +96,6 @@ avatok-app/
 
 # Internal scrub checklist — contains the live reviewer password + key; keep local only.
 /PUBLIC-REPO-SCRUB.md
+
+# Google Cloud console exports / OAuth client secrets — keep local only, never commit.
+google console/
