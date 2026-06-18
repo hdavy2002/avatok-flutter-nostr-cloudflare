@@ -9,7 +9,9 @@ import { json } from "./util";
 import { walletOp } from "./routes/wallet";
 
 export const FEATURE_COSTS: Record<string, number> = {
-  ava_image_generate: 50,    // $0.05  — one AI image
+  ava_chat: 2,               // $0.002 — one Ava chat message (Workers-AI Gemma 4; 3x cost)
+  ava_image_free: 5,         // $0.005 — one free-tier image (Workers-AI Flux-1-schnell)
+  ava_image_generate: 80,    // $0.08  — one premium image (Gemini "Nano Banana 2")
   ava_voice_reply: 20,       // $0.02  — Ava speaks a reply
   ava_vision_snapshot: 10,   // $0.01  — one analyzed snapshot beyond the free quota
   ava_mcp_tool: 10,          // $0.01  — one connected-app (Strata) tool call
@@ -35,7 +37,9 @@ export async function chargeFeature(
   if (cost == null) return { ok: false, reason: "unknown_feature" };
   if (cost === 0) return { ok: true, charged: 0 };
   const r = await walletOp(env, uid, {
-    op: "spend", uid, amount: cost, type: "spend", app_name: featureKey, op_id: opId,
+    // allow_free: feature/AI costs may be paid with the daily FREE coins first
+    // (then paid coins). Real marketplace spends omit this → paid-only.
+    op: "spend", uid, amount: cost, type: "spend", app_name: featureKey, op_id: opId, allow_free: true,
   });
   if (r.status === 402) return { ok: false, reason: "insufficient", balance: r.body?.balance };
   if (r.status !== 200) return { ok: false, reason: "error" };

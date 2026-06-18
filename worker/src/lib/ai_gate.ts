@@ -27,6 +27,16 @@ import * as quota from "./ai_quota";
 
 const GUARD = "@cf/meta/llama-guard-3-8b";
 
+/**
+ * Options for every `env.AI.run(...)` call. When AI_GATEWAY_ID is configured we
+ * route Workers-AI inference through the Cloudflare AI Gateway for per-request
+ * cost logging, caching, and a hard spend cap. No-op (undefined) otherwise.
+ */
+export function aiRunOpts(env: Env): { gateway: { id: string } } | undefined {
+  const id = env.AI_GATEWAY_ID;
+  return id ? { gateway: { id } } : undefined;
+}
+
 // ---- (a) moderation ---------------------------------------------------------
 
 /**
@@ -38,7 +48,7 @@ export async function isSafe(env: Env, text: string): Promise<boolean> {
   const t = (text ?? "").trim();
   if (!t) return true;
   try {
-    const out: any = await env.AI.run(GUARD, { messages: [{ role: "user", content: t }] });
+    const out: any = await env.AI.run(GUARD, { messages: [{ role: "user", content: t }] }, aiRunOpts(env));
     const verdict = (aiText(out) || JSON.stringify(out)).toLowerCase();
     return !verdict.includes("unsafe");
   } catch {

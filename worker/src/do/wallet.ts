@@ -18,6 +18,10 @@ import { json } from "../util";
 
 const HOLD_MS = 7 * 86_400_000; // 7-day earnings hold
 const OPS_TTL_MS = 48 * 3_600_000; // dedupe window for op_id replays
+// AvaCoins granted free each UTC day (no rollover). Non-premium users only.
+// See Specs/AVA-AI-COIN-PRICING-PROPOSAL.md. Spend draws free coins first, then
+// paid. The first top-up flips the user to sticky premium (free grant stops).
+const DAILY_FREE_GRANT = 250;
 
 export class WalletDO {
   private env: Env;
@@ -39,6 +43,13 @@ export class WalletDO {
     this.sql.exec(
       "CREATE TABLE IF NOT EXISTS ops (op_id TEXT PRIMARY KEY, result TEXT NOT NULL, ts INTEGER NOT NULL)",
     );
+    // Promotional free-coin pool + premium flag (Cloudflare-native AI metering).
+    // Separate from `bal` (which is real, paid/earned coins) so promo coins can
+    // pay ONLY for our AI costs, never seller payouts.
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS acct (k INTEGER PRIMARY KEY, free INTEGER NOT NULL DEFAULT 0, premium INTEGER NOT NULL DEFAULT 0, last_grant_day TEXT NOT NULL DEFAULT '')",
+    );
+    this.sql.exec("INSERT OR IGNORE INTO acct (k, free, premium, last_grant_day) VALUES (1,0,0,'')");
   }
 
   /** Replay guard: return the stored result for a seen op_id, else null. */
@@ -65,6 +76,34 @@ export class WalletDO {
     this.sql.exec("UPDATE bal SET balance=?1, held=?2 WHERE k=1", balance, held);
   }
 
+  private acct(): { free: number; premium: number; last_grant_day: string } {
+    const r = this.sql.exec("SELECT free, premium, last_grant_day FROM acct WHERE k=1").one() as any;
+    return { free: Number(r.free), premium: Number(r.premium), last_grant_day: String(r.last_grant_day) };
+  }
+
+  // Free-coin daily grant. Non-premium users get DAILY_FREE_GRANT reset (NOT added
+  // — no rollover) on the first touch of a new UTC day. Premium users never hold
+  // free coins. Called on every DO touch, so it self-heals without a cron.
+  private maybeGrant(): void {
+    const a = this.acct();
+    if (a.premium) {
+      if (a.free !== 0) this.sql.exec("UPDATE acct SET free=0 WHERE k=1");
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    if (a.last_grant_day !== today) {
+      this.sql.exec("UPDATE acct SET free=?1, last_grant_day=?2 WHERE k=1", DAILY_FREE_GRANT, today);
+    }
+  }
+
+  // Full balance snapshot the client sees: paid `balance`, `held`, promo `free`,
+  // `premium`, and `spendable` = free + paid.
+  private snap(): { balance: number; held: number; free: number; premium: number; spendable: number } {
+    const b = this.bal();
+    const a = this.acct();
+    return { balance: b.balance, held: b.held, free: a.free, premium: a.premium, spendable: a.free + b.balance };
+  }
+
   async fetch(req: Request): Promise<Response> {
     if (req.headers.get("Upgrade") === "websocket") return this.handleWs();
 
@@ -72,8 +111,9 @@ export class WalletDO {
     try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
     const uid: string = body.uid || "";
 
-    // Lazily release matured holds on every touch.
+    // Lazily release matured holds + apply the daily free-coin grant on every touch.
     this.releaseMatured();
+    this.maybeGrant();
 
     // Idempotency at the authority: replay of a seen op_id returns the original
     // result without re-applying (and without re-emitting the ledger row).
@@ -83,7 +123,7 @@ export class WalletDO {
     }
 
     switch (body.op) {
-      case "balance": return json({ ...this.bal(), uid });
+      case "balance": return json({ ...this.snap(), uid });
       case "credit": return this.credit(uid, body);
       case "spend": return this.spend(uid, body);
       case "earn": return this.earn(uid, body);
@@ -100,7 +140,10 @@ export class WalletDO {
     const cur = this.bal();
     const balance = cur.balance + amount;
     this.setBal(balance, cur.held);
-    const result = { ok: true, balance, held: cur.held };
+    // First real top-up flips the user to sticky premium: stop the daily free
+    // grant and zero any remaining free coins (Specs: paid users pay-as-they-go).
+    if (b.type === "topup") this.sql.exec("UPDATE acct SET premium=1, free=0 WHERE k=1");
+    const result = { ok: true, ...this.snap() };
     this.recordOp(b.op_id, result);
     await this.audit(uid, { type: b.type || "topup", amount, balance_after: balance, app_name: b.app_name, ref: b.ref }, b);
     this.broadcast();
@@ -108,17 +151,36 @@ export class WalletDO {
   }
 
   // Atomic debit. Refuses to go negative.
+  //   b.allow_free === true  → AI/feature cost: spend promo FREE coins first, then
+  //                            paid. (Internal cost; never a seller payout.)
+  //   otherwise              → real money (marketplace/payout): PAID balance only,
+  //                            so promotional coins can never fund a payout.
   private async spend(uid: string, b: any): Promise<Response> {
     const amount = Math.trunc(Number(b.amount));
     if (!(amount > 0)) return json({ error: "amount>0 required" }, 400);
+    const a = this.acct();
     const cur = this.bal();
-    if (cur.balance < amount) return json({ error: "insufficient balance", balance: cur.balance }, 402);
-    const balance = cur.balance - amount;
+    const allowFree = b.allow_free === true;
+
+    let freeUsed = 0;
+    let paidUsed = amount;
+    if (allowFree) {
+      const total = a.free + cur.balance;
+      if (total < amount) return json({ error: "insufficient balance", ...this.snap() }, 402);
+      freeUsed = Math.min(a.free, amount);
+      paidUsed = amount - freeUsed;
+    } else if (cur.balance < amount) {
+      return json({ error: "insufficient balance", ...this.snap() }, 402);
+    }
+
+    if (freeUsed > 0) this.sql.exec("UPDATE acct SET free=free-?1 WHERE k=1", freeUsed);
+    const balance = cur.balance - paidUsed;
     this.setBal(balance, cur.held);
+
     const txType = b.type === "payout" || b.type === "refund" ? b.type : "spend";
-    const result = { ok: true, balance, held: cur.held };
+    const result = { ok: true, ...this.snap(), free_used: freeUsed, paid_used: paidUsed };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: txType, amount: -amount, balance_after: balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, ref: b.ref }, b);
+    await this.audit(uid, { type: txType, amount: -amount, balance_after: this.snap().spendable, app_name: b.app_name, counterparty_npub: b.counterparty_npub, ref: b.ref }, b);
     this.broadcast();
     return json(result);
   }
@@ -197,14 +259,15 @@ export class WalletDO {
     const [client, server] = [pair[0], pair[1]];
     server.accept();
     this.sockets.add(server);
-    try { server.send(JSON.stringify({ type: "balance", ...this.bal() })); } catch { /* ignore */ }
+    this.maybeGrant();
+    try { server.send(JSON.stringify({ type: "balance", ...this.snap() })); } catch { /* ignore */ }
     server.addEventListener("close", () => this.sockets.delete(server));
     server.addEventListener("error", () => this.sockets.delete(server));
     return new Response(null, { status: 101, webSocket: client });
   }
 
   private broadcast(): void {
-    const msg = JSON.stringify({ type: "balance", ...this.bal() });
+    const msg = JSON.stringify({ type: "balance", ...this.snap() });
     for (const ws of [...this.sockets]) {
       try { ws.send(msg); } catch { this.sockets.delete(ws); }
     }

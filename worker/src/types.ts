@@ -156,6 +156,13 @@ export interface Env {
   LIVEKIT_API_KEY?: string;
   LIVEKIT_API_SECRET?: string;
 
+  // Cloudflare AI Gateway (2026-06-18). When set, all Workers-AI + Google image
+  // calls route through this gateway for cost logging, caching, and a hard spend
+  // cap. AI_GATEWAY_ID = the gateway name/id; AI_GATEWAY_TOKEN = optional
+  // cf-aig-authorization for authenticated gateways (Google image path).
+  AI_GATEWAY_ID?: string;
+  AI_GATEWAY_TOKEN?: string;
+
   // Live voice translation (Gemini 3.5 Live Translate). Unset → /api/translate/*
   // returns 503. The key never leaves the Worker — clients get ephemeral tokens.
   // Also powers the AvaAffiliate v2 marketing-asset kit (Nano Banana 2 images).
