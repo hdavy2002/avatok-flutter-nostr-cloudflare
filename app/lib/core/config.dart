@@ -6,13 +6,13 @@ import 'feature_flags.dart';
 /// Clerk publishable key (existing avatok.ai tenant) — public, ships in app.
 const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 
-/// OAuth callback for Google sign-in. Uses a DEDICATED scheme (`avatokauth`) so it
-/// does NOT collide with the app's general `avatok://` deep links (which would
-/// trigger an Android "Open with" disambiguation dialog and break the callback).
-/// Must match the `flutter_web_auth_2` CallbackActivity intent-filter in
-/// AndroidManifest and the allowed redirect in the Clerk dashboard.
-const String kOAuthCallbackScheme = 'avatokauth';
-const String kOAuthRedirect = 'avatokauth://oauth-callback';
+/// Google WEB OAuth client id — the same Google-Cloud project Clerk's Google
+/// connection uses. Native `google_sign_in` requests an ID token with THIS as the
+/// audience so Clerk's `google_one_tap` strategy accepts it. (The app's release
+/// SHA-1 must also be registered in that Google project, or Google returns
+/// DEVELOPER_ERROR.)
+const String kGoogleServerClientId =
+    '604131207750-atsjcb1f1annjp10qa6l9mtd8gj1e5ps.apps.googleusercontent.com';
 
 /// Worker endpoint to register a device's push token against an npub. (NIP-98)
 const String kRegisterUrl = 'https://$kSignalingHost/api/register';

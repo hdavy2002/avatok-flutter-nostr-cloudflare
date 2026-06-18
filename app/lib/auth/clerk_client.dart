@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
@@ -115,58 +115,46 @@ class ClerkClient {
     return null;
   }
 
-  /// Sign in / up with Google via Clerk's native OAuth flow — the Google-only
-  /// login path. Opens the Google consent screen in a secure in-app browser and
-  /// completes the Clerk session on return.
+  /// Sign in / up with Google — NATIVE (no browser tab). Uses the `google_sign_in`
+  /// plugin for the on-device account picker → Google ID token, then completes the
+  /// Clerk session with the `google_one_tap` strategy. Far more reliable than the
+  /// browser-redirect flow (no custom-scheme callback, no "Open with" picker).
   ///
-  /// Requires: the `flutter_web_auth_2` package, a Clerk "Google" social
-  /// connection enabled, and `kOAuthRedirect` allowlisted in the Clerk dashboard,
-  /// plus the CallbackActivity intent-filter in AndroidManifest. NEEDS DEVICE
-  /// TESTING before the old password/OTP paths are removed — see
-  /// Specs/AUTH-GOOGLE-ONLY.md.
+  /// One-time server setup required: the app's release SHA-1 must be registered in
+  /// the Firebase / Google-Cloud project (otherwise Google throws DEVELOPER_ERROR),
+  /// Google must be enabled in Clerk, and `kGoogleServerClientId` must be the
+  /// project's WEB OAuth client id (so the ID token's audience matches Clerk's).
   Future<ClerkStep> signInWithGoogle() async {
     try {
+      final gsi = GoogleSignIn(
+        serverClientId: kGoogleServerClientId,
+        scopes: const ['email', 'profile'],
+      );
+      // Force the picker each time instead of silently reusing the last account.
+      try { await gsi.signOut(); } catch (_) {/* fine */}
+      final account = await gsi.signIn();
+      if (account == null) return ClerkStep.error('Google sign-in was cancelled');
+      final idToken = (await account.authentication).idToken;
+      if (idToken == null || idToken.isEmpty) {
+        return ClerkStep.error('Google did not return an ID token');
+      }
+
+      // Hand the verified Google ID token to Clerk (One Tap strategy).
       await _send('/client', body: {});
-      // 1. Start an OAuth sign-in; Clerk returns the Google consent URL.
-      final start = await _send('/client/sign_ins', body: {
-        'strategy': 'oauth_google',
-        'redirect_url': kOAuthRedirect,
+      final body = await _send('/client/sign_ins', body: {
+        'strategy': 'google_one_tap',
+        'token': idToken,
       });
-      var extUrl = _externalRedirectUrl(start['response'] as Map<String, dynamic>?);
-      // First-time Google users have no sign-in yet → start a sign-up instead.
-      if (extUrl == null) {
-        final startUp = await _send('/client/sign_ups', body: {
-          'strategy': 'oauth_google',
-          'redirect_url': kOAuthRedirect,
-        });
-        extUrl = _externalRedirectUrl(startUp['response'] as Map<String, dynamic>?);
-      }
-      if (extUrl == null) return ClerkStep.error('Could not start Google sign-in');
+      if (_completed(body) && await currentUser() != null) return ClerkStep.complete();
 
-      // 2. Open the consent screen; returns the callback URL carrying a nonce.
-      final result = await FlutterWebAuth2.authenticate(
-          url: extUrl, callbackUrlScheme: kOAuthCallbackScheme);
-      final nonce = Uri.parse(result).queryParameters['rotating_token_nonce'];
-      if (nonce == null || nonce.isEmpty) {
-        return ClerkStep.error('Google sign-in was cancelled');
-      }
-
-      // 3. Rotate the client token with the nonce as a REAL query param (this is
-      //    what picks up the completed OAuth verification + active session).
-      await _reloadClientWithNonce(nonce);
-      if (await currentUser() != null) return ClerkStep.complete();
-
-      // 4. First-time Google user: the OAuth sign-in/up is "transferable" — turn
-      //    it into a real account by completing the transfer (sign-up, then
-      //    sign-in as a fallback). Either path lands an active session.
+      // First-time user: transfer the verified identity into a real account.
+      final firstErr = _firstError(body);
       final up = await _send('/client/sign_ups', body: {'transfer': 'true'});
       if (_completed(up) && await currentUser() != null) return ClerkStep.complete();
-      final si = await _send('/client/sign_ins', body: {'transfer': 'true'});
-      if (_completed(si) && await currentUser() != null) return ClerkStep.complete();
 
       return (await currentUser()) != null
           ? ClerkStep.complete()
-          : ClerkStep.error('Google sign-in did not complete');
+          : ClerkStep.error(firstErr ?? 'Google sign-in did not complete');
     } catch (e) {
       return ClerkStep.error('Google sign-in failed: $e');
     }
@@ -175,37 +163,6 @@ class ClerkClient {
   bool _completed(Map<String, dynamic> body) {
     final r = body['response'] as Map<String, dynamic>?;
     return r?['status'] == 'complete' || _activeUser(body['client']) != null;
-  }
-
-  /// GET /v1/client with the OAuth `rotating_token_nonce` as a real query param,
-  /// so the FAPI token actually rotates and the new session is captured. (Passing
-  /// it inside the path string would percent-encode the `?` and drop the nonce.)
-  Future<void> _reloadClientWithNonce(String nonce) async {
-    await _loadToken();
-    final uri = Uri(
-      scheme: 'https',
-      host: _domain,
-      path: 'v1/client',
-      queryParameters: {
-        '_is_native': 'true',
-        '_clerk_js_version': _jsVersion,
-        'rotating_token_nonce': nonce,
-      },
-    );
-    final r = await http.get(uri, headers: _headers(get: true));
-    _capture(r);
-  }
-
-  /// Pull the external OAuth redirect URL out of a sign-in/up response.
-  String? _externalRedirectUrl(Map<String, dynamic>? su) {
-    if (su == null) return null;
-    final ffv = su['first_factor_verification'] as Map<String, dynamic>?;
-    final url1 = ffv?['external_verification_redirect_url'];
-    if (url1 is String && url1.isNotEmpty) return url1;
-    final verif = (su['verifications'] as Map<String, dynamic>?)?['external_account'] as Map<String, dynamic>?;
-    final url2 = verif?['external_verification_redirect_url'];
-    if (url2 is String && url2.isNotEmpty) return url2;
-    return null;
   }
 
   // Password / email-code / password-reset sign-in REMOVED 2026-06-18 — login is
