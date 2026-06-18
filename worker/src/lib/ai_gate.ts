@@ -30,11 +30,16 @@ const GUARD = "@cf/meta/llama-guard-3-8b";
 /**
  * Options for every `env.AI.run(...)` call. When AI_GATEWAY_ID is configured we
  * route Workers-AI inference through the Cloudflare AI Gateway for per-request
- * cost logging, caching, and a hard spend cap. No-op (undefined) otherwise.
+ * cost logging, caching, and a hard spend cap. Passing `uid` tags the request
+ * with per-user metadata so the gateway dashboard can break spend down by user.
+ * No-op (undefined) when no gateway is configured.
  */
-export function aiRunOpts(env: Env): { gateway: { id: string } } | undefined {
+export function aiRunOpts(env: Env, uid?: string): any {
   const id = env.AI_GATEWAY_ID;
-  return id ? { gateway: { id } } : undefined;
+  if (!id) return undefined;
+  const gateway: any = { id };
+  if (uid) gateway.metadata = { uid };
+  return { gateway };
 }
 
 // ---- (a) moderation ---------------------------------------------------------

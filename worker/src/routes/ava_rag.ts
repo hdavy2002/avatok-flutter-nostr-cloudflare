@@ -21,7 +21,13 @@ export async function avaRagIngest(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const key = keyOf(req);
-  if (!key) return json({ error: "connect Google AI Studio first (no key)" }, 400);
+  // RAG / file-search runs on the user's OWN AI Studio key (File Search store is
+  // per-key), so this premium feature requires a connected key specifically — a
+  // top-up alone can't power it. Point free users to Settings.
+  if (!key) {
+    return json({ ok: false, blocked: true, reason: "premium_required", feature: "rag",
+      message: "Ava's memory & file search need your own AI Studio key. Add it in Settings (we show you how)." }, 200);
+  }
 
   let b: any;
   try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }

@@ -1,34 +1,27 @@
-// ava_gemini.ts — Ava chat, now 100% Cloudflare-native (2026-06-18 rebuild).
+// ava_gemini.ts — Ava chat (Cloudflare-native). Free/premium model 2026-06-18.
 //   POST /api/ava/gemini   { message, context?, history?, images? }
 //
-// ARCHITECTURE (see Specs/AVA-AI-COIN-PRICING-PROPOSAL.md): chat runs on
-// Workers-AI **Gemma 4 26B** (`@cf/google/gemma-4-26b-a4b-it`) for EVERY user —
-// free and paid — so there is no Google text cost and no per-user key. Gemma 4 is
-// multimodal (vision/OCR/doc parsing), 256K ctx, ~15-30x cheaper than Gemini.
-// Google is only used elsewhere for PAID image generation (Banana 2).
+// FREE: a basic TEXT chatbot on Workers-AI Gemma 4 (@cf/google/gemma-4-26b-a4b-it),
+// rate-limited by a daily turn cap (lib/ai_gate). No coins, no AI tools.
+// PREMIUM (AI Studio key OR top-up): unlocks attachments (file/image understanding)
+// and uncapped chat. A FREE user who sends an attachment gets the upsell.
 //
-// Every turn flows through the gate (lib/ai_gate.ts): kill-switch → intent gate →
-// llama-guard in/out. The 25/turn daily cap is REPLACED by AvaCoins: each chat
-// message costs a flat price (FEATURE_COSTS.ava_chat) drawn from the wallet
-// (free daily grant first, then paid). Workers-AI runs through the AI Gateway
-// (when AI_GATEWAY_ID is set) for cost logging + a hard spend cap.
+// Every turn flows through the gate (kill-switch → intent → llama-guard in/out).
+// Workers-AI runs through the Cloudflare AI Gateway (when AI_GATEWAY_ID is set),
+// tagged with the uid so spend is metered per user. Errors emit a PostHog event.
 //
-// LEAK FIX: Gemma 4 has a built-in thinking mode. We do NOT enable it, we keep the
-// system prompt plain (the old "UNTRUSTED DATA, do-not-obey" wrapper made the model
-// narrate its reasoning), and we defensively strip any <think> block from output —
-// so Ava can never dump her raw reasoning into the chat again.
+// LEAK FIX: Gemma 4 has a thinking mode — we keep it off, keep the system prompt
+// plain, and strip any <think> block so raw reasoning never reaches the user.
 
 import type { Env } from "../types";
 import { json, aiText } from "../util";
 import { requireUser, isFail } from "../authz";
 import { runGated, intentGate, aiRunOpts } from "../lib/ai_gate";
-import { chargeFeature, featureCost } from "../feature_pricing";
-import { walletOp } from "./wallet";
+import { isPremiumAI, premiumUpsell } from "../lib/premium";
+import { track } from "../hooks";
 
-// Chat model — Workers AI Gemma 4 26B (multimodal, 256K ctx, $0.10/$0.30 per 1M).
 const CHAT_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const MAX_TOKENS = 700;
-const CHAT_FEATURE = "ava_chat"; // priced in feature_pricing.ts (coins)
 
 const SYSTEM_BASE = [
   "You are Ava, a warm, concise companion inside the AvaTOK app.",
@@ -40,9 +33,9 @@ const SYSTEM_BASE = [
 
 interface AvaGeminiBody {
   message?: unknown;
-  context?: unknown;                 // optional persona/style guidance
-  history?: unknown;                 // optional [{role:'user'|'model'|'assistant', text}]
-  images?: unknown;                  // optional [{ mime, data(base64) }] for multimodal turns
+  context?: unknown;
+  history?: unknown;
+  images?: unknown;   // [{ mime, data(base64) }] — premium (file/image understanding)
 }
 
 interface Turn { role: "user" | "assistant"; text: string; }
@@ -56,35 +49,7 @@ function normHistory(raw: unknown): Turn[] {
     const text = String((r as any).text ?? (r as any).content ?? "").trim();
     if (text) out.push({ role, text });
   }
-  return out.slice(-12); // bounded context
-}
-
-// Strip any reasoning the model might emit despite thinking being off, so the raw
-// chain-of-thought can never reach the user (the original AvaTOK leak bug).
-function stripReasoning(s: string): string {
-  return s
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
-    .replace(/^\s*<\/?think(ing)?>\s*/gi, "")
-    .trim();
-}
-
-// Build the Gemma `messages` array. Multimodal: when `images` are present we send
-// the user turn as an OpenAI-style content array ([{type:'text'},{type:'image_url'}]),
-// which Workers AI accepts for vision models; otherwise a plain string.
-function buildMessages(system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>): any[] {
-  const messages: any[] = [{ role: "system", content: system }];
-  for (const t of history) messages.push({ role: t.role, content: t.text });
-  if (images.length) {
-    const content: any[] = [{ type: "text", text: message }];
-    for (const im of images) {
-      content.push({ type: "image_url", image_url: { url: `data:${im.mime};base64,${im.data}` } });
-    }
-    messages.push({ role: "user", content });
-  } else {
-    messages.push({ role: "user", content: message });
-  }
-  return messages;
+  return out.slice(-12);
 }
 
 function normImages(raw: unknown): Array<{ mime: string; data: string }> {
@@ -98,13 +63,34 @@ function normImages(raw: unknown): Array<{ mime: string; data: string }> {
   return out;
 }
 
-// One Gemma generation through Workers AI (routed via the AI Gateway when set).
-async function generate(env: Env, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
+// Strip any reasoning the model might emit so raw chain-of-thought never leaks.
+function stripReasoning(s: string): string {
+  return s
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/^\s*<\/?think(ing)?>\s*/gi, "")
+    .trim();
+}
+
+function buildMessages(system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>): any[] {
+  const messages: any[] = [{ role: "system", content: system }];
+  for (const t of history) messages.push({ role: t.role, content: t.text });
+  if (images.length) {
+    const content: any[] = [{ type: "text", text: message }];
+    for (const im of images) content.push({ type: "image_url", image_url: { url: `data:${im.mime};base64,${im.data}` } });
+    messages.push({ role: "user", content });
+  } else {
+    messages.push({ role: "user", content: message });
+  }
+  return messages;
+}
+
+async function generate(env: Env, uid: string, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
   const out: any = await env.AI.run(
     CHAT_MODEL,
     { messages: buildMessages(sys, history, message, images), max_tokens: MAX_TOKENS } as any,
-    aiRunOpts(env),
+    aiRunOpts(env, uid),
   );
   return stripReasoning(aiText(out).trim());
 }
@@ -122,50 +108,34 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const history = normHistory(b.history);
   const images = normImages(b.images);
 
-  // Fold persona/style guidance into the system prompt (no "untrusted" wrapper).
-  const system = context ? `${SYSTEM_BASE}\nStyle/persona for this chat: ${context}` : SYSTEM_BASE;
+  // Premium status (BYO key OR topped-up). Used to gate attachments + uncap chat.
+  const { premium, via } = await isPremiumAI(req, env, ctx.uid, b);
 
-  // Coins replace the old turn-cap. Trivial acks ("ok", "thanks") are free and
-  // skip the model, so only charge when the model will actually run.
-  const cost = featureCost(CHAT_FEATURE) ?? 0;
-  const needsModel = intentGate(message).needsModel;
-
-  // Pre-authorize: don't burn compute if the user can't afford the turn.
-  if (needsModel && cost > 0) {
-    const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
-    const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
-    if (spendable < cost) {
-      return json({
-        answer: "You're out of AvaCoins for now. Your free daily coins refresh tomorrow, or top up to keep chatting.",
-        blocked: true, reason: "insufficient_coins", balance: spendable,
-      }, 200);
-    }
+  // Attachments = file/image understanding = a premium AI tool. Free users get the upsell.
+  if (images.length && !premium) {
+    return premiumUpsell(env, ctx.uid, "file_understanding");
   }
+
+  const system = context ? `${SYSTEM_BASE}\nStyle/persona for this chat: ${context}` : SYSTEM_BASE;
 
   let result;
   try {
     result = await runGated(env, {
       uid: ctx.uid, tier: "ourkeys", userText: message,
-      generate: (steer?: string) => generate(env, system, history, message, images, steer),
-      skipQuota: true, // wallet coins gate usage now, not the daily turn cap
+      generate: (steer?: string) => generate(env, ctx.uid, system, history, message, images, steer),
+      // Premium users (key or top-up) are uncapped; free users keep the daily cap.
+      skipQuota: premium,
     });
   } catch (e: any) {
+    track(env, ctx.uid, "ai_error", "avaai", { route: "chat", detail: String(e?.message ?? e).slice(0, 200), premium_via: via });
     return json({ error: "ai upstream failed", detail: String(e?.message ?? e).slice(0, 300) }, 502);
   }
 
   if (result.blocked) {
-    return json({ answer: result.answer, blocked: true, reason: result.reason },
+    if (result.reason === "daily_cap") track(env, ctx.uid, "free_chat_cap_hit", "avaai", {});
+    return json({ answer: result.answer, blocked: true, reason: result.reason, ...(result.remaining != null ? { remaining: result.remaining } : {}) },
       result.reason === "ai_disabled" ? 503 : 200);
   }
 
-  // Charge the flat per-message price (idempotent op id). We pre-authorized above,
-  // so this should succeed; if a race made it insufficient we still return the
-  // reply (already generated) rather than penalize the user.
-  let balance: number | undefined;
-  if (needsModel && cost > 0) {
-    const charged = await chargeFeature(env, ctx.uid, CHAT_FEATURE, crypto.randomUUID());
-    if (charged.ok) balance = charged.balance;
-  }
-
-  return json({ answer: result.answer, blocked: false, tier: "ourkeys", cost: needsModel ? cost : 0, ...(balance != null ? { balance } : {}) });
+  return json({ answer: result.answer, blocked: false, tier: premium ? "premium" : "free", premium, ...(result.remaining != null ? { remaining: result.remaining } : {}) });
 }

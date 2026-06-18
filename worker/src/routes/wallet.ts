@@ -23,7 +23,7 @@ import { payAffiliateOnTopup } from "./affiliate";
 // balances look big (e.g. $10 = 10,000 coins).
 const COINS_PER_USD = 1000;
 const usdCentsForCoins = (coins: number) => Math.round((coins * 100) / COINS_PER_USD); // coins → USD cents
-const MIN_TOPUP = 500, MAX_TOPUP = 500_000; // in COINS: $0.50 (Stripe floor) .. $500
+const MIN_TOPUP = 10_000, MAX_TOPUP = 500_000; // in COINS: $10 (premium unlock min) .. $500
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));

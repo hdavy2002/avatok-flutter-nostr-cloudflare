@@ -35,16 +35,20 @@
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
-import { guardInput, aiRunOpts } from "../lib/ai_gate";
+import { guardInput } from "../lib/ai_gate";
+import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { chargeFeature, featureCost } from "../feature_pricing";
 import { walletOp } from "./wallet";
+import { track } from "../hooks";
 import { readConfig } from "./config";
 import { mediaSession } from "../db/shard";
 import { postAvaMessage } from "./ava_thread";
 import type { MessageScope } from "../lib/ava_kinds";
 
-const IMAGE_MODEL = "gemini-3.1-flash-image-preview";       // Nano Banana 2 (PAID tier)
-const FLUX_MODEL = "@cf/black-forest-labs/flux-1-schnell";  // Workers AI (FREE tier)
+// Image generation is a PREMIUM feature (free tier has no image gen). Premium via
+// a BYO AI Studio key runs on the user's own quota (no coins); premium via top-up
+// runs on our key and deducts coins (ava_image_generate).
+const IMAGE_MODEL = "gemini-3.1-flash-image-preview"; // Nano Banana 2
 
 function inboxOf(env: Env, uid: string) {
   return env.INBOX.get(env.INBOX.idFromName(uid));
@@ -158,18 +162,6 @@ async function generateImage(env: Env, key: string, prompt: string, editRef?: st
   return bytes;
 }
 
-// FREE-tier image: Workers AI Flux-1-schnell (routed via the AI Gateway when set).
-// Returns raw image bytes. (No edit/image-input support on this path — text→image.)
-async function generateImageFlux(env: Env, prompt: string): Promise<Uint8Array> {
-  const out: any = await env.AI.run(FLUX_MODEL, { prompt, steps: 4 } as any, aiRunOpts(env));
-  const b64 = out?.image ?? (typeof out === "string" ? out : "");
-  if (!b64) throw new Error("flux returned no image");
-  const bin = atob(String(b64));
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
 // Store the generated PNG in the PUBLIC blob bucket (same layout + CDN path as
 // /upload/public) and register a user_media row so it counts toward the pool and
 // the library/Avatar widgets see it. Returns the public blossom URL (media_ref).
@@ -193,17 +185,16 @@ async function storePublicImage(env: Env, uid: string, bytes: Uint8Array): Promi
 // Runs after the HTTP response has been sent (detached) so the request returns
 // fast and the humans keep chatting; the image arrives in-thread when ready.
 async function fulfil(
-  env: Env, uid: string, conv: string, prompt: string, key: string | undefined,
-  premium: boolean, feature: string, statusId: string | undefined, editRef?: string,
+  env: Env, uid: string, conv: string, prompt: string, key: string,
+  chargeCoins: boolean, statusId: string | undefined, editRef?: string,
 ): Promise<void> {
   try {
-    // PAID → Gemini Banana 2 (supports edit/image input); FREE → Workers AI Flux.
-    const bytes = premium && key
-      ? await generateImage(env, key, prompt, editRef)
-      : await generateImageFlux(env, prompt);
-    // Charge AvaCoins only after a successful generation (pre-authorized at request
-    // time). Free coins first, then paid (chargeFeature passes allow_free).
-    await chargeFeature(env, uid, feature, crypto.randomUUID()).catch(() => ({ ok: false }));
+    const bytes = await generateImage(env, key, prompt, editRef);
+    // Charge AvaCoins only for top-up premium (our key). BYO-key users run on
+    // their own quota, so no coins. Pre-authorized at request time.
+    if (chargeCoins) {
+      await chargeFeature(env, uid, "ava_image_generate", crypto.randomUUID()).catch(() => ({ ok: false }));
+    }
     // OUTPUT-INTENT moderation: the prompt is llama-guarded BEFORE generation
     // (the gate in avaImage). Pixel-level scanning of the produced image is not
     // run inline here (we write the user_media row directly rather than through
@@ -255,33 +246,35 @@ export async function avaImage(req: Request, env: Env): Promise<Response> {
       message: "I can't create that image. Let's keep things safe — try a different idea." }, 200);
   }
 
-  // TIER: premium users (have topped up) get Gemini "Nano Banana 2"; everyone else
-  // gets free-tier Workers AI Flux. Premium needs a Gemini key (server, else BYO);
-  // if none is configured we gracefully fall back to Flux rather than 503.
-  const byoKey = req.headers.get("X-Ava-Gemini-Key") || undefined;
-  const key = env.GEMINI_API_KEY || byoKey;
-  const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
-  const premium = Number(bal.body?.premium ?? 0) === 1 && !!key;
-  const feature = premium ? "ava_image_generate" : "ava_image_free";
-  const cost = featureCost(feature) ?? 0;
+  // PREMIUM GATE: image generation is premium-only. Free users get the upsell.
+  const { premium, via } = await isPremiumAI(req, env, ctx.uid, b);
+  if (!premium) return premiumUpsell(env, ctx.uid, "image_generation");
 
-  // Pre-authorize coins (free daily grant first, then paid) before any work.
-  const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
-  if (cost > 0 && spendable < cost) {
-    return json({ ok: false, blocked: true, reason: "insufficient_coins",
-      message: "You're out of AvaCoins for images. Your free daily coins refresh tomorrow, or top up." }, 200);
+  // Key + billing. BYO-key premium runs on the user's own quota (no coins);
+  // top-up premium runs on our key and is charged ava_image_generate coins.
+  const byoKey = req.headers.get("X-Ava-Gemini-Key") || undefined;
+  const key = via === "byo_key" ? (byoKey || env.GEMINI_API_KEY) : env.GEMINI_API_KEY;
+  if (!key) return json({ error: "image generation unavailable", reason: "no_gemini_key" }, 503);
+  const chargeCoins = via === "topup";
+
+  if (chargeCoins) {
+    // Pre-authorize coins (free daily grant first, then paid) before any work.
+    const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
+    const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
+    const cost = featureCost("ava_image_generate") ?? 0;
+    if (spendable < cost) {
+      return json({ ok: false, blocked: true, reason: "insufficient_coins",
+        message: "You're out of AvaCoins for images. Your free daily coins refresh tomorrow, or top up." }, 200);
+    }
   }
 
   // (3) drop the working chip immediately so the thread shows "Ava is generating…".
   const statusId = await postChip(env, ctx.uid, conv, "Ava is generating an image…");
+  track(env, ctx.uid, "ava_image_request", "avaai", { premium_via: via });
 
   // (4–6) heavy work runs detached — the HTTP call returns now while the image
-  // is produced and posted into the SAME conversation when ready. We do NOT
-  // await `fulfil`; the Worker keeps the promise alive long enough to finish.
-  // (avaImage's signature is (req, env) — no ExecutionContext is passed by the
-  // index.ts router — so we cannot use ctx.waitUntil; a detached promise is the
-  // pragmatic equivalent here. See INTEGRATION-NOTES Phase 9.)
-  void fulfil(env, ctx.uid, conv, prompt, key, premium, feature, statusId, editRef);
+  // is produced and posted into the SAME conversation when ready.
+  void fulfil(env, ctx.uid, conv, prompt, key, chargeCoins, statusId, editRef);
 
-  return json({ ok: true, conv, status_id: statusId ?? null, async: true, tier: premium ? "paid" : "free", cost });
+  return json({ ok: true, conv, status_id: statusId ?? null, async: true, tier: "premium", via });
 }
