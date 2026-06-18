@@ -125,9 +125,13 @@ jobs:
 
       # Release APK — installable directly on a device for testing (an .aab
       # can't be sideloaded). Same release signing config as the bundle above.
+      # arm64-only: the universal APK carries native libs (WebRTC/LiveKit) for
+      # THREE ABIs (~143 MB); modern phones (incl. Samsung) are arm64, so building
+      # one ABI gives a ~75 MB sideload. The .aab above stays universal — Play
+      # still ships every device the right split.
       - name: Build release APK (for testing)
         working-directory: app
-        run: flutter build apk --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
+        run: flutter build apk --release --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
