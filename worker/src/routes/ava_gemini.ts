@@ -85,6 +85,28 @@ function buildMessages(system: string, history: Turn[], message: string, images:
   return messages;
 }
 
+// PREMIUM memory: pull the most relevant chunks from the user's OWN AI Search
+// instance and return them as context. Best-effort — any failure (no instance
+// yet, API hiccup) returns "" so chat is never blocked. Per-user instance =
+// strict isolation.
+async function retrieveMemory(env: Env, uid: string, query: string): Promise<string> {
+  try {
+    const ns: any = (env as any).AI_SEARCH;
+    if (!ns) return "";
+    const id = ("ava-" + uid.replace(/[^a-zA-Z0-9]/g, "-")).toLowerCase().slice(0, 50);
+    let inst: any = null;
+    try { inst = await ns.get(id); } catch { return ""; } // no memory instance yet
+    if (!inst) return "";
+    const r: any = await inst.search({ messages: [{ role: "user", content: query }] });
+    const rows: any[] = r?.data ?? r?.results ?? r?.chunks ?? [];
+    if (!Array.isArray(rows) || !rows.length) return "";
+    const text = rows
+      .map((c: any) => String(c?.content ?? c?.text ?? (Array.isArray(c?.content) ? c.content.map((x: any) => x?.text ?? "").join(" ") : "")))
+      .filter(Boolean).slice(0, 5).join("\n---\n");
+    return text.slice(0, 4000);
+  } catch { return ""; }
+}
+
 async function generate(env: Env, uid: string, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
   const out: any = await env.AI.run(
@@ -116,7 +138,17 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     return premiumUpsell(env, ctx.uid, "file_understanding");
   }
 
-  const system = context ? `${SYSTEM_BASE}\nStyle/persona for this chat: ${context}` : SYSTEM_BASE;
+  let system = context ? `${SYSTEM_BASE}\nStyle/persona for this chat: ${context}` : SYSTEM_BASE;
+
+  // Premium memory: weave in the user's own AI Search results so Ava "remembers"
+  // their saved notes/files mid-conversation. Free users have no memory instance.
+  if (premium) {
+    const mem = await retrieveMemory(env, ctx.uid, message);
+    if (mem) {
+      system += `\n\nRelevant notes from the user's saved memory (use only if helpful, never quote verbatim):\n"""${mem}"""`;
+      track(env, ctx.uid, "ava_memory_used", "avaai", {});
+    }
+  }
 
   let result;
   try {

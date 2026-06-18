@@ -25,6 +25,7 @@ const kAppRegistry = <AppEntry>[
   AppEntry('avatok', 'AvaTOK', 'Messages & calls', Icons.chat_bubble, Color(0xFF08C4C4)),
   AppEntry('avalibrary', 'AvaLibrary', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6)),
   AppEntry('avastorage', 'AvaStorage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9)),
+  AppEntry('avaapps', 'AvaApps', 'Gmail, Docs, Drive & more', Icons.grid_view, Color(0xFF4F8DFD)),
   // AvaWallet visible — users need it to top up AvaCoins (owner decision 2026-06-18).
   AppEntry('avawallet', 'AvaWallet', 'AvaCoins & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
   // ---- hidden from the sidebar menu (owner decision 2026-06-17) ----
@@ -80,6 +81,7 @@ class AppRegistry {
     'avatok',
     'avalibrary',
     'avastorage',
+    'avaapps',
     'avawallet',
   };
 
