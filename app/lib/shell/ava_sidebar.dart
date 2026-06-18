@@ -76,7 +76,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
         // so the APPS list excludes them. Hidden-tier entries are never deleted.
         final source = focus ? AppRegistry.focusMode : AppRegistry.standard;
         final apps = source
-            .where((a) => a.id != 'explore' && a.id != 'verse' && a.id != 'avalibrary')
+            .where((a) => a.id != 'explore' && a.id != 'verse')
+            // AvaLibrary renders as a featured tile when focus is OFF, so drop it
+            // from the APPS list only then (no duplicate). In focus mode the
+            // featured tiles are hidden, so it appears in the APPS list instead.
+            .where((a) => focus || a.id != 'avalibrary')
             .toList();
         final body = SafeArea(child: _column(context, apps, focus));
         if (widget.permanent) {

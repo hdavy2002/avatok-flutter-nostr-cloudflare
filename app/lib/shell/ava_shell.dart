@@ -5,12 +5,10 @@ import '../auth/clerk_client.dart';
 import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
-import '../core/onboarding_store.dart';
 import '../core/ui/zine.dart';
 import '../identity/identity.dart';
 import '../features/avaapps/avaapps_screen.dart';
 import '../features/ava_companion/companion_home.dart';
-import '../features/avachat/avachat_screen.dart';
 import '../features/avalive/avalive_discovery.dart';
 import '../features/affiliate/affiliate_home.dart';
 import '../features/avavoice/avavoice_home.dart';
@@ -20,18 +18,17 @@ import '../features/booking/avabooking_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
-import '../features/explore/explore_home.dart';
 import '../features/identity/identity_screen.dart';
 import '../features/inbox/inbox_screen.dart';
 import '../features/verse/verse_screen.dart';
 import '../features/payout/payout_screen.dart';
 import '../features/wallet/wallet_screen.dart';
 import '../features/settings/settings_screen.dart';
-import 'ava_sidebar.dart';
 import 'coming_soon.dart';
 import 'focus_mode.dart';
 
-/// The signed-in app shell: AvaExplore landing + sidebar drawer.
+/// The signed-in app shell. Opens on AvaTOK (messaging) as the home surface;
+/// other apps are pushed on top and pop back here.
 class AvaShell extends StatefulWidget {
   final ClerkClient clerk;
   final VoidCallback onSignOut;
@@ -41,15 +38,9 @@ class AvaShell extends StatefulWidget {
 }
 
 class _AvaShellState extends State<AvaShell> {
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
-  final _onb = OnboardingStore();
   final _idStore = IdentityStore();
-  final _kindStore = AccountKindStore();
 
-  Set<String> _enabled = {};
-  AccountKind _kind = AccountKind.personal;
   Identity? _id;
-  String _current = 'explore';
 
   @override
   void initState() {
@@ -58,36 +49,25 @@ class _AvaShellState extends State<AvaShell> {
   }
 
   Future<void> _load() async {
-    final apps = await _onb.enabledApps();
     final id = await _idStore.load();
-    final kind = await _kindStore.load();
-    // Warm the per-account focus-mode value before the drawer opens so the
-    // sidebar paints the correct menu (no default-then-correct flicker for
-    // accounts whose stored value differs from kFocusModeDefault). The sidebar
-    // listens to FocusMode.enabled and rebuilds on any later change.
+    // Warm the per-account focus-mode value so any sidebar drawer paints the
+    // correct menu without a default-then-correct flicker.
     await FocusMode.load();
-    if (mounted) setState(() { _enabled = apps; _id = id; _kind = kind; });
+    if (mounted) setState(() => _id = id);
   }
 
-  void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
-
-  Future<void> _select(String dest) async {
-    Navigator.pop(context); // close drawer
-    _openDest(dest);
-  }
-
-  /// Switch apps from within a pushed app (e.g. AvaTok): return to the shell, then open.
+  /// Switch apps from within the home app (AvaTOK): return to the home surface,
+  /// then open the requested destination on top.
   void _switchFromChild(String dest) {
     Navigator.of(context).popUntil((r) => r.isFirst);
-    if (dest == 'explore') { setState(() => _current = 'explore'); return; }
+    if (dest == 'explore') return; // marketplace de-emphasised this release
     WidgetsBinding.instance.addPostFrameCallback((_) => _openDest(dest));
   }
 
   void _openDest(String dest) {
     switch (dest) {
       case 'explore':
-        setState(() => _current = 'explore');
-        return;
+        return; // marketplace de-emphasised for the free messaging release
       case 'settings':
         // Reload on return — the preview switcher may have changed the account kind.
         _push(SettingsScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id))
@@ -156,9 +136,6 @@ class _AvaShellState extends State<AvaShell> {
       case 'avaidentity':
         _push(const IdentityScreen());
         return;
-      case 'avachat':
-        _push(const AvaChatScreen());
-        return;
       case 'billing':
       case 'invite':
         _push(ComingSoon(
@@ -189,37 +166,15 @@ class _AvaShellState extends State<AvaShell> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      // Desktop (wide window): the sidebar is a permanent left rail beside the
-      // content. Phone/narrow: it stays a slide-over drawer. Same widgets, same
-      // destinations — only the chrome changes.
-      final desktop = constraints.maxWidth >= 900;
-      final sidebar = AvaSidebar(
-        enabledApps: _enabled,
-        accountKind: _kind,
-        name: _id?.shortNpub ?? 'Account',
-        seed: _id?.npub ?? 'avatok',
-        current: _current,
-        // On desktop there's no drawer to close, so go straight to the dest.
-        onSelect: (d) { if (desktop) { _openDest(d); } else { _select(d); } },
-        onSignOut: () { if (!desktop) Navigator.pop(context); widget.onSignOut(); },
-        permanent: desktop,
-      );
-      if (desktop) {
-        return Scaffold(
-          key: _scaffoldKey,
-          body: Row(children: [
-            sidebar,
-            Expanded(child: ExploreHome(onMenu: () {})),
-          ]),
-        );
-      }
-      return Scaffold(
-        key: _scaffoldKey,
-        drawerEnableOpenDragGesture: true,
-        drawer: sidebar,
-        body: ExploreHome(onMenu: _openDrawer),
-      );
-    });
+    // Messaging-first landing (owner decision 2026-06-18, free release): the app
+    // opens directly on AvaTOK (ChatListScreen), where users see their chats &
+    // contacts. ChatListScreen carries its own sidebar drawer + bottom nav, so
+    // it IS the home surface. Other apps push on top via _switchFromChild and
+    // pop back here. (Marketplace/ExploreHome de-emphasised for this release.)
+    return ChatListScreen(
+      clerk: widget.clerk,
+      onSignOut: widget.onSignOut,
+      onSwitchApp: _switchFromChild,
+    );
   }
 }

@@ -25,8 +25,9 @@ const kAppRegistry = <AppEntry>[
   AppEntry('avatok', 'AvaTOK', 'Messages & calls', Icons.chat_bubble, Color(0xFF08C4C4)),
   AppEntry('avalibrary', 'AvaLibrary', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6)),
   AppEntry('avastorage', 'AvaStorage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9)),
-  AppEntry('avawallet', 'AvaWallet', 'AvaCoins & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
   // ---- hidden from the sidebar menu (owner decision 2026-06-17) ----
+  // AvaWallet hidden for the free messaging release (owner decision 2026-06-18).
+  AppEntry('avawallet', 'AvaWallet', 'AvaCoins & top-ups', Icons.account_balance_wallet, Color(0xFF10B981), tier: AppTier.hidden),
   AppEntry('explore', 'AvaExplore', 'Marketplace', Icons.storefront, Color(0xFFFF6036), tier: AppTier.hidden),
   AppEntry('verse', 'AvaVerse', 'Your dashboard', Icons.dashboard, Color(0xFF6C5CE7), tier: AppTier.hidden),
   AppEntry('avapayout', 'AvaPayout', 'Withdraw your earnings', Icons.payments, Color(0xFF0A66C2), tier: AppTier.hidden),
@@ -72,11 +73,14 @@ class AppRegistry {
   /// Ava in-chat "focus mode" (proposal §10): AvaTOK + account essentials only.
   /// When focus mode is on (see `kFocusModeDefault`), the sidebar renders THIS
   /// set instead of `standard`, hiding non-AvaTOK apps. Fully reversible — no
-  /// registry mutation. Wallet/payout/identity stay visible (paid features need
-  /// the wallet). Order follows the registry's declaration order. P1 consumes it.
+  /// registry mutation. Order follows the registry's declaration order. P1
+  /// consumes it. AvaWallet stays hidden for the free messaging release (owner
+  /// decision 2026-06-18); AvaLibrary + AvaStorage are shown in the menu
+  /// (owner decision 2026-06-18).
   static const Set<String> _focusIds = {
     'avatok',
-    'avawallet',
+    'avalibrary',
+    'avastorage',
   };
 
   static List<AppEntry> get focusMode =>
