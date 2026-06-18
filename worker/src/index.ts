@@ -79,6 +79,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 import { avaGemini } from "./routes/ava_gemini";        // P2
 import { avaRagIngest, avaRagStore } from "./routes/ava_rag"; // RAG (File Search)
 import { avaAppsConnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Composio)
+import { driveStatus, driveListRoute, driveUploadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
 import { avaTools } from "./routes/ava_tools";          // P5
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
@@ -195,6 +196,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/apps/connect" && req.method === "POST") return await avaAppsConnect(req, env); // AvaApps
       if (p === "/api/ava/apps/status" && req.method === "GET") return await avaAppsStatus(req, env);    // AvaApps
       if (p === "/api/ava/apps/run" && req.method === "POST") return await avaAppsRun(req, env);         // AvaApps
+      // AvaTOK own-file storage in the user's Google Drive (connect reuses the
+      // Google OAuth — same consent grants calendar.events + drive.file).
+      if (p === "/api/ava/drive/connect" && req.method === "POST") return await gcalConnect(req, env);
+      if (p === "/api/ava/drive/status" && req.method === "GET") return await driveStatus(req, env);
+      if (p === "/api/ava/drive/list" && req.method === "GET") return await driveListRoute(req, env);
+      if (p === "/api/ava/drive/upload" && req.method === "POST") return await driveUploadRoute(req, env);
       if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
       if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env);            // P9
       if (p.startsWith("/api/ava/tools/")) return await avaTools(req, env, p.slice("/api/ava/tools/".length)); // P5

@@ -14,7 +14,11 @@ import { metaDb } from "../db/shard";
 const GAUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GTOKEN = "https://oauth2.googleapis.com/token";
 const GCAL = "https://www.googleapis.com/calendar/v3";
-const SCOPE = "https://www.googleapis.com/auth/calendar.events";
+// One Google connection grants Calendar (booking sync) + Drive (drive.file =
+// only files AvaTOK creates → the "AvaTOK" folder). The same access token serves
+// both APIs; gcalAccessToken() is reused by lib/drive.ts. (Hybrid storage:
+// own files → Drive; shared chat media stays on encrypted R2.)
+const SCOPE = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file";
 const REDIRECT = "https://api.avatok.ai/api/calendar/gcal/callback";
 
 // ---------------------------------------------------------------------------
