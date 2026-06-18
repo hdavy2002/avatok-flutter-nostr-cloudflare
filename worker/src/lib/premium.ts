@@ -42,13 +42,15 @@ export async function isPremiumAI(
 /** Standard upsell response when a FREE user hits a premium AI feature. */
 export function premiumUpsell(env: Env, uid: string, feature: string): Response {
   track(env, uid, "premium_gate_shown", "avaai", { feature });
+  const message =
+    "That needs premium AI. Add your own AI Studio key in Settings (we show you how), " +
+    "or top up $10 to unlock premium features.";
   return json({
     ok: false,
     blocked: true,
     reason: "premium_required",
     feature,
-    message:
-      "That needs premium AI. Add your own AI Studio key in Settings (we show you how), " +
-      "or top up $10 to unlock premium features.",
+    message,
+    answer: message, // also in `answer` so existing chat clients render it in-bubble
   }, 200);
 }

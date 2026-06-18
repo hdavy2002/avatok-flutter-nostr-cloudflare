@@ -13,6 +13,7 @@ import '../../core/drive_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../settings/sections/voice_section.dart';
+import '../ava_ai/ava_ai_setup.dart';
 import 'persona.dart';
 
 /// CompanionThreadScreen (Phase 6 — Companion / Blank Ava Chat).
@@ -46,7 +47,8 @@ class _CompanionMsg {
   final String text;
   final bool me; // true = user, false = Ava
   final bool blocked; // Ava turn refused by the gate
-  _CompanionMsg(this.id, this.text, this.me, {this.blocked = false});
+  final String? reason; // gate reason, e.g. 'premium_required' | 'insufficient_coins'
+  _CompanionMsg(this.id, this.text, this.me, {this.blocked = false, this.reason});
 }
 
 class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
@@ -160,6 +162,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
             : ans.answer,
         false,
         blocked: ans.blocked,
+        reason: ans.reason,
       ));
       _busy = false;
     });
@@ -315,6 +318,26 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   const SizedBox(width: 5),
                   Text(_playingId == m.id ? 'Stop' : 'Listen',
                       style: ZineText.link(size: 12)),
+                ]),
+              ),
+            ),
+          // Premium upsell CTA — shown when a turn needs premium AI (attachments,
+          // tools) or coins. Routes to the free AI-Studio-key setup in Settings.
+          if (isAva && (m.reason == 'premium_required' || m.reason == 'insufficient_coins'))
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 2),
+              child: ZinePressable(
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AvaAiSetupScreen())),
+                color: Zine.blue,
+                radius: BorderRadius.circular(12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
+                      size: 14, color: Zine.ink),
+                  const SizedBox(width: 6),
+                  Text('Add your free AI key',
+                      style: ZineText.value(size: 13, weight: FontWeight.w600)),
                 ]),
               ),
             ),

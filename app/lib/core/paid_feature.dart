@@ -17,8 +17,10 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'ui/zine.dart';
 import 'ui/zine_widgets.dart';
 
-/// Minimum wallet top-up, in USD (locked product decision — proposal §7).
-const int kMinTopUpUsd = 5;
+/// Minimum wallet top-up, in USD. $10 unlocks premium AI (owner decision 2026-06-18,
+/// matches the server MIN_TOPUP). The alternative to topping up is adding your own
+/// free AI Studio key in Settings.
+const int kMinTopUpUsd = 10;
 
 /// Wallet access contract used by [PaidFeature]. A later phase (AvaWallet wiring)
 /// sets [AvaWalletHook.instance] to a real implementation backed by WalletDO /
