@@ -66,9 +66,10 @@ a manual step. Nothing here has been applied to production.
 - Flip `ringbackEnabled` off → silent ring + system busy, no dead UI.
 
 ## Known limitations (v1, acceptable)
-- **No server-side trim.** MiniMax returns a full song; we store the returned bytes
-  and the client caps playback to the ring window (loop). A future pass can trim to
-  exactly 30s server-side to cut R2 size. `seconds` already records the intended 30s.
+- **Server-side trim: DONE.** MiniMax returns a full song; `routes/ringtone.ts` now
+  trims it to `RINGTONE_SECONDS` (30s) via `lib/mp3.ts` — a pure-JS frame-boundary
+  cut (no ffmpeg, no re-encode), with a safe fallback to the full bytes if the
+  audio doesn't parse as MPEG. Cuts R2 size to ~30s of audio.
 - **Caller-side, not carrier early media.** The ringback starts when the invite is
   sent, not synced to the callee's device actually ringing.
 - **Callee-side custom device ringtone is out of scope** (would need Android

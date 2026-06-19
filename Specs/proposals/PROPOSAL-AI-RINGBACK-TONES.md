@@ -136,9 +136,11 @@ Invariants enforced server-side in a transaction:
 - `POST /api/ringtone/generate` → body `{ prompt, name?, instrumental?: bool }`.
   - Rate-limit per account (KV counter — see §6).
   - `env.AI.run('minimax/music-2.6', { prompt, is_instrumental: true, format: 'mp3' })`.
-  - Fetch `result.audio`, **trim to `kRingtoneSeconds = 30` (mono, normalised)**
-    server-side. If in-Worker trimming is non-trivial, store full + loop/cap
-    client-side — decide in-session, but the stored target is 30s.
+  - Fetch `result.audio`, **trim to `kRingtoneSeconds = 30`** server-side.
+    IMPLEMENTED in `worker/src/lib/mp3.ts` (`trimMp3ToSeconds`): a pure-JS MP3
+    frame-boundary cut (no ffmpeg / no re-encode) that keeps any ID3 tag + frames
+    up to 30s and drops the rest; falls back to the full bytes if the audio
+    doesn't parse as MPEG.
   - Upload to R2 `ringtones/<account_id>/<id>.mp3`.
   - Insert row (running the §3.1 FIFO + default invariants). First-ever ringtone for
     the account becomes default automatically. Return the new ringtone record.

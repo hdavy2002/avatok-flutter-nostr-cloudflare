@@ -20,6 +20,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { readConfig } from "./config";
 import { aiRunOpts } from "../lib/ai_gate";
+import { trimMp3ToSeconds } from "../lib/mp3";
 
 const MODEL = "minimax/music-2.6";
 const MAX_PER_ACCOUNT = 5;
@@ -114,8 +115,11 @@ export async function ringtone(req: Request, env: Env, sub: string): Promise<Res
     // Fetch the model's audio and store the bytes in OUR public bucket.
     const res = await fetch(audioUrl);
     if (!res.ok) return json({ error: "fetch audio failed", status: res.status }, 502);
-    const bytes = await res.arrayBuffer();
-    if (!bytes.byteLength || bytes.byteLength > MAX_BYTES) return json({ error: "audio too large" }, 502);
+    const raw = await res.arrayBuffer();
+    if (!raw.byteLength || raw.byteLength > MAX_BYTES) return json({ error: "audio too large" }, 502);
+    // Trim the full song to the ring window (frame-boundary cut, no re-encode).
+    // Best-effort: trimMp3ToSeconds returns the original bytes if it can't parse.
+    const bytes = trimMp3ToSeconds(raw, RINGTONE_SECONDS);
 
     const id = crypto.randomUUID();
     const r2Key = `u/${uid}/ringtones/${id}.mp3`;
