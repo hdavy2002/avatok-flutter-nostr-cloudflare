@@ -237,7 +237,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
     );
   }
 
-  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  /// Metric card (§7.11): icon badge + Nunito number + mono caption.
   Widget _card(String label, String value, IconData icon, Color accent, {String? footnote}) {
     return ZineCard(
       radius: Zine.rSm,

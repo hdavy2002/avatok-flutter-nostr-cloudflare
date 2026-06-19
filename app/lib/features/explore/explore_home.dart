@@ -114,7 +114,7 @@ class _ExploreHomeState extends State<ExploreHome> {
     );
   }
 
-  // Appbar band (§8): paper-2 fill, ink bottom border, Fredoka wordmark with
+  // Appbar band (§8): paper-2 fill, ink bottom border, Nunito wordmark with
   // the marker highlight on "Explore". Keeps the onMenu wiring.
   Widget _topBar() => Container(
         decoration: const BoxDecoration(

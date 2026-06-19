@@ -196,7 +196,7 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
     );
   }
 
-  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  /// Metric card (§7.11): icon badge + Nunito number + mono caption.
   Widget _stat(String label, String value, IconData icon, Color accent, {bool money = false}) => Expanded(
         child: ZineCard(
           radius: Zine.rSm,

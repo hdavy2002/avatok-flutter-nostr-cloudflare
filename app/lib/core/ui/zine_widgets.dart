@@ -215,7 +215,7 @@ class ZineIconBadge extends StatelessWidget {
   }
 }
 
-/// Card head row: icon badge + Fredoka title + optional right mono tag (§7.3).
+/// Card head row: icon badge + Nunito title + optional right mono tag (§7.3).
 class ZineCardHead extends StatelessWidget {
   final IconData icon;
   final Color accent;
@@ -390,7 +390,7 @@ class _ZineFieldState extends State<ZineField> {
   }
 }
 
-/// Error line under a field — Space Mono coral with warning icon (§7.2).
+/// Error line under a field — Nunito coral with warning icon (§7.2).
 class ZineErrorMsg extends StatelessWidget {
   final String text;
   const ZineErrorMsg(this.text, {super.key});
@@ -699,7 +699,7 @@ class ZineMarkTitle extends StatelessWidget {
   }
 }
 
-/// Mono link (§7.6): Space Mono, blue-ink, thick accent underline.
+/// Mono link (§7.6): Nunito, blue-ink, thick accent underline.
 class ZineLink extends StatelessWidget {
   final String text;
   final VoidCallback? onTap;
@@ -801,7 +801,7 @@ class ZineDropdown<T> extends StatelessWidget {
 }
 
 /// App bar band for dashboard screens (§8): paper-2 fill, ink bottom border,
-/// back button + Fredoka title (with .mark) + mono tag underneath.
+/// back button + Nunito title (with .mark) + mono tag underneath.
 class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   /// Word inside [title] that takes the marker highlight (optional).
@@ -906,7 +906,7 @@ class _PaperTexturePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
-/// Full-screen success overlay (§7.13): paper bg, rotated lime seal, Fredoka
+/// Full-screen success overlay (§7.13): paper bg, rotated lime seal, Nunito
 /// headline, short Nunito sub, optional CTA.
 class ZineSuccessOverlay extends StatelessWidget {
   final IconData icon;

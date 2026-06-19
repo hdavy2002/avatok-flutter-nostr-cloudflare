@@ -341,7 +341,7 @@ class _AffiliateHomeScreenState extends State<AffiliateHomeScreen> {
     );
   }
 
-  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  /// Metric card (§7.11): icon badge + Nunito number + mono caption.
   Widget _stat(String label, String value, IconData icon, Color accent,
           {bool money = false, String? sub}) =>
       ZineCard(

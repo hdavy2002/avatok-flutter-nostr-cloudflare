@@ -568,7 +568,7 @@ class _CallScreenState extends State<CallScreen> {
           ),
         ),
 
-        // audio call: paper screen — ink-ringed avatar w/ hard shadow, Fredoka
+        // audio call: paper screen — ink-ringed avatar w/ hard shadow, Nunito
         // name, mono call-state sticker ('RINGING…', timer, …).
         if (light)
           Center(

@@ -535,7 +535,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   /// Zine-styled field that still supports inputFormatters (which the shared
   /// ZineField doesn't expose) — same chrome: ink border, 18px radius, hard
-  /// shadow, lime lead cell, Space Mono label, Nunito 800 input.
+  /// shadow, lime lead cell, Nunito label, Nunito 800 input.
   Widget _field({
     required TextEditingController controller,
     required String hint,

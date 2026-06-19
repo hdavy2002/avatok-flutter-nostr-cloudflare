@@ -63,7 +63,7 @@ class AvaTheme {
       fontFamily: ZineText.body,
     );
 
-    // Fredoka for display/titles, Nunito (>=600) for body — bundled fonts.
+    // Nunito for display/titles, Nunito (>=600) for body — bundled fonts.
     final textTheme = base.textTheme.apply(
       fontFamily: ZineText.body,
       bodyColor: Zine.ink,
@@ -169,7 +169,7 @@ class AvaTheme {
     );
   }
 
-  /// Brand wordmark — Fredoka 700 (the only display font in the system).
+  /// Brand wordmark — Nunito 700 (the only display font in the system).
   static TextStyle wordmark(double size, {Color color = Zine.ink}) => TextStyle(
       fontFamily: ZineText.display, fontWeight: FontWeight.w700,
       fontSize: size, letterSpacing: -0.02 * size, color: color);

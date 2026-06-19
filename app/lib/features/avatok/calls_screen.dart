@@ -47,7 +47,7 @@ class _CallsScreenState extends State<CallsScreen> {
     return SafeArea(
       bottom: false,
       child: Column(children: [
-        // Appbar band (§8): paper-2 fill, ink bottom border, Fredoka title.
+        // Appbar band (§8): paper-2 fill, ink bottom border, Nunito title.
         Container(
           height: 60,
           alignment: Alignment.centerLeft,

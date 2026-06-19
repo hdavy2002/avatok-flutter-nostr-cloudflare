@@ -107,16 +107,8 @@ flutter:
     - assets/models/   # AvaVision on-device vision models (MoveNet/MediaPipe Tasks)
     - assets/ai_studio/   # Google AI Studio key-setup step screenshots
   # AvaTOK design system fonts (bundled — offline-safe; see AVATOK-DESIGN-SYSTEM):
-  # Fredoka = display/headings/buttons · Nunito = body (>=600) · Space Mono = labels/kickers.
+  # Nunito is the single app-wide font (owner request 2026-06-19).
   fonts:
-    - family: Fredoka
-      fonts:
-        - asset: assets/fonts/Fredoka-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Fredoka-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Fredoka-Bold.ttf
-          weight: 700
     - family: Nunito
       fonts:
         - asset: assets/fonts/Nunito-SemiBold.ttf
@@ -127,12 +119,6 @@ flutter:
           weight: 800
         - asset: assets/fonts/Nunito-Black.ttf
           weight: 900
-    - family: Space Mono
-      fonts:
-        - asset: assets/fonts/SpaceMono-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/SpaceMono-Bold.ttf
-          weight: 700
 
 dependency_overrides:
   record: 6.2.1

@@ -163,7 +163,7 @@ class _CreatorInsightsScreenState extends State<CreatorInsightsScreen> {
         child: Text(t, style: ZineText.cardTitle(size: 17)),
       );
 
-  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  /// Metric card (§7.11): icon badge + Nunito number + mono caption.
   Widget _stat(String label, String value, IconData icon, Color accent, {bool money = false}) => Expanded(
         child: ZineCard(
           radius: Zine.rSm,

@@ -480,7 +480,7 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  /// Metric card (§7.11): icon badge + Fredoka number + mono caption.
+  /// Metric card (§7.11): icon badge + Nunito number + mono caption.
   Widget _miniCard(String label, String value, IconData icon, Color accent, Color valueColor) => ZineCard(
         radius: Zine.rSm,
         padding: const EdgeInsets.all(14),

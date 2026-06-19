@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 ///
 /// Editorial / zine / collage language: warm paper surfaces, thick warm-black
 /// ink borders, HARD offset shadows (never blurred), flat poster-color fills
-/// (no gradients, ever), Fredoka + Nunito + Space Mono.
+/// (no gradients, ever), Nunito everywhere.
 ///
 /// All hex values are the sRGB equivalents of the canonical oklch tokens.
 class Zine {
@@ -92,35 +92,37 @@ class Zine {
   static const accents = [blue, lime, coral, lilac, mint];
 }
 
-/// Typography (§3). Exactly three bundled fonts.
+/// Typography (§3). Single bundled font — Nunito.
 class ZineText {
   ZineText._();
 
-  static const display = 'Fredoka';
+  // All text uses Nunito (owner request 2026-06-19). The display/mono aliases
+  // are kept so per-role call sites and letter-spacing tuning still work.
+  static const display = 'Nunito';
   static const body = 'Nunito';
-  static const mono = 'Space Mono';
+  static const mono = 'Nunito';
 
-  /// Screen hero title — Fredoka 600, 34–38px, tight.
+  /// Screen hero title — Nunito 600, 34–38px, tight.
   static TextStyle hero({double size = 36, Color color = Zine.ink}) => TextStyle(
         fontFamily: display, fontWeight: FontWeight.w600, fontSize: size,
         height: 1.08, letterSpacing: -0.02 * size, color: color);
 
-  /// Appbar title — Fredoka 600 27px.
+  /// Appbar title — Nunito 600 27px.
   static TextStyle appbar({Color color = Zine.ink}) => TextStyle(
         fontFamily: display, fontWeight: FontWeight.w600, fontSize: 27,
         height: 1.05, letterSpacing: -0.4, color: color);
 
-  /// Card title — Fredoka 600 19px.
+  /// Card title — Nunito 600 19px.
   static TextStyle cardTitle({double size = 19, Color color = Zine.ink}) => TextStyle(
         fontFamily: display, fontWeight: FontWeight.w600, fontSize: size,
         height: 1.1, letterSpacing: -0.2, color: color);
 
-  /// Big stat / money — Fredoka 600 38–58px.
+  /// Big stat / money — Nunito 600 38–58px.
   static TextStyle stat({double size = 38, Color color = Zine.ink}) => TextStyle(
         fontFamily: display, fontWeight: FontWeight.w600, fontSize: size,
         height: 1.0, letterSpacing: -0.02 * size, color: color);
 
-  /// Button label — Fredoka 600 17–22px.
+  /// Button label — Nunito 600 17–22px.
   static TextStyle button({double size = 19, Color color = Zine.ink}) => TextStyle(
         fontFamily: display, fontWeight: FontWeight.w600, fontSize: size,
         height: 1.0, letterSpacing: -0.2, color: color);
@@ -139,17 +141,17 @@ class ZineText {
         fontFamily: body, fontWeight: FontWeight.w800, fontSize: size,
         letterSpacing: -0.18, color: color);
 
-  /// Field label / kicker — Space Mono 700 11px UPPERCASE.
+  /// Field label / kicker — Nunito 700 11px UPPERCASE.
   static TextStyle kicker({double size = 11, Color color = Zine.inkSoft}) => TextStyle(
         fontFamily: mono, fontWeight: FontWeight.w700, fontSize: size,
         letterSpacing: 0.08 * size, color: color);
 
-  /// Caption / tag / sticker — Space Mono 700 10.5–14px UPPERCASE.
+  /// Caption / tag / sticker — Nunito 700 10.5–14px UPPERCASE.
   static TextStyle tag({double size = 12, Color color = Zine.ink}) => TextStyle(
         fontFamily: mono, fontWeight: FontWeight.w700, fontSize: size,
         letterSpacing: 0.04 * size, color: color);
 
-  /// Mono link — Space Mono 700, blue-ink.
+  /// Mono link — Nunito 700, blue-ink.
   static TextStyle link({double size = 13, Color color = Zine.blueInk}) => TextStyle(
         fontFamily: mono, fontWeight: FontWeight.w700, fontSize: size, color: color);
 }

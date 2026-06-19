@@ -181,7 +181,7 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
   }
 
   // Header band (§8): paper-2 fill, ink bottom border, lilac AI badge +
-  // Fredoka wordmark + mono tag. Keeps new-conversation + settings actions.
+  // Nunito wordmark + mono tag. Keeps new-conversation + settings actions.
   Widget _header() => Container(
         decoration: const BoxDecoration(
           color: Zine.paper2,
