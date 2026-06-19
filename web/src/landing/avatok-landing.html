@@ -2005,32 +2005,47 @@
 
   /* ===== TABLET / iPad (<=1024px) ===== */
   @media (max-width:1024px){
-    [style*="repeat(4, 1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
-    [style*="repeat(3, 1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
-    [style*="repeat(6, 1fr)"]{grid-template-columns:repeat(3,1fr) !important;}
+    /* NB: inline styles have no space after the comma (repeat(4,1fr)),
+       so match both spaced + unspaced variants. */
+    [style*="repeat(4, 1fr)"],[style*="repeat(4,1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
+    [style*="repeat(3, 1fr)"],[style*="repeat(3,1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
+    [style*="repeat(6, 1fr)"],[style*="repeat(6,1fr)"]{grid-template-columns:repeat(3,1fr) !important;}
     [style*="1.2fr 1fr"]{grid-template-columns:1fr !important;}
     [style*="1fr 340px"]{grid-template-columns:1fr !important;}
     [style*="1fr 360px"]{grid-template-columns:1fr !important;}
   }
-  /* hide decorative floating stickers once layout gets narrow */
+  /* hide decorative floating stickers once layout gets narrow.
+     These are the absolute, animated badges (floaty/wobble) only — avatar
+     eyes, the headline underline and the safety map pin are NOT animated and
+     stay put. */
   @media (max-width:900px){
-    [data-hero] > div[style*="position:absolute"]{display:none !important;}
-    #download div[style*="position:absolute"]{display:none !important;}
+    [style*="position:absolute"][style*="animation:floaty"],
+    [style*="position:absolute"][style*="animation:wobble"]{display:none !important;}
   }
   /* ===== PHONE (<=680px) ===== */
   @media (max-width:680px){
+    /* every multi-column grid collapses to a single, centered column */
     [style*="grid-template-columns"]{grid-template-columns:1fr !important;}
-    [style*="repeat(6, 1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
-    [style*="repeat(4, 1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
     nav{padding:12px 16px !important;}
     [data-navlink]{display:none !important;}
+    /* tame the oversized desktop paddings */
     [style*="padding:46px"]{padding:24px !important;}
     [style*="padding:48px"]{padding:24px !important;}
-    [style*="padding:56px 40px"]{padding:34px 20px !important;}
+    [style*="padding:56px 40px"]{padding:30px 20px !important;}
     [style*="padding:34px"]{padding:24px !important;}
     [style*="padding:38px"]{padding:24px !important;}
-    [style*="width:340px"],[style*="width:360px"]{width:100% !important;max-width:100% !important;}
-    [style*="width:300px"],[style*="width:280px"]{max-width:100% !important;}
+    [data-hero]{padding-left:18px !important;padding-right:18px !important;}
+    /* fixed-width mock cards become fluid and centered */
+    [style*="width:340px"],[style*="width:360px"],
+    [style*="width:300px"],[style*="width:280px"]{width:100% !important;max-width:100% !important;}
+    [style*="justify-self:center"]{justify-self:center !important;margin-left:auto !important;margin-right:auto !important;}
+    /* stop the bob/float motion on anything still on screen */
+    [style*="animation:floaty"],[style*="animation:bobble"]{animation:none !important;}
+    /* belt + braces: hide ALL decorative floating badges on phones */
+    [style*="position:absolute"][style*="animation:floaty"],
+    [style*="position:absolute"][style*="animation:wobble"]{display:none !important;}
+    /* hide the floating slide control (heroes auto-play; inline dots remain) */
+    [style*="position:fixed"][style*="bottom:18px"]{display:none !important;}
   }
 </style>
 </helmet>
