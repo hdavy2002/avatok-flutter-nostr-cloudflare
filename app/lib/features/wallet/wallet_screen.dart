@@ -31,10 +31,10 @@ final _kTypes = <String, ({String label, IconData icon, bool inflow})>{
   'adjustment': (label: 'Adjustment', icon: PhosphorIcons.wrench(PhosphorIconsStyle.bold), inflow: true),
 };
 
-// Coin economics — MUST match the server (worker/src/routes/wallet.ts COINS_PER_USD).
-// 1 USD = 1000 AvaCoins (1 coin = $0.001). Balances/ledger amounts are in coins;
-// USD is derived for display only.
-const int kCoinsPerUsd = 1000;
+// Coin economics — CANONICAL, MUST match the server (worker/src/routes/wallet.ts
+// COINS_PER_USD) and AvaPayout. 1 USD = 100 AvaCoins (1 coin = $0.01). Balances/
+// ledger amounts are in coins; USD is derived for display only.
+const int kCoinsPerUsd = 100;
 
 /// The Stripe publishable key we've already pushed into the SDK this run (set from
 /// the server's intent response). Tracked so we don't read Stripe.publishableKey
@@ -127,6 +127,11 @@ class _WalletScreenState extends State<WalletScreen> {
     final b = await bal;
     if (mounted && b['balance'] is num) {
       setState(() { _balance = (b['balance'] as num).toInt(); _held = ((b['held'] as num?) ?? 0).toInt(); });
+      Analytics.capture('wallet_balance_loaded', {
+        'balance_coins': _balance, 'held_coins': _held, 'entries_loaded': _entries.length,
+      });
+    } else if (mounted) {
+      Analytics.capture('wallet_balance_load_failed', {'reason': '${b['error'] ?? b['status'] ?? 'unknown'}'});
     }
   }
 
@@ -151,6 +156,11 @@ class _WalletScreenState extends State<WalletScreen> {
         _cursor = r['cursor'] as String?;
         _exhausted = _cursor == null;
       });
+      if (!reset) {
+        Analytics.capture('wallet_ledger_more', {
+          'added': list.length, 'total': _entries.length, 'exhausted': _exhausted,
+        });
+      }
       // Local-first: merge the unfiltered head page into the per-account cache.
       if (!_filtered) {
         await Db.I.upsertWalletLedger([
@@ -315,7 +325,10 @@ class _WalletScreenState extends State<WalletScreen> {
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (final v in [10, 25, 50, 100])
-                  ZineSticker('\$$v', onTap: () => setSheet(() => ctrl.text = v.toStringAsFixed(2))),
+                  ZineSticker('\$$v', onTap: () {
+                    Analytics.capture('wallet_topup_preset', {'usd': v});
+                    setSheet(() => ctrl.text = v.toStringAsFixed(2));
+                  }),
               ]),
               const SizedBox(height: 18),
               ZineButton(
@@ -446,6 +459,7 @@ class _WalletScreenState extends State<WalletScreen> {
               icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
               onPressed: () async {
                 final r = await MoneyApi.resendReceipt(id);
+                Analytics.capture('wallet_receipt_resent', {'id': id, 'sent': r['sent'] == true});
                 if (c.mounted) Navigator.pop(c);
                 _snack(r['sent'] == true ? 'Receipt sent to your email.' : 'Could not send the receipt.');
               },
@@ -492,12 +506,15 @@ class _WalletScreenState extends State<WalletScreen> {
           if (_admin)
             ZineBackButton(
               icon: PhosphorIcons.shieldStar(PhosphorIconsStyle.bold),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminMoneyScreen())),
+              onTap: () {
+                Analytics.capture('wallet_admin_opened');
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminMoneyScreen()));
+              },
             ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _refresh,
+        onRefresh: () { Analytics.capture('wallet_pull_refresh'); return _refresh(); },
         color: Zine.blueInk,
         child: CustomScrollView(
           controller: _scroll,
@@ -585,8 +602,10 @@ class _WalletScreenState extends State<WalletScreen> {
                   fontSize: 17,
                   trailingIcon: false,
                   icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
-                  onPressed: () => Navigator.of(context)
-                      .push(MaterialPageRoute(builder: (_) => const PayoutScreen())),
+                  onPressed: () {
+                    Analytics.capture('wallet_withdraw_opened', {'balance_coins': _balance});
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayoutScreen()));
+                  },
                 ),
               ),
             ]),

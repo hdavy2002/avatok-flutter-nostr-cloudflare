@@ -21,12 +21,12 @@ import { withIdempotency, rateLimit, RL } from "../money";
 import { acctUser, sendReceipt } from "../ledger";
 import { payAffiliateOnTopup } from "./affiliate";
 
-// Coin economics: 1 USD = 1000 coins (1 coin = $0.001). Deliberately low so
-// per-action prices and the invite reward stay cheap at scale, and wallet
-// balances look big (e.g. $10 = 10,000 coins).
-const COINS_PER_USD = 1000;
-const usdCentsForCoins = (coins: number) => Math.round((coins * 100) / COINS_PER_USD); // coins → USD cents
-const MIN_TOPUP = 10_000, MAX_TOPUP = 500_000; // in COINS: $10 (premium unlock min) .. $500
+// Coin economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 coins,
+// i.e. 1 coin = $0.01. So 1 coin == 1 USD cent and usdCentsForCoins is identity.
+// AvaPayout (routes/payout.ts) already converts coins→USD at this same rate.
+const COINS_PER_USD = 100;
+const usdCentsForCoins = (coins: number) => Math.round((coins * 100) / COINS_PER_USD); // coins → USD cents (== coins)
+const MIN_TOPUP = 1_000, MAX_TOPUP = 50_000; // in COINS: $10 (premium unlock min) .. $500
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
