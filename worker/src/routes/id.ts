@@ -142,8 +142,14 @@ export async function idStatus(req: Request, env: Env): Promise<Response> {
   const kyc = await metaSession(env)
     .prepare("SELECT status, provider, verified_at FROM kyc_status WHERE uid=?1")
     .bind(ctx.uid).first<{ status: string; provider: string | null; verified_at: number | null }>();
+  // Phone verification (account-keyed) — lets a reinstall / new device skip the
+  // OTP entirely once the account's phone is already confirmed (no wasted SMS).
+  const cv = await metaSession(env)
+    .prepare("SELECT phone_verified FROM contact_verification WHERE uid=?1")
+    .bind(ctx.uid).first<{ phone_verified: number }>().catch(() => null);
   return json({
     uid: ctx.uid,
+    phone_verified: Number(cv?.phone_verified ?? 0) === 1,
     status: row?.status ?? "unverified",
     method: row?.method ?? null,
     confidence: row?.confidence ?? null,

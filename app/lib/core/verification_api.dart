@@ -43,6 +43,19 @@ class VerificationApi {
     }
   }
 
+  /// Account-keyed phone status. True when THIS account already verified a phone
+  /// (so a reinstall / new device can skip the OTP — no wasted SMS). Best-effort.
+  static Future<bool> isPhoneVerified() async {
+    try {
+      final r = await ApiAuth.getSigned(kIdStatusUrl);
+      if (r.statusCode != 200) return false;
+      final j = jsonDecode(r.body);
+      return j is Map && j['phone_verified'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<VerifyApiResult> confirmPhone(String phoneE164) async {
     try {
       final r = await ApiAuth.postJson(kPhoneConfirmUrl, {'phone': phoneE164.trim()});

@@ -157,6 +157,7 @@ const String kIdBase = '$kApiBase/id';            // AvaID verification (Phase 1
 const String kEmailOtpStartUrl = '$kIdBase/email/start';   // POST {email}
 const String kEmailOtpVerifyUrl = '$kIdBase/email/verify'; // POST {email, code}
 const String kPhoneConfirmUrl = '$kIdBase/phone/confirm';  // POST {phone}
+const String kIdStatusUrl = '$kIdBase/status';             // GET → { phone_verified, ... }
 // L2 liveness — Workers AI provider (flag: workersAiLivenessEnabled).
 const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {session_id, challenge}
 const String kLivenessUploadUrl = '$kIdBase/liveness/upload'; // POST ?session=&part= (raw bytes)

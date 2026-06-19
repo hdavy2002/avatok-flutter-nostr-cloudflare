@@ -88,10 +88,11 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
     super.dispose();
   }
 
-  // Email is required; phone is optional (verified OR explicitly skipped) so a
-  // user is never trapped when SMS can't be delivered for technical reasons.
+  // Phone is now MANDATORY (only verified numbers allowed). Email is NOT verified
+  // here — Google sign-in already verified it, so a separate email OTP would just
+  // waste sends. (2026-06-18)
   bool get _ready =>
-      _ageGroup != null && _gender != null && _emailVerified && (_phoneVerified || _phoneSkipped);
+      _ageGroup != null && _gender != null && _phoneVerified;
 
   // ───────────────────────── phone ─────────────────────────
 
@@ -389,14 +390,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
                   verified: _phoneVerified,
                   child: _phoneSection(),
                 ),
-                const SizedBox(height: 16),
-                _verifyCard(
-                  title: 'Email address',
-                  icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
-                  accent: Zine.lilac,
-                  verified: _emailVerified,
-                  child: _emailSection(),
-                ),
+                // Email is already verified by your Google sign-in — no extra OTP.
               ],
             ),
           ),
@@ -409,21 +403,14 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
             fullWidth: true,
             fontSize: 21,
             onPressed: _ready
-                ? () {
-                    if (!_phoneVerified) {
-                      Analytics.capture('phone_verification_skipped',
-                          {'after_error': _phoneError != null});
-                    }
-                    widget.onComplete(VerifyData(
+                ? () => widget.onComplete(VerifyData(
                       ageGroup: _ageGroup!,
                       gender: _gender!,
-                      // Only persist the number if it was actually verified.
-                      phone: _phoneVerified ? _phoneCtrl.text.trim() : '',
-                      phoneVerified: _phoneVerified,
+                      phone: _phoneCtrl.text.trim(),
+                      phoneVerified: true,
                       email: _emailCtrl.text.trim(),
                       emailVerified: _emailVerified,
-                    ));
-                  }
+                    ))
                 : null,
           ),
         ),
@@ -433,19 +420,8 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
 
   Widget _phoneSection() {
     if (_phoneVerified) return _verifiedRow(_phoneCtrl.text.trim());
-    if (_phoneSkipped) {
-      return Row(children: [
-        PhosphorIcon(PhosphorIcons.clock(PhosphorIconsStyle.bold), size: 18, color: Zine.inkSoft),
-        const SizedBox(width: 8),
-        Expanded(
-            child: Text('Skipped — you can verify your phone later in Settings.',
-                style: ZineText.sub(size: 13.5))),
-        const SizedBox(width: 8),
-        ZineLink('undo', onTap: () => setState(() => _phoneSkipped = false)),
-      ]);
-    }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Optional — verify now, or add it later in Settings.',
+      Text('Required — only verified mobile numbers can use AvaTOK.',
           style: ZineText.sub(size: 12)),
       const SizedBox(height: 8),
       _field(
@@ -478,21 +454,6 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         ]),
       ],
       if (_phoneError != null) _errorText(_phoneError!),
-      const SizedBox(height: 10),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: ZineLink(
-          _phoneError != null ? 'skip phone verification →' : 'skip for now',
-          underline: Zine.coral,
-          onTap: () {
-            Analytics.capture('phone_verification_skip_tapped', {'after_error': _phoneError != null});
-            setState(() {
-              _phoneSkipped = true;
-              _phoneError = null;
-            });
-          },
-        ),
-      ),
     ]);
   }
 

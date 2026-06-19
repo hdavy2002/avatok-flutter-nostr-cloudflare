@@ -11,7 +11,9 @@ const bool kAccountTypeStepEnabled = false;
 /// Onboarding "Add AI?" step — offers the BYO Gemini key flow (with a skip).
 /// When false the step is removed from onboarding (users can still set it up
 /// from Settings → Ava AI). The step + its stores stay intact in code.
-const bool kAddAiStepEnabled = true;
+// Disabled: BYOK (bring-your-own Gemini key) was removed in the two-mode model
+// (2026-06-18 — premium is top-up only, AI runs on our Cloudflare stack).
+const bool kAddAiStepEnabled = false;
 
 /// Build environment, baked at compile time: --dart-define=AVATOK_ENV=staging.
 const String kAvatokEnv = String.fromEnvironment('AVATOK_ENV', defaultValue: 'prod');

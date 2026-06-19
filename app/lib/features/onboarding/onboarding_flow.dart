@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
+import '../../core/drive_service.dart';
+import '../../core/verification_api.dart';
 import '../../core/analytics.dart';
 import '../../core/app_registry.dart';
 import '../../core/apps.dart';
@@ -45,7 +48,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   static List<String> _composeSteps() {
     final s = <String>[
       'account_kind', 'notifications', 'terms', 'profile', 'verify_identity',
-      'contacts', 'add_ai', 'apps',
+      'drive_backup', 'contacts', 'add_ai', 'apps',
     ];
     if (!kAccountTypeStepEnabled) s.remove('account_kind');
     if (!kAddAiStepEnabled) s.remove('add_ai');
@@ -103,11 +106,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   String? _guestHandle; // reserved pre-signup on the handle-claim screen (L0)
+  // Account-keyed: this account already verified a phone (reinstall / new device).
+  // When true the verify_identity step auto-advances so we never re-send an OTP.
+  bool _phoneAlreadyVerified = false;
+  bool _driveConnecting = false;
 
   Future<void> _bootstrap() async {
     var id = await _idStore.load();
     id ??= await _idStore.createAndStore();
     if (mounted) setState(() => _id = id);
+    // Skip phone OTP if this account already verified one (no wasted SMS on reinstall).
+    VerificationApi.isPhoneVerified().then((v) {
+      if (v && mounted) setState(() => _phoneAlreadyVerified = true);
+    });
     // Handle-first onboarding: prefill the handle the visitor already reserved.
     final gh = await GuestSession.reservedHandle();
     if (gh != null && gh.isNotEmpty && mounted) {
@@ -235,6 +246,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 'terms': return _terms();
       case 'profile': return _profileStep();
       case 'verify_identity': return _verifyStep();
+      case 'drive_backup': return _driveStep();
       case 'contacts': return _contacts();
       case 'add_ai': return _addAiStep();
       default: return _appsSetup();
@@ -253,15 +265,73 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         },
       );
 
-  // ---- Step 6: verify identity (age / gender / phone OTP / email OTP) ----
-  Widget _verifyStep() => VerifyIdentityStep(
-        onComplete: (data) {
-          _ageGroup = data.ageGroup;
-          _gender = data.gender;
-          if (data.phone.isNotEmpty) _profileStore.setPhone(data.phone);
-          _next();
-        },
-      );
+  // ---- Step: verify identity (age / gender / mandatory phone OTP) ----
+  // Auto-advances if the account already verified a phone (reinstall / new device)
+  // so we never re-send an OTP.
+  Widget _verifyStep() {
+    if (_phoneAlreadyVerified) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _next(); });
+      return const Center(child: CircularProgressIndicator());
+    }
+    return VerifyIdentityStep(
+      onComplete: (data) {
+        _ageGroup = data.ageGroup;
+        _gender = data.gender;
+        if (data.phone.isNotEmpty) _profileStore.setPhone(data.phone);
+        _next();
+      },
+    );
+  }
+
+  // ---- Step: connect Google Drive for backup (one-time, encouraged) ----
+  Widget _driveStep() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: Column(children: [
+        const Spacer(flex: 2),
+        ZineCrest(
+          child: PhosphorIcon(PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.fill),
+              size: 46, color: Zine.ink),
+        ),
+        const SizedBox(height: 18),
+        const ZineMarkTitle(pre: 'Back up to your ', mark: 'Drive', fontSize: 30),
+        const SizedBox(height: 12),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Text(
+              'Connect your own Google Drive so your chats and data are safely backed up '
+              "and restored automatically if you switch phones. It's your Drive — we never read it.",
+              textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
+        ),
+        const Spacer(flex: 3),
+        _primary(_driveConnecting ? 'Opening Google…' : 'Connect Google Drive',
+            _driveConnecting ? null : _connectDrive,
+            icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), loading: _driveConnecting),
+        const SizedBox(height: 14),
+        ZineLink('skip for now', fontSize: 14, onTap: _next),
+      ]),
+    );
+  }
+
+  Future<void> _connectDrive() async {
+    setState(() => _driveConnecting = true);
+    Analytics.capture('onboarding_drive_connect_tapped', const {});
+    try {
+      final url = await DriveService.I.connectUrl();
+      if (url != null && url.isNotEmpty) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Authorize Google Drive, then come back and continue.')));
+        }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Couldn't start Google Drive — you can connect later in AvaStorage.")));
+      }
+    } catch (_) {/* best-effort */}
+    if (mounted) setState(() => _driveConnecting = false);
+    _next(); // proceed regardless; backup will activate once Drive is authorized
+  }
 
   // ---- Step 1: account type — required, drives the sidebar tools ----
   Widget _accountType() {
