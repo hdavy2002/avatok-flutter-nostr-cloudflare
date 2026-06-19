@@ -59,6 +59,26 @@ jobs:
         working-directory: app
         run: python3 tool/postcreate.py
 
+      # CI runner hardening: the GitHub-hosted runner (4 vCPU / 16 GB) was being
+      # killed (SIGTERM / exit 143) mid-`assembleRelease` because the default
+      # Gradle + Kotlin JVMs over-commit memory on this heavy app (WebRTC/LiveKit
+      # native libs). Cap the heaps, kill the daemon + parallelism + VFS watch so
+      # peak memory stays well under the runner limit. Last key wins in a
+      # .properties file, so these override Flutter's generated defaults.
+      - name: Harden Gradle for the CI runner (memory)
+        working-directory: app
+        run: |
+          cat >> android/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m -XX:+UseParallelGC
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=2
+          org.gradle.vfs.watch=false
+          kotlin.daemon.jvmargs=-Xmx2g
+          EOF
+          echo "----- effective gradle.properties tail -----"
+          tail -8 android/gradle.properties
+
       - name: Pub get
         working-directory: app
         run: flutter pub get
@@ -135,9 +155,12 @@ jobs:
       # THREE ABIs (~143 MB); modern phones (incl. Samsung) are arm64, so building
       # one ABI gives a ~75 MB sideload. The .aab above stays universal — Play
       # still ships every device the right split.
+      # --no-shrink skips R8 code shrinking (a heavy memory/time consumer) — fine
+      # for a sideload test APK; the bundle re-enables it for Play. arm64-only
+      # keeps it to a single ABI (~75 MB).
       - name: Build release APK (for testing)
         working-directory: app
-        run: flutter build apk --release --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
+        run: flutter build apk --release --no-shrink --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
