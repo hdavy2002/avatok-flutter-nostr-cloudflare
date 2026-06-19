@@ -151,6 +151,7 @@ export interface Env {
   WALLET_RETURN_URL?: string;      // Checkout success/cancel return base
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PUBLISHABLE_KEY?: string; // public pk_test/pk_live — returned to the app for the in-app PaymentSheet
 
   // AvaPayout (Phase 4). Production transfers flag-gated OFF pending legal (§10.3).
   PAYOUT_ENABLED?: string;         // "1" enables Wise transfers (ONLY after legal)

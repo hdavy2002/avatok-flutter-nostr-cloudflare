@@ -38,6 +38,9 @@ dependencies:
   app_badge_plus: ^1.2.9
   # Product analytics + error tracking → PostHog (EU). See lib/core/analytics.dart.
   posthog_flutter: ^4.10.0
+  # Native in-app Stripe PaymentSheet for wallet top-ups (card / Apple Pay /
+  # Google Pay) — keeps checkout inside the app, no browser redirect.
+  flutter_stripe: ^11.1.0
   # Encrypted chat media (pure-Dart AES-GCM) + pickers/record/playback
   cryptography: ^2.7.0
   image_picker: ^1.1.2

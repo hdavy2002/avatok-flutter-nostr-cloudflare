@@ -2,8 +2,11 @@
 // WalletDO; D1 (avatok-wallet) is the audit trail / history. Top-up via Stripe is
 // FLAG-GATED OFF in production pending legal (WALLET_TOPUP_ENABLED).
 //
-//   POST /api/wallet/topup        → create a Stripe Checkout session (flag-gated)
+//   POST /api/wallet/topup        → create a Stripe Checkout session (flag-gated, legacy/web)
+//   POST /api/wallet/topup/intent → create a Stripe PaymentIntent for the in-app
+//                                   PaymentSheet (no browser redirect, native UI)
 //   POST /webhooks/stripe         → credit coins on checkout.session.completed
+//                                   OR payment_intent.succeeded (in-app top-ups)
 //   POST /api/wallet/spend        → debit buyer, credit creator (−commission, 7d hold)
 //   GET  /api/wallet/balance      → live balance (from DO)
 //   GET  /api/wallet/transactions → ledger history (from D1)
@@ -123,7 +126,75 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   return json({ checkout_url: session.url, session_id: session.id, topup_id: id });
 }
 
-// POST /webhooks/stripe — credit coins when a checkout completes.
+// Minimal Stripe REST helper (form-encoded POST / query GET). Never throws.
+async function stripeApi(
+  env: Env, path: string, form?: URLSearchParams, extraHeaders?: Record<string, string>,
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const res = await fetch(`https://api.stripe.com/v1/${path}`, {
+    method: form ? "POST" : "GET",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(extraHeaders ?? {}),
+    },
+    body: form ? form.toString() : undefined,
+  });
+  const body = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, body };
+}
+
+// POST /api/wallet/topup/intent { usd_cents } — creates a Stripe PaymentIntent so
+// the app can present the NATIVE in-app PaymentSheet (card / Apple Pay / Google
+// Pay) with NO browser redirect. Coins are still credited server-side only, by
+// the payment_intent.succeeded webhook — the client never moves money itself.
+// Money route: rate-limited 5/h (A3). Client sends the real USD amount in cents;
+// the server is the single source of truth for the coin conversion.
+export async function walletTopupIntent(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const limited = await rateLimit(env, `topup:${ctx.uid}`, RL.topup.max, RL.topup.windowSec);
+  if (limited) return limited;
+
+  const b = (await req.json().catch(() => ({}))) as any;
+  const cents = Math.trunc(Number(b.usd_cents ?? b.amountUsdCents));
+  if (!(cents > 0)) return json({ error: "usd_cents required (USD amount in cents)" }, 400);
+  const coins = Math.round((cents * COINS_PER_USD) / 100); // server-decided conversion
+  if (!(coins >= MIN_TOPUP && coins <= MAX_TOPUP)) {
+    return json({ error: `amount must be $${MIN_TOPUP / COINS_PER_USD}..$${MAX_TOPUP / COINS_PER_USD}` }, 400);
+  }
+  if (!topupEnabled(env)) {
+    return json({ error: "top-up unavailable", reason: "pending_legal_approval", flag: "WALLET_TOPUP_ENABLED" }, 503);
+  }
+
+  const id = crypto.randomUUID();
+  const form = new URLSearchParams();
+  form.set("amount", String(cents));
+  form.set("currency", "usd");
+  form.set("automatic_payment_methods[enabled]", "true"); // card + wallets, Stripe-managed
+  form.set("description", `${coins} AvaCoins top-up`);
+  form.set("metadata[uid]", ctx.uid);
+  form.set("metadata[topup_id]", id);
+  form.set("metadata[coins]", String(coins));
+  const pi = await stripeApi(env, "payment_intents", form);
+  if (!pi.ok) return json({ error: "stripe error", detail: pi.body?.error?.message }, 502);
+
+  // One pending record per attempt — the PaymentIntent id rides in stripe_session_id
+  // (unique-indexed) so the webhook can match THIS exact attempt.
+  await env.DB_WALLET.prepare(
+    "INSERT INTO topup_records (id, uid, stripe_session_id, amount_coins, amount_cents, currency, status, created_at) VALUES (?1,?2,?3,?4,?5,'usd','pending',?6)",
+  ).bind(id, ctx.uid, pi.body.id, coins, cents, Date.now()).run();
+  track(env, ctx.uid, "wallet_topup_initiated", "avawallet", { coins, cents, via: "payment_sheet" });
+  return json({
+    payment_intent_client_secret: pi.body.client_secret,
+    publishable_key: env.STRIPE_PUBLISHABLE_KEY || "",
+    topup_id: id, coins, cents,
+  });
+}
+
+// POST /webhooks/stripe — credit coins when Stripe confirms a payment. Handles
+// BOTH the legacy hosted Checkout (checkout.session.completed) and the in-app
+// PaymentSheet (payment_intent.succeeded). Either way the credit funnels through
+// `creditTopup`, which is idempotent on the topup record + a deterministic op_id.
 export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   const payload = await req.text();
   const sig = req.headers.get("stripe-signature");
@@ -133,29 +204,65 @@ export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   const ok = await verifyStripeSig(payload, sig, env.STRIPE_WEBHOOK_SECRET);
   if (!ok) return json({ error: "bad signature" }, 400);
   let event: any; try { event = JSON.parse(payload); } catch { return json({ error: "bad json" }, 400); }
-  if (event.type !== "checkout.session.completed") return json({ received: true });
 
-  const s = event.data?.object ?? {};
-  const uid = s.metadata?.uid; const coins = Math.trunc(Number(s.metadata?.coins || 0));
-  const topupId = s.metadata?.topup_id;
-  if (!uid || !(coins > 0)) return json({ received: true });
+  if (event.type === "checkout.session.completed") {
+    const s = event.data?.object ?? {};
+    const ref = (typeof s.payment_intent === "string" && s.payment_intent) || s.id;
+    return creditTopup(env, {
+      uid: s.metadata?.uid, coins: Math.trunc(Number(s.metadata?.coins || 0)), topupId: s.metadata?.topup_id,
+      ref, session: s.id, method: null, brand: null, last4: null,
+    });
+  }
 
-  // Security + idempotency: only credit a top-up THIS user actually initiated and
-  // that is still pending. No record → ignore (prevents forged-webhook free coins
-  // when no signing secret is configured). Already-paid → idempotent no-op.
+  if (event.type === "payment_intent.succeeded") {
+    const pi = event.data?.object ?? {};
+    // The webhook PaymentIntent isn't expanded, so fetch it once to read the
+    // payment method (card brand/last4 or wallet) for the receipt + log detail.
+    let method: string | null = null, brand: string | null = null, last4: string | null = null;
+    try {
+      const full = await stripeApi(env, `payment_intents/${pi.id}?expand[]=latest_charge`);
+      const pmd = full.body?.latest_charge?.payment_method_details;
+      method = pmd?.type ?? null;
+      const cardLike = pmd?.card ?? pmd?.[method ?? ""]?.card ?? null;
+      if (cardLike) { brand = cardLike.brand ?? null; last4 = cardLike.last4 ?? null; }
+    } catch { /* best-effort: method stays null, credit still proceeds */ }
+    return creditTopup(env, {
+      uid: pi.metadata?.uid, coins: Math.trunc(Number(pi.metadata?.coins || 0)), topupId: pi.metadata?.topup_id,
+      ref: pi.id, session: null, method, brand, last4,
+    });
+  }
+
+  return json({ received: true });
+}
+
+// Shared credit path for both Stripe webhook events. Idempotent: only credits a
+// pending top-up THIS user initiated, matching the recorded amount; the WalletDO
+// dedupes on op_id and emits the double-entry ledger row to Q_WALLET.
+async function creditTopup(
+  env: Env,
+  p: { uid?: string; coins: number; topupId?: string; ref: string; session: string | null; method: string | null; brand: string | null; last4: string | null },
+): Promise<Response> {
+  const { uid, coins, topupId, ref } = p;
+  if (!uid || !(coins > 0) || !topupId) return json({ received: true });
+
   const rec = await env.DB_WALLET.prepare("SELECT status, amount_coins FROM topup_records WHERE id=?1 AND uid=?2")
     .bind(topupId, uid).first<{ status: string; amount_coins: number }>();
   if (!rec) return json({ received: true, ignored: "no matching topup record" });
   if (rec.status !== "pending") return json({ received: true, duplicate: true });
   if (rec.amount_coins !== coins) return json({ received: true, ignored: "amount mismatch" });
 
-  // Credit via WalletDO with a deterministic op_id — the DO dedupes AND emits the
-  // double-entry ledger row (external:stripe → user) to Q_WALLET. The Stripe
-  // payment-intent id rides in `ref` (unique-indexed on type='topup' in D1).
-  const pi = (typeof s.payment_intent === "string" && s.payment_intent) || s.id || topupId;
+  // Ledger meta drives the in-app receipt + log-detail sheet: the real USD charged,
+  // and HOW it was paid (card brand/last4, Apple/Google Pay, …) so a user can see
+  // "$10 paid with Visa ···4242 → 10,000 AvaCoins".
+  const meta: any = { title: `Top-up ${coins} AvaCoins`, cents: usdCentsForCoins(coins), source: "topup" };
+  meta.method = p.method ?? "card";
+  if (p.brand) meta.card_brand = p.brand;
+  if (p.last4) meta.card_last4 = p.last4;
+  if (p.session) meta.session = p.session;
+
   await walletOp(env, uid, {
-    op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref: pi, op_id: `topup:${topupId}`,
-    ledger: { debit: "external:stripe", credit: acctUser(uid), type: "topup", ref: pi, meta: JSON.stringify({ title: `Top-up ${coins} AvaCoins`, cents: usdCentsForCoins(coins), session: s.id }) },
+    op: "credit", uid, amount: coins, type: "topup", app_name: "avawallet", ref, op_id: `topup:${topupId}`,
+    ledger: { debit: "external:stripe", credit: acctUser(uid), type: "topup", ref, meta: JSON.stringify(meta) },
   });
   await env.DB_WALLET.prepare("UPDATE topup_records SET status='paid', paid_at=?2 WHERE id=?1").bind(topupId, Date.now()).run();
   // Lifetime affiliate commission: 10% of this top-up to whoever referred the user

@@ -43,8 +43,17 @@ class MoneyApi {
 
   /// Top-up any amount (USD cents == coins). Returns {checkout_url} or
   /// {error, reason:'pending_legal_approval'} while the legal flag is off.
+  /// (Legacy hosted-Checkout path; the app now uses [topupIntent] instead.)
   static Future<Map<String, dynamic>> topup(int amountUsdCents) =>
       _post('$kWalletBase/topup', {'amountUsdCents': amountUsdCents});
+
+  /// Create a Stripe PaymentIntent for the NATIVE in-app PaymentSheet (no browser
+  /// redirect). [usdCents] is the real money amount in USD cents; the server is
+  /// the single source of truth for the USD→coins conversion. Returns
+  /// {payment_intent_client_secret, publishable_key, coins, cents} on success, or
+  /// {error, reason:'pending_legal_approval'} while the legal flag is off.
+  static Future<Map<String, dynamic>> topupIntent(int usdCents) =>
+      _post('$kWalletBase/topup/intent', {'usd_cents': usdCents});
 
   /// Keyset-paginated double-entry statement with server-side filters.
   static Future<Map<String, dynamic>> ledger({

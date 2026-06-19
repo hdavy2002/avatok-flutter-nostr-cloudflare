@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/db.dart';
@@ -31,9 +31,33 @@ final _kTypes = <String, ({String label, IconData icon, bool inflow})>{
   'adjustment': (label: 'Adjustment', icon: PhosphorIcons.wrench(PhosphorIconsStyle.bold), inflow: true),
 };
 
+// Coin economics — MUST match the server (worker/src/routes/wallet.ts COINS_PER_USD).
+// 1 USD = 1000 AvaCoins (1 coin = $0.001). Balances/ledger amounts are in coins;
+// USD is derived for display only.
+const int kCoinsPerUsd = 1000;
+
+/// The Stripe publishable key we've already pushed into the SDK this run (set from
+/// the server's intent response). Tracked so we don't read Stripe.publishableKey
+/// before it's initialized.
+String? _appliedPublishableKey;
+
 String _usd(num coins) {
-  final v = coins.abs() / 100.0;
+  final v = coins.abs() / kCoinsPerUsd;
   return '\$${v.toStringAsFixed(2)}';
+}
+
+/// Format USD from real cents (used where the exact charged amount is known).
+String _usdFromCents(int cents) => '\$${(cents.abs() / 100).toStringAsFixed(2)}';
+
+/// Compact coin count, e.g. 10000 → "10,000".
+String _coins(num coins) {
+  final s = coins.abs().toInt().toString();
+  final b = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+    b.write(s[i]);
+  }
+  return b.toString();
 }
 
 String _dateShort(int ms) {
@@ -66,6 +90,9 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   void initState() {
     super.initState();
+    // Tag every event from here as the wallet app/screen so support can slice a
+    // user's wallet telemetry (and errors) by email in PostHog.
+    Analytics.screenViewed('wallet', 'wallet_main');
     Analytics.capture('wallet_viewed');
     _scroll.addListener(() {
       if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400) _loadMore();
@@ -149,89 +176,159 @@ class _WalletScreenState extends State<WalletScreen> {
     return (inn, out);
   }
 
-  // ── top-up ──────────────────────────────────────────────────────────────
+  // ── top-up (in-app, native Stripe PaymentSheet — NO browser redirect) ──────
+  // Flow: ask amount → server mints a PaymentIntent → present the native sheet
+  // (card / Apple Pay / Google Pay) right here → poll the balance so the topped-up
+  // coins + the new ledger entry land on this same page. Coins are credited
+  // server-side ONLY (Stripe webhook); the client never moves money itself.
   Future<void> _topupFlow() async {
+    final cents = await _askAmountCents();
+    if (cents == null || !mounted) return;
+    final coins = (cents * kCoinsPerUsd / 100).round();
+    Analytics.capture('wallet_topup_started', {'cents': cents, 'coins': coins, 'method': 'payment_sheet'});
+
+    // 1) Server creates the PaymentIntent and returns the client secret + the
+    //    publishable key (so the app never hardcodes a Stripe key).
+    Map<String, dynamic> r;
+    try {
+      r = await MoneyApi.topupIntent(cents);
+    } catch (e) {
+      Analytics.error(domain: 'wallet', code: 'topup_intent_failed', message: '$e', screen: 'wallet_main', action: 'topup');
+      _snack('Could not start checkout. Please try again.');
+      return;
+    }
+    if (!mounted) return;
+    final clientSecret = r['payment_intent_client_secret'] as String?;
+    final pk = r['publishable_key'] as String?;
+    if (clientSecret == null || clientSecret.isEmpty) {
+      Analytics.capture('wallet_topup_failed', {
+        'stage': 'intent',
+        'reason': '${r['reason'] ?? r['error'] ?? r['status'] ?? 'unknown'}',
+      });
+      if (r['reason'] == 'pending_legal_approval') {
+        _snack('Top-ups are not live yet — coming soon.');
+      } else if (r['status'] == 429) {
+        _snack('Too many top-up attempts. Try again in a little while.');
+      } else {
+        _snack('Top-up failed: ${r['error'] ?? 'unknown error'}');
+      }
+      return;
+    }
+
+    // 2) Present the native PaymentSheet in-app (no browser).
+    try {
+      // Set the publishable key from the server response (avoids hardcoding it).
+      // Guard with a module flag — reading Stripe.publishableKey before it's set
+      // can throw, so we never read it back.
+      if (pk != null && pk.isNotEmpty && _appliedPublishableKey != pk) {
+        Stripe.publishableKey = pk;
+        await Stripe.instance.applySettings();
+        _appliedPublishableKey = pk;
+      }
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: clientSecret,
+          merchantDisplayName: 'AvaTOK',
+          applePay: const PaymentSheetApplePay(merchantCountryCode: 'US'),
+          googlePay: const PaymentSheetGooglePay(merchantCountryCode: 'US', testEnv: true),
+          style: ThemeMode.light,
+        ),
+      );
+      Analytics.capture('wallet_topup_sheet_presented', {'cents': cents, 'coins': coins});
+      await Stripe.instance.presentPaymentSheet();
+    } on StripeException catch (e) {
+      if (e.error.code == FailureCode.Canceled) {
+        Analytics.capture('wallet_topup_cancelled', {'cents': cents, 'coins': coins});
+        return; // user backed out — no error, no noise
+      }
+      Analytics.error(
+        domain: 'wallet', code: 'payment_sheet_failed',
+        message: e.error.localizedMessage ?? e.error.code.name,
+        screen: 'wallet_main', action: 'topup', extra: {'stripe_code': e.error.code.name},
+      );
+      _snack(e.error.localizedMessage ?? 'Payment failed. Please try again.');
+      return;
+    } catch (e) {
+      Analytics.error(domain: 'wallet', code: 'payment_sheet_error', message: '$e', screen: 'wallet_main', action: 'topup');
+      _snack('Payment failed. Please try again.');
+      return;
+    }
+
+    // 3) Paid in-app. The webhook credits coins server-side (a few seconds); poll
+    //    the balance so the user sees it land + the new log entry, without leaving.
+    if (!mounted) return;
+    Analytics.capture('wallet_topup_paid', {'cents': cents, 'coins': coins});
+    final before = _balance;
+    var credited = false;
+    for (var i = 0; i < 6 && mounted && !credited; i++) {
+      await Future.delayed(Duration(milliseconds: i == 0 ? 600 : 1200));
+      await _refresh();
+      if (_balance > before) credited = true;
+    }
+    if (!mounted) return;
+    if (credited) {
+      final added = _balance - before;
+      Analytics.capture('wallet_topup_succeeded', {'cents': cents, 'coins': added});
+      _snack('Added ${_usd(added)} · ${_coins(added)} AvaCoins to your wallet');
+    } else {
+      // Payment captured but the webhook is still settling — reassure, don't alarm.
+      Analytics.capture('wallet_topup_pending_credit', {'cents': cents, 'coins': coins});
+      _snack('Payment received — your AvaCoins will appear here shortly.');
+    }
+  }
+
+  /// Amount sheet: USD entry with a live AvaCoin preview. Returns USD cents, or
+  /// null if cancelled. Min $10 / max $500 (mirrors the server's top-up bounds).
+  Future<int?> _askAmountCents() async {
     final ctrl = TextEditingController();
-    final cents = await showModalBottomSheet<int>(
+    return showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Zine.paper,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (c) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Top up wallet', style: ZineText.cardTitle(size: 21)),
-          const SizedBox(height: 4),
-          Text('Any amount. 1 AvaCoin = \$0.01.', style: ZineText.sub(size: 14)),
-          const SizedBox(height: 16),
-          ZineField(
-            controller: ctrl,
-            autofocus: true,
-            leadText: '\$',
-            hint: '10.00',
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          ),
-          const SizedBox(height: 12),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final v in [5, 10, 25, 50])
-              ZineSticker('\$$v', onTap: () => ctrl.text = v.toStringAsFixed(2)),
-          ]),
-          const SizedBox(height: 18),
-          ZineButton(
-            label: 'Continue to payment',
-            fullWidth: true,
-            icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
-            onPressed: () {
-              final d = double.tryParse(ctrl.text.trim());
-              if (d == null || d < 0.5 || d > 500) return;
-              Navigator.pop(c, (d * 100).round());
-            },
-          ),
-        ]),
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSheet) {
+          final d = double.tryParse(ctrl.text.trim());
+          final valid = d != null && d >= 10 && d <= 500;
+          final previewCoins = valid ? (d * kCoinsPerUsd).round() : 0;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(c).viewInsets.bottom + 20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Top up wallet', style: ZineText.cardTitle(size: 21)),
+              const SizedBox(height: 4),
+              Text('Pay securely in-app. \$1 = ${_coins(kCoinsPerUsd)} AvaCoins.', style: ZineText.sub(size: 14)),
+              const SizedBox(height: 16),
+              ZineField(
+                controller: ctrl,
+                autofocus: true,
+                leadText: '\$',
+                hint: '10.00',
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setSheet(() {}),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                valid ? '= ${_coins(previewCoins)} AvaCoins' : 'Enter \$10 – \$500',
+                style: ZineText.value(size: 14, weight: FontWeight.w900,
+                    color: valid ? Zine.mintInk : Zine.inkMute),
+              ),
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final v in [10, 25, 50, 100])
+                  ZineSticker('\$$v', onTap: () => setSheet(() => ctrl.text = v.toStringAsFixed(2))),
+              ]),
+              const SizedBox(height: 18),
+              ZineButton(
+                label: 'Continue to payment',
+                fullWidth: true,
+                icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+                onPressed: !valid ? null : () => Navigator.pop(c, (d * 100).round()),
+              ),
+            ]),
+          );
+        },
       ),
     );
-    if (cents == null || !mounted) return;
-
-    Analytics.capture('wallet_topup_started', {'cents': cents});
-    final r = await MoneyApi.topup(cents);
-    if (!mounted) return;
-    final url = r['checkout_url'] as String?;
-    if (url != null) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      if (!mounted) return;
-      // On return, refresh — webhook credit may take a few seconds.
-      await showDialog<void>(
-        context: context,
-        builder: (c) => AlertDialog(
-          backgroundColor: Zine.card,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Zine.r),
-            side: const BorderSide(color: Zine.ink, width: Zine.bw),
-          ),
-          title: Text('Finishing payment…', style: ZineText.cardTitle()),
-          content: Text('Complete the payment in your browser, then come back and tap Done.',
-              style: ZineText.sub(size: 14)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c),
-              child: Text('Done', style: ZineText.link(size: 14)),
-            ),
-          ],
-        ),
-      );
-      final before = _balance;
-      await _refresh();
-      if (mounted && _balance > before) {
-        Analytics.capture('wallet_topup_succeeded', {'cents': cents});
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added ${_usd(_balance - before)} to your wallet')));
-      }
-    } else if (r['reason'] == 'pending_legal_approval') {
-      _snack('Top-ups are not live yet — coming soon.');
-    } else if (r['status'] == 429) {
-      _snack('Too many top-up attempts. Try again in a little while.');
-    } else {
-      _snack('Top-up failed: ${r['error'] ?? 'unknown error'}');
-    }
   }
 
   void _snack(String m) {
@@ -261,8 +358,27 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   // ── detail sheet ────────────────────────────────────────────────────────
+  /// Human label for how a top-up was paid, from the webhook-stamped ledger meta.
+  /// Returns e.g. "Visa ···· 4242", "Apple Pay", "Google Pay", or null if unknown.
+  static String? _payMethod(Map<String, dynamic> meta) {
+    final method = '${meta['method'] ?? ''}';
+    final brand = '${meta['card_brand'] ?? ''}';
+    final last4 = '${meta['card_last4'] ?? ''}';
+    String cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+    if (brand.isNotEmpty || method == 'card') {
+      final b = brand.isEmpty ? 'Card' : cap(brand);
+      return last4.isEmpty ? b : '$b ···· $last4';
+    }
+    if (method == 'apple_pay') return 'Apple Pay';
+    if (method == 'google_pay') return 'Google Pay';
+    if (method == 'link') return 'Link';
+    if (method.isNotEmpty) return cap(method.replaceAll('_', ' '));
+    return null;
+  }
+
   Future<void> _showDetail(Map<String, dynamic> e) async {
     final id = '${e['id']}';
+    Analytics.capture('wallet_txn_opened', {'type': '${e['type']}', 'id': id});
     Map<String, dynamic> d = {'entry': e};
     try { d = await MoneyApi.ledgerDetail(id); } catch (_) {/* offline: show row */}
     if (!mounted) return;
@@ -274,6 +390,10 @@ class _WalletScreenState extends State<WalletScreen> {
     final gross = (meta['gross'] as num?)?.toInt();
     final fee = (meta['fee'] as num?)?.toInt() ?? related.where((r) => r['type'] == 'fee').fold<int>(0, (s, r) => s + ((r['amount'] as num?) ?? 0).toInt().abs());
     final net = (meta['net'] as num?)?.toInt();
+    final isTopup = '${entry['type']}' == 'topup';
+    final usdCents = (meta['cents'] as num?)?.toInt();      // exact USD charged (top-ups)
+    final paidWith = _payMethod(meta);                       // card ···4242 / Apple Pay / …
+    final createdMs = ((entry['created_at'] as num?) ?? 0).toInt();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -304,6 +424,11 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 16),
             Container(height: Zine.bw, color: Zine.ink),
             const SizedBox(height: 12),
+            _kv('Date', _fullDate(createdMs)),
+            if (isTopup && usdCents != null) _kv('Amount paid', '${_usdFromCents(usdCents)} USD'),
+            _kv(isTopup ? 'AvaCoins credited' : 'AvaCoins', _coins(amount)),
+            if (paidWith != null) _kv('Paid with', paidWith)
+            else if (isTopup) _kv('Paid with', 'Card'),
             _kv('From', '${entry['debit'] ?? '—'}'),
             _kv('To', '${entry['credit'] ?? '—'}'),
             if (gross != null) _kv('Gross', _usd(gross)),
@@ -311,7 +436,6 @@ class _WalletScreenState extends State<WalletScreen> {
             if (net != null) _kv('Net', _usd(net)),
             if (meta['reason'] != null) _kv('Reason', '${meta['reason']}'),
             if (entry['ref'] != null) _kv('Reference', '${entry['ref']}'),
-            _kv('Coins', '${amount.abs()}'),
             const SizedBox(height: 16),
             ZineButton(
               label: 'Email me this receipt',
@@ -439,7 +563,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              '$_balance AvaCoins${_held > 0 ? '  ·  ${_usd(_held)} pending (7-day hold)' : ''}',
+              '${_coins(_balance)} AvaCoins${_held > 0 ? '  ·  ${_usd(_held)} pending (7-day hold)' : ''}',
               style: ZineText.value(size: 14, weight: FontWeight.w900),
             ),
             const SizedBox(height: 16),

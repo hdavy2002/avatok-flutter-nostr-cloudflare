@@ -113,7 +113,8 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
 
   void _snack(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
 
-  String _usd(num c) => '\$${(c.abs() / 100).toStringAsFixed(2)}';
+  // 1 USD = 1000 AvaCoins (match the wallet/top-up server, COINS_PER_USD).
+  String _usd(num c) => '\$${(c.abs() / 1000).toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {
