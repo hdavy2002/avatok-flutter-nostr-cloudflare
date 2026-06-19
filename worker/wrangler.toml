@@ -39,7 +39,7 @@ WALLET_TOPUP_ENABLED = "1"   # TEST MODE 2026-06-18 (sk_test) — set LIVE Strip
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
 # Public Stripe publishable key (NOT a secret) — returned to the app for the in-app
 # PaymentSheet. MUST match the STRIPE_SECRET_KEY mode (pk_test ↔ sk_test). REPLACE.
-STRIPE_PUBLISHABLE_KEY = "pk_test_REPLACE_WITH_REAL_TEST_KEY"
+STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"
 # Clerk JWT verification (public values, not secrets). Enabling these lets the
 # Worker read the signed-in Clerk user id, which links the account to its Nostr
 # key (clerk_nostr_link) and powers cross-device restore via GET /api/me.
@@ -355,7 +355,7 @@ POSTHOG_PROJECT_ID = "139917"
 AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"   # AvaVision snapshot model (PRICING.md §3)
 WALLET_TOPUP_ENABLED = "1"   # staging: test-mode Stripe ON (2026-06-10)
 WALLET_RETURN_URL = "https://avatok.ai/wallet"
-STRIPE_PUBLISHABLE_KEY = "pk_test_REPLACE_WITH_REAL_TEST_KEY"  # public; must match sk_test mode
+STRIPE_PUBLISHABLE_KEY = "pk_test_51SZCqHJgoaTrScq1AvSiuZrl7OGF8OJrYNSvO7sNriLPtaGZRVColGpxgajHXUrLpcryoDfdIO4kK2vEENpmB2GL00Sphy2rVq"  # public; must match sk_test mode
 CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.avatok.ai"
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
