@@ -442,6 +442,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'receipt') { _applyReceipt(m.mine, env); return; } // status, never a bubble
+      if (env is Map && env['t'] == 'read') return; // read high-water (badge clears via the chat list) — never a bubble
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }

@@ -53,6 +53,7 @@ class BackupService {
 
   static const _kMagic = 'AVBK1\n';
   static const _kPassKey = 'ava_backup_passphrase'; // secure-storage base key
+  static const _kLastAuto = 'ava_backup_last_auto'; // last auto-backup ms (per account)
   static const _s = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
     mOptions: MacOsOptions(useDataProtectionKeyChain: false),
@@ -235,6 +236,27 @@ class BackupService {
     } catch (_) {
       return null;
     }
+  }
+
+  // ── automatic daily backup ────────────────────────────────────────────────
+
+  /// Daily auto-backup (best-effort, throttled to ~once/24h per account). Encrypts
+  /// the on-device SQLite and pushes it to the user's lane: premium → our R2;
+  /// if not premium, falls back to their FREE Google Drive (when connected).
+  /// Never throws — safe to fire-and-forget on app launch. With this in place the
+  /// device + backup are the durable copy, so the InboxDO can safely shed history.
+  Future<void> maybeAutoBackup() async {
+    try {
+      final key = scopedKey(_kLastAuto);
+      final last = int.tryParse(await _s.read(key: key) ?? '') ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - last < 20 * 3600 * 1000) return; // ~once per day
+      var r = await syncToR2();
+      if (!r.ok && r.reason == 'premium_required') {
+        r = await backupToDrive(); // free lane for non-premium users
+      }
+      if (r.ok) await _s.write(key: key, value: now.toString());
+    } catch (_) { /* best-effort; retry next launch */ }
   }
 
   // ── FREE Google Drive lane (user's own Drive) ─────────────────────────────

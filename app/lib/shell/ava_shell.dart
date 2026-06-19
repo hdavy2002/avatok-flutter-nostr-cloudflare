@@ -14,6 +14,7 @@ import '../features/affiliate/affiliate_home.dart';
 import '../features/avavoice/avavoice_home.dart';
 import '../features/avavision/avavision_home.dart';
 import '../features/avatok/chat_list.dart';
+import '../features/ava_backup/backup_service.dart';
 import '../features/booking/avabooking_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
@@ -54,6 +55,10 @@ class _AvaShellState extends State<AvaShell> {
     // correct menu without a default-then-correct flicker.
     await FocusMode.load();
     if (mounted) setState(() => _id = id);
+    // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
+    // (premium) or the user's own Google Drive (free). Makes the device + backup
+    // the durable copy so the InboxDO can shed old history.
+    BackupService.I.maybeAutoBackup();
   }
 
   /// Switch apps from within the home app (AvaTOK): return to the home surface,
