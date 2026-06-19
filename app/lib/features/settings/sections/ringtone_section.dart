@@ -48,6 +48,10 @@ class _RingtoneCardState extends State<_RingtoneCard> {
   void initState() {
     super.initState();
     _preview.onPlayerComplete.listen((_) {
+      final done = _playingId;
+      if (done != null) {
+        Analytics.capture('ringback_preview_completed', {'id': done});
+      }
       if (mounted) setState(() => _playingId = null);
     });
     _load();
@@ -60,11 +64,18 @@ class _RingtoneCardState extends State<_RingtoneCard> {
   }
 
   Future<void> _load() async {
+    Analytics.capture('ringback_settings_viewed', {'catalog_size': kRingtoneCatalog.length});
+    final t0 = DateTime.now();
     final sel = await RingtoneApi.selected();
     if (!mounted) return;
     setState(() {
       _selected = sel;
       _loading = false;
+    });
+    Analytics.capture('ringback_selected_loaded', {
+      'selected': sel,
+      'has_default': sel.isNotEmpty,
+      'load_ms': DateTime.now().difference(t0).inMilliseconds,
     });
   }
 
@@ -72,19 +83,31 @@ class _RingtoneCardState extends State<_RingtoneCard> {
     try {
       if (_playingId == t.id) {
         await _preview.stop();
+        Analytics.capture('ringback_preview_stopped', {'id': t.id});
         if (mounted) setState(() => _playingId = null);
         return;
       }
       await _preview.stop();
       await _preview.play(AssetSource(_assetRel(t.asset)));
+      Analytics.capture('ringback_preview_started', {'id': t.id, 'name': t.name});
       if (mounted) setState(() => _playingId = t.id);
     } catch (e) {
       AvaLog.I.log('ringback', 'preview failed: $e');
+      Analytics.error(
+        domain: 'ringback',
+        code: 'preview_failed',
+        message: e.toString(),
+        screen: 'ringback_settings',
+        action: 'preview',
+        extra: {'id': t.id},
+      );
     }
   }
 
   Future<void> _makeDefault(RingtoneItem t) async {
+    Analytics.capture('ringback_make_default_tapped', {'id': t.id, 'name': t.name, 'prev_default': _selected});
     setState(() => _saving = true);
+    final t0 = DateTime.now();
     final ok = await RingtoneApi.select(t.id);
     if (!mounted) return;
     setState(() {
@@ -92,9 +115,18 @@ class _RingtoneCardState extends State<_RingtoneCard> {
       if (ok) _selected = t.id;
     });
     if (ok) {
-      Analytics.capture('ringback_set', {'id': t.id});
+      Analytics.capture('ringback_set', {'id': t.id, 'name': t.name, 'set_ms': DateTime.now().difference(t0).inMilliseconds});
       _toast('Callers will now hear “${t.name}”');
     } else {
+      // The HTTP wrapper already emits api_error with endpoint+status; this adds
+      // the product-level failure so it's queryable by ringback domain + email.
+      Analytics.error(
+        domain: 'ringback',
+        code: 'set_failed',
+        screen: 'ringback_settings',
+        action: 'make_default',
+        extra: {'id': t.id},
+      );
       _toast('Couldn’t set that — try again');
     }
   }

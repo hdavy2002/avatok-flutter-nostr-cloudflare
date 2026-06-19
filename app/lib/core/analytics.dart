@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'ava_log.dart';
@@ -42,6 +43,28 @@ class Analytics {
   static String? _phone;
   static int _seq = 0; // session_seq — monotonic per app session
   static String _net = 'unknown'; // wifi|cell|offline
+
+  /// The email currently attached to telemetry ('' / null = not yet known).
+  static String? get currentEmail => _email;
+
+  // Email is persisted per-account so it survives app restarts and is reloaded
+  // at identify() time — this is what guarantees a user's errors carry their
+  // email EVEN when Clerk's currentUser() momentarily returns null on a session
+  // (the symptom behind "the 502 had no email"). Keyed by npub so a shared phone
+  // never leaks one account's email onto another's events.
+  static const FlutterSecureStorage _sec = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  static String _emailKey(String npub) => 'ph_email_$npub';
+
+  static Future<void> _persistEmail(String? npub, String email) async {
+    if (npub == null || npub.isEmpty) return;
+    try { await _sec.write(key: _emailKey(npub), value: email); } catch (_) {}
+  }
+
+  static Future<String?> _loadEmail(String npub) async {
+    try { return await _sec.read(key: _emailKey(npub)); } catch (_) { return null; }
+  }
 
   /// Add to MaterialApp.navigatorObservers to auto-capture a screen on each route.
   static final PosthogObserver observer = PosthogObserver();
@@ -136,7 +159,15 @@ class Analytics {
   static Future<void> identify(String npub,
       {Map<String, Object>? properties, String? email, String? phone}) async {
     _accountId = npub;
-    if (email != null && email.isNotEmpty) _email = email;
+    if (email != null && email.isNotEmpty) {
+      _email = email;
+      await _persistEmail(npub, email);
+    } else if (_email == null || _email!.isEmpty) {
+      // No email passed (e.g. the app-open identify before Clerk responds) —
+      // reload the last-known email for this account so events carry it now.
+      final saved = await _loadEmail(npub);
+      if (saved != null && saved.isNotEmpty) _email = saved;
+    }
     if (phone != null && phone.isNotEmpty) _phone = phone;
     final k = properties?['account_kind'];
     if (k is String && k.isNotEmpty) accountKind = k;
@@ -151,7 +182,10 @@ class Analytics {
   /// nothing changed or we don't yet have a distinct_id.
   static Future<void> setUserKeys({String? email, String? phone}) async {
     var changed = false;
-    if (email != null && email.isNotEmpty && email != _email) { _email = email; changed = true; }
+    if (email != null && email.isNotEmpty && email != _email) {
+      _email = email; changed = true;
+      await _persistEmail(_accountId, email);
+    }
     if (phone != null && phone.isNotEmpty && phone != _phone) { _phone = phone; changed = true; }
     if (!changed || !_ready || _accountId == null) return;
     try {
@@ -213,10 +247,14 @@ class Analytics {
 
   /// Clear the identity on sign-out so the next user starts anonymous.
   static Future<void> reset() async {
+    final prev = _accountId;
     _accountId = null;
     accountKind = 'personal';
     _email = null;
     _phone = null;
+    if (prev != null && prev.isNotEmpty) {
+      try { await _sec.delete(key: _emailKey(prev)); } catch (_) {}
+    }
     if (!_ready) return;
     try {
       await Posthog().reset();
