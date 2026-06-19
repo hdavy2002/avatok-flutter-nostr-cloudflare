@@ -21,11 +21,15 @@ import { type MessageScope, scopeAudience } from "../lib/ava_kinds";
 
 const SYNC_LIMIT = 500;
 
+const DAY_MS = 86_400_000;
+
 export class InboxDO {
   private state: DurableObjectState;
   private sql: SqlStorage;
-  constructor(state: DurableObjectState, _env: Env) {
+  private env: Env;
+  constructor(state: DurableObjectState, env: Env) {
     this.state = state;
+    this.env = env;
     this.sql = state.storage.sql;
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS messages (
@@ -79,6 +83,51 @@ export class InboxDO {
     // (= thread-scoped). New `messages` tables created after this code ships
     // still need the column, so we ALTER unconditionally inside the try.
     try { this.sql.exec(`ALTER TABLE messages ADD COLUMN audience TEXT`); } catch { /* already present */ }
+    // Server-stamped insert time (ms) — used for retention pruning. created_at is
+    // client-supplied and unit-ambiguous (seconds vs ms across legacy rows), so we
+    // never prune on it directly. stored_at is always server-ms.
+    try { this.sql.exec(`ALTER TABLE messages ADD COLUMN stored_at INTEGER`); } catch { /* already present */ }
+    // Retention: turn the per-user inbox into a RELAY + offline buffer instead of a
+    // permanent archive (the device keeps history locally + in Drive/R2 backup).
+    // Controlled by INBOX_RETENTION_DAYS — UNSET/0 = disabled (keep forever, current
+    // behavior). When enabled, a daily alarm prunes aged-out messages. We set the
+    // alarm once on construction (only if none pending) so enabling the env var and
+    // redeploying starts pruning without per-request cost.
+    if (this.retentionMs() > 0) {
+      this.state.blockConcurrencyWhile(async () => {
+        if ((await this.state.storage.getAlarm()) == null) {
+          await this.state.storage.setAlarm(Date.now() + DAY_MS);
+        }
+      });
+    }
+  }
+
+  /** Retention window in ms (0 = disabled). */
+  private retentionMs(): number {
+    const days = Number(this.env.INBOX_RETENTION_DAYS || 0);
+    return Number.isFinite(days) && days > 0 ? days * DAY_MS : 0;
+  }
+
+  /** Delete aged-out messages. Unit-safe: prune on server stored_at, plus legacy
+   *  ms-scale created_at rows; never touch seconds-scale rows. No-op if disabled. */
+  private prune(): void {
+    const ms = this.retentionMs();
+    if (ms <= 0) return;
+    const cutoff = Date.now() - ms;
+    this.sql.exec(
+      `DELETE FROM messages
+         WHERE (stored_at IS NOT NULL AND stored_at < ?1)
+            OR (stored_at IS NULL AND created_at > 1000000000000 AND created_at < ?1)`,
+      cutoff,
+    );
+  }
+
+  /** Daily retention alarm — prune + reschedule while retention is enabled. */
+  async alarm(): Promise<void> {
+    this.prune();
+    if (this.retentionMs() > 0) {
+      await this.state.storage.setAlarm(Date.now() + DAY_MS);
+    }
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -137,9 +186,9 @@ export class InboxDO {
     const created = b.created_at || Date.now();
     const audience = scopeAudience(b.scope); // null = thread-scoped (default)
     const row = this.sql.exec(
-      `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id ?? null, created, audience,
+      `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id ?? null, created, audience, Date.now(),
     ).one();
     const id = Number(row.id);
     const incoming = b.sender !== b.owner;

@@ -169,6 +169,12 @@ export interface Env {
   AI_GATEWAY_TOKEN?: string;   // cf-aig-authorization (authed gateway) — secret
   CF_ACCOUNT_ID?: string;      // for the gateway.ai.cloudflare.com base URL
 
+  // InboxDO retention (cost control). Days to keep messages in the per-user inbox
+  // DO before pruning (the device keeps history locally + in Drive/R2 backup, so
+  // the DO is a relay + offline buffer, not a permanent archive). UNSET/0 =
+  // disabled (keep forever). Enable (e.g. "90") ONLY after confirming backups run.
+  INBOX_RETENTION_DAYS?: string;
+
   // Live voice translation (Gemini 3.5 Live Translate). Unset → /api/translate/*
   // returns 503. The key never leaves the Worker — clients get ephemeral tokens.
   // Also powers the AvaAffiliate v2 marketing-asset kit (Nano Banana 2 images).
