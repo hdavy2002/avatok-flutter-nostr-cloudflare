@@ -2003,10 +2003,16 @@
   @keyframes heroin{from{transform:translateY(16px)}to{transform:none}}
   @keyframes hue{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
 
+  /* IMPORTANT: the page's runtime re-serialises every inline style via the
+     CSSOM, so on the LIVE DOM colons gain a trailing space
+     ("position: absolute", "padding: 46px", "repeat(4, 1fr)") and the
+     `animation` shorthand is expanded with the keyframe name LAST
+     ("animation: 6s ... running floaty2"). So we match the keyframe name on
+     its own (floaty / wobble) and include both spaced + unspaced variants of
+     every value selector. Verified against the live DOM. */
+
   /* ===== TABLET / iPad (<=1024px) ===== */
   @media (max-width:1024px){
-    /* NB: inline styles have no space after the comma (repeat(4,1fr)),
-       so match both spaced + unspaced variants. */
     [style*="repeat(4, 1fr)"],[style*="repeat(4,1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
     [style*="repeat(3, 1fr)"],[style*="repeat(3,1fr)"]{grid-template-columns:repeat(2,1fr) !important;}
     [style*="repeat(6, 1fr)"],[style*="repeat(6,1fr)"]{grid-template-columns:repeat(3,1fr) !important;}
@@ -2014,13 +2020,13 @@
     [style*="1fr 340px"]{grid-template-columns:1fr !important;}
     [style*="1fr 360px"]{grid-template-columns:1fr !important;}
   }
-  /* hide decorative floating stickers once layout gets narrow.
-     These are the absolute, animated badges (floaty/wobble) only — avatar
-     eyes, the headline underline and the safety map pin are NOT animated and
-     stay put. */
+  /* hide the decorative floating + animated badges once layout gets narrow.
+     Only absolute elements that carry the floaty/wobble keyframe are hit —
+     avatar eyes, the headline underline and the safety map pin are NOT
+     animated and stay put. */
   @media (max-width:900px){
-    [style*="position:absolute"][style*="animation:floaty"],
-    [style*="position:absolute"][style*="animation:wobble"]{display:none !important;}
+    [style*="position: absolute"][style*="floaty"],[style*="position:absolute"][style*="floaty"],
+    [style*="position: absolute"][style*="wobble"],[style*="position:absolute"][style*="wobble"]{display:none !important;}
   }
   /* ===== PHONE (<=680px) ===== */
   @media (max-width:680px){
@@ -2029,23 +2035,29 @@
     nav{padding:12px 16px !important;}
     [data-navlink]{display:none !important;}
     /* tame the oversized desktop paddings */
-    [style*="padding:46px"]{padding:24px !important;}
-    [style*="padding:48px"]{padding:24px !important;}
-    [style*="padding:56px 40px"]{padding:30px 20px !important;}
-    [style*="padding:34px"]{padding:24px !important;}
-    [style*="padding:38px"]{padding:24px !important;}
-    [data-hero]{padding-left:18px !important;padding-right:18px !important;}
-    /* fixed-width mock cards become fluid and centered */
-    [style*="width:340px"],[style*="width:360px"],
-    [style*="width:300px"],[style*="width:280px"]{width:100% !important;max-width:100% !important;}
-    [style*="justify-self:center"]{justify-self:center !important;margin-left:auto !important;margin-right:auto !important;}
-    /* stop the bob/float motion on anything still on screen */
-    [style*="animation:floaty"],[style*="animation:bobble"]{animation:none !important;}
-    /* belt + braces: hide ALL decorative floating badges on phones */
-    [style*="position:absolute"][style*="animation:floaty"],
-    [style*="position:absolute"][style*="animation:wobble"]{display:none !important;}
-    /* hide the floating slide control (heroes auto-play; inline dots remain) */
-    [style*="position:fixed"][style*="bottom:18px"]{display:none !important;}
+    [style*="padding: 46px"],[style*="padding:46px"],
+    [style*="padding: 48px"],[style*="padding:48px"]{padding:24px !important;}
+    [style*="padding: 56px 40px"],[style*="padding:56px 40px"]{padding:30px 18px !important;}
+    [style*="padding: 34px"],[style*="padding:34px"],
+    [style*="padding: 38px"],[style*="padding:38px"]{padding:22px !important;}
+    [data-hero]{padding-left:16px !important;padding-right:16px !important;}
+    /* fixed-width mock cards become fluid and centred */
+    [style*="width: 300px"],[style*="width:300px"],
+    [style*="width: 340px"],[style*="width:340px"],
+    [style*="width: 360px"],[style*="width:360px"],
+    [style*="width: 280px"],[style*="width:280px"]{width:100% !important;max-width:100% !important;}
+    [style*="justify-self: center"],[style*="justify-self:center"]{justify-self:center !important;margin-left:auto !important;margin-right:auto !important;}
+    /* centre the wrapping chip / button rows */
+    [style*="flex-wrap: wrap"],[style*="flex-wrap:wrap"]{justify-content:center !important;}
+    /* kill ALL looping motion on phones (floaty, wobble, bobble, marquee…) */
+    [style*="infinite"]{animation:none !important;}
+    /* hide every decorative floating badge */
+    [style*="position: absolute"][style*="floaty"],[style*="position:absolute"][style*="floaty"],
+    [style*="position: absolute"][style*="wobble"],[style*="position:absolute"][style*="wobble"]{display:none !important;}
+    /* hide the floating Slide A/B/C control (heroes auto-play; inline dots remain) */
+    [style*="position: fixed"][style*="bottom: 18px"],[style*="position:fixed"][style*="bottom:18px"]{display:none !important;}
+    /* never let the code sample overflow the screen */
+    pre{white-space:pre-wrap !important;word-break:break-word !important;overflow-x:auto !important;}
   }
 </style>
 </helmet>
