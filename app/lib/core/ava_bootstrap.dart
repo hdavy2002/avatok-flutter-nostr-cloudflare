@@ -18,6 +18,7 @@ import '../features/settings/sections/delegate_section.dart';
 import '../features/settings/sections/focus_section.dart';
 import '../features/settings/sections/guardian_section.dart';
 import '../features/settings/sections/receptionist_section.dart';
+import '../features/settings/sections/ringtone_section.dart';
 import '../features/settings/sections/tools_section.dart';
 import '../features/settings/sections/voice_section.dart';
 import '../features/ava_generative/image_tool.dart';
@@ -63,6 +64,10 @@ class AvaBootstrap {
     // "Leave Instructions for Ava" box. First real AvaVoice deployment.
     // Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.
     registerReceptionistSection();
+    // AI Ringback Tones — free "Ringback tone" settings section: generate tones
+    // with MiniMax Music 2.6, keep up to 5, set the default callers hear, delete.
+    // Spec: Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md.
+    registerRingtoneSection();
     // Phase 10: "Backup & sync" settings section — free Google Drive backup +
     // premium R2 cross-device sync (R2 wrapped in PaidFeature). The on-device
     // SQLite is the source of truth and is client-side encrypted before any
