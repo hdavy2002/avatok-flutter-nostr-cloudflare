@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
@@ -116,6 +117,10 @@ class _CallScreenState extends State<CallScreen> {
       if (RemoteConfig.ringbackEnabled) {
         // ignore: unawaited_futures
         _ringback.playRingback(widget.ringbackUrl);
+        Analytics.capture('ringback_played', {
+          'source': widget.ringbackUrl.isEmpty ? 'default' : 'custom',
+          'video': widget.video,
+        });
       }
     }
     // Server-relayed call status (declined / busy) for this call.
@@ -145,6 +150,7 @@ class _CallScreenState extends State<CallScreen> {
     if (busy) {
       // ignore: unawaited_futures
       _ringback.playBusyTone();
+      Analytics.capture('busy_tone_played', const {});
     }
 
     // Release mic/cam IMMEDIATELY on every end path (remote hangup, decline,
