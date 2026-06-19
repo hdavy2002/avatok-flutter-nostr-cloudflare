@@ -314,6 +314,15 @@ def patch_signing() -> None:
         if "avatok-debug.keystore" in t:
             print("signing: already pinned"); return
         block = (
+            # Side-load test APK lane: skip the release lint-vital check. AGP runs
+            # lintVitalRelease as part of a release build by default; on this app it
+            # crashes the lint Kotlin resolver on a plugin's Badge.kt (an internal
+            # lint bug) and is irrelevant for a sideload test build. Disable it so
+            # the APK lane is deterministic. The Play .aab lane is the real gate.
+            '    lint {\n'
+            '        checkReleaseBuilds = false\n'
+            '        abortOnError = false\n'
+            '    }\n'
             '    signingConfigs {\n'
             '        getByName("debug") {\n'
             '            storeFile = file("avatok-debug.keystore")\n'
@@ -342,7 +351,14 @@ def patch_signing() -> None:
         # set; otherwise keep the existing debug-key fallback so APK builds work.
         t2 = re.sub(
             r'release\s*\{\s*\n(?:\s*//[^\n]*\n)*\s*signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
-            'release {\n            signingConfig = if (System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH").isNullOrEmpty()) signingConfigs.getByName("debug") else signingConfigs.getByName("release")',
+            'release {\n'
+            '            // Side-load test APK: no R8 minify/shrink. R8 on this app\n'
+            '            // (WebRTC/LiveKit native libs) is a heavy memory consumer that\n'
+            '            // OOMs the CI runner; the test APK does not need shrinking. The\n'
+            '            // Play .aab lane re-enables it.\n'
+            '            isMinifyEnabled = false\n'
+            '            isShrinkResources = false\n'
+            '            signingConfig = if (System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH").isNullOrEmpty()) signingConfigs.getByName("debug") else signingConfigs.getByName("release")',
             t2, count=1)
         kts.write_text(t2)
         print("signing: pinned debug keystore + env-var release keystore (build.gradle.kts)")
