@@ -82,6 +82,38 @@ async function ensureAuthConfig(env: Env, slug: string): Promise<string> {
   return id;
 }
 
+// List Composio toolkits (the AvaApps catalog) with logos, for the icon grid.
+// Best-effort; returns [] if Composio is unreachable. Defensive field parsing.
+export async function listToolkits(
+  env: Env, search?: string, limit = 300,
+): Promise<Array<{ slug: string; name: string; logo: string; categories: string[] }>> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  if (search && search.trim()) qs.set("search", search.trim());
+  let j: any;
+  try { j = await cfetch(env, `/toolkits?${qs.toString()}`); } catch { return []; }
+  const items: any[] = j.items ?? j.data ?? [];
+  return items.map((t: any) => ({
+    slug: String(t.slug ?? t.key ?? "").toLowerCase(),
+    name: String(t.name ?? t.slug ?? ""),
+    logo: String(t.meta?.logo ?? t.logo ?? t.meta?.logo_url ?? ""),
+    categories: Array.isArray(t.meta?.categories)
+      ? t.meta.categories.map((c: any) => String(c?.name ?? c)) : [],
+  })).filter((t) => t.slug);
+}
+
+// Disconnect (delete) the user's connected account(s) for one toolkit slug.
+export async function disconnectToolkit(env: Env, userId: string, slug: string): Promise<number> {
+  const j = await cfetch(env, `/connected_accounts?user_ids=${encodeURIComponent(userId)}&limit=50`);
+  let n = 0;
+  for (const it of (j.items ?? [])) {
+    const s = String(it?.toolkit?.slug ?? it?.toolkit_slug ?? "").toLowerCase();
+    if (s !== slug.toLowerCase() || !it?.id) continue;
+    try { await cfetch(env, `/connected_accounts/${it.id}`, { method: "DELETE" }); n++; } catch { /* best-effort */ }
+  }
+  return n;
+}
+
 // Toolkit slugs the user already has an ACTIVE connection for.
 export async function connectedToolkits(env: Env, userId: string): Promise<string[]> {
   const j = await cfetch(env, `/connected_accounts?user_ids=${encodeURIComponent(userId)}&statuses=ACTIVE&limit=50`);
@@ -171,7 +203,11 @@ function textOf(parts: any[]): string {
     .map((p: any) => p.text).join("").trim();
 }
 
-export async function runAppsToolLoop(env: Env, geminiKey: string, userId: string, query: string, context?: string): Promise<string> {
+export async function runAppsToolLoop(env: Env, userId: string, query: string, context?: string, keyOverride?: string): Promise<string> {
+  // Premium runs on OUR Google key (BYOK removed). keyOverride kept for callers
+  // that still hold a key (none in the two-mode model) — falls back to our key.
+  const geminiKey = (keyOverride && keyOverride.trim()) ? keyOverride.trim() : (env.GEMINI_API_KEY ?? "");
+  if (!geminiKey) return "Ava apps are temporarily unavailable.";
   const toolkits = await connectedToolkits(env, userId);
   if (toolkits.length === 0) return "No apps are connected yet. Open AvaApps and tap Connect to link Gmail, Docs, Drive, and more.";
   const decls = await geminiTools(env, toolkits);

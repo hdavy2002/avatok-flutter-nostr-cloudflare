@@ -65,7 +65,9 @@ class AvaApi {
   /// AvaApps (PREMIUM) — operate the user's Google apps via Composio, driven by
   /// the user's own Gemini key. connect → OAuth URLs; status → connected apps;
   /// run → natural-language action.
+  static const String appsCatalog = '/api/ava/apps/catalog';
   static const String appsConnect = '/api/ava/apps/connect';
+  static const String appsDisconnect = '/api/ava/apps/disconnect';
   static const String appsStatus = '/api/ava/apps/status';
   static const String appsRun = '/api/ava/apps/run';
 

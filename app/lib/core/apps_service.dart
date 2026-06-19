@@ -60,25 +60,76 @@ class AppsService {
     }
   }
 
-  /// Start OAuth for any not-yet-connected Google app; returns slug → OAuth URL.
-  Future<Map<String, String>> connect() async {
-    final res = await ApiAuth.postJsonH(_url(AvaApi.appsConnect), const {}, await _keyHeader(),
-        timeout: const Duration(seconds: 30));
-    final j = jsonDecode(res.body) as Map<String, dynamic>;
-    final urls = <String, String>{};
-    final raw = j['oauthUrls'];
-    if (raw is Map) raw.forEach((k, v) => urls[k.toString()] = v.toString());
-    return urls;
+  /// The full Composio app catalog (slug, name, logo), optionally filtered.
+  Future<List<AvaCatalogApp>> catalog({String? search}) async {
+    try {
+      final path = (search == null || search.isEmpty)
+          ? AvaApi.appsCatalog
+          : '${AvaApi.appsCatalog}?search=${Uri.encodeQueryComponent(search)}';
+      final res = await ApiAuth.getSigned(_url(path), timeout: const Duration(seconds: 25));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final apps = (j['apps'] as List?) ?? const [];
+      return apps
+          .map((e) => AvaCatalogApp(
+                (e['slug'] ?? '').toString(),
+                (e['name'] ?? '').toString(),
+                (e['logo'] ?? '').toString(),
+              ))
+          .where((a) => a.slug.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
-  /// Run a natural-language action across the connected apps. Returns Ava's reply.
+  /// Connect ONE app (premium). Returns the OAuth URL to open, or '' on
+  /// 'premium_required' (caller shows the top-up).
+  Future<AppsActionResult> connectSlug(String slug) async {
+    final res = await ApiAuth.postJsonH(_url(AvaApi.appsConnect), {'slug': slug}, const {},
+        timeout: const Duration(seconds: 30));
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    if (j['reason'] == 'premium_required') return const AppsActionResult.premium();
+    final raw = j['oauthUrls'];
+    String url = '';
+    if (raw is Map && raw.isNotEmpty) url = raw.values.first.toString();
+    return AppsActionResult(url: url);
+  }
+
+  /// Disconnect one app (premium).
+  Future<AppsActionResult> disconnect(String slug) async {
+    final res = await ApiAuth.postJsonH(_url(AvaApi.appsDisconnect), {'slug': slug}, const {},
+        timeout: const Duration(seconds: 30));
+    final j = jsonDecode(res.body) as Map<String, dynamic>;
+    if (j['reason'] == 'premium_required') return const AppsActionResult.premium();
+    return AppsActionResult(removed: (j['removed'] as num?)?.toInt() ?? 0);
+  }
+
+  /// Run a natural-language action across the connected apps (premium). Returns Ava's reply.
   Future<String> run(String query) async {
-    final headers = await _keyHeader();
-    if (headers.isEmpty) return 'Connect Google AI Studio in Settings first.';
-    final res = await ApiAuth.postJsonH(_url(AvaApi.appsRun), {'query': query}, headers,
+    final res = await ApiAuth.postJsonH(_url(AvaApi.appsRun), {'query': query}, const {},
         timeout: const Duration(seconds: 90));
     final j = jsonDecode(res.body) as Map<String, dynamic>;
+    if (j['reason'] == 'premium_required') {
+      return (j['message'] ?? 'Top up to use AvaApps.').toString();
+    }
     if (j['answer'] != null) return j['answer'].toString();
     return (j['error'] ?? 'Something went wrong running that.').toString();
   }
+}
+
+/// One app in the Composio catalog grid.
+class AvaCatalogApp {
+  final String slug;
+  final String name;
+  final String logo;
+  const AvaCatalogApp(this.slug, this.name, this.logo);
+}
+
+/// Result of a connect/disconnect attempt.
+class AppsActionResult {
+  final String url;     // OAuth URL to open (connect)
+  final int removed;    // count removed (disconnect)
+  final bool premium;   // true → free user, show top-up
+  const AppsActionResult({this.url = '', this.removed = 0}) : premium = false;
+  const AppsActionResult.premium() : url = '', removed = 0, premium = true;
 }

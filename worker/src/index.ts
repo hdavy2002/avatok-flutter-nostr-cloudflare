@@ -80,7 +80,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 // Specs/ava-build/INTEGRATION-NOTES.md.
 import { avaGemini } from "./routes/ava_gemini";        // P2
 import { avaRagIngest, avaRagStore, avaRagSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
-import { avaAppsConnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Composio)
+import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Composio)
 import { driveStatus, driveListRoute, driveUploadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
 import { avaChatHistorySave, avaChatHistoryGet } from "./routes/ava_chat_history"; // AvaChat history (D1)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
@@ -197,7 +197,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/rag/ingest" && req.method === "POST") return await avaRagIngest(req, env);   // RAG
       if (p === "/api/ava/rag/store" && req.method === "GET") return await avaRagStore(req, env);      // RAG
       if (p === "/api/ava/rag/search" && req.method === "POST") return await avaRagSearch(req, env);   // RAG
+      if (p === "/api/ava/apps/catalog" && req.method === "GET") return await avaAppsCatalog(req, env);  // AvaApps
       if (p === "/api/ava/apps/connect" && req.method === "POST") return await avaAppsConnect(req, env); // AvaApps
+      if (p === "/api/ava/apps/disconnect" && req.method === "POST") return await avaAppsDisconnect(req, env); // AvaApps
       if (p === "/api/ava/apps/status" && req.method === "GET") return await avaAppsStatus(req, env);    // AvaApps
       if (p === "/api/ava/apps/run" && req.method === "POST") return await avaAppsRun(req, env);         // AvaApps
       // AvaTOK own-file storage in the user's Google Drive (connect reuses the

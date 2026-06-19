@@ -355,7 +355,7 @@ export class AvaAgentDO {
       if (byoKey && this.env.COMPOSIO_API_KEY && this.looksLikeApps(userText)) {
         try {
           const ctx = window.map((w) => `${w.mine ? "User" : "Other"}: ${w.text}`).join("\n");
-          const answer = await runAppsToolLoop(this.env, byoKey, uid, userText, ctx);
+          const answer = await runAppsToolLoop(this.env, uid, userText, ctx, byoKey);
           if (answer && answer.trim()) {
             await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
             await this.postAva({ conv, uid, text: answer, private: priv, source: "apps" });
