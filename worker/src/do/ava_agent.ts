@@ -34,6 +34,8 @@ import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
 import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
 import { runAppsToolLoop } from "../lib/composio"; // AvaApps (premium) — Composio tools
+import { trackUser } from "../hooks"; // PostHog telemetry (email-stamped)
+import { emailFor } from "../lib/identity"; // uid → email (KV-cached) for telemetry
 
 // our-keys (no BYO key): Gemini 2.5 Flash-Lite as a Workers-AI THIRD-PARTY model
 // ({author}/{model} id), invoked through env.AI.run so it still flows via our CF
@@ -281,7 +283,8 @@ export class AvaAgentDO {
   // no thinking by default, and extractText drops any stray "thought" parts, so
   // raw reasoning never reaches the chat. Falls back to Workers-AI Gemma if the
   // partner model is unavailable. Both outputs pass stripReasoning as a backstop.
-  private async generateOurKeys(uid: string, sys: string, user: string): Promise<string> {
+  private async generateOurKeys(uid: string, email: string | null, sys: string, user: string): Promise<string> {
+    let fellBackReason = "";
     try {
       const out: any = await this.env.AI.run(
         OURKEYS_CHAT_MODEL,
@@ -294,7 +297,14 @@ export class AvaAgentDO {
       );
       const t = stripReasoning(this.extractText(out));
       if (t) return t;
-    } catch (_) { /* partner model unavailable → fall back to Gemma below */ }
+      fellBackReason = "empty";
+    } catch (e: any) {
+      fellBackReason = String(e?.message ?? e).slice(0, 160);
+    }
+    // Canary: a degraded/disabled Google provider on the AI Gateway shows up here.
+    trackUser(this.env, uid, email, "ava_model_fallback", "avaai", {
+      route: "thread", from: OURKEYS_CHAT_MODEL, to: REASONER, reason: fellBackReason,
+    });
     return this.generateWorkersAI(sys, user);
   }
 
@@ -379,6 +389,13 @@ export class AvaAgentDO {
     if (!conv || !uid || !userText) return { ok: false, error: "conv, uid, text required" };
 
     const statusId = crypto.randomUUID();
+    const t0 = Date.now();
+    // Email (telemetry only) — KV-cached, resolved off the hot path; never blocks.
+    const email = await emailFor(this.env, uid);
+    const convKind = conv.startsWith("g_") ? "group" : "dm"; // never log the raw conv id
+    trackUser(this.env, uid, email, "ava_thread_turn", "avaai", {
+      conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
+    });
     // 1. Show the "working…" chip immediately (transient broadcast where possible,
     //    persisted fallback so the FROZEN chat_thread.dart always renders it).
     await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "start");
@@ -401,6 +418,9 @@ export class AvaAgentDO {
           if (answer && answer.trim()) {
             await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
             await this.postAva({ conv, uid, text: answer, private: priv, source: "apps" });
+            trackUser(this.env, uid, email, "ava_thread_apps_used", "avaai", {
+              conv_kind: convKind, answer_len: answer.length, latency_ms: Date.now() - t0,
+            });
             return { ok: true, status_id: statusId };
           }
         } catch (e) { /* fall through to normal chat generation */ }
@@ -427,19 +447,33 @@ export class AvaAgentDO {
             return this.generateGemini(
               byoKey, wantSearch ? BYO_SEARCH_MODEL : BYO_CHAT_MODEL, sys, user, wantSearch);
           }
-          return this.generateOurKeys(uid, sys, user);
+          return this.generateOurKeys(uid, email, sys, user);
         },
       });
+
+      if (gated.blocked) {
+        trackUser(this.env, uid, email, "ava_thread_blocked", "avaai", {
+          conv_kind: convKind, tier, reason: gated.reason, latency_ms: Date.now() - t0,
+          ...(gated.remaining != null ? { remaining: gated.remaining } : {}),
+        });
+      }
       let answer = gated.answer;
       if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
 
       // 4. Clear the chip + post the answer into the SAME conversation.
       await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
       await this.postAva({ conv, uid, text: answer, private: priv, source: "chat" });
+      trackUser(this.env, uid, email, "ava_thread_completed", "avaai", {
+        conv_kind: convKind, tier, want_search: wantSearch, want_rag: wantRag,
+        blocked: !!gated.blocked, answer_len: answer.length, latency_ms: Date.now() - t0,
+      });
       return { ok: true, status_id: statusId };
     } catch (e: any) {
       await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
       await this.postAva({ conv, uid, text: "Something went wrong on my side. Please try again.", private: priv, source: "chat" });
+      trackUser(this.env, uid, email, "ava_thread_error", "avaai", {
+        conv_kind: convKind, detail: String(e?.message ?? e).slice(0, 200), latency_ms: Date.now() - t0,
+      });
       return { ok: false, error: String(e?.message ?? e) };
     }
   }

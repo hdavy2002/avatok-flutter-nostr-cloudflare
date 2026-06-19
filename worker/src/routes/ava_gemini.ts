@@ -18,7 +18,8 @@ import { json, aiText } from "../util";
 import { requireUser, isFail } from "../authz";
 import { runGated, intentGate, aiRunOpts } from "../lib/ai_gate";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
-import { track } from "../hooks";
+import { trackUser } from "../hooks";
+import { emailFor } from "../lib/identity";
 
 // Ava chat text model: Gemini 2.5 Flash-Lite as a Workers-AI THIRD-PARTY model
 // ({author}/{model} id), called through env.AI.run so it still flows via our CF
@@ -135,9 +136,10 @@ async function retrieveMemory(env: Env, uid: string, query: string): Promise<str
   } catch { return ""; }
 }
 
-async function generate(env: Env, uid: string, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
+async function generate(env: Env, uid: string, email: string | null, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
   // Primary: Gemini 2.5 Flash-Lite (third-party model) through the AI Gateway.
+  let fellBackReason = "";
   try {
     const out: any = await env.AI.run(
       CHAT_MODEL,
@@ -150,8 +152,16 @@ async function generate(env: Env, uid: string, system: string, history: Turn[], 
     );
     const t = stripReasoning(extractGeminiText(out));
     if (t) return t;
-  } catch (_) { /* partner model unavailable → fall back to Workers-AI Gemma */ }
-  // Fallback: Workers-AI Gemma 4 (OpenAI-style messages).
+    fellBackReason = "empty"; // partner returned nothing usable
+  } catch (e: any) {
+    fellBackReason = String(e?.message ?? e).slice(0, 160);
+  }
+  // Fallback: Workers-AI Gemma 4 (OpenAI-style messages). Emit a telemetry event
+  // so a degraded/disabled Google provider on the AI Gateway is visible per user
+  // (this is the canary for "is gemini-2.5-flash-lite actually serving?").
+  trackUser(env, uid, email, "ava_model_fallback", "avaai", {
+    route: "chat", from: CHAT_MODEL, to: FALLBACK_MODEL, reason: fellBackReason,
+  });
   const out: any = await env.AI.run(
     FALLBACK_MODEL,
     { messages: buildMessages(sys, history, message, images), max_tokens: MAX_TOKENS } as any,
@@ -172,12 +182,25 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const context = String(b.context ?? "").trim();
   const history = normHistory(b.history);
   const images = normImages(b.images);
+  const t0 = Date.now();
 
+  // Resolve the email (for telemetry) in parallel with the premium check so it
+  // never adds latency to the turn. emailFor is KV-cached → ~free after the first.
+  const [email, premiumRes] = await Promise.all([
+    emailFor(env, ctx.uid),
+    isPremiumAI(req, env, ctx.uid, b),
+  ]);
   // Premium status (BYO key OR topped-up). Used to gate attachments + uncap chat.
-  const { premium, via } = await isPremiumAI(req, env, ctx.uid, b);
+  const { premium, via } = premiumRes;
+
+  trackUser(env, ctx.uid, email, "ava_chat_request", "avaai", {
+    msg_len: message.length, history_len: history.length, images: images.length,
+    has_context: !!context, premium, premium_via: via,
+  });
 
   // Attachments = file/image understanding = a premium AI tool. Free users get the upsell.
   if (images.length && !premium) {
+    trackUser(env, ctx.uid, email, "ava_chat_upsell", "avaai", { feature: "file_understanding", images: images.length });
     return premiumUpsell(env, ctx.uid, "file_understanding");
   }
 
@@ -189,7 +212,7 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     const mem = await retrieveMemory(env, ctx.uid, message);
     if (mem) {
       system += `\n\nRelevant notes from the user's saved memory (use only if helpful, never quote verbatim):\n"""${mem}"""`;
-      track(env, ctx.uid, "ava_memory_used", "avaai", {});
+      trackUser(env, ctx.uid, email, "ava_memory_used", "avaai", {});
     }
   }
 
@@ -197,20 +220,33 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   try {
     result = await runGated(env, {
       uid: ctx.uid, tier: "ourkeys", userText: message,
-      generate: (steer?: string) => generate(env, ctx.uid, system, history, message, images, steer),
+      generate: (steer?: string) => generate(env, ctx.uid, email, system, history, message, images, steer),
       // Premium users (key or top-up) are uncapped; free users keep the daily cap.
       skipQuota: premium,
     });
   } catch (e: any) {
-    track(env, ctx.uid, "ai_error", "avaai", { route: "chat", detail: String(e?.message ?? e).slice(0, 200), premium_via: via });
+    trackUser(env, ctx.uid, email, "ai_error", "avaai", {
+      route: "chat", detail: String(e?.message ?? e).slice(0, 200),
+      premium, premium_via: via, latency_ms: Date.now() - t0, images: images.length,
+    });
     return json({ error: "ai upstream failed", detail: String(e?.message ?? e).slice(0, 300) }, 502);
   }
 
   if (result.blocked) {
-    if (result.reason === "daily_cap") track(env, ctx.uid, "free_chat_cap_hit", "avaai", {});
+    if (result.reason === "daily_cap") trackUser(env, ctx.uid, email, "free_chat_cap_hit", "avaai", {});
+    trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
+      route: "chat", reason: result.reason, premium, latency_ms: Date.now() - t0,
+      ...(result.remaining != null ? { remaining: result.remaining } : {}),
+    });
     return json({ answer: result.answer, blocked: true, reason: result.reason, ...(result.remaining != null ? { remaining: result.remaining } : {}) },
       result.reason === "ai_disabled" ? 503 : 200);
   }
 
+  trackUser(env, ctx.uid, email, "ava_chat_completed", "avaai", {
+    route: "chat", tier: premium ? "premium" : "free", premium, premium_via: via,
+    answer_len: (result.answer ?? "").length, images: images.length,
+    latency_ms: Date.now() - t0,
+    ...(result.remaining != null ? { remaining: result.remaining } : {}),
+  });
   return json({ answer: result.answer, blocked: false, tier: premium ? "premium" : "free", premium, ...(result.remaining != null ? { remaining: result.remaining } : {}) });
 }

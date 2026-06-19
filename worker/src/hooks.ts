@@ -38,6 +38,27 @@ export function track(
   } catch { /* best-effort */ }
 }
 
+/**
+ * Like [track], but stamps the user's raw [email] onto the event so support can
+ * filter/pull events (especially errors) by email in PostHog. Email is added
+ * both as a plain event property (`email`) AND as a `$set` person property, so
+ * the PostHog person profile for this uid is populated server-side even if the
+ * client never identified. Pass `email = null` to fall back to plain [track].
+ */
+export function trackUser(
+  env: Env,
+  uid: string,
+  email: string | null | undefined,
+  event: string,
+  app_name: string,
+  props: Record<string, unknown> = {},
+  trace_id?: string,
+): void {
+  if (!email) { track(env, uid, event, app_name, props, trace_id); return; }
+  const prevSet = (props.$set as Record<string, unknown> | undefined) ?? {};
+  track(env, uid, event, app_name, { ...props, email, $set: { ...prevSet, email } }, trace_id);
+}
+
 /** Operational metric (Analytics Engine). */
 export function metric(env: Env, name: string, doubles: number[], blobs: string[] = []): void {
   try { env.ANALYTICS?.writeDataPoint({ blobs: [name, ...blobs].slice(0, 20), doubles: doubles.slice(0, 20), indexes: [name.slice(0, 32)] }); } catch { /* best-effort */ }
