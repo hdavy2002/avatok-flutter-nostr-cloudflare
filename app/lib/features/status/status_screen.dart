@@ -16,6 +16,7 @@ import '../../identity/nostr_keys.dart';
 import '../../sync/legacy_stubs.dart';
 import '../avatok/contacts.dart';
 import '../avatok/media.dart';
+import '../avatok/video_player_screen.dart';
 
 /// Status / Stories — ephemeral 24h posts, fan-out gift-wrapped to your contacts.
 class StatusScreen extends StatefulWidget {
@@ -61,32 +62,8 @@ class _StatusScreenState extends State<StatusScreen> {
     if (mounted) setState(() => _posts = list);
   }
 
-  Future<void> _addText() async {
-    final ctrl = TextEditingController();
-    final text = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Zine.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Zine.r), side: const BorderSide(color: Zine.ink, width: Zine.bw)),
-        title: Text('Text status', style: ZineText.cardTitle(size: 21)),
-        content: ZineField(controller: ctrl, autofocus: true, maxLines: 3, hint: "What's on your mind?"),
-        actions: [
-          ZineButton(label: 'Cancel', variant: ZineButtonVariant.ghost, fontSize: 15, onPressed: () => Navigator.pop(ctx)),
-          ZineButton(label: 'Post', fontSize: 15, onPressed: () => Navigator.pop(ctx, ctrl.text.trim())),
-        ],
-      ),
-    );
-    if (text == null || text.isEmpty) return;
-    final id = widget.identity;
-    final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    await _post(
-      {'t': 'status', 'kind': 'text', 'text': text, 'who': _myName},
-      StatusPost(id: 's$ts', authorPub: id?.pubHex ?? 'me', authorName: _myName, kind: 'text', text: text, ts: ts),
-    );
-  }
-
-  Future<void> _addImage() async {
-    final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+  Future<void> _addImage(ImageSource source) async {
+    final x = await ImagePicker().pickImage(source: source, imageQuality: 85);
     if (x == null) return;
     final bytes = await x.readAsBytes();
     final m = await MediaService.encryptAndUpload(bytes, kind: MediaKind.image, contentType: 'image/jpeg', name: x.name);
@@ -95,6 +72,20 @@ class _StatusScreenState extends State<StatusScreen> {
     await _post(
       {'t': 'status', 'kind': 'image', 'media': m.toEnvelope(), 'who': _myName},
       StatusPost(id: 's$ts', authorPub: id?.pubHex ?? 'me', authorName: _myName, kind: 'image', media: m.toEnvelope(), ts: ts),
+    );
+  }
+
+  /// Status videos are capped at 10 seconds (story-style clips).
+  Future<void> _addVideo(ImageSource source) async {
+    final x = await ImagePicker().pickVideo(source: source, maxDuration: const Duration(seconds: 10));
+    if (x == null) return;
+    final bytes = await x.readAsBytes();
+    final m = await MediaService.encryptAndUpload(bytes, kind: MediaKind.video, contentType: 'video/mp4', name: x.name);
+    final id = widget.identity;
+    final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await _post(
+      {'t': 'status', 'kind': 'video', 'media': m.toEnvelope(), 'who': _myName},
+      StatusPost(id: 's$ts', authorPub: id?.pubHex ?? 'me', authorName: _myName, kind: 'video', media: m.toEnvelope(), ts: ts),
     );
   }
 
@@ -109,14 +100,26 @@ class _StatusScreenState extends State<StatusScreen> {
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 12),
         ListTile(
-          leading: ZineIconBadge(icon: PhosphorIcons.textT(PhosphorIconsStyle.bold), color: Zine.blue, size: 40),
-          title: Text('Text status', style: ZineText.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); _addText(); },
+          leading: ZineIconBadge(icon: PhosphorIcons.camera(PhosphorIconsStyle.bold), color: Zine.blue, size: 40),
+          title: Text('Take photo', style: ZineText.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _addImage(ImageSource.camera); },
         ),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.image(PhosphorIconsStyle.bold), color: Zine.lilac, size: 40),
-          title: Text('Photo status', style: ZineText.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); _addImage(); },
+          title: Text('Photo from gallery', style: ZineText.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _addImage(ImageSource.gallery); },
+        ),
+        ListTile(
+          leading: ZineIconBadge(icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), color: Zine.mint, size: 40),
+          title: Text('Record video', style: ZineText.value(size: 15)),
+          subtitle: Text('Up to 10 seconds', style: ZineText.sub(size: 12.5)),
+          onTap: () { Navigator.pop(ctx); _addVideo(ImageSource.camera); },
+        ),
+        ListTile(
+          leading: ZineIconBadge(icon: PhosphorIcons.filmStrip(PhosphorIconsStyle.bold), color: Zine.coral, size: 40),
+          title: Text('Video from gallery', style: ZineText.value(size: 15)),
+          subtitle: Text('Trimmed to 10 seconds', style: ZineText.sub(size: 12.5)),
+          onTap: () { Navigator.pop(ctx); _addVideo(ImageSource.gallery); },
         ),
         const SizedBox(height: 8),
       ])),
@@ -124,6 +127,12 @@ class _StatusScreenState extends State<StatusScreen> {
   }
 
   void _view(StatusPost p) {
+    // Video statuses play full-screen in the shared player.
+    if (p.kind == 'video' && p.media != null) {
+      Navigator.push(context, MaterialPageRoute(
+          builder: (_) => VideoPlayerScreen(media: ChatMedia.fromEnvelope(p.media!))));
+      return;
+    }
     showDialog(context: context, builder: (_) => Dialog(
       backgroundColor: Zine.card,
       insetPadding: const EdgeInsets.all(14),
@@ -235,7 +244,7 @@ class _StatusScreenState extends State<StatusScreen> {
                   Text(p.authorName, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: ZineText.value(size: 14.5)),
                   const SizedBox(height: 3),
-                  Text(p.kind == 'image' ? '📷 Photo' : (p.text ?? ''),
+                  Text(p.kind == 'image' ? '📷 Photo' : p.kind == 'video' ? '🎬 Video' : (p.text ?? ''),
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
                 ])),
                 const SizedBox(width: 8),

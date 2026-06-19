@@ -13,7 +13,7 @@ import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
 import { deleteAccount, cancelDeletion } from "./routes/account";
-import { idSession, idResult, idStatus, idEmailStart, idEmailVerify, idPhoneConfirm } from "./routes/id";
+import { idSession, idResult, idStatus, idEmailStart, idEmailVerify, idPhoneConfirm, idPasswordStart, idPasswordSet } from "./routes/id";
 import { walletTopup, walletTopupIntent, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { liveStart, liveStop, liveJoin, liveRoom, liveDonate, liveMod, liveState } from "./routes/live";
@@ -85,7 +85,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 import { avaGemini } from "./routes/ava_gemini";        // P2
 import { avaRagIngest, avaRagStore, avaRagSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Composio)
-import { driveStatus, driveListRoute, driveUploadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
+import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, driveBackupUploadRoute, driveBackupDownloadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
 import { avaChatHistorySave, avaChatHistoryGet } from "./routes/ava_chat_history"; // AvaChat history (D1)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
 import { avaTools } from "./routes/ava_tools";          // P5
@@ -224,6 +224,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/drive/status" && req.method === "GET") return await driveStatus(req, env);
       if (p === "/api/ava/drive/list" && req.method === "GET") return await driveListRoute(req, env);
       if (p === "/api/ava/drive/upload" && req.method === "POST") return await driveUploadRoute(req, env);
+      if (p === "/api/ava/drive/backup/ensure" && req.method === "POST") return await driveBackupEnsureRoute(req, env);
+      if (p === "/api/ava/drive/backup/upload" && req.method === "POST") return await driveBackupUploadRoute(req, env);
+      if (p === "/api/ava/drive/backup/download" && req.method === "GET") return await driveBackupDownloadRoute(req, env);
       if (p === "/api/ava/chat/history" && req.method === "POST") return await avaChatHistorySave(req, env);
       if (p === "/api/ava/chat/history" && req.method === "GET") return await avaChatHistoryGet(req, env);
       if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
@@ -289,6 +292,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // Onboarding contact verification — phone (Firebase OTP) + email (server OTP).
       if (p === "/api/id/email/start" && req.method === "POST") return await idEmailStart(req, env);
       if (p === "/api/id/email/verify" && req.method === "POST") return await idEmailVerify(req, env);
+      if (p === "/api/id/password/start" && req.method === "POST") return await idPasswordStart(req, env);
+      if (p === "/api/id/password/set" && req.method === "POST") return await idPasswordSet(req, env);
       if (p === "/api/id/phone/confirm" && req.method === "POST") return await idPhoneConfirm(req, env);
       // L2 liveness — Workers AI provider (flag-gated; Rekognition stays default).
       if (p === "/api/id/liveness/start" && req.method === "POST") return await livenessStart(req, env);

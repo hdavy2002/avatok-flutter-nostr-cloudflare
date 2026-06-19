@@ -42,6 +42,8 @@ class AvaSidebar extends StatefulWidget {
 }
 
 class _AvaSidebarState extends State<AvaSidebar> {
+  // ACCOUNT & SETTINGS section collapses by default (owner decision 2026-06-19,
+  // revised) — the header is a bigger, tappable label that expands the group.
   bool _accountOpen = false;
   String _displayName = '';
   String _handle = '';
@@ -77,10 +79,13 @@ class _AvaSidebarState extends State<AvaSidebar> {
         final source = focus ? AppRegistry.focusMode : AppRegistry.standard;
         final apps = source
             .where((a) => a.id != 'explore' && a.id != 'verse')
-            // AvaLibrary + AvaApps render as featured tiles when focus is OFF, so
-            // drop them from the APPS list only then (no duplicate). In focus mode
-            // the featured tiles are hidden, so they appear in the APPS list.
-            .where((a) => focus || (a.id != 'avalibrary' && a.id != 'avaapps' && a.id != 'avachat'))
+            // Connectors, Wallet and View Storage now live in the ACCOUNT section
+            // in BOTH modes, so they never appear in the APPS list.
+            .where((a) => a.id != 'avaapps' && a.id != 'avawallet' && a.id != 'avastorage')
+            // AvaTOK, AvaChat and Library render as featured tiles when focus is OFF,
+            // so drop them from the APPS list only then (no duplicate). In focus mode
+            // the featured tiles are hidden, so they appear in the list.
+            .where((a) => focus || (a.id != 'avalibrary' && a.id != 'avachat' && a.id != 'avatok'))
             .toList();
         final body = SafeArea(child: _column(context, apps, focus));
         if (widget.permanent) {
@@ -173,39 +178,29 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Featured tiles — hidden in focus mode (those apps live outside
               // AvaTOK + account essentials). Shown normally when focus is OFF.
               if (!focus) ...[
-                // Two major apps: AvaChat (talk privately to Ava) + AvaTOK
-                // (message people). AvaExplore/AvaVerse hidden (owner 2026-06-17).
+                // Featured apps. AvaTOK first (message people), AvaChat directly
+                // below it (talk privately to Ava), then Library. Connectors moved
+                // to the ACCOUNT section (owner 2026-06-19). AvaExplore/AvaVerse
+                // hidden (owner 2026-06-17).
+                _special('avatok', 'AvaTOK', 'Messages & calls',
+                    PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue),
                 _special('avachat', 'AvaChat', 'Talk privately with Ava',
                     PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
-                _special('library', 'AvaLibrary', 'Saved media & files',
+                _special('library', 'Library', 'Saved media & files',
                     PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
-                _special('avaapps', 'AvaApps', 'Gmail, Docs, Drive & more',
-                    PhosphorIcons.squaresFour(PhosphorIconsStyle.bold), Zine.blue),
               ],
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),
-              Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
-                  child: Text('APPS', style: ZineText.kicker())),
-              for (final a in apps) _appRow(a),
-              const SizedBox(height: 6),
-              _plainRow(
-                icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
-                accent: Zine.lime,
-                title: 'Invite',
-                onTap: () { if (!widget.permanent) Navigator.pop(context); DeviceContactsService.shareGenericInvite(); },
-              ),
-              const SizedBox(height: 6),
-              _plainRow(
-                icon: PhosphorIcons.bug(PhosphorIconsStyle.bold),
-                accent: Zine.blue,
-                title: 'Diagnostics',
-                subtitle: 'App logs — copy & share',
-                onTap: () {
-                  if (!widget.permanent) Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
-                },
-              ),
+              // APPS section — hidden when empty (in the default non-focus menu all
+              // standard apps are featured tiles or live under ACCOUNT now).
+              if (apps.isNotEmpty) ...[
+                Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
+                    child: Text('APPS', style: ZineText.kicker())),
+                for (final a in apps) _appRow(a),
+              ],
+              // Invite friends + Diagnostics moved into the ACCOUNT section
+              // (owner 2026-06-19).
               _accountSection(),
             ]),
           ),
@@ -373,14 +368,20 @@ class _AvaSidebarState extends State<AvaSidebar> {
 
   Widget _accountSection() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _accountOpen = !_accountOpen),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(6, 16, 6, 8),
+      // "ACCOUNT & SETTINGS" — a bigger, tappable header that collapses the group
+      // (collapsed by default). Covers identity, money, storage, connectors,
+      // invites, diagnostics and app settings, so the label names all of that.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(6, 18, 6, 6),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _accountOpen = !_accountOpen),
           child: Row(children: [
-            Text('ACCOUNT', style: ZineText.kicker()),
-            const Spacer(),
+            Text('ACCOUNT & SETTINGS',
+                style: TextStyle(
+                    fontFamily: ZineText.display, fontWeight: FontWeight.w700,
+                    fontSize: 13.5, letterSpacing: 0.6, color: Zine.ink)),
+            const SizedBox(width: 6),
             PhosphorIcon(
                 _accountOpen
                     ? PhosphorIcons.caretUp(PhosphorIconsStyle.bold)
@@ -389,19 +390,34 @@ class _AvaSidebarState extends State<AvaSidebar> {
           ]),
         ),
       ),
+      // Account essentials. Wallet, Connectors, View Storage, Invite friends and
+      // Diagnostics moved here (owner decision 2026-06-19). Identity (the trust
+      // ladder + profile hub) also lives here now.
       if (_accountOpen) ...[
-        // Wallet, AvaIdentity, Payout hidden from the ACCOUNT section
-        // (owner decision 2026-06-17).
+        _acct('identity', 'Identity', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold)),
         _acct('billing', 'Billing', PhosphorIcons.creditCard(PhosphorIconsStyle.bold)),
+        _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
+        _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
+        _acct('avastorage', 'View Storage', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
+        _acct('invite', 'Invite friends', PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+            onTap: () {
+              if (!widget.permanent) Navigator.pop(context);
+              DeviceContactsService.shareGenericInvite();
+            }),
+        _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
+            onTap: () {
+              if (!widget.permanent) Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
+            }),
         _acct('settings', 'Settings', PhosphorIcons.gearSix(PhosphorIconsStyle.bold)),
       ],
     ]);
   }
 
-  Widget _acct(String key, String name, IconData icon) => Padding(
+  Widget _acct(String key, String name, IconData icon, {VoidCallback? onTap}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: ZinePressable(
-          onTap: () => widget.onSelect(key),
+          onTap: onTap ?? () => widget.onSelect(key),
           radius: BorderRadius.circular(14),
           boxShadow: const <BoxShadow>[],
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

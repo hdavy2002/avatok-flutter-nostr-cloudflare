@@ -395,3 +395,149 @@ export async function idPhoneConfirm(req: Request, env: Env): Promise<Response> 
   metric(env, "phone_confirmed", [1]);
   return json({ ok: true, verified: true });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Password set/change — enables email+password sign-in alongside Google.
+// /password/start emails a 6-digit code to the account's Clerk email; /password
+// /set verifies the code and sets the password via the Clerk Backend API. Both
+// dual-auth (requireUser). Requires CLERK_SECRET_KEY; absent → 503 (the rest of
+// the app still works). Codes are hashed in KV (10-min TTL), never stored raw.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PWD_TTL_S = 600;             // 10 minutes
+const PWD_MAX_VERIFY_ATTEMPTS = 5;
+const PWD_MAX_SENDS_PER_HOUR = 5;
+const PWD_MIN_LEN = 8;
+
+/** The account's primary email from Clerk (Backend API), lowercased, or null. */
+async function clerkPrimaryEmail(env: Env, uid: string): Promise<string | null> {
+  if (!env.CLERK_SECRET_KEY) return null;
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(uid)}`, {
+      headers: { authorization: `Bearer ${env.CLERK_SECRET_KEY}` },
+    });
+    if (!r.ok) return null;
+    const j = (await r.json()) as any;
+    const primaryId = j?.primary_email_address_id;
+    const list: any[] = Array.isArray(j?.email_addresses) ? j.email_addresses : [];
+    const primary = list.find((e) => e?.id === primaryId) || list[0];
+    const email = primary?.email_address;
+    return typeof email === "string" && email ? email.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function passwordOtpHtml(code: string): string {
+  return `<div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px">
+    <h2 style="color:#0F1115;margin:0 0 8px">Set your AvaTOK password</h2>
+    <p style="color:#737A86;font-size:14px;line-height:1.5;margin:0 0 20px">Enter this code in AvaTOK to set or change your password. It expires in 10 minutes.</p>
+    <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#08C4C4;text-align:center;padding:16px;background:#E2FCFC;border-radius:12px">${code}</div>
+    <p style="color:#9AA1AC;font-size:12px;margin:20px 0 0">If you didn't request this, you can safely ignore this email — your password won't change.</p>
+  </div>`;
+}
+
+// POST /api/id/password/start  {}
+export async function idPasswordStart(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if (!env.CLERK_SECRET_KEY) return json({ error: "password change unavailable", reason: "clerk_unconfigured" }, 503);
+
+  const email = await clerkPrimaryEmail(env, ctx.uid);
+  if (!email) return json({ error: "no email on file for this account" }, 400);
+
+  const sendKey = `pwd:sends:${ctx.uid}`;
+  const sends = Number((await env.TOKENS.get(sendKey)) || "0");
+  if (sends >= PWD_MAX_SENDS_PER_HOUR) {
+    track(env, ctx.uid, "password_change_failed", "account", { reason: "rate_limited" });
+    return json({ error: "too many requests — please wait a bit and try again" }, 429);
+  }
+
+  const code = sixDigitCode();
+  const exp = Date.now() + PWD_TTL_S * 1000;
+  const hash = await sha256Hex(`${ctx.uid}:pwd:${code}`); // never store the code itself
+  await env.TOKENS.put(`pwd:set:${ctx.uid}`, JSON.stringify({ hash, exp, attempts: 0 }), { expirationTtl: PWD_TTL_S });
+  await env.TOKENS.put(sendKey, String(sends + 1), { expirationTtl: 3600 });
+
+  try {
+    await env.Q_EMAIL.send({
+      to: email,
+      subject: "Your AvaTOK password code",
+      html: passwordOtpHtml(code),
+      from: "AvaTOK <noreply@avatok.ai>",
+    });
+  } catch {
+    metric(env, "password_otp_enqueue_error", [1]);
+    return json({ error: "could not send the email — please try again" }, 502);
+  }
+
+  track(env, ctx.uid, "password_change_started", "account", {});
+  metric(env, "password_otp_sent", [1]);
+  // Masked hint for the UI (e.g. "j***@gmail.com"); never echo the full address.
+  const masked = email.replace(/^(.).*(@.*)$/, "$1***$2");
+  return json({ ok: true, email_hint: masked });
+}
+
+// POST /api/id/password/set  { code, password }
+export async function idPasswordSet(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if (!env.CLERK_SECRET_KEY) return json({ error: "password change unavailable", reason: "clerk_unconfigured" }, 503);
+
+  const b = (await req.json().catch(() => ({}))) as { code?: string; password?: string };
+  const code = String(b.code || "").trim();
+  const password = String(b.password || "");
+  if (!code) return json({ error: "code required" }, 400);
+  if (password.length < PWD_MIN_LEN) return json({ error: `password must be at least ${PWD_MIN_LEN} characters` }, 400);
+
+  const key = `pwd:set:${ctx.uid}`;
+  const raw = await env.TOKENS.get(key);
+  if (!raw) return json({ error: "code expired — request a new one" }, 400);
+  let rec: { hash: string; exp: number; attempts: number };
+  try {
+    rec = JSON.parse(raw);
+  } catch {
+    await env.TOKENS.delete(key);
+    return json({ error: "code expired — request a new one" }, 400);
+  }
+  if (Date.now() > rec.exp) {
+    await env.TOKENS.delete(key);
+    return json({ error: "code expired — request a new one" }, 400);
+  }
+  if (rec.attempts >= PWD_MAX_VERIFY_ATTEMPTS) {
+    await env.TOKENS.delete(key);
+    return json({ error: "too many attempts — request a new code" }, 429);
+  }
+
+  const given = await sha256Hex(`${ctx.uid}:pwd:${code}`);
+  if (given !== rec.hash) {
+    const ttl = Math.max(1, Math.ceil((rec.exp - Date.now()) / 1000));
+    await env.TOKENS.put(key, JSON.stringify({ ...rec, attempts: rec.attempts + 1 }), { expirationTtl: ttl });
+    track(env, ctx.uid, "password_change_failed", "account", { reason: "invalid_code", attempt: rec.attempts + 1 });
+    return json({ error: "incorrect or expired code" }, 400);
+  }
+
+  // Set the password on the Clerk account (Backend API).
+  try {
+    const r = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(ctx.uid)}`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${env.CLERK_SECRET_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (!r.ok) {
+      track(env, ctx.uid, "password_change_failed", "account", { reason: "clerk_http", status: r.status });
+      // Clerk rejects weak / breached passwords with 422 — surface that to the user.
+      if (r.status === 422) {
+        return json({ error: "that password is too weak or has appeared in a data breach — please choose another" }, 422);
+      }
+      return json({ error: "could not set the password — please try again" }, 502);
+    }
+  } catch {
+    return json({ error: "could not set the password — please try again" }, 502);
+  }
+
+  await env.TOKENS.delete(key);
+  track(env, ctx.uid, "password_changed", "account", {});
+  metric(env, "password_changed", [1]);
+  return json({ ok: true });
+}

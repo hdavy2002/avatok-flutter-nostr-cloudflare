@@ -14,6 +14,8 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
+import '../avabrain/brain_settings_screen.dart';
+import '../profile/phone_verify_card.dart';
 import 'settings_registry.dart';
 
 /// Account settings — Backup, Manage keys, Delete account.
@@ -245,58 +247,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: Zine.paper,
       appBar: const ZineAppBar(title: 'Settings', markWord: 'Settings'),
       body: ListView(padding: const EdgeInsets.all(20), children: [
+        // Soft nudge to verify phone for users who skipped it at onboarding.
+        // Self-hides when already verified or recently dismissed (account-scoped,
+        // re-surfaces after 7 days), so it leaves no gap when not shown.
+        const PhoneNudgeCard(source: 'settings'),
         // Account type (preview) section hidden (owner decision 2026-06-17).
         // Google AI Studio BYOK removed (owner decision 2026-06-18): premium is
         // top-up only, everything runs on Cloudflare. The _aiCard() is no longer
         // shown (kept in source for now; does nothing server-side).
-        _section('AvaBrain'),
-        ZineCard(
-          radius: Zine.rSm,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          boxShadow: Zine.shadowXs,
-          child: Column(children: [
-            for (final c in kBrainCapabilities)
-              if (c.master || (_brain['master'] ?? true))
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  child: Row(children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(c.title, style: ZineText.value(size: 14.5,
-                          weight: c.master ? FontWeight.w900 : FontWeight.w800)),
-                      const SizedBox(height: 2),
-                      Text(c.subtitle, style: ZineText.sub(size: 12)),
-                    ])),
-                    const SizedBox(width: 10),
-                    ZineToggle(value: _brain[c.key] ?? true, onChanged: (v) => _setBrain(c.key, v)),
-                  ]),
-                ),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 10, left: 4, right: 4),
-          child: Text('Private and end-to-end-encrypted content is only ever read on your device — '
-              'AvaBrain never sees your message keys or plaintext on our servers.',
-              style: ZineText.sub(size: 11.5, color: Zine.inkMute)),
-        ),
-        const SizedBox(height: 24),
-        _section('Backup'),
-        _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Back up account',
-            'Email yourself a download of your account (media excluded)', _backup),
-        _tile(PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), Zine.mint, 'Back up to Google Drive',
-            'Save your account export to your AvaTOK Drive (Backups)', _backupToDrive),
-        const SizedBox(height: 24),
-        _section('Danger zone'),
-        _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Delete account',
-            'Permanently remove your account', _delete, danger: true),
-        const SizedBox(height: 24),
+        // WhatsApp-style settings: each section is a single tappable row with a
+        // short description that opens its own sub-page (with a back button).
+        // AvaBrain routes to its full control room; Backup / Danger zone and every
+        // pluggable registry section open as detail pages too (owner 2026-06-19).
+        const SizedBox(height: 4),
+        _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
+            'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         // Pluggable sections (Phase 0 contract): feature phases register a
-        // SettingsSection from their own file under settings/sections/ and it
-        // renders here, ordered, WITHOUT editing this screen.
-        for (final s in SettingsSectionRegistry.sections) ...[
-          _section(s.title),
-          s.builder(context),
-          const SizedBox(height: 24),
-        ],
+        // SettingsSection from their own file under settings/sections/; each one
+        // now renders as a row that opens the section in its own sub-page.
+        for (final s in SettingsSectionRegistry.sections) _sectionRow(s),
+        _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Backup',
+            'Export or back up your account', () => _push(_SettingsDetail(
+                  title: 'Backup',
+                  markWord: 'Backup',
+                  children: [
+                    _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Back up account',
+                        'Email yourself a download of your account (media excluded)', _backup),
+                    _tile(PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), Zine.mint, 'Back up to Google Drive',
+                        'Save your account export to your AvaTOK Drive (Backups)', _backupToDrive),
+                  ],
+                ))),
+        _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Danger zone',
+            'Permanently delete your account', () => _push(_SettingsDetail(
+                  title: 'Danger zone',
+                  markWord: 'Danger',
+                  children: [
+                    _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Delete account',
+                        'Permanently remove your account', _delete, danger: true),
+                  ],
+                )), danger: true),
+        const SizedBox(height: 14),
         ZineButton(
           label: 'Log out',
           variant: ZineButtonVariant.ghost,
@@ -395,4 +385,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  void _push(Widget page) =>
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+
+  /// A registry section rendered as a row that opens the section's body in its
+  /// own sub-page (back button via the sub-page app bar).
+  Widget _sectionRow(SettingsSection s) {
+    final m = _secMeta(s.id);
+    return _tile(m.icon, m.color, s.title, m.subtitle, () => _push(_SettingsDetail(
+          title: s.title,
+          markWord: s.title.split(' ').first,
+          children: [s.builder(context)],
+        )));
+  }
+
+  /// Icon + accent + one-liner for each known registry section. Unknown ids fall
+  /// back to a neutral gear so a newly-registered section still renders cleanly.
+  _SecMeta _secMeta(String id) {
+    switch (id) {
+      case 'focus_mode':
+        return _SecMeta(PhosphorIcons.faders(PhosphorIconsStyle.bold), Zine.blue,
+            'Show only AvaTOK + your essentials in the menu');
+      case 'ai_ringback':
+        return _SecMeta(PhosphorIcons.musicNotes(PhosphorIconsStyle.bold), Zine.lilac,
+            'The sound callers hear while your phone rings');
+      case 'ava_voice':
+        return _SecMeta(PhosphorIcons.microphone(PhosphorIconsStyle.bold), Zine.lilac,
+            'Voice settings for Ava');
+      case 'ava_delegate':
+        return _SecMeta(PhosphorIcons.userFocus(PhosphorIconsStyle.bold), Zine.blue,
+            'Let Ava act on your behalf');
+      case 'ava_receptionist':
+        return _SecMeta(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint,
+            'Your AI receptionist for incoming calls');
+      case 'ava_guardian':
+        return _SecMeta(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.coral,
+            'Safety controls and guardian oversight');
+      case 'ava_tools':
+        return _SecMeta(PhosphorIcons.wrench(PhosphorIconsStyle.bold), Zine.blue,
+            'Connect tools and external services');
+      case 'backup_sync':
+        return _SecMeta(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.mint,
+            'Cross-device backup & sync');
+      default:
+        return _SecMeta(PhosphorIcons.gearSix(PhosphorIconsStyle.bold), Zine.blue, 'Open');
+    }
+  }
+
+}
+
+/// Row metadata (icon, accent colour, one-line description) for a settings row.
+class _SecMeta {
+  final IconData icon;
+  final Color color;
+  final String subtitle;
+  const _SecMeta(this.icon, this.color, this.subtitle);
+}
+
+/// A generic Settings sub-page: app bar with a back button + the section body.
+/// Used so each settings section opens as its own WhatsApp-style detail screen.
+class _SettingsDetail extends StatelessWidget {
+  final String title;
+  final String markWord;
+  final List<Widget> children;
+  const _SettingsDetail({required this.title, required this.markWord, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Zine.paper,
+      appBar: ZineAppBar(title: title, markWord: markWord, showBack: true),
+      body: ListView(padding: const EdgeInsets.all(20), children: children),
+    );
+  }
 }

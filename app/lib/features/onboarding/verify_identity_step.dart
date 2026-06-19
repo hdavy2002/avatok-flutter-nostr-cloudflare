@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/phone_country.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/verification_api.dart';
@@ -16,6 +17,7 @@ class VerifyData {
   final String gender;
   final String phone; // E.164, '' if skipped
   final bool phoneVerified;
+  final bool phoneSkipped; // user chose to continue without verifying a phone
   final String email;
   final bool emailVerified;
   const VerifyData({
@@ -23,15 +25,18 @@ class VerifyData {
     required this.gender,
     required this.phone,
     required this.phoneVerified,
+    this.phoneSkipped = false,
     required this.email,
     required this.emailVerified,
   });
 }
 
-/// Onboarding step: collect age group + gender, verify a phone number via
-/// Firebase phone OTP, and verify an email via a backend OTP. Every action and
-/// failure is sent to PostHog (`screen=verify_identity`) so we can see exactly
-/// where users get stuck — especially OTP and email verification errors.
+/// Onboarding step: collect age group + gender and OPTIONALLY verify a phone
+/// number via Firebase phone OTP. Phone is no longer mandatory — many users
+/// can't (or won't) receive an SMS, so they can skip and continue. Every action
+/// and failure is sent to PostHog (`screen=verify_identity`) so we can see
+/// exactly where users get stuck — especially OTP send/verify errors, which
+/// country the number came from, and how many people skip.
 class VerifyIdentityStep extends StatefulWidget {
   final String? initialEmail;
   final ValueChanged<VerifyData> onComplete;
@@ -88,11 +93,24 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
     super.dispose();
   }
 
-  // Phone is now MANDATORY (only verified numbers allowed). Email is NOT verified
-  // here — Google sign-in already verified it, so a separate email OTP would just
-  // waste sends. (2026-06-18)
-  bool get _ready =>
-      _ageGroup != null && _gender != null && _phoneVerified;
+  // Phone is OPTIONAL (2026-06-19): users who can't receive an SMS must still be
+  // able to finish onboarding, so only age + gender gate "Keep going". Phone
+  // verification is encouraged but skippable. Email is NOT verified here —
+  // Google sign-in already verified it, so a separate email OTP would just waste
+  // sends.
+  bool get _ready => _ageGroup != null && _gender != null;
+
+  // Country dimensions for the number currently entered — attached to every OTP
+  // event so support can slice "OTP failing for +234 (NG)" without storing the
+  // raw number. Empty/unknown until a recognisable country code is typed.
+  Map<String, Object> _phoneGeo() {
+    final c = PhoneCountry.fromE164(_phoneCtrl.text);
+    return {
+      if (c.dialCode.isNotEmpty) 'dial_code': c.dialCode,
+      'phone_country': c.iso2,
+      'phone_country_name': c.name,
+    };
+  }
 
   // ───────────────────────── phone ─────────────────────────
 
@@ -108,9 +126,9 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
     });
     if (resend) {
       _phoneResends++;
-      Analytics.capture('otp_resend_tapped', {'resend_count': _phoneResends});
+      Analytics.capture('otp_resend_tapped', {'resend_count': _phoneResends, ..._phoneGeo()});
     }
-    Analytics.capture('otp_requested', {'channel': 'sms'});
+    Analytics.capture('otp_requested', {'channel': 'sms', ..._phoneGeo()});
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: phone,
@@ -134,7 +152,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
             message: e.code,
             screen: _screen,
             action: 'send',
-            extra: {'reason': e.code},
+            extra: {'reason': e.code, ..._phoneGeo()},
           );
         },
         codeSent: (String verId, int? _) {
@@ -144,7 +162,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
             _phoneCodeSent = true;
             _verificationId = verId;
           });
-          Analytics.capture('otp_sent', {'provider': 'firebase'});
+          Analytics.capture('otp_sent', {'provider': 'firebase', ..._phoneGeo()});
         },
         codeAutoRetrievalTimeout: (String verId) {
           _verificationId = verId;
@@ -162,6 +180,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         message: e.toString(),
         screen: _screen,
         action: 'send',
+        extra: _phoneGeo(),
       );
     }
   }
@@ -175,7 +194,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
       _phoneError = null;
       _phoneAttempts++;
     });
-    Analytics.capture('otp_code_submitted', {'attempt': _phoneAttempts});
+    Analytics.capture('otp_code_submitted', {'attempt': _phoneAttempts, ..._phoneGeo()});
     try {
       final cred = PhoneAuthProvider.credential(verificationId: id, smsCode: code);
       await FirebaseAuth.instance.signInWithCredential(cred);
@@ -192,7 +211,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         message: e.code,
         screen: _screen,
         action: 'verify',
-        extra: {'reason': e.code, 'attempt': _phoneAttempts},
+        extra: {'reason': e.code, 'attempt': _phoneAttempts, ..._phoneGeo()},
       );
     } catch (e) {
       if (!mounted) return;
@@ -206,12 +225,18 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         message: e.toString(),
         screen: _screen,
         action: 'verify',
+        extra: _phoneGeo(),
       );
     }
   }
 
   Future<void> _onPhoneVerified({bool auto = false}) async {
-    Analytics.capture('phone_verification_completed', {'auto': auto, 'attempts_used': _phoneAttempts});
+    final geo = _phoneGeo();
+    Analytics.capture('phone_verification_completed',
+        {'auto': auto, 'attempts_used': _phoneAttempts, 'resends': _phoneResends, ...geo});
+    // Phone is now a known good identifier for this person — attach it (and the
+    // country) to every future event so support can pull this user's telemetry.
+    Analytics.setUserKeys(phone: _phoneCtrl.text.trim());
     // Tell the backend the number is confirmed (best-effort).
     final res = await VerificationApi.confirmPhone(_phoneCtrl.text.trim());
     if (!res.ok) {
@@ -258,6 +283,34 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
       default:
         return 'Verification failed — please try again.';
     }
+  }
+
+  /// Continue without verifying a phone. Emits a rich `phone_verification_skipped`
+  /// event so we can see how many users skip, from which country, and what (if
+  /// anything) failed before they gave up — this is the signal that justified
+  /// making phone optional in the first place.
+  void _skipPhone() {
+    if (!_ready) return;
+    setState(() => _phoneSkipped = true);
+    final hadError = _phoneError != null;
+    Analytics.capture('phone_verification_skipped', {
+      'had_typed_number': _phoneCtrl.text.trim().length > 1,
+      'code_was_sent': _phoneCodeSent,
+      'send_attempts': _phoneResends + (_phoneCodeSent ? 1 : 0),
+      'verify_attempts': _phoneAttempts,
+      'hit_error': hadError,
+      if (hadError) 'last_error': _phoneError!,
+      ..._phoneGeo(),
+    });
+    widget.onComplete(VerifyData(
+      ageGroup: _ageGroup!,
+      gender: _gender!,
+      phone: '', // not verified → don't persist an unverified number
+      phoneVerified: false,
+      phoneSkipped: true,
+      email: _emailCtrl.text.trim(),
+      emailVerified: _emailVerified,
+    ));
   }
 
   // ───────────────────────── email ─────────────────────────
@@ -355,8 +408,8 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
                     fontSize: 28, textAlign: TextAlign.left),
                 const SizedBox(height: 8),
                 Text(
-                    'A few quick details keep AvaTOK safe for everyone. We verify your '
-                    'phone and email, and never share them.',
+                    'A few quick details keep AvaTOK safe for everyone. Verifying your '
+                    'phone is optional, and we never share your details.',
                     style: ZineText.sub(size: 14.5)),
                 const SizedBox(height: 22),
 
@@ -397,22 +450,30 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-          child: ZineButton(
-            label: 'Keep going',
-            icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
-            fullWidth: true,
-            fontSize: 21,
-            onPressed: _ready
-                ? () => widget.onComplete(VerifyData(
-                      ageGroup: _ageGroup!,
-                      gender: _gender!,
-                      phone: _phoneCtrl.text.trim(),
-                      phoneVerified: true,
-                      email: _emailCtrl.text.trim(),
-                      emailVerified: _emailVerified,
-                    ))
-                : null,
-          ),
+          child: Column(children: [
+            ZineButton(
+              label: 'Keep going',
+              icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+              fullWidth: true,
+              fontSize: 21,
+              onPressed: _ready
+                  ? () => widget.onComplete(VerifyData(
+                        ageGroup: _ageGroup!,
+                        gender: _gender!,
+                        phone: _phoneVerified ? _phoneCtrl.text.trim() : '',
+                        phoneVerified: _phoneVerified,
+                        phoneSkipped: false,
+                        email: _emailCtrl.text.trim(),
+                        emailVerified: _emailVerified,
+                      ))
+                  : null,
+            ),
+            // Phone is optional — let users who can't get an SMS move on.
+            if (_ready && !_phoneVerified) ...[
+              const SizedBox(height: 10),
+              ZineLink('Skip phone for now', fontSize: 14, onTap: _skipPhone),
+            ],
+          ]),
         ),
       ],
     );
@@ -421,7 +482,8 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
   Widget _phoneSection() {
     if (_phoneVerified) return _verifiedRow(_phoneCtrl.text.trim());
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Required — only verified mobile numbers can use AvaTOK.',
+      Text('Optional — verifying your number adds trust, but you can skip it and '
+          'add it later if SMS doesn\'t reach you.',
           style: ZineText.sub(size: 12)),
       const SizedBox(height: 8),
       _field(

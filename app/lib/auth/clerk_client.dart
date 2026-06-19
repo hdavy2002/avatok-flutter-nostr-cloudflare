@@ -167,6 +167,31 @@ class ClerkClient {
     }
   }
 
+  /// Facebook / LinkedIn sign-in. The on-device flow MIRRORS [signInWithGoogle]
+  /// exactly once wired:
+  ///   1. get the provider token   — Facebook: flutter_facebook_auth native SDK;
+  ///      LinkedIn: OAuth redirect (flutter_web_auth_2) → authorization code.
+  ///   2. POST {token/code} to our Worker (`/api/auth/<provider>`) which verifies
+  ///      it, finds/creates the Clerk user and mints a sign-in TICKET.
+  ///   3. redeem the ticket here (strategy=ticket) → a real Clerk session.
+  ///
+  /// Pending provider config (Meta/LinkedIn apps + Clerk dashboard + the Worker
+  /// endpoint), so this returns a clear, non-crashing message and never blocks
+  /// the build. `provider` is 'facebook' | 'linkedin'. To enable: implement steps
+  /// 1–3 below and flip kSocialFacebookEnabled / kSocialLinkedInEnabled.
+  Future<ClerkStep> signInWithProvider(String provider) async {
+    // TODO(auth): step 1 — obtain the provider token/code on device.
+    // TODO(auth): step 2 — POST it to kFacebookAuthUrl / kLinkedInAuthUrl → {ticket}.
+    // TODO(auth): step 3 —
+    //   await _send('/client', body: {});
+    //   final body = await _send('/client/sign_ins', body: {'strategy': 'ticket', 'ticket': ticket});
+    //   return (await currentUser()) != null ? ClerkStep.complete() : ClerkStep.error(...);
+    final name = provider.isEmpty
+        ? 'This provider'
+        : '${provider[0].toUpperCase()}${provider.substring(1)}';
+    return ClerkStep.error('$name sign-in is being set up. Please continue with Google for now.');
+  }
+
   bool _completed(Map<String, dynamic> body) {
     final r = body['response'] as Map<String, dynamic>?;
     return r?['status'] == 'complete' || _activeUser(body['client']) != null;

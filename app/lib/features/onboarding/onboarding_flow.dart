@@ -4,11 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/account_restore.dart';
 import '../../core/admin_tools.dart';
-import '../../core/drive_service.dart';
 import '../../core/verification_api.dart';
 import '../../core/analytics.dart';
 import '../../core/app_registry.dart';
@@ -45,15 +43,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // 'add_ai' offers the BYO Gemini key flow (skippable). Both 'account_kind'
   // and 'add_ai' are flag-gated; step indices in analytics re-index with the
   // list so onboarding_step_viewed/completed stay consistent.
-  static List<String> _composeSteps() {
-    final s = <String>[
-      'account_kind', 'notifications', 'terms', 'profile', 'verify_identity',
-      'drive_backup', 'contacts', 'add_ai', 'apps',
-    ];
-    if (!kAccountTypeStepEnabled) s.remove('account_kind');
-    if (!kAddAiStepEnabled) s.remove('add_ai');
-    return s;
-  }
+  // SUPER-SIMPLE onboarding (2026-06-19 redesign): the old 7–9 step flow drove
+  // users away. After social sign-in the only in-flow steps are Terms then
+  // Notifications. Welcome + login are separate stages in RootFlow (main.dart),
+  // so the end-to-end experience is just: Welcome → Login → Terms → Notifications.
+  // @handle is NO LONGER collected here — it's set in Profile, or just-in-time
+  // when the user first enters AvaTok. The retired steps (account_kind, profile,
+  // verify_identity, drive_backup, contacts, add_ai, apps) keep their builders in
+  // this file but are no longer routed; apps default to the standard set in
+  // _finish(), and contacts permission is now requested on demand at "add
+  // contact" (not as an onboarding wall).
+  static List<String> _composeSteps() => <String>['terms', 'notifications'];
   static final List<String> _stepNames = _composeSteps();
   static final int _steps = _stepNames.length;
   int _step = 0;
@@ -109,7 +109,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   // Account-keyed: this account already verified a phone (reinstall / new device).
   // When true the verify_identity step auto-advances so we never re-send an OTP.
   bool _phoneAlreadyVerified = false;
-  bool _driveConnecting = false;
 
   Future<void> _bootstrap() async {
     var id = await _idStore.load();
@@ -246,7 +245,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       case 'terms': return _terms();
       case 'profile': return _profileStep();
       case 'verify_identity': return _verifyStep();
-      case 'drive_backup': return _driveStep();
       case 'contacts': return _contacts();
       case 'add_ai': return _addAiStep();
       default: return _appsSetup();
@@ -265,9 +263,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         },
       );
 
-  // ---- Step: verify identity (age / gender / mandatory phone OTP) ----
-  // Auto-advances if the account already verified a phone (reinstall / new device)
-  // so we never re-send an OTP.
+  // ---- Step: verify identity (age / gender / OPTIONAL phone OTP) ----
+  // Phone verification is skippable (2026-06-19). Auto-advances if the account
+  // already verified a phone (reinstall / new device) so we never re-send an OTP.
   Widget _verifyStep() {
     if (_phoneAlreadyVerified) {
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _next(); });
@@ -281,56 +279,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         _next();
       },
     );
-  }
-
-  // ---- Step: connect Google Drive for backup (one-time, encouraged) ----
-  Widget _driveStep() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      child: Column(children: [
-        const Spacer(flex: 2),
-        ZineCrest(
-          child: PhosphorIcon(PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.fill),
-              size: 46, color: Zine.ink),
-        ),
-        const SizedBox(height: 18),
-        const ZineMarkTitle(pre: 'Back up to your ', mark: 'Drive', fontSize: 30),
-        const SizedBox(height: 12),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Text(
-              'Connect your own Google Drive so your chats and data are safely backed up '
-              "and restored automatically if you switch phones. It's your Drive — we never read it.",
-              textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
-        ),
-        const Spacer(flex: 3),
-        _primary(_driveConnecting ? 'Opening Google…' : 'Connect Google Drive',
-            _driveConnecting ? null : _connectDrive,
-            icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), loading: _driveConnecting),
-        const SizedBox(height: 14),
-        ZineLink('skip for now', fontSize: 14, onTap: _next),
-      ]),
-    );
-  }
-
-  Future<void> _connectDrive() async {
-    setState(() => _driveConnecting = true);
-    Analytics.capture('onboarding_drive_connect_tapped', const {});
-    try {
-      final url = await DriveService.I.connectUrl();
-      if (url != null && url.isNotEmpty) {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Authorize Google Drive, then come back and continue.')));
-        }
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Couldn't start Google Drive — you can connect later in AvaStorage.")));
-      }
-    } catch (_) {/* best-effort */}
-    if (mounted) setState(() => _driveConnecting = false);
-    _next(); // proceed regardless; backup will activate once Drive is authorized
   }
 
   // ---- Step 1: account type — required, drives the sidebar tools ----

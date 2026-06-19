@@ -278,7 +278,7 @@ class Directory {
   static Future<({bool ok, int status})> registerProfile(
       {required String npub, String handle = '', String name = '', String email = '', String phone = '',
        String? encryptedNsecBackup, String? backupMethod, String? accountKind, String? avatarUrl,
-       int? birthYear}) async {
+       int? birthYear, String? bio}) async {
     try {
       // npub is derived server-side from the NIP-98 signature; no longer in body.
       // encrypted_nsec_backup (optional) links this key to the Clerk account so
@@ -293,6 +293,8 @@ class Directory {
         if (avatarUrl != null) 'avatar_url': avatarUrl, // '' clears the photo
         // Optional — powers coarse age-group analytics only; never shown publicly.
         if (birthYear != null) 'birth_year': birthYear,
+        // Optional self-description — AvaBrain learns from it (server-side, consent-gated).
+        if (bio != null) 'bio': bio,
       });
       return (ok: res.statusCode == 200, status: res.statusCode);
     } catch (_) {

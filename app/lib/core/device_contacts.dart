@@ -38,9 +38,12 @@ class DeviceContact {
   });
 
   bool get onAvatok => uid.isNotEmpty;
-  String get displayName => matchDisplayName.isNotEmpty
-      ? matchDisplayName
-      : (name.isNotEmpty ? name : rawPhone);
+  // Now that people are added by phone number, show them by the name the user
+  // saved in their OWN phone address book (WhatsApp-style) — fall back to the
+  // AvaTOK display name, then the raw number.
+  String get displayName => name.isNotEmpty
+      ? name
+      : (matchDisplayName.isNotEmpty ? matchDisplayName : rawPhone);
   /// Human-friendly subtitle — the phone number (WhatsApp-style).
   String get subtitle => rawPhone;
 

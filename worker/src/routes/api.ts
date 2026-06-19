@@ -11,6 +11,7 @@ import { json, sha256Hex, normalizePhone, chunk } from "../util";
 import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk } from "../auth";
+import { brainFact } from "../hooks";
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
@@ -106,8 +107,11 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as {
     handle?: string; name?: string; email?: string; phone?: string;
-    account_kind?: string; avatar_url?: string; birth_year?: number;
+    account_kind?: string; avatar_url?: string; birth_year?: number; bio?: string;
   };
+  // Optional self-description — AvaBrain learns from it. Capped + trimmed; an
+  // explicit empty string clears it, undefined leaves it unchanged.
+  const bio = b.bio === undefined ? null : String(b.bio).trim().slice(0, 600);
   // Optional birth year — powers coarse age-group analytics only (13+); never shown publicly.
   let birthYear: number | null = null;
   if (b.birth_year !== undefined && b.birth_year !== null && b.birth_year !== 0) {
@@ -133,17 +137,22 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   }
   try {
     await db.prepare(
-      `INSERT INTO users (uid, handle, display_name, avatar_url, email_hash, phone_hash, birth_year, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?8)
+      `INSERT INTO users (uid, handle, display_name, avatar_url, email_hash, phone_hash, birth_year, bio, created_at, updated_at)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?9,?8,?8)
        ON CONFLICT(uid) DO UPDATE SET
          handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name),
          avatar_url=COALESCE(?4,avatar_url), email_hash=COALESCE(?5,email_hash),
-         phone_hash=COALESCE(?6,phone_hash), birth_year=COALESCE(?7,birth_year), updated_at=?8`,
-    ).bind(ctx.uid, handle, name, avatarUrl, emailHash, phoneHash, birthYear, now).run();
+         phone_hash=COALESCE(?6,phone_hash), birth_year=COALESCE(?7,birth_year),
+         bio=COALESCE(?9,bio), updated_at=?8`,
+    ).bind(ctx.uid, handle, name, avatarUrl, emailHash, phoneHash, birthYear, now, bio).run();
   } catch (e) {
     if (String((e as Error)?.message || "").includes("UNIQUE")) return json({ error: "handle_taken" }, 409);
     throw e;
   }
+  // Feed a non-empty self-description to AvaBrain so Ava can personalise. Scoped
+  // 'private' (personal context, not a public directory fact); the brain consumer
+  // still honours the user's AvaBrain consent toggle before storing it.
+  if (bio) brainFact(env, ctx.uid, "profile_bio", "profile", { bio }, "private");
   return json({ ok: true, profile: { uid: ctx.uid, handle, name, email: b.email || "", phone: b.phone || "" } });
 }
 
@@ -155,13 +164,13 @@ export async function me(req: Request, env: Env): Promise<Response> {
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
   const uid = clerk.clerkUserId;
   const prof = await metaSession(env).prepare(
-    "SELECT handle, display_name, avatar_url, birth_year FROM users WHERE uid=?1",
-  ).bind(uid).first<{ handle: string | null; display_name: string | null; avatar_url: string | null; birth_year: number | null }>();
+    "SELECT handle, display_name, avatar_url, birth_year, bio FROM users WHERE uid=?1",
+  ).bind(uid).first<{ handle: string | null; display_name: string | null; avatar_url: string | null; birth_year: number | null; bio: string | null }>();
   if (!prof) return json({ found: false, clerk_enabled: true, uid });
   return json({
     found: true, clerk_enabled: true, uid,
     handle: prof.handle ?? null, display_name: prof.display_name ?? null, avatar_url: prof.avatar_url ?? null,
-    birth_year: prof.birth_year ?? null,
+    birth_year: prof.birth_year ?? null, bio: prof.bio ?? null,
   });
 }
 

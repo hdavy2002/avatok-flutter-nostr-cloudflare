@@ -7,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/account_gate.dart';
 import '../../core/avatar.dart';
+import '../../core/avatar_viewer.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
@@ -37,6 +38,7 @@ import 'add_contact_sheet.dart';
 import 'calls_screen.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
+import 'handle_prompt_sheet.dart';
 import 'data.dart';
 import 'new_group_screen.dart';
 import 'search_screen.dart';
@@ -72,6 +74,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   final Map<String, int> _deliveredAckHW = {}; // peerHex → newest msg ts I've sent a delivered receipt for
   Map<String, Set<String>> _flags = {'blocked': {}, 'archived': {}, 'muted': {}, 'pinned': {}};
   int _statusCount = 0;
+  // x-only hex pubkeys of contacts who currently have a live (unexpired) status,
+  // so their avatar gets the green glowing ring.
+  final Set<String> _statusAuthorHex = {};
   bool _showArchived = false;
   Map<String, String> _drafts = {};
   final _previewStore = ChatPreviewStore();
@@ -109,6 +114,21 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (days <= 0) return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     if (days == 1) return 'Yesterday';
     return '${d.day}/${d.month}';
+  }
+
+  /// Recompute the status count + the set of authors with a live status (drives
+  /// the green glowing ring). Call inside setState.
+  void _setStatuses(List<StatusPost> list) {
+    _statusCount = list.length;
+    _statusAuthorHex
+      ..clear()
+      ..addAll(list.map((p) => p.authorPub).where((h) => h.isNotEmpty));
+  }
+
+  /// True if [npub] (a contact's npub) currently has a live status.
+  bool _hasStatus(String npub) {
+    final hex = NostrKeys.npubToHex(npub);
+    return hex != null && _statusAuthorHex.contains(hex);
   }
 
   void _openChat(Chat c) {
@@ -341,7 +361,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
-        _lastRead = lastRead; _flags = flags; _statusCount = status.length; _drafts = drafts;
+        _lastRead = lastRead; _flags = flags; _setStatuses(status); _drafts = drafts;
         _previews = previews;
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
         _booted = true; // loading done → safe to show the empty state if truly empty
@@ -387,8 +407,26 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       }
     } catch (_) {/* not signed in / offline */}
     _startInbox(id);
+    // Just-in-time @handle: onboarding no longer collects one, so if the user
+    // landed in AvaTok without a handle, ask once (this session) — saving it
+    // publishes to the directory in the background. Non-blocking, skippable.
+    _maybePromptHandle(id.npub);
     // Directory listing is opt-in: we only publish a profile when the user
     // sets a @handle (privacy default — don't auto-index every npub).
+  }
+
+  // Show the handle prompt at most once per app session, only when no handle is
+  // set yet. Runs after the first frame so it never fights the inbox bootstrap.
+  static bool _handlePrompted = false;
+  Future<void> _maybePromptHandle(String npub) async {
+    if (_handlePrompted) return;
+    Profile prof;
+    try { prof = await ProfileStore().load(); } catch (_) { return; }
+    if (prof.handle.trim().isNotEmpty) return; // already has one — nothing to do
+    _handlePrompted = true; // guard before awaiting the frame so we ask just once
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showHandlePromptSheet(context, npub: npub);
+    });
   }
 
   /// Global inbox: receive group invites (ginfo) even when no thread is open.
@@ -425,7 +463,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             media: (env['media'] as Map?)?.cast<String, dynamic>(),
             ts: u.createdAt,
           );
-          _statusStore.add(post).then((list) { if (mounted) setState(() => _statusCount = list.length); });
+          _statusStore.add(post).then((list) { if (mounted) setState(() => _setStatuses(list)); });
         } else if (t == 'receipt') {
           // A peer's delivery/read receipt for one of MY messages — persist it
           // globally so the ticks are right even if this thread is closed.
@@ -788,10 +826,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   ZineBackButton(
                       onTap: _openSearch,
                       icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)),
-                  const SizedBox(width: 8),
-                  ZineBackButton(
-                      onTap: _openAddContact,
-                      icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold)),
+                  // Add-contact removed from the header — it's a duplicate of the
+                  // "ADD" circle below and the + FAB's "New chat".
                 ],
               ),
             ),
@@ -904,10 +940,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     }
 
     return SizedBox(
-      height: 48,
+      // Taller + centered so chip labels (with descenders like "g" in Groups)
+      // are never vertically clipped.
+      height: 56,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
           chip('All', 'all'),
           chip('Favourites', 'fav'),
@@ -938,19 +976,34 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         child: avatar,
       );
 
+  /// Avatar in a green glowing story ring — shown when the person has a live
+  /// (unexpired) status. Tapping it opens the status viewer.
+  Widget _glowRing(Widget avatar) => Container(
+        padding: const EdgeInsets.all(2.5),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Zine.lime,
+          border: Border.all(color: Zine.ink, width: 2),
+          boxShadow: [
+            BoxShadow(color: Zine.lime.withValues(alpha: 0.75), blurRadius: 11, spreadRadius: 1),
+          ],
+        ),
+        child: avatar,
+      );
+
+  void _openStatuses() => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
+      .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _setStatuses(l)); }));
+
   Widget _statusItem() => Padding(
         padding: const EdgeInsets.only(right: 14),
         child: GestureDetector(
-          onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
-              .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _statusCount = l.length); })),
+          onTap: _openStatuses,
           child: Column(children: [
             Stack(clipBehavior: Clip.none, children: [
-              _ring(Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56)),
-              if (_statusCount > 0)
-                Positioned(right: 0, top: 0, child: Container(width: 14, height: 14,
-                    decoration: BoxDecoration(color: Zine.coral, shape: BoxShape.circle,
-                        border: Border.all(color: Zine.ink, width: 2)))),
+              _statusCount > 0
+                  ? _glowRing(Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56))
+                  : _ring(Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56)),
               Positioned(
                 right: -2, bottom: -2,
                 child: Container(
@@ -990,14 +1043,19 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       ),
       );
 
-  Widget _activeAvatar(BuildContext context, Chat c) => Padding(
+  Widget _activeAvatar(BuildContext context, Chat c) {
+    final hasStatus = _hasStatus(c.seed);
+    final avatar = Avatar(seed: c.seed, name: c.name, size: 56,
+        avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl);
+    return Padding(
         padding: const EdgeInsets.only(right: 14),
         child: GestureDetector(
-          onTap: () => _openChat(c),
+          // A live status → tap views it; otherwise open the chat.
+          onTap: hasStatus ? _openStatuses : () => _openChat(c),
           child: Column(
             children: [
               Stack(children: [
-                _ring(Avatar(seed: c.seed, name: c.name, size: 56, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
+                hasStatus ? _glowRing(avatar) : _ring(avatar),
                 Positioned(
                   bottom: 2, right: 2,
                   child: Container(
@@ -1019,6 +1077,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           ),
         ),
       );
+  }
 }
 
 class _ChatRow extends StatelessWidget {
@@ -1040,14 +1099,20 @@ class _ChatRow extends StatelessWidget {
         child: Row(
           children: [
             Stack(children: [
-              // Bordered circle avatar (zine §6).
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Zine.ink, width: 2),
-                ),
-                child: Avatar(seed: chat.seed, name: chat.name, size: 54,
+              // Bordered circle avatar (zine §6). Tapping the photo itself opens
+              // the enlarged, screenshot-guarded viewer (not the chat).
+              GestureDetector(
+                onTap: () => showAvatarViewer(context,
+                    seed: chat.seed, name: chat.name,
                     avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Zine.ink, width: 2),
+                  ),
+                  child: Avatar(seed: chat.seed, name: chat.name, size: 54,
+                      avatarUrl: chat.avatarUrl.isEmpty ? null : chat.avatarUrl),
+                ),
               ),
               if (chat.online)
                 Positioned(

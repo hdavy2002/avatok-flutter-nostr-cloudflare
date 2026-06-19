@@ -15,6 +15,17 @@ const bool kAccountTypeStepEnabled = false;
 // (2026-06-18 — premium is top-up only, AI runs on our Cloudflare stack).
 const bool kAddAiStepEnabled = false;
 
+/// Extra social login providers (beyond Google, which is always on). Each stays
+/// OFF until its provider app + Clerk dashboard config + the Worker token-
+/// exchange endpoint are live. Flip per provider once ready — the buttons render
+/// either way (see sign_in_screen.dart); while a flag is false the button is
+/// shown as "coming soon" instead of attempting a half-configured sign-in.
+///   Facebook: Clerk has the provider enabled; still needs the Meta app
+///     (App ID/secret, key hashes, OAuth redirect) + `/api/auth/facebook`.
+///   LinkedIn: needs LinkedIn OIDC app + Clerk provider + `/api/auth/linkedin`.
+const bool kSocialFacebookEnabled = false;
+const bool kSocialLinkedInEnabled = false;
+
 /// Build environment, baked at compile time: --dart-define=AVATOK_ENV=staging.
 const String kAvatokEnv = String.fromEnvironment('AVATOK_ENV', defaultValue: 'prod');
 

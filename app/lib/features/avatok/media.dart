@@ -90,7 +90,7 @@ class MediaService {
     }
     final j = jsonDecode(res.body) as Map<String, dynamic>;
     AvaLog.I.log('media', 'upload ok kind=${kind.name} ${bytes.length}B key=${_short((j['key'] ?? j['hash'] ?? '').toString())}');
-    return ChatMedia(
+    final media = ChatMedia(
       kind: kind,
       // `key` is the per-user R2 path (u/<npub>/<hash>); downloadUrl is built from it.
       id: (j['key'] ?? j['hash'] ?? j['id']).toString(),
@@ -101,6 +101,11 @@ class MediaService {
       name: name,
       size: bytes.length,
     );
+    // Cache the SENDER's own plaintext now (content-addressed by id). Without
+    // this, reopening the chat re-downloaded + re-decrypted media we just sent;
+    // now our own photos/videos/voice/files load instantly local-first too.
+    await _cacheWrite(media.id, bytes);
+    return media;
   }
 
   /// Fetches ciphertext by hash and decrypts back to plaintext bytes.

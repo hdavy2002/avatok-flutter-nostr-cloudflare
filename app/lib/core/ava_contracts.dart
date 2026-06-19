@@ -77,6 +77,10 @@ class AvaApi {
   static const String driveStatus = '/api/ava/drive/status';
   static const String driveList = '/api/ava/drive/list';
   static const String driveUpload = '/api/ava/drive/upload';
+  /// FREE backup lane — a separate, user-visible "avatok-backup" Drive folder.
+  static const String driveBackupEnsure = '/api/ava/drive/backup/ensure';
+  static const String driveBackupUpload = '/api/ava/drive/backup/upload';
+  static const String driveBackupDownload = '/api/ava/drive/backup/download';
 
   /// AvaChat — talk-to-Ava conversation history (cloud backup in D1).
   static const String chatHistory = '/api/ava/chat/history';

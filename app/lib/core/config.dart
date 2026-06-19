@@ -156,6 +156,10 @@ const String kIdBase = '$kApiBase/id';            // AvaID verification (Phase 1
 // + phone-confirm endpoints the Worker must expose (email sent via Brevo).
 const String kEmailOtpStartUrl = '$kIdBase/email/start';   // POST {email}
 const String kEmailOtpVerifyUrl = '$kIdBase/email/verify'; // POST {email, code}
+// Password set/change — emails the signed-in user a secure link to set a
+// password (rolls out alongside email+password sign-up, beside Google sign-in).
+const String kPasswordResetStartUrl = '$kIdBase/password/start'; // POST {} → emails a code (auth)
+const String kPasswordSetUrl = '$kIdBase/password/set';          // POST {code, password} (auth)
 const String kPhoneConfirmUrl = '$kIdBase/phone/confirm';  // POST {phone}
 const String kIdStatusUrl = '$kIdBase/status';             // GET → { phone_verified, ... }
 // L2 liveness — Workers AI provider (flag: workersAiLivenessEnabled).

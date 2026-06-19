@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
+import '../../core/feature_flags.dart';
 import '../../core/referral_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -45,17 +46,28 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _done = false;
   String? _error;
 
-  Future<void> _continueWithGoogle() async {
+  Future<void> _continueWithGoogle() => _run(() => widget.clerk.signInWithGoogle(), 'Google');
+
+  /// Shared runner for any social provider — Google today, Facebook/LinkedIn once
+  /// their flags + backend are live. Keeps the success path (referral claim →
+  /// _finish) identical across providers.
+  Future<void> _run(Future<ClerkStep> Function() signIn, String label) async {
     setState(() { _busy = true; _error = null; });
-    final step = await widget.clerk.signInWithGoogle();
+    final step = await signIn();
     if (!mounted) return;
     if (step.isComplete) {
       // Redeem any pending invite reward for whoever referred this new user.
       try { await ReferralService.I.claimPendingAfterSignup(); } catch (_) {/* best-effort */}
       _finish();
     } else {
-      setState(() { _busy = false; _error = step.error ?? 'Google sign-in failed'; });
+      setState(() { _busy = false; _error = step.error ?? '$label sign-in failed'; });
     }
+  }
+
+  /// Tapped a provider that isn't enabled yet — show a gentle "coming soon"
+  /// instead of attempting a half-configured sign-in.
+  void _comingSoon(String label) {
+    setState(() => _error = '$label sign-in is coming soon — continue with Google for now.');
   }
 
   void _finish() {
@@ -77,8 +89,8 @@ class _SignInScreenState extends State<SignInScreen> {
     }
 
     final sub = widget.gateReason != null
-        ? 'Sign in with Google to ${widget.gateReason}'
-        : 'One tap with Google — no passwords, no codes.';
+        ? 'Sign in to ${widget.gateReason}'
+        : 'Sign in or sign up in one tap — no passwords, no codes.';
     final canPop = Navigator.of(context).canPop();
 
     return Scaffold(
@@ -118,6 +130,32 @@ class _SignInScreenState extends State<SignInScreen> {
                 fontSize: 20,
                 loading: _busy,
                 onPressed: _busy ? null : _continueWithGoogle,
+              ),
+              const SizedBox(height: 12),
+              ZineButton(
+                label: 'Continue with Facebook',
+                variant: ZineButtonVariant.blue,
+                icon: PhosphorIcons.facebookLogo(PhosphorIconsStyle.bold),
+                fullWidth: true,
+                fontSize: 18,
+                onPressed: _busy
+                    ? null
+                    : (kSocialFacebookEnabled
+                        ? () => _run(() => widget.clerk.signInWithProvider('facebook'), 'Facebook')
+                        : () => _comingSoon('Facebook')),
+              ),
+              const SizedBox(height: 12),
+              ZineButton(
+                label: 'Continue with LinkedIn',
+                variant: ZineButtonVariant.ghost,
+                icon: PhosphorIcons.linkedinLogo(PhosphorIconsStyle.bold),
+                fullWidth: true,
+                fontSize: 18,
+                onPressed: _busy
+                    ? null
+                    : (kSocialLinkedInEnabled
+                        ? () => _run(() => widget.clerk.signInWithProvider('linkedin'), 'LinkedIn')
+                        : () => _comingSoon('LinkedIn')),
               ),
               const SizedBox(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [

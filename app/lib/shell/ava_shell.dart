@@ -20,6 +20,7 @@ import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
 import '../features/identity/identity_screen.dart';
+import '../features/profile/profile_screen.dart';
 import '../features/inbox/inbox_screen.dart';
 import '../features/verse/verse_screen.dart';
 import '../features/payout/payout_screen.dart';
@@ -117,9 +118,10 @@ class _AvaShellState extends State<AvaShell> {
         _push(const AvaStorageScreen());
         return;
       case 'profile':
-        // Profile menu removed — AvaIdentity is the one-stop identity hub
-        // (profile & photo live inside it). PROPOSAL-PROGRESSIVE-IDENTITY §7b.
-        _push(const IdentityScreen());
+        // The "View profile" row opens the proper profile editor directly
+        // (photo + crop, name, email/OTP, password, about-you for AvaBrain).
+        // The trust-ladder hub now lives under 'identity' in ACCOUNT & SETTINGS.
+        _push(const ProfileScreen());
         return;
       case 'wallet':
       case 'avawallet':

@@ -12,8 +12,8 @@ import '../../core/account_storage.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/config.dart';
+import '../../core/drive_service.dart';
 import '../../identity/identity.dart';
-import 'drive_client.dart';
 
 /// BackupService (Phase 10 — Backup & Sync).
 ///
@@ -25,8 +25,11 @@ import 'drive_client.dart';
 ///     site (the settings section); the Worker also enforces a server-side
 ///     premium check (402 → top-up). Enables server-readable cross-device
 ///     restore. R2 has no egress fees.
-///   • FREE Google Drive backup — uploaded to the USER'S OWN Drive appDataFolder
-///     (survives uninstall). Ungated. See [DriveClient].
+///   • FREE Google Drive backup — uploaded to a dedicated "avatok-backup" folder
+///     in the USER'S OWN Drive via the server-mediated [DriveService] (the same
+///     gcal/drive.file OAuth AvaStorage uses). Ungated. The legacy device-side
+///     appDataFolder path (DriveClient) is retired — it needed a consumer OAuth
+///     token that was never wired, which is why free backups errored before.
 ///
 /// ENCRYPTION SCHEME (zero-knowledge — neither AvaTok nor Google can read it):
 ///   • Algorithm: AES-256-GCM (authenticated). Per `cryptography` package.
@@ -261,20 +264,23 @@ class BackupService {
 
   // ── FREE Google Drive lane (user's own Drive) ─────────────────────────────
 
-  /// Backup the encrypted blob to the user's own Google Drive (appDataFolder).
-  /// Ungated (free). Requires a Drive access token from [DriveClient] (see its
-  /// OAuth TODO). Returns the result; a missing token surfaces as 'no_token'.
+  /// Backup the encrypted blob to the user's own Google Drive, in a dedicated
+  /// "avatok-backup" folder, via the server-mediated [DriveService] (the same
+  /// gcal/drive.file OAuth used by AvaStorage). Ungated (free). The caller must
+  /// have connected Drive first (Settings gates the button on that); if not, the
+  /// upload returns false and surfaces as 'no_token'.
   Future<BackupResult> backupToDrive() async {
     try {
       final blob = await buildEncryptedBlob();
       if (blob.isEmpty) return const BackupResult(ok: false, reason: 'empty');
-      final ok = await DriveClient.I.upload(
-        fileName: _driveFileName(),
-        bytes: blob,
-      );
+      // Make sure the avatok-backup folder exists (no-op once created). A false
+      // here means Drive isn't connected yet → tell the user to connect.
+      if (!await DriveService.I.ensureBackupFolder()) {
+        return const BackupResult(ok: false, reason: 'no_token');
+      }
+      final ok = await DriveService.I.backupUpload(_driveFileName(), blob);
       return BackupResult(ok: ok, reason: ok ? null : 'drive_upload_failed');
     } catch (e) {
-      if (e is DriveAuthRequired) return const BackupResult(ok: false, reason: 'no_token');
       return const BackupResult(ok: false, reason: 'drive_error');
     }
   }
@@ -282,19 +288,18 @@ class BackupService {
   /// Restore from the user's own Google Drive (download → decrypt → import).
   Future<BackupResult> restoreFromDrive() async {
     try {
-      final bytes = await DriveClient.I.download(fileName: _driveFileName());
+      final bytes = await DriveService.I.backupDownload(_driveFileName());
       if (bytes == null || bytes.isEmpty) return const BackupResult(ok: false, reason: 'no_backup');
       final plain = await _decrypt(Uint8List.fromList(bytes));
       await importPlain(plain);
       return const BackupResult(ok: true);
     } catch (e) {
-      if (e is DriveAuthRequired) return const BackupResult(ok: false, reason: 'no_token');
       return BackupResult(ok: false, reason: 'restore_failed:$e');
     }
   }
 
   /// Drive backup file name — account-scoped so multiple accounts on one phone
-  /// (and the same Drive) keep distinct backups in appDataFolder.
+  /// (and the same Drive) keep distinct backups in the avatok-backup folder.
   String _driveFileName() {
     final scope = (AccountScope.id == null || AccountScope.id!.isEmpty) ? 'default' : AccountScope.id!;
     return 'avatok-backup-$scope.avbk';

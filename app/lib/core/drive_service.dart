@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'api_auth.dart';
 import 'ava_contracts.dart';
@@ -81,6 +82,53 @@ class DriveService {
       }).toList();
     } catch (_) {
       return const [];
+    }
+  }
+
+  // ── FREE backup lane: the separate "avatok-backup" Drive folder ────────────
+
+  /// Ensure the user's "avatok-backup" Drive folder exists. Returns true only
+  /// when Drive is connected AND the folder is in place — the Settings backup
+  /// buttons gate on this so they never fire before the user has connected.
+  Future<bool> ensureBackupFolder() async {
+    try {
+      final res = await ApiAuth.postJson(_url(AvaApi.driveBackupEnsure), const {},
+          timeout: const Duration(seconds: 25));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      return j['ready'] == true;
+    } catch (e) {
+      AvaLog.I.log('drive', 'ensureBackupFolder failed: $e');
+      return false;
+    }
+  }
+
+  /// Upload the (client-side encrypted) backup blob into the avatok-backup
+  /// folder under [name]. Replaces any existing blob of the same name.
+  Future<bool> backupUpload(String name, List<int> bytes) async {
+    try {
+      final res = await ApiAuth.postJson(
+        _url(AvaApi.driveBackupUpload),
+        {'name': name, 'contentB64': base64Encode(bytes)},
+        timeout: const Duration(seconds: 90),
+      );
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      return j['ok'] == true;
+    } catch (e) {
+      AvaLog.I.log('drive', 'backupUpload failed: $e');
+      return false;
+    }
+  }
+
+  /// Download the named backup blob from the avatok-backup folder; null if none.
+  Future<Uint8List?> backupDownload(String name) async {
+    try {
+      final res = await ApiAuth.getBytes(
+          '${_url(AvaApi.driveBackupDownload)}?name=${Uri.encodeQueryComponent(name)}');
+      if (res.statusCode != 200) return null;
+      return Uint8List.fromList(res.bodyBytes);
+    } catch (e) {
+      AvaLog.I.log('drive', 'backupDownload failed: $e');
+      return null;
     }
   }
 

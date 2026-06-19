@@ -23,14 +23,14 @@ class AppEntry {
 const kAppRegistry = <AppEntry>[
   // ---- standard ----
   AppEntry('avatok', 'AvaTOK', 'Messages & calls', Icons.chat_bubble, Color(0xFF08C4C4)),
-  AppEntry('avalibrary', 'AvaLibrary', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6)),
-  AppEntry('avastorage', 'AvaStorage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9)),
-  AppEntry('avaapps', 'AvaApps', 'Gmail, Docs, Drive & more', Icons.grid_view, Color(0xFF4F8DFD)),
+  AppEntry('avalibrary', 'Library', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6)),
+  AppEntry('avastorage', 'View Storage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9)),
+  AppEntry('avaapps', 'Connectors', 'Gmail, Docs, Drive & more', Icons.grid_view, Color(0xFF4F8DFD)),
   // AvaChat — direct AI chat with Ava (memory-aware, talks to your brain). Visible
   // sidebar item (owner decision 2026-06-18). Routes to CompanionHome.
   AppEntry('avachat', 'AvaChat', 'Chat with Ava — your AI', Icons.auto_awesome, Color(0xFFA06AF0)),
   // AvaWallet visible — users need it to top up AvaCoins (owner decision 2026-06-18).
-  AppEntry('avawallet', 'AvaWallet', 'AvaCoins & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
+  AppEntry('avawallet', 'Wallet', 'AvaCoins & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
   // ---- hidden from the sidebar menu (owner decision 2026-06-17) ----
   AppEntry('explore', 'AvaExplore', 'Marketplace', Icons.storefront, Color(0xFFFF6036), tier: AppTier.hidden),
   AppEntry('verse', 'AvaVerse', 'Your dashboard', Icons.dashboard, Color(0xFF6C5CE7), tier: AppTier.hidden),

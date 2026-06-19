@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
+import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -28,6 +32,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _name = TextEditingController();
   final _handle = TextEditingController();
   final _birthYear = TextEditingController();
+  final _bio = TextEditingController();
+  Identity? _id; // resolved from the passed identity OR the local store
   bool _saving = false;
   bool _listed = false;
   bool _sharePresence = true;
@@ -37,11 +43,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _id = widget.identity;
+    // When opened from the sidebar / identity hub no identity is passed, so load
+    // it ourselves — otherwise Save and photo upload would silently no-op.
+    if (_id == null) {
+      IdentityStore().load().then((id) { if (mounted && id != null) setState(() => _id = id); });
+    }
     _store.load().then((p) {
       if (!mounted) return;
       setState(() {
         _name.text = p.displayName;
         _handle.text = p.handle;
+        _bio.text = p.bio;
         _listed = !p.isEmpty;
         _sharePresence = p.sharePresence;
         _avatarUrl = p.avatarUrl;
@@ -50,7 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
-  void dispose() { _name.dispose(); _handle.dispose(); _birthYear.dispose(); super.dispose(); }
+  void dispose() { _name.dispose(); _handle.dispose(); _birthYear.dispose(); _bio.dispose(); super.dispose(); }
 
   int? get _birthYearValue {
     final y = int.tryParse(_birthYear.text.trim());
@@ -60,16 +73,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _save() async {
-    final id = widget.identity;
+    final id = _id;
     if (id == null || _saving) return;
     final handle = _handle.text.trim().toLowerCase().replaceAll('@', '');
     setState(() => _saving = true);
     final existing = await _store.load();
-    await _store.save(existing.copyWith(displayName: _name.text.trim(), handle: handle, sharePresence: _sharePresence));
-    // Opt-in discovery: publish to the directory so others can find me.
-    if (_name.text.trim().isNotEmpty || handle.isNotEmpty) {
+    await _store.save(existing.copyWith(
+        displayName: _name.text.trim(), handle: handle, bio: _bio.text.trim(),
+        sharePresence: _sharePresence));
+    // Opt-in discovery: publish to the directory so others can find me. Bio rides
+    // along so AvaBrain can learn from it (server-side, consent-gated).
+    if (_name.text.trim().isNotEmpty || handle.isNotEmpty || _bio.text.trim().isNotEmpty) {
       await Directory.registerProfile(npub: id.npub, handle: handle, name: _name.text.trim(), avatarUrl: _avatarUrl,
-          birthYear: _birthYearValue);
+          birthYear: _birthYearValue, bio: _bio.text.trim());
     }
     if (!mounted) return;
     setState(() { _saving = false; _listed = true; });
@@ -147,7 +163,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String get _cleanHandle => _handle.text.trim().toLowerCase().replaceAll('@', '');
 
   Future<void> _uploadAvatar(Uint8List bytes) async {
-    final id = widget.identity;
+    final id = _id;
     if (id == null) return;
     setState(() => _photoBusy = true);
     final url = await Directory.uploadAvatar(bytes);
@@ -168,7 +184,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _removePhoto() async {
-    final id = widget.identity;
+    final id = _id;
     if (id == null) return;
     setState(() => _photoBusy = true);
     final p = await _store.load();
@@ -179,9 +195,172 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo removed')));
   }
 
+  /// Change the sign-in email — sends a 6-digit OTP to the NEW address and only
+  /// switches once it's verified (same flow as the identity hub).
+  Future<void> _changeEmail() async {
+    final emailCtrl = TextEditingController();
+    final codeCtrl = TextEditingController();
+    var sent = false;
+    String? err;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        Future<void> send() async {
+          final r = await ApiAuth.postJson(kEmailOtpStartUrl, {'email': emailCtrl.text.trim()});
+          setS(() {
+            sent = r.statusCode == 200;
+            err = sent ? null : 'Could not send the code — check the address.';
+          });
+        }
+
+        Future<void> verify() async {
+          final r = await ApiAuth.postJson(
+              kEmailOtpVerifyUrl, {'email': emailCtrl.text.trim(), 'code': codeCtrl.text.trim()});
+          if (r.statusCode == 200) {
+            if (ctx.mounted) Navigator.of(ctx).pop();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Email updated')));
+            }
+          } else {
+            setS(() => err = 'Incorrect or expired code.');
+          }
+        }
+
+        return AlertDialog(
+          backgroundColor: Zine.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          ),
+          title: Text('Change email', style: ZineText.cardTitle()),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            ZineField(
+              controller: emailCtrl,
+              enabled: !sent,
+              label: 'New email address',
+              keyboardType: TextInputType.emailAddress,
+            ),
+            if (sent) ...[
+              const SizedBox(height: 14),
+              ZineField(
+                controller: codeCtrl,
+                label: '6-digit code from your inbox',
+                keyboardType: TextInputType.number,
+              ),
+            ],
+            if (err != null) ZineErrorMsg(err!),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+            ZineButton(label: sent ? 'Verify' : 'Send code', variant: ZineButtonVariant.blue,
+                fontSize: 15, onPressed: sent ? verify : send),
+          ],
+        );
+      }),
+    );
+  }
+
+  /// Set or change the account password (email+password sign-in, alongside
+  /// Google). Step 1 emails a 6-digit code to the account email; step 2 verifies
+  /// the code and sets the new password on the server (Clerk Backend API).
+  Future<void> _changePassword() async {
+    final codeCtrl = TextEditingController();
+    final pwCtrl = TextEditingController();
+    var sent = false;
+    var busy = false;
+    String? err;
+    String? hint;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        Future<void> send() async {
+          setS(() { busy = true; err = null; });
+          final r = await ApiAuth.postJson(kPasswordResetStartUrl, const {});
+          String? h;
+          try { h = (r.statusCode == 200) ? (jsonDecode(r.body)['email_hint'] ?? '').toString() : null; } catch (_) {}
+          setS(() {
+            busy = false;
+            sent = r.statusCode == 200;
+            hint = h;
+            err = sent ? null : 'Could not send the code — please try again.';
+          });
+        }
+
+        Future<void> set() async {
+          if (pwCtrl.text.length < 8) { setS(() => err = 'Password must be at least 8 characters.'); return; }
+          setS(() { busy = true; err = null; });
+          final r = await ApiAuth.postJson(
+              kPasswordSetUrl, {'code': codeCtrl.text.trim(), 'password': pwCtrl.text});
+          if (r.statusCode == 200) {
+            if (ctx.mounted) Navigator.of(ctx).pop();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Password updated')));
+            }
+          } else {
+            String msg = 'Incorrect or expired code.';
+            try { msg = (jsonDecode(r.body)['error'] ?? msg).toString(); } catch (_) {}
+            setS(() { busy = false; err = msg; });
+          }
+        }
+
+        return AlertDialog(
+          backgroundColor: Zine.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.r),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+          ),
+          title: Text(sent ? 'Set password' : 'Set or change password', style: ZineText.cardTitle()),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (!sent)
+              Text('We\'ll email a 6-digit code to confirm it\'s you.', style: ZineText.sub(size: 13)),
+            if (sent) ...[
+              Text('Code sent${hint != null && hint!.isNotEmpty ? ' to $hint' : ''}.',
+                  style: ZineText.sub(size: 13)),
+              const SizedBox(height: 12),
+              ZineField(controller: codeCtrl, label: '6-digit code', keyboardType: TextInputType.number),
+              const SizedBox(height: 12),
+              ZineField(controller: pwCtrl, label: 'New password', obscureText: true),
+            ],
+            if (err != null) ZineErrorMsg(err!),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft))),
+            ZineButton(label: sent ? 'Set password' : 'Send code', variant: ZineButtonVariant.blue,
+                fontSize: 15, loading: busy, onPressed: busy ? null : (sent ? set : send)),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _securityRow(IconData icon, Color accent, String title, String subtitle, VoidCallback onTap) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ZinePressable(
+          onTap: onTap,
+          radius: BorderRadius.circular(Zine.rSm),
+          boxShadow: Zine.shadowXs,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(children: [
+            ZineIconBadge(icon: icon, color: accent, size: 34),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: ZineText.value(size: 15)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: ZineText.sub(size: 12)),
+            ])),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+          ]),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final id = widget.identity;
+    final id = _id;
     return Scaffold(
       backgroundColor: Zine.paper,
       appBar: const ZineAppBar(title: 'Profile', markWord: 'Profile', tag: 'your public card'),
@@ -273,6 +452,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Text('Never shown to anyone. Helps creators see anonymous age-group stats (e.g. "25-34").',
             style: ZineText.sub(size: 12.5)),
         const SizedBox(height: 16),
+        ZineField(
+          controller: _bio,
+          label: 'About you',
+          hint: 'Tell Ava a little about yourself…',
+          maxLines: 4,
+          maxLength: 600,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: 7),
+        Text('Private to you. Ava reads this to personalise its help — manage what Ava '
+            'learns from in Settings → AvaBrain.', style: ZineText.sub(size: 12.5)),
+        const SizedBox(height: 16),
         ZineCard(
           radius: Zine.rSm,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -288,8 +479,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
         ),
         const SizedBox(height: 16),
-        const PhoneVerifyCard(),
-        const SizedBox(height: 12),
+        // Soft nudge for users who skipped phone at onboarding (non-dismissible
+        // here — the profile editor is the natural place to add it). Shows a
+        // verified row once done.
+        const PhoneNudgeCard(source: 'profile', collapsible: false),
+        const SizedBox(height: 6),
+        Text('ACCOUNT & SECURITY', style: ZineText.kicker()),
+        const SizedBox(height: 10),
+        _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.blue,
+            'Change email', 'Verify the new address with a 6-digit code', _changeEmail),
+        _securityRow(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), Zine.lilac,
+            'Password', 'Set or change your sign-in password', _changePassword),
+        const SizedBox(height: 6),
         if (id != null) ZineCard(
           radius: Zine.rSm,
           padding: const EdgeInsets.all(14),

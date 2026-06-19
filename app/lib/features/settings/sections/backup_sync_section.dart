@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/drive_service.dart';
 import '../../../core/paid_feature.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../ava_backup/backup_service.dart';
-import '../../ava_backup/drive_client.dart';
 import '../settings_registry.dart';
 
 /// Settings → "Backup & sync" section (Phase 10 — Ava in-chat).
@@ -40,10 +41,19 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
   bool _busy = false;
   String? _r2Summary;
 
+  // Drive connection gate (FREE lane). null = still checking. The backup/restore
+  // buttons only appear once Drive is connected AND the avatok-backup folder is
+  // in place — otherwise we show a single "Connect Google Drive" button so the
+  // user is taken through the OAuth pipeline instead of hitting a backup error.
+  bool? _driveConnected;
+  bool _folderReady = false;
+  bool _connecting = false;
+
   @override
   void initState() {
     super.initState();
     _loadStatus();
+    _refreshDrive();
   }
 
   Future<void> _loadStatus() async {
@@ -54,6 +64,41 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           ? null
           : 'Last sync v${s.version} · ${(s.sizeBytes / 1024).toStringAsFixed(0)} KB';
     });
+  }
+
+  /// Check Drive connection and, when connected, ensure the avatok-backup folder
+  /// exists. Drives whether we show the connect button or the backup buttons.
+  Future<void> _refreshDrive() async {
+    final st = await DriveService.I.status();
+    var folderReady = false;
+    if (st.connected) {
+      folderReady = await DriveService.I.ensureBackupFolder();
+    }
+    if (!mounted) return;
+    setState(() {
+      _driveConnected = st.connected;
+      _folderReady = folderReady;
+    });
+  }
+
+  /// Open Google's consent screen to connect Drive (reuses the gcal/drive.file
+  /// OAuth). After the user authorizes and returns, they tap "I've connected".
+  Future<void> _connectDrive() async {
+    if (_connecting) return;
+    setState(() => _connecting = true);
+    try {
+      final url = await DriveService.I.connectUrl();
+      if (url != null && url.isNotEmpty) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        _snack('Authorize Google Drive, then come back and tap "I\'ve connected".');
+      } else {
+        _snack("Couldn't start Google Drive — try again in a moment.");
+      }
+    } catch (_) {
+      _snack('Could not open Google Drive.');
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
   }
 
   void _snack(String msg) {
@@ -124,36 +169,78 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           style: ZineText.sub(size: 12),
         ),
         const SizedBox(height: 12),
-        Row(children: [
-          Expanded(
-            child: ZineButton(
-              label: 'Back up now',
-              variant: ZineButtonVariant.lime,
-              fullWidth: true,
-              fontSize: 14,
-              icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
-              trailingIcon: false,
-              loading: _busy,
-              onPressed: _busy ? null : () => _run(BackupService.I.backupToDrive, 'Backed up to Drive.'),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: ZineButton(
-              label: 'Restore',
-              variant: ZineButtonVariant.ghost,
-              fullWidth: true,
-              fontSize: 14,
-              icon: PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold),
-              trailingIcon: false,
-              onPressed: _busy
-                  ? null
-                  : () => _run(BackupService.I.restoreFromDrive, 'Restored from Drive. Reopen the app.'),
-            ),
-          ),
-        ]),
+        _driveActions(),
       ]),
     );
+  }
+
+  /// Connect-gated actions: until Drive is connected and the avatok-backup
+  /// folder exists, only a "Connect Google Drive" button shows. Once ready, the
+  /// backup/restore buttons appear.
+  Widget _driveActions() {
+    if (_driveConnected == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2)),
+          SizedBox(width: 10),
+          Text('Checking Google Drive…'),
+        ]),
+      );
+    }
+
+    final ready = _driveConnected == true && _folderReady;
+    if (!ready) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ZineButton(
+          label: _connecting ? 'Opening Google…' : 'Connect Google Drive',
+          variant: ZineButtonVariant.lime,
+          fullWidth: true,
+          fontSize: 14,
+          icon: PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold),
+          trailingIcon: false,
+          loading: _connecting,
+          onPressed: _connecting ? null : _connectDrive,
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: ZineLink(
+            _driveConnected == true ? 'finish setup' : "I've connected — refresh",
+            fontSize: 13,
+            onTap: _connecting ? null : _refreshDrive,
+          ),
+        ),
+      ]);
+    }
+
+    return Row(children: [
+      Expanded(
+        child: ZineButton(
+          label: 'Back up now',
+          variant: ZineButtonVariant.lime,
+          fullWidth: true,
+          fontSize: 14,
+          icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
+          trailingIcon: false,
+          loading: _busy,
+          onPressed: _busy ? null : () => _run(BackupService.I.backupToDrive, 'Backed up to Drive.'),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: ZineButton(
+          label: 'Restore',
+          variant: ZineButtonVariant.ghost,
+          fullWidth: true,
+          fontSize: 14,
+          icon: PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold),
+          trailingIcon: false,
+          onPressed: _busy
+              ? null
+              : () => _run(BackupService.I.restoreFromDrive, 'Restored from Drive. Reopen the app.'),
+        ),
+      ),
+    ]);
   }
 
   // ── PAID: R2 cross-device sync ──────────────────────────────────────────────

@@ -200,7 +200,9 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
       signedIn = cu != null;
     } catch (_) {}
-    if (!signedIn) { _to(_Stage.signIn); return; }
+    // Fresh / signed-out → start at the Welcome hero (step 1), which leads into
+    // social sign-in. (Simple flow: Welcome → Login → Terms → Notifications.)
+    if (!signedIn) { _to(_Stage.welcome); return; }
     await _route();
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -48,7 +49,13 @@ class _CompanionMsg {
   final bool me; // true = user, false = Ava
   final bool blocked; // Ava turn refused by the gate
   final String? reason; // gate reason, e.g. 'premium_required' | 'insufficient_coins'
-  _CompanionMsg(this.id, this.text, this.me, {this.blocked = false, this.reason});
+  // Typewriter reveal: how many chars of [text] are currently shown. Ava replies
+  // animate from 0 → text.length so the answer "types out" (feels instant /
+  // streamed) even though it arrives whole — the output still passes the
+  // server-side llama-guard gate first. Everything else shows fully right away.
+  int reveal;
+  _CompanionMsg(this.id, this.text, this.me, {this.blocked = false, this.reason, int? reveal})
+      : reveal = reveal ?? text.length;
 }
 
 class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
@@ -58,6 +65,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   final List<_CompanionMsg> _msgs = [];
   bool _busy = false;
   String? _playingId;
+  Timer? _revealTimer; // drives the typewriter reveal of Ava's latest reply
   // AvaChat history is saved locally + to D1 after each turn and on close.
   final String _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';
 
@@ -92,6 +100,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
 
   @override
   void dispose() {
+    _revealTimer?.cancel();
     _persist(); // save the session on close (local + D1)
     _input.dispose();
     _scroll.dispose();
@@ -141,6 +150,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     final t = _input.text.trim();
     if (t.isEmpty || _busy) return;
     _input.clear();
+    _completeReveal(); // snap any in-progress typewriter to full before a new turn
     setState(() {
       _msgs.add(_CompanionMsg('u${DateTime.now().microsecondsSinceEpoch}', t, true));
       _busy = true;
@@ -154,20 +164,50 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       history: priorHistory.isEmpty ? null : priorHistory,
     );
     if (!mounted) return;
+    final answer = ans.answer.isEmpty
+        ? "I couldn't reach my thoughts just now — try again?"
+        : ans.answer;
+    final avaMsg = _CompanionMsg(
+      'a${DateTime.now().microsecondsSinceEpoch}',
+      answer,
+      false,
+      blocked: ans.blocked,
+      reason: ans.reason,
+      // Stream the normal answers in; show refusals/notices immediately.
+      reveal: ans.blocked ? answer.length : 0,
+    );
     setState(() {
-      _msgs.add(_CompanionMsg(
-        'a${DateTime.now().microsecondsSinceEpoch}',
-        ans.answer.isEmpty
-            ? "I couldn't reach my thoughts just now — try again?"
-            : ans.answer,
-        false,
-        blocked: ans.blocked,
-        reason: ans.reason,
-      ));
+      _msgs.add(avaMsg);
       _busy = false;
     });
     _jumpToEnd();
+    if (!ans.blocked) _streamIn(avaMsg);
     _persist(); // save history (local + D1) after each completed turn
+  }
+
+  /// Snap any partially-revealed message to its full text (and stop the timer),
+  /// so an earlier reply is never left truncated when a new turn begins.
+  void _completeReveal() {
+    _revealTimer?.cancel();
+    for (final m in _msgs) {
+      if (m.reveal < m.text.length) m.reveal = m.text.length;
+    }
+  }
+
+  /// Typewriter-reveal [m]'s text so the reply appears to stream in. Reveal speed
+  /// scales with length so any answer finishes in ~1.2s. Cancelled on a new turn
+  /// or dispose; the underlying text is already complete (and gate-checked).
+  void _streamIn(_CompanionMsg m) {
+    _revealTimer?.cancel();
+    final int step = (m.text.length / 75).ceil().clamp(1, 24).toInt(); // chars per tick
+    _revealTimer = Timer.periodic(const Duration(milliseconds: 16), (t) {
+      if (!mounted || m.reveal >= m.text.length) {
+        t.cancel();
+        return;
+      }
+      setState(() => m.reveal = (m.reveal + step).clamp(0, m.text.length).toInt());
+      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
   }
 
   void _jumpToEnd() {
@@ -301,7 +341,10 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               border: Border.all(color: Zine.ink, width: 2),
               boxShadow: Zine.shadowXs,
             ),
-            child: Text(m.text, style: ZineText.value(size: 14.5, weight: FontWeight.w600)),
+            child: Text(
+              m.reveal >= m.text.length ? m.text : m.text.substring(0, m.reveal),
+              style: ZineText.value(size: 14.5, weight: FontWeight.w600),
+            ),
           ),
           if (showListen)
             Padding(
