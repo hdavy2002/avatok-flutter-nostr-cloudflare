@@ -118,27 +118,22 @@ class AvaTheme {
           textStyle: ZineText.link(size: 13.5),
         ),
       ),
+      // NO default box. The zine design wraps every input in its own bordered
+      // container (ZineTextField, the chat composer, search bars), so a themed
+      // filled+outlined box here drew a SECOND bar inside that container (the
+      // "double bar" bug). Keep the theme borderless/unfilled; containers supply
+      // the visual. (2026-06-18)
       inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: Zine.card,
+        filled: false,
+        isDense: true,
         hintStyle: ZineText.input(size: 16).copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
         labelStyle: ZineText.kicker(size: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Zine.rField),
-          borderSide: const BorderSide(color: Zine.ink, width: Zine.bw),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Zine.rField),
-          borderSide: const BorderSide(color: Zine.ink, width: Zine.bw),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Zine.rField),
-          borderSide: const BorderSide(color: Zine.blueInk, width: Zine.bw),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Zine.rField),
-          borderSide: const BorderSide(color: Zine.coral, width: Zine.bw),
-        ),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        disabledBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        focusedErrorBorder: InputBorder.none,
       ),
       cardTheme: CardThemeData(
         color: Zine.card,

@@ -80,7 +80,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
             // AvaLibrary + AvaApps render as featured tiles when focus is OFF, so
             // drop them from the APPS list only then (no duplicate). In focus mode
             // the featured tiles are hidden, so they appear in the APPS list.
-            .where((a) => focus || (a.id != 'avalibrary' && a.id != 'avaapps'))
+            .where((a) => focus || (a.id != 'avalibrary' && a.id != 'avaapps' && a.id != 'avachat'))
             .toList();
         final body = SafeArea(child: _column(context, apps, focus));
         if (widget.permanent) {

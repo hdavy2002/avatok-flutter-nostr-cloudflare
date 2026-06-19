@@ -1751,7 +1751,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 decoration: BoxDecoration(gradient: wallpaperGradient(_wallpaperId)),
                 child: Builder(builder: (_) {
                 final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-                var visible = _msgs.where((m) => m.expireAt == null || m.expireAt! >= nowS).toList();
+                var visible = _msgs
+                    .where((m) => m.expireAt == null || m.expireAt! >= nowS)
+                    // Never render control envelopes (read/delivered/typing
+                    // receipts) as chat bubbles — they leaked through as raw
+                    // JSON "{t:read,…}" green messages that multiplied on reopen.
+                    .where((m) => !_isControlEnvelope(m.text))
+                    .toList();
+                // "Ava is working…" chips are transient: only the MOST RECENT
+                // message may be one. A real reply (or anything later) makes
+                // earlier chips stale, so they collapse instead of sticking.
+                if (visible.isNotEmpty) {
+                  final lastIdx = visible.length - 1;
+                  visible = [
+                    for (var i = 0; i < visible.length; i++)
+                      if (visible[i].special != 'ava_status' || i == lastIdx) visible[i],
+                  ];
+                }
                 if (_searchMode && _searchQuery.isNotEmpty) {
                   final q = _searchQuery.toLowerCase();
                   visible = visible.where((m) => m.text.toLowerCase().contains(q)).toList();
@@ -1872,6 +1888,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ),
       ]),
     );
+  }
+
+  /// True if [text] is a control/receipt envelope (read/delivered/typing/ack)
+  /// that should never appear as a chat bubble.
+  bool _isControlEnvelope(String text) {
+    final t = text.trim();
+    if (t.isEmpty || t.codeUnitAt(0) != 0x7B /* { */) return false;
+    if (t.contains('"read_ts"') || t.contains('"delivered_ts"')) return true;
+    try {
+      final j = jsonDecode(t);
+      if (j is Map) {
+        const ctrl = {'read', 'delivered', 'typing', 'ack', 'receipt', 'seen'};
+        return ctrl.contains(j['t']) || ctrl.contains(j['type']);
+      }
+    } catch (_) { /* not JSON → real text */ }
+    return false;
   }
 
   Widget _searchBar() => Row(children: [

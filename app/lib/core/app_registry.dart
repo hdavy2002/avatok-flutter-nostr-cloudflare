@@ -26,6 +26,9 @@ const kAppRegistry = <AppEntry>[
   AppEntry('avalibrary', 'AvaLibrary', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6)),
   AppEntry('avastorage', 'AvaStorage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9)),
   AppEntry('avaapps', 'AvaApps', 'Gmail, Docs, Drive & more', Icons.grid_view, Color(0xFF4F8DFD)),
+  // AvaChat — direct AI chat with Ava (memory-aware, talks to your brain). Visible
+  // sidebar item (owner decision 2026-06-18). Routes to CompanionHome.
+  AppEntry('avachat', 'AvaChat', 'Chat with Ava — your AI', Icons.auto_awesome, Color(0xFFA06AF0)),
   // AvaWallet visible — users need it to top up AvaCoins (owner decision 2026-06-18).
   AppEntry('avawallet', 'AvaWallet', 'AvaCoins & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
   // ---- hidden from the sidebar menu (owner decision 2026-06-17) ----
@@ -40,7 +43,6 @@ const kAppRegistry = <AppEntry>[
   AppEntry('avavoice', 'AvaVoice', 'AI voice agents', Icons.mic, Color(0xFFA06AF0), tier: AppTier.hidden),
   AppEntry('avavision', 'AvaVision', 'AI vision coaches', Icons.visibility, Color(0xFFA06AF0), tier: AppTier.hidden),
   AppEntry('avainbox', 'AvaInbox', 'All messages, one inbox', Icons.inbox, Color(0xFF4F8DFD), tier: AppTier.hidden),
-  AppEntry('avachat', 'AvaChat', 'Your personal AI', Icons.auto_awesome, Color(0xFFA06AF0), tier: AppTier.hidden),
   AppEntry('avaaffiliate', 'AvaAffiliate', 'Earn 10% for life', Icons.campaign, Color(0xFFF97316), tier: AppTier.hidden),
   // ---- hidden until a later phase flips them ----
   AppEntry('avaai', 'AvaAI', 'AI assistant', Icons.auto_awesome, Color(0xFF22C9C0), tier: AppTier.hidden),
@@ -79,6 +81,7 @@ class AppRegistry {
   /// the wallet is needed for AvaCoin top-ups (owner decision 2026-06-18).
   static const Set<String> _focusIds = {
     'avatok',
+    'avachat',
     'avalibrary',
     'avastorage',
     'avaapps',
