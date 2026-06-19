@@ -92,6 +92,7 @@ import { avaTools } from "./routes/ava_tools";          // P5
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
 import { avaImage } from "./routes/ava_image";          // P9
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
+import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
 import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
 
 export { CallRoom } from "./do/call_room";
@@ -233,6 +234,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/backup/status" && req.method === "GET") return await backupStatus(req, env);
       if (p === "/api/backup" && req.method === "GET") return await backupGet(req, env);
       if (p === "/api/backup" && req.method === "PUT") return await backupPut(req, env);
+
+      // AI Ringback Tones + Busy Tone — generation + 5-item library.
+      // /api/ringtone/{generate|list|user/<uid>/default|<id>/default|<id>}
+      if (p.startsWith("/api/ringtone/")) return await ringtone(req, env, p.slice("/api/ringtone/".length));
 
       // --- directory ---
       if (p === "/api/profile" && req.method === "POST") return await api.profileUpsert(req, env);
