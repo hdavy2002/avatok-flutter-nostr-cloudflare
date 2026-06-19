@@ -761,6 +761,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
     final to = widget.chat.seed; // for real contacts this is their npub
     AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
+    // The callee's default ringtone (AI Ringback) — comes back on the /api/call
+    // response so the caller hears it locally while ringing.
+    String ringbackUrl = '';
     // Ring the callee's phone via FCM wake (real npub contacts only).
     if (to.startsWith('user_')) {
       try {
@@ -772,6 +775,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           'kind': video ? 'video' : 'audio',
         });
         AvaLog.I.log('call', 'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
+        if (res.statusCode == 200) {
+          try { ringbackUrl = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString(); } catch (_) {}
+        }
         if (res.statusCode == 404 && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('They have no device registered yet — they need to open AvaTOK once')));
@@ -784,7 +790,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => CallScreen(room: room, title: widget.chat.name, seed: to, video: video, avatarUrl: widget.chat.avatarUrl),
+        builder: (_) => CallScreen(room: room, title: widget.chat.name, seed: to, video: video, avatarUrl: widget.chat.avatarUrl, ringbackUrl: ringbackUrl),
       ),
     );
   }

@@ -42,7 +42,18 @@ export async function call(req: Request, env: Env): Promise<Response> {
   const n = await tokenCount(env.DB_META, b.to);
   if (n === 0) return json({ error: "callee has no registered devices" }, 404);
   await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: b.fromName ?? "AvaTOK", callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
-  return json({ sent: n });
+  // AI Ringback (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md): hand the CALLER
+  // the callee's CURRENT default ringtone so it plays locally during the ring
+  // phase. Resolved at dial time so changing the default takes effect next call.
+  // Best-effort — a lookup failure must never block placing the call.
+  let ringbackUrl = "";
+  try {
+    const r = await env.DB_META
+      .prepare("SELECT url FROM ringtones WHERE account_id=?1 AND is_default=1 LIMIT 1")
+      .bind(b.to).first<{ url: string }>();
+    ringbackUrl = r?.url ?? "";
+  } catch { /* table missing / no default → caller uses the bundled fallback */ }
+  return json({ sent: n, ringbackUrl });
 }
 
 export async function notify(req: Request, env: Env): Promise<Response> {

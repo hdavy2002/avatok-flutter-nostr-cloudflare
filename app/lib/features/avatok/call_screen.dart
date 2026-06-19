@@ -32,6 +32,10 @@ class CallScreen extends StatefulWidget {
   final bool video;
   final bool outgoing; // true = caller (show ringback + no-answer timeout)
   final String avatarUrl; // peer's photo ('' = initials)
+  // AI Ringback: the callee's current default ringtone URL, resolved at dial
+  // time (POST /api/call response). The CALLER plays this locally during the
+  // ringing phase. Empty → the bundled default ringback is used instead.
+  final String ringbackUrl;
   const CallScreen({
     super.key,
     required this.room,
@@ -40,6 +44,7 @@ class CallScreen extends StatefulWidget {
     required this.video,
     this.outgoing = true,
     this.avatarUrl = '',
+    this.ringbackUrl = '',
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
