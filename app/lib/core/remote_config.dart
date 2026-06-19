@@ -40,6 +40,9 @@ class RemoteConfig {
   static bool get avaAffiliateEnabled => _b('avaAffiliateEnabled', false);
   /// v2 marketing-asset kit (Gemini Nano Banana 2 promo images) — default OFF.
   static bool get affiliateAssetKitEnabled => _b('affiliateAssetKitEnabled', false);
+  /// AI Ringback Tones + Busy Tone — master switch (server panic off). Default
+  /// mirrors kRingbackEnabledDefault so a fetch failure keeps the feature on.
+  static bool get ringbackEnabled => _b('ringbackEnabled', kRingbackEnabledDefault);
   static int get minAppBuild => (_cfg['minAppBuild'] as num?)?.toInt() ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

@@ -15,6 +15,8 @@ import '../../core/call_telemetry.dart';
 import '../../core/config.dart';
 import '../../core/ice_cache.dart';
 import '../../core/receptionist_call.dart';
+import '../../core/remote_config.dart';
+import '../../core/ringback_player.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../push/push_service.dart';
@@ -71,6 +73,9 @@ class _CallScreenState extends State<CallScreen> {
   // ringing | connecting | connected | declined | busy | no-answer | ended
   String _phase = 'connecting';
   Timer? _ringTimeout;
+  // AI Ringback: caller-side playback of the callee's tune while ringing, and
+  // the busy tone. One player per call; stopped on every end path.
+  final RingbackPlayer _ringback = RingbackPlayer();
   ReceptionistCall? _receptionist; // Ava answers if the callee doesn't (audio only)
   StreamSubscription? _statusSub;
   // ICE candidates that arrive before the remote description is set must be
@@ -106,6 +111,12 @@ class _CallScreenState extends State<CallScreen> {
       _ringTimeout = Timer(const Duration(seconds: 35), () {
         if (mounted && !_connected) _onNoAnswer();
       });
+      // Caller hears the callee's AI ringback (or the bundled default) while
+      // ringing. Gated by the server kill switch (mirrored in RemoteConfig).
+      if (RemoteConfig.ringbackEnabled) {
+        // ignore: unawaited_futures
+        _ringback.playRingback(widget.ringbackUrl);
+      }
     }
     // Server-relayed call status (declined / busy) for this call.
     _statusSub = callStatusBus.stream.listen((e) {
@@ -127,6 +138,8 @@ class _CallScreenState extends State<CallScreen> {
   /// rtc-failed|rtc-disconnected|timeout-ringing.
   void _endWith(String phase, {String? reason}) {
     _telemetry.ended(reason ?? phase);
+    _ringback.stop(); // silence any ringback on every end path
+
     // Release mic/cam IMMEDIATELY on every end path (remote hangup, decline,
     // busy, no-answer, failure) — not 1.4s later when the route finally pops.
     // This is what stops the green mic indicator lingering after the other side
@@ -203,6 +216,7 @@ class _CallScreenState extends State<CallScreen> {
         _remote.srcObject = e.streams[0];
         _ringTimeout?.cancel();
         _failTimer?.cancel();
+        _ringback.stop(); // call answered — silence the ringback
         _telemetry.connected(pc);
         if (mounted) setState(() { _connected = true; _phase = 'connected'; });
       }
@@ -386,6 +400,7 @@ class _CallScreenState extends State<CallScreen> {
   /// calls only, premium callee). If Ava picks up, the caller talks to her here.
   /// Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.
   Future<void> _onNoAnswer() async {
+    _ringback.stop(); // ringing window over — stop before receptionist takeover
     if (!widget.video && !_ended) {
       final started = await _tryReceptionist();
       if (started) return;
@@ -473,6 +488,7 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void dispose() {
     _statusSub?.cancel();
+    _ringback.dispose();
     _end();
     _local.dispose();
     _remote.dispose();
