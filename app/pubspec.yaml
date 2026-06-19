@@ -103,6 +103,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/sounds/
+    - assets/audio/    # AI ringback feature: bundled fallback ringback + busy tone
     - assets/models/   # AvaVision on-device vision models (MoveNet/MediaPipe Tasks)
     - assets/ai_studio/   # Google AI Studio key-setup step screenshots
   # AvaTOK design system fonts (bundled — offline-safe; see AVATOK-DESIGN-SYSTEM):

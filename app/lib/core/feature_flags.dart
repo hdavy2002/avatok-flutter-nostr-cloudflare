@@ -60,3 +60,29 @@ const bool kCompanionEnabledDefault = true;
 /// Generative image gen (Nano Banana 2) in-thread. Default ON as a surface;
 /// every generation is a premium PaidFeature at the point of use.
 const bool kGenerativeEnabledDefault = true;
+
+// ---------------------------------------------------------------------------
+// AI Ringback Tones + Busy Tone (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md).
+// Caller-side ringback: the CALLER hears the callee's MiniMax-generated tune
+// during the existing (today silent) ringing phase; a busy tone plays when the
+// callee is already on a call. Local playback on the caller's device — NOT
+// carrier early media. Free (our Workers AI key). Default ON; the server mirror
+// is PlatformConfig.ringbackEnabled (routes/config.ts) — the panic switch.
+// ---------------------------------------------------------------------------
+
+/// Master client default for the ringback/busy-tone feature. Mirrors the server
+/// `ringbackEnabled` flag; the server value (RemoteConfig) wins at runtime.
+const bool kRingbackEnabledDefault = true;
+
+/// Stored clip length for a generated ringtone. The caller ring phase times out
+/// at 35s (call_screen.dart), so a 30s clip looped once covers the whole window.
+const int kRingtoneSeconds = 30;
+
+/// Max ringtones saved per account. Generating one more evicts the OLDEST
+/// (FIFO) — server-enforced, deleting both the R2 object and the D1 row.
+const int kMaxRingtonesPerAccount = 5;
+
+/// Bundled fallback tones (used when no custom tone is set or the network is
+/// down). Registered in pubspec under assets/audio/.
+const String kDefaultRingbackAsset = 'assets/audio/ringback_default.wav';
+const String kBusyToneAsset = 'assets/audio/busy_tone.wav';

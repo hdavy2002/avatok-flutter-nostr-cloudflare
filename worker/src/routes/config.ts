@@ -48,6 +48,11 @@ export interface PlatformConfig {
   guardianEnabled: boolean;          // Guardian safety surfaces (basic free, deep premium)
   companionEnabled: boolean;         // blank "New chat with Ava" + personas
   generativeEnabled: boolean;        // in-thread image gen (each gen is a PaidFeature)
+  // AI Ringback Tones + Busy Tone (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md).
+  // Master switch for /api/ringtone/* (generation/library) AND the caller-side
+  // ringback playback. OFF → generation 503s and callers fall back to today's
+  // silent ring + system busy. Client mirror: kRingbackEnabledDefault.
+  ringbackEnabled: boolean;
   minAppBuild: number;
 }
 
@@ -80,6 +85,7 @@ const DEFAULTS: PlatformConfig = {
   guardianEnabled: true,
   companionEnabled: true,
   generativeEnabled: true,
+  ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
   minAppBuild: 0,
 };
 
