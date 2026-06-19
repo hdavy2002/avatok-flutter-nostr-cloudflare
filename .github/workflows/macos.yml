@@ -8,13 +8,10 @@ name: macOS build (.dmg)
 # UNSIGNED: first launch on any Mac needs right-click -> Open once (Gatekeeper),
 # or:  xattr -dr com.apple.quarantine /Applications/AvaTok.app
 
+# NOTE: auto-build on push is DISABLED for now (owner: "for testing I just need
+# the APK, no DMG"). Run this manually from the Actions tab (Run workflow) when a
+# Mac .dmg is needed. Re-enable the `push:` block below to resume auto-DMG.
 on:
-  push:
-    branches: [main, staging]
-    paths:
-      - 'app/**'
-      - 'packaging/macos-dmg/**'
-      - '.github/workflows/macos.yml'
   workflow_dispatch:
 
 env:

@@ -19,6 +19,9 @@ on:
 
 env:
   AVATOK_ENV: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
+  # APK-only for testing right now (owner: "just need the apk, no aab").
+  # Flip back to 'true' to resume Play Store .aab builds.
+  BUILD_AAB: 'false'
 
 permissions:
   contents: write
@@ -101,6 +104,7 @@ jobs:
       # Android App Bundle (.aab) — the ONLY artifact we ship. Upload to Play
       # Console. Play splits per-ABI/density server-side, so no APK is needed.
       - name: Build release App Bundle (.aab) for Play Store
+        if: env.BUILD_AAB == 'true'
         working-directory: app
         run: flutter build appbundle --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
         env:
@@ -111,6 +115,7 @@ jobs:
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
 
       - name: Stage .aab with a stable name
+        if: env.BUILD_AAB == 'true'
         run: |
           mkdir -p dist
           ls -la app/build/app/outputs/bundle/release/
@@ -118,6 +123,7 @@ jobs:
           echo "size:"; ls -lh dist/
 
       - name: Upload .aab artifact (Play Store)
+        if: env.BUILD_AAB == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: avatok-call-aab
@@ -141,6 +147,7 @@ jobs:
 
       - name: Stage .apk with a stable name
         run: |
+          mkdir -p dist
           ls -la app/build/app/outputs/flutter-apk/
           cp app/build/app/outputs/flutter-apk/app-release.apk dist/avatok-call.apk
           echo "size:"; ls -lh dist/
@@ -157,7 +164,6 @@ jobs:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
-            dist/avatok-call.aab
             dist/avatok-call.apk
           fail_on_unmatched_files: false
           body: |

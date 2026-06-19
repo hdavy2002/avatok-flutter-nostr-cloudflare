@@ -14,6 +14,7 @@ import '../../core/call_log_store.dart';
 import '../../core/call_telemetry.dart';
 import '../../core/config.dart';
 import '../../core/ice_cache.dart';
+import '../../core/receptionist_call.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../push/push_service.dart';
@@ -65,6 +66,7 @@ class _CallScreenState extends State<CallScreen> {
   // ringing | connecting | connected | declined | busy | no-answer | ended
   String _phase = 'connecting';
   Timer? _ringTimeout;
+  ReceptionistCall? _receptionist; // Ava answers if the callee doesn't (audio only)
   StreamSubscription? _statusSub;
   // ICE candidates that arrive before the remote description is set must be
   // buffered — addCandidate throws otherwise and the dropped candidate is often
@@ -97,7 +99,7 @@ class _CallScreenState extends State<CallScreen> {
     _phase = widget.outgoing ? 'ringing' : 'connecting';
     if (widget.outgoing) {
       _ringTimeout = Timer(const Duration(seconds: 35), () {
-        if (mounted && !_connected) _endWith('no-answer', reason: 'timeout-ringing');
+        if (mounted && !_connected) _onNoAnswer();
       });
     }
     // Server-relayed call status (declined / busy) for this call.
@@ -375,8 +377,53 @@ class _CallScreenState extends State<CallScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  /// Ring timed out. Before showing "No answer", try Ava Receptionist (audio
+  /// calls only, premium callee). If Ava picks up, the caller talks to her here.
+  /// Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.
+  Future<void> _onNoAnswer() async {
+    if (!widget.video && !_ended) {
+      final started = await _tryReceptionist();
+      if (started) return;
+    }
+    if (mounted && !_connected) _endWith('no-answer', reason: 'timeout-ringing');
+  }
+
+  Future<bool> _tryReceptionist() async {
+    try {
+      // Free the WebRTC mic so the PCM recorder can capture (no double-grab).
+      try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+      try { await _pc?.close(); } catch (_) {}
+      _pc = null;
+      // Caller didn't get an answer → stop the callee's phone ringing; Ava takes it.
+      _notifyCalleeCanceled();
+
+      final call = ReceptionistCall(calleeUid: widget.seed, callId: widget.room);
+      call.onStatus = (s) {
+        if (!mounted) return;
+        setState(() {
+          _phase = switch (s) {
+            'connecting' => 'receptionist-connecting',
+            'connected' => 'receptionist',
+            'wrapup' => 'receptionist-wrapup',
+            _ => _phase,
+          };
+        });
+      };
+      final ok = await call.start();
+      if (!ok) return false;
+      _receptionist = call;
+      call.done.then((_) {
+        if (mounted && !_ended) _endWith('ended', reason: 'receptionist-done');
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _end() async {
     if (_ended) return; // idempotent — hangup AND dispose both call this
+    try { _receptionist?.hangup(); } catch (_) {}
     _ended = true;
     gInCall = false;
     _telemetry.ended(_connected ? 'ended' : _phase); // no-op if already reported
@@ -411,6 +458,9 @@ class _CallScreenState extends State<CallScreen> {
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
+        'receptionist-connecting' => 'Connecting you to Ava…',
+        'receptionist' => 'Ava is taking a message',
+        'receptionist-wrapup' => 'Ava is wrapping up…',
         'ended' => 'Call ended',
         _ => 'Connecting…',
       };

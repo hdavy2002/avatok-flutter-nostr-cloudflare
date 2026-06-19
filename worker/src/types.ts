@@ -69,6 +69,10 @@ export interface Env {
   AVA_AGENT: DurableObjectNamespace;
   // Durable Object — per-user backup/sync coordinator (P10).
   BACKUP: DurableObjectNamespace;
+  // Durable Object — Ava Receptionist call bridge (one per session id). Relays
+  // caller audio ↔ Gemini Live (through AI Gateway) for "Ava answers after 5
+  // rings". Specs/PROPOSAL-AI-RECEPTIONIST.md.
+  RECEPTION_ROOM: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;
@@ -179,6 +183,10 @@ export interface Env {
   // returns 503. The key never leaves the Worker — clients get ephemeral tokens.
   // Also powers the AvaAffiliate v2 marketing-asset kit (Nano Banana 2 images).
   GEMINI_API_KEY?: string;
+
+  // Ava Receptionist — override the Gemini Live model (owner asked for "3.5").
+  // Defaults to gemini-live-2.5-flash-native-audio (proven token mint in repo).
+  RECEPTIONIST_MODEL?: string;
 
   // App-store links on the /a/:linkId web preview (AvaAffiliate). Android-only
   // launch: APP_STORE_ID stays UNSET until a real App Store listing exists —

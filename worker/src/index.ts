@@ -45,6 +45,10 @@ import {
   avavoiceCallNow, avavoiceSessionStart, avavoiceHeartbeat, avavoiceSessionStop,
 } from "./routes/avavoice";
 import {
+  receptionistGetSettings, receptionistPutSettings, receptionistConfigFor,
+  receptionistStart, receptionistFinish, receptionistKbUpload, receptionistKbClear,
+} from "./routes/receptionist";
+import {
   avavisionTemplates, avavisionVoices, avavisionMarketplace, avavisionMine, avavisionCreateAgent,
   avavisionGetAgent, avavisionUpdateAgent, avavisionPublish, avavisionDeleteAgent, avavisionUploadFile,
   avavisionDeleteFile, avavisionAvailability, avavisionStats, avavisionBook, avavisionMyBookings,
@@ -102,6 +106,7 @@ export { ConversationDO } from "./do/conversation";
 // wrangler.toml DO bindings + v6 migration; the files arrive with their phases.
 export { AvaAgentDO } from "./do/ava_agent"; // P3
 export { BackupDO } from "./do/backup";      // P10
+export { ReceptionRoom } from "./do/reception_room"; // Ava Receptionist call bridge
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -180,6 +185,16 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).
     if (p === "/api/inbox" && req.headers.get("Upgrade") === "websocket") return await wsInbox(req, env);
+
+    // Ava Receptionist call bridge → ReceptionRoom DO (thin router; the DO
+    // validates the one-time rtc token from KV). Keyed by session id so caller +
+    // DO meet on the same instance. See Specs/PROPOSAL-AI-RECEPTIONIST.md.
+    if (p === "/api/receptionist/rtc" && req.headers.get("Upgrade") === "websocket") {
+      const sid = url.searchParams.get("session") || "";
+      if (!sid) return new Response("session required", { status: 400 });
+      const hint = continentHint(req);
+      return env.RECEPTION_ROOM.get(env.RECEPTION_ROOM.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
+    }
 
     try {
       // --- messaging (Cloudflare-native; Clerk-JWT auth, server-readable) ---
@@ -465,6 +480,15 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/avavoice/sessions/start" && req.method === "POST") return await avavoiceSessionStart(req, env);
       if (p === "/api/avavoice/sessions/heartbeat" && req.method === "POST") return await avavoiceHeartbeat(req, env);
       if (p === "/api/avavoice/sessions/stop" && req.method === "POST") return await avavoiceSessionStop(req, env);
+
+      // --- Ava Receptionist: premium "Ava answers after 5 rings" (Specs/PROPOSAL-AI-RECEPTIONIST.md) ---
+      if (p === "/api/receptionist/settings" && req.method === "GET") return await receptionistGetSettings(req, env);
+      if (p === "/api/receptionist/settings" && req.method === "PUT") return await receptionistPutSettings(req, env);
+      if (p === "/api/receptionist/config" && req.method === "GET") return await receptionistConfigFor(req, env);
+      if (p === "/api/receptionist/start" && req.method === "POST") return await receptionistStart(req, env);
+      if (p === "/api/receptionist/finish" && req.method === "POST") return await receptionistFinish(req, env);
+      if (p === "/api/receptionist/kb" && req.method === "POST") return await receptionistKbUpload(req, env);
+      if (p === "/api/receptionist/kb" && req.method === "DELETE") return await receptionistKbClear(req, env);
       {
         const bk = p.match(/^\/api\/avavoice\/bookings\/([A-Za-z0-9-]{1,64})\/cancel$/);
         if (bk && req.method === "POST") return await avavoiceCancelBooking(req, env, bk[1]);

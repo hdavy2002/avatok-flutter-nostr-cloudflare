@@ -17,20 +17,22 @@ class Contact {
   final String handle; // without leading '@', may be empty
   final String email;
   final String avatarUrl; // canonical blossom URL of their photo ('' = initials)
-  const Contact({required this.npub, required this.name, this.handle = '', this.email = '', this.avatarUrl = ''});
+  final String phone; // E.164 (WhatsApp-style phone contacts) — '' if unknown
+  const Contact({required this.npub, required this.name, this.handle = '', this.email = '', this.avatarUrl = '', this.phone = ''});
 
   String get seed => npub; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
-  /// Human-friendly subtitle — prefer email, fall back to @handle.
-  String get subtitle => email.isNotEmpty ? email : atHandle;
+  /// Human-friendly subtitle — prefer phone (WhatsApp-style), then @handle/email.
+  String get subtitle => phone.isNotEmpty ? phone : (atHandle.isNotEmpty ? atHandle : email);
 
-  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl};
+  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl, 'phone': phone};
   factory Contact.fromJson(Map<String, dynamic> j) => Contact(
         npub: (j['npub'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
         email: (j['email'] ?? '').toString(),
         avatarUrl: (j['avatarUrl'] ?? '').toString(),
+        phone: (j['phone'] ?? '').toString(),
       );
 }
 

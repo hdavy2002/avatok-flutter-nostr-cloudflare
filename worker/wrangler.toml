@@ -274,6 +274,12 @@ class_name = "AvaAgentDO"
 name = "BACKUP"
 class_name = "BackupDO"
 
+# Ava Receptionist call bridge (one per session id). Holds a live Gemini Live WS
+# (via AI Gateway) for a ≤2-min call. Specs/PROPOSAL-AI-RECEPTIONIST.md.
+[[durable_objects.bindings]]
+name = "RECEPTION_ROOM"
+class_name = "ReceptionRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -300,6 +306,11 @@ new_sqlite_classes = ["InboxDO"]
 [[migrations]]
 tag = "v6"
 new_sqlite_classes = ["AvaAgentDO", "BackupDO"]
+
+# Ava Receptionist call bridge (Specs/PROPOSAL-AI-RECEPTIONIST.md).
+[[migrations]]
+tag = "v7"
+new_sqlite_classes = ["ReceptionRoom"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -497,6 +508,11 @@ class_name = "AvaAgentDO"
 name = "BACKUP"
 class_name = "BackupDO"
 
+# Ava Receptionist call bridge (Specs/PROPOSAL-AI-RECEPTIONIST.md).
+[[env.staging.durable_objects.bindings]]
+name = "RECEPTION_ROOM"
+class_name = "ReceptionRoom"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -520,3 +536,7 @@ new_sqlite_classes = ["InboxDO"]
 [[env.staging.migrations]]
 tag = "v6"
 new_sqlite_classes = ["AvaAgentDO", "BackupDO"]
+
+[[env.staging.migrations]]
+tag = "v7"
+new_sqlite_classes = ["ReceptionRoom"]
