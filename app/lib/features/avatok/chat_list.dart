@@ -297,7 +297,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // Re-sync the address book on every resume so newly-added phone contacts
       // (and people who just joined AvaTOK) show up immediately. Throttled inside
       // the service so it won't hammer the OS book on rapid foreground/background.
-      DeviceContactsService.refresh();
+      DeviceContactsService.refresh(source: 'resume');
     }
   }
 
@@ -529,6 +529,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // is routed to AvaIdentity to become an L1 member first (email + password).
     final ok = await AccountGate.ensureMember(context, reason: 'add a contact');
     if (!ok || !mounted) return;
+    // Ensure add-contact telemetry is attributable to this user's email/phone
+    // (so their contact errors are pullable by email in PostHog).
+    try {
+      final cu = await widget.clerk.currentUser();
+      final prof = await ProfileStore().load();
+      Analytics.setUserKeys(email: cu?.email, phone: prof.phone);
+    } catch (_) {}
+    if (!mounted) return;
     final c = await showAddContactSheet(context);
     if (c == null || !mounted) return;
     // Don't let someone add their own account (e.g. their other email).

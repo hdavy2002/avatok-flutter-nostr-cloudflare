@@ -50,7 +50,7 @@ class _SearchScreenState extends State<SearchScreen> {
     // The cache stream repaints the list when freshly-synced rows / matches land.
     DeviceContactsService.cached().then((c) { if (mounted) setState(() => _device = c); });
     _deviceSub = DeviceContactsService.watch().listen((c) { if (mounted) setState(() => _device = c); });
-    DeviceContactsService.refresh(force: true);
+    DeviceContactsService.refresh(force: true, source: 'search_screen');
   }
 
   @override

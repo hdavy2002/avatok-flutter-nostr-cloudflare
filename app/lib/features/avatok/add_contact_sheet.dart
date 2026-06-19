@@ -40,6 +40,7 @@ class _AddContactSheet extends StatefulWidget {
 class _AddContactSheetState extends State<_AddContactSheet> {
   final _phoneCtrl = TextEditingController();
   StreamSubscription<List<DeviceContact>>? _sub;
+  Timer? _searchTimer;
 
   List<DeviceContact> _all = const [];
   bool _loaded = false;
@@ -69,21 +70,49 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     if (mounted && !granted) setState(() => _permDenied = true);
     // 4) Kick the background refresh + AvaTOK match.
     if (mounted) setState(() => _refreshing = true);
-    await DeviceContactsService.refresh(force: true);
+    await DeviceContactsService.refresh(force: true, source: 'sheet_open');
     if (mounted) {
       setState(() { _refreshing = false; _permDenied = false; });
+      final onAvatok = _all.where((d) => d.onAvatok).length;
       Analytics.capture('add_contact_loaded', {
         'cached_count': cached.length,
         'count': _all.length,
+        'on_avatok_count': onAvatok,
         'open_ms': DateTime.now().difference(_openedAt).inMilliseconds,
       });
+      // Surface why the sheet might look empty even after a sync.
+      if (_all.isEmpty) {
+        Analytics.capture('add_contact_empty', {'reason': _permDenied ? 'perm_denied' : 'no_contacts'});
+      }
     }
+  }
+
+  /// Debounced search-usage telemetry — how people search + how often a search
+  /// returns nothing (helps spot normalization/match gaps).
+  void _onQuery(String v) {
+    setState(() => _query = v);
+    _searchTimer?.cancel();
+    final q = v.trim();
+    if (q.isEmpty) return;
+    _searchTimer = Timer(const Duration(milliseconds: 500), () {
+      final results = _filtered.length;
+      Analytics.capture('add_contact_search', {
+        'query_len': q.length,
+        'is_numeric': RegExp(r'^[\d+\s()-]+$').hasMatch(q),
+        'result_count': results,
+        'has_results': results > 0,
+      });
+      if (results == 0) {
+        Analytics.capture('add_contact_empty', {'reason': 'no_matches', 'query_len': q.length});
+      }
+    });
   }
 
   @override
   void dispose() {
     _phoneCtrl.dispose();
     _sub?.cancel();
+    _searchTimer?.cancel();
     super.dispose();
   }
 
@@ -122,9 +151,15 @@ class _AddContactSheetState extends State<_AddContactSheet> {
       // Not on AvaTOK yet → WhatsApp-style invite via the native share sheet.
       Analytics.capture('add_contact_invite', const {'on_avatok': false});
       setState(() => _busy = true);
+      var ok = true;
       try {
         await DeviceContactsService.invite(d);
-      } catch (_) {/* user dismissed share sheet */}
+      } catch (e) {
+        ok = false;
+        Analytics.error(domain: 'contacts', code: 'invite_failed',
+            screen: 'add_contact', action: 'invite', message: e.toString());
+      }
+      Analytics.capture('add_contact_invite_result', {'ok': ok});
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -194,7 +229,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
         controller: _phoneCtrl,
         hint: 'Search name or phone number',
         leadIcon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
-        onChanged: (v) => setState(() => _query = v),
+        onChanged: _onQuery,
       ),
       const SizedBox(height: 10),
       ConstrainedBox(

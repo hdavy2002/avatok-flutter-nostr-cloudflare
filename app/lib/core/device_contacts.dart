@@ -105,17 +105,40 @@ class DeviceContactsService {
   /// Background sync: read the device book → diff into SQLite → match against
   /// AvaTOK → annotate. [force] bypasses the throttle (cold start / pull-to-
   /// refresh); resume uses the throttle to avoid hammering the OS address book.
-  static Future<void> refresh({bool force = false}) async {
-    if (_syncing) return;
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+  static Future<void> refresh({bool force = false, String source = 'unknown'}) async {
+    // Concurrent / throttled calls are normal (cold start + sheet open + resume
+    // can overlap) — record them so we can see how often a sync is skipped.
+    if (_syncing) {
+      Analytics.capture('contacts_sync_skipped', {'reason': 'in_flight', 'source': source});
+      return;
+    }
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      Analytics.capture('contacts_sync_skipped', {'reason': 'unsupported_platform', 'source': source});
+      return;
+    }
     final startMs = DateTime.now().millisecondsSinceEpoch;
-    if (!force && startMs - _lastSyncMs < _minIntervalMs) return;
+    if (!force && startMs - _lastSyncMs < _minIntervalMs) {
+      Analytics.capture('contacts_sync_skipped', {
+        'reason': 'throttled', 'source': source,
+        'since_last_ms': startMs - _lastSyncMs,
+      });
+      return;
+    }
     _syncing = true;
+    Analytics.capture('contacts_sync_started', {'source': source, 'forced': force});
     var deviceReadMs = 0, matchMs = 0, deviceCount = 0, matchedCount = 0;
+    var rawContactCount = 0, phoneCountRaw = 0, newCount = 0, removedCount = 0;
+    var matchStatus = 0, matchError = '';
     try {
       // 1) Permission. If denied, leave whatever cache we have and report it.
-      if (!await FlutterContacts.requestPermission(readonly: true)) {
-        Analytics.capture('contacts_sync', {'result': 'perm_denied'});
+      final permT0 = DateTime.now().millisecondsSinceEpoch;
+      final granted = await FlutterContacts.requestPermission(readonly: true);
+      Analytics.capture('contacts_permission', {
+        'granted': granted, 'source': source,
+        'ask_ms': DateTime.now().millisecondsSinceEpoch - permT0,
+      });
+      if (!granted) {
+        Analytics.capture('contacts_sync', {'result': 'perm_denied', 'source': source});
         return;
       }
 
@@ -126,6 +149,7 @@ class DeviceContactsService {
         withPhoto: false,
         deduplicateProperties: true,
       );
+      rawContactCount = raw.length;
       // phoneNorm -> (rawPhone, name). First non-empty name wins per number.
       final byNorm = <String, ({String raw, String name})>{};
       for (final c in raw) {
@@ -133,6 +157,7 @@ class DeviceContactsService {
         for (final p in c.phones) {
           final rawNum = p.number.trim();
           if (rawNum.isEmpty) continue;
+          phoneCountRaw++;
           final norm = normPhone(rawNum);
           if (norm.length < 4) continue; // junk
           final existing = byNorm[norm];
@@ -148,6 +173,10 @@ class DeviceContactsService {
       // We DON'T touch match columns here (Companion omits them ⇒ unchanged on
       // replace would reset; so we read existing match state and carry it over).
       final existingRows = {for (final r in await Db.I.deviceContactsOnce()) r.phoneNorm: r};
+      // Diff counts (how much the book churned since last sync) — useful to see
+      // whether "new contact not showing" is an ingest gap or a match gap.
+      newCount = byNorm.keys.where((k) => !existingRows.containsKey(k)).length;
+      removedCount = existingRows.keys.where((k) => !byNorm.containsKey(k)).length;
       final nowMs = DateTime.now().millisecondsSinceEpoch;
       final companions = <DeviceContactsCacheCompanion>[];
       byNorm.forEach((norm, v) {
@@ -166,8 +195,10 @@ class DeviceContactsService {
           updatedAt: Value(nowMs),
         ));
       });
+      final writeT0 = DateTime.now().millisecondsSinceEpoch;
       await Db.I.upsertDeviceContacts(companions);
       await Db.I.pruneDeviceContacts(byNorm.keys.toSet());
+      final dbWriteMs = DateTime.now().millisecondsSinceEpoch - writeT0;
 
       // 4) Ask the backend which numbers are on AvaTOK. We send ONE contact
       // entry per number with the normalized phone in BOTH `name` and `phones`
@@ -184,6 +215,7 @@ class DeviceContactsService {
             timeout: const Duration(seconds: 12),
           );
           matchMs = DateTime.now().millisecondsSinceEpoch - matchT0;
+          matchStatus = res.statusCode;
           if (res.statusCode == 200) {
             final j = jsonDecode(res.body) as Map<String, dynamic>;
             final matched = ((j['matched'] as List?) ?? const []);
@@ -209,31 +241,53 @@ class DeviceContactsService {
           } else {
             Analytics.error(
                 domain: 'contacts', code: 'match_http_${res.statusCode}',
-                action: 'refresh', message: 'contacts match returned ${res.statusCode}');
+                action: 'refresh', message: 'contacts match returned ${res.statusCode}',
+                extra: {'source': source, 'sent': phones.length});
           }
         } catch (e) {
           matchMs = DateTime.now().millisecondsSinceEpoch - matchT0;
+          matchError = e.runtimeType.toString();
           // Offline/timeout — keep the cache; report so latency is diagnosable.
           Analytics.error(
               domain: 'contacts', code: 'match_failed', action: 'refresh',
-              message: e.toString());
+              message: e.toString(), extra: {'source': source, 'match_ms': matchMs});
         }
+        // Dedicated match-perf event (separate from the full sync) so the match
+        // round-trip and hit-rate are queryable on their own.
+        Analytics.capture('contacts_match_result', {
+          'source': source,
+          'status': matchStatus,
+          'sent_count': phones.length,
+          'matched_count': matchedCount,
+          'match_ms': matchMs,
+          'hit_rate': phones.isEmpty ? 0 : (matchedCount * 100 ~/ phones.length),
+          if (matchError.isNotEmpty) 'error_type': matchError,
+        });
       }
 
       Analytics.capture('contacts_sync', {
         'result': 'ok',
-        'device_count': deviceCount,
-        'matched_count': matchedCount,
-        'device_read_ms': deviceReadMs,
-        'match_ms': matchMs,
-        'total_ms': DateTime.now().millisecondsSinceEpoch - startMs,
+        'source': source,
         'forced': force,
+        'raw_contacts': rawContactCount,
+        'phones_raw': phoneCountRaw,
+        'device_count': deviceCount, // unique normalized numbers
+        'new_count': newCount,
+        'removed_count': removedCount,
+        'matched_count': matchedCount,
+        'hit_rate': deviceCount == 0 ? 0 : (matchedCount * 100 ~/ deviceCount),
+        'device_read_ms': deviceReadMs,
+        'db_write_ms': dbWriteMs,
+        'match_ms': matchMs,
+        'match_status': matchStatus,
+        'total_ms': DateTime.now().millisecondsSinceEpoch - startMs,
       });
       AvaLog.I.log('contacts',
-          'sync ok device=$deviceCount matched=$matchedCount readMs=$deviceReadMs matchMs=$matchMs');
+          'sync ok src=$source device=$deviceCount new=$newCount matched=$matchedCount readMs=$deviceReadMs matchMs=$matchMs');
     } catch (e) {
       Analytics.error(
-          domain: 'contacts', code: 'sync_failed', action: 'refresh', message: e.toString());
+          domain: 'contacts', code: 'sync_failed', action: 'refresh', message: e.toString(),
+          extra: {'source': source, 'total_ms': DateTime.now().millisecondsSinceEpoch - startMs});
     } finally {
       _syncing = false;
       _lastSyncMs = DateTime.now().millisecondsSinceEpoch;
@@ -242,7 +296,8 @@ class DeviceContactsService {
 
   /// Back-compat entry point — chat_list calls this on cold start. Forces a
   /// full refresh regardless of the resume throttle.
-  static Future<void> syncAndMatch([String? _ownerNpub]) => refresh(force: true);
+  static Future<void> syncAndMatch([String? _ownerNpub]) =>
+      refresh(force: true, source: 'cold_start');
 
   /// Share the "join me on AvaTok" invite for [c] via the native share sheet.
   static Future<void> invite(DeviceContact c, {String? myHandle}) async {

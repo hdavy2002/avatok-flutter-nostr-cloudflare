@@ -1181,8 +1181,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Future<void> _sendMedia(MediaKind kind, Uint8List bytes, String ct, String name) async {
-    final msg = _Msg(_seq++, true, _caption(kind, name), 'now',
-        localBytes: bytes, uploading: true);
+    // Stamp the message with a real send time. Without this it defaulted to ts=0,
+    // so any list re-sort floated the bubble to the very TOP of the thread and it
+    // appeared to "disappear" from the bottom where it was just added.
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final msg = _Msg(_seq++, true, _caption(kind, name), _fmtTime(now),
+        ts: now, localBytes: bytes, uploading: true);
     setState(() => _msgs.add(msg));
     _jump();
     // Index shared docs/images into the user's own RAG store (File Search
@@ -1235,7 +1239,81 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (x == null) return;
     final bytes = await x.readAsBytes();
     if (bytes.length > _kMediaMaxBytes) { _capNote('That photo is over 25 MB — please pick a smaller one.'); return; }
-    await _sendMedia(MediaKind.image, bytes, 'image/jpeg', x.name);
+    await _sendImageWithCaption(bytes, 'image/jpeg', x.name);
+  }
+
+  // Photo caption step: preview the picked image and let the user "say something
+  // about the pic" before it goes out (the input box that was missing). Sends the
+  // image, then — if a caption was typed — the caption as a normal message (so
+  // @ava summon, RAG indexing and delivery all work through the usual path).
+  Future<void> _sendImageWithCaption(Uint8List bytes, String ct, String name) async {
+    final caption = await _captionSheet(bytes);
+    if (caption == null) return; // user backed out
+    await _sendMedia(MediaKind.image, bytes, ct, name);
+    final c = caption.trim();
+    if (c.isNotEmpty) {
+      _ctrl.text = c;
+      _hasText = true;
+      _send();
+    }
+  }
+
+  // Bottom sheet: image preview + a caption field. Returns the caption (possibly
+  // empty → send with no caption) or null if dismissed without sending.
+  Future<String?> _captionSheet(Uint8List bytes) {
+    final cap = TextEditingController();
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 14, right: 14, top: 14,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 14,
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.memory(bytes,
+                width: double.infinity,
+                height: 280,
+                fit: BoxFit.cover),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Zine.card,
+                  borderRadius: BorderRadius.circular(Zine.rField),
+                  border: Border.all(color: Zine.ink, width: 2),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(
+                  controller: cap,
+                  autofocus: true,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (v) => Navigator.pop(ctx, v),
+                  style: ZineText.input(size: 15),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    hintText: 'Add a caption…',
+                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _sendCircle(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
+                () => Navigator.pop(ctx, cap.text)),
+          ]),
+        ]),
+      ),
+    ).whenComplete(cap.dispose);
   }
 
   // Gallery → up to 8 photos in one go; each capped at 25 MB.
@@ -1244,6 +1322,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (xs.isEmpty) return;
     final take = xs.length > _kMaxPhotosPerPick ? xs.sublist(0, _kMaxPhotosPerPick) : xs;
     if (xs.length > _kMaxPhotosPerPick) _capNote('Up to 8 photos at a time — sending the first 8.');
+    // Single photo → offer the caption step ("say something about the pic").
+    if (take.length == 1) {
+      final bytes = await take.first.readAsBytes();
+      if (bytes.length > _kMediaMaxBytes) { _capNote('That photo is over 25 MB — please pick a smaller one.'); return; }
+      await _sendImageWithCaption(bytes, 'image/jpeg', take.first.name);
+      return;
+    }
     var skipped = 0;
     for (final x in take) {
       final bytes = await x.readAsBytes();
