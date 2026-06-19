@@ -27,6 +27,9 @@ export interface PlatformConfig {
   // AvaVoice — creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md).
   avavoiceEnabled: boolean;          // master switch for /api/avavoice/*
   avavisionEnabled: boolean;         // master switch for /api/avavision/* (vision coaching agents)
+  // Ava Receptionist — premium "Ava answers after 5 rings" (Specs/PROPOSAL-AI-RECEPTIONIST.md).
+  // First real AvaVoice deployment. Gemini Live via CF AI Gateway, 2-min cap.
+  receptionistEnabled: boolean;      // master switch for /api/receptionist/* (default OFF until tested)
   // AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md). OFF stops
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
@@ -64,6 +67,7 @@ const DEFAULTS: PlatformConfig = {
   translationGroupEnabled: true,
   avavoiceEnabled: true,
   avavisionEnabled: true,
+  receptionistEnabled: false,      // Ava Receptionist — OFF until dogfood passes
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
