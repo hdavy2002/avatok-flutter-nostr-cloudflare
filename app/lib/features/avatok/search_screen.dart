@@ -33,6 +33,7 @@ class _SearchScreenState extends State<SearchScreen> {
   final _ctrl = TextEditingController();
   final _flagsStore = ChatFlagsStore();
   Timer? _debounce;
+  StreamSubscription? _deviceSub;
   _Scope _scope = _Scope.all;
   String _q = '';
   Map<String, Set<String>> _flags = {'blocked': {}, 'archived': {}, 'muted': {}, 'pinned': {}};
@@ -46,16 +47,16 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _flagsStore.load().then((f) { if (mounted) setState(() => _flags = f); });
     // Load cached device contacts instantly, then refresh + match in background.
+    // The cache stream repaints the list when freshly-synced rows / matches land.
     DeviceContactsService.cached().then((c) { if (mounted) setState(() => _device = c); });
-    final id = widget.identity;
-    if (id != null) {
-      DeviceContactsService.syncAndMatch(id.npub).then((c) { if (mounted) setState(() => _device = c); });
-    }
+    _deviceSub = DeviceContactsService.watch().listen((c) { if (mounted) setState(() => _device = c); });
+    DeviceContactsService.refresh(force: true);
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _deviceSub?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -107,13 +108,12 @@ class _SearchScreenState extends State<SearchScreen> {
     final deviceHits = _device.where((d) {
       if (_q.isEmpty) return true;
       final nameHit = d.name.toLowerCase().contains(ql);
-      final emailHit = d.emails.any((e) => e.toLowerCase().contains(ql));
       final phoneHit = qDigits.length >= 3 &&
-          d.phones.any((p) => p.replaceAll(RegExp(r'[^0-9]'), '').contains(qDigits));
-      return nameHit || emailHit || phoneHit;
+          d.phoneNorm.replaceAll(RegExp(r'[^0-9]'), '').contains(qDigits);
+      return nameHit || phoneHit;
     }).toList();
     // Split into on-AvaTok (already a contact?) vs invitable.
-    final onAvatok = deviceHits.where((d) => d.onAvatok && !knownNpubs.contains(d.npub)).toList();
+    final onAvatok = deviceHits.where((d) => d.onAvatok && !knownNpubs.contains(d.uid)).toList();
     final invitable = deviceHits.where((d) => !d.onAvatok).toList();
 
     final showChats = _scope == _Scope.all || _scope == _Scope.chats;
@@ -261,17 +261,19 @@ class _SearchScreenState extends State<SearchScreen> {
 
   // A phone contact that turns out to already be on AvaTok.
   Widget _deviceOnAvatokRow(DeviceContact d) {
-    final k = d.npub == null ? '' : _hexKey(d.npub!);
+    final k = d.uid.isEmpty ? '' : _hexKey(d.uid);
     return ListTile(
-      leading: _ring(Avatar(seed: d.npub ?? d.name, name: d.name, size: 46)),
-      title: Text(d.name.isNotEmpty ? d.name : d.subtitle, style: ZineText.value(size: 15)),
+      leading: _ring(Avatar(
+          seed: d.uid.isNotEmpty ? d.uid : d.name, name: d.displayName, size: 46,
+          avatarUrl: d.avatarUrl.isEmpty ? null : d.avatarUrl)),
+      title: Text(d.displayName, style: ZineText.value(size: 15)),
       subtitle: Text(d.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
       trailing: _badges(
         blocked: _flags['blocked']!.contains(k),
         archived: _flags['archived']!.contains(k),
         muted: _flags['muted']!.contains(k),
       ),
-      onTap: () => _openContactChat(d.npub!, d.name, d.npub!),
+      onTap: () => _openContactChat(d.uid, d.displayName, d.uid),
     );
   }
 

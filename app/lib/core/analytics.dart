@@ -10,10 +10,15 @@ import 'feature_flags.dart';
 /// Central client-side analytics for AvaTOK → PostHog (EU region, project 139917).
 ///
 /// Everything here is best-effort: a telemetry failure must never throw into the
-/// app or block a user action. Identity is the npub (same distinct_id the Worker
-/// backend uses in `worker/src/hooks.ts`), so client + server events stitch into
-/// one person timeline. We never send PII (email, phone, private key, raw DOB) —
-/// only buckets/booleans and scrubbed error text.
+/// app or block a user action. Identity is the npub/uid (same distinct_id the
+/// Worker backend uses in `worker/src/hooks.ts`), so client + server events
+/// stitch into one person timeline.
+///
+/// Email + phone are now the human-facing account ids, so — by product decision —
+/// they ride on EVERY event (and as person properties) once known: this is what
+/// lets support pull a specific user's errors / slow loads / log lines by their
+/// phone or email in PostHog. We still NEVER send the private key or raw DOB, and
+/// all free-text error messages are scrubbed of tokens/secrets via [_scrub].
 class Analytics {
   static const _apiKey = 'phc_hmYMsHQEYjQU4bYXNdqA4VZVsfHEIkBQdQL0Kv7FIc5';
   static const _host = 'https://eu.i.posthog.com'; // EU ingestion — must match project region
@@ -31,6 +36,10 @@ class Analytics {
   /// Person buckets — set at identify time.
   static String? _accountId;
   static String accountKind = 'personal';
+  /// Human-facing ids — attached to every event + as person properties so a
+  /// user's telemetry is retrievable by phone/email. Set via [identify]/[setUserKeys].
+  static String? _email;
+  static String? _phone;
   static int _seq = 0; // session_seq — monotonic per app session
   static String _net = 'unknown'; // wifi|cell|offline
 
@@ -110,6 +119,10 @@ class Analytics {
         if (currentScreen != null) 'screen': currentScreen!,
         if (_accountId != null) 'account_id': _accountId!,
         'account_kind': accountKind,
+        // Human-facing ids on every event so support can pull a user's telemetry
+        // (errors, slow loads, log lines) by their phone or email.
+        if (_email != null) 'email': _email!,
+        if (_phone != null) 'phone': _phone!,
         'build': kAppBuild,
         'env': kAvatokEnv,
         'net': _net,
@@ -118,13 +131,31 @@ class Analytics {
       };
 
   /// Attach all subsequent events to this person (call when the npub exists).
-  static Future<void> identify(String npub, {Map<String, Object>? properties}) async {
+  /// Pass [email]/[phone] when known so they become person properties + ride
+  /// every event; if not yet known, call [setUserKeys] later.
+  static Future<void> identify(String npub,
+      {Map<String, Object>? properties, String? email, String? phone}) async {
     _accountId = npub;
+    if (email != null && email.isNotEmpty) _email = email;
+    if (phone != null && phone.isNotEmpty) _phone = phone;
     final k = properties?['account_kind'];
     if (k is String && k.isNotEmpty) accountKind = k;
     if (!_ready) return;
     try {
       await Posthog().identify(userId: npub, userProperties: _base(properties));
+    } catch (_) {}
+  }
+
+  /// Attach (or update) the user's email/phone once known — re-identifies so they
+  /// land as person properties and start riding every subsequent event. No-op if
+  /// nothing changed or we don't yet have a distinct_id.
+  static Future<void> setUserKeys({String? email, String? phone}) async {
+    var changed = false;
+    if (email != null && email.isNotEmpty && email != _email) { _email = email; changed = true; }
+    if (phone != null && phone.isNotEmpty && phone != _phone) { _phone = phone; changed = true; }
+    if (!changed || !_ready || _accountId == null) return;
+    try {
+      await Posthog().identify(userId: _accountId!, userProperties: _base());
     } catch (_) {}
   }
 
@@ -184,6 +215,8 @@ class Analytics {
   static Future<void> reset() async {
     _accountId = null;
     accountKind = 'personal';
+    _email = null;
+    _phone = null;
     if (!_ready) return;
     try {
       await Posthog().reset();

@@ -294,6 +294,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // so live delivery resumes at once, and clear the unread badge.
       _inbox?.ensureConnected();
       PushService.clearMessageBadge();
+      // Re-sync the address book on every resume so newly-added phone contacts
+      // (and people who just joined AvaTOK) show up immediately. Throttled inside
+      // the service so it won't hammer the OS book on rapid foreground/background.
+      DeviceContactsService.refresh();
     }
   }
 
@@ -373,6 +377,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     try {
       final cu = await widget.clerk.currentUser();
       final prof = await ProfileStore().load();
+      // Phone + email are the human-facing ids — attach them to telemetry so this
+      // user's errors / slow loads / log lines are retrievable by phone or email.
+      Analytics.setUserKeys(email: cu?.email, phone: prof.phone);
       if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
       if (cu?.email != null && cu!.email!.isNotEmpty) {
         await Directory.registerProfile(

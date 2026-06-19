@@ -238,30 +238,41 @@ export async function search(req: Request, env: Env): Promise<Response> {
 interface RawContact { name?: string; emails?: string[]; phones?: string[]; }
 
 async function matchContacts(db: D1DatabaseSession, contacts: RawContact[]): Promise<any[]> {
-  const phoneHashes = new Map<string, RawContact>();
-  const emailHashes = new Map<string, RawContact>();
+  // hash -> the exact normalized phone/email that produced it, so we can echo it
+  // back: the client maps the match to the precise number/address. `name` is also
+  // echoed for backward-compat with older clients that key the result on it.
+  const phoneHashes = new Map<string, { name: string; phone: string }>();
+  const emailHashes = new Map<string, { name: string; email: string }>();
   for (const c of contacts) {
-    for (const p of c.phones ?? []) phoneHashes.set(await sha256Hex(normalizePhone(p)), c);
-    for (const e of c.emails ?? []) emailHashes.set(await sha256Hex(String(e).toLowerCase().trim()), c);
+    for (const p of c.phones ?? []) {
+      const norm = normalizePhone(p);
+      phoneHashes.set(await sha256Hex(norm), { name: c.name ?? "", phone: norm });
+    }
+    for (const e of c.emails ?? []) {
+      const norm = String(e).toLowerCase().trim();
+      emailHashes.set(await sha256Hex(norm), { name: c.name ?? "", email: norm });
+    }
   }
   const matched: any[] = [];
   const seen = new Set<string>();
   for (const hs of chunk([...phoneHashes.keys()])) {
     const rs = await db.prepare(
-      `SELECT phone_hash AS h, uid, handle, display_name FROM users WHERE phone_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
+      `SELECT phone_hash AS h, uid, handle, display_name, avatar_url FROM users WHERE phone_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
     ).bind(...hs).all();
     for (const r of (rs.results ?? []) as any[]) {
       if (seen.has(r.uid)) continue; seen.add(r.uid);
-      matched.push({ name: phoneHashes.get(r.h)?.name ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name });
+      const m = phoneHashes.get(r.h);
+      matched.push({ name: m?.name ?? "", phone: m?.phone ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name, avatar_url: r.avatar_url ?? "" });
     }
   }
   for (const hs of chunk([...emailHashes.keys()])) {
     const rs = await db.prepare(
-      `SELECT email_hash AS h, uid, handle, display_name FROM users WHERE email_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
+      `SELECT email_hash AS h, uid, handle, display_name, avatar_url FROM users WHERE email_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
     ).bind(...hs).all();
     for (const r of (rs.results ?? []) as any[]) {
       if (seen.has(r.uid)) continue; seen.add(r.uid);
-      matched.push({ name: emailHashes.get(r.h)?.name ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name });
+      const m = emailHashes.get(r.h);
+      matched.push({ name: m?.name ?? "", email: m?.email ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name, avatar_url: r.avatar_url ?? "" });
     }
   }
   return matched;

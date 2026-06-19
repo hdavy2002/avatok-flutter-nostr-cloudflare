@@ -75,15 +75,41 @@ class WalletLedgerCache extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [Messages, Contacts, Chats, WalletLedgerCache])
+/// Device address-book cache — the WhatsApp "Add contact" model. ONE row per
+/// phone number read from the device, persisted per-account so the add-contact
+/// sheet paints INSTANTLY (no re-reading the OS address book on every open) and
+/// so "who's already on AvaTOK" survives restarts. [phoneNorm] is the E.164-ish
+/// normalized number (matches the Worker's normalizePhone) and is the dedup key;
+/// [rawPhone] is what we show. [uid] is non-empty ⇒ this contact is on AvaTOK —
+/// then [handle]/[avatarUrl]/[matchDisplayName] carry their public profile so the
+/// list can paint a badge + avatar with zero extra network calls. The background
+/// sync (DeviceContactsService) rewrites this table after diffing the device book
+/// and calling the match endpoint.
+@DataClassName('DeviceContactRow')
+class DeviceContactsCache extends Table {
+  TextColumn get phoneNorm => text()(); // normalized E.164 — dedup/match key
+  TextColumn get rawPhone => text().withDefault(const Constant(''))(); // display form
+  TextColumn get name => text().withDefault(const Constant(''))(); // device display name
+  TextColumn get uid => text().withDefault(const Constant(''))(); // non-empty ⇒ on AvaTOK
+  TextColumn get handle => text().withDefault(const Constant(''))();
+  TextColumn get avatarUrl => text().withDefault(const Constant(''))();
+  TextColumn get matchDisplayName => text().withDefault(const Constant(''))(); // profile name
+  IntColumn get matchedAt => integer().withDefault(const Constant(0))(); // epoch ms of last match
+  IntColumn get updatedAt => integer().withDefault(const Constant(0))(); // epoch ms last seen on device
+  @override
+  Set<Column> get primaryKey => {phoneNorm};
+}
+
+@DriftDatabase(tables: [Messages, Contacts, Chats, WalletLedgerCache, DeviceContactsCache])
 class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
-  // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). Both are
-  // added in-place so an existing on-device DB upgrades without wiping data.
+  // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). v4:
+  // DeviceContactsCache (instant add-contact + on-AvaTOK match). All added
+  // in-place so an existing on-device DB upgrades without wiping data.
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
@@ -94,8 +120,62 @@ class AppDb extends _$AppDb {
           if (from < 3) {
             await m.createTable(walletLedgerCache);
           }
+          if (from < 4) {
+            await m.createTable(deviceContactsCache);
+          }
         },
       );
+
+  // ── device-contacts cache (instant add-contact + on-AvaTOK match) ──
+  /// All cached device contacts. On-AvaTOK first, then alphabetical — so the
+  /// add-contact sheet surfaces people you can message immediately.
+  Future<List<DeviceContactRow>> deviceContactsOnce() => (select(deviceContactsCache)
+        ..orderBy([
+          (t) => OrderingTerm(expression: t.uid, mode: OrderingMode.desc), // non-empty uid sorts first
+          (t) => OrderingTerm(expression: t.name),
+        ]))
+      .get();
+
+  /// Reactive device contacts — the sheet binds to this so a background sync
+  /// (new contacts, freshly-resolved AvaTOK members) repaints the list live.
+  Stream<List<DeviceContactRow>> watchDeviceContacts() => (select(deviceContactsCache)
+        ..orderBy([
+          (t) => OrderingTerm(expression: t.uid, mode: OrderingMode.desc),
+          (t) => OrderingTerm(expression: t.name),
+        ]))
+      .watch();
+
+  /// Upsert device-book rows (INSERT OR REPLACE on phoneNorm). Preserves nothing
+  /// the caller doesn't pass, so callers merge match state themselves.
+  Future<void> upsertDeviceContacts(List<DeviceContactsCacheCompanion> rows) async {
+    if (rows.isEmpty) return;
+    await batch((b) => b.insertAll(deviceContactsCache, rows, mode: InsertMode.insertOrReplace));
+  }
+
+  /// Drop cached numbers no longer on the device (contact deleted on the phone).
+  Future<void> pruneDeviceContacts(Set<String> keepPhoneNorms) async {
+    if (keepPhoneNorms.isEmpty) {
+      await delete(deviceContactsCache).go();
+      return;
+    }
+    await (delete(deviceContactsCache)..where((t) => t.phoneNorm.isNotIn(keepPhoneNorms))).go();
+  }
+
+  /// Clear AvaTOK match state on every row (call before re-applying a fresh
+  /// match result, so people who left the platform stop showing the badge).
+  Future<void> clearDeviceMatches() => (update(deviceContactsCache)
+        ..where((t) => t.uid.isNotValue('')))
+      .write(const DeviceContactsCacheCompanion(
+        uid: Value(''), handle: Value(''), avatarUrl: Value(''), matchDisplayName: Value('')));
+
+  /// Apply one match: mark [phoneNorm] as on-AvaTOK with its public profile.
+  Future<void> applyDeviceMatch(
+      {required String phoneNorm, required String uid, String handle = '',
+       String avatarUrl = '', String displayName = '', required int matchedAt}) =>
+      (update(deviceContactsCache)..where((t) => t.phoneNorm.equals(phoneNorm))).write(
+        DeviceContactsCacheCompanion(
+          uid: Value(uid), handle: Value(handle), avatarUrl: Value(avatarUrl),
+          matchDisplayName: Value(displayName), matchedAt: Value(matchedAt)));
 
   // ── wallet ledger cache (Phase 2) ──
   /// Newest-first page of cached ledger entries (instant paint on open).
