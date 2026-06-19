@@ -75,6 +75,11 @@ jobs:
           org.gradle.workers.max=2
           org.gradle.vfs.watch=false
           kotlin.daemon.jvmargs=-Xmx2g
+          # R8 compat (non-full) mode: tolerate optional missing classes from
+          # build-time-only deps (Stripe push-provisioning, AutoValue/javapoet,
+          # javax.lang.model). Full mode treats them as hard errors; for a
+          # side-load test APK we demote to warnings (paired with -dontwarn rules).
+          android.enableR8.fullMode=false
           EOF
           echo "----- effective gradle.properties tail -----"
           tail -8 android/gradle.properties

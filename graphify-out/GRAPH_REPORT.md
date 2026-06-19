@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-06-19)
 
 ## Corpus Check
-- 696 files · ~1,258,151 words
+- 696 files · ~1,258,288 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -982,9 +982,9 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `dart:convert` connect `Community 1` to `Community 0`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 9`, `Community 10`, `Community 12`, `Community 14`, `Community 16`, `Community 18`, `Community 19`?**
   _High betweenness centrality (0.204) - this node is a cross-community bridge._
 - **Why does `package:flutter/material.dart` connect `Community 0` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 23`, `Community 24`, `Community 26`?**
-  _High betweenness centrality (0.181) - this node is a cross-community bridge._
+  _High betweenness centrality (0.191) - this node is a cross-community bridge._
 - **Why does `package:phosphor_flutter/phosphor_flutter.dart` connect `Community 0` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 23`, `Community 26`?**
-  _High betweenness centrality (0.139) - this node is a cross-community bridge._
+  _High betweenness centrality (0.113) - this node is a cross-community bridge._
 - **Are the 392 inferred relationships involving `json()` (e.g. with `doBalance()` and `getAccessToken()`) actually correct?**
   _`json()` has 392 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 300 inferred relationships involving `dispatch()` (e.g. with `tick()` and `preflight()`) actually correct?**
