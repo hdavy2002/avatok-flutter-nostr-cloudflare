@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'ava_log.dart';
 import 'feature_flags.dart';
+import 'ringtone_catalog.dart';
 import '../identity/identity.dart';
 
 /// Caller-side ringback + busy tone playback for the 1:1 call screen.
@@ -28,28 +29,37 @@ class RingbackPlayer {
   // audioplayers AssetSource paths are relative to the `assets/` bundle prefix.
   static String _assetRel(String p) => p.startsWith('assets/') ? p.substring(7) : p;
 
-  /// Play the callee's ringback (looped). [url] empty → bundled default.
-  Future<void> playRingback(String url) async {
+  /// Play the callee's ringback (looped). [value] is a bundled catalog id
+  /// (preferred), or empty → bundled default, or a legacy http(s) URL.
+  Future<void> playRingback(String value) async {
     try {
       await _p.setReleaseMode(ReleaseMode.loop);
       Source src;
-      if (url.isEmpty) {
+      if (value.isEmpty) {
         src = AssetSource(_assetRel(kDefaultRingbackAsset));
-      } else {
-        final cached = await _cachedFile(url);
+      } else if (value.startsWith('http')) {
+        // Legacy URL path (cache + stream).
+        final cached = await _cachedFile(value);
         if (cached != null && await cached.exists() && await cached.length() > 0) {
           src = DeviceFileSource(cached.path);
         } else {
-          // Stream now (no delay); cache in the background for next time.
-          src = UrlSource(url);
+          src = UrlSource(value);
           // ignore: unawaited_futures
-          _cacheInBackground(url);
+          _cacheInBackground(value);
         }
+      } else {
+        // Catalog id → play the matching app-bundled tone (instant, offline).
+        final item = ringtoneById(value);
+        if (item == null) {
+          await _playDefaultRingback();
+          return;
+        }
+        src = AssetSource(_assetRel(item.asset));
       }
       if (_disposed) return;
       await _p.play(src);
     } catch (e) {
-      AvaLog.I.log('call', 'ringback play failed ($url): $e — using default');
+      AvaLog.I.log('call', 'ringback play failed ($value): $e — using default');
       await _playDefaultRingback();
     }
   }
