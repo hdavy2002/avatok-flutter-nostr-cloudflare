@@ -139,6 +139,13 @@ class _CallScreenState extends State<CallScreen> {
   void _endWith(String phase, {String? reason}) {
     _telemetry.ended(reason ?? phase);
     _ringback.stop(); // silence any ringback on every end path
+    // Busy tone: the callee is already on a call (auto-replied 'busy', or the
+    // CallRoom DO rejected a 3rd peer). The CALLER hears the bundled busy tone.
+    final busy = phase == 'busy' && widget.outgoing && RemoteConfig.ringbackEnabled;
+    if (busy) {
+      // ignore: unawaited_futures
+      _ringback.playBusyTone();
+    }
 
     // Release mic/cam IMMEDIATELY on every end path (remote hangup, decline,
     // busy, no-answer, failure) — not 1.4s later when the route finally pops.
@@ -147,7 +154,9 @@ class _CallScreenState extends State<CallScreen> {
     _end();
     if (!mounted) return;
     setState(() => _phase = phase);
-    Future.delayed(const Duration(milliseconds: 1400), () {
+    // Give the busy tone time to be heard before the screen pops (it stops on
+    // dispose). Other end states keep the original snappy 1.4s.
+    Future.delayed(Duration(milliseconds: busy ? 2600 : 1400), () {
       if (mounted) Navigator.maybePop(context);
     });
   }
