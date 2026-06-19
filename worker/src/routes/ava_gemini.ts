@@ -20,7 +20,13 @@ import { runGated, intentGate, aiRunOpts } from "../lib/ai_gate";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { track } from "../hooks";
 
-const CHAT_MODEL = "@cf/google/gemma-4-26b-a4b-it";
+// Ava chat text model: Gemini 2.5 Flash-Lite as a Workers-AI THIRD-PARTY model
+// ({author}/{model} id), called through env.AI.run so it still flows via our CF
+// AI Gateway (per-uid metering + caching), same as the Gemma path did. Flash-Lite
+// is fast and has thinking OFF by default → quick replies, no chain-of-thought
+// leak. Gemma 4 stays as a resilient fallback if the partner model is ever down.
+const CHAT_MODEL = "google/gemini-2.5-flash-lite";
+const FALLBACK_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const MAX_TOKENS = 700;
 
 const SYSTEM_BASE = [
@@ -72,6 +78,28 @@ function stripReasoning(s: string): string {
     .trim();
 }
 
+// Gemini-native request: history → contents (assistant→"model"), images as
+// inline_data parts on the final user turn. systemInstruction carries the system.
+function buildGeminiContents(history: Turn[], message: string, images: Array<{ mime: string; data: string }>): any[] {
+  const contents: any[] = [];
+  for (const t of history) contents.push({ role: t.role === "user" ? "user" : "model", parts: [{ text: t.text }] });
+  const parts: any[] = [{ text: message }];
+  for (const im of images) parts.push({ inline_data: { mime_type: im.mime, data: im.data } });
+  contents.push({ role: "user", parts });
+  return contents;
+}
+
+// Pull answer text from a Gemini response, dropping any "thought" parts so raw
+// reasoning never reaches the user.
+function extractGeminiText(out: any): string {
+  const parts = out?.candidates?.[0]?.content?.parts ?? out?.response?.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    return parts.filter((p: any) => p?.thought !== true).map((p: any) => String(p?.text ?? "")).join("").trim();
+  }
+  // Some gateway shapes surface plain text — fall back to the generic extractor.
+  return aiText(out).trim();
+}
+
 function buildMessages(system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>): any[] {
   const messages: any[] = [{ role: "system", content: system }];
   for (const t of history) messages.push({ role: t.role, content: t.text });
@@ -109,8 +137,23 @@ async function retrieveMemory(env: Env, uid: string, query: string): Promise<str
 
 async function generate(env: Env, uid: string, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
+  // Primary: Gemini 2.5 Flash-Lite (third-party model) through the AI Gateway.
+  try {
+    const out: any = await env.AI.run(
+      CHAT_MODEL,
+      {
+        systemInstruction: { parts: [{ text: sys }] },
+        contents: buildGeminiContents(history, message, images),
+        generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
+      } as any,
+      aiRunOpts(env, uid),
+    );
+    const t = stripReasoning(extractGeminiText(out));
+    if (t) return t;
+  } catch (_) { /* partner model unavailable → fall back to Workers-AI Gemma */ }
+  // Fallback: Workers-AI Gemma 4 (OpenAI-style messages).
   const out: any = await env.AI.run(
-    CHAT_MODEL,
+    FALLBACK_MODEL,
     { messages: buildMessages(sys, history, message, images), max_tokens: MAX_TOKENS } as any,
     aiRunOpts(env, uid),
   );
