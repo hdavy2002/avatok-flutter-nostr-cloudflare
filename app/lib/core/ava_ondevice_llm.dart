@@ -1,32 +1,35 @@
 /// AvaOnDeviceLlm (Phase A — On-Device AI).
 ///
-/// Thin wrapper around the Cactus `CactusLM` engine running **Qwen3-0.6B fully
-/// on-device / offline**. Provides four jobs from ONE loaded model:
-///   1. Short, fast chat replies (thinking OFF, token-capped, streamed).
-///   2. Intent routing — decide LOCAL (answer on-device) vs CLOUD (escalate to
-///      Workers AI) for a request.
-///   3. Embeddings — text → vector (used by the on-device RAG store).
-///   4. (later) tool-calling — Cactus function-calling is available via params.
+/// Thin wrapper around the Cactus `CactusLM` engine running **Qwen3.5-0.8B fully
+/// on-device / offline**. One loaded model serves chat, intent routing,
+/// embeddings, and (later) vision + tool-calling.
 ///
-/// Design rules:
-///   • LOCAL ONLY. Completion runs `CompletionMode.local` — never Cactus cloud.
-///     Our cloud escalation is a SEPARATE existing path (AvaAiClient → Workers AI
-///     via AI Gateway); nothing here calls Cactus hybrid.
-///   • Telemetry OFF (`CactusConfig.isTelemetryEnabled = false`).
-///   • THINKING OFF. Qwen3 ships with a chain-of-thought "thinking" mode ON by
-///     default (the long `<think>…</think>` block + ~10 s latency seen in
-///     testing). We disable it two ways for robustness: the Qwen3 `/no_think`
-///     soft-switch in the system prompt, AND we strip any `<think>` block from
-///     the output as a safety net.
-///   • Account-agnostic weights; swappable engine (only this file changes if we
-///     move off Cactus).
+/// WHY WE DOWNLOAD DIRECTLY (not via Cactus's catalog):
+/// Cactus 1.3.0's model catalog (Supabase get-models) does NOT list Qwen3.5-0.8B
+/// for the Flutter SDK, so `downloadModel(slug)` fails ("Failed to get model").
+/// We therefore bypass the catalog and pull the weights straight from the
+/// official Cactus-Compute HuggingFace release into the EXACT folder the engine
+/// loads from — `<AppDocuments>/models/<slug>` — reusing Cactus's own
+/// download+extract code (`DownloadService`) so the on-disk layout is identical
+/// to a normal catalog download. `initializeModel(model: <slug>)` then loads it.
+///
+/// The catalog's `quantization` value is unused for weight decoding — it only
+/// sizes an output buffer (`max(maxTokens * q, 2048)`), so defaulting to 8 when
+/// the catalog can't be reached is harmless (a slightly larger buffer).
+///
+/// Design rules: LOCAL ONLY (never Cactus cloud), telemetry OFF, thinking OFF
+/// (`/no_think` + `<think>` stripped), account-agnostic weights, swappable engine.
 library;
 
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:cactus/cactus.dart';
+// ignore: implementation_imports — reuse Cactus's exact download+extract so the
+// on-disk model layout matches a normal catalog download (CI runs
+// `flutter analyze || true`, so this lint never fails the build).
+import 'package:cactus/src/utils/models/download.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'ava_log.dart';
@@ -38,7 +41,7 @@ enum RouteScope { local, cloud }
 
 class RouteDecision {
   final RouteScope scope;
-  final String raw; // the model's raw classification token (for debugging/UI)
+  final String raw;
   const RouteDecision(this.scope, this.raw);
   bool get isLocal => scope == RouteScope.local;
 }
@@ -75,38 +78,26 @@ class AvaOnDeviceLlm {
   AvaOnDeviceLlm._();
   static final AvaOnDeviceLlm I = AvaOnDeviceLlm._();
 
-  /// Cactus identifies models by a backend *slug*, which is NOT a clean
-  /// transform of the name. Rather than guess a single slug, we TRY a list of
-  /// candidates against the catalog (an exact-slug lookup resolves more reliably
-  /// than the bulk list) and use whichever one resolves. Most-likely first.
-  static const List<String> kSlugCandidates = <String>[
-    'qwen3.5-0.8b', // most likely (lfm2-vl-450m keeps its trailing letter)
-    'qwen3.5-0.8',
-    'Qwen3.5-0.8B',
-    'qwen3.5-0.8b-instruct',
-  ];
+  /// Folder/slug the model is stored + loaded under (<AppDocuments>/models/<slug>).
+  static const String kModelSlug = 'qwen3.5-0.8b';
 
-  /// The previous model — its on-device weights are deleted on first run of the
-  /// new model to reclaim ~400 MB (owner request: switch 0.6B → 0.8B).
+  /// Zip filename (used as the on-disk temp name during download).
+  static const String kModelZipName = 'qwen3.5-0.8b-int4.zip';
+
+  /// Direct weights URL (official Cactus-Compute HF release, int4).
+  static const String kModelDirectUrl =
+      'https://huggingface.co/Cactus-Compute/Qwen3.5-0.8B/resolve/v1.14/weights/qwen3.5-0.8b-int4.zip';
+
+  /// Previous model — deleted on first run of the new one to reclaim ~400 MB.
   static const String kOldModelSlug = 'qwen3-0.6';
 
-  /// File where the resolved slug is cached so offline cold-starts still load.
-  static const String _kSlugCacheFile = 'ava_ondevice_slug.txt';
-
-  /// Resolved Cactus slug (cached in-memory after first successful download).
-  String? _resolvedSlug;
-
-  /// The slug that actually loaded (for display/telemetry).
-  String? activeSlug;
-
-  /// Terse chat persona. `/no_think` disables Qwen3 reasoning so replies are
-  /// short and quick. Kept to 1–2 sentences on purpose.
+  /// Terse persona. `/no_think` keeps replies short/fast (Qwen3.5 is non-thinking
+  /// by default; this is belt-and-braces).
   static const String kChatSystem =
       'You are Ava, a concise on-device assistant. Answer in 1–2 short '
       'sentences. Do not show your reasoning. /no_think';
 
-  /// Router persona — one-word classifier (a 0.6B model is far more reliable
-  /// emitting a single token than JSON).
+  /// Router persona — one-word classifier.
   static const String kRouterSystem =
       'You are an intent classifier for a phone assistant. Decide whether the '
       "user's request can be answered LOCALLY on the device (simple lookups: "
@@ -116,6 +107,9 @@ class AvaOnDeviceLlm {
       'multi-step reasoning). Reply with ONLY one word: LOCAL or CLOUD. /no_think';
 
   CactusLM? _lm;
+
+  /// The slug that actually loaded (for display).
+  String? activeSlug;
 
   final ValueNotifier<OnDeviceStatus> status =
       ValueNotifier<OnDeviceStatus>(OnDeviceStatus.idle);
@@ -139,58 +133,47 @@ class AvaOnDeviceLlm {
       // Reclaim the previous model's ~400 MB before pulling the new one.
       await _purgeOldModel();
 
-      // Find the real slug by TRYING candidates: a wrong slug throws fast (the
-      // catalog lookup returns null), the correct one downloads. Only the
-      // matching slug triggers the ~600 MB download.
-      final candidates = await _candidateSlugs(lm);
-      String? chosen;
-      Object? lastSlugErr;
-      for (final cand in candidates) {
-        try {
-          status.value = OnDeviceStatus.downloading;
-          statusLine.value = 'Downloading Qwen3.5-0.8B…';
-          downloadProgress.value = 0;
-          await lm.downloadModel(
-            model: cand,
-            downloadProcessCallback: (progress, statusMessage, isError) {
-              if (isError) {
-                statusLine.value = 'Download error: $statusMessage';
-              } else {
-                if (progress != null) downloadProgress.value = progress;
-                statusLine.value = progress != null
-                    ? 'Downloading… ${(progress * 100).toStringAsFixed(0)}%'
-                    : statusMessage;
-              }
-            },
-          );
-          chosen = cand;
-          break;
-        } catch (e) {
-          lastSlugErr = e;
-          AvaLog.I.log('ava_ondevice', 'slug "$cand" unavailable: $e');
+      // Download directly from the HF release into <AppDocuments>/models/<slug>,
+      // reusing Cactus's own extract logic. Idempotent: skips if already present.
+      if (!await DownloadService.modelExists(kModelSlug)) {
+        status.value = OnDeviceStatus.downloading;
+        statusLine.value = 'Downloading Qwen3.5-0.8B…';
+        downloadProgress.value = 0;
+        final ok = await DownloadService.downloadAndExtractModels(
+          [
+            DownloadTask(
+              url: kModelDirectUrl,
+              filename: kModelZipName,
+              folder: kModelSlug,
+            ),
+          ],
+          (progress, statusMessage, isError) {
+            if (isError) {
+              statusLine.value = 'Download error: $statusMessage';
+            } else {
+              if (progress != null) downloadProgress.value = progress;
+              statusLine.value = progress != null
+                  ? 'Downloading… ${(progress * 100).toStringAsFixed(0)}%'
+                  : statusMessage;
+            }
+          },
+        );
+        if (!ok) {
+          throw Exception('Download/extract failed from $kModelDirectUrl');
         }
       }
-
-      if (chosen == null) {
-        throw Exception(
-            'Could not find Qwen3.5-0.8B in the Cactus catalog. Tried: '
-            '${candidates.join(', ')}. Last error: $lastSlugErr');
-      }
-
-      _resolvedSlug = chosen;
-      activeSlug = chosen;
-      await _writeCachedSlug(chosen);
 
       status.value = OnDeviceStatus.initializing;
       statusLine.value = 'Loading model into memory…';
       await lm.initializeModel(
-        params: CactusInitParams(model: chosen, contextSize: 2048),
+        params: CactusInitParams(model: kModelSlug, contextSize: 2048),
       );
 
+      activeSlug = kModelSlug;
       status.value = OnDeviceStatus.ready;
-      statusLine.value = 'Ready — $chosen (on-device)';
+      statusLine.value = 'Ready — Qwen3.5-0.8B (on-device)';
       lastError = null;
-      AvaLog.I.log('ava_ondevice', 'model ready ($chosen)');
+      AvaLog.I.log('ava_ondevice', 'model ready ($kModelSlug)');
       return true;
     } catch (e) {
       lastError = e.toString();
@@ -199,86 +182,6 @@ class AvaOnDeviceLlm {
       AvaLog.I.log('ava_ondevice', 'ensureReady FAILED: $e');
       return false;
     }
-  }
-
-  /// Build the ordered list of slugs to try. Order: in-memory cache → on-disk
-  /// cache → live-catalog matches (getModels) → known literal candidates. Deduped.
-  Future<List<String>> _candidateSlugs(CactusLM lm) async {
-    final out = <String>[];
-    void add(String? s) {
-      if (s != null && s.trim().isNotEmpty && !out.contains(s)) out.add(s.trim());
-    }
-
-    add(_resolvedSlug);
-    add(await _readCachedSlug());
-
-    // Whatever the live catalog reports for Qwen3.5-0.8B (require 0.8 so we
-    // never pick Qwen3.5-2B). The bulk list can be incomplete, hence the
-    // literal fallbacks below.
-    try {
-      final models = await lm.getModels();
-      for (final m in models) {
-        final hay = '${m.slug} ${m.name}'.toLowerCase();
-        if (hay.contains('qwen3.5') &&
-            (hay.contains('0.8') || hay.contains('800m'))) {
-          add(m.slug);
-        }
-      }
-    } catch (e) {
-      AvaLog.I.log('ava_ondevice', 'getModels failed: $e');
-    }
-
-    for (final c in kSlugCandidates) {
-      add(c);
-    }
-    return out;
-  }
-
-  /// Debug: list the catalog as the device sees it (slug · name · size · vision)
-  /// so we can confirm the exact slug. Best-effort; never throws.
-  Future<List<String>> debugCatalog() async {
-    try {
-      final lm = _lm ??= CactusLM();
-      final models = await lm.getModels();
-      if (models.isEmpty) return const ['(catalog returned no models)'];
-      return models
-          .map((m) =>
-              '${m.slug}  ·  ${m.name}  ·  ${m.sizeMb}MB${m.supportsVision ? ' · vision' : ''}')
-          .toList();
-    } catch (e) {
-      return ['catalog error: $e'];
-    }
-  }
-
-  /// Delete the old model directory (<AppDocuments>/models/<oldSlug>) to free
-  /// disk. Best-effort and idempotent (a no-op once it's gone).
-  Future<void> _purgeOldModel() async {
-    try {
-      final docs = await getApplicationDocumentsDirectory();
-      final dir = Directory('${docs.path}/models/$kOldModelSlug');
-      if (await dir.exists()) {
-        await dir.delete(recursive: true);
-        AvaLog.I.log('ava_ondevice', 'deleted old model $kOldModelSlug');
-      }
-    } catch (e) {
-      AvaLog.I.log('ava_ondevice', 'purge old model failed: $e');
-    }
-  }
-
-  Future<String?> _readCachedSlug() async {
-    try {
-      final docs = await getApplicationDocumentsDirectory();
-      final f = File('${docs.path}/$_kSlugCacheFile');
-      if (await f.exists()) return (await f.readAsString()).trim();
-    } catch (_) {}
-    return null;
-  }
-
-  Future<void> _writeCachedSlug(String slug) async {
-    try {
-      final docs = await getApplicationDocumentsDirectory();
-      await File('${docs.path}/$_kSlugCacheFile').writeAsString(slug);
-    } catch (_) {}
   }
 
   void resetContext() {
@@ -335,9 +238,6 @@ class AvaOnDeviceLlm {
 
   // ── Chat (streaming, for the typewriter UI) ──────────────────────────────────
 
-  /// Stream a reply. Emits cleaned text chunks as they generate; [done]
-  /// resolves with the final reply + metrics. On any failure the stream emits
-  /// one error line and [done] resolves with ok=false.
   Future<OnDeviceStream> askStream(
     String prompt, {
     String? system,
@@ -362,9 +262,7 @@ class AvaOnDeviceLlm {
         ),
       );
 
-      // Filter chunks so a stray `<think>` block never shows in the typewriter.
-      // We suppress everything until any `</think>` is seen; if no thinking
-      // block appears, all chunks pass through.
+      // Suppress any `<think>` block from the typewriter (belt-and-braces).
       final controller = StreamController<String>();
       var inThink = false;
       final buf = StringBuffer();
@@ -384,7 +282,8 @@ class AvaOnDeviceLlm {
 
       final done = streamed.result.then((res) {
         sub.cancel();
-        final cleaned = stripThink(buf.isNotEmpty ? buf.toString() : res.response);
+        final cleaned =
+            stripThink(buf.isNotEmpty ? buf.toString() : res.response);
         return OnDeviceReply(
           text: cleaned,
           ok: res.success,
@@ -407,9 +306,6 @@ class AvaOnDeviceLlm {
 
   // ── Intent routing ───────────────────────────────────────────────────────────
 
-  /// Classify a request as LOCAL (answer on-device) or CLOUD (escalate). Fast +
-  /// tiny (one token). Defaults to LOCAL on any ambiguity so we keep cheap
-  /// requests off the cloud.
   Future<RouteDecision> route(String request) async {
     if (!await ensureReady()) {
       return const RouteDecision(RouteScope.cloud, 'unavailable');
@@ -437,8 +333,6 @@ class AvaOnDeviceLlm {
 
   // ── Embeddings (for the on-device RAG store) ─────────────────────────────────
 
-  /// Embed [text] → vector. Returns an empty list on failure (callers treat
-  /// that as "no vector"). Requires the model to be loaded.
   Future<List<double>> embed(String text) async {
     if (!await ensureReady()) return const [];
     try {
@@ -447,6 +341,24 @@ class AvaOnDeviceLlm {
     } catch (e) {
       AvaLog.I.log('ava_ondevice', 'embed FAILED: $e');
       return const [];
+    }
+  }
+
+  // ── Debug ────────────────────────────────────────────────────────────────────
+
+  /// List the catalog as the device sees it (for diagnostics only — we no longer
+  /// depend on it to load the model). Never throws.
+  Future<List<String>> debugCatalog() async {
+    try {
+      final lm = _lm ??= CactusLM();
+      final models = await lm.getModels();
+      if (models.isEmpty) return const ['(catalog returned no models)'];
+      return models
+          .map((m) =>
+              '${m.slug}  ·  ${m.name}  ·  ${m.sizeMb}MB${m.supportsVision ? ' · vision' : ''}')
+          .toList();
+    } catch (e) {
+      return ['catalog error: $e'];
     }
   }
 
@@ -471,18 +383,29 @@ class AvaOnDeviceLlm {
         totalTokens: res.totalTokens,
       );
 
-  /// Remove a Qwen3 `<think>…</think>` block (closed or, if the cap cut it off,
+  /// Remove a Qwen `<think>…</think>` block (closed or, if the cap cut it off,
   /// unclosed) so only the final answer is shown.
   static String stripThink(String s) {
     var out = s;
-    // Closed blocks.
     out = out.replaceAll(RegExp(r'<think>[\s\S]*?</think>', multiLine: true), '');
-    // Unclosed leading block (answer never reached): keep nothing before a lone
-    // close, or drop a dangling open tag's content.
     final close = out.indexOf('</think>');
     if (close >= 0) out = out.substring(close + '</think>'.length);
     final open = out.indexOf('<think>');
     if (open >= 0) out = out.substring(0, open);
     return out.trim();
+  }
+
+  /// Delete the old model directory to free disk. Best-effort, idempotent.
+  Future<void> _purgeOldModel() async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}/models/$kOldModelSlug');
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+        AvaLog.I.log('ava_ondevice', 'deleted old model $kOldModelSlug');
+      }
+    } catch (e) {
+      AvaLog.I.log('ava_ondevice', 'purge old model failed: $e');
+    }
   }
 }
