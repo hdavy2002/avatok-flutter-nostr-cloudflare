@@ -84,6 +84,8 @@ class AvaApi {
 
   /// AvaChat — talk-to-Ava conversation history (cloud backup in D1).
   static const String chatHistory = '/api/ava/chat/history';
+  /// AvaChat — session-list metadata mutations (rename/star/archive/delete/reorder).
+  static const String chatHistoryMeta = '/api/ava/chat/history/meta';
 
   /// P5 — tool broker / Strata progressive disclosure (prefix; sub-paths vary).
   static const String toolsPrefix = '/api/ava/tools/';

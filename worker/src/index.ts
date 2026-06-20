@@ -86,7 +86,7 @@ import { avaGemini } from "./routes/ava_gemini";        // P2
 import { avaRagIngest, avaRagStore, avaRagSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Composio)
 import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, driveBackupUploadRoute, driveBackupDownloadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
-import { avaChatHistorySave, avaChatHistoryGet } from "./routes/ava_chat_history"; // AvaChat history (D1)
+import { avaChatHistorySave, avaChatHistoryGet, avaChatHistoryMeta } from "./routes/ava_chat_history"; // AvaChat history (D1)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
 import { avaTools } from "./routes/ava_tools";          // P5
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
@@ -227,6 +227,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/drive/backup/ensure" && req.method === "POST") return await driveBackupEnsureRoute(req, env);
       if (p === "/api/ava/drive/backup/upload" && req.method === "POST") return await driveBackupUploadRoute(req, env);
       if (p === "/api/ava/drive/backup/download" && req.method === "GET") return await driveBackupDownloadRoute(req, env);
+      if (p === "/api/ava/chat/history/meta" && req.method === "POST") return await avaChatHistoryMeta(req, env);
       if (p === "/api/ava/chat/history" && req.method === "POST") return await avaChatHistorySave(req, env);
       if (p === "/api/ava/chat/history" && req.method === "GET") return await avaChatHistoryGet(req, env);
       if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
