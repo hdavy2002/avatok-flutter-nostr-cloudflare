@@ -1,7 +1,7 @@
-/// Settings → "Ava on-device" section (Phase A — step 1: prove Qwen3-0.6B).
+/// Settings → "Ava on-device" section (Phase A — step 1: prove Qwen3.5-0.8B).
 ///
 /// A simple, FREE entry point that opens the on-device test harness
-/// ([AvaOnDeviceTestScreen]) where Qwen3-0.6B runs fully offline via Cactus.
+/// ([AvaOnDeviceTestScreen]) where Qwen3.5-0.8B runs fully offline via Cactus.
 /// This is a developer/QA surface for the first on-device slice — it does NOT
 /// gate or change the existing server Ava chat. Registered via
 /// [SettingsSectionRegistry] from [AvaBootstrap.init] (`registerOnDeviceSection()`).
@@ -59,8 +59,8 @@ class _OnDeviceCard extends StatelessWidget {
                   ]),
                   const SizedBox(height: 2),
                   Text(
-                    'Test Qwen3-0.6B running privately on this phone — works '
-                    'offline. First open downloads the model (≈400 MB).',
+                    'Test Qwen3.5-0.8B running privately on this phone — works '
+                    'offline. First open downloads the model (≈600 MB).',
                     style: ZineText.sub(size: 12),
                   ),
                 ],
