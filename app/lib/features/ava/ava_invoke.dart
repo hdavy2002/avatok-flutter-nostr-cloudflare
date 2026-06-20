@@ -196,6 +196,12 @@ class AvaInvoke {
       ragText: ctx,
       userText: query,
     );
+    AvaQuality.roi(
+      surface: 'ava_thread',
+      retrieved: hits.length,
+      injected: ctx,
+      answer: reply.ok ? reply.text : ctx,
+    );
     // ignore: unawaited_futures
     Analytics.capture('ava_local_turn', {
       'scope': 'local',

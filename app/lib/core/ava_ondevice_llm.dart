@@ -345,12 +345,24 @@ class AvaOnDeviceLlm {
   }
 
   void unload() {
+    final residentMin = _lastReadyAt == null
+        ? 0
+        : DateTime.now().difference(_lastReadyAt!).inMinutes;
+    final wasLoaded = _lastReadyAt != null;
     try {
       _lm?.unload();
     } catch (_) {}
     status.value = OnDeviceStatus.idle;
     downloadProgress.value = 0;
     statusLine.value = 'Not loaded';
+    _lastReadyAt = null;
+    if (wasLoaded) {
+      // ignore: unawaited_futures
+      Analytics.capture('model_unloaded', {
+        'slug': activeSlug ?? '',
+        'resident_minutes': residentMin,
+      });
+    }
   }
 
   // ── Chat (non-streaming) ─────────────────────────────────────────────────────
@@ -706,7 +718,14 @@ class AvaOnDeviceLlm {
         'ttft_ms': res.timeToFirstTokenMs.round(),
         'total_ms': res.totalTimeMs.round(),
       };
-      props.addAll(await _deviceSnapshot()); // ram tier / battery / temp
+      final dev = await _deviceSnapshot(); // ram tier / battery / temp
+      props.addAll(dev);
+      // Flag thermal pressure so we can see if on-device AI is cooking the phone.
+      final t = dev['temp_c'];
+      if (t is int && t >= 44) {
+        // ignore: unawaited_futures
+        Analytics.capture('thermal_throttle', {'temp_c': t, 'slug': activeSlug ?? ''});
+      }
       await Analytics.capture('ondevice_generate', props);
     } catch (_) {}
   }

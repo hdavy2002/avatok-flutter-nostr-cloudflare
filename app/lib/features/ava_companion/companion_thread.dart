@@ -87,6 +87,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   final List<_CompanionMsg> _msgs = [];
   bool _busy = false;
   String? _playingId;
+  String _lastAnswerSource = ''; // for attributing a follow-up correction
   Timer? _revealTimer; // drives the typewriter reveal of Ava's latest reply
   // AvaChat history is saved locally (per-account SQLite) + to D1 after each turn
   // and on close. A resumed session keeps its id; a new one gets a fresh id.
@@ -272,7 +273,11 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     _completeReveal(); // snap any in-progress typewriter to full before a new turn
     // Correction signal: prior turn was Ava (me == false) and this is pushback.
     final prevWasAva = _msgs.isNotEmpty && !_msgs.last.me;
-    AvaQuality.maybeCorrection(surface: 'companion', prevWasAva: prevWasAva, text: t);
+    AvaQuality.maybeCorrection(
+        surface: 'companion',
+        prevWasAva: prevWasAva,
+        text: t,
+        answerSource: _lastAnswerSource.isEmpty ? null : _lastAnswerSource);
     setState(() {
       _msgs.add(_CompanionMsg('u${DateTime.now().microsecondsSinceEpoch}', t, true));
       _busy = true;
@@ -293,6 +298,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           : '${widget.persona.systemPrompt}\n\n$about',
       history: priorHistory.isEmpty ? null : priorHistory,
     );
+    _lastAnswerSource = about.isEmpty ? 'llm' : 'hybrid';
     if (!mounted) return;
     Analytics.capture('avachat_turn_replied', {
       'persona': widget.persona.id,

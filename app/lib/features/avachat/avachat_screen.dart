@@ -44,6 +44,9 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
   bool _thinking = false;
   bool _loadingHistory = true;
   String? _playingRef;
+  // Source of the last Ava answer (memory|rag|tool|llm|hybrid) so a correction
+  // right after can be attributed — corrections of memory-backed answers matter.
+  String _lastAnswerSource = '';
 
   static const _suggestions = <String>[
     'Find my voicemail about…',
@@ -109,7 +112,11 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     // If the prior turn was Ava and this looks like a correction, log it —
     // corrections-per-100-messages is a top quality signal.
     final prevWasAva = _msgs.isNotEmpty && !_msgs.last.mine;
-    AvaQuality.maybeCorrection(surface: 'avachat', prevWasAva: prevWasAva, text: text);
+    AvaQuality.maybeCorrection(
+        surface: 'avachat',
+        prevWasAva: prevWasAva,
+        text: text,
+        answerSource: _lastAnswerSource.isEmpty ? null : _lastAnswerSource);
     setState(() { _msgs.add(_ChatMsg(true, text)); _thinking = true; });
     _jump();
 
@@ -166,6 +173,7 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
         ok: succeeded,
         userText: text,
       );
+      _lastAnswerSource = 'tool';
       _addAva(res);
       return;
     }
@@ -178,6 +186,7 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
         surface: 'avachat', source: 'llm', grounded: false,
         sourcesFound: 0, userText: text,
       );
+      _lastAnswerSource = 'llm';
       _addAva("I don't have anything about that in your on-device memory yet.");
       return;
     }
@@ -206,6 +215,13 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       ragText: ctx,
       userText: text,
     );
+    AvaQuality.roi(
+      surface: 'avachat',
+      retrieved: hits.length,
+      injected: ctx,
+      answer: reply.ok ? reply.text : ctx,
+    );
+    _lastAnswerSource = about.isEmpty ? 'rag' : 'hybrid';
     _addAva(
       reply.ok && reply.text.isNotEmpty ? reply.text : ctx,
       sources: hits
@@ -222,6 +238,15 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     try {
       final reply = await BrainApi.chat(text);
       if (!mounted) return;
+      AvaQuality.answer(
+        surface: 'avachat',
+        source: 'llm',
+        grounded: reply.sources.isNotEmpty,
+        citations: reply.sources.length,
+        sourcesFound: reply.sources.length,
+        userText: text,
+      );
+      _lastAnswerSource = 'llm';
       setState(() {
         _msgs.add(_ChatMsg(false, reply.answer.isEmpty ? "I couldn't find anything for that." : reply.answer, sources: reply.sources));
         _thinking = false;

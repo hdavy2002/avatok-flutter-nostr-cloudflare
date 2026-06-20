@@ -59,6 +59,45 @@ class AvaQuality {
     });
   }
 
+  /// Memory ROI — the metric most assistants never measure: of what we
+  /// RETRIEVED and INJECTED, how much actually got REFERENCED in the answer?
+  /// "referenced" is a heuristic: an injected snippet counts if it shares a
+  /// meaningful word (5+ chars) with the answer text. Lets us see whether memory
+  /// is helping or just burning context.
+  static void roi({
+    required String surface,
+    required int retrieved,
+    required String injected,
+    required String answer,
+  }) {
+    final lines =
+        injected.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final referenced = _overlapCount(lines, answer);
+    // ignore: unawaited_futures
+    Analytics.capture('ava_memory_roi', {
+      'surface': surface,
+      'retrieved': retrieved,
+      'injected': lines.length,
+      'referenced': referenced,
+    });
+  }
+
+  static int _overlapCount(List<String> injectedLines, String answer) {
+    if (injectedLines.isEmpty || answer.isEmpty) return 0;
+    Set<String> big(String s) => s
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((w) => w.length >= 5)
+        .toSet();
+    final aWords = big(answer);
+    if (aWords.isEmpty) return 0;
+    var refs = 0;
+    for (final line in injectedLines) {
+      if (big(line).any(aWords.contains)) refs++;
+    }
+    return refs;
+  }
+
   /// A connected-app tool-call outcome (Gmail/Calendar/Drive/…).
   static void tool({
     required String tool,
@@ -90,6 +129,7 @@ class AvaQuality {
     required String surface,
     required bool prevWasAva,
     required String text,
+    String? answerSource,
   }) {
     if (!prevWasAva) return false;
     final t = text.trim();
@@ -99,6 +139,9 @@ class AvaQuality {
     Analytics.capture('ava_correction', {
       'surface': surface,
       'snippet_len': t.length,
+      // What kind of answer got corrected? Corrections of memory-backed answers
+      // are the ones that tell us memory is misleading Ava.
+      if (answerSource != null) 'answer_source': answerSource,
     });
     return true;
   }
