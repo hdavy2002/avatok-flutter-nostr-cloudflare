@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -7,39 +8,101 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
-import '../../core/avatar_cache.dart';
 import '../../core/apps.dart';
 import '../../core/library_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import 'lib_thumbs.dart';
 import 'private_ingest.dart';
 
-/// Visual metadata for the five system categories.
+/// Visual metadata for a system category folder.
 class _Cat {
-  final String key;
+  final String key; // identity used in the UI + (mostly) the server category
   final String label;
   final IconData icon;
   final Color color;
   const _Cat(this.key, this.label, this.icon, this.color);
 }
 
+/// The cross-app file-type folders shown at the AvaLibrary root. PDFs are split
+/// out from the rest of the document bucket ("Documents") so the root reads like
+/// a clean file manager: Images, Videos, PDFs, Documents, Music, Other.
 final _cats = <_Cat>[
   _Cat('image', 'Images', PhosphorIcons.image(PhosphorIconsStyle.bold), Zine.blue),
   _Cat('video', 'Videos', PhosphorIcons.filmStrip(PhosphorIconsStyle.bold), Zine.coral),
-  _Cat('document', 'Documents', PhosphorIcons.fileText(PhosphorIconsStyle.bold), Zine.lime),
-  _Cat('audio', 'Music', PhosphorIcons.musicNotes(PhosphorIconsStyle.bold), Zine.lilac),
-  _Cat('other', 'Other', PhosphorIcons.file(PhosphorIconsStyle.bold), Zine.mint),
+  _Cat('pdf', 'PDFs', PhosphorIcons.filePdf(PhosphorIconsStyle.bold), Zine.lime),
+  _Cat('doc', 'Documents', PhosphorIcons.fileText(PhosphorIconsStyle.bold), Zine.lilac),
+  _Cat('audio', 'Music', PhosphorIcons.musicNotes(PhosphorIconsStyle.bold), Zine.mint),
+  _Cat('other', 'Other', PhosphorIcons.file(PhosphorIconsStyle.bold), Zine.blue),
 ];
 
 _Cat _catOf(String k) => _cats.firstWhere((c) => c.key == k, orElse: () => _cats.last);
 
-String _fmtBytes(int b) {
-  if (b <= 0) return '0 B';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-  var v = b.toDouble();
-  var i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-  return '${v.toStringAsFixed(v >= 10 || i == 0 ? 0 : 1)} ${u[i]}';
+/// A visible root folder: its visual [cat], the live file [count], and the
+/// [serverCat] passed to the list endpoint (lets us fold a legacy single
+/// `document` bucket into "Documents" if the worker hasn't split pdf/doc yet).
+typedef _RootFolder = ({_Cat cat, int count, String serverCat});
+
+/// Aggregate per-category counts across every app root (AvaTOK + any others).
+Map<String, int> _aggCounts(LibraryTree? t) {
+  final c = <String, int>{};
+  for (final a in t?.apps ?? const <AppNode>[]) {
+    a.byCategory.forEach((k, v) => c[k] = (c[k] ?? 0) + v);
+  }
+  return c;
+}
+
+/// Build the root folder list from aggregated counts. Hides empty categories.
+List<_RootFolder> _rootFolders(Map<String, int> counts) {
+  // Legacy worker: a single 'document' bucket, not yet split into pdf/doc.
+  final legacyDocs =
+      !(counts.containsKey('pdf') || counts.containsKey('doc')) && (counts['document'] ?? 0) > 0;
+  final out = <_RootFolder>[];
+  for (final c in _cats) {
+    if (c.key == 'pdf') {
+      if (legacyDocs) continue; // folded into Documents below
+      final n = counts['pdf'] ?? 0;
+      if (n > 0) out.add((cat: c, count: n, serverCat: 'pdf'));
+    } else if (c.key == 'doc') {
+      if (legacyDocs) {
+        out.add((cat: c, count: counts['document'] ?? 0, serverCat: 'document'));
+      } else {
+        final n = counts['doc'] ?? 0;
+        if (n > 0) out.add((cat: c, count: n, serverCat: 'doc'));
+      }
+    } else {
+      final n = counts[c.key] ?? 0;
+      if (n > 0) out.add((cat: c, count: n, serverCat: c.key));
+    }
+  }
+  return out;
+}
+
+const _months = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+const _weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/// "20 June 2026 (Saturday)", prefixed Today/Yesterday where it helps.
+String _dayHeader(DateTime d) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final that = DateTime(d.year, d.month, d.day);
+  final diff = today.difference(that).inDays;
+  final base = '${d.day} ${_months[d.month - 1]} ${d.year} (${_weekdays[d.weekday - 1]})';
+  if (diff == 0) return 'Today · $base';
+  if (diff == 1) return 'Yesterday · $base';
+  return base;
+}
+
+String _dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
+
+String _extOf(LibraryItem m) {
+  final n = m.name;
+  final i = n.lastIndexOf('.');
+  if (i >= 0 && i < n.length - 1) return n.substring(i + 1).toUpperCase();
+  return _catOf(m.category).label.toUpperCase();
 }
 
 final ImagePicker _imgPicker = ImagePicker();
@@ -66,8 +129,7 @@ String _mimeFromName(String name, {String fallback = 'application/octet-stream'}
 }
 
 /// Destination apps for move/copy: everything that already has files in the
-/// Library, plus AvaLibrary itself as a neutral home. Self-contained (reads the
-/// cached tree) so any screen can offer "move anywhere".
+/// Library, plus AvaLibrary itself as a neutral home.
 Future<List<String>> _destApps() async {
   final t = await LibraryApi.cachedTree();
   final s = <String>{'avalibrary'};
@@ -88,8 +150,7 @@ class _SearchBar extends StatelessWidget {
       );
 }
 
-/// Lime pill action button replacing the Material FAB (§7.1) — the ONE lime
-/// primary on each Library screen.
+/// Lime pill action button replacing the Material FAB (§7.1).
 class _ZineFab extends StatelessWidget {
   final VoidCallback onTap;
   final String? label;
@@ -145,8 +206,9 @@ const _sheetShape = RoundedRectangleBorder(
   side: BorderSide(color: Zine.ink, width: Zine.bw),
 );
 
-/// AvaLibrary — the global, cross-app file manager. App roots → category folders
-/// (+ user folders) → files. Local-first: paints the cached tree, then refreshes.
+/// AvaLibrary — the global file manager. Root = cross-app file-TYPE folders
+/// (Images / Videos / PDFs / Documents / Music / Other) + the user's folders.
+/// Local-first: paints the cached tree, then refreshes.
 class AvaLibraryScreen extends StatefulWidget {
   const AvaLibraryScreen({super.key});
   @override
@@ -175,6 +237,14 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
     }
   }
 
+  /// Every user folder across every app, flattened (AvaTOK is the only app today,
+  /// but the model stays cross-app).
+  List<LibraryFolder> get _allFolders {
+    final out = <LibraryFolder>[];
+    _tree?.foldersByApp.forEach((_, v) => out.addAll(v));
+    return out;
+  }
+
   Future<void> _newFolder() async {
     final name = await _promptName(context, 'New folder');
     if (name == null || name.isEmpty) return;
@@ -183,44 +253,85 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
   }
 
   Future<void> _add() async {
-    // No folder context at the cross-app root → a new folder (and any uploads)
-    // land in the AvaLibrary app itself.
     final did = await showAddSheet(context, app: 'avalibrary', folderId: null, onNewFolder: _newFolder);
     if (did) _load();
   }
 
+  void _openCategory(_RootFolder f) {
+    Analytics.capture('library_category_opened', {'category': f.serverCat, 'count': f.count});
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => _FolderView(
+        app: null, category: f.serverCat, folderId: null,
+        title: f.cat.label),
+    )).then((_) => _load());
+  }
+
+  void _openFolder(LibraryFolder f) {
+    Analytics.capture('library_folder_opened', {'folder': f.id, 'app': f.app});
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => _FolderView(
+        app: f.app, category: null, folderId: f.id,
+        title: f.name),
+    )).then((_) => _load());
+  }
+
   @override
   Widget build(BuildContext context) {
-    final all = _tree?.apps ?? const <AppNode>[];
-    final apps = _query.isEmpty
-        ? all
-        : all.where((a) => appByKey(a.app).name.toLowerCase().contains(_query.toLowerCase())).toList();
+    final counts = _aggCounts(_tree);
+    final q = _query.toLowerCase();
+    final roots = _rootFolders(counts)
+        .where((r) => q.isEmpty || r.cat.label.toLowerCase().contains(q))
+        .toList();
+    final folders = q.isEmpty
+        ? _allFolders
+        : _allFolders.where((f) => f.name.toLowerCase().contains(q)).toList();
+    final empty = counts.values.fold<int>(0, (a, b) => a + b) == 0 && _allFolders.isEmpty;
+
     return Scaffold(
       backgroundColor: Zine.paper,
       appBar: const ZineAppBar(
         title: 'AvaLibrary',
         markWord: 'Library',
-        tag: 'Your files, every app',
+        tag: 'Your files, every type',
       ),
-      floatingActionButton: _ZineFab(onTap: _add),
+      floatingActionButton: _ZineFab(onTap: _add, label: 'Add'),
       body: RefreshIndicator(
         color: Zine.blueInk,
         onRefresh: _load,
         child: _loading && _tree == null
             ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
             : ListView(padding: const EdgeInsets.all(18), children: [
-                _SearchBar(hint: 'Search apps', onChanged: (v) => setState(() => _query = v)),
+                _SearchBar(hint: 'Search files & folders', onChanged: (v) => setState(() => _query = v)),
                 const SizedBox(height: 14),
-                if (all.isEmpty)
+                if (empty)
                   _emptyBody()
                 else ...[
-                  Text('Your files across every AvaVerse app.', style: ZineText.sub(size: 13.5)),
+                  Text('Your files across every AvaVerse app, by type.', style: ZineText.sub(size: 13.5)),
                   const SizedBox(height: 14),
-                  if (apps.isEmpty)
-                    Padding(padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Center(child: Text('No apps match.', style: ZineText.sub(size: 14))))
+                  if (roots.isNotEmpty) ...[
+                    Text('LIBRARY', style: ZineText.kicker()),
+                    const SizedBox(height: 10),
+                    for (final r in roots) _row(
+                      icon: r.cat.icon, color: r.cat.color, title: r.cat.label,
+                      sub: '${r.count} file${r.count == 1 ? '' : 's'}',
+                      onTap: () => _openCategory(r),
+                    ),
+                    const SizedBox(height: 18),
+                  ],
+                  Text('FOLDERS', style: ZineText.kicker()),
+                  const SizedBox(height: 10),
+                  if (folders.isEmpty)
+                    Padding(padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(q.isEmpty ? 'No folders yet — tap Add › New folder.' : 'No folders match.',
+                            style: ZineText.sub(size: 13)))
                   else
-                    for (final (i, a) in apps.indexed) _appCard(a, i),
+                    for (final f in folders) _row(
+                      icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: Zine.blue,
+                      title: f.name, sub: 'Folder',
+                      onTap: () => _openFolder(f),
+                      menu: () => _folderMenu(f),
+                    ),
+                  const SizedBox(height: 90),
                 ],
               ]),
       ),
@@ -236,182 +347,6 @@ class _AvaLibraryScreenState extends State<AvaLibraryScreen> {
           ),
         ),
       );
-
-  Widget _appCard(AppNode a, int i) {
-    final def = appByKey(a.app);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: ZineCard(
-        radius: Zine.rSm,
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-        onTap: () => Navigator.push(context, MaterialPageRoute(
-            builder: (_) => _AppView(app: a.app, node: a, tree: _tree!))).then((_) => _load()),
-        child: Row(children: [
-          // Accent badges rotate (§6) so adjacent app cards differ.
-          ZineIconBadge(icon: def.icon, color: Zine.accents[i % Zine.accents.length], size: 40),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(def.name, style: ZineText.value(size: 15.5)),
-              const SizedBox(height: 2),
-              Text('${a.total} file${a.total == 1 ? '' : 's'} · ${_fmtBytes(a.bytes)}'.toUpperCase(),
-                  style: ZineText.kicker(size: 10)),
-            ]),
-          ),
-          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkSoft),
-        ]),
-      ),
-    );
-  }
-}
-
-/// One app root: its five category folders (with counts) + the user's folders.
-class _AppView extends StatefulWidget {
-  final String app;
-  final AppNode node;
-  final LibraryTree tree;
-  const _AppView({required this.app, required this.node, required this.tree});
-  @override
-  State<_AppView> createState() => _AppViewState();
-}
-
-class _AppViewState extends State<_AppView> {
-  late List<LibraryFolder> _folders;
-  late Map<String, int> _byCategory;
-  String _query = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _folders = List.of(widget.tree.foldersByApp[widget.app] ?? const []);
-    _byCategory = Map.of(widget.node.byCategory);
-    _refresh();
-  }
-
-  Future<void> _refresh() async {
-    try {
-      final f = await LibraryApi.folders(widget.app);
-      if (mounted) setState(() => _folders = f);
-    } catch (_) {}
-    try {
-      final t = await LibraryApi.tree();
-      final node = t.apps.where((a) => a.app == widget.app).cast<AppNode?>().firstWhere((_) => true, orElse: () => null);
-      if (node != null && mounted) setState(() => _byCategory = Map.of(node.byCategory));
-    } catch (_) {}
-  }
-
-  Future<void> _newFolder() async {
-    final name = await _promptName(context, 'New folder');
-    if (name == null || name.isEmpty) return;
-    await LibraryApi.createFolder(app: widget.app, name: name);
-    _refresh();
-  }
-
-  Future<void> _add() async {
-    final did = await showAddSheet(context, app: widget.app, folderId: null, onNewFolder: _newFolder);
-    if (did) _refresh();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final def = appByKey(widget.app);
-    final q = _query.toLowerCase();
-    final folders = q.isEmpty ? _folders : _folders.where((f) => f.name.toLowerCase().contains(q)).toList();
-    final cats = q.isEmpty
-        ? _cats
-        : _cats.where((c) => c.label.toLowerCase().contains(q)).toList();
-    return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: ZineAppBar(
-        title: def.name,
-        tag: 'AvaLibrary / ${def.name}', // breadcrumb, mono (§3)
-      ),
-      floatingActionButton: _ZineFab(onTap: _add, label: 'Add'),
-      body: ListView(padding: const EdgeInsets.all(18), children: [
-        _SearchBar(hint: 'Search in ${def.name}', onChanged: (v) => setState(() => _query = v)),
-        const SizedBox(height: 16),
-        if (cats.any((c) => (_byCategory[c.key] ?? 0) > 0)) ...[
-          Text('CATEGORIES', style: ZineText.kicker()),
-          const SizedBox(height: 10),
-          for (final c in cats)
-            if ((_byCategory[c.key] ?? 0) > 0) _row(
-              icon: c.icon, color: c.color, title: c.label,
-              sub: '${_byCategory[c.key]} item${_byCategory[c.key] == 1 ? '' : 's'}',
-              onTap: () => _openView(category: c.key, title: c.label),
-            ),
-          const SizedBox(height: 18),
-        ],
-        Text('FOLDERS', style: ZineText.kicker()),
-        const SizedBox(height: 10),
-        if (folders.isEmpty)
-          Padding(padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(_query.isEmpty ? 'No folders yet — tap Add › New folder.' : 'No folders match.',
-                  style: ZineText.sub(size: 13)))
-        else
-          for (final f in folders) _row(
-            icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: Zine.blue,
-            title: f.name, sub: 'Folder',
-            onTap: () => _openView(folder: f.id, title: f.name),
-            menu: () => _folderMenu(f),
-          ),
-        const SizedBox(height: 90),
-      ]),
-    );
-  }
-
-  void _openView({String? category, String? folder, required String title}) {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => _FolderView(app: widget.app, category: category, folderId: folder, title: title, folders: _folders),
-    )).then((_) => _refresh());
-  }
-
-  Future<void> _folderMenu(LibraryFolder f) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Zine.paper,
-      shape: _sheetShape,
-      builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-            child: Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: Zine.blue, size: 30),
-              const SizedBox(width: 11),
-              Expanded(child: Text(f.name, style: ZineText.cardTitle(size: 17))),
-            ])),
-        const Divider(height: 2, color: Zine.ink, thickness: 2),
-        _sheetTile(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), title: 'Rename',
-            onTap: () => Navigator.pop(context, 'rename')),
-        _sheetTile(icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), title: 'Move to…',
-            onTap: () => Navigator.pop(context, 'move')),
-        _sheetTile(icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), title: 'Copy to…',
-            subtitle: 'Duplicates the folder and its files (shortcuts)',
-            onTap: () => Navigator.pop(context, 'copy')),
-        _sheetTile(icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), iconColor: Zine.coral,
-            title: 'Delete folder', textColor: Zine.coral,
-            subtitle: 'Files move back to their category',
-            onTap: () => Navigator.pop(context, 'delete')),
-        const SizedBox(height: 8),
-      ])),
-    );
-    if (!mounted || action == null) return;
-    if (action == 'rename') {
-      final name = await _promptName(context, 'Rename folder', initial: f.name);
-      if (name != null && name.isNotEmpty) { await LibraryApi.renameFolder(f.id, name); _refresh(); }
-    } else if (action == 'delete') {
-      await LibraryApi.deleteFolder(f.id);
-      _refresh();
-    } else if (action == 'move' || action == 'copy') {
-      final dest = await _pickDestination(context, title: action == 'move' ? 'Move folder to' : 'Copy folder to', excludeFolderId: f.id);
-      if (dest == null) return;
-      if (action == 'move') {
-        await LibraryApi.moveFolder(f.id, app: dest.app, parentId: dest.folder);
-      } else {
-        await LibraryApi.copyFolder(f.id, app: dest.app, parentId: dest.folder);
-      }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(action == 'move' ? 'Folder moved' : 'Folder copied')));
-      _refresh();
-    }
-  }
 
   Widget _row({required IconData icon, required Color color, required String title, required String sub, required VoidCallback onTap, VoidCallback? menu}) =>
       Padding(
@@ -445,17 +380,52 @@ class _AppViewState extends State<_AppView> {
           ]),
         ),
       );
+
+  Future<void> _folderMenu(LibraryFolder f) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: _sheetShape,
+      builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+            child: Row(children: [
+              ZineIconBadge(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), color: Zine.blue, size: 30),
+              const SizedBox(width: 11),
+              Expanded(child: Text(f.name, style: ZineText.cardTitle(size: 17))),
+            ])),
+        const Divider(height: 2, color: Zine.ink, thickness: 2),
+        _sheetTile(icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), title: 'Rename',
+            onTap: () => Navigator.pop(context, 'rename')),
+        _sheetTile(icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), iconColor: Zine.coral,
+            title: 'Delete folder', textColor: Zine.coral,
+            subtitle: 'Files move back to their type folder',
+            onTap: () => Navigator.pop(context, 'delete')),
+        const SizedBox(height: 8),
+      ])),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'rename') {
+      final name = await _promptName(context, 'Rename folder', initial: f.name);
+      if (name != null && name.isNotEmpty) { await LibraryApi.renameFolder(f.id, name); _load(); }
+    } else if (action == 'delete') {
+      await LibraryApi.deleteFolder(f.id);
+      _load();
+    }
+  }
 }
 
-/// A file listing: a category bucket or a user folder. Grid for images/videos,
-/// list otherwise. Per-item actions: open, move, copy, delete.
+/// A file listing: a cross-app file-type bucket, or a user folder. Files are
+/// shown newest-first, GROUPED UNDER DATE HEADERS, with a mini-calendar day
+/// filter. Every file gets a real cached thumbnail tile (LibThumbs).
 class _FolderView extends StatefulWidget {
-  final String app;
-  final String? category;
-  final String? folderId;
+  final String? app;        // null = across every app (a file-type view)
+  final String? category;   // server category (image|video|pdf|doc|audio|other|document)
+  final String? folderId;   // a user folder
   final String title;
-  final List<LibraryFolder> folders;
-  const _FolderView({required this.app, this.category, this.folderId, required this.title, required this.folders});
+  const _FolderView({
+    required this.app, required this.category, required this.folderId,
+    required this.title,
+  });
   @override
   State<_FolderView> createState() => _FolderViewState();
 }
@@ -468,8 +438,9 @@ class _FolderViewState extends State<_FolderView> {
   bool _more = true;
   String _query = '';
   String? _typeFilter;
+  DateTime? _dayFilter;
   Timer? _searchDebounce;
-  String _serverQ = ''; // the query the loaded pages were fetched with
+  String _serverQ = '';
 
   @override
   void initState() {
@@ -483,23 +454,23 @@ class _FolderViewState extends State<_FolderView> {
     super.dispose();
   }
 
-  // Phase 4: search is SERVER-side (file_name LIKE over the whole index, user
-  // folders included) — the instant client filter narrows the loaded pages while
-  // the debounced refetch is in flight.
+  // Server-side name search (file_name LIKE over the whole index); the instant
+  // client filter narrows loaded pages while the debounced refetch is in flight.
   void _onQuery(String v) {
     setState(() => _query = v);
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted || _serverQ == _query.trim()) return;
       _serverQ = _query.trim();
-      if (_serverQ.isNotEmpty) Analytics.capture('library_search', {'q_len': _serverQ.length, 'app': widget.app});
+      if (_serverQ.isNotEmpty) Analytics.capture('library_search', {'q_len': _serverQ.length, 'scope': widget.category ?? 'folder'});
       _refresh();
     });
   }
 
   Future<void> _load() async {
-    if (_fetching) return; // guard against duplicate calls from the list sentinel
+    if (_fetching) return;
     _fetching = true;
+    final t0 = DateTime.now();
     try {
       final r = await LibraryApi.list(
           app: widget.app, category: widget.category, folder: widget.folderId, cursor: _cursor,
@@ -511,8 +482,14 @@ class _FolderViewState extends State<_FolderView> {
         _more = r.cursor != null && r.items.isNotEmpty;
         _loading = false;
       });
-    } catch (_) {
+      Analytics.capture('library_list_loaded', {
+        'scope': widget.category ?? (widget.folderId != null ? 'folder' : 'all'),
+        'count': r.items.length,
+        'latency_ms': DateTime.now().difference(t0).inMilliseconds,
+      });
+    } catch (e) {
       if (mounted) setState(() => _loading = false);
+      Analytics.error(domain: 'media', code: 'library_list_failed', message: e.toString(), screen: 'avalibrary');
     } finally {
       _fetching = false;
     }
@@ -523,33 +500,119 @@ class _FolderViewState extends State<_FolderView> {
     await _load();
   }
 
+  // Keep paging until the chosen day is fully loaded (items are DESC by date, so
+  // once the last loaded item is older than the day's start we have them all).
+  Future<void> _ensureDayLoaded(DateTime day) async {
+    final start = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
+    var guard = 0;
+    while (_more && guard < 25) {
+      if (_items.isNotEmpty && _items.last.createdAt < start) break;
+      await _load();
+      guard++;
+    }
+  }
+
+  Future<void> _pickDay() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dayFilter ?? now,
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: now,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: ColorScheme.light(
+            primary: Zine.blueInk, onPrimary: Colors.white, onSurface: Zine.ink),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+    setState(() => _dayFilter = picked);
+    await _ensureDayLoaded(picked);
+    if (!mounted) return;
+    Analytics.capture('library_calendar_filter', {
+      'day': _dayKey(picked),
+      'results': _visible.length,
+      'scope': widget.category ?? 'folder',
+    });
+    setState(() {});
+  }
+
   Future<void> _add() async {
-    // Inside a user folder → drop the upload right into it. In a category bucket
-    // → app root (the server files it by detected type).
-    final did = await showAddSheet(context, app: widget.app, folderId: widget.folderId);
+    final did = await showAddSheet(context, app: widget.app ?? 'avalibrary', folderId: widget.folderId);
     if (did) _refresh();
+  }
+
+  bool _matchesType(LibraryItem m, String key) {
+    switch (key) {
+      case 'pdf': return LibThumbs.isPdf(m);
+      case 'doc': return m.category == 'document' && !LibThumbs.isPdf(m);
+      default: return m.category == key;
+    }
   }
 
   List<LibraryItem> get _visible {
     final q = _query.toLowerCase();
     return _items.where((m) {
-      if (_typeFilter != null && m.category != _typeFilter) return false;
+      if (_typeFilter != null && !_matchesType(m, _typeFilter!)) return false;
+      if (_dayFilter != null) {
+        final d = DateTime.fromMillisecondsSinceEpoch(m.createdAt);
+        if (d.year != _dayFilter!.year || d.month != _dayFilter!.month || d.day != _dayFilter!.day) {
+          return false;
+        }
+      }
       if (q.isNotEmpty && !m.name.toLowerCase().contains(q)) return false;
       return true;
     }).toList();
   }
 
+  bool get _filtering => _query.isNotEmpty || _typeFilter != null || _dayFilter != null;
+
+  /// A flat, lazily-built render model: date headers interleaved with rows of up
+  /// to three thumbnail tiles. Keeps infinite scroll cheap while giving sections.
+  List<_Cell> _buildCells(List<LibraryItem> visible) {
+    final cells = <_Cell>[];
+    String? lastKey;
+    var rowBuf = <LibraryItem>[];
+    void flushRow() {
+      if (rowBuf.isNotEmpty) { cells.add(_Cell.tiles(List.of(rowBuf))); rowBuf = []; }
+    }
+    for (final m in visible) {
+      final d = DateTime.fromMillisecondsSinceEpoch(m.createdAt);
+      final key = _dayKey(d);
+      if (key != lastKey) {
+        flushRow();
+        cells.add(_Cell.header(_dayHeader(d)));
+        lastKey = key;
+      }
+      rowBuf.add(m);
+      if (rowBuf.length == 3) flushRow();
+    }
+    flushRow();
+    return cells;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isGrid = widget.category == 'image' || widget.category == 'video';
     final isFolder = widget.folderId != null;
     final visible = _visible;
-    final filtering = _query.isNotEmpty || _typeFilter != null;
+    final cells = _buildCells(visible);
+    final showSentinel = !_filtering && _more;
+
     return Scaffold(
       backgroundColor: Zine.paper,
       appBar: ZineAppBar(
         title: widget.title,
-        tag: '${appByKey(widget.app).name} / ${widget.title}', // breadcrumb, mono
+        tag: 'AvaLibrary / ${widget.title}',
+        actions: [
+          IconButton(
+            tooltip: 'Pick a day',
+            onPressed: _pickDay,
+            icon: PhosphorIcon(PhosphorIcons.calendarDots(PhosphorIconsStyle.bold),
+                size: 22, color: _dayFilter != null ? Zine.blueInk : Zine.ink),
+          ),
+        ],
       ),
       floatingActionButton: _ZineFab(onTap: _add),
       body: Column(children: [
@@ -557,6 +620,7 @@ class _FolderViewState extends State<_FolderView> {
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
           child: _SearchBar(hint: 'Search files', onChanged: _onQuery),
         ),
+        if (_dayFilter != null) _dayChip(),
         if (isFolder) _typeChips(),
         Expanded(
           child: _loading
@@ -565,18 +629,56 @@ class _FolderViewState extends State<_FolderView> {
                   ? Center(
                       child: ZineEmptyState(
                         icon: PhosphorIcons.fileDashed(PhosphorIconsStyle.bold),
-                        text: filtering ? 'No matches — try another search.' : 'Nothing here yet — tap + to add.',
+                        text: _filtering ? 'No files match this filter.' : 'Nothing here yet — tap + to add.',
                       ),
                     )
                   : RefreshIndicator(
                       color: Zine.blueInk,
                       onRefresh: _refresh,
-                      child: isGrid ? _grid(visible, filtering) : _list(visible, filtering),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 100),
+                        itemCount: cells.length + (showSentinel ? 1 : 0),
+                        itemBuilder: (_, i) {
+                          if (i >= cells.length) {
+                            _load();
+                            return const Padding(padding: EdgeInsets.all(16),
+                                child: Center(child: CircularProgressIndicator(color: Zine.blueInk)));
+                          }
+                          final c = cells[i];
+                          if (c.header != null) {
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                              child: Text(c.header!.toUpperCase(), style: ZineText.kicker(size: 11)),
+                            );
+                          }
+                          return _tileRow(c.tiles!);
+                        },
+                      ),
                     ),
         ),
       ]),
     );
   }
+
+  Widget _dayChip() => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
+        child: Row(children: [
+          ZinePressable(
+            onTap: () => setState(() => _dayFilter = null),
+            color: Zine.lime,
+            radius: BorderRadius.circular(100),
+            boxShadow: Zine.shadowXs,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.calendarCheck(PhosphorIconsStyle.bold), size: 15, color: Zine.ink),
+              const SizedBox(width: 7),
+              Text(_dayHeader(_dayFilter!), style: ZineText.tag(size: 11.5)),
+              const SizedBox(width: 7),
+              PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 13, color: Zine.ink),
+            ]),
+          ),
+        ]),
+      );
 
   Widget _typeChips() => SizedBox(
         height: 48,
@@ -586,7 +688,6 @@ class _FolderViewState extends State<_FolderView> {
         ]),
       );
 
-  // Filter chip (§7.4): active = lime fill + check + shadow.
   Widget _chip(String label, String? key) => Padding(
         padding: const EdgeInsets.only(right: 9),
         child: ZineChip(
@@ -596,96 +697,27 @@ class _FolderViewState extends State<_FolderView> {
         ),
       );
 
-  Widget _grid(List<LibraryItem> visible, bool filtering) => GridView.builder(
-        padding: const EdgeInsets.all(14),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10),
-        itemCount: visible.length + (!filtering && _more ? 1 : 0),
-        itemBuilder: (_, i) {
-          if (i >= visible.length) { _load(); return const Center(child: CircularProgressIndicator(color: Zine.blueInk)); }
-          final m = visible[i];
-          return GestureDetector(
-            onTap: () => _open(m),
-            onLongPress: () => _itemMenu(m),
-            // Grid tile: ink border + radius 14 (tiles range per §4).
-            child: Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: Zine.paper2,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Zine.ink, width: 2),
-              ),
-              child: _thumb(m),
+  Widget _tileRow(List<LibraryItem> tiles) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            Expanded(
+              child: i < tiles.length
+                  ? AspectRatio(aspectRatio: 1, child: _ThumbTile(
+                      item: tiles[i], onTap: () => _open(tiles[i]), onMenu: () => _itemMenu(tiles[i])))
+                  : const SizedBox.shrink(),
             ),
-          );
-        },
+          ],
+        ]),
       );
-
-  Widget _list(List<LibraryItem> visible, bool filtering) => ListView.builder(
-        padding: const EdgeInsets.all(14),
-        itemCount: visible.length + (!filtering && _more ? 1 : 0),
-        itemBuilder: (_, i) {
-          if (i >= visible.length) { _load(); return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: Zine.blueInk))); }
-          final m = visible[i];
-          final c = _catOf(m.category);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: ZineCard(
-              radius: 14,
-              padding: const EdgeInsets.fromLTRB(13, 11, 9, 11),
-              onTap: () => _open(m),
-              child: Row(children: [
-                ZineIconBadge(icon: c.icon, color: c.color),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 14.5)),
-                    const SizedBox(height: 2),
-                    Text('${_fmtBytes(m.size)}${m.sourceKind == 'received' ? ' · received' : ''}${m.isPrivate ? ' · private' : ''}'.toUpperCase(),
-                        style: ZineText.kicker(size: 10)),
-                  ]),
-                ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _itemMenu(m),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold),
-                        size: 20, color: Zine.inkSoft),
-                  ),
-                ),
-              ]),
-            ),
-          );
-        },
-      );
-
-  Widget _thumb(LibraryItem m) {
-    // Public images: Cloudflare AVIF thumbnail. Private/non-image: category tile.
-    if (m.category == 'image' && !m.isPrivate && m.displayUrl.isNotEmpty) {
-      return Image.network(AvatarCache.transformUrl(m.displayUrl, 240), fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _catTile(m));
-    }
-    return _catTile(m);
-  }
-
-  // Flat accent tile (no alpha washes): poster fill + ink icon.
-  Widget _catTile(LibraryItem m) {
-    final c = _catOf(m.category);
-    return Container(
-      color: c.color,
-      child: Center(child: PhosphorIcon(
-        m.category == 'video' ? PhosphorIcons.playCircle(PhosphorIconsStyle.fill) : c.icon,
-        color: c.color == Zine.coral ? Colors.white : Zine.ink, size: 32)),
-    );
-  }
 
   Future<void> _open(LibraryItem m) async {
     if (!m.isPrivate && m.displayUrl.isNotEmpty) {
       final uri = Uri.parse(m.displayUrl);
       if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Private file — open it from the original chat')));
     }
   }
@@ -696,14 +728,20 @@ class _FolderViewState extends State<_FolderView> {
       backgroundColor: Zine.paper,
       shape: _sheetShape,
       builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 10),
+        Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+            child: Row(children: [
+              ZineIconBadge(icon: _catOf(m.category).icon, color: _catOf(m.category).color, size: 30),
+              const SizedBox(width: 11),
+              Expanded(child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.cardTitle(size: 16))),
+            ])),
+        const Divider(height: 2, color: Zine.ink, thickness: 2),
         _sheetTile(icon: PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), title: 'Move to…',
             onTap: () => Navigator.pop(context, 'move')),
         _sheetTile(icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), title: 'Copy to…',
             subtitle: "Shortcut — doesn't use extra storage",
             onTap: () => Navigator.pop(context, 'copy')),
         if (m.isPrivate)
-          // AI action → lilac (§2).
           _sheetTile(icon: PhosphorIcons.brain(PhosphorIconsStyle.bold), iconColor: Zine.lilac,
               title: 'Let AvaBrain read this',
               subtitle: 'On-device only — nothing leaves your phone but a summary',
@@ -731,7 +769,6 @@ class _FolderViewState extends State<_FolderView> {
       if (dest == null) return;
       if (action == 'move') {
         await LibraryApi.move(m.id, dest.folder, app: dest.app);
-        // It left this view if it changed app or folder.
         if (dest.app != widget.app || widget.folderId != dest.folder) {
           setState(() => _items.removeWhere((x) => x.id == m.id));
         }
@@ -744,12 +781,120 @@ class _FolderViewState extends State<_FolderView> {
   }
 }
 
-/// A destination chosen in the picker: an app + an optional folder (null = app root).
+/// A header-or-tiles cell in the date-grouped render model.
+class _Cell {
+  final String? header;
+  final List<LibraryItem>? tiles;
+  const _Cell.header(this.header) : tiles = null;
+  const _Cell.tiles(this.tiles) : header = null;
+}
+
+/// A single thumbnail tile. Loads a real cached preview (LibThumbs) and shows it;
+/// while loading / on miss it shows a rich type tile (poster colour + glyph +
+/// extension chip) so a tile is never blank.
+class _ThumbTile extends StatefulWidget {
+  final LibraryItem item;
+  final VoidCallback onTap;
+  final VoidCallback onMenu;
+  const _ThumbTile({required this.item, required this.onTap, required this.onMenu});
+  @override
+  State<_ThumbTile> createState() => _ThumbTileState();
+}
+
+class _ThumbTileState extends State<_ThumbTile> {
+  File? _file;
+  bool _tried = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThumb();
+  }
+
+  @override
+  void didUpdateWidget(_ThumbTile old) {
+    super.didUpdateWidget(old);
+    if (old.item.id != widget.item.id) { _file = null; _tried = false; _loadThumb(); }
+  }
+
+  Future<void> _loadThumb() async {
+    if (!LibThumbs.canRender(widget.item)) { if (mounted) setState(() => _tried = true); return; }
+    final f = await LibThumbs.thumb(widget.item);
+    if (mounted) setState(() { _file = f; _tried = true; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.item;
+    return GestureDetector(
+      onTap: widget.onTap,
+      onLongPress: widget.onMenu,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Zine.paper2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Zine.ink, width: 2),
+        ),
+        child: Stack(fit: StackFit.expand, children: [
+          if (_file != null)
+            Image.file(_file!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _typeTile(m))
+          else
+            _typeTile(m),
+          // Video glyph overlay on real frames.
+          if (_file != null && LibThumbs.isVideo(m))
+            const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 34)),
+          // Loading shimmer-ish: nothing fancy, the type tile is the placeholder.
+          // Bottom name/ext chip.
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                  colors: [Color(0xCC000000), Color(0x00000000)]),
+              ),
+              child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          if (!_tried && _file == null && LibThumbs.canRender(m))
+            const Center(child: SizedBox(width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))),
+        ]),
+      ),
+    );
+  }
+
+  Widget _typeTile(LibraryItem m) {
+    final c = _catOf(m.category);
+    final isVid = LibThumbs.isVideo(m);
+    return Container(
+      color: c.color,
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        PhosphorIcon(
+          isVid ? PhosphorIcons.playCircle(PhosphorIconsStyle.fill)
+                : (LibThumbs.isPdf(m) ? PhosphorIcons.filePdf(PhosphorIconsStyle.bold) : c.icon),
+          color: c.color == Zine.coral ? Colors.white : Zine.ink, size: 30),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(
+            color: Zine.paper,
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(color: Zine.ink, width: 1.5),
+          ),
+          child: Text(_extOf(m), style: ZineText.tag(size: 9)),
+        ),
+      ]),
+    );
+  }
+}
+
+/// A destination chosen in the picker: an app + an optional folder (null = root).
 typedef _Dest = ({String app, String? folder});
 
-/// Two-step destination picker covering the whole Library: pick an app, then a
-/// folder within it (or its root). Returns null if cancelled. [excludeFolderId]
-/// hides a folder (so you can't move/copy it into itself).
 Future<_Dest?> _pickDestination(BuildContext context, {required String title, String? excludeFolderId}) async {
   final apps = await _destApps();
   if (!context.mounted) return null;
@@ -763,11 +908,7 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
       const Divider(height: 2, color: Zine.ink, thickness: 2),
       Flexible(child: ListView(shrinkWrap: true, children: [
         for (final a in apps)
-          _sheetTile(
-            icon: appByKey(a).icon,
-            title: appByKey(a).name,
-            onTap: () => Navigator.pop(context, a),
-          ),
+          _sheetTile(icon: appByKey(a).icon, title: appByKey(a).name, onTap: () => Navigator.pop(context, a)),
         const SizedBox(height: 8),
       ])),
     ])),
@@ -790,7 +931,7 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
           child: Text('${appByKey(app).name} — choose folder', style: ZineText.cardTitle(size: 17))),
       const Divider(height: 2, color: Zine.ink, thickness: 2),
       Flexible(child: ListView(shrinkWrap: true, children: [
-        _sheetTile(icon: PhosphorIcons.house(PhosphorIconsStyle.bold), title: 'App root (its category)',
+        _sheetTile(icon: PhosphorIcons.house(PhosphorIconsStyle.bold), title: 'Library root (its type folder)',
             onTap: () => Navigator.pop(context, kRoot)),
         for (final f in folders)
           _sheetTile(icon: PhosphorIcons.folder(PhosphorIconsStyle.bold), iconColor: Zine.blueInk,
@@ -804,7 +945,6 @@ Future<_Dest?> _pickDestination(BuildContext context, {required String title, St
 }
 
 /// The "+" add sheet: optional New folder + upload paths (photo / camera / file).
-/// Performs the chosen upload and returns true if anything was uploaded.
 Future<bool> showAddSheet(BuildContext context, {required String app, String? folderId, Future<void> Function()? onNewFolder}) async {
   final action = await showModalBottomSheet<String>(
     context: context,
@@ -833,18 +973,18 @@ Future<bool> showAddSheet(BuildContext context, {required String app, String? fo
     final n = await _pickAndUpload(action, app: app, folderId: folderId);
     if (n > 0) {
       messenger.showSnackBar(SnackBar(content: Text('Uploaded $n file${n == 1 ? '' : 's'}')));
+      Analytics.capture('library_upload', {'count': n, 'source': action, 'app': app});
       return true;
     }
     messenger.hideCurrentSnackBar();
     return false;
-  } catch (_) {
+  } catch (e) {
     messenger.showSnackBar(const SnackBar(content: Text('Upload failed — please try again.')));
+    Analytics.error(domain: 'media', code: 'library_upload_failed', message: e.toString(), screen: 'avalibrary');
     return false;
   }
 }
 
-/// Picks media/files for the given source and uploads them. Returns the count
-/// uploaded. Throws on hard failure.
 Future<int> _pickAndUpload(String kind, {required String app, String? folderId}) async {
   if (kind == 'file') {
     final res = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);

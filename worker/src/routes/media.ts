@@ -142,7 +142,14 @@ export async function getLibrary(req: Request, env: Env): Promise<Response> {
     // search (?q=) spans user folders too — it's a find, not a folder view.
     if (!q) where.push("folder_id IS NULL");
     if (app) { where.push(`original_app=?${binds.length + 1}`); binds.push(app); }
-    if (category) { where.push(`(category=?${binds.length + 1} OR media_type=?${binds.length + 1})`); binds.push(category); }
+    // PDFs are split out of the 'document' bucket; 'doc' = documents that aren't PDFs.
+    if (category === "pdf") {
+      where.push(`mime_type=?${binds.length + 1}`); binds.push("application/pdf");
+    } else if (category === "doc") {
+      where.push(`category='document' AND mime_type<>?${binds.length + 1}`); binds.push("application/pdf");
+    } else if (category) {
+      where.push(`(category=?${binds.length + 1} OR media_type=?${binds.length + 1})`); binds.push(category);
+    }
   }
   const sql = `SELECT ${LIB_COLS} FROM user_media WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT 30`;
   const rs = await mediaSession(env).prepare(sql).bind(...binds).all();
@@ -157,8 +164,17 @@ export async function getLibraryTree(req: Request, env: Env): Promise<Response> 
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const mdb = mediaSession(env);
+  // Split the 'document' bucket into pdf vs doc so the client root reads like a
+  // clean file manager (Images/Videos/PDFs/Documents/Music/Other). Additive: the
+  // client folds pdf/doc back into a single "Documents" folder if it ever sees a
+  // legacy 'document'-only tree.
   const agg = await mdb.prepare(
-    `SELECT COALESCE(original_app,'avatok') AS app, COALESCE(category,'other') AS category,
+    `SELECT COALESCE(original_app,'avatok') AS app,
+            CASE
+              WHEN mime_type='application/pdf' THEN 'pdf'
+              WHEN COALESCE(category,'other')='document' THEN 'doc'
+              ELSE COALESCE(category,'other')
+            END AS category,
             COUNT(*) AS n, COALESCE(SUM(size_bytes),0) AS bytes
      FROM user_media WHERE uid=?1 AND deleted_at IS NULL
      GROUP BY app, category`,
@@ -516,6 +532,16 @@ export async function maybeEmitLibraryBrain(
 ): Promise<void> {
   if (payload.visibility !== "public") return;            // server ingests PUBLIC only
   if (!(await brainConsentAllows(env, uid, app))) return; // user opted out
+  // PAID-ONLY vector/transcribe/embed ingestion (owner decision 2026-06-20):
+  // premium (topped-up wallet) users get their library files vectorised into the
+  // server RAG so AvaChat can pull them; FREE users are indexed ON-DEVICE by the
+  // client (AvaLocalIndex) and synced via their Drive backup — never here. Fail
+  // closed: if the balance lookup errors we do NOT vectorise. Same source of
+  // truth as lib/premium.ts isPremiumAI (wallet balance .premium === 1).
+  try {
+    const bal = await walletOp(env, uid, { op: "balance", uid });
+    if (Number(bal.body?.premium ?? 0) !== 1) return;
+  } catch { return; }
   await env.Q_BRAIN.send({ uid, event_type: "library_file_added", source_app: app, payload });
 }
 

@@ -24,6 +24,8 @@ dependencies:
   uuid: ^4.5.1
   # AvaTOK design system iconography — Phosphor (bold/fill variants only, §6).
   phosphor_flutter: ^2.1.0
+  # Render Composio's colorful brand logos (served as SVG) in the Connectors grid.
+  flutter_svg: ^2.0.16
   bip340: ^0.3.1
   flutter_secure_storage: ^9.2.2
   http: ^1.2.0
@@ -54,6 +56,12 @@ dependencies:
   flutter_pcm_sound: ^3.0.0
   path_provider: ^2.1.4
   video_player: ^2.9.2
+  # AvaLibrary universal thumbnails — render a video's first frame and a PDF's
+  # first page to a cached image (features/library/lib_thumbs.dart). NATIVE
+  # plugins: must be validated by a CI APK build (this repo can't compile headless).
+  # Runtime is wrapped so a render failure falls back to a type tile, never blank.
+  video_thumbnail: ^0.5.3
+  pdfx: ^2.6.0
   # NIP-44 v2 crypto (secp256k1 ECDH, ChaCha20, HMAC, HKDF) — pure Dart
   # ^4.0.0 to match bip340's transitive constraint.
   pointycastle: ^4.0.0

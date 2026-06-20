@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'account_storage.dart';
 import 'api_auth.dart';
 import 'config.dart';
+import 'library_ingest.dart';
 
 /// One file in AvaLibrary (a row of `user_media`, projected for the client).
 class LibraryItem {
@@ -201,7 +203,14 @@ class LibraryApi {
     if (r.statusCode != 200) {
       throw Exception('upload failed (${r.statusCode})');
     }
-    return (jsonDecode(r.body) as Map<String, dynamic>)['id']?.toString();
+    final id = (jsonDecode(r.body) as Map<String, dynamic>)['id']?.toString();
+    // Tier-aware routing: FREE users get an on-device index (synced via their
+    // Drive backup); PAID users are vectorised server-side. Fire-and-forget so it
+    // never slows the upload.
+    if (id != null && id.isNotEmpty) {
+      unawaited(LibraryIngest.afterUpload(id: id, name: name, mime: mime, app: app));
+    }
+    return id;
   }
 
   /// Record a RECEIVED DM file so it appears in the recipient's Library too. The
