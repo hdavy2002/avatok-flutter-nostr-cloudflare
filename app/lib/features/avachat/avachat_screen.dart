@@ -121,9 +121,10 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     // Local Ava AI active → answer on-device (works offline). Otherwise the
     // cloud brain handles it exactly as before.
     if (AvaLocalMode.I.isActive) {
-      // Remember this turn so future on-device finds can recall it.
+      // Remember this turn (only if substantive) so future on-device finds can
+      // recall it — greetings/acks are skipped to keep the index small.
       // ignore: unawaited_futures
-      AvaOnDeviceRag.I.ingestText(name: 'avachat', content: text);
+      AvaOnDeviceRag.I.rememberMessage('You', text, name: 'avachat');
       try {
         await _handleLocal(text);
         return;

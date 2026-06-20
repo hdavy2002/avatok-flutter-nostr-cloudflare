@@ -724,9 +724,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // never trigger a model download just from chatting. Makes facts said in
     // this chat findable on-device/offline — including cross-surface in AvaChat.
     if (AvaLocalMode.I.isActive) {
+      // Selective embedding: only substantive lines are kept on-device (skips
+      // greetings/acks + respects the episodic cap). Facts, not chatter.
       // ignore: unawaited_futures
-      AvaOnDeviceRag.I.ingestText(
-          name: 'chat-${widget.chat.name}', content: '$who: $t');
+      AvaOnDeviceRag.I.rememberMessage(who, t, name: 'chat-${widget.chat.name}');
     }
     if (_ragBuffer.length >= 10) {
       final batch = _ragBuffer.join('\n');

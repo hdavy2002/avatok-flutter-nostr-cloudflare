@@ -57,6 +57,56 @@ class AvaOnDeviceRag {
   /// How many documents are searchable right now.
   final ValueNotifier<int> docCount = ValueNotifier<int>(0);
 
+  /// On-device memory budget. We "store facts, not conversations": low-value
+  /// chatter is never embedded, and once the episodic store reaches this many
+  /// documents we stop embedding new conversation lines (explicit notes/files
+  /// are always kept). At ~200–300 bytes/record this keeps the index small
+  /// (well under ~50 MB) even after heavy use on a cheap phone.
+  static const int kMaxConversationDocs = 5000;
+
+  /// Greetings / acknowledgements that are never worth embedding.
+  static final RegExp _kLowValue = RegExp(
+    r"^(hi+|hey+|hello+|yo|ok(ay)?|k|thanks?|thank you|ty|cool|nice|great|lol+|haha+|good (morning|night|evening|day)|gm|gn|yes|yeah|no|nope|sure|np|done|got it|right|correct|exactly|same)[\s!.,]*$",
+    caseSensitive: false,
+  );
+
+  /// Selective embedding: is [text] substantive enough to be worth recalling
+  /// later? Skipping the 80–95% of low-signal lines ("thanks", "good morning",
+  /// "ok") is the single biggest on-device storage saver.
+  static bool worthEmbedding(String text) {
+    final t = text.trim();
+    if (t.length < 12) return false;
+    if (_kLowValue.hasMatch(t)) return false;
+    final words = t.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    return words >= 3;
+  }
+
+  /// Remember a CONVERSATION line — gated by [worthEmbedding] and the episodic
+  /// cap so the on-device index never bloats. Use this for chat turns; explicit
+  /// notes/files should call [ingestText]/[ingestFile] directly (always kept).
+  /// Returns true only if the line was actually embedded.
+  Future<bool> rememberMessage(String who, String text,
+      {String name = 'chat'}) async {
+    final t = text.trim();
+    if (!worthEmbedding(t)) {
+      _skip('low_value');
+      return false;
+    }
+    if (docCount.value >= kMaxConversationDocs) {
+      _skip('over_cap');
+      return false;
+    }
+    return ingestText(name: name, content: '$who: $t');
+  }
+
+  void _skip(String reason) {
+    // ignore: unawaited_futures
+    Analytics.capture('ondevice_rag_skip', {
+      'reason': reason,
+      'docs': docCount.value,
+    });
+  }
+
   /// Initialise the store + bind the embedder (Qwen) once. Idempotent.
   Future<bool> ensureReady() async {
     if (_ready) return true;

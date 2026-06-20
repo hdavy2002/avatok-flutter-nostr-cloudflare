@@ -332,10 +332,13 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   void _ingestTurn(String who, String text) {
     final line = text.trim();
     if (line.isEmpty) return;
-    if (AvaLocalMode.I.isActive) {
+    // On-device: keep only the user's substantive lines (store facts, not Ava's
+    // chatter) — gated by worthEmbedding + the episodic cap in rememberMessage.
+    if (AvaLocalMode.I.isActive && who == 'You') {
       // ignore: unawaited_futures
-      AvaOnDeviceRag.I.ingestText(name: 'avachat', content: '$who: $line');
+      AvaOnDeviceRag.I.rememberMessage(who, line, name: 'avachat');
     }
+    // cloud File Search store (separate budget) keeps the full exchange.
     // ignore: unawaited_futures
     RagService.I.ingestText('$who: $line', name: 'avachat');
   }
