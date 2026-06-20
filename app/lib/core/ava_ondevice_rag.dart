@@ -155,9 +155,14 @@ class AvaOnDeviceRag {
         ingestStatus.value = 'Reading “$name” page $i/$pages…';
         final page = await doc.getPage(i);
         try {
+          // Cap the render so we never build a huge bitmap (caption() then
+          // downscales to 512 before the vision engine sees it).
+          final longest =
+              page.width > page.height ? page.width : page.height;
+          final scale = longest > 0 ? (1024 / longest).clamp(0.5, 2.0) : 1.0;
           final img = await page.render(
-            width: page.width * 2,
-            height: page.height * 2,
+            width: page.width * scale,
+            height: page.height * scale,
             format: PdfPageImageFormat.png,
           );
           if (img?.bytes != null) {

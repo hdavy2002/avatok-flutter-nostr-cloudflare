@@ -22,9 +22,11 @@ library;
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:cactus/cactus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'analytics.dart';
 import 'ava_log.dart';
@@ -373,7 +375,12 @@ class AvaOnDeviceLlm {
   }) async {
     if (!await ensureReady()) return '';
     if (!visionAvailable) return '';
+    // CRITICAL: downscale to LFM2-VL's native 512px BEFORE inference. A larger
+    // image is tiled into many vision tokens and OOM-crashes the native engine
+    // (the "spinner hangs then app crashes"). One 512 tile = tiny + fast.
+    final path = await _downscaleForVision(imagePath, maxDim: 512);
     try {
+      await Analytics.capture('ondevice_caption_start', {'mem': await _memInfo()});
       final sys = prompt == null
           ? 'You describe images. Reply with ONE detailed sentence naming '
               'the main objects, animals, people, and the scene. /no_think'
@@ -384,7 +391,7 @@ class AvaOnDeviceLlm {
           ChatMessage(
             content: 'Describe this image.',
             role: 'user',
-            images: [imagePath],
+            images: [path],
           ),
         ],
         params: CactusCompletionParams(
@@ -393,10 +400,57 @@ class AvaOnDeviceLlm {
           completionMode: CompletionMode.local,
         ),
       );
+      await Analytics.capture('ondevice_caption_done', {
+        'ok': res.success,
+        'len': res.response.length,
+      });
       return res.success ? stripThink(res.response) : '';
     } catch (e) {
       AvaLog.I.log('ava_ondevice', 'caption FAILED: $e');
       return '';
+    } finally {
+      // Clean up the temp downscaled copy (never the user's original).
+      if (path != imagePath) {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Re-encode [srcPath] so its longest side is ≤[maxDim] (PNG). Returns the
+  /// original path if it's already small enough or on any failure. Uses pure
+  /// dart:ui (no extra dependency) and runs off the widget tree.
+  Future<String> _downscaleForVision(String srcPath, {int maxDim = 512}) async {
+    try {
+      final bytes = await File(srcPath).readAsBytes();
+      final probe = await ui.instantiateImageCodec(bytes);
+      final probeFrame = await probe.getNextFrame();
+      final w = probeFrame.image.width;
+      final h = probeFrame.image.height;
+      probeFrame.image.dispose();
+      final longest = w > h ? w : h;
+      if (longest <= maxDim) return srcPath;
+
+      final scale = maxDim / longest;
+      final tw = (w * scale).round().clamp(1, maxDim);
+      final th = (h * scale).round().clamp(1, maxDim);
+      final codec =
+          await ui.instantiateImageCodec(bytes, targetWidth: tw, targetHeight: th);
+      final frame = await codec.getNextFrame();
+      final data =
+          await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      if (data == null) return srcPath;
+
+      final tmp = await getTemporaryDirectory();
+      final out = File(
+          '${tmp.path}/ava_vis_${DateTime.now().millisecondsSinceEpoch}.png');
+      await out.writeAsBytes(data.buffer.asUint8List());
+      return out.path;
+    } catch (e) {
+      AvaLog.I.log('ava_ondevice', 'downscale failed: $e');
+      return srcPath;
     }
   }
 
