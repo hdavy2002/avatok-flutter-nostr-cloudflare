@@ -277,11 +277,13 @@ class AvaOnDeviceLlm {
             status.value = OnDeviceStatus.ready;
             statusLine.value = 'Ready — ${cand.label} (on-device)';
             lastError = null;
-            await Analytics.capture('ondevice_init_ok', {
+            final okProps = <String, Object>{
               'slug': cand.slug,
               'vision': cand.vision,
               'ms': sw.elapsedMilliseconds,
-            });
+            };
+            okProps.addAll(await _deviceSnapshot());
+            await Analytics.capture('ondevice_init_ok', okProps);
             AvaLog.I.log('ava_ondevice', 'model ready (${cand.slug})');
             return true;
           }
@@ -673,7 +675,7 @@ class AvaOnDeviceLlm {
   Future<void> _emitGen(String mode, CactusCompletionResult res,
       {int maxTokens = 0, int ctxChars = 0}) async {
     try {
-      await Analytics.capture('ondevice_generate', {
+      final props = <String, Object>{
         'mode': mode,
         'slug': activeSlug ?? '',
         'ok': res.success,
@@ -683,7 +685,9 @@ class AvaOnDeviceLlm {
         'tok_per_s': double.parse(res.tokensPerSecond.toStringAsFixed(1)),
         'ttft_ms': res.timeToFirstTokenMs.round(),
         'total_ms': res.totalTimeMs.round(),
-      });
+      };
+      props.addAll(await _deviceSnapshot()); // ram tier / battery / temp
+      await Analytics.capture('ondevice_generate', props);
     } catch (_) {}
   }
 
@@ -760,5 +764,60 @@ class AvaOnDeviceLlm {
     } catch (_) {
       return '';
     }
+  }
+
+  /// A small device-health snapshot for telemetry: RAM total/available + tier,
+  /// battery %, and CPU/SoC temperature. Read straight from Android's procfs /
+  /// sysfs (the same way [_memInfo] reads /proc/meminfo) so we need NO extra
+  /// plugin. All best-effort — any unreadable value is simply omitted. Lets us
+  /// answer "does Ava run comfortably on a 2–3 GB phone, and what does it do to
+  /// battery/heat?" without a single new dependency.
+  Future<Map<String, Object>> _deviceSnapshot() async {
+    final m = <String, Object>{};
+    if (!Platform.isAndroid) return m;
+    try {
+      final lines = await File('/proc/meminfo').readAsLines();
+      int kb(String k) {
+        final l = lines.firstWhere((x) => x.startsWith(k), orElse: () => '');
+        final mt = RegExp(r'(\d+)').firstMatch(l);
+        return mt != null ? int.parse(mt.group(1)!) : 0;
+      }
+
+      final totalMb = kb('MemTotal:') ~/ 1024;
+      final availMb = kb('MemAvailable:') ~/ 1024;
+      if (totalMb > 0) {
+        m['ram_total_mb'] = totalMb;
+        m['ram_avail_mb'] = availMb;
+        m['ram_tier'] = totalMb < 2600 ? 'low' : (totalMb < 4600 ? 'mid' : 'high');
+      }
+    } catch (_) {}
+    final bat = await _readIntFile(const [
+      '/sys/class/power_supply/battery/capacity',
+      '/sys/class/power_supply/Battery/capacity',
+    ]);
+    if (bat != null && bat >= 0 && bat <= 100) m['battery_pct'] = bat;
+    final temp = await _readIntFile(const [
+      '/sys/class/thermal/thermal_zone0/temp',
+    ]);
+    if (temp != null) {
+      // Most devices report milli-°C (e.g. 41200); some report whole °C.
+      final c = temp > 1000 ? (temp / 1000).round() : temp;
+      if (c > 0 && c < 130) m['temp_c'] = c;
+    }
+    return m;
+  }
+
+  /// Read the first readable path as an int (sysfs counters). Best-effort.
+  Future<int?> _readIntFile(List<String> paths) async {
+    for (final p in paths) {
+      try {
+        final f = File(p);
+        if (await f.exists()) {
+          final v = int.tryParse((await f.readAsString()).trim());
+          if (v != null) return v;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 }
