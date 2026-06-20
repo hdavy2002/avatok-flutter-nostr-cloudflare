@@ -54,9 +54,34 @@ export function trackUser(
   props: Record<string, unknown> = {},
   trace_id?: string,
 ): void {
-  if (!email) { track(env, uid, event, app_name, props, trace_id); return; }
+  trackUserContact(env, uid, email, null, event, app_name, props, trace_id);
+}
+
+/**
+ * Like [trackUser], but ALSO stamps the user's raw [phone] (E.164, when known)
+ * onto the event so support can pull errors/telemetry by BOTH email AND phone in
+ * PostHog. Each contact field is added as a plain event property (`email` /
+ * `phone`) AND as a `$set` person property so the PostHog person profile for this
+ * uid is populated server-side even if the client never identified. Pass `null`
+ * for either field to omit it. Best-effort — never blocks the user's request.
+ */
+export function trackUserContact(
+  env: Env,
+  uid: string,
+  email: string | null | undefined,
+  phone: string | null | undefined,
+  event: string,
+  app_name: string,
+  props: Record<string, unknown> = {},
+  trace_id?: string,
+): void {
+  const extra: Record<string, unknown> = {};
+  const set: Record<string, unknown> = {};
+  if (email) { extra.email = email; set.email = email; }
+  if (phone) { extra.phone = phone; set.phone = phone; }
+  if (!email && !phone) { track(env, uid, event, app_name, props, trace_id); return; }
   const prevSet = (props.$set as Record<string, unknown> | undefined) ?? {};
-  track(env, uid, event, app_name, { ...props, email, $set: { ...prevSet, email } }, trace_id);
+  track(env, uid, event, app_name, { ...props, ...extra, $set: { ...prevSet, ...set } }, trace_id);
 }
 
 /** Operational metric (Analytics Engine). */

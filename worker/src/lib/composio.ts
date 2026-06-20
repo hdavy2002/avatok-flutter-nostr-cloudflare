@@ -209,7 +209,7 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
   const geminiKey = (keyOverride && keyOverride.trim()) ? keyOverride.trim() : (env.GEMINI_API_KEY ?? "");
   if (!geminiKey) return "Ava apps are temporarily unavailable.";
   const toolkits = await connectedToolkits(env, userId);
-  if (toolkits.length === 0) return "No apps are connected yet. Open AvaApps and tap Connect to link Gmail, Docs, Drive, and more.";
+  if (toolkits.length === 0) return "You're premium ✓ — now I just need access. Open Account & Settings → Connectors, pick Gmail (or Docs, Drive, Calendar) and follow the connection steps. Once that's done, ask me again and I'll work with your email.";
   const decls = await geminiTools(env, toolkits);
   const tools = decls.length ? [{ functionDeclarations: decls }] : [];
   const sys = "You are Ava, operating the user's connected Google apps (Gmail, Docs, Sheets, Drive, Calendar) via tools. Use the tools to fulfil the request, then reply briefly and clearly with the outcome (and key details like links or subjects). If a tool fails, say so plainly.";

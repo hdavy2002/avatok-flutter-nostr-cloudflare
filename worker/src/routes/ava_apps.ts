@@ -13,7 +13,8 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { chargeFeature } from "../feature_pricing";
-import { track } from "../hooks";
+import { trackUserContact } from "../hooks";
+import { contactFor } from "../lib/identity";
 import {
   GOOGLE_TOOLKITS, connectToolkits, connectedToolkits, disconnectToolkit,
   listToolkits, runAppsToolLoop,
@@ -53,12 +54,13 @@ export async function avaAppsConnect(req: Request, env: Env): Promise<Response> 
   let b: any = {}; try { b = await req.json(); } catch { /* default below */ }
   const slugs: string[] = Array.isArray(b.slugs) ? b.slugs.map(String)
     : (b.slug ? [String(b.slug)] : GOOGLE_TOOLKITS);
+  const { email, phone } = await contactFor(env, ctx.uid);
   try {
     const oauthUrls = await connectToolkits(env, ctx.uid, slugs);
-    track(env, ctx.uid, "ava_app_connect", "avaapps", { slugs });
+    trackUserContact(env, ctx.uid, email, phone, "ava_app_connect", "avaapps", { slugs });
     return json({ ok: true, oauthUrls });
   } catch (e: any) {
-    track(env, ctx.uid, "ai_error", "avaapps", { route: "connect", detail: String(e?.message ?? e).slice(0, 200) });
+    trackUserContact(env, ctx.uid, email, phone, "ai_error", "avaapps", { route: "connect", detail: String(e?.message ?? e).slice(0, 200) });
     return json({ error: "connect failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }
@@ -75,7 +77,8 @@ export async function avaAppsDisconnect(req: Request, env: Env): Promise<Respons
   if (!slug) return json({ error: "slug required" }, 400);
   try {
     const removed = await disconnectToolkit(env, ctx.uid, slug);
-    track(env, ctx.uid, "ava_app_disconnect", "avaapps", { slug, removed });
+    const { email, phone } = await contactFor(env, ctx.uid);
+    trackUserContact(env, ctx.uid, email, phone, "ava_app_disconnect", "avaapps", { slug, removed });
     return json({ ok: true, removed });
   } catch (e: any) {
     return json({ error: "disconnect failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
@@ -95,13 +98,14 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   const query = String(b.query ?? "").trim();
   if (!query) return json({ error: "query required" }, 400);
 
+  const { email, phone } = await contactFor(env, ctx.uid);
   try {
     const answer = await runAppsToolLoop(env, ctx.uid, query);
     await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
-    track(env, ctx.uid, "ava_apps_run", "avaapps", {});
+    trackUserContact(env, ctx.uid, email, phone, "ava_apps_run", "avaapps", { answer_len: answer.length });
     return json({ ok: true, answer });
   } catch (e: any) {
-    track(env, ctx.uid, "ai_error", "avaapps", { route: "run", detail: String(e?.message ?? e).slice(0, 200) });
+    trackUserContact(env, ctx.uid, email, phone, "ai_error", "avaapps", { route: "run", detail: String(e?.message ?? e).slice(0, 200) });
     return json({ error: "apps run failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }

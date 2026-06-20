@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/apps_service.dart';
+import '../../core/money_api.dart';
 import '../../core/paid_feature.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -22,7 +24,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
   List<AvaCatalogApp> _all = [];
   Set<String> _connected = {};
   String _filter = '';
-  bool _loading = true, _running = false;
+  bool _loading = true, _running = false, _premium = false;
   String? _answer;
 
   @override
@@ -35,19 +37,40 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
   void dispose() { _q.dispose(); _ask.dispose(); super.dispose(); }
 
   Future<void> _load() async {
-    final results = await Future.wait([AppsService.I.catalog(), AppsService.I.status()]);
+    final results = await Future.wait([
+      AppsService.I.catalog(),
+      AppsService.I.status(),
+      MoneyApi.balance(),
+    ]);
     if (!mounted) return;
+    final bal = results[2] as Map<String, dynamic>;
     setState(() {
       _all = results[0] as List<AvaCatalogApp>;
       _connected = results[1] as Set<String>;
+      _premium = bal['premium'] == 1 || bal['premium'] == true;
       _loading = false;
     });
   }
 
+  /// Instant local filter. Matches name OR slug from the first keystroke, and
+  /// SORTS so apps whose name/slug START with the query surface first (so typing
+  /// "goo" puts the Google apps at the top immediately).
   List<AvaCatalogApp> get _visible {
     if (_filter.isEmpty) return _all;
     final q = _filter.toLowerCase();
-    return _all.where((a) => a.name.toLowerCase().contains(q) || a.slug.contains(q)).toList();
+    final hits = _all
+        .where((a) => a.name.toLowerCase().contains(q) || a.slug.toLowerCase().contains(q))
+        .toList();
+    int rank(AvaCatalogApp a) {
+      final n = a.name.toLowerCase(), s = a.slug.toLowerCase();
+      if (n.startsWith(q) || s.startsWith(q)) return 0; // best: starts-with
+      return 1;                                         // else: contains
+    }
+    hits.sort((a, b) {
+      final r = rank(a).compareTo(rank(b));
+      return r != 0 ? r : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return hits;
   }
 
   Future<void> _onTap(AvaCatalogApp app) async {
@@ -122,8 +145,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
                 'email, find a file, create a doc, check your calendar.',
                 style: ZineText.sub(size: 13.5))),
             const SizedBox(width: 8),
-            ZineSticker('PREMIUM', kind: ZineStickerKind.hint,
-                icon: PhosphorIcons.crown(PhosphorIconsStyle.fill)),
+            _premiumBadge(),
           ]),
           const SizedBox(height: 6),
           Row(mainAxisSize: MainAxisSize.min, children: [
@@ -164,7 +186,20 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
             Padding(padding: const EdgeInsets.all(20),
                 child: Center(child: Text('No apps found.', style: ZineText.sub(size: 13)))),
           if (!_loading && _visible.isNotEmpty)
-            Wrap(spacing: 12, runSpacing: 14, children: [for (final a in _visible) _appTile(a)]),
+            GridView.builder(
+              shrinkWrap: true,
+              primary: false,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              itemCount: _visible.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 18,
+                childAspectRatio: 0.74,
+              ),
+              itemBuilder: (_, i) => _appTile(_visible[i]),
+            ),
           const SizedBox(height: 24),
           Text('ASK AVA', style: ZineText.kicker()),
           const SizedBox(height: 10),
@@ -213,42 +248,94 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _onTap(app),
-      child: SizedBox(
-        width: 76,
-        child: Column(children: [
-          Stack(clipBehavior: Clip.none, children: [
-            Container(
-              width: 56, height: 56,
-              decoration: BoxDecoration(
-                color: Zine.card,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Zine.ink, width: 2),
-                boxShadow: Zine.shadowXs,
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: app.logo.isNotEmpty
-                  ? Image.network(app.logo, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Icon(Icons.apps, color: Zine.inkSoft, size: 26))
-                  : Icon(Icons.apps, color: Zine.inkSoft, size: 26),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Stack(clipBehavior: Clip.none, children: [
+          Container(
+            width: 64, height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white, // white plate makes brand colors pop
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Zine.ink, width: 2),
+              boxShadow: Zine.shadowXs,
             ),
-            if (on)
-              Positioned(
-                right: -3, top: -3,
-                child: Container(
-                  width: 16, height: 16,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E), // green = connected
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Zine.ink, width: 2),
-                  ),
+            clipBehavior: Clip.antiAlias,
+            padding: const EdgeInsets.all(11),
+            child: _appLogo(app),
+          ),
+          if (on)
+            Positioned(
+              right: -4, top: -4,
+              child: Container(
+                width: 18, height: 18,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF22C55E), // green = connected
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Zine.ink, width: 2),
                 ),
+                child: const Icon(Icons.check, size: 10, color: Colors.white),
               ),
-          ]),
-          const SizedBox(height: 5),
-          Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center, style: ZineText.sub(size: 10.5)),
+            ),
         ]),
+        const SizedBox(height: 6),
+        Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center, style: ZineText.sub(size: 11)),
+      ]),
+    );
+  }
+
+  /// The real, colorful brand logo. Composio serves logos as SVG
+  /// (logos.composio.dev/api/<slug>), which Image.network can't render — so we
+  /// use SvgPicture. A colored monogram (never a grey grid icon) shows while
+  /// loading or if the logo is missing, so the grid always looks branded.
+  Widget _appLogo(AvaCatalogApp app) {
+    final url = app.logo.isNotEmpty ? app.logo : _composioLogo(app.slug);
+    final mono = _monogram(app);
+    if (url.toLowerCase().endsWith('.svg') || url.contains('logos.composio.dev')) {
+      return SvgPicture.network(
+        url, fit: BoxFit.contain,
+        placeholderBuilder: (_) => mono,
+      );
+    }
+    return Image.network(url, fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => mono);
+  }
+
+  String _composioLogo(String slug) => 'https://logos.composio.dev/api/$slug';
+
+  /// Colored first-letter tile — the always-on, never-grey fallback.
+  Widget _monogram(AvaCatalogApp app) {
+    const palette = [Zine.blue, Zine.lilac, Zine.coral, Zine.mint, Zine.lime];
+    final c = palette[app.slug.hashCode.abs() % palette.length];
+    final src = app.name.isNotEmpty ? app.name : app.slug;
+    final letter = (src.isNotEmpty ? src.substring(0, 1) : '?').toUpperCase();
+    return Container(
+      decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(8)),
+      alignment: Alignment.center,
+      child: Text(letter,
+          style: ZineText.cardTitle(size: 20, color: Zine.ink)),
+    );
+  }
+
+  /// Top-right status pill. Premium (topped up) → GREEN with a tick. Free → the
+  /// ghost "PREMIUM" crown hint (an upsell cue).
+  Widget _premiumBadge() {
+    if (!_premium) {
+      return ZineSticker('PREMIUM', kind: ZineStickerKind.hint,
+          icon: PhosphorIcons.crown(PhosphorIconsStyle.fill));
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      decoration: BoxDecoration(
+        color: Zine.mint, // money/success green
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: Zine.ink, width: Zine.bw),
+        boxShadow: Zine.shadowXs,
       ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
+        const SizedBox(width: 6),
+        Text('PREMIUM', style: ZineText.tag(size: 12, color: Zine.mintInk)),
+      ]),
     );
   }
 }

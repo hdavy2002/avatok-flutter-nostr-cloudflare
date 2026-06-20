@@ -5,6 +5,7 @@ import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/avatar.dart';
 import '../core/device_contacts.dart';
+import '../core/money_api.dart';
 import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine.dart';
@@ -47,6 +48,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   bool _accountOpen = false;
   String _displayName = '';
   String _handle = '';
+  bool _premium = false; // topped-up wallet → premium (shown as a green pill)
 
   @override
   void initState() {
@@ -54,6 +56,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
     ProfileStore().load().then((p) {
       if (mounted) setState(() { _displayName = p.displayName; _handle = p.handle; });
     });
+    // Reflect premium status in the sidebar (green PREMIUM pill once topped up).
+    MoneyApi.balance().then((b) {
+      if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
+    }).catchError((_) {});
     // Refresh focus-mode for the current account whenever the sidebar mounts
     // (account may have switched). The ValueListenableBuilder in build() then
     // reflects the loaded value + any later Settings-toggle change.
@@ -173,6 +179,12 @@ class _AvaSidebarState extends State<AvaSidebar> {
               ]),
             ),
           ),
+          // Plan status — green PREMIUM ✓ pill once the wallet is topped up, else
+          // a ghost "Free plan" chip that taps through to top up.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: Align(alignment: Alignment.centerLeft, child: _planChip()),
+          ),
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), children: [
               // Featured tiles — hidden in focus mode (those apps live outside
@@ -222,6 +234,44 @@ class _AvaSidebarState extends State<AvaSidebar> {
             ),
           ),
         ]);
+  }
+
+  /// Plan pill. Premium (topped-up wallet) → solid GREEN with a seal-check tick.
+  /// Free → a ghost chip that taps through to the Wallet to top up.
+  Widget _planChip() {
+    if (_premium) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        decoration: BoxDecoration(
+          color: Zine.mint, // money/success green
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: Zine.ink, width: Zine.bw),
+          boxShadow: Zine.shadowXs,
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
+          const SizedBox(width: 6),
+          Text('PREMIUM', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
+        ]),
+      );
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => widget.onSelect('avawallet'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        decoration: BoxDecoration(
+          color: Zine.card,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: Zine.inkMute, width: Zine.bw),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.crown(PhosphorIconsStyle.fill), size: 13, color: Zine.inkSoft),
+          const SizedBox(width: 6),
+          Text('FREE PLAN · TOP UP', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+        ]),
+      ),
+    );
   }
 
   Widget _special(String key, String name, String sub, IconData icon, Color color) {

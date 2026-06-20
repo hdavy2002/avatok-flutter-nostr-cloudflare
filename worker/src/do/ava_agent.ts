@@ -34,8 +34,9 @@ import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
 import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
 import { runAppsToolLoop } from "../lib/composio"; // AvaApps (premium) — Composio tools
-import { trackUser } from "../hooks"; // PostHog telemetry (email-stamped)
-import { emailFor } from "../lib/identity"; // uid → email (KV-cached) for telemetry
+import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
+import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
+import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
 
 // our-keys (no BYO key): Gemini 2.5 Flash-Lite as a Workers-AI THIRD-PARTY model
 // ({author}/{model} id), invoked through env.AI.run so it still flows via our CF
@@ -390,10 +391,11 @@ export class AvaAgentDO {
 
     const statusId = crypto.randomUUID();
     const t0 = Date.now();
-    // Email (telemetry only) — KV-cached, resolved off the hot path; never blocks.
-    const email = await emailFor(this.env, uid);
+    // Contact (telemetry only) — email + phone, KV-cached, resolved off the hot
+    // path; never blocks. Lets support pull errors/info by email OR phone.
+    const { email, phone } = await contactFor(this.env, uid);
     const convKind = conv.startsWith("g_") ? "group" : "dm"; // never log the raw conv id
-    trackUser(this.env, uid, email, "ava_thread_turn", "avaai", {
+    trackUserContact(this.env, uid, email, phone, "ava_thread_turn", "avaai", {
       conv_kind: convKind, private: priv, byo: !!byoKey, text_len: userText.length,
     });
     // 1. Show the "working…" chip immediately (transient broadcast where possible,
@@ -407,23 +409,50 @@ export class AvaAgentDO {
       const summary = await this.maybeSummarize(conv, window);
       const snippets = await this.brainSearch(uid, userText); // P4 no-op for now
 
-      // 2.5 AvaApps (premium): if the user wants to ACT on their Google apps and
-      // has a key + Composio is configured, run the Composio tool loop on their
-      // own key with the recent conversation as context. Falls through to chat
-      // on any failure (e.g. nothing connected → handled inside the loop).
-      if (byoKey && this.env.COMPOSIO_API_KEY && this.looksLikeApps(userText)) {
+      // 2.5 AvaApps: if the user wants to ACT on their connected apps (e.g. "check
+      // my email") and Composio is configured, handle it HERE so the chat model
+      // never flatly refuses with "I can't access your email". Two cases:
+      //   • NOT premium → a clear, actionable guide (top up + connect Gmail in
+      //     Account & Settings → Connectors) instead of a refusal.
+      //   • premium     → run the Composio tool loop on OUR Google key (BYOK
+      //     removed); the loop itself guides the user to Connectors if nothing is
+      //     connected yet. Falls through to normal chat only on an unexpected error.
+      if (this.env.COMPOSIO_API_KEY && this.looksLikeApps(userText)) {
+        const { premium } = await isPremiumAI(
+          new Request("https://internal/premium"), this.env, uid);
+        if (!premium) {
+          const guide =
+            "I can work with your email, calendar, docs and drive — but I need two "
+            + "things first: 1) top up your wallet to unlock premium, and 2) connect "
+            + "Gmail in Account & Settings → Connectors (tap Gmail and follow the "
+            + "connection steps). Once both are done, just say “@ava check my "
+            + "email” and I’ll fetch it for you.";
+          await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+          await this.postAva({ conv, uid, text: guide, private: priv, source: "apps" });
+          trackUserContact(this.env, uid, email, phone, "ava_apps_gate", "avaai", {
+            conv_kind: convKind, reason: "not_premium", intent: "apps",
+            latency_ms: Date.now() - t0,
+          });
+          return { ok: true, status_id: statusId };
+        }
         try {
           const ctx = window.map((w) => `${w.mine ? "User" : "Other"}: ${w.text}`).join("\n");
-          const answer = await runAppsToolLoop(this.env, uid, userText, ctx, byoKey);
+          const answer = await runAppsToolLoop(this.env, uid, userText, ctx); // OUR key
           if (answer && answer.trim()) {
             await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
             await this.postAva({ conv, uid, text: answer, private: priv, source: "apps" });
-            trackUser(this.env, uid, email, "ava_thread_apps_used", "avaai", {
+            trackUserContact(this.env, uid, email, phone, "ava_thread_apps_used", "avaai", {
               conv_kind: convKind, answer_len: answer.length, latency_ms: Date.now() - t0,
             });
             return { ok: true, status_id: statusId };
           }
-        } catch (e) { /* fall through to normal chat generation */ }
+        } catch (e: any) {
+          trackUserContact(this.env, uid, email, phone, "ava_apps_error", "avaai", {
+            conv_kind: convKind, detail: String(e?.message ?? e).slice(0, 200),
+            latency_ms: Date.now() - t0,
+          });
+          /* fall through to normal chat generation */
+        }
       }
 
       // 3. Generate THROUGH the P2 gate: kill-switch + intent gate + daily cap +
@@ -452,7 +481,7 @@ export class AvaAgentDO {
       });
 
       if (gated.blocked) {
-        trackUser(this.env, uid, email, "ava_thread_blocked", "avaai", {
+        trackUserContact(this.env, uid, email, phone, "ava_thread_blocked", "avaai", {
           conv_kind: convKind, tier, reason: gated.reason, latency_ms: Date.now() - t0,
           ...(gated.remaining != null ? { remaining: gated.remaining } : {}),
         });
@@ -463,7 +492,7 @@ export class AvaAgentDO {
       // 4. Clear the chip + post the answer into the SAME conversation.
       await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
       await this.postAva({ conv, uid, text: answer, private: priv, source: "chat" });
-      trackUser(this.env, uid, email, "ava_thread_completed", "avaai", {
+      trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
         conv_kind: convKind, tier, want_search: wantSearch, want_rag: wantRag,
         blocked: !!gated.blocked, answer_len: answer.length, latency_ms: Date.now() - t0,
       });
@@ -471,7 +500,7 @@ export class AvaAgentDO {
     } catch (e: any) {
       await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
       await this.postAva({ conv, uid, text: "Something went wrong on my side. Please try again.", private: priv, source: "chat" });
-      trackUser(this.env, uid, email, "ava_thread_error", "avaai", {
+      trackUserContact(this.env, uid, email, phone, "ava_thread_error", "avaai", {
         conv_kind: convKind, detail: String(e?.message ?? e).slice(0, 200), latency_ms: Date.now() - t0,
       });
       return { ok: false, error: String(e?.message ?? e) };
