@@ -75,11 +75,16 @@ class AvaOnDeviceLlm {
   AvaOnDeviceLlm._();
   static final AvaOnDeviceLlm I = AvaOnDeviceLlm._();
 
-  /// Cactus identifies models by a backend *slug*, which is NOT a simple
-  /// transform of the name (e.g. "gemma-3-270m-it" → "gemma3-270m"). So we
-  /// RESOLVE the Qwen3.5-0.8B slug at runtime from getModels() and cache it; if
-  /// the catalog can't be reached we fall back to this best guess.
-  static const String kPreferredSlugGuess = 'qwen3.5-0.8';
+  /// Cactus identifies models by a backend *slug*, which is NOT a clean
+  /// transform of the name. Rather than guess a single slug, we TRY a list of
+  /// candidates against the catalog (an exact-slug lookup resolves more reliably
+  /// than the bulk list) and use whichever one resolves. Most-likely first.
+  static const List<String> kSlugCandidates = <String>[
+    'qwen3.5-0.8b', // most likely (lfm2-vl-450m keeps its trailing letter)
+    'qwen3.5-0.8',
+    'Qwen3.5-0.8B',
+    'qwen3.5-0.8b-instruct',
+  ];
 
   /// The previous model — its on-device weights are deleted on first run of the
   /// new model to reclaim ~400 MB (owner request: switch 0.6B → 0.8B).
@@ -88,8 +93,11 @@ class AvaOnDeviceLlm {
   /// File where the resolved slug is cached so offline cold-starts still load.
   static const String _kSlugCacheFile = 'ava_ondevice_slug.txt';
 
-  /// Resolved Cactus slug for Qwen3.5-0.8B (cached in-memory after first lookup).
+  /// Resolved Cactus slug (cached in-memory after first successful download).
   String? _resolvedSlug;
+
+  /// The slug that actually loaded (for display/telemetry).
+  String? activeSlug;
 
   /// Terse chat persona. `/no_think` disables Qwen3 reasoning so replies are
   /// short and quick. Kept to 1–2 sentences on purpose.
@@ -130,35 +138,59 @@ class AvaOnDeviceLlm {
 
       // Reclaim the previous model's ~400 MB before pulling the new one.
       await _purgeOldModel();
-      final slug = await _resolveSlug(lm);
 
-      status.value = OnDeviceStatus.downloading;
-      statusLine.value = 'Downloading Qwen3.5-0.8B…';
-      await lm.downloadModel(
-        model: slug,
-        downloadProcessCallback: (progress, statusMessage, isError) {
-          if (isError) {
-            lastError = statusMessage;
-            statusLine.value = 'Download error: $statusMessage';
-          } else {
-            if (progress != null) downloadProgress.value = progress;
-            statusLine.value = progress != null
-                ? 'Downloading… ${(progress * 100).toStringAsFixed(0)}%'
-                : statusMessage;
-          }
-        },
-      );
+      // Find the real slug by TRYING candidates: a wrong slug throws fast (the
+      // catalog lookup returns null), the correct one downloads. Only the
+      // matching slug triggers the ~600 MB download.
+      final candidates = await _candidateSlugs(lm);
+      String? chosen;
+      Object? lastSlugErr;
+      for (final cand in candidates) {
+        try {
+          status.value = OnDeviceStatus.downloading;
+          statusLine.value = 'Downloading Qwen3.5-0.8B…';
+          downloadProgress.value = 0;
+          await lm.downloadModel(
+            model: cand,
+            downloadProcessCallback: (progress, statusMessage, isError) {
+              if (isError) {
+                statusLine.value = 'Download error: $statusMessage';
+              } else {
+                if (progress != null) downloadProgress.value = progress;
+                statusLine.value = progress != null
+                    ? 'Downloading… ${(progress * 100).toStringAsFixed(0)}%'
+                    : statusMessage;
+              }
+            },
+          );
+          chosen = cand;
+          break;
+        } catch (e) {
+          lastSlugErr = e;
+          AvaLog.I.log('ava_ondevice', 'slug "$cand" unavailable: $e');
+        }
+      }
+
+      if (chosen == null) {
+        throw Exception(
+            'Could not find Qwen3.5-0.8B in the Cactus catalog. Tried: '
+            '${candidates.join(', ')}. Last error: $lastSlugErr');
+      }
+
+      _resolvedSlug = chosen;
+      activeSlug = chosen;
+      await _writeCachedSlug(chosen);
 
       status.value = OnDeviceStatus.initializing;
       statusLine.value = 'Loading model into memory…';
       await lm.initializeModel(
-        params: CactusInitParams(model: slug, contextSize: 2048),
+        params: CactusInitParams(model: chosen, contextSize: 2048),
       );
 
       status.value = OnDeviceStatus.ready;
-      statusLine.value = 'Ready — Qwen3.5-0.8B (on-device)';
+      statusLine.value = 'Ready — $chosen (on-device)';
       lastError = null;
-      AvaLog.I.log('ava_ondevice', 'model ready ($slug)');
+      AvaLog.I.log('ava_ondevice', 'model ready ($chosen)');
       return true;
     } catch (e) {
       lastError = e.toString();
@@ -169,36 +201,53 @@ class AvaOnDeviceLlm {
     }
   }
 
-  /// Resolve the Cactus slug for Qwen3.5-0.8B. Order: in-memory cache → on-disk
-  /// cache (so offline cold-starts work) → live catalog (getModels) → best-guess
-  /// fallback. The chosen slug is persisted on a successful catalog match.
-  Future<String> _resolveSlug(CactusLM lm) async {
-    if (_resolvedSlug != null) return _resolvedSlug!;
-
-    final cached = await _readCachedSlug();
-    if (cached != null && cached.isNotEmpty) {
-      _resolvedSlug = cached;
-      return cached;
+  /// Build the ordered list of slugs to try. Order: in-memory cache → on-disk
+  /// cache → live-catalog matches (getModels) → known literal candidates. Deduped.
+  Future<List<String>> _candidateSlugs(CactusLM lm) async {
+    final out = <String>[];
+    void add(String? s) {
+      if (s != null && s.trim().isNotEmpty && !out.contains(s)) out.add(s.trim());
     }
 
+    add(_resolvedSlug);
+    add(await _readCachedSlug());
+
+    // Whatever the live catalog reports for Qwen3.5-0.8B (require 0.8 so we
+    // never pick Qwen3.5-2B). The bulk list can be incomplete, hence the
+    // literal fallbacks below.
     try {
       final models = await lm.getModels();
       for (final m in models) {
         final hay = '${m.slug} ${m.name}'.toLowerCase();
-        // Require 0.8 so we never pick Qwen3.5-2B.
-        if (hay.contains('qwen3.5') && hay.contains('0.8')) {
-          _resolvedSlug = m.slug;
-          await _writeCachedSlug(m.slug);
-          AvaLog.I.log('ava_ondevice', 'resolved slug = ${m.slug}');
-          return m.slug;
+        if (hay.contains('qwen3.5') &&
+            (hay.contains('0.8') || hay.contains('800m'))) {
+          add(m.slug);
         }
       }
     } catch (e) {
-      AvaLog.I.log('ava_ondevice', 'slug resolve failed, using guess: $e');
+      AvaLog.I.log('ava_ondevice', 'getModels failed: $e');
     }
 
-    _resolvedSlug = kPreferredSlugGuess;
-    return _resolvedSlug!;
+    for (final c in kSlugCandidates) {
+      add(c);
+    }
+    return out;
+  }
+
+  /// Debug: list the catalog as the device sees it (slug · name · size · vision)
+  /// so we can confirm the exact slug. Best-effort; never throws.
+  Future<List<String>> debugCatalog() async {
+    try {
+      final lm = _lm ??= CactusLM();
+      final models = await lm.getModels();
+      if (models.isEmpty) return const ['(catalog returned no models)'];
+      return models
+          .map((m) =>
+              '${m.slug}  ·  ${m.name}  ·  ${m.sizeMb}MB${m.supportsVision ? ' · vision' : ''}')
+          .toList();
+    } catch (e) {
+      return ['catalog error: $e'];
+    }
   }
 
   /// Delete the old model directory (<AppDocuments>/models/<oldSlug>) to free

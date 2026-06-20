@@ -61,6 +61,34 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  Future<void> _showCatalog() async {
+    final models = await _llm.debugCatalog();
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cactus catalog (device view)'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: models
+                .map((m) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: SelectableText(m,
+                          style: const TextStyle(fontSize: 12.5)),
+                    ))
+                .toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final prompt = _promptCtrl.text.trim();
     if (prompt.isEmpty || _busy) return;
@@ -234,6 +262,14 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
                         : 'Load model (first run downloads ≈600 MB)'),
                   ),
                 ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _showCatalog,
+                    icon: const Icon(Icons.list, size: 18),
+                    label: const Text('Show catalog models'),
+                  ),
+                ),
               ],
             );
           },
