@@ -15,12 +15,16 @@ library;
 
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../core/ava_ai_client.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_ondevice_stt.dart';
 
 class AvaOnDeviceTestScreen extends StatefulWidget {
   const AvaOnDeviceTestScreen({super.key});
@@ -53,6 +57,13 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
   String _imgCaption = '';
   bool _imgBusy = false;
 
+  bool _fileBusy = false;
+
+  final _rec = AudioRecorder();
+  bool _recording = false;
+  bool _voiceBusy = false;
+  String _transcript = '';
+
   @override
   void dispose() {
     _promptCtrl.dispose();
@@ -60,6 +71,7 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
     _ingestBodyCtrl.dispose();
     _searchCtrl.dispose();
     _scrollCtrl.dispose();
+    _rec.dispose();
     super.dispose();
   }
 
@@ -192,6 +204,62 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
     if (mounted) setState(() => _imgBusy = false);
   }
 
+  Future<void> _pickFile() async {
+    final res = await FilePicker.platform.pickFiles(withData: true);
+    if (res == null || res.files.isEmpty || !mounted) return;
+    final f = res.files.first;
+    final bytes = f.bytes;
+    if (bytes == null) return;
+    setState(() => _fileBusy = true);
+    await _rag.ingestFile(
+      name: f.name,
+      ext: f.extension ?? '',
+      bytes: bytes,
+    );
+    if (mounted) setState(() => _fileBusy = false);
+  }
+
+  Future<void> _toggleRecord() async {
+    if (_voiceBusy) return;
+    if (_recording) {
+      final path = await _rec.stop();
+      setState(() => _recording = false);
+      if (path == null) return;
+      setState(() {
+        _voiceBusy = true;
+        _transcript = 'Transcribing…';
+      });
+      final text = await AvaOnDeviceStt.I.transcribe(path);
+      if (!mounted) return;
+      setState(() => _transcript = text.isEmpty ? '(no speech detected)' : text);
+      if (text.isNotEmpty) {
+        await _rag.ingestText(name: 'voice note', content: text);
+      }
+      if (mounted) setState(() => _voiceBusy = false);
+    } else {
+      if (!await _rec.hasPermission()) {
+        if (mounted) {
+          setState(() => _transcript = 'Microphone permission denied');
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final path =
+          '${dir.path}/ava_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+      await _rec.start(
+        const RecordConfig(
+            encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
+        path: path,
+      );
+      if (mounted) {
+        setState(() {
+          _recording = true;
+          _transcript = '';
+        });
+      }
+    }
+  }
+
   Future<void> _search() async {
     final q = _searchCtrl.text.trim();
     if (q.isEmpty) return;
@@ -245,6 +313,10 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
             _chatCard(),
             const SizedBox(height: 16),
             _imageCard(),
+            const SizedBox(height: 16),
+            _fileCard(),
+            const SizedBox(height: 16),
+            _voiceCard(),
             const SizedBox(height: 16),
             _memoryCard(),
           ],
@@ -433,6 +505,99 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
             if (_imgCaption.isNotEmpty) ...[
               const SizedBox(height: 12),
               SelectableText(_imgCaption, style: const TextStyle(fontSize: 14)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── file ingestion (PDF / text) ──────────────────────────────────────────────
+  Widget _fileCard() {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Add a file (PDF / text)',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            const Text(
+              'Text files are read directly; PDFs are read page-by-page by the '
+              'vision model. The text is saved to memory and becomes searchable.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              OutlinedButton.icon(
+                onPressed: _fileBusy ? null : _pickFile,
+                icon: _fileBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.attach_file),
+                label: const Text('Pick file & ingest'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ValueListenableBuilder<String>(
+                  valueListenable: _rag.ingestStatus,
+                  builder: (context, s, _) => Text(s,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: s.contains('✓')
+                              ? Colors.green.shade700
+                              : Colors.grey.shade700)),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── voice → text → memory (STT) ──────────────────────────────────────────────
+  Widget _voiceCard() {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Voice note → memory (Whisper)',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            const Text(
+              'Record a short voice note; it is transcribed on-device by Whisper '
+              'and the text is saved to memory. First use downloads Whisper.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              FilledButton.icon(
+                onPressed: _voiceBusy ? null : _toggleRecord,
+                icon: Icon(_recording ? Icons.stop : Icons.mic),
+                label: Text(_recording ? 'Stop & transcribe' : 'Record'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ValueListenableBuilder<String>(
+                  valueListenable: AvaOnDeviceStt.I.statusLine,
+                  builder: (context, s, _) => Text(s,
+                      style: TextStyle(
+                          fontSize: 11.5, color: Colors.grey.shade600)),
+                ),
+              ),
+            ]),
+            if (_transcript.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SelectableText(_transcript,
+                  style: const TextStyle(fontSize: 14)),
             ],
           ],
         ),

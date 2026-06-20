@@ -363,22 +363,24 @@ class AvaOnDeviceLlm {
   /// Whether the loaded model can see images (true for LFM2-VL).
   bool get visionAvailable => activeModel?.vision == true;
 
-  /// Look at a local image and return a one-sentence caption naming the main
-  /// subjects/scene. Empty string if the model can't see images or on failure.
-  /// The caption is what gets embedded so the image becomes searchable
-  /// ("find the picture with a cow").
-  Future<String> caption(String imagePath, {int maxTokens = 80}) async {
+  /// Look at a local image and return text about it. By default a one-sentence
+  /// caption (for the photo/cow demo); pass [prompt] to repurpose it, e.g. OCR of
+  /// a PDF page image. Empty string if the model can't see images or on failure.
+  Future<String> caption(
+    String imagePath, {
+    String? prompt,
+    int maxTokens = 80,
+  }) async {
     if (!await ensureReady()) return '';
     if (!visionAvailable) return '';
     try {
+      final sys = prompt == null
+          ? 'You describe images. Reply with ONE detailed sentence naming '
+              'the main objects, animals, people, and the scene. /no_think'
+          : prompt;
       final res = await _lm!.generateCompletion(
         messages: [
-          ChatMessage(
-            content:
-                'You describe images. Reply with ONE detailed sentence naming '
-                'the main objects, animals, people, and the scene. /no_think',
-            role: 'system',
-          ),
+          ChatMessage(content: sys, role: 'system'),
           ChatMessage(
             content: 'Describe this image.',
             role: 'user',

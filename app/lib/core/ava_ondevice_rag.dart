@@ -23,8 +23,14 @@
 /// text is extracted, then the resulting TEXT is ingested through THIS service).
 library;
 
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:cactus/cactus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdfx/pdfx.dart';
 
 import 'ava_log.dart';
 import 'ava_ondevice_llm.dart';
@@ -93,6 +99,101 @@ class AvaOnDeviceRag {
       ingestStatus.value = 'Ingest failed for “$name”: $e';
       AvaLog.I.log('ava_ondevice', 'ingest FAILED "$name": $e');
       return false;
+    }
+  }
+
+  /// Text-like file extensions we read directly (UTF-8). Everything else that
+  /// isn't a PDF is rejected.
+  static const Set<String> _kTextExts = {
+    'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'log', 'text', 'yaml', 'yml',
+    'xml', 'html', 'htm', 'rtf', 'dart', 'ts', 'js', 'py', 'java', 'kt',
+  };
+
+  /// Ingest a picked file. Text files are decoded directly; PDFs are rendered
+  /// page-by-page and OCR'd by the on-device vision model (LFM2-VL), then the
+  /// extracted text is embedded — so the file becomes searchable.
+  Future<bool> ingestFile({
+    required String name,
+    required String ext,
+    required Uint8List bytes,
+  }) async {
+    if (!await ensureReady()) return false;
+    final e = ext.toLowerCase();
+    if (_kTextExts.contains(e)) {
+      try {
+        final text = utf8.decode(bytes, allowMalformed: true).trim();
+        if (text.isEmpty) {
+          ingestStatus.value = '“$name” is empty';
+          return false;
+        }
+        return ingestText(name: name, content: text);
+      } catch (e2) {
+        ingestStatus.value = 'Could not read “$name”';
+        return false;
+      }
+    }
+    if (e == 'pdf') return _ingestPdf(name, bytes);
+    ingestStatus.value = 'Unsupported file type: .$e';
+    return false;
+  }
+
+  /// Render up to the first few PDF pages to images and OCR them with LFM2-VL.
+  /// Capped to keep the test responsive; reuses the vision model (no PDF-text dep).
+  Future<bool> _ingestPdf(String name, Uint8List bytes) async {
+    if (!AvaOnDeviceLlm.I.visionAvailable) {
+      ingestStatus.value = 'Reading PDFs needs the vision model (LFM2-VL)';
+      return false;
+    }
+    PdfDocument? doc;
+    try {
+      doc = await PdfDocument.openData(bytes);
+      final total = doc.pagesCount;
+      final pages = total < 3 ? total : 3; // cap for the test
+      final tmp = await getTemporaryDirectory();
+      final sb = StringBuffer();
+      for (var i = 1; i <= pages; i++) {
+        ingestStatus.value = 'Reading “$name” page $i/$pages…';
+        final page = await doc.getPage(i);
+        try {
+          final img = await page.render(
+            width: page.width * 2,
+            height: page.height * 2,
+            format: PdfPageImageFormat.png,
+          );
+          if (img?.bytes != null) {
+            final f = File('${tmp.path}/ava_pdf_${i}_'
+                '${DateTime.now().millisecondsSinceEpoch}.png');
+            await f.writeAsBytes(img!.bytes);
+            final text = await AvaOnDeviceLlm.I.caption(
+              f.path,
+              prompt:
+                  'Transcribe ALL text visible in this document image, exactly '
+                  'as written. If there is no text, briefly describe it. /no_think',
+              maxTokens: 256,
+            );
+            if (text.isNotEmpty) sb.writeln('[page $i] $text');
+            try {
+              await f.delete();
+            } catch (_) {}
+          }
+        } finally {
+          await page.close();
+        }
+      }
+      final content = sb.toString().trim();
+      if (content.isEmpty) {
+        ingestStatus.value = 'No text found in “$name”';
+        return false;
+      }
+      return ingestText(name: name, content: content);
+    } catch (e) {
+      ingestStatus.value = 'PDF read failed: $e';
+      AvaLog.I.log('ava_ondevice', 'pdf ingest FAILED: $e');
+      return false;
+    } finally {
+      try {
+        await doc?.close();
+      } catch (_) {}
     }
   }
 
