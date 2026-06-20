@@ -18,7 +18,10 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/api_auth.dart';
 import '../../core/ava_contracts.dart';
+import '../../core/ava_local_mode.dart';
+import '../../core/ava_local_replies.dart';
 import '../../core/ava_log.dart';
+import '../../core/ava_ondevice_rag.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
@@ -226,6 +229,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
+    _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     // Seed instantly from the shared hub's in-memory store (this session).
     for (final m in SyncHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
     // Durable history from the local SQLite DB — the source of truth. Covers
@@ -291,6 +295,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
+    _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _markRead();
     _loadChatExtras();
     _loadCachedMessages();
@@ -659,6 +664,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   @override
   void dispose() {
+    _localAvaSub?.cancel();
     _ctrl.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
@@ -693,6 +699,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // it does NOT implement any behavior. Leave null here.
   Future<void> Function(String text)? onSummonAva;
 
+  /// Subscription to on-device Ava answers for THIS conversation (Local Ava AI).
+  StreamSubscription<AvaLocalReply>? _localAvaSub;
+
   /// The wake word the composer watches for (proposal open-decision #3:
   /// `@ava` + button). Phase 3 owns the actual trigger + UI affordance.
   static const String _avaWakeWord = '@ava';
@@ -711,6 +720,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final t = text.trim();
     if (t.isEmpty || t.toLowerCase().contains(_avaWakeWord)) return;
     _ragBuffer.add('$who: $t');
+    // On-device memory: ONLY when Local Ava AI is active (model loaded) so we
+    // never trigger a model download just from chatting. Makes facts said in
+    // this chat findable on-device/offline — including cross-surface in AvaChat.
+    if (AvaLocalMode.I.isActive) {
+      // ignore: unawaited_futures
+      AvaOnDeviceRag.I.ingestText(
+          name: 'chat-${widget.chat.name}', content: '$who: $t');
+    }
     if (_ragBuffer.length >= 10) {
       final batch = _ragBuffer.join('\n');
       _ragBuffer.clear();
@@ -718,6 +735,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       RagService.I.ingestText('Chat with ${widget.chat.name}:\n$batch',
           name: 'chat-${widget.chat.name}');
     }
+  }
+
+  /// Render on-device `@ava` answers (Local Ava AI) for THIS conversation as a
+  /// normal Ava bubble. Additive — does not touch the server message pipeline.
+  void _bindLocalAva() {
+    _localAvaSub?.cancel();
+    final key = _convKey;
+    if (key == null) return;
+    _localAvaSub = AvaLocalReplies.I.stream.listen((r) {
+      if (!mounted || r.convKey != key) return;
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      setState(() {
+        _msgs.add(_Msg(_seq++, false, r.text, _fmtTime(now),
+            ts: now, special: 'ava'));
+        _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+      });
+      _jump();
+    });
   }
 
   void _send() {

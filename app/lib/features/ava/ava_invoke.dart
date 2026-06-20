@@ -1,6 +1,10 @@
 import 'dart:async';
 
+import '../../core/ava_local_mode.dart';
+import '../../core/ava_local_replies.dart';
 import '../../core/ava_log.dart';
+import '../../core/ava_ondevice_llm.dart';
+import '../../core/ava_ondevice_rag.dart';
 import 'ava_turn_controller.dart';
 
 /// AvaInvoke (Phase 3 — In-Thread Ava Spine).
@@ -44,11 +48,38 @@ class AvaInvoke {
     final parsed = parse(text);
     if (parsed == null) return; // no wake word — nothing to do
     AvaLog.I.log('ava', 'summon conv=$convKey private=${parsed.privateReply}');
+
+    // Local Ava AI active → answer ON-DEVICE (works offline) and post the answer
+    // straight into the thread, no server round-trip. Falls back to the cloud
+    // agent on any failure.
+    if (AvaLocalMode.I.isActive) {
+      try {
+        final answer = await _localAnswer(parsed.request);
+        AvaLocalReplies.I.post(convKey, answer);
+        return;
+      } catch (e) {
+        AvaLog.I.log('ava', 'local answer failed → cloud: $e');
+      }
+    }
+
     await AvaTurnController.I.summon(
       convKey: convKey,
       text: parsed.request,
       privateReply: parsed.privateReply,
     );
+  }
+
+  /// Retrieval-first on-device answer: search the on-device store, then a short
+  /// grounded reply. Keeps it fast (no long generation).
+  static Future<String> _localAnswer(String request) async {
+    final q = request.replaceAll(RegExp(r'@ava!?', caseSensitive: false), '').trim();
+    final hits = await AvaOnDeviceRag.I.search(q.isEmpty ? request : q, limit: 5);
+    if (hits.isEmpty) {
+      return "I couldn't find anything about that in this device's memory yet.";
+    }
+    final ctx = hits.map((h) => '• ${h.content}').join('\n');
+    final reply = await AvaOnDeviceLlm.I.ask(q.isEmpty ? request : q, context: ctx, maxTokens: 96);
+    return (reply.ok && reply.text.isNotEmpty) ? reply.text : ctx;
   }
 
   /// Parse [text] for the wake word and the optional private modifier. Returns
