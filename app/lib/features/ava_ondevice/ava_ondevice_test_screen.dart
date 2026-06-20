@@ -108,7 +108,7 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
     if (decision.isLocal) {
       setState(() {
         _routeLabel = 'LOCAL · on-device';
-        _engineLabel = 'Qwen3.5-0.8B';
+        _engineLabel = _llm.activeModel?.label ?? 'on-device';
       });
       final streamed = await _llm.askStream(prompt, context: context);
       streamed.stream.listen((chunk) {
@@ -181,7 +181,7 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ava on-device (Qwen3.5-0.8B)'),
+        title: const Text('Ava on-device'),
         actions: [
           IconButton(
             tooltip: 'Unload model',
@@ -259,7 +259,7 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
                     icon: const Icon(Icons.download),
                     label: Text(status == OnDeviceStatus.error
                         ? 'Retry load'
-                        : 'Load model (first run downloads ≈600 MB)'),
+                        : 'Load model (first run downloads ~300 MB)'),
                   ),
                   if (status == OnDeviceStatus.error &&
                       _llm.lastDiag.isNotEmpty) ...[
