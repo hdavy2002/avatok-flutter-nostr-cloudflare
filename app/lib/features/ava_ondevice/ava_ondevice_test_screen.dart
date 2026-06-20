@@ -21,6 +21,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../../core/apps_service.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
@@ -122,10 +123,31 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
 
     // 1) Route + gather any on-device context (used for both local and cloud).
     final decision = await _llm.route(prompt);
-    final context = await _rag.contextFor(prompt);
     if (!mounted) return;
 
-    if (decision.isLocal) {
+    if (decision.isApps) {
+      // ACTION → confirm, then the server agent runs Composio (online).
+      setState(() {
+        _routeLabel = 'APPS · Composio';
+        _engineLabel = 'cloud agent';
+      });
+      final ok = await _confirmAction(prompt);
+      if (!mounted) return;
+      if (!ok) {
+        setState(() {
+          _answer = '(cancelled)';
+          _busy = false;
+        });
+        return;
+      }
+      final answer = await AppsService.I.run(prompt);
+      if (!mounted) return;
+      setState(() {
+        _answer = answer;
+        _busy = false;
+      });
+    } else if (decision.isLocal) {
+      final context = await _rag.contextFor(prompt);
       setState(() {
         _routeLabel = 'LOCAL · on-device';
         _engineLabel = _llm.activeModel?.label ?? 'on-device';
@@ -144,6 +166,7 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
         _busy = false;
       });
     } else {
+      final context = await _rag.contextFor(prompt);
       setState(() {
         _routeLabel = 'CLOUD · Workers AI';
         _engineLabel = 'escalated';
@@ -159,6 +182,26 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
       });
     }
     _autoScroll();
+  }
+
+  Future<bool> _confirmAction(String prompt) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Run this in your apps?'),
+            content: Text(
+                'Ava will do this via your connected apps (online):\n\n“$prompt”'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Run')),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _ingest() async {

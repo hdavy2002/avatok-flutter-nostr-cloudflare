@@ -33,13 +33,15 @@ import 'ava_log.dart';
 
 enum OnDeviceStatus { idle, downloading, initializing, ready, error }
 
-enum RouteScope { local, cloud }
+enum RouteScope { local, apps, cloud }
 
 class RouteDecision {
   final RouteScope scope;
   final String raw;
   const RouteDecision(this.scope, this.raw);
   bool get isLocal => scope == RouteScope.local;
+  bool get isApps => scope == RouteScope.apps;
+  bool get isCloud => scope == RouteScope.cloud;
 }
 
 /// A candidate on-device model (slug + display label + whether it sees images).
@@ -80,23 +82,33 @@ class AvaOnDeviceLlm {
   AvaOnDeviceLlm._();
   static final AvaOnDeviceLlm I = AvaOnDeviceLlm._();
 
-  /// Models to try, in order. First that initializes wins.
+  /// Models to try, in order. First that initializes wins. LFM2.5-350M is the
+  /// tiny text-only orchestrator (route + chat + tools + embed); Qwen3-0.6B is a
+  /// proven fallback so loading can never regress.
   static const List<OnDeviceModel> kCandidates = <OnDeviceModel>[
-    OnDeviceModel('lfm2-vl-450m', 'LFM2-VL-450M (vision)', vision: true),
+    OnDeviceModel('lfm2.5-350m', 'LFM2.5-350M', vision: false),
     OnDeviceModel('qwen3-0.6', 'Qwen3-0.6B', vision: false),
   ];
+
+  /// Previous models whose weights we delete on first run to reclaim space.
+  static const List<String> kPurgeSlugs = ['lfm2-vl-450m', 'qwen3.5-0.8b'];
 
   static const String kChatSystem =
       'You are Ava, a concise on-device assistant. Answer in 1–2 short '
       'sentences. Do not show your reasoning. /no_think';
 
   static const String kRouterSystem =
-      'You are an intent classifier for a phone assistant. Decide whether the '
-      "user's request can be answered LOCALLY on the device (simple lookups: "
-      "finding the user's own emails, photos, files, messages; reminders; quick "
-      'facts already in the provided context) or needs the CLOUD (in-depth '
-      'explanation, analysis, open-ended discussion, creative writing, or '
-      'multi-step reasoning). Reply with ONLY one word: LOCAL or CLOUD. /no_think';
+      'You are an intent classifier for a phone assistant. Reply with ONLY one '
+      'word — APPS, LOCAL, or CLOUD:\n'
+      '- APPS: the user wants to DO an action in their connected apps (send or '
+      'check email, send a message, create a calendar event, find or share a '
+      'Drive file, etc.).\n'
+      "- LOCAL: a simple lookup answerable from the device — finding the user's "
+      'own past messages, conversations, notes, or facts already in the '
+      'provided context.\n'
+      '- CLOUD: anything else — in-depth explanation, analysis, discussion, '
+      'creative writing, or multi-step reasoning.\n'
+      'Answer with exactly one word. /no_think';
 
   CactusLM? _lm;
 
@@ -128,6 +140,9 @@ class AvaOnDeviceLlm {
     try {
       CactusConfig.isTelemetryEnabled = false;
       final lm = _lm ??= CactusLM();
+
+      // Owner asked to remove the previous model(s) — reclaim their weights.
+      await _purgeModels(kPurgeSlugs);
 
       await Analytics.capture('ondevice_load_start', {
         'candidates': kCandidates.map((c) => c.slug).join(','),
@@ -352,7 +367,14 @@ class AvaOnDeviceLlm {
         ),
       );
       final raw = stripThink(res.response).toUpperCase();
-      final scope = raw.contains('CLOUD') ? RouteScope.cloud : RouteScope.local;
+      final RouteScope scope;
+      if (raw.contains('APPS')) {
+        scope = RouteScope.apps;
+      } else if (raw.contains('CLOUD')) {
+        scope = RouteScope.cloud;
+      } else {
+        scope = RouteScope.local;
+      }
       return RouteDecision(scope, raw.trim());
     } catch (e) {
       AvaLog.I.log('ava_ondevice', 'route FAILED: $e');
@@ -515,6 +537,23 @@ class AvaOnDeviceLlm {
   }
 
   static String _cap(String s, int n) => s.length > n ? s.substring(0, n) : s;
+
+  /// Delete the given model folders (<AppDocuments>/models/<slug>) to free disk.
+  /// Best-effort, idempotent.
+  Future<void> _purgeModels(List<String> slugs) async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      for (final s in slugs) {
+        final dir = Directory('${docs.path}/models/$s');
+        if (await dir.exists()) {
+          await dir.delete(recursive: true);
+          AvaLog.I.log('ava_ondevice', 'deleted old model $s');
+        }
+      }
+    } catch (e) {
+      AvaLog.I.log('ava_ondevice', 'purge failed: $e');
+    }
+  }
 
   /// Android memory snapshot (MemTotal / MemAvailable). Empty on non-Android.
   Future<String> _memInfo() async {
