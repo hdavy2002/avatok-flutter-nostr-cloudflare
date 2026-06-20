@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -7,14 +8,17 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'package:file_picker/file_picker.dart';
 
+import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/ava_log.dart';
-import '../../core/chat_history_service.dart';
-import '../../core/drive_service.dart';
+import '../../core/ava_memory/local_index.dart';
+import '../../core/library_api.dart';
+import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../settings/sections/voice_section.dart';
 import '../../core/paid_feature.dart';
+import 'companion_session_store.dart';
 import 'persona.dart';
 
 /// CompanionThreadScreen (Phase 6 — Companion / Blank Ava Chat).
@@ -37,7 +41,21 @@ import 'persona.dart';
 /// voice toggle is on.
 class CompanionThreadScreen extends StatefulWidget {
   final AvaPersona persona;
-  const CompanionThreadScreen({super.key, required this.persona});
+
+  /// Resume an existing session when provided; otherwise a fresh one is created.
+  final String? sessionId;
+  /// Transcript to seed when resuming — `[{role:'user'|'ava', text}]`.
+  final List<Map<String, String>>? initialMessages;
+  /// Existing (possibly user-renamed) title to preserve when resuming.
+  final String? initialTitle;
+
+  const CompanionThreadScreen({
+    super.key,
+    required this.persona,
+    this.sessionId,
+    this.initialMessages,
+    this.initialTitle,
+  });
 
   @override
   State<CompanionThreadScreen> createState() => _CompanionThreadScreenState();
@@ -66,19 +84,37 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   bool _busy = false;
   String? _playingId;
   Timer? _revealTimer; // drives the typewriter reveal of Ava's latest reply
-  // AvaChat history is saved locally + to D1 after each turn and on close.
-  final String _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';
+  // AvaChat history is saved locally (per-account SQLite) + to D1 after each turn
+  // and on close. A resumed session keeps its id; a new one gets a fresh id.
+  late final String _sessionId =
+      widget.sessionId ?? 'sess_${DateTime.now().millisecondsSinceEpoch}';
+  // Auto-named title. Seeds from a resumed (possibly renamed) title; otherwise
+  // derived from the first user message the first time the user sends one.
+  String _title = '';
 
   @override
   void initState() {
     super.initState();
     AvaVoicePref.load();
+    Analytics.screenViewed('avatok', 'avachat_thread');
+    _title = (widget.initialTitle ?? '').trim();
     // Clear the "now playing" highlight when a clip finishes (subscribe once).
     _audio.onPlayerComplete.listen((_) {
       if (mounted && _playingId != null) setState(() => _playingId = null);
     });
-    // Warm opener so the blank chat isn't empty.
-    _msgs.add(_CompanionMsg('intro', _opener(widget.persona), false));
+    final seed = widget.initialMessages ?? const [];
+    if (seed.isEmpty) {
+      // Warm opener so the blank chat isn't empty.
+      _msgs.add(_CompanionMsg('intro', _opener(widget.persona), false));
+    } else {
+      // Resume: rebuild the bubbles from the saved transcript (no intro line).
+      for (var i = 0; i < seed.length; i++) {
+        final role = (seed[i]['role'] ?? '').toString();
+        _msgs.add(_CompanionMsg('h$i', (seed[i]['text'] ?? '').toString(), role == 'user'));
+      }
+      Analytics.capture('avachat_session_resumed',
+          {'persona': widget.persona.id, 'turns': seed.length});
+    }
   }
 
   String _opener(AvaPersona p) {
@@ -108,7 +144,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     super.dispose();
   }
 
-  /// Save this AvaChat session locally + to D1 (fire-and-forget).
+  /// Save this AvaChat session to the local SQLite store + D1 (fire-and-forget).
+  /// The session is auto-named from the first user message the first time we have
+  /// one (a user rename, carried in [initialTitle], is never overwritten).
   void _persist() {
     final msgs = <Map<String, String>>[];
     for (final m in _msgs) {
@@ -116,23 +154,100 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       msgs.add({'role': m.me ? 'user' : 'ava', 'text': m.text});
     }
     if (msgs.isEmpty) return;
+    if (_title.isEmpty) {
+      final firstUser = msgs.firstWhere((m) => m['role'] == 'user', orElse: () => const {});
+      _title = _autoName(firstUser['text'] ?? '');
+    }
     // ignore: unawaited_futures
-    ChatHistoryService.I.save(_sessionId, widget.persona.id, msgs);
+    CompanionSessionStore.I.upsert(
+      sessionId: _sessionId,
+      persona: widget.persona.id,
+      title: _title,
+      messages: msgs,
+    );
   }
 
-  /// Attach a file from the device → save it into the user's AvaTOK Drive
-  /// folder (own files go to Drive). Shows a confirmation bubble.
-  Future<void> _attachToDrive() async {
+  /// Build a short, friendly session name from the first user message.
+  static String _autoName(String text) {
+    var t = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (t.isEmpty) return 'New chat';
+    if (t.length <= 42) return t;
+    // Cut on a word boundary near 42 chars so the name doesn't end mid-word.
+    final cut = t.substring(0, 42);
+    final sp = cut.lastIndexOf(' ');
+    return '${(sp > 20 ? cut.substring(0, sp) : cut).trim()}…';
+  }
+
+  /// Attach a file from the device and INGEST it three ways so Ava can use it and
+  /// the user can find it later:
+  ///   1. AvaLibrary — the universal content-addressed pool (it shows up in
+  ///      AvaLibrary; the server runs moderation + AvaBrain ingestion on upload).
+  ///   2. RAG vector store — the user's own File Search store, so `@ava` can cite
+  ///      it (no-op when AI isn't connected).
+  ///   3. On-device FTS5 + vector index — so local search surfaces it offline.
+  Future<void> _attachFile() async {
     final res = await FilePicker.platform.pickFiles(withData: true);
     final f = res?.files.single;
     if (f == null || f.bytes == null) return;
-    setState(() => _msgs.add(_CompanionMsg('f${DateTime.now().microsecondsSinceEpoch}', '📎 ${f.name} — saving to your AvaTOK Drive…', true)));
+    final name = f.name;
+    final bytes = f.bytes!;
+    final mime = _mimeOf(name);
+    setState(() => _msgs.add(_CompanionMsg(
+        'f${DateTime.now().microsecondsSinceEpoch}', '📎 $name — saving & indexing for Ava…', true)));
     _jumpToEnd();
-    final ok = await DriveService.I.upload('Files', f.name, 'application/octet-stream', f.bytes!);
+    Analytics.capture('avachat_file_attach_started', {'mime': mime, 'size': bytes.length});
+
+    // 1) AvaLibrary (content-addressed pool → visible in AvaLibrary; server-side
+    //    moderation + brain ingestion run on the upload).
+    String? mediaId;
+    try {
+      mediaId = await LibraryApi.uploadFile(bytes: bytes, mime: mime, name: name, app: 'avachat');
+    } catch (e) {
+      Analytics.error(
+          domain: 'media', code: 'avachat_library_upload_failed',
+          message: e.toString(), screen: 'avachat_thread', action: 'attach_file');
+    }
+    // 2) RAG vector store (user's File Search store). 3) On-device index.
+    // ignore: unawaited_futures
+    RagService.I.ingestFileBytes(bytes, mime, name);
+    // ignore: unawaited_futures
+    AvaLocalIndex.I.indexMessage(
+      messageId: 'avachat_file_${DateTime.now().microsecondsSinceEpoch}',
+      convKey: 'avachat:$_sessionId',
+      payload: jsonEncode({'t': 'text', 'body': 'File shared with Ava: $name'}),
+      createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    );
+
     if (!mounted) return;
-    setState(() => _msgs.add(_CompanionMsg('a${DateTime.now().microsecondsSinceEpoch}',
-        ok ? 'Saved "${f.name}" to your AvaTOK Drive folder ✓' : "I couldn't save that — is Google Drive connected? (AvaStorage → Connect)", false)));
+    final ok = mediaId != null;
+    setState(() => _msgs.add(_CompanionMsg(
+        'a${DateTime.now().microsecondsSinceEpoch}',
+        ok
+            ? 'Saved “$name” to AvaLibrary and indexed it for Ava ✓ — ask me about it anytime.'
+            : 'I indexed “$name” for our chat, but couldn’t save it to AvaLibrary (check your connection).',
+        false)));
     _jumpToEnd();
+    Analytics.capture('avachat_file_ingested', {'mime': mime, 'size': bytes.length, 'to_library': ok});
+    _persist();
+  }
+
+  /// Best-effort MIME from a file name (the picker hands us a generic type).
+  static String _mimeOf(String name) {
+    final n = name.toLowerCase();
+    if (n.endsWith('.pdf')) return 'application/pdf';
+    if (n.endsWith('.png')) return 'image/png';
+    if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg';
+    if (n.endsWith('.gif')) return 'image/gif';
+    if (n.endsWith('.webp')) return 'image/webp';
+    if (n.endsWith('.txt') || n.endsWith('.md')) return 'text/plain';
+    if (n.endsWith('.csv')) return 'text/csv';
+    if (n.endsWith('.json')) return 'application/json';
+    if (n.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (n.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (n.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (n.endsWith('.mp4')) return 'video/mp4';
+    if (n.endsWith('.mp3')) return 'audio/mpeg';
+    return 'application/octet-stream';
   }
 
   /// History the proxy expects: [{role:'user'|'model', text:...}], excluding the
@@ -156,6 +271,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       _busy = true;
     });
     _jumpToEnd();
+    final startedAt = DateTime.now();
+    Analytics.capture('avachat_turn_sent', {'persona': widget.persona.id, 'len': t.length});
     // Build the history BEFORE this user turn (ask() takes prior turns + message).
     final priorHistory = _history()..removeLast();
     final ans = await AvaAiClient.I.ask(
@@ -164,6 +281,12 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       history: priorHistory.isEmpty ? null : priorHistory,
     );
     if (!mounted) return;
+    Analytics.capture('avachat_turn_replied', {
+      'persona': widget.persona.id,
+      'blocked': ans.blocked,
+      if (ans.reason != null) 'reason': ans.reason!,
+      'latency_ms': DateTime.now().difference(startedAt).inMilliseconds,
+    });
     final answer = ans.answer.isEmpty
         ? "I couldn't reach my thoughts just now — try again?"
         : ans.answer;
@@ -400,8 +523,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         // Attach a file → saves it to the user's AvaTOK Google Drive folder.
         IconButton(
           icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: Zine.ink, size: 24),
-          onPressed: _busy ? null : _attachToDrive,
-          tooltip: 'Save a file to your AvaTOK Drive',
+          onPressed: _busy ? null : _attachFile,
+          tooltip: 'Attach a file (saved to AvaLibrary + indexed for Ava)',
         ),
         Expanded(
           child: Container(

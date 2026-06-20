@@ -104,3 +104,63 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
    switch in the main Settings + per-app guardrail toggles (all default ON), each
    registered into the main Settings and checked by the ingestion pipeline; private/
    E2E content is read on-device only regardless of toggle. Full detail in the rulebook.
+
+---
+
+## Per-session workflow (READ AND FOLLOW EVERY SESSION)
+
+### Search & context (do this first)
+
+- For any code search or lookup, use **Graphify** (`graphify-avatok-2-flutter`) as your
+  first preference — it searches the internal codebase faster and with far fewer tokens
+  than reading files directly. Only fall back to direct file reads if Graphify doesn't
+  surface what you need.
+- For any issue you're about to work on, FIRST check/pull **Graphiti**
+  (`group_id="proj_avaflutterapp"`) to understand how the relevant piece was built and
+  how it works. Graphiti is the memory/context bank — distinct from Graphify, which is
+  for code search.
+
+### Telemetry (PostHog)
+
+- At the start of work, pull up the PostHog telemetry for the test user
+  `hdavy2005@gmail.com`. If it exists, review it. If it doesn't, build rich telemetry
+  data for future retrievals.
+- After completing your work, generate rich telemetry and send it to PostHog. It MUST
+  include the user's email (and phone number, if available) so error/info/telemetry data
+  can be pulled to fix or identify issues. Leave any pre-existing telemetry in place;
+  where possible, ADD new telemetry for the new work done.
+- Once a task/fix is finished, **update Graphiti** with what you did
+  (`add_memory(..., group_id="proj_avaflutterapp")`).
+
+### Tooling
+
+- Use **Desktop Commander** for all file and shell operations.
+- **No local build tools.** Do NOT attempt builds, compiles, or local verification
+  (no `npm build`, `flutter build`, `flutter analyze`, etc.) — they will fail. All
+  builds run in GitHub Actions.
+
+### Git protocol (MANDATORY — this repo is shared by multiple agents)
+
+- **Commit locally only. Do NOT push.** Every push auto-triggers a GitHub Actions build;
+  with hundreds of issues that would exhaust the free-plan quota. A build runs only on
+  the final merge. Never push on your own initiative (e.g. as a reflex after committing).
+- **A local `pre-push` hook BLOCKS all pushes by default.** This is intentional. When —
+  and ONLY when — the user EXPLICITLY asks you to push, push using the override flag:
+
+  ```bash
+  ALLOW_PUSH=1 git push <remote> <branch>
+  ```
+
+  Do NOT use `--no-verify` and do NOT remove/disable the hook. The override exists so an
+  explicit "push my commits" request works while accidental/unasked pushes stay blocked.
+- **One issue per commit.** Each commit fixes a single issue, and the message must start
+  with the issue ID, e.g. `[ISSUE-123] Fix null check in payout handler`. This keeps the
+  history bisectable if the final merge build fails.
+- **Never run `git add` or `git commit` directly.** Always serialize git writes through
+  `flock` using this exact lock path:
+
+  ```bash
+  flock /tmp/repo.gitlock bash -c 'git add -A && git commit -m "<your message>"'
+  ```
+
+- If you hit a `.git/index.lock` error, do NOT delete the lock file — wait and retry.

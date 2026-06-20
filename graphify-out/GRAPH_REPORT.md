@@ -1,12 +1,12 @@
-# Graph Report - .  (2026-06-19)
+# Graph Report - .  (2026-06-20)
 
 ## Corpus Check
-- 696 files · ~1,258,288 words
+- 478 files · ~1,050,296 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 7155 nodes · 14288 edges · 155 communities detected
-- Extraction: 74% EXTRACTED · 26% INFERRED · 0% AMBIGUOUS · INFERRED: 3655 edges (avg confidence: 0.8)
+- 4765 nodes · 10086 edges · 122 communities detected
+- Extraction: 68% EXTRACTED · 32% INFERRED · 0% AMBIGUOUS · INFERRED: 3230 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -132,369 +132,336 @@
 - [[_COMMUNITY_Community 119|Community 119]]
 - [[_COMMUNITY_Community 120|Community 120]]
 - [[_COMMUNITY_Community 121|Community 121]]
-- [[_COMMUNITY_Community 122|Community 122]]
-- [[_COMMUNITY_Community 123|Community 123]]
-- [[_COMMUNITY_Community 124|Community 124]]
-- [[_COMMUNITY_Community 125|Community 125]]
-- [[_COMMUNITY_Community 126|Community 126]]
-- [[_COMMUNITY_Community 127|Community 127]]
-- [[_COMMUNITY_Community 128|Community 128]]
-- [[_COMMUNITY_Community 129|Community 129]]
-- [[_COMMUNITY_Community 130|Community 130]]
-- [[_COMMUNITY_Community 131|Community 131]]
-- [[_COMMUNITY_Community 132|Community 132]]
-- [[_COMMUNITY_Community 133|Community 133]]
-- [[_COMMUNITY_Community 134|Community 134]]
-- [[_COMMUNITY_Community 135|Community 135]]
-- [[_COMMUNITY_Community 136|Community 136]]
-- [[_COMMUNITY_Community 137|Community 137]]
-- [[_COMMUNITY_Community 138|Community 138]]
-- [[_COMMUNITY_Community 139|Community 139]]
-- [[_COMMUNITY_Community 140|Community 140]]
-- [[_COMMUNITY_Community 141|Community 141]]
-- [[_COMMUNITY_Community 142|Community 142]]
-- [[_COMMUNITY_Community 143|Community 143]]
-- [[_COMMUNITY_Community 144|Community 144]]
-- [[_COMMUNITY_Community 145|Community 145]]
-- [[_COMMUNITY_Community 146|Community 146]]
-- [[_COMMUNITY_Community 147|Community 147]]
-- [[_COMMUNITY_Community 148|Community 148]]
-- [[_COMMUNITY_Community 149|Community 149]]
-- [[_COMMUNITY_Community 150|Community 150]]
-- [[_COMMUNITY_Community 151|Community 151]]
-- [[_COMMUNITY_Community 152|Community 152]]
-- [[_COMMUNITY_Community 153|Community 153]]
-- [[_COMMUNITY_Community 154|Community 154]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `json()` - 393 edges
+1. `json()` - 394 edges
 2. `dispatch()` - 304 edges
-3. `now` - 297 edges
-4. `package:flutter/material.dart` - 252 edges
-5. `requireUser()` - 235 edges
-6. `isFail()` - 233 edges
-7. `package:phosphor_flutter/phosphor_flutter.dart` - 216 edges
-8. `../../core/ui/zine_widgets.dart` - 205 edges
-9. `../../core/ui/zine.dart` - 197 edges
-10. `metaDb()` - 196 edges
+3. `now` - 296 edges
+4. `requireUser()` - 235 edges
+5. `isFail()` - 233 edges
+6. `metaDb()` - 196 edges
+7. `map` - 153 edges
+8. `package:flutter/material.dart` - 130 edges
+9. `track()` - 122 edges
+10. `package:phosphor_flutter/phosphor_flutter.dart` - 111 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `now` --calls--> `minsAgo()`  [INFERRED]
-  app/lib/core/time_sync.dart → web/src/islands/admin/adminApi.ts
-- `now` --calls--> `ago()`  [INFERRED]
-  app/lib/core/time_sync.dart → web/src/islands/dashboard/Overview.tsx
-- `now` --calls--> `tick()`  [INFERRED]
-  app/lib/core/time_sync.dart → web/src/islands/consult/Countdown.tsx
-- `map` --calls--> `getMarketplace()`  [INFERRED]
-  app/lib/core/db.g.dart → web/src/islands/agent/api.ts
-- `map` --calls--> `getMine()`  [INFERRED]
-  app/lib/core/db.g.dart → web/src/islands/agent/api.ts
+- `minsAgo()` --calls--> `now`  [INFERRED]
+  web/src/islands/admin/adminApi.ts → app/lib/core/time_sync.dart
+- `ago()` --calls--> `now`  [INFERRED]
+  web/src/islands/dashboard/Overview.tsx → app/lib/core/time_sync.dart
+- `tick()` --calls--> `now`  [INFERRED]
+  web/src/islands/consult/Countdown.tsx → app/lib/core/time_sync.dart
+- `getMarketplace()` --calls--> `map`  [INFERRED]
+  web/src/islands/agent/api.ts → app/lib/core/db.g.dart
+- `getMine()` --calls--> `map`  [INFERRED]
+  web/src/islands/agent/api.ts → app/lib/core/db.g.dart
 
 ## Communities
 
 ### Community 0 - "Community 0"
 Cohesion: 0.0
-Nodes (1056): affiliate_api.dart, agent_dashboard.dart, agent_detail.dart, agent_form_flow.dart, AppEntry, AppRegistry, isStandard, appByKey (+1048 more)
+Nodes (814): affiliate_api.dart, agent_dashboard.dart, agent_detail.dart, agent_form_flow.dart, AppEntry, AppRegistry, isStandard, appByKey (+806 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.0
-Nodes (663): account_storage.dart, ../api_auth.dart, _activeUser, _capture, ClerkClient, ClerkStep, ClerkUser, _completed (+655 more)
+Cohesion: 0.02
+Nodes (547): cancelDeletion(), deleteAccount(), adminAgents(), adminAlertAck(), adminAlertEvaluate(), adminAlertResolve(), adminAlertRuleMutate(), adminAlertRules() (+539 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.01
-Nodes (684): cancelDeletion(), deleteAccount(), adminAgents(), adminAlertAck(), adminAlertEvaluate(), adminAlertResolve(), adminAlertRuleMutate(), adminAlertRules() (+676 more)
+Nodes (460): account_storage.dart, ../api_auth.dart, _activeUser, _capture, ClerkClient, ClerkStep, ClerkUser, _completed (+452 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.01
-Nodes (387): affCoinsLabel, AffiliateApi, AffiliateAsset, AffiliateConversion, AffiliateDayPoint, AffiliateFunnel, AffiliateLink, AffiliateLinkStats (+379 more)
+Nodes (306): add_contact_sheet.dart, _AddContactSheet, _AddContactSheetState, _body, build, Column, dispose, initState (+298 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.01
-Nodes (394): analytics.dart, CallTelemetry, connected, ended, onIceRestart, onNetChange, _enqueueSegment, Function (+386 more)
+Nodes (213): analytics.dart, Analytics, _applyNet, capture, _emailKey, _persistEmail, Posthog, _scrub (+205 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.01
-Nodes (368): add_contact_sheet.dart, scopedKey, _AddContactSheet, _AddContactSheetState, _body, build, Column, dispose (+360 more)
+Nodes (205): affCoinsLabel, AffiliateApi, AffiliateAsset, AffiliateConversion, AffiliateDayPoint, AffiliateFunnel, AffiliateLink, AffiliateLinkStats (+197 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.01
-Nodes (343): AccountGate, ChatListSnapshot, update, build, Center, _comingSoon, _finish, Scaffold (+335 more)
+Cohesion: 0.02
+Nodes (112): call(), hdr(), hx(), mk(), npub(), ok(), aiRunOpts(), enforceQuota() (+104 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.01
-Nodes (305): AvaAiSetupBody, _AvaAiSetupBodyState, AvaAiSetupScreen, build, Column, Container, dispose, _field (+297 more)
+Nodes (188): ChatListSnapshot, update, AvaLibraryScreen, _AvaLibraryScreenState, build, _Cat, _catOf, _Cell (+180 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.01
-Nodes (200): getConfig(), registerNow(), call(), hdr(), hx(), mk(), npub(), ok() (+192 more)
+Cohesion: 0.02
+Nodes (153): adminAnalytics(), agentAudio(), agentTts(), audioKey(), isParty(), loadConversation(), toBytes(), voiceFor() (+145 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.01
-Nodes (153): AgentInboxScreen, _AgentInboxScreenState, build, Container, _Empty, _InboxCard, initState, _label (+145 more)
+Cohesion: 0.02
+Nodes (136): getConfig(), registerNow(), go(), poll(), publish(), bumpAiSpend(), agentFromJson(), callNow() (+128 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.01
-Nodes (150): AvaChatScreen, _AvaChatScreenState, _bubble, build, _ChatMsg, _chips, Column, dispose (+142 more)
+Cohesion: 0.02
+Nodes (113): Avatar, build, ClipOval, Container, _initialsCircle, _AvatarViewer, build, dispose (+105 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.01
-Nodes (150): AffiliateHomeScreen, _AffiliateHomeScreenState, build, _dashboard, _how, initState, _landing, _linkRow (+142 more)
+Cohesion: 0.03
+Nodes (92): search(), Group, appbar, button, cardTitle, hero, input, kicker (+84 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.02
-Nodes (125): _BasePainter, _BoxPainter, _FaceMeshPainter, _HandMeshPainter, _MaskPainter, paint, _pt, shouldRepaint (+117 more)
+Cohesion: 0.03
+Nodes (23): wsUrl, AudioPipeline, AvaLog, AvaLogEntry, clear, dump, _fmt, Function (+15 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.02
-Nodes (104): _apply, build, Center, Container, dispose, EmptyState, ErrorState, initState (+96 more)
+Nodes (80): AgentInboxScreen, _AgentInboxScreenState, build, Container, _Empty, _InboxCard, initState, _label (+72 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.02
-Nodes (102): admin_money_screen.dart, AffEmpty, AffiliateEarningsScreen, _AffiliateEarningsScreenState, build, _entryRow, initState, Padding (+94 more)
+Cohesion: 0.07
+Nodes (11): wr, scopeAudience(), InboxDO, begin(), tick(), unmute(), b64decode(), b64encode() (+3 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.04
-Nodes (58): aiRunOpts(), enforceQuota(), fileAnalysisAllowed(), guardInput(), guardOutput(), intentGate(), isSafe(), runGated() (+50 more)
+Cohesion: 0.03
+Nodes (58): _AdultChip, _ago, build, Center, CompanionHome, _CompanionHomeState, Container, _deleteSession (+50 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.02
-Nodes (95): _back, build, Container, _continue, CreateListingFlow, _CreateListingFlowState, Divider, _draftCard (+87 more)
+Cohesion: 0.06
+Nodes (42): ackAlert(), adjust(), adminReq(), createAlertRule(), deleteAlertRule(), evaluateAlerts(), getAccount(), getAffiliates() (+34 more)
 
 ### Community 17 - "Community 17"
-Cohesion: 0.03
-Nodes (18): wsUrl, close, AudioPipeline, CallRoom, coins(), toggle(), begin(), tick() (+10 more)
+Cohesion: 0.04
+Nodes (50): _back, build, Container, _continue, CreateListingFlow, _CreateListingFlowState, Divider, _draftCard (+42 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.02
-Nodes (87): AvaStorageScreen, _AvaStorageScreenState, build, _CatStyle, Center, Container, dispose, _DotLeaderPainter (+79 more)
+Cohesion: 0.05
+Nodes (41): _assetAspect, _assetCard, AssetShareScreen, _AssetShareScreenState, _BarsPainter, _body, build, Column (+33 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.02
-Nodes (79): AgentFormFlow, _AgentFormFlowState, _applyTemplate, build, _capSupportsIos, _capSupportsOverlay, Column, Container (+71 more)
+Cohesion: 0.05
+Nodes (40): build, Column, Container, dispose, _DotsPainter, GestureDetector, initState, Opacity (+32 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.03
-Nodes (74): AlertDialog, build, IdentityScreen, _IdentityScreenState, initState, Padding, _refresh, _row (+66 more)
+Cohesion: 0.06
+Nodes (31): _BasePainter, _BoxPainter, _FaceMeshPainter, _HandMeshPainter, _MaskPainter, paint, _pt, shouldRepaint (+23 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.03
-Nodes (70): _AdultChip, build, CompanionHome, _CompanionHomeState, initState, _PersonaTile, PhosphorIcon, Scaffold (+62 more)
+Cohesion: 0.07
+Nodes (20): apply, build, ClipRRect, Column, dispose, FadeTransition, Function, Icon (+12 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.04
-Nodes (55): bumpAiSpend(), _, ChatRow, ChatsCompanion, ContactRow, ContactsCompanion, copyWith, copyWithCompanion (+47 more)
+Cohesion: 0.07
+Nodes (28): admin_money_screen.dart, _applyFilters, build, cap, _coins, Column, _dateShort, dispose (+20 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.03
-Nodes (59): AvaLogo, _AvaLogoPainter, build, paint, shouldRepaint, SizedBox, AvaConsultApp, build (+51 more)
+Cohesion: 0.07
+Nodes (27): AvaStorageScreen, _AvaStorageScreenState, build, _CatStyle, Center, Container, dispose, _DotLeaderPainter (+19 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.04
-Nodes (50): load(), Group, appbar, button, cardTitle, hero, input, kicker (+42 more)
+Cohesion: 0.15
+Nodes (20): authenticate(), b64ToStr(), b64urlToBytes(), getJwks(), serializeId(), tagVal(), verifyClerk(), verifyNip98() (+12 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.08
-Nodes (8): wr, scopeAudience(), InboxDO, b64decode(), b64encode(), pcm16ToWav(), ReceptionRoom, WalletDO
+Cohesion: 0.09
+Nodes (22): build, ChatLine, ChatOverlay, CircularProgressIndicator, Container, DonationBanner, DonationBannerWidget, FlyLayer (+14 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.04
-Nodes (43): Avatar, build, ClipOval, Container, _initialsCircle, _AvatarViewer, build, dispose (+35 more)
-
-### Community 27 - "Community 27"
-Cohesion: 0.08
-Nodes (39): ackAlert(), adjust(), adminReq(), createAlertRule(), deleteAlertRule(), evaluateAlerts(), getAccount(), getAffiliates() (+31 more)
-
-### Community 28 - "Community 28"
-Cohesion: 0.09
-Nodes (26): AvaBootstrap, BrainSearchTool, ImageGenerateTool, registerCoreTools, ScheduleTool, SendToTool, TranslateTool, ../ava_memory/ava_memory.dart (+18 more)
-
-### Community 29 - "Community 29"
-Cohesion: 0.16
-Nodes (2): sendChat(), UserBrain
-
-### Community 30 - "Community 30"
 Cohesion: 0.2
 Nodes (21): emailBookingCancelled(), emailBookingConfirmed(), emailPayoutStatus(), emailRefundIssued(), emailSettlementPaid(), joinCta(), queueEmail(), reminderEmailHtml() (+13 more)
 
-### Community 31 - "Community 31"
-Cohesion: 0.21
-Nodes (20): avaGuardianScan(), buildParentDigest(), cheapScan(), checkMedia(), childrenOf(), deliverDigest(), detectSynthetic(), ensureTables() (+12 more)
-
-### Community 32 - "Community 32"
-Cohesion: 0.11
+### Community 27 - "Community 27"
+Cohesion: 0.12
 Nodes (1): VisionCameraView
 
-### Community 33 - "Community 33"
-Cohesion: 0.13
-Nodes (16): _, ChatRow, ChatsCompanion, ContactRow, ContactsCompanion, copyWith, copyWithCompanion, Function (+8 more)
+### Community 28 - "Community 28"
+Cohesion: 0.14
+Nodes (15): _, ChatRow, ChatsCompanion, ContactRow, ContactsCompanion, copyWith, copyWithCompanion, Function (+7 more)
 
-### Community 34 - "Community 34"
-Cohesion: 0.23
-Nodes (14): apnsConfigured(), b64url(), b64urlBytes(), importP8(), providerToken(), sendApns(), b64url(), b64urlBytes() (+6 more)
-
-### Community 35 - "Community 35"
-Cohesion: 0.2
-Nodes (3): arrayBufferToB64(), b64ToArrayBuffer(), GeminiLiveClient
-
-### Community 36 - "Community 36"
+### Community 29 - "Community 29"
 Cohesion: 0.15
+Nodes (12): AvaConsultApp, build, Center, ConsultHome, main, MaterialApp, Scaffold, SizedBox (+4 more)
+
+### Community 30 - "Community 30"
+Cohesion: 0.17
 Nodes (1): AvaVisionPlugin
 
-### Community 37 - "Community 37"
+### Community 31 - "Community 31"
 Cohesion: 0.45
 Nodes (10): cfg(), durationMin(), evalCancel(), evalEnd(), evalNoShow(), evaluate(), hostEvidence(), joinedWithin() (+2 more)
 
-### Community 38 - "Community 38"
-Cohesion: 0.27
-Nodes (4): AnalyzerFactory, DetectionBox, VisionAnalyzer, VisionResult
-
-### Community 39 - "Community 39"
+### Community 32 - "Community 32"
 Cohesion: 0.47
 Nodes (2): AgentDO, today()
 
-### Community 40 - "Community 40"
+### Community 33 - "Community 33"
+Cohesion: 0.22
+Nodes (4): AnalyzerFactory, DetectionBox, VisionAnalyzer, VisionResult
+
+### Community 34 - "Community 34"
 Cohesion: 0.25
 Nodes (2): MediaPipePoseAnalyzer, MediaPipeTasksAnalyzer
 
-### Community 41 - "Community 41"
+### Community 35 - "Community 35"
 Cohesion: 0.32
 Nodes (1): VisionSender
 
-### Community 42 - "Community 42"
+### Community 36 - "Community 36"
 Cohesion: 0.29
 Nodes (6): AvaApi, AvaKind, AvaScope, isAva, isBubble, to
 
-### Community 43 - "Community 43"
+### Community 37 - "Community 37"
 Cohesion: 0.29
 Nodes (6): AvaTool, AvaToolContext, clear, register, ToolRegistry, unregister
 
-### Community 44 - "Community 44"
-Cohesion: 0.29
-Nodes (6): AvaApi, AvaKind, AvaScope, isAva, isBubble, to
-
-### Community 45 - "Community 45"
-Cohesion: 0.29
-Nodes (6): AvaTool, AvaToolContext, clear, register, ToolRegistry, unregister
-
-### Community 46 - "Community 46"
+### Community 38 - "Community 38"
 Cohesion: 0.29
 Nodes (0): 
 
-### Community 47 - "Community 47"
+### Community 39 - "Community 39"
 Cohesion: 0.33
+Nodes (0): 
+
+### Community 40 - "Community 40"
+Cohesion: 0.4
 Nodes (1): MoveNetAnalyzer
 
-### Community 48 - "Community 48"
-Cohesion: 0.4
-Nodes (4): main, main, package:avatok_call/core/config.dart, package:flutter_test/flutter_test.dart
-
-### Community 49 - "Community 49"
-Cohesion: 0.33
-Nodes (0): 
-
-### Community 50 - "Community 50"
+### Community 41 - "Community 41"
 Cohesion: 0.4
 Nodes (4): dialCodeOf, fromE164, iso2Of, PhoneCountry
 
-### Community 51 - "Community 51"
+### Community 42 - "Community 42"
 Cohesion: 0.4
 Nodes (0): 
 
-### Community 52 - "Community 52"
+### Community 43 - "Community 43"
 Cohesion: 0.5
-Nodes (1): MainActivity
+Nodes (3): main, package:avatok_call/core/config.dart, package:flutter_test/flutter_test.dart
 
-### Community 53 - "Community 53"
-Cohesion: 0.5
-Nodes (0): 
-
-### Community 54 - "Community 54"
+### Community 44 - "Community 44"
 Cohesion: 0.5
 Nodes (0): 
 
-### Community 55 - "Community 55"
+### Community 45 - "Community 45"
 Cohesion: 0.5
 Nodes (0): 
 
-### Community 56 - "Community 56"
+### Community 46 - "Community 46"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 47 - "Community 47"
 Cohesion: 0.5
 Nodes (1): ago()
 
-### Community 57 - "Community 57"
+### Community 48 - "Community 48"
 Cohesion: 0.5
+Nodes (0): 
+
+### Community 49 - "Community 49"
+Cohesion: 0.67
+Nodes (1): GeneratedPluginRegistrant
+
+### Community 50 - "Community 50"
+Cohesion: 0.67
+Nodes (1): MainActivity
+
+### Community 51 - "Community 51"
+Cohesion: 0.67
+Nodes (2): TranslationLang, translationLangLabel
+
+### Community 52 - "Community 52"
+Cohesion: 0.67
+Nodes (2): Chat, seedGradient
+
+### Community 53 - "Community 53"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 54 - "Community 54"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 55 - "Community 55"
+Cohesion: 1.0
+Nodes (2): Confirmation(), fmtWhen()
+
+### Community 56 - "Community 56"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 57 - "Community 57"
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 58 - "Community 58"
 Cohesion: 0.67
-Nodes (2): TranslationLang, translationLangLabel
+Nodes (0): 
 
 ### Community 59 - "Community 59"
 Cohesion: 0.67
-Nodes (2): Chat, seedGradient
+Nodes (0): 
 
 ### Community 60 - "Community 60"
 Cohesion: 0.67
-Nodes (1): GeneratedPluginRegistrant
+Nodes (0): 
 
 ### Community 61 - "Community 61"
 Cohesion: 0.67
-Nodes (2): TranslationLang, translationLangLabel
+Nodes (0): 
 
 ### Community 62 - "Community 62"
 Cohesion: 0.67
-Nodes (2): Chat, seedGradient
+Nodes (0): 
 
 ### Community 63 - "Community 63"
 Cohesion: 0.67
-Nodes (0): 
-
-### Community 64 - "Community 64"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 65 - "Community 65"
-Cohesion: 1.0
-Nodes (2): Confirmation(), fmtWhen()
-
-### Community 66 - "Community 66"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 67 - "Community 67"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 68 - "Community 68"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 69 - "Community 69"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 70 - "Community 70"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 71 - "Community 71"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 72 - "Community 72"
-Cohesion: 0.67
-Nodes (0): 
-
-### Community 73 - "Community 73"
-Cohesion: 0.67
 Nodes (1): tick()
 
-### Community 74 - "Community 74"
+### Community 64 - "Community 64"
 Cohesion: 1.0
 Nodes (2): id3v2Length(), trimMp3ToSeconds()
 
-### Community 75 - "Community 75"
+### Community 65 - "Community 65"
 Cohesion: 1.0
 Nodes (1): RingtoneItem
+
+### Community 66 - "Community 66"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 67 - "Community 67"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 68 - "Community 68"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 69 - "Community 69"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 70 - "Community 70"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 71 - "Community 71"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 72 - "Community 72"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 73 - "Community 73"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 74 - "Community 74"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 75 - "Community 75"
+Cohesion: 1.0
+Nodes (0): 
 
 ### Community 76 - "Community 76"
 Cohesion: 1.0
@@ -680,316 +647,138 @@ Nodes (0):
 Cohesion: 1.0
 Nodes (0): 
 
-### Community 122 - "Community 122"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 123 - "Community 123"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 124 - "Community 124"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 125 - "Community 125"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 126 - "Community 126"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 127 - "Community 127"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 128 - "Community 128"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 129 - "Community 129"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 130 - "Community 130"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 131 - "Community 131"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 132 - "Community 132"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 133 - "Community 133"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 134 - "Community 134"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 135 - "Community 135"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 136 - "Community 136"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 137 - "Community 137"
-Cohesion: 1.0
-Nodes (0): 
-
-### Community 138 - "Community 138"
-Cohesion: 1.0
-Nodes (1): flutter_webrtc pins a low compileSdk; override every subproject to 35.
-
-### Community 139 - "Community 139"
-Cohesion: 1.0
-Nodes (1): Apply the google-services Gradle plugin + place google-services.json.
-
-### Community 140 - "Community 140"
-Cohesion: 1.0
-Nodes (1): posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin     2.
-
-### Community 141 - "Community 141"
-Cohesion: 1.0
-Nodes (1): posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin     2.
-
-### Community 142 - "Community 142"
-Cohesion: 1.0
-Nodes (1): Sign EVERY build (CI and local) with the SAME committed debug keystore so a
-
-### Community 143 - "Community 143"
-Cohesion: 1.0
-Nodes (1): Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/
-
-### Community 144 - "Community 144"
-Cohesion: 1.0
-Nodes (1): flutter_webrtc pins a low compileSdk; override every subproject to 35.
-
-### Community 145 - "Community 145"
-Cohesion: 1.0
-Nodes (1): Apply the google-services Gradle plugin + place google-services.json.
-
-### Community 146 - "Community 146"
-Cohesion: 1.0
-Nodes (1): flutter_local_notifications requires core library desugaring.
-
-### Community 147 - "Community 147"
-Cohesion: 1.0
-Nodes (1): posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin     2.
-
-### Community 148 - "Community 148"
-Cohesion: 1.0
-Nodes (1): Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/
-
-### Community 149 - "Community 149"
-Cohesion: 1.0
-Nodes (1): flutter_webrtc pins a low compileSdk; override every subproject to 35.
-
-### Community 150 - "Community 150"
-Cohesion: 1.0
-Nodes (1): Apply the google-services Gradle plugin + place google-services.json.
-
-### Community 151 - "Community 151"
-Cohesion: 1.0
-Nodes (1): flutter_local_notifications requires core library desugaring.
-
-### Community 152 - "Community 152"
-Cohesion: 1.0
-Nodes (1): flutter_webrtc pins a low compileSdk; override every subproject to 35.
-
-### Community 153 - "Community 153"
-Cohesion: 1.0
-Nodes (1): Apply the google-services Gradle plugin + place google-services.json.
-
-### Community 154 - "Community 154"
-Cohesion: 1.0
-Nodes (1): flutter_local_notifications requires core library desugaring.
-
 ## Knowledge Gaps
-- **4646 isolated node(s):** `MacFirstRun`, `_MacFirstRunState`, `_WelcomePanel`, `_FeaturesPanel`, `_PermissionsPanel` (+4641 more)
+- **2617 isolated node(s):** `MacFirstRun`, `_MacFirstRunState`, `_WelcomePanel`, `_FeaturesPanel`, `_PermissionsPanel` (+2612 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 75`** (2 nodes): `ringtone_catalog.dart`, `RingtoneItem`
+- **Thin community `Community 65`** (2 nodes): `ringtone_catalog.dart`, `RingtoneItem`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 76`** (2 nodes): `SignUpPanel()`, `SignUpPanel.tsx`
+- **Thin community `Community 66`** (2 nodes): `SignUpPanel()`, `SignUpPanel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 77`** (2 nodes): `useIdentityLevel()`, `AuthGate.tsx`
+- **Thin community `Community 67`** (2 nodes): `useIdentityLevel()`, `AuthGate.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 78`** (2 nodes): `AuthPanelSkeleton()`, `AuthPanelSkeleton.tsx`
+- **Thin community `Community 68`** (2 nodes): `AuthPanelSkeleton()`, `AuthPanelSkeleton.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 79`** (2 nodes): `SignInPanel()`, `SignInPanel.tsx`
+- **Thin community `Community 69`** (2 nodes): `SignInPanel()`, `SignInPanel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 80`** (2 nodes): `UpgradePrompt()`, `UpgradePrompt.tsx`
+- **Thin community `Community 70`** (2 nodes): `UpgradePrompt()`, `UpgradePrompt.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 81`** (2 nodes): `bounceToSignIn()`, `SidebarUser.tsx`
+- **Thin community `Community 71`** (2 nodes): `bounceToSignIn()`, `SidebarUser.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 82`** (2 nodes): `set()`, `Filters.tsx`
+- **Thin community `Community 72`** (2 nodes): `set()`, `Filters.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 83`** (2 nodes): `SearchBox()`, `SearchBox.tsx`
+- **Thin community `Community 73`** (2 nodes): `SearchBox()`, `SearchBox.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 84`** (2 nodes): `Inner()`, `PayoutsQueue.tsx`
+- **Thin community `Community 74`** (2 nodes): `Inner()`, `PayoutsQueue.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 85`** (2 nodes): `Inner()`, `ReconPanel.tsx`
+- **Thin community `Community 75`** (2 nodes): `Inner()`, `ReconPanel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 86`** (2 nodes): `Inner()`, `FlagsPanel.tsx`
+- **Thin community `Community 76`** (2 nodes): `Inner()`, `FlagsPanel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 87`** (2 nodes): `StudioFlow()`, `StudioFlow.tsx`
+- **Thin community `Community 77`** (2 nodes): `StudioFlow()`, `StudioFlow.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 88`** (2 nodes): `GatedStudio()`, `GatedStudio.tsx`
+- **Thin community `Community 78`** (2 nodes): `GatedStudio()`, `GatedStudio.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 89`** (2 nodes): `GuestEmail()`, `GuestEmail.tsx`
+- **Thin community `Community 79`** (2 nodes): `GuestEmail()`, `GuestEmail.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 90`** (2 nodes): `fmtBytes()`, `StoragePanel.tsx`
+- **Thin community `Community 80`** (2 nodes): `fmtBytes()`, `StoragePanel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 91`** (2 nodes): `doExtend()`, `MediaControls.tsx`
+- **Thin community `Community 81`** (2 nodes): `doExtend()`, `MediaControls.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 92`** (2 nodes): `priceLabel()`, `ListingTile.tsx`
+- **Thin community `Community 82`** (2 nodes): `priceLabel()`, `ListingTile.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 93`** (2 nodes): `Card()`, `Card.tsx`
+- **Thin community `Community 83`** (2 nodes): `Card()`, `Card.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 94`** (2 nodes): `Sheet()`, `Sheet.tsx`
+- **Thin community `Community 84`** (2 nodes): `Sheet()`, `Sheet.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 95`** (2 nodes): `StoreLink()`, `AppDownloadCta.tsx`
+- **Thin community `Community 85`** (2 nodes): `StoreLink()`, `AppDownloadCta.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 96`** (2 nodes): `Spinner()`, `Spinner.tsx`
+- **Thin community `Community 86`** (2 nodes): `Spinner()`, `Spinner.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 97`** (2 nodes): `App()`, `App.jsx`
+- **Thin community `Community 87`** (2 nodes): `App()`, `App.jsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 98`** (1 nodes): `build.gradle.kts`
+- **Thin community `Community 88`** (1 nodes): `build.gradle.kts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (1 nodes): `settings.gradle.kts`
+- **Thin community `Community 89`** (1 nodes): `settings.gradle.kts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 100`** (1 nodes): `build.gradle.kts`
+- **Thin community `Community 90`** (1 nodes): `build.gradle.kts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 101`** (1 nodes): `ava_log.dart`
+- **Thin community `Community 91`** (1 nodes): `ava_log.dart`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 102`** (1 nodes): `feature_flags.dart`
+- **Thin community `Community 92`** (1 nodes): `feature_flags.dart`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 103`** (1 nodes): `vision_api_stub.dart`
+- **Thin community `Community 93`** (1 nodes): `vision_api_stub.dart`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 104`** (1 nodes): `build.gradle.kts`
+- **Thin community `Community 94`** (1 nodes): `astro.config.mjs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 105`** (1 nodes): `settings.gradle.kts`
+- **Thin community `Community 95`** (1 nodes): `tailwind.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 106`** (1 nodes): `build.gradle.kts`
+- **Thin community `Community 96`** (1 nodes): `env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 107`** (1 nodes): `ava_log.dart`
+- **Thin community `Community 97`** (1 nodes): `RequireAccount.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 108`** (1 nodes): `feature_flags.dart`
+- **Thin community `Community 98`** (1 nodes): `LiveNowRail.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 109`** (1 nodes): `vision_api_stub.dart`
+- **Thin community `Community 99`** (1 nodes): `ExploreGrid.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 110`** (1 nodes): `astro.config.mjs`
+- **Thin community `Community 100`** (1 nodes): `TemplatePicker.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 111`** (1 nodes): `tailwind.config.ts`
+- **Thin community `Community 101`** (1 nodes): `SnapshotSheet.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 112`** (1 nodes): `env.d.ts`
+- **Thin community `Community 102`** (1 nodes): `types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 113`** (1 nodes): `RequireAccount.tsx`
+- **Thin community `Community 103`** (1 nodes): `MyListingsPanel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 114`** (1 nodes): `LiveNowRail.tsx`
+- **Thin community `Community 104`** (1 nodes): `MyBookings.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 115`** (1 nodes): `ExploreGrid.tsx`
+- **Thin community `Community 105`** (1 nodes): `SettingsPanel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 116`** (1 nodes): `TemplatePicker.tsx`
+- **Thin community `Community 106`** (1 nodes): `Field.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 117`** (1 nodes): `SnapshotSheet.tsx`
+- **Thin community `Community 107`** (1 nodes): `Pill.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 118`** (1 nodes): `types.ts`
+- **Thin community `Community 108`** (1 nodes): `index.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 119`** (1 nodes): `MyListingsPanel.tsx`
+- **Thin community `Community 109`** (1 nodes): `Button.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 120`** (1 nodes): `MyBookings.tsx`
+- **Thin community `Community 110`** (1 nodes): `types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 121`** (1 nodes): `SettingsPanel.tsx`
+- **Thin community `Community 111`** (1 nodes): `marketingContent.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 122`** (1 nodes): `Field.tsx`
+- **Thin community `Community 112`** (1 nodes): `clerkAppearance.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 123`** (1 nodes): `Pill.tsx`
+- **Thin community `Community 113`** (1 nodes): `k6-inbox.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 124`** (1 nodes): `index.ts`
+- **Thin community `Community 114`** (1 nodes): `types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 125`** (1 nodes): `Button.tsx`
+- **Thin community `Community 115`** (1 nodes): `vite.config.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 126`** (1 nodes): `types.ts`
+- **Thin community `Community 116`** (1 nodes): `main.jsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 127`** (1 nodes): `marketingContent.js`
+- **Thin community `Community 117`** (1 nodes): `themeContent.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 128`** (1 nodes): `clerkAppearance.ts`
+- **Thin community `Community 118`** (1 nodes): `ava_diagnostics.dart`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 129`** (1 nodes): `k6-inbox.js`
+- **Thin community `Community 119`** (1 nodes): `translation_billing.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 130`** (1 nodes): `types.ts`
+- **Thin community `Community 120`** (1 nodes): `types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 131`** (1 nodes): `vite.config.js`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 132`** (1 nodes): `main.jsx`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 133`** (1 nodes): `themeContent.js`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 134`** (1 nodes): `ava_diagnostics.dart`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 135`** (1 nodes): `translation_billing.test.ts`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 136`** (1 nodes): `types.ts`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 137`** (1 nodes): `review.ts`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 138`** (1 nodes): `flutter_webrtc pins a low compileSdk; override every subproject to 35.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 139`** (1 nodes): `Apply the google-services Gradle plugin + place google-services.json.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 140`** (1 nodes): `posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin     2.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 141`** (1 nodes): `posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin     2.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 142`** (1 nodes): `Sign EVERY build (CI and local) with the SAME committed debug keystore so a`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 143`** (1 nodes): `Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 144`** (1 nodes): `flutter_webrtc pins a low compileSdk; override every subproject to 35.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 145`** (1 nodes): `Apply the google-services Gradle plugin + place google-services.json.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 146`** (1 nodes): `flutter_local_notifications requires core library desugaring.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 147`** (1 nodes): `posthog_flutter pins Kotlin languageVersion 1.6, which the bundled Kotlin     2.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 148`** (1 nodes): `Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 149`** (1 nodes): `flutter_webrtc pins a low compileSdk; override every subproject to 35.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 150`** (1 nodes): `Apply the google-services Gradle plugin + place google-services.json.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 151`** (1 nodes): `flutter_local_notifications requires core library desugaring.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 152`** (1 nodes): `flutter_webrtc pins a low compileSdk; override every subproject to 35.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 153`** (1 nodes): `Apply the google-services Gradle plugin + place google-services.json.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 154`** (1 nodes): `flutter_local_notifications requires core library desugaring.`
+- **Thin community `Community 121`** (1 nodes): `review.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `dart:convert` connect `Community 1` to `Community 0`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 9`, `Community 10`, `Community 12`, `Community 14`, `Community 16`, `Community 18`, `Community 19`?**
-  _High betweenness centrality (0.204) - this node is a cross-community bridge._
-- **Why does `package:flutter/material.dart` connect `Community 0` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 23`, `Community 24`, `Community 26`?**
-  _High betweenness centrality (0.191) - this node is a cross-community bridge._
-- **Why does `package:phosphor_flutter/phosphor_flutter.dart` connect `Community 0` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 23`, `Community 26`?**
-  _High betweenness centrality (0.113) - this node is a cross-community bridge._
-- **Are the 392 inferred relationships involving `json()` (e.g. with `doBalance()` and `getAccessToken()`) actually correct?**
-  _`json()` has 392 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `dart:convert` connect `Community 2` to `Community 0`, `Community 3`, `Community 4`, `Community 5`, `Community 10`, `Community 13`, `Community 15`, `Community 17`, `Community 22`, `Community 23`?**
+  _High betweenness centrality (0.185) - this node is a cross-community bridge._
+- **Why does `package:flutter/material.dart` connect `Community 0` to `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 10`, `Community 11`, `Community 13`, `Community 15`, `Community 17`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 22`, `Community 23`, `Community 25`, `Community 29`?**
+  _High betweenness centrality (0.180) - this node is a cross-community bridge._
+- **Why does `now` connect `Community 1` to `Community 2`, `Community 6`, `Community 8`, `Community 9`, `Community 11`, `Community 12`, `Community 14`, `Community 47`, `Community 16`, `Community 24`, `Community 26`, `Community 63`?**
+  _High betweenness centrality (0.153) - this node is a cross-community bridge._
+- **Are the 393 inferred relationships involving `json()` (e.g. with `doBalance()` and `getAccessToken()`) actually correct?**
+  _`json()` has 393 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 300 inferred relationships involving `dispatch()` (e.g. with `tick()` and `preflight()`) actually correct?**
   _`dispatch()` has 300 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 296 inferred relationships involving `now` (e.g. with `fetch()` and `minsAgo()`) actually correct?**
-  _`now` has 296 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 295 inferred relationships involving `now` (e.g. with `fetch()` and `minsAgo()`) actually correct?**
+  _`now` has 295 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 234 inferred relationships involving `requireUser()` (e.g. with `verifyClerk()` and `now`) actually correct?**
   _`requireUser()` has 234 INFERRED edges - model-reasoned connections that need verification._
