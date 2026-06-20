@@ -21,10 +21,15 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:cactus/cactus.dart';
+// ignore: implementation_imports — reuse Cactus's exact download+extract for the
+// direct-HF fallback when a model isn't in the Flutter catalog. CI runs
+// `flutter analyze || true`, so this lint never fails the build.
+import 'package:cactus/src/utils/models/download.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -49,7 +54,22 @@ class OnDeviceModel {
   final String slug;
   final String label;
   final bool vision;
-  const OnDeviceModel(this.slug, this.label, {this.vision = false});
+
+  /// Optional direct-HuggingFace fallback used when the Cactus catalog doesn't
+  /// serve this slug (e.g. newer LFM2.5 models). When set, we download the
+  /// weights zip + config.json straight from HF into <AppDocuments>/models/<slug>.
+  final String? zipUrl;
+  final String? zipName;
+  final String? configUrl;
+
+  const OnDeviceModel(
+    this.slug,
+    this.label, {
+    this.vision = false,
+    this.zipUrl,
+    this.zipName,
+    this.configUrl,
+  });
 }
 
 class OnDeviceMetrics {
@@ -86,7 +106,30 @@ class AvaOnDeviceLlm {
   /// tiny text-only orchestrator (route + chat + tools + embed); Qwen3-0.6B is a
   /// proven fallback so loading can never regress.
   static const List<OnDeviceModel> kCandidates = <OnDeviceModel>[
-    OnDeviceModel('lfm2.5-350m', 'LFM2.5-350M', vision: false),
+    OnDeviceModel(
+      'lfm2.5-350m',
+      'LFM2.5-350M',
+      vision: false,
+      // Not in the Flutter catalog → pull from HF directly. LFM2 arch IS
+      // supported by the engine, so this loads (unlike Qwen3.5).
+      zipUrl:
+          'https://huggingface.co/Cactus-Compute/LFM2.5-350M/resolve/main/weights/lfm2.5-350m-int4.zip',
+      zipName: 'lfm2.5-350m-int4.zip',
+      configUrl:
+          'https://huggingface.co/Cactus-Compute/LFM2.5-350M/resolve/main/config.json',
+    ),
+    // LFM2-350M — the proven LFM2 generation (it's the text backbone of the
+    // LFM2-VL-450M that already loaded), pinned to v1.11. Tried if LFM2.5 won't init.
+    OnDeviceModel(
+      'lfm2-350m',
+      'LFM2-350M',
+      vision: false,
+      zipUrl:
+          'https://huggingface.co/Cactus-Compute/LFM2-350M/resolve/v1.11/weights/lfm2-350m-int4.zip',
+      zipName: 'lfm2-350m-int4.zip',
+      configUrl:
+          'https://huggingface.co/Cactus-Compute/LFM2-350M/resolve/v1.11/config.json',
+    ),
     OnDeviceModel('qwen3-0.6', 'Qwen3-0.6B', vision: false),
   ];
 
@@ -152,23 +195,50 @@ class AvaOnDeviceLlm {
       final diag = StringBuffer();
       for (final cand in kCandidates) {
         try {
-          // 1) Download via the Cactus catalog (idempotent — skips if present).
+          // 1) Get the weights. Try the Cactus catalog first; if the catalog
+          // doesn't serve this slug (newer models like LFM2.5 aren't in the
+          // Flutter catalog), fall back to a direct HuggingFace download.
           status.value = OnDeviceStatus.downloading;
           statusLine.value = 'Downloading ${cand.label}…';
           downloadProgress.value = 0;
-          await lm.downloadModel(
-            model: cand.slug,
-            downloadProcessCallback: (progress, statusMessage, isError) {
-              if (isError) {
-                statusLine.value = 'Download error: $statusMessage';
-              } else {
-                if (progress != null) downloadProgress.value = progress;
-                statusLine.value = progress != null
-                    ? '${cand.label}: ${(progress * 100).toStringAsFixed(0)}%'
-                    : statusMessage;
-              }
-            },
-          );
+          void cb(double? p, String s, bool err) {
+            if (err) {
+              statusLine.value = 'Download error: $s';
+            } else {
+              if (p != null) downloadProgress.value = p;
+              statusLine.value = p != null
+                  ? '${cand.label}: ${(p * 100).toStringAsFixed(0)}%'
+                  : s;
+            }
+          }
+
+          if (!await DownloadService.modelExists(cand.slug)) {
+            var fromCatalog = false;
+            try {
+              await lm.downloadModel(model: cand.slug, downloadProcessCallback: cb);
+              fromCatalog = true;
+            } catch (e) {
+              if (cand.zipUrl == null) rethrow; // no fallback → try next model
+              AvaLog.I.log(
+                  'ava_ondevice', 'catalog miss ${cand.slug} ($e) → direct HF');
+            }
+            if (!fromCatalog && cand.zipUrl != null) {
+              statusLine.value = 'Downloading ${cand.label} (direct)…';
+              final ok = await DownloadService.downloadAndExtractModels(
+                [
+                  DownloadTask(
+                      url: cand.zipUrl!,
+                      filename: cand.zipName!,
+                      folder: cand.slug),
+                ],
+                cb,
+              );
+              if (!ok) throw Exception('direct download failed for ${cand.slug}');
+            }
+          }
+          // Direct-download models keep config.json (the arch manifest) separate
+          // from the weights zip — fetch it next to the weights. No-op otherwise.
+          await _ensureConfig(cand);
 
           // 2) Initialize. Throws if the engine can't load this architecture.
           status.value = OnDeviceStatus.initializing;
@@ -537,6 +607,39 @@ class AvaOnDeviceLlm {
   }
 
   static String _cap(String s, int n) => s.length > n ? s.substring(0, n) : s;
+
+  /// Fetch config.json (the architecture manifest) next to the weights for a
+  /// direct-HF model. Catalog models bundle config inside their zip, so this is
+  /// only needed for candidates that declare a [OnDeviceModel.configUrl].
+  /// Best-effort; never throws.
+  Future<void> _ensureConfig(OnDeviceModel cand) async {
+    final url = cand.configUrl;
+    if (url == null) return;
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final f = File('${docs.path}/models/${cand.slug}/config.json');
+      if (await f.exists() && await f.length() > 0) return;
+      final client = HttpClient();
+      try {
+        final req = await client.getUrl(Uri.parse(url));
+        final resp = await req.close();
+        if (resp.statusCode != 200) {
+          AvaLog.I.log(
+              'ava_ondevice', 'config.json ${cand.slug} HTTP ${resp.statusCode}');
+          return;
+        }
+        final body = await resp.transform(utf8.decoder).join();
+        await f.parent.create(recursive: true);
+        await f.writeAsString(body);
+        AvaLog.I.log('ava_ondevice',
+            'config.json ${cand.slug} written (${body.length} B)');
+      } finally {
+        client.close(force: true);
+      }
+    } catch (e) {
+      AvaLog.I.log('ava_ondevice', 'config fetch ${cand.slug} FAILED: $e');
+    }
+  }
 
   /// Delete the given model folders (<AppDocuments>/models/<slug>) to free disk.
   /// Best-effort, idempotent.

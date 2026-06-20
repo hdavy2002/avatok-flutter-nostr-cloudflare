@@ -23,6 +23,7 @@ import '../features/settings/sections/ringtone_section.dart';
 import '../features/settings/sections/tools_section.dart';
 import '../features/settings/sections/voice_section.dart';
 import '../features/ava_generative/image_tool.dart';
+import 'ava_local_mode.dart';
 import 'ava_memory/ava_memory.dart';
 import 'ava_tools/core_tools.dart';
 
@@ -93,5 +94,9 @@ class AvaBootstrap {
     // phone BEFORE wiring routing/embeddings/STT/RAG. Does not touch the existing
     // server Ava path. See core/ava_ondevice_llm.dart.
     registerOnDeviceSection();
+    // Load the persisted "Activate Ava AI locally" preference; if the user had
+    // it on, warm the model in the background so chat surfaces use it.
+    // ignore: unawaited_futures
+    AvaLocalMode.I.load();
   }
 }

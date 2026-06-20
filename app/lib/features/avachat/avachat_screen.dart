@@ -4,6 +4,10 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/apps_service.dart';
+import '../../core/ava_local_mode.dart';
+import '../../core/ava_ondevice_llm.dart';
+import '../../core/ava_ondevice_rag.dart';
 import '../../core/brain_api.dart';
 import '../../core/config.dart';
 import '../../core/ui/zine.dart';
@@ -101,6 +105,59 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     _input.clear();
     setState(() { _msgs.add(_ChatMsg(true, text)); _thinking = true; });
     _jump();
+
+    // Local Ava AI active → answer on-device (works offline). Otherwise the
+    // cloud brain handles it exactly as before.
+    if (AvaLocalMode.I.isActive) {
+      // Remember this turn so future on-device finds can recall it.
+      // ignore: unawaited_futures
+      AvaOnDeviceRag.I.ingestText(name: 'avachat', content: text);
+      try {
+        await _handleLocal(text);
+        return;
+      } catch (_) {/* fall through to cloud */}
+    }
+    await _handleCloud(text);
+  }
+
+  /// On-device path: route → APPS (Composio, with confirm) / LOCAL (retrieval-
+  /// first from the on-device store) / CLOUD (escalate). Retrieval-first keeps
+  /// "find" fast — we return the matching snippets, not a long generation.
+  Future<void> _handleLocal(String text) async {
+    final decision = await AvaOnDeviceLlm.I.route(text);
+    if (!mounted) return;
+    if (decision.isApps) {
+      final ok = await _confirmAction(text);
+      if (!mounted) return;
+      if (!ok) { _addAva('Okay, cancelled.'); return; }
+      _addAva(await AppsService.I.run(text));
+      return;
+    }
+    if (decision.isCloud) { await _handleCloud(text); return; }
+    // LOCAL find.
+    final hits = await AvaOnDeviceRag.I.search(text, limit: 5);
+    if (!mounted) return;
+    if (hits.isEmpty) {
+      _addAva("I don't have anything about that in your on-device memory yet.");
+      return;
+    }
+    final ctx = hits.map((h) => '• ${h.content}').join('\n');
+    final reply =
+        await AvaOnDeviceLlm.I.ask(text, context: ctx, maxTokens: 96);
+    if (!mounted) return;
+    _addAva(
+      reply.ok && reply.text.isNotEmpty ? reply.text : ctx,
+      sources: hits
+          .map((h) => <String, dynamic>{
+                'kind': 'message',
+                'name': h.source,
+                'snippet': h.content,
+              })
+          .toList(),
+    );
+  }
+
+  Future<void> _handleCloud(String text) async {
     try {
       final reply = await BrainApi.chat(text);
       if (!mounted) return;
@@ -116,6 +173,35 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       });
     }
     _jump();
+  }
+
+  void _addAva(String text, {List<Map<String, dynamic>> sources = const []}) {
+    if (!mounted) return;
+    setState(() {
+      _msgs.add(_ChatMsg(false, text, sources: sources));
+      _thinking = false;
+    });
+    _jump();
+  }
+
+  Future<bool> _confirmAction(String text) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Run this in your apps?'),
+            content: Text(
+                'Ava will do this via your connected apps (online):\n\n“$text”'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Run')),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _tapSource(Map<String, dynamic> s) async {
