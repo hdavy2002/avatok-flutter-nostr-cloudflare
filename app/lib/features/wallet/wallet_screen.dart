@@ -36,17 +36,18 @@ final _kTypes = <String, ({String label, IconData icon, bool inflow})>{
 // ledger amounts are in coins; USD is derived for display only.
 const int kCoinsPerUsd = 100;
 
+/// Withdraw/payout is hidden until the marketplace + payout flow ships. Flip to
+/// true to bring the Withdraw button back on the wallet hero card.
+const bool _kShowWithdraw = false;
+
 /// The Stripe publishable key we've already pushed into the SDK this run (set from
 /// the server's intent response). Tracked so we don't read Stripe.publishableKey
 /// before it's initialized.
 String? _appliedPublishableKey;
 
-String _usd(num coins) {
-  final v = coins.abs() / kCoinsPerUsd;
-  return '\$${v.toStringAsFixed(2)}';
-}
-
-/// Format USD from real cents (used where the exact charged amount is known).
+/// Format USD from real cents — used ONLY in a top-up's detail row ("Amount
+/// paid … USD"). USD must never appear anywhere else on the wallet; the wallet's
+/// native unit is AvaCoins.
 String _usdFromCents(int cents) => '\$${(cents.abs() / 100).toStringAsFixed(2)}';
 
 /// Compact coin count, e.g. 10000 → "10,000".
@@ -128,8 +129,27 @@ class _WalletScreenState extends State<WalletScreen> {
     if (mounted && b['balance'] is num) {
       setState(() { _balance = (b['balance'] as num).toInt(); _held = ((b['held'] as num?) ?? 0).toInt(); });
       Analytics.capture('wallet_balance_loaded', {
-        'balance_coins': _balance, 'held_coins': _held, 'entries_loaded': _entries.length,
+        'balance_coins': _balance,
+        'held_coins': _held,
+        'balance_usd_cents': (_balance * 100 / kCoinsPerUsd).round(),
+        'entries_loaded': _entries.length,
+        'has_ledger': _entries.isNotEmpty,
+        'filtered': _filtered,
       });
+      // DIAGNOSTIC: a positive balance with an EMPTY (unfiltered) ledger means the
+      // user has coins but no transaction history — the exact "no log below my
+      // recent transaction" symptom. This usually means the balance was credited
+      // outside the queue→wallet_ledger path (seed/admin adjust/DO-only), or the
+      // top-up's ledger row never landed. email + phone ride every event (see
+      // Analytics._base), so support can pull THIS user by email/phone in PostHog
+      // and reconcile the missing ledger row.
+      if (_balance > 0 && _entries.isEmpty && !_filtered && !_loading) {
+        Analytics.capture('wallet_balance_without_ledger', {
+          'balance_coins': _balance,
+          'held_coins': _held,
+          'balance_usd_cents': (_balance * 100 / kCoinsPerUsd).round(),
+        });
+      }
     } else if (mounted) {
       Analytics.capture('wallet_balance_load_failed', {'reason': '${b['error'] ?? b['status'] ?? 'unknown'}'});
     }
@@ -149,6 +169,11 @@ class _WalletScreenState extends State<WalletScreen> {
         q: _query,
       );
       final list = ((r['entries'] as List?) ?? const []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      // The server returns {entries, cursor}; anything else (e.g. {error}) means
+      // the ledger read failed even though we didn't throw. Surface it so an empty
+      // log is never silently mistaken for "no transactions". email/phone ride
+      // the event, so support can pull this user in PostHog.
+      final ledgerErr = r['error'] ?? (r.containsKey('entries') ? null : (r['status'] ?? 'no_entries_field'));
       if (!mounted) return;
       setState(() {
         if (reset) _entries.clear();
@@ -156,7 +181,21 @@ class _WalletScreenState extends State<WalletScreen> {
         _cursor = r['cursor'] as String?;
         _exhausted = _cursor == null;
       });
-      if (!reset) {
+      if (reset) {
+        Analytics.capture('wallet_ledger_loaded', {
+          'count': list.length,
+          'exhausted': _exhausted,
+          'filtered': _filtered,
+          'empty': list.isEmpty,
+          if (ledgerErr != null) 'ledger_error': '$ledgerErr',
+        });
+        if (ledgerErr != null) {
+          Analytics.error(
+            domain: 'wallet', code: 'ledger_load_failed',
+            message: '$ledgerErr', screen: 'wallet_main', action: 'ledger_refresh',
+          );
+        }
+      } else {
         Analytics.capture('wallet_ledger_more', {
           'added': list.length, 'total': _entries.length, 'exhausted': _exhausted,
         });
@@ -168,7 +207,14 @@ class _WalletScreenState extends State<WalletScreen> {
             (id: '${e['id']}', createdAt: ((e['created_at'] as num?) ?? 0).toInt(), type: '${e['type']}', json: jsonEncode(e)),
         ]);
       }
-    } catch (_) {/* offline → cache stays */} finally {
+    } catch (e) {
+      // Offline / network error → on-device cache stays painted. Still report it
+      // (email/phone attached) so a chronically empty log is diagnosable.
+      Analytics.error(
+        domain: 'wallet', code: 'ledger_fetch_error',
+        message: '$e', screen: 'wallet_main', action: reset ? 'ledger_refresh' : 'ledger_more',
+      );
+    } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -279,7 +325,7 @@ class _WalletScreenState extends State<WalletScreen> {
     if (credited) {
       final added = _balance - before;
       Analytics.capture('wallet_topup_succeeded', {'cents': cents, 'coins': added});
-      _snack('Added ${_usd(added)} · ${_coins(added)} AvaCoins to your wallet');
+      _snack('Added ${_coins(added)} AvaCoins to your wallet');
     } else {
       // Payment captured but the webhook is still settling — reassure, don't alarm.
       Analytics.capture('wallet_topup_pending_credit', {'cents': cents, 'coins': coins});
@@ -430,7 +476,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       style: ZineText.kicker(size: 10, color: Zine.inkMute)),
                 ]),
               ),
-              Text('${amount >= 0 ? '+' : '−'}${_usd(amount)}',
+              Text('${amount >= 0 ? '+' : '−'}${_coins(amount)}',
                   style: ZineText.value(size: 18, weight: FontWeight.w900,
                       color: amount >= 0 ? Zine.mintInk : Zine.coral)),
             ]),
@@ -444,9 +490,9 @@ class _WalletScreenState extends State<WalletScreen> {
             else if (isTopup) _kv('Paid with', 'Card'),
             _kv('From', '${entry['debit'] ?? '—'}'),
             _kv('To', '${entry['credit'] ?? '—'}'),
-            if (gross != null) _kv('Gross', _usd(gross)),
-            if (fee > 0) _kv('Platform fee', '− ${_usd(fee)}'),
-            if (net != null) _kv('Net', _usd(net)),
+            if (gross != null) _kv('Gross', '${_coins(gross)} AvaCoins'),
+            if (fee > 0) _kv('Platform fee', '− ${_coins(fee)} AvaCoins'),
+            if (net != null) _kv('Net', '${_coins(net)} AvaCoins'),
             if (meta['reason'] != null) _kv('Reason', '${meta['reason']}'),
             if (entry['ref'] != null) _kv('Reference', '${entry['ref']}'),
             const SizedBox(height: 16),
@@ -573,17 +619,22 @@ class _WalletScreenState extends State<WalletScreen> {
               tag: 'avacoins',
             ),
             const SizedBox(height: 14),
+            // Hero is the AvaCoin count — coins are the wallet's native unit.
+            // USD never shows on the wallet face; it only appears inside a
+            // top-up's detail row ("Amount paid … USD").
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(_usd(_balance), style: ZineText.stat(size: 48)),
+              child: Text(_coins(_balance), style: ZineText.stat(size: 48)),
             ),
             const SizedBox(height: 4),
             Text(
-              '${_coins(_balance)} AvaCoins${_held > 0 ? '  ·  ${_usd(_held)} pending (7-day hold)' : ''}',
+              'AvaCoins${_held > 0 ? '  ·  ${_coins(_held)} pending (7-day hold)' : ''}',
               style: ZineText.value(size: 14, weight: FontWeight.w900),
             ),
             const SizedBox(height: 16),
+            // Withdraw/payout is HIDDEN for now — no marketplace/payout flow yet.
+            // Flip _kShowWithdraw back to true to restore the two-button row.
             Row(children: [
               Expanded(
                 child: ZineButton(
@@ -594,29 +645,31 @@ class _WalletScreenState extends State<WalletScreen> {
                   onPressed: _topupFlow,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ZineButton(
-                  label: 'Withdraw',
-                  variant: ZineButtonVariant.blue,
-                  fontSize: 17,
-                  trailingIcon: false,
-                  icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
-                  onPressed: () {
-                    Analytics.capture('wallet_withdraw_opened', {'balance_coins': _balance});
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayoutScreen()));
-                  },
+              if (_kShowWithdraw) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ZineButton(
+                    label: 'Withdraw',
+                    variant: ZineButtonVariant.blue,
+                    fontSize: 17,
+                    trailingIcon: false,
+                    icon: PhosphorIcons.bank(PhosphorIconsStyle.bold),
+                    onPressed: () {
+                      Analytics.capture('wallet_withdraw_opened', {'balance_coins': _balance});
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayoutScreen()));
+                    },
+                  ),
                 ),
-              ),
+              ],
             ]),
           ]),
         ),
         const SizedBox(height: 14),
         Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _miniCard('This month in', '+${_usd(inn)}',
+          Expanded(child: _miniCard('This month in', '+${_coins(inn)}',
               PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), Zine.mint, Zine.mintInk)),
           const SizedBox(width: 10),
-          Expanded(child: _miniCard('This month out', '−${_usd(out)}',
+          Expanded(child: _miniCard('This month out', '−${_coins(out)}',
               PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), Zine.coral, Zine.coral)),
         ]),
       ]),
@@ -720,7 +773,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   style: ZineText.sub(size: 13, color: Zine.inkMute)),
             ),
             const SizedBox(width: 6),
-            Text('${positive ? '+' : '−'}${_usd(amount)}',
+            Text('${positive ? '+' : '−'}${_coins(amount)}',
                 style: ZineText.value(size: 14.5, weight: FontWeight.w900,
                     color: positive ? Zine.mintInk : Zine.coral)),
           ]),
