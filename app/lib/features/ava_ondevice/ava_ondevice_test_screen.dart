@@ -261,6 +261,15 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
                         ? 'Retry load'
                         : 'Load model (first run downloads ≈600 MB)'),
                   ),
+                  if (status == OnDeviceStatus.error &&
+                      _llm.lastDiag.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      _llm.lastDiag,
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.grey.shade700),
+                    ),
+                  ],
                 ],
                 Align(
                   alignment: Alignment.centerLeft,

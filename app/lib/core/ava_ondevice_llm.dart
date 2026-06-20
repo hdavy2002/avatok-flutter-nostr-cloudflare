@@ -32,6 +32,7 @@ import 'package:cactus/src/utils/models/download.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'analytics.dart';
 import 'ava_log.dart';
 
 enum OnDeviceStatus { idle, downloading, initializing, ready, error }
@@ -117,6 +118,11 @@ class AvaOnDeviceLlm {
   final ValueNotifier<String> statusLine = ValueNotifier<String>('Not loaded');
   String? lastError;
 
+  /// Human-readable diagnostics from the last load attempt (extracted file
+  /// listing + device memory). Shown on the error card AND sent to PostHog so a
+  /// failed load is debuggable remotely by the user's email.
+  String lastDiag = '';
+
   bool get isReady =>
       _lm != null &&
       status.value == OnDeviceStatus.ready &&
@@ -126,16 +132,27 @@ class AvaOnDeviceLlm {
 
   Future<bool> ensureReady() async {
     if (isReady) return true;
+    final sw = Stopwatch()..start();
+    String modelPath = '';
     try {
       CactusConfig.isTelemetryEnabled = false;
       final lm = _lm ??= CactusLM();
+      final docs = await getApplicationDocumentsDirectory();
+      modelPath = '${docs.path}/models/$kModelSlug';
 
       // Reclaim the previous model's ~400 MB before pulling the new one.
       await _purgeOldModel();
 
+      final already = await DownloadService.modelExists(kModelSlug);
+      await Analytics.capture('ondevice_load_start', {
+        'slug': kModelSlug,
+        'already_downloaded': already,
+        'mem': await _memInfo(),
+      });
+
       // Download directly from the HF release into <AppDocuments>/models/<slug>,
       // reusing Cactus's own extract logic. Idempotent: skips if already present.
-      if (!await DownloadService.modelExists(kModelSlug)) {
+      if (!already) {
         status.value = OnDeviceStatus.downloading;
         statusLine.value = 'Downloading Qwen3.5-0.8B…';
         downloadProgress.value = 0;
@@ -158,13 +175,36 @@ class AvaOnDeviceLlm {
             }
           },
         );
+        await Analytics.capture('ondevice_download_done', {
+          'slug': kModelSlug,
+          'ok': ok,
+          'ms': sw.elapsedMilliseconds,
+        });
         if (!ok) {
           throw Exception('Download/extract failed from $kModelDirectUrl');
         }
       }
 
+      // Diagnostics: exactly what landed on disk (this is what tells us whether a
+      // failure is an extraction problem vs the native runtime rejecting the model).
+      final files = await _listModelDir();
+      final filesStr = _cap(files.join(', '), 480);
+      lastDiag =
+          'path: $modelPath\nfiles (${files.length}): $filesStr\nmem: ${await _memInfo()}';
+      await Analytics.capture('ondevice_model_files', {
+        'model_path': modelPath,
+        'file_count': files.length,
+        'files': filesStr,
+      });
+
       status.value = OnDeviceStatus.initializing;
       statusLine.value = 'Loading model into memory…';
+      await Analytics.capture('ondevice_init_start', {
+        'model_path': modelPath,
+        'context_size': 2048,
+        'file_count': files.length,
+        'mem': await _memInfo(),
+      });
       await lm.initializeModel(
         params: CactusInitParams(model: kModelSlug, contextSize: 2048),
       );
@@ -173,13 +213,31 @@ class AvaOnDeviceLlm {
       status.value = OnDeviceStatus.ready;
       statusLine.value = 'Ready — Qwen3.5-0.8B (on-device)';
       lastError = null;
+      await Analytics.capture('ondevice_init_ok', {
+        'slug': kModelSlug,
+        'ms': sw.elapsedMilliseconds,
+      });
       AvaLog.I.log('ava_ondevice', 'model ready ($kModelSlug)');
       return true;
     } catch (e) {
       lastError = e.toString();
       status.value = OnDeviceStatus.error;
       statusLine.value = 'Error: $e';
-      AvaLog.I.log('ava_ondevice', 'ensureReady FAILED: $e');
+      // Rich error event — carries the user's email via the Analytics envelope,
+      // plus the on-disk file listing + memory so we can diagnose remotely.
+      await Analytics.error(
+        domain: 'ondevice_ai',
+        code: 'load_failed',
+        message: e.toString(),
+        action: 'ensureReady',
+        extra: {
+          'slug': kModelSlug,
+          'model_path': modelPath,
+          'diag': _cap(lastDiag, 480),
+          'mem': await _memInfo(),
+        },
+      );
+      AvaLog.I.log('ava_ondevice', 'ensureReady FAILED: $e | $lastDiag');
       return false;
     }
   }
@@ -393,6 +451,42 @@ class AvaOnDeviceLlm {
     final open = out.indexOf('<think>');
     if (open >= 0) out = out.substring(0, open);
     return out.trim();
+  }
+
+  static String _cap(String s, int n) => s.length > n ? s.substring(0, n) : s;
+
+  /// List the extracted model folder (filename: size) so we can see whether the
+  /// download produced a valid model directory.
+  Future<List<String>> _listModelDir() async {
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}/models/$kModelSlug');
+      if (!await dir.exists()) return const ['<folder missing>'];
+      final out = <String>[];
+      await for (final e in dir.list(recursive: true)) {
+        if (e is File) {
+          final kb = (await e.length()) / 1024;
+          out.add('${e.path.split('/').last}:${kb.toStringAsFixed(0)}KB');
+        }
+      }
+      return out.isEmpty ? const ['<empty folder>'] : out;
+    } catch (e) {
+      return ['<list error: $e>'];
+    }
+  }
+
+  /// Android memory snapshot (MemTotal / MemAvailable) — a likely suspect for a
+  /// native init failure. Empty on non-Android or on any error.
+  Future<String> _memInfo() async {
+    if (!Platform.isAndroid) return '';
+    try {
+      final lines = await File('/proc/meminfo').readAsLines();
+      String pick(String k) =>
+          lines.firstWhere((l) => l.startsWith(k), orElse: () => '$k ?').trim();
+      return '${pick('MemTotal:')} | ${pick('MemAvailable:')}';
+    } catch (_) {
+      return '';
+    }
   }
 
   /// Delete the old model directory to free disk. Best-effort, idempotent.
