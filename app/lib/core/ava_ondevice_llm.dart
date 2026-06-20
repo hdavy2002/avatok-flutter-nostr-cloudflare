@@ -108,25 +108,28 @@ class AvaOnDeviceLlm {
   /// proven fallback so loading can never regress.
   static const List<OnDeviceModel> kCandidates = <OnDeviceModel>[
     OnDeviceModel(
-      'ava-ai-350',
+      // INTERNALLY this is the proven LFM2-350M weights. The LFM2.5-350M build
+      // FAILS to initialize on the shipped Cactus engine ("Failed to initialize
+      // model context" — confirmed by on-device telemetry: it errored and the
+      // app silently fell back to LFM2-350M every time). So we re-hosted the
+      // working LFM2-350M on OUR R2 under a fresh path and load THAT. The slug is
+      // the real model name (for telemetry/debugging); the UI label is the
+      // branded "Ava AI 350".
+      'lfm2-350m-r2',
       'Ava AI 350',
       vision: false,
-      // Hosted on OUR Cloudflare R2 (avatok-blobs), served publicly via
-      // blossom.avatok.ai with no Worker in the path. This gives the download a
-      // professional "Ava AI 350" name and removes the third-party host
-      // dependency. (Same LFM2.5-350M int4 weights; the engine loads it by the
-      // local folder name = slug, so renaming the slug is safe.)
       zipUrl:
-          'https://blossom.avatok.ai/models/ava-ai-350/ava-ai-350-int4.zip',
+          'https://blossom.avatok.ai/models/ava-ai-350-v1/ava-ai-350-int4.zip',
       zipName: 'ava-ai-350-int4.zip',
       configUrl:
-          'https://blossom.avatok.ai/models/ava-ai-350/config.json',
+          'https://blossom.avatok.ai/models/ava-ai-350-v1/config.json',
     ),
-    // LFM2-350M — the proven LFM2 generation (it's the text backbone of the
-    // LFM2-VL-450M that already loaded), pinned to v1.11. Tried if LFM2.5 won't init.
+    // Direct-from-HuggingFace fallback of the SAME LFM2-350M (if our R2 is
+    // unreachable), pinned to v1.11. UI label kept as "Ava AI 350" so the user
+    // always sees one consistent name regardless of which source loaded.
     OnDeviceModel(
       'lfm2-350m',
-      'LFM2-350M',
+      'Ava AI 350',
       vision: false,
       zipUrl:
           'https://huggingface.co/Cactus-Compute/LFM2-350M/resolve/v1.11/weights/lfm2-350m-int4.zip',
@@ -134,16 +137,19 @@ class AvaOnDeviceLlm {
       configUrl:
           'https://huggingface.co/Cactus-Compute/LFM2-350M/resolve/v1.11/config.json',
     ),
-    OnDeviceModel('qwen3-0.6', 'Qwen3-0.6B', vision: false),
+    // Last-resort fallback so loading can never fully regress. UI shows "Ava AI 350".
+    OnDeviceModel('qwen3-0.6', 'Ava AI 350', vision: false),
   ];
 
   /// Previous models whose weights we delete on first run to reclaim space.
-  /// Includes the old 'lfm2.5-350m' folder so devices that fetched it before the
-  /// rename reclaim the space and re-fetch once as the branded 'ava-ai-350'.
+  /// Includes the FAILING 'ava-ai-350' (LFM2.5-350M) build and the old
+  /// 'lfm2.5-350m' folder so devices reclaim that ~209 MB and fetch the working
+  /// model once.
   static const List<String> kPurgeSlugs = [
     'lfm2-vl-450m',
     'qwen3.5-0.8b',
     'lfm2.5-350m',
+    'ava-ai-350',
   ];
 
   static const String kChatSystem =
