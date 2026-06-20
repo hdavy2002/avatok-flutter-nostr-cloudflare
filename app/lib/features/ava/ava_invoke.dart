@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_local_replies.dart';
 import '../../core/ava_log.dart';
@@ -49,14 +50,18 @@ class AvaInvoke {
     if (parsed == null) return; // no wake word — nothing to do
     AvaLog.I.log('ava', 'summon conv=$convKey private=${parsed.privateReply}');
 
-    // Local Ava AI active → answer ON-DEVICE (works offline) and post the answer
-    // straight into the thread, no server round-trip. Falls back to the cloud
-    // agent on any failure.
+    // Local Ava AI active → let the on-device router decide what to do. A LOCAL
+    // lookup is answered on-device (offline, grounded in the user's own memory);
+    // an APPS action runs through the user's connected apps; anything needing real
+    // reasoning (CLOUD) — or any failure — falls through to the cloud agent.
     if (AvaLocalMode.I.isActive) {
       try {
         final answer = await _localAnswer(parsed.request);
-        AvaLocalReplies.I.post(convKey, answer);
-        return;
+        if (answer != null) {
+          AvaLocalReplies.I.post(convKey, answer);
+          return;
+        }
+        // answer == null → route said CLOUD: escalate below.
       } catch (e) {
         AvaLog.I.log('ava', 'local answer failed → cloud: $e');
       }
@@ -69,17 +74,39 @@ class AvaInvoke {
     );
   }
 
-  /// Retrieval-first on-device answer: search the on-device store, then a short
-  /// grounded reply. Keeps it fast (no long generation).
-  static Future<String> _localAnswer(String request) async {
+  /// On-device answer using the same router as AvaChat: route the request, then
+  ///   • APPS  → run it through the user's connected apps (real tool result, no
+  ///             hallucinated "I checked your email"),
+  ///   • CLOUD → return null so [handle] escalates to the cloud agent for real
+  ///             reasoning (the user's rule: retrieval local, reasoning cloud),
+  ///   • LOCAL → retrieval-first, grounded reply from the on-device store; if
+  ///             nothing matches, say so instead of inventing an answer.
+  /// Returns the reply text, or null to mean "escalate to cloud".
+  static Future<String?> _localAnswer(String request) async {
     final q = request.replaceAll(RegExp(r'@ava!?', caseSensitive: false), '').trim();
-    final hits = await AvaOnDeviceRag.I.search(q.isEmpty ? request : q, limit: 5);
-    if (hits.isEmpty) {
-      return "I couldn't find anything about that in this device's memory yet.";
+    final query = q.isEmpty ? request : q;
+
+    final decision = await AvaOnDeviceLlm.I.route(query);
+    AvaLog.I.log('ava', 'route=${decision.scope} q="$query"');
+
+    // APPS: the user wants an action in a connected app (check/send email, etc.).
+    if (decision.isApps) {
+      final reply = await AppsService.I.run(query);
+      return reply.isNotEmpty ? reply : null; // empty → let the cloud try
     }
-    final ctx = hits.map((h) => '• ${h.content}').join('\n');
-    final reply = await AvaOnDeviceLlm.I.ask(q.isEmpty ? request : q, context: ctx, maxTokens: 96);
-    return (reply.ok && reply.text.isNotEmpty) ? reply.text : ctx;
+
+    // CLOUD: real reasoning/analysis belongs on the server.
+    if (decision.isCloud) return null;
+
+    // LOCAL: grounded retrieval from on-device memory.
+    final hits = await AvaOnDeviceRag.I.search(query, limit: 5);
+    if (hits.isEmpty) {
+      return "I don't have anything about that in this device's memory yet.";
+    }
+    final ctx = hits.map((h) => '• (${h.source}) ${h.content}').join('\n');
+    final reply = await AvaOnDeviceLlm.I.ask(query, context: ctx, maxTokens: 160);
+    if (reply.ok && reply.text.isNotEmpty) return reply.text;
+    return ctx; // generation failed but we have real matches — show those
   }
 
   /// Parse [text] for the wake word and the optional private modifier. Returns
