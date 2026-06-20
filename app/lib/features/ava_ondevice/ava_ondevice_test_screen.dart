@@ -13,7 +13,10 @@
 /// Plain Material on purpose (a dev/QA surface) — zero design-system risk.
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/ava_ai_client.dart';
 import '../../core/ava_ondevice_llm.dart';
@@ -44,6 +47,11 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
 
   bool _ingesting = false;
   List<RagHit> _hits = const [];
+
+  final _picker = ImagePicker();
+  XFile? _img;
+  String _imgCaption = '';
+  bool _imgBusy = false;
 
   @override
   void dispose() {
@@ -156,6 +164,34 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
     });
   }
 
+  Future<void> _pickImage() async {
+    final x = await _picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 1024, imageQuality: 85);
+    if (x == null || !mounted) return;
+    setState(() {
+      _img = x;
+      _imgCaption = '';
+    });
+  }
+
+  Future<void> _lookAndRemember() async {
+    final img = _img;
+    if (img == null || _imgBusy) return;
+    setState(() {
+      _imgBusy = true;
+      _imgCaption = '';
+    });
+    final cap = await _llm.caption(img.path);
+    if (!mounted) return;
+    setState(() => _imgCaption =
+        cap.isEmpty ? '(this model can\'t read images)' : cap);
+    if (cap.isNotEmpty) {
+      await _rag.ingestText(
+          name: img.name, content: '$cap (image: ${img.name})');
+    }
+    if (mounted) setState(() => _imgBusy = false);
+  }
+
   Future<void> _search() async {
     final q = _searchCtrl.text.trim();
     if (q.isEmpty) return;
@@ -207,6 +243,8 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
             _statusCard(),
             const SizedBox(height: 16),
             _chatCard(),
+            const SizedBox(height: 16),
+            _imageCard(),
             const SizedBox(height: 16),
             _memoryCard(),
           ],
@@ -342,6 +380,59 @@ class _AvaOnDeviceTestScreenState extends State<AvaOnDeviceTestScreen> {
                 '${_metrics!.totalTokens} tokens',
                 style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
               ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── image (vision / cow demo) ────────────────────────────────────────────────
+  Widget _imageCard() {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('See an image (vision)',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            const SizedBox(height: 4),
+            const Text(
+              'Pick a photo → Ava captions it on-device → the caption is saved '
+              'to memory. Then search above (e.g. "cow") to find it.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 10),
+            if (_img != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(File(_img!.path),
+                    height: 150, width: double.infinity, fit: BoxFit.cover),
+              ),
+            const SizedBox(height: 10),
+            Row(children: [
+              OutlinedButton.icon(
+                onPressed: _imgBusy ? null : _pickImage,
+                icon: const Icon(Icons.image),
+                label: const Text('Pick image'),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.icon(
+                onPressed: (_img == null || _imgBusy) ? null : _lookAndRemember,
+                icon: _imgBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.visibility),
+                label: const Text('Look & remember'),
+              ),
+            ]),
+            if (_imgCaption.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SelectableText(_imgCaption, style: const TextStyle(fontSize: 14)),
             ],
           ],
         ),

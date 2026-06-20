@@ -358,6 +358,46 @@ class AvaOnDeviceLlm {
     }
   }
 
+  // ── Vision (image → caption) ─────────────────────────────────────────────────
+
+  /// Whether the loaded model can see images (true for LFM2-VL).
+  bool get visionAvailable => activeModel?.vision == true;
+
+  /// Look at a local image and return a one-sentence caption naming the main
+  /// subjects/scene. Empty string if the model can't see images or on failure.
+  /// The caption is what gets embedded so the image becomes searchable
+  /// ("find the picture with a cow").
+  Future<String> caption(String imagePath, {int maxTokens = 80}) async {
+    if (!await ensureReady()) return '';
+    if (!visionAvailable) return '';
+    try {
+      final res = await _lm!.generateCompletion(
+        messages: [
+          ChatMessage(
+            content:
+                'You describe images. Reply with ONE detailed sentence naming '
+                'the main objects, animals, people, and the scene. /no_think',
+            role: 'system',
+          ),
+          ChatMessage(
+            content: 'Describe this image.',
+            role: 'user',
+            images: [imagePath],
+          ),
+        ],
+        params: CactusCompletionParams(
+          maxTokens: maxTokens,
+          temperature: 0.2,
+          completionMode: CompletionMode.local,
+        ),
+      );
+      return res.success ? stripThink(res.response) : '';
+    } catch (e) {
+      AvaLog.I.log('ava_ondevice', 'caption FAILED: $e');
+      return '';
+    }
+  }
+
   // ── Embeddings ───────────────────────────────────────────────────────────────
 
   Future<List<double>> embed(String text) async {
