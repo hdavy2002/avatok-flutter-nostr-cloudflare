@@ -35,6 +35,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'analytics.dart';
 import 'ava_log.dart';
+import 'ava_planner.dart';
 
 enum OnDeviceStatus { idle, downloading, initializing, ready, error }
 
@@ -464,21 +465,36 @@ class AvaOnDeviceLlm {
   // ── Intent routing ───────────────────────────────────────────────────────────
 
   Future<RouteDecision> route(String request) async {
-    // Fast-path: a confident phrase match for an explicit app action skips a
-    // whole model generation (faster) AND stops the tiny model mis-routing an
-    // obvious "check my email" to LOCAL where it would hallucinate.
-    final kw = _keywordRoute(request);
-    if (kw != null) {
+    // Deterministic planner FIRST (intent DSL): a high-confidence, slot-aware
+    // intent match routes WITHOUT a model pass — robust where keyword matching
+    // was fragile, and it saves the model (and battery) on most tool requests.
+    // Anything ambiguous falls through to the on-device classifier below.
+    final plan = AvaPlanner.plan(request);
+    if (plan != null && plan.confidence >= AvaPlanner.kExecuteThreshold) {
+      final scope =
+          plan.scope == PlanScope.apps ? RouteScope.apps : RouteScope.local;
+      // ignore: unawaited_futures
+      Analytics.capture('ava_planner',
+          {'match': true, 'intent': plan.intent, 'confidence': plan.confidence, 'fallback': false});
       // ignore: unawaited_futures
       Analytics.capture('ondevice_route', {
-        'scope': kw.scope.name,
-        'source': 'keyword',
-        'reason': 'matched explicit app phrase',
-        'confidence': 0.9,
+        'scope': scope.name,
+        'source': 'planner',
+        'intent': plan.intent,
+        'reason': 'deterministic intent match',
+        'confidence': plan.confidence,
         'ms': 0,
       });
-      return kw;
+      return RouteDecision(scope, 'planner:${plan.intent}');
     }
+    // No confident plan → record the fallback and let the model decide.
+    // ignore: unawaited_futures
+    Analytics.capture('ava_planner', {
+      'match': false,
+      'fallback': true,
+      if (plan != null) 'intent': plan.intent,
+      if (plan != null) 'confidence': plan.confidence,
+    });
     if (!await ensureReady()) {
       return const RouteDecision(RouteScope.cloud, 'unavailable');
     }
@@ -518,25 +534,6 @@ class AvaOnDeviceLlm {
       AvaLog.I.log('ava_ondevice', 'route FAILED: $e');
       return const RouteDecision(RouteScope.cloud, 'error');
     }
-  }
-
-  /// Conservative keyword router for the obvious app-action cases only — high
-  /// precision, so we short-circuit just when confident. Ambiguous requests
-  /// (especially LOCAL vs CLOUD) still go to the model router. Returns null =
-  /// "ask the model".
-  static RouteDecision? _keywordRoute(String request) {
-    final q = request.toLowerCase();
-    const appsPhrases = <String>[
-      'check my email', 'check email', 'my inbox', 'unread email',
-      'unread emails', 'any new email', 'any new emails', 'send an email',
-      'send email', 'email to ', 'reply to the email', 'my calendar',
-      'schedule a meeting', 'create an event', 'add to my calendar',
-      'my google drive', 'file in my drive', 'in google drive',
-    ];
-    for (final p in appsPhrases) {
-      if (q.contains(p)) return const RouteDecision(RouteScope.apps, 'kw');
-    }
-    return null;
   }
 
   // ── Vision (image → caption) ─────────────────────────────────────────────────
