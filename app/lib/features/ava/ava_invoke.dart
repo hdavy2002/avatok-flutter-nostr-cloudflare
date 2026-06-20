@@ -5,6 +5,7 @@ import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_local_replies.dart';
 import '../../core/ava_log.dart';
+import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
 import 'ava_turn_controller.dart';
@@ -50,6 +51,10 @@ class AvaInvoke {
     final parsed = parse(text);
     if (parsed == null) return; // no wake word — nothing to do
     AvaLog.I.log('ava', 'summon conv=$convKey private=${parsed.privateReply}');
+
+    // Let Ava learn from this request (topics, hours, style). Cheap + local.
+    // ignore: unawaited_futures
+    AvaProfileMemory.I.observeUserMessage(parsed.request);
 
     // Local Ava AI active → let the on-device router decide what to do. A LOCAL
     // lookup is answered on-device (offline, grounded in the user's own memory);
@@ -134,8 +139,14 @@ class AvaInvoke {
       return "I don't have anything about that in this device's memory yet.";
     }
     final ctx = hits.map((h) => '• (${h.source}) ${h.content}').join('\n');
+    final about = await AvaProfileMemory.I.contextBlock();
     final gsw = Stopwatch()..start();
-    final reply = await AvaOnDeviceLlm.I.ask(query, context: ctx, maxTokens: 160);
+    final reply = await AvaOnDeviceLlm.I.ask(
+      query,
+      system: about.isEmpty ? null : '${AvaOnDeviceLlm.kChatSystem}\n\n$about',
+      context: ctx,
+      maxTokens: 160,
+    );
     final genMs = gsw.elapsedMilliseconds;
     // ignore: unawaited_futures
     Analytics.capture('ava_local_turn', {

@@ -6,6 +6,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
+import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
 import '../../core/brain_api.dart';
@@ -106,6 +107,12 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     setState(() { _msgs.add(_ChatMsg(true, text)); _thinking = true; });
     _jump();
 
+    // Update Ava's on-device intuition about the user (topics, hours, length,
+    // style cues). Cheap counting, runs in any mode so memory builds up even
+    // before Local Ava AI is switched on.
+    // ignore: unawaited_futures
+    AvaProfileMemory.I.observeUserMessage(text);
+
     // Local Ava AI active → answer on-device (works offline). Otherwise the
     // cloud brain handles it exactly as before.
     if (AvaLocalMode.I.isActive) {
@@ -142,8 +149,15 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       return;
     }
     final ctx = hits.map((h) => '• ${h.content}').join('\n');
-    final reply =
-        await AvaOnDeviceLlm.I.ask(text, context: ctx, maxTokens: 96);
+    // Give Ava the "about the user" note so she answers as a personal AI that
+    // knows who she's helping — not a generic assistant.
+    final about = await AvaProfileMemory.I.contextBlock();
+    final reply = await AvaOnDeviceLlm.I.ask(
+      text,
+      system: about.isEmpty ? null : '${AvaOnDeviceLlm.kChatSystem}\n\n$about',
+      context: ctx,
+      maxTokens: 96,
+    );
     if (!mounted) return;
     _addAva(
       reply.ok && reply.text.isNotEmpty ? reply.text : ctx,

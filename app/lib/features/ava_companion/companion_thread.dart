@@ -12,6 +12,7 @@ import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_log.dart';
+import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_memory/local_index.dart';
 import '../../core/ava_ondevice_rag.dart';
 import '../../core/library_api.dart';
@@ -275,11 +276,17 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     _jumpToEnd();
     final startedAt = DateTime.now();
     Analytics.capture('avachat_turn_sent', {'persona': widget.persona.id, 'len': t.length});
+    // ignore: unawaited_futures
+    AvaProfileMemory.I.observeUserMessage(t);
     // Build the history BEFORE this user turn (ask() takes prior turns + message).
     final priorHistory = _history()..removeLast();
+    // Tell Ava who she's talking to so the companion feels personal.
+    final about = await AvaProfileMemory.I.contextBlock();
     final ans = await AvaAiClient.I.ask(
       message: t,
-      context: widget.persona.systemPrompt,
+      context: about.isEmpty
+          ? widget.persona.systemPrompt
+          : '${widget.persona.systemPrompt}\n\n$about',
       history: priorHistory.isEmpty ? null : priorHistory,
     );
     if (!mounted) return;
