@@ -20,7 +20,11 @@ dependencies:
   # Wi-Fi ⇆ cellular handoff detection → proactive ICE restart mid-call.
   connectivity_plus: ^6.1.0
   web_socket_channel: ^3.0.1
-  permission_handler: ^11.3.1
+  # Bumped 11.3.1 → 12.0.1: the `cactus` on-device-AI plugin requires
+  # permission_handler ^12.0.1. The APIs this app uses (Permission.microphone/
+  # camera/contacts/notification, .request(), .isGranted, .denied/.deniedForever)
+  # are unchanged in 12.x. Must be validated by a CI APK build.
+  permission_handler: ^12.0.1
   uuid: ^4.5.1
   # AvaTOK design system iconography — Phosphor (bold/fill variants only, §6).
   phosphor_flutter: ^2.1.0
@@ -86,6 +90,15 @@ dependencies:
   # the same on every device; with split-per-ABI it adds ~1.5MB.
   drift: ^2.16.0
   sqlite3_flutter_libs: ^0.5.18
+  # ── On-device AI engine (Cactus) ──────────────────────────────────────────
+  # All-in-one on-device runtime: LLM completion + function-calling/tool-filter,
+  # embeddings, Whisper STT, and a local RAG vector store (ObjectBox), all GGUF.
+  # Phase A goal: run Qwen3-0.6B fully on-device/offline behind a swappable engine.
+  # NATIVE FFI PLUGIN — pulls in objectbox/objectbox_flutter_libs + native libs,
+  # so it MUST be validated by a CI APK build (this repo can't compile headless).
+  # Requires Android API 24+ (minSdk=24 ✓) and iOS 12+. Telemetry is disabled in
+  # code (CactusConfig.isTelemetryEnabled=false — see core/ava_ondevice_llm.dart).
+  cactus: ^1.3.0
   # Phase 4 (Two-Lane Memory) — on-device vector + embedder deps DEFERRED here by
   # Phase 0. DECISION: NO new packages are needed for the free on-device lane.
   #   • FTS5 keyword search → already available (sqlite3_flutter_libs bundles

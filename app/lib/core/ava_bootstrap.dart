@@ -17,6 +17,7 @@ import '../features/settings/sections/backup_sync_section.dart';
 import '../features/settings/sections/delegate_section.dart';
 import '../features/settings/sections/focus_section.dart';
 import '../features/settings/sections/guardian_section.dart';
+import '../features/settings/sections/ondevice_section.dart';
 import '../features/settings/sections/receptionist_section.dart';
 import '../features/settings/sections/ringtone_section.dart';
 import '../features/settings/sections/tools_section.dart';
@@ -86,5 +87,11 @@ class AvaBootstrap {
     // (opened from a chat's Ava menu) and is authoritative server-side via the
     // Phase-0-wired POST /api/ava/guardian/scan. Idempotent (registry keys by id).
     registerGuardianSection();
+    // Phase A (On-Device AI — step 1): "Ava on-device" settings section opens a
+    // test harness that runs Qwen3-0.6B fully offline on-device via Cactus. This
+    // is the first vertical slice — prove local inference quality/speed on a real
+    // phone BEFORE wiring routing/embeddings/STT/RAG. Does not touch the existing
+    // server Ava path. See core/ava_ondevice_llm.dart.
+    registerOnDeviceSection();
   }
 }
