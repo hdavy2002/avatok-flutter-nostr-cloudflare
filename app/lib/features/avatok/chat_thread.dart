@@ -747,9 +747,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (!mounted || r.convKey != key) return;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       setState(() {
+        // The on-device answer is here — drop the transient "thinking" chip.
+        _msgs.removeWhere((m) => m.special == 'ava_status');
         _msgs.add(_Msg(_seq++, false, r.text, _fmtTime(now),
             ts: now, special: 'ava'));
         _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+      });
+      _jump();
+    });
+  }
+
+  /// Show a transient on-device "Ava is thinking…" chip. Scheduled after the
+  /// current frame so it lands below the user's own @ava message; it collapses
+  /// automatically once the answer bubble arrives (the 'ava_status' transient
+  /// rule keeps only the most-recent chip) or when [_bindLocalAva] clears it.
+  void _showLocalAvaThinking() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      setState(() {
+        _msgs.add(_Msg(_seq++, false, 'Ava is thinking…', _fmtTime(nowS),
+            ts: nowS, special: 'ava_status'));
       });
       _jump();
     });
@@ -763,6 +781,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (onSummonAva != null && t.toLowerCase().contains(_avaWakeWord)) {
       // ignore: unawaited_futures
       onSummonAva!(t); // Phase 3 decides whether to also send the human message
+      // Local Ava AI answers on-device, so there's no server "working…" frame.
+      // Show a local thinking chip (added after this turn's own bubble) that
+      // collapses as soon as the answer bubble arrives.
+      if (AvaLocalMode.I.isActive) _showLocalAvaThinking();
     }
     // RAG memory: index this outgoing line into the user's own File Search store
     // (full-thread indexing — incoming lines are added in the receive handlers).
