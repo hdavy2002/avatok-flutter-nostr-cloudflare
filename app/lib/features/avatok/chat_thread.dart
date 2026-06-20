@@ -1328,7 +1328,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               lat: (e['lat'] as num?)?.toDouble() ?? 0,
               lng: (e['lng'] as num?)?.toDouble() ?? 0,
               until: (e['until'] as num?)?.toInt() ?? now,
-              mine: m.mine,
+              mine: m.me,
               name: (e['name'] ?? widget.chat.name).toString(),
             ),
           );
