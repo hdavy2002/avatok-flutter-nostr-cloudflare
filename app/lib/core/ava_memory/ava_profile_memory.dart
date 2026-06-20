@@ -137,8 +137,14 @@ class AvaProfileMemory {
         final hits = rows.isNotEmpty ? rows.first.read<int>('hits') : 1;
         if (hits == 1) {
           _emitLearned('interest_seen', topic, _confidence(1), 1);
+          _emitLifecycle('created', topic, evidence: 1, confidence: _confidence(1));
         } else if (hits == kConfirmEvidence) {
           _emitLearned('interest_confirmed', topic, _confidence(hits), hits);
+        }
+        // Reinforcement milestones (the user kept raising this topic).
+        if (hits == 3 || hits == 10) {
+          _emitLifecycle('reinforced', topic,
+              evidence: hits, confidence: _confidence(hits));
         }
       }
 
@@ -177,6 +183,8 @@ class AvaProfileMemory {
     final sw = Stopwatch()..start();
     try {
       await _ensure();
+      // ignore: unawaited_futures
+      prune(); // hourly-gated forgetting of decayed memories
       final db = Db.I;
       final profRows = await db.customSelect('SELECT k, v FROM ava_profile').get();
       final prof = <String, String>{
@@ -262,6 +270,55 @@ class AvaProfileMemory {
   /// Recency weight — a fact the user stopped raising decays (≈45-day half-life)
   /// so Ava forgets stale interests instead of hoarding them forever.
   static double _recency(double days) => math.exp(-days / 45.0);
+
+  static int _lastPruneMs = 0;
+  static const int _kPruneIntervalMs = 60 * 60 * 1000; // at most hourly
+
+  /// Forgetting: actually DELETE topics whose confidence×recency has decayed to
+  /// near nothing (and that never became a strong interest), reclaiming space so
+  /// the memory base never bloats with thousands of stale facts. Hourly-gated so
+  /// it's cheap to call from [contextBlock]. Emits a lifecycle event per delete.
+  Future<void> prune() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastPruneMs < _kPruneIntervalMs) return;
+    _lastPruneMs = now;
+    try {
+      await _ensure();
+      final rows =
+          await Db.I.customSelect('SELECT topic, hits, last_at FROM ava_topics').get();
+      var deleted = 0;
+      for (final r in rows) {
+        final topic = r.read<String>('topic');
+        final hits = r.read<int>('hits');
+        final lastAt = r.read<int>('last_at');
+        final days = (now - lastAt) / 86400000.0;
+        final score = _confidence(hits) * _recency(days);
+        if (score < 0.05 && hits < kConfirmEvidence) {
+          await Db.I
+              .customStatement('DELETE FROM ava_topics WHERE topic = ?1', [topic]);
+          deleted++;
+          _emitLifecycle('deleted', topic,
+              reason: 'decay', score: double.parse(score.toStringAsFixed(3)));
+        }
+      }
+      if (deleted > 0) AvaLog.I.log('ava_mem', 'pruned $deleted decayed topics');
+    } catch (e) {
+      AvaLog.I.log('ava_mem', 'prune failed: $e');
+    }
+  }
+
+  void _emitLifecycle(String action, String value,
+      {String? reason, double? score, int? evidence, double? confidence}) {
+    // ignore: unawaited_futures
+    Analytics.capture('ava_memory_lifecycle', {
+      'action': action, // created | reinforced | deleted
+      'value': value,
+      if (reason != null) 'reason': reason,
+      if (score != null) 'score': score,
+      if (evidence != null) 'evidence_count': evidence,
+      if (confidence != null) 'confidence': confidence,
+    });
+  }
 
   void _emitLearned(String type, String value, double confidence, int evidence) {
     // ignore: unawaited_futures
