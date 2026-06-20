@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'analytics.dart';
 import 'api_auth.dart';
 import 'ava_ai_store.dart';
 import 'ava_contracts.dart';
@@ -104,17 +105,70 @@ class AppsService {
     return AppsActionResult(removed: (j['removed'] as num?)?.toInt() ?? 0);
   }
 
+  /// Short-lived cache for READ-style app results ("check my email", "my
+  /// calendar") so a repeat within the TTL is instant instead of another ~90s
+  /// round-trip. Mutating actions (send/create/schedule/…) are NEVER cached.
+  final Map<String, _CachedResult> _cache = {};
+  static const Duration _kCacheTtl = Duration(seconds: 60);
+
   /// Run a natural-language action across the connected apps (premium). Returns Ava's reply.
   Future<String> run(String query) async {
+    final key = query.trim().toLowerCase();
+    final cacheable = _isReadOnly(key);
+    if (cacheable) {
+      final hit = _cache[key];
+      if (hit != null && DateTime.now().isBefore(hit.expires)) {
+        // ignore: unawaited_futures
+        Analytics.capture('ava_tool_cache', {'hit': true});
+        return hit.answer;
+      }
+    }
     final res = await ApiAuth.postJsonH(_url(AvaApi.appsRun), {'query': query}, const {},
         timeout: const Duration(seconds: 90));
     final j = jsonDecode(res.body) as Map<String, dynamic>;
     if (j['reason'] == 'premium_required') {
       return (j['message'] ?? 'Top up to use AvaApps.').toString();
     }
-    if (j['answer'] != null) return j['answer'].toString();
+    if (j['answer'] != null) {
+      final ans = j['answer'].toString();
+      if (cacheable) {
+        _cache[key] = _CachedResult(ans, DateTime.now().add(_kCacheTtl));
+        if (_cache.length > 32) _evictOldest();
+        // ignore: unawaited_futures
+        Analytics.capture('ava_tool_cache', {'hit': false});
+      }
+      return ans;
+    }
     return (j['error'] ?? 'Something went wrong running that.').toString();
   }
+
+  /// Only cache reads. If the request looks like it CHANGES something, always
+  /// hit the server so we never skip a real send/create/delete.
+  static bool _isReadOnly(String q) {
+    const mutating = [
+      'send', 'create', 'schedule', 'reply', 'add ', 'delete', 'remove',
+      'post', 'draft', 'update', 'move', 'cancel', 'forward', 'invite',
+    ];
+    return !mutating.any((m) => q.contains(m));
+  }
+
+  void _evictOldest() {
+    String? oldestKey;
+    DateTime? oldest;
+    _cache.forEach((k, v) {
+      if (oldest == null || v.expires.isBefore(oldest!)) {
+        oldest = v.expires;
+        oldestKey = k;
+      }
+    });
+    if (oldestKey != null) _cache.remove(oldestKey);
+  }
+}
+
+class _CachedResult {
+  final String answer;
+  final DateTime expires;
+  const _CachedResult(this.answer, this.expires);
 }
 
 /// One app in the Composio catalog grid.
