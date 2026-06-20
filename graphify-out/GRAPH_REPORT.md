@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-06-20)
 
 ## Corpus Check
-- 478 files · ~1,050,296 words
+- 478 files · ~1,049,943 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -146,16 +146,16 @@
 10. `package:phosphor_flutter/phosphor_flutter.dart` - 111 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `minsAgo()` --calls--> `now`  [INFERRED]
-  web/src/islands/admin/adminApi.ts → app/lib/core/time_sync.dart
-- `ago()` --calls--> `now`  [INFERRED]
-  web/src/islands/dashboard/Overview.tsx → app/lib/core/time_sync.dart
-- `tick()` --calls--> `now`  [INFERRED]
-  web/src/islands/consult/Countdown.tsx → app/lib/core/time_sync.dart
-- `getMarketplace()` --calls--> `map`  [INFERRED]
-  web/src/islands/agent/api.ts → app/lib/core/db.g.dart
-- `getMine()` --calls--> `map`  [INFERRED]
-  web/src/islands/agent/api.ts → app/lib/core/db.g.dart
+- `now` --calls--> `minsAgo()`  [INFERRED]
+  app/lib/core/time_sync.dart → web/src/islands/admin/adminApi.ts
+- `now` --calls--> `ago()`  [INFERRED]
+  app/lib/core/time_sync.dart → web/src/islands/dashboard/Overview.tsx
+- `now` --calls--> `tick()`  [INFERRED]
+  app/lib/core/time_sync.dart → web/src/islands/consult/Countdown.tsx
+- `map` --calls--> `getMarketplace()`  [INFERRED]
+  app/lib/core/db.g.dart → web/src/islands/agent/api.ts
+- `map` --calls--> `getMine()`  [INFERRED]
+  app/lib/core/db.g.dart → web/src/islands/agent/api.ts
 
 ## Communities
 
@@ -769,11 +769,11 @@ Nodes (0):
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `dart:convert` connect `Community 2` to `Community 0`, `Community 3`, `Community 4`, `Community 5`, `Community 10`, `Community 13`, `Community 15`, `Community 17`, `Community 22`, `Community 23`?**
-  _High betweenness centrality (0.185) - this node is a cross-community bridge._
-- **Why does `package:flutter/material.dart` connect `Community 0` to `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 10`, `Community 11`, `Community 13`, `Community 15`, `Community 17`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 22`, `Community 23`, `Community 25`, `Community 29`?**
-  _High betweenness centrality (0.180) - this node is a cross-community bridge._
+  _High betweenness centrality (0.212) - this node is a cross-community bridge._
 - **Why does `now` connect `Community 1` to `Community 2`, `Community 6`, `Community 8`, `Community 9`, `Community 11`, `Community 12`, `Community 14`, `Community 47`, `Community 16`, `Community 24`, `Community 26`, `Community 63`?**
-  _High betweenness centrality (0.153) - this node is a cross-community bridge._
+  _High betweenness centrality (0.151) - this node is a cross-community bridge._
+- **Why does `package:flutter/material.dart` connect `Community 0` to `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 10`, `Community 11`, `Community 13`, `Community 15`, `Community 17`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 22`, `Community 23`, `Community 25`, `Community 29`?**
+  _High betweenness centrality (0.136) - this node is a cross-community bridge._
 - **Are the 393 inferred relationships involving `json()` (e.g. with `doBalance()` and `getAccessToken()`) actually correct?**
   _`json()` has 393 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 300 inferred relationships involving `dispatch()` (e.g. with `tick()` and `preflight()`) actually correct?**
