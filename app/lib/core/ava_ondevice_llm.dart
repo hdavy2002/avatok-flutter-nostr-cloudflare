@@ -190,6 +190,12 @@ class AvaOnDeviceLlm {
   /// email via the Analytics envelope) so a failed load is debuggable remotely.
   String lastDiag = '';
 
+  /// How many times we've actually loaded the model this process, and when it
+  /// last became ready — so telemetry can tell a normal first load from the OS
+  /// evicting the model and forcing a reload.
+  int _loadCount = 0;
+  DateTime? _lastReadyAt;
+
   bool get isReady =>
       _lm != null &&
       status.value == OnDeviceStatus.ready &&
@@ -207,9 +213,17 @@ class AvaOnDeviceLlm {
       // Owner asked to remove the previous model(s) — reclaim their weights.
       await _purgeModels(kPurgeSlugs);
 
+      _loadCount++;
+      final secsSinceReady = _lastReadyAt == null
+          ? -1
+          : DateTime.now().difference(_lastReadyAt!).inSeconds;
       await Analytics.capture('ondevice_load_start', {
         'candidates': kCandidates.map((c) => c.slug).join(','),
         'mem': await _memInfo(),
+        'load_n': _loadCount,
+        // A 2nd+ load means the model was unloaded/evicted since last ready.
+        'cold_reload': _loadCount > 1,
+        'secs_since_ready': secsSinceReady,
       });
 
       final diag = StringBuffer();
@@ -277,10 +291,12 @@ class AvaOnDeviceLlm {
             status.value = OnDeviceStatus.ready;
             statusLine.value = 'Ready — ${cand.label} (on-device)';
             lastError = null;
+            _lastReadyAt = DateTime.now();
             final okProps = <String, Object>{
               'slug': cand.slug,
               'vision': cand.vision,
               'ms': sw.elapsedMilliseconds,
+              'load_n': _loadCount,
             };
             okProps.addAll(await _deviceSnapshot());
             await Analytics.capture('ondevice_init_ok', okProps);
