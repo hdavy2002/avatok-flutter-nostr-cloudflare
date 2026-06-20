@@ -9,6 +9,7 @@ import '../../core/ava_local_mode.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/brain_api.dart';
 import '../../core/config.dart';
@@ -180,10 +181,12 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       _addAva("I don't have anything about that in your on-device memory yet.");
       return;
     }
-    final ctx = hits.map((h) => '• ${h.content}').join('\n');
+    // Cap RAG + memory to a hard token budget so the prompt never bloats as
+    // memory grows (keeps the 350M model responsive).
+    final ctx = AvaPromptBudget.rag(hits.map((h) => '• ${h.content}').join('\n'));
     // Give Ava the "about the user" note so she answers as a personal AI that
     // knows who she's helping — not a generic assistant.
-    final about = await AvaProfileMemory.I.contextBlock();
+    final about = AvaPromptBudget.memory(await AvaProfileMemory.I.contextBlock());
     final reply = await AvaOnDeviceLlm.I.ask(
       text,
       system: about.isEmpty ? null : '${AvaOnDeviceLlm.kChatSystem}\n\n$about',

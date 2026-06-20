@@ -8,6 +8,7 @@ import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import 'ava_turn_controller.dart';
 
@@ -171,8 +172,10 @@ class AvaInvoke {
       });
       return "I don't have anything about that in this device's memory yet.";
     }
-    final ctx = hits.map((h) => '• (${h.source}) ${h.content}').join('\n');
-    final about = await AvaProfileMemory.I.contextBlock();
+    // Hard token budget so the prompt stays small no matter how much memory grows.
+    final ctx = AvaPromptBudget.rag(
+        hits.map((h) => '• (${h.source}) ${h.content}').join('\n'));
+    final about = AvaPromptBudget.memory(await AvaProfileMemory.I.contextBlock());
     final gsw = Stopwatch()..start();
     final reply = await AvaOnDeviceLlm.I.ask(
       query,
