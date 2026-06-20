@@ -437,9 +437,20 @@ class AvaOnDeviceLlm {
   // ── Intent routing ───────────────────────────────────────────────────────────
 
   Future<RouteDecision> route(String request) async {
+    // Fast-path: a confident phrase match for an explicit app action skips a
+    // whole model generation (faster) AND stops the tiny model mis-routing an
+    // obvious "check my email" to LOCAL where it would hallucinate.
+    final kw = _keywordRoute(request);
+    if (kw != null) {
+      // ignore: unawaited_futures
+      Analytics.capture('ondevice_route',
+          {'scope': kw.scope.name, 'source': 'keyword', 'ms': 0});
+      return kw;
+    }
     if (!await ensureReady()) {
       return const RouteDecision(RouteScope.cloud, 'unavailable');
     }
+    final sw = Stopwatch()..start();
     try {
       final res = await _lm!.generateCompletion(
         messages: [
@@ -461,11 +472,37 @@ class AvaOnDeviceLlm {
       } else {
         scope = RouteScope.local;
       }
+      // ignore: unawaited_futures
+      Analytics.capture('ondevice_route', {
+        'scope': scope.name,
+        'source': 'model',
+        'ms': sw.elapsedMilliseconds,
+        'tok_per_s': double.parse(res.tokensPerSecond.toStringAsFixed(1)),
+      });
       return RouteDecision(scope, raw.trim());
     } catch (e) {
       AvaLog.I.log('ava_ondevice', 'route FAILED: $e');
       return const RouteDecision(RouteScope.cloud, 'error');
     }
+  }
+
+  /// Conservative keyword router for the obvious app-action cases only — high
+  /// precision, so we short-circuit just when confident. Ambiguous requests
+  /// (especially LOCAL vs CLOUD) still go to the model router. Returns null =
+  /// "ask the model".
+  static RouteDecision? _keywordRoute(String request) {
+    final q = request.toLowerCase();
+    const appsPhrases = <String>[
+      'check my email', 'check email', 'my inbox', 'unread email',
+      'unread emails', 'any new email', 'any new emails', 'send an email',
+      'send email', 'email to ', 'reply to the email', 'my calendar',
+      'schedule a meeting', 'create an event', 'add to my calendar',
+      'my google drive', 'file in my drive', 'in google drive',
+    ];
+    for (final p in appsPhrases) {
+      if (q.contains(p)) return const RouteDecision(RouteScope.apps, 'kw');
+    }
+    return null;
   }
 
   // ── Vision (image → caption) ─────────────────────────────────────────────────
