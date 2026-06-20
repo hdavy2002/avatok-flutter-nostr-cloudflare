@@ -348,6 +348,8 @@ class AvaOnDeviceLlm {
           completionMode: CompletionMode.local,
         ),
       );
+      // ignore: unawaited_futures
+      _emitGen('chat', res, maxTokens: maxTokens, ctxChars: context?.length ?? 0);
       if (!res.success) {
         return const OnDeviceReply(text: 'No response.', ok: false);
       }
@@ -407,6 +409,9 @@ class AvaOnDeviceLlm {
 
       final done = streamed.result.then((res) {
         sub.cancel();
+        // ignore: unawaited_futures
+        _emitGen('chat_stream', res,
+            maxTokens: maxTokens, ctxChars: context?.length ?? 0);
         final cleaned =
             stripThink(buf.isNotEmpty ? buf.toString() : res.response);
         return OnDeviceReply(
@@ -561,8 +566,17 @@ class AvaOnDeviceLlm {
 
   Future<List<double>> embed(String text) async {
     if (!await ensureReady()) return const [];
+    final sw = Stopwatch()..start();
     try {
       final res = await _lm!.generateEmbedding(text: text);
+      // ignore: unawaited_futures
+      Analytics.capture('ondevice_embed', {
+        'slug': activeSlug ?? '',
+        'ok': res.success,
+        'ms': sw.elapsedMilliseconds,
+        'dims': res.success ? res.embeddings.length : 0,
+        'chars': text.length,
+      });
       return res.success ? res.embeddings : const [];
     } catch (e) {
       AvaLog.I.log('ava_ondevice', 'embed FAILED: $e');
@@ -606,6 +620,26 @@ class AvaOnDeviceLlm {
         totalTimeMs: res.totalTimeMs,
         totalTokens: res.totalTokens,
       );
+
+  /// Emit a per-generation perf event (tokens/sec, time-to-first-token, total
+  /// ms, token count) so on-device speed is watchable remotely. The user's email
+  /// rides automatically via the Analytics envelope. Best-effort, never throws.
+  Future<void> _emitGen(String mode, CactusCompletionResult res,
+      {int maxTokens = 0, int ctxChars = 0}) async {
+    try {
+      await Analytics.capture('ondevice_generate', {
+        'mode': mode,
+        'slug': activeSlug ?? '',
+        'ok': res.success,
+        'max_tokens': maxTokens,
+        'ctx_chars': ctxChars,
+        'tokens': res.totalTokens,
+        'tok_per_s': double.parse(res.tokensPerSecond.toStringAsFixed(1)),
+        'ttft_ms': res.timeToFirstTokenMs.round(),
+        'total_ms': res.totalTimeMs.round(),
+      });
+    } catch (_) {}
+  }
 
   static String stripThink(String s) {
     var out = s;

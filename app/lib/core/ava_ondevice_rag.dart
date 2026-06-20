@@ -32,6 +32,7 @@ import 'package:cactus/cactus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
 
+import 'analytics.dart';
 import 'ava_log.dart';
 import 'ava_ondevice_llm.dart';
 
@@ -83,6 +84,7 @@ class AvaOnDeviceRag {
     final text = content.trim();
     if (text.isEmpty) return false;
     if (!await ensureReady()) return false;
+    final sw = Stopwatch()..start();
     try {
       ingestStatus.value = 'Ingesting “$name”…';
       await _rag.storeDocument(
@@ -92,6 +94,12 @@ class AvaOnDeviceRag {
         fileSize: text.length,
       );
       await _refreshCount();
+      // ignore: unawaited_futures
+      Analytics.capture('ondevice_rag_ingest', {
+        'ms': sw.elapsedMilliseconds,
+        'chars': text.length,
+        'docs': docCount.value,
+      });
       ingestStatus.value = 'Ingested “$name” ✓ (${docCount.value} in memory)';
       AvaLog.I.log('ava_ondevice', 'ingested "$name" (${text.length} chars)');
       return true;
@@ -216,17 +224,32 @@ class AvaOnDeviceRag {
   /// Vector search. Returns top-[limit] chunks, most similar first.
   Future<List<RagHit>> search(String query, {int limit = 5}) async {
     if (!await ensureReady()) return const [];
+    final sw = Stopwatch()..start();
     try {
       final results = await _rag.search(text: query, limit: limit);
-      return results
+      final hits = results
           .map((r) => RagHit(
                 content: r.chunk.content,
                 distance: r.distance,
                 source: r.chunk.document.target?.fileName ?? 'memory',
               ))
           .toList(growable: false);
+      // ignore: unawaited_futures
+      Analytics.capture('ondevice_rag_search', {
+        'ms': sw.elapsedMilliseconds,
+        'hits': hits.length,
+        'query_chars': query.length,
+        'docs': docCount.value,
+        if (hits.isNotEmpty)
+          'best_distance':
+              double.parse(hits.first.distance.toStringAsFixed(3)),
+      });
+      return hits;
     } catch (e) {
       AvaLog.I.log('ava_ondevice', 'search FAILED: $e');
+      // ignore: unawaited_futures
+      Analytics.capture('ondevice_rag_search',
+          {'ms': sw.elapsedMilliseconds, 'hits': 0, 'error': 1});
       return const [];
     }
   }

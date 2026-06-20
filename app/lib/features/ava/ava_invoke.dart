@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../core/analytics.dart';
 import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_local_replies.dart';
@@ -83,28 +84,69 @@ class AvaInvoke {
   ///             nothing matches, say so instead of inventing an answer.
   /// Returns the reply text, or null to mean "escalate to cloud".
   static Future<String?> _localAnswer(String request) async {
+    final total = Stopwatch()..start();
     final q = request.replaceAll(RegExp(r'@ava!?', caseSensitive: false), '').trim();
     final query = q.isEmpty ? request : q;
 
+    final rsw = Stopwatch()..start();
     final decision = await AvaOnDeviceLlm.I.route(query);
+    final routeMs = rsw.elapsedMilliseconds;
     AvaLog.I.log('ava', 'route=${decision.scope} q="$query"');
 
     // APPS: the user wants an action in a connected app (check/send email, etc.).
     if (decision.isApps) {
       final reply = await AppsService.I.run(query);
+      // ignore: unawaited_futures
+      Analytics.capture('ava_local_turn', {
+        'scope': 'apps',
+        'route_ms': routeMs,
+        'total_ms': total.elapsedMilliseconds,
+        'answered': reply.isNotEmpty,
+      });
       return reply.isNotEmpty ? reply : null; // empty → let the cloud try
     }
 
     // CLOUD: real reasoning/analysis belongs on the server.
-    if (decision.isCloud) return null;
+    if (decision.isCloud) {
+      // ignore: unawaited_futures
+      Analytics.capture('ava_local_turn', {
+        'scope': 'cloud',
+        'route_ms': routeMs,
+        'total_ms': total.elapsedMilliseconds,
+        'escalated': true,
+      });
+      return null;
+    }
 
     // LOCAL: grounded retrieval from on-device memory.
+    final ssw = Stopwatch()..start();
     final hits = await AvaOnDeviceRag.I.search(query, limit: 5);
+    final searchMs = ssw.elapsedMilliseconds;
     if (hits.isEmpty) {
+      // ignore: unawaited_futures
+      Analytics.capture('ava_local_turn', {
+        'scope': 'local',
+        'route_ms': routeMs,
+        'search_ms': searchMs,
+        'hits': 0,
+        'total_ms': total.elapsedMilliseconds,
+      });
       return "I don't have anything about that in this device's memory yet.";
     }
     final ctx = hits.map((h) => '• (${h.source}) ${h.content}').join('\n');
+    final gsw = Stopwatch()..start();
     final reply = await AvaOnDeviceLlm.I.ask(query, context: ctx, maxTokens: 160);
+    final genMs = gsw.elapsedMilliseconds;
+    // ignore: unawaited_futures
+    Analytics.capture('ava_local_turn', {
+      'scope': 'local',
+      'route_ms': routeMs,
+      'search_ms': searchMs,
+      'gen_ms': genMs,
+      'hits': hits.length,
+      'ok': reply.ok,
+      'total_ms': total.elapsedMilliseconds,
+    });
     if (reply.ok && reply.text.isNotEmpty) return reply.text;
     return ctx; // generation failed but we have real matches — show those
   }
