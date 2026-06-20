@@ -10,8 +10,10 @@ import 'package:file_picker/file_picker.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_ai_client.dart';
+import '../../core/ava_local_mode.dart';
 import '../../core/ava_log.dart';
 import '../../core/ava_memory/local_index.dart';
+import '../../core/ava_ondevice_rag.dart';
 import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
@@ -305,7 +307,26 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     });
     _jumpToEnd();
     if (!ans.blocked) _streamIn(avaMsg);
+    // Make this chat findable later. Index both turns into the on-device store
+    // (so @ava and AvaChat can recall it offline) and the user's cloud File
+    // Search store. On-device only when Local Ava AI is loaded, so we never
+    // trigger a model download just from chatting.
+    _ingestTurn('You', t);
+    if (!ans.blocked) _ingestTurn('Ava', answer);
     _persist(); // save history (local + D1) after each completed turn
+  }
+
+  /// Index one chat line into on-device memory (when Local Ava AI is loaded) and
+  /// the user's cloud File Search store. Fire-and-forget; never blocks the chat.
+  void _ingestTurn(String who, String text) {
+    final line = text.trim();
+    if (line.isEmpty) return;
+    if (AvaLocalMode.I.isActive) {
+      // ignore: unawaited_futures
+      AvaOnDeviceRag.I.ingestText(name: 'avachat', content: '$who: $line');
+    }
+    // ignore: unawaited_futures
+    RagService.I.ingestText('$who: $line', name: 'avachat');
   }
 
   /// Snap any partially-revealed message to its full text (and stop the timer),
