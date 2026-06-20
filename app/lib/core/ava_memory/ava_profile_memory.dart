@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart' show Variable;
 
 import '../analytics.dart';
@@ -126,6 +128,18 @@ class AvaProfileMemory {
           'ON CONFLICT(topic) DO UPDATE SET hits=hits+1, last_at=?2',
           [topic, now.millisecondsSinceEpoch],
         );
+        // Surface "Ava is getting smarter" milestones: the first time a topic
+        // appears, and again once it's confirmed enough to be a real interest.
+        final rows = await Db.I
+            .customSelect('SELECT hits FROM ava_topics WHERE topic = ?1',
+                variables: [Variable<String>(topic)])
+            .get();
+        final hits = rows.isNotEmpty ? rows.first.read<int>('hits') : 1;
+        if (hits == 1) {
+          _emitLearned('interest_seen', topic, _confidence(1), 1);
+        } else if (hits == kConfirmEvidence) {
+          _emitLearned('interest_confirmed', topic, _confidence(hits), hits);
+        }
       }
 
       final lower = t.toLowerCase();
@@ -172,11 +186,26 @@ class AvaProfileMemory {
               .get())
           .map((r) => r.read<String>('value'))
           .toList();
-      final topics = (await db
-              .customSelect('SELECT topic FROM ava_topics ORDER BY hits DESC LIMIT 6')
-              .get())
-          .map((r) => r.read<String>('topic'))
-          .toList();
+      // Topics with CONFIDENCE (evidence) + DECAY (recency): a one-off comment
+      // never makes it in, and an interest the user stopped raising fades out —
+      // so Ava reflects who the user is NOW, not a pile of stale facts.
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final topicRows = await db
+          .customSelect('SELECT topic, hits, last_at FROM ava_topics ORDER BY hits DESC LIMIT 24')
+          .get();
+      final scored = <MapEntry<String, double>>[];
+      for (final r in topicRows) {
+        final topic = r.read<String>('topic');
+        final hits = r.read<int>('hits');
+        final lastAt = r.read<int>('last_at');
+        final days = (nowMs - lastAt) / 86400000.0;
+        if (hits < 2 && days > 7) continue; // forget one-off mentions
+        final score = _confidence(hits) * _recency(days);
+        if (score < 0.12) continue; // decayed away
+        scored.add(MapEntry(topic, score));
+      }
+      scored.sort((a, b) => b.value.compareTo(a.value));
+      final topics = scored.take(6).map((e) => e.key).toList();
       final traits = _synthTraits(topics, prefs);
       final hours = await _activeHours();
 
@@ -212,6 +241,28 @@ class AvaProfileMemory {
   }
 
   // ── Layer 4: Traits (derived from habits by simple rules) ─────────────────────
+
+  /// Evidence count at which a topic is treated as a confirmed interest.
+  static const int kConfirmEvidence = 5;
+
+  /// Confidence in a learned fact from how many times we've seen it. One mention
+  /// is weak (~12%); it climbs fast and saturates (47 mentions ≈ 99.7%).
+  static double _confidence(int hits) =>
+      double.parse((1 - math.exp(-hits / 8.0)).toStringAsFixed(2));
+
+  /// Recency weight — a fact the user stopped raising decays (≈45-day half-life)
+  /// so Ava forgets stale interests instead of hoarding them forever.
+  static double _recency(double days) => math.exp(-days / 45.0);
+
+  void _emitLearned(String type, String value, double confidence, int evidence) {
+    // ignore: unawaited_futures
+    Analytics.capture('ava_memory_learned', {
+      'type': type,
+      'value': value,
+      'confidence': confidence,
+      'evidence_count': evidence,
+    });
+  }
 
   List<String> _synthTraits(List<String> topics, List<String> prefs) {
     final t = topics.map((e) => e.toLowerCase()).toList();
