@@ -15,6 +15,7 @@ import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_memory/local_index.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_quality.dart';
 import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
@@ -269,6 +270,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     if (t.isEmpty || _busy) return;
     _input.clear();
     _completeReveal(); // snap any in-progress typewriter to full before a new turn
+    // Correction signal: prior turn was Ava (me == false) and this is pushback.
+    final prevWasAva = _msgs.isNotEmpty && !_msgs.last.me;
+    AvaQuality.maybeCorrection(surface: 'companion', prevWasAva: prevWasAva, text: t);
     setState(() {
       _msgs.add(_CompanionMsg('u${DateTime.now().microsecondsSinceEpoch}', t, true));
       _busy = true;

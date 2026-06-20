@@ -8,6 +8,7 @@ import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_quality.dart';
 import 'ava_turn_controller.dart';
 
 /// AvaInvoke (Phase 3 — In-Thread Ava Spine).
@@ -100,7 +101,29 @@ class AvaInvoke {
 
     // APPS: the user wants an action in a connected app (check/send email, etc.).
     if (decision.isApps) {
+      final tsw = Stopwatch()..start();
       final reply = await AppsService.I.run(query);
+      final toolMs = tsw.elapsedMilliseconds;
+      final lower = reply.toLowerCase();
+      final succeeded = reply.isNotEmpty &&
+          !lower.startsWith('top up') &&
+          !lower.contains('something went wrong');
+      AvaQuality.tool(
+        tool: AvaQuality.toolGuess(query),
+        succeeded: succeeded,
+        ms: toolMs,
+        reason: succeeded
+            ? 'ok'
+            : (lower.contains('top up') ? 'premium_required' : 'error'),
+      );
+      AvaQuality.answer(
+        surface: 'ava_thread',
+        source: 'tool',
+        grounded: succeeded,
+        sourcesFound: succeeded ? 1 : 0,
+        ok: succeeded,
+        userText: query,
+      );
       // ignore: unawaited_futures
       Analytics.capture('ava_local_turn', {
         'scope': 'apps',
@@ -128,6 +151,13 @@ class AvaInvoke {
     final hits = await AvaOnDeviceRag.I.search(query, limit: 5);
     final searchMs = ssw.elapsedMilliseconds;
     if (hits.isEmpty) {
+      AvaQuality.answer(
+        surface: 'ava_thread',
+        source: 'llm',
+        grounded: false,
+        sourcesFound: 0,
+        userText: query,
+      );
       // ignore: unawaited_futures
       Analytics.capture('ava_local_turn', {
         'scope': 'local',
@@ -148,6 +178,18 @@ class AvaInvoke {
       maxTokens: 160,
     );
     final genMs = gsw.elapsedMilliseconds;
+    AvaQuality.answer(
+      surface: 'ava_thread',
+      source: about.isEmpty ? 'rag' : 'hybrid',
+      grounded: true,
+      citations: hits.length,
+      memoryUsed: about.isNotEmpty,
+      sourcesFound: hits.length,
+      ok: reply.ok,
+      systemText: about,
+      ragText: ctx,
+      userText: query,
+    );
     // ignore: unawaited_futures
     Analytics.capture('ava_local_turn', {
       'scope': 'local',

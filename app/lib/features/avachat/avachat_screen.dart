@@ -9,6 +9,7 @@ import '../../core/ava_local_mode.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_quality.dart';
 import '../../core/brain_api.dart';
 import '../../core/config.dart';
 import '../../core/ui/zine.dart';
@@ -104,6 +105,10 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     final text = (preset ?? _input.text).trim();
     if (text.isEmpty || _thinking) return;
     _input.clear();
+    // If the prior turn was Ava and this looks like a correction, log it —
+    // corrections-per-100-messages is a top quality signal.
+    final prevWasAva = _msgs.isNotEmpty && !_msgs.last.mine;
+    AvaQuality.maybeCorrection(surface: 'avachat', prevWasAva: prevWasAva, text: text);
     setState(() { _msgs.add(_ChatMsg(true, text)); _thinking = true; });
     _jump();
 
@@ -137,7 +142,29 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       final ok = await _confirmAction(text);
       if (!mounted) return;
       if (!ok) { _addAva('Okay, cancelled.'); return; }
-      _addAva(await AppsService.I.run(text));
+      final tsw = Stopwatch()..start();
+      final res = await AppsService.I.run(text);
+      final lower = res.toLowerCase();
+      final succeeded = res.isNotEmpty &&
+          !lower.startsWith('top up') &&
+          !lower.contains('something went wrong');
+      AvaQuality.tool(
+        tool: AvaQuality.toolGuess(text),
+        succeeded: succeeded,
+        ms: tsw.elapsedMilliseconds,
+        reason: succeeded
+            ? 'ok'
+            : (lower.contains('top up') ? 'premium_required' : 'error'),
+      );
+      AvaQuality.answer(
+        surface: 'avachat',
+        source: 'tool',
+        grounded: succeeded,
+        sourcesFound: succeeded ? 1 : 0,
+        ok: succeeded,
+        userText: text,
+      );
+      _addAva(res);
       return;
     }
     if (decision.isCloud) { await _handleCloud(text); return; }
@@ -145,6 +172,10 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     final hits = await AvaOnDeviceRag.I.search(text, limit: 5);
     if (!mounted) return;
     if (hits.isEmpty) {
+      AvaQuality.answer(
+        surface: 'avachat', source: 'llm', grounded: false,
+        sourcesFound: 0, userText: text,
+      );
       _addAva("I don't have anything about that in your on-device memory yet.");
       return;
     }
@@ -159,6 +190,18 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       maxTokens: 96,
     );
     if (!mounted) return;
+    AvaQuality.answer(
+      surface: 'avachat',
+      source: about.isEmpty ? 'rag' : 'hybrid',
+      grounded: true,
+      citations: hits.length,
+      memoryUsed: about.isNotEmpty,
+      sourcesFound: hits.length,
+      ok: reply.ok,
+      systemText: about,
+      ragText: ctx,
+      userText: text,
+    );
     _addAva(
       reply.ok && reply.text.isNotEmpty ? reply.text : ctx,
       sources: hits
