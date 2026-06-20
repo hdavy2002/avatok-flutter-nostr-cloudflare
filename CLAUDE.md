@@ -156,11 +156,22 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 - **One issue per commit.** Each commit fixes a single issue, and the message must start
   with the issue ID, e.g. `[ISSUE-123] Fix null check in payout handler`. This keeps the
   history bisectable if the final merge build fails.
-- **Never run `git add` or `git commit` directly.** Always serialize git writes through
-  `flock` using this exact lock path:
+- **All git writes go through the mandated wrapper — never run `git add` or `git commit`
+  directly.** The wrapper serializes every agent's commits through one shared advisory
+  lock and works on both macOS and Linux:
 
   ```bash
-  flock /tmp/repo.gitlock bash -c 'git add -A && git commit -m "<your message>"'
+  python3 scripts/git_safe_commit.py "[ISSUE-123] short description"
   ```
 
-- If you hit a `.git/index.lock` error, do NOT delete the lock file — wait and retry.
+- **Do NOT use the `flock` command.** It is not installed on macOS (where commits run via
+  Desktop Commander), so it fails silently and breaks serialization. `scripts/git_safe_commit.py`
+  (which uses `fcntl.flock` on `/tmp/repo.gitlock`) is the ONLY approved method — every
+  agent must use it so the lock is shared and consistent.
+- **Stale `.git/index.lock` is handled by the wrapper.** While holding the advisory lock,
+  it removes an orphaned `index.lock` only after confirming no `git` process is running;
+  if a git process is live, it waits. Never delete `index.lock` by hand, and do NOT rely
+  on a plain wait-and-retry loop (a 0-byte orphaned lock never releases on its own).
+- **Run all git operations on the host filesystem via Desktop Commander.** Sandbox mounts
+  cannot write to `.git`, and the shared lock only means anything if every agent commits
+  on the same host using the same `/tmp/repo.gitlock`.
