@@ -22,6 +22,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cactus/cactus.dart';
@@ -88,6 +89,12 @@ class AvaOnDeviceLlm {
   /// Direct weights URL (official Cactus-Compute HF release, int4).
   static const String kModelDirectUrl =
       'https://huggingface.co/Cactus-Compute/Qwen3.5-0.8B/resolve/v1.14/weights/qwen3.5-0.8b-int4.zip';
+
+  /// The model MANIFEST. It lives at the HF repo ROOT (NOT inside the weights
+  /// zip) and the engine REQUIRES it to identify the architecture — without it
+  /// `cactus_init` returns null. We fetch it separately into the model folder.
+  static const String kConfigUrl =
+      'https://huggingface.co/Cactus-Compute/Qwen3.5-0.8B/resolve/v1.14/config.json';
 
   /// Previous model — deleted on first run of the new one to reclaim ~400 MB.
   static const String kOldModelSlug = 'qwen3-0.6';
@@ -184,6 +191,15 @@ class AvaOnDeviceLlm {
           throw Exception('Download/extract failed from $kModelDirectUrl');
         }
       }
+
+      // The engine needs config.json (the architecture manifest) NEXT TO the
+      // weights — it lives outside the zip, so fetch it on its own. Cheap, and it
+      // repairs an existing weights-only folder without re-downloading the model.
+      final configOk = await _ensureConfig(modelPath);
+      await Analytics.capture('ondevice_config', {
+        'model_path': modelPath,
+        'ok': configOk,
+      });
 
       // Diagnostics: exactly what landed on disk (this is what tells us whether a
       // failure is an extraction problem vs the native runtime rejecting the model).
@@ -451,6 +467,34 @@ class AvaOnDeviceLlm {
     final open = out.indexOf('<think>');
     if (open >= 0) out = out.substring(0, open);
     return out.trim();
+  }
+
+  /// Ensure `config.json` (the architecture manifest) is present next to the
+  /// weights. Downloads it from the HF repo root if missing. Returns true if the
+  /// file is present afterwards. Best-effort; never throws.
+  Future<bool> _ensureConfig(String modelPath) async {
+    try {
+      final f = File('$modelPath/config.json');
+      if (await f.exists() && await f.length() > 0) return true;
+      final client = HttpClient();
+      try {
+        final req = await client.getUrl(Uri.parse(kConfigUrl));
+        final resp = await req.close();
+        if (resp.statusCode != 200) {
+          AvaLog.I.log('ava_ondevice', 'config.json HTTP ${resp.statusCode}');
+          return false;
+        }
+        final body = await resp.transform(utf8.decoder).join();
+        await f.writeAsString(body);
+        AvaLog.I.log('ava_ondevice', 'config.json written (${body.length} B)');
+        return true;
+      } finally {
+        client.close(force: true);
+      }
+    } catch (e) {
+      AvaLog.I.log('ava_ondevice', 'config.json fetch FAILED: $e');
+      return false;
+    }
   }
 
   static String _cap(String s, int n) => s.length > n ? s.substring(0, n) : s;
