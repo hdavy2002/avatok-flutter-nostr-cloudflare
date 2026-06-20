@@ -78,7 +78,29 @@ class CompanionSessionStore {
     ''');
     await db.customStatement(
         'CREATE INDEX IF NOT EXISTS ava_chat_sessions_arch ON ava_chat_sessions(archived, updated_at);');
+    // Tombstones: session_ids the user deleted on THIS device. syncFromCloud()
+    // consults this so a deleted session is never resurrected by a stale cloud
+    // copy (e.g. when the /chat/history/meta delete was lost). Local-first, so a
+    // delete sticks even fully offline / if the server delete fails.
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS ava_chat_tombstones (
+        session_id TEXT PRIMARY KEY,
+        deleted_at INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
     _schemaReady = true;
+  }
+
+  /// Session ids the user has deleted locally — never re-add these on cloud sync.
+  Future<Set<String>> _tombstonedIds() async {
+    try {
+      final rows = await Db.I
+          .customSelect('SELECT session_id FROM ava_chat_tombstones')
+          .get();
+      return rows.map((r) => r.read<String>('session_id')).toSet();
+    } catch (_) {
+      return const <String>{};
+    }
   }
 
   // ── reads ──────────────────────────────────────────────────────────────────
@@ -148,6 +170,10 @@ class CompanionSessionStore {
     final msgsJson = jsonEncode(messages);
     try {
       await _ensureSchema();
+      // A live save means this session is wanted — clear any stale tombstone so
+      // it isn't silently dropped on the next cloud sync.
+      await Db.I.customStatement(
+          'DELETE FROM ava_chat_tombstones WHERE session_id = ?1', [sessionId]);
       await Db.I.customStatement(
         'INSERT INTO ava_chat_sessions (session_id, persona, title, preview, updated_at, messages_json) '
         'VALUES (?1, ?2, ?3, ?4, ?5, ?6) '
@@ -192,6 +218,13 @@ class CompanionSessionStore {
       await _ensureSchema();
       await Db.I.customStatement(
           'DELETE FROM ava_chat_sessions WHERE session_id = ?1', [sessionId]);
+      // Record a tombstone so syncFromCloud() can never bring this session back,
+      // even if the cloud delete below fails or the server copy lingers.
+      await Db.I.customStatement(
+        'INSERT INTO ava_chat_tombstones (session_id, deleted_at) VALUES (?1, ?2) '
+        'ON CONFLICT(session_id) DO UPDATE SET deleted_at=?2',
+        [sessionId, DateTime.now().millisecondsSinceEpoch],
+      );
     } catch (e) {
       AvaLog.I.log('avachat', 'local delete failed: $e');
     }
@@ -224,6 +257,7 @@ class CompanionSessionStore {
   Future<void> syncFromCloud() async {
     try {
       await _ensureSchema();
+      final tombstoned = await _tombstonedIds();
       for (final archived in const [false, true]) {
         final res = await ApiAuth.getSigned(
             '${_url(AvaApi.chatHistory)}${archived ? '?archived=1' : ''}');
@@ -234,6 +268,8 @@ class CompanionSessionStore {
           if (s is! Map) continue;
           final sid = (s['session_id'] ?? '').toString();
           if (sid.isEmpty) continue;
+          // Never resurrect a session the user deleted on this device.
+          if (tombstoned.contains(sid)) continue;
           final updated = (s['updated_at'] as num?)?.toInt() ?? 0;
           // Only touch rows we don't have or whose cloud copy is newer. We do not
           // overwrite the local transcript here (messages load lazily on open).
