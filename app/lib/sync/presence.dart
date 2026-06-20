@@ -46,6 +46,30 @@ class PresenceChannel {
   void sendDelivered(int ts) => _send({'type': 'delivered', 'ts': ts, 'who': me});
   void sendOnline() => _send({'type': 'online', 'who': me});
 
+  /// High-frequency live-location tick (WhatsApp-style). Rides the ephemeral
+  /// presence room — deliberately NOT the durable message log — so a moving
+  /// sender doesn't append hundreds of GPS rows into the InboxDO per share.
+  /// The durable `t:'live'` bubble (sent over the message path) anchors the
+  /// share; these frames just move its pin in place on every recipient.
+  void sendLiveLoc(String id, double lat, double lng,
+      {double? heading, double? speed, int? until, int? ts}) {
+    _send({
+      'type': 'liveloc',
+      'id': id,
+      'lat': lat,
+      'lng': lng,
+      if (heading != null) 'hdg': heading,
+      if (speed != null) 'spd': speed,
+      if (until != null) 'until': until,
+      'ts': ts ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      'who': me,
+    });
+  }
+
+  /// Tell the room a live-location share has ended (sender stopped or expired).
+  void sendLiveStop(String id) =>
+      _send({'type': 'livestop', 'id': id, 'who': me});
+
   void _send(Map<String, dynamic> o) {
     try { _ws?.sink.add(jsonEncode(o)); } catch (_) {}
   }

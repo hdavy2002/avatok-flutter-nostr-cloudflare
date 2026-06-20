@@ -45,10 +45,13 @@ import '../../core/remote_config.dart';
 import '../ava/ava_invoke.dart';
 import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
+import '../../core/analytics.dart';
+import '../../core/live_location_service.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
 import 'contacts.dart';
 import 'data.dart';
+import 'live_location.dart';
 import 'group_info_screen.dart';
 import 'media.dart';
 import 'media_library_screen.dart';
@@ -121,6 +124,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Presence: typing + read receipts (ephemeral, over the signaling WS).
   PresenceChannel? _presence;
+  // Live location (WhatsApp-style): one session per share id. The pin moves via
+  // ephemeral 'liveloc' presence frames; the durable 't:'live'' bubble anchors
+  // it. _liveBroadcaster is non-null only while *I* am actively sharing.
+  final Map<String, LiveLocationSession> _live = {};
+  LiveLocationBroadcaster? _liveBroadcaster;
+  final Map<String, int> _liveViewTelemetryTs = {}; // throttle receiver views
+  int _liveTickTelemetryTs = 0; // throttle sender tick telemetry
   bool _peerTyping = false;
   String? _typingWho;
   int _peerReadTs = 0;
@@ -318,6 +328,48 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } else if (e['type'] == 'delivered') {
       final ts = (e['ts'] as num?)?.toInt() ?? 0;
       if (ts > _peerDeliveredTs) setState(() => _peerDeliveredTs = ts);
+    } else if (e['type'] == 'liveloc') {
+      _onLiveLocTick(e);
+    } else if (e['type'] == 'livestop') {
+      final id = e['id']?.toString();
+      if (id != null) _live[id]?.end();
+    }
+  }
+
+  /// A live-location pin update arrived from the peer. Move the existing session
+  /// in place (the bubble + any open map auto-repaint via their listeners) and
+  /// throttle the "viewed" telemetry to once / 30 s / share.
+  void _onLiveLocTick(Map<String, dynamic> e) {
+    final id = e['id']?.toString();
+    final lat = (e['lat'] as num?)?.toDouble();
+    final lng = (e['lng'] as num?)?.toDouble();
+    if (id == null || lat == null || lng == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final ts = (e['ts'] as num?)?.toInt() ?? now;
+    final until = (e['until'] as num?)?.toInt();
+    final s = _live.putIfAbsent(
+      id,
+      () => LiveLocationSession(
+        id: id,
+        lat: lat,
+        lng: lng,
+        until: until ?? (now + 3600),
+        mine: false,
+        name: e['who']?.toString() ?? widget.chat.name,
+      ),
+    );
+    s.apply(lat, lng, ts,
+        heading: (e['hdg'] as num?)?.toDouble(),
+        speed: (e['spd'] as num?)?.toDouble(),
+        until: until);
+    final last = _liveViewTelemetryTs[id] ?? 0;
+    if (now - last >= 30) {
+      _liveViewTelemetryTs[id] = now;
+      Analytics.capture('live_location_viewed', {
+        'share_id': id,
+        'is_sender': false,
+        'conv_kind': _isGroup ? 'group' : 'dm',
+      });
     }
   }
 
@@ -347,7 +399,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'gmedia') {
@@ -446,7 +498,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'media') {
@@ -616,6 +668,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_convKey != null) DraftStore().set(_convKey!, _ctrl.text.trim());
     _dm?.stop();
     _gdm?.stop();
+    _liveBroadcaster?.stop('disposed');
+    for (final s in _live.values) {
+      s.dispose();
+    }
     _presence?.dispose();
     _typingClear?.cancel();
     _myTypingOff?.cancel();
@@ -928,6 +984,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // ---- special message types: location / contact card / poll / sticker ----
   String _specialCaption(String type, Map<String, dynamic> e) => switch (type) {
         'loc' => '📍 Location',
+        'live' => '📍 Live location',
         'card' => '👤 ${e['name'] ?? 'Contact'}',
         'poll' => '📊 ${e['q'] ?? 'Poll'}',
         'sticker' => (e['emoji'] ?? '🙂').toString(),
@@ -994,6 +1051,200 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't get location")));
     }
+  }
+
+  // ---- live location (WhatsApp-style) ----------------------------------------
+  /// Pick a duration, grab the first fix, post the durable `t:'live'` bubble, and
+  /// start streaming GPS ticks over the ephemeral presence room.
+  Future<void> _shareLiveLocation() async {
+    final minutes = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Share live location', style: ZineText.cardTitle(size: 18)),
+            const SizedBox(height: 4),
+            Text('Your real-time position updates as you move, until the time runs out or you tap Stop.',
+                style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+            const SizedBox(height: 12),
+            for (final opt in const [
+              ('15 minutes', 15),
+              ('1 hour', 60),
+              ('8 hours', 480),
+            ])
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: PhosphorIcon(PhosphorIcons.broadcast(PhosphorIconsStyle.bold), color: Zine.coral),
+                title: Text(opt.$1, style: ZineText.value(size: 15)),
+                onTap: () => Navigator.pop(ctx, opt.$2),
+              ),
+          ]),
+        ),
+      ),
+    );
+    if (minutes == null) return;
+
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission needed')));
+        Analytics.error(domain: 'location', code: 'perm_denied', screen: 'chat_thread', action: 'live_share');
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition();
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final id = const Uuid().v4();
+      final until = now + minutes * 60;
+
+      final me = LiveLocationSession(
+        id: id,
+        lat: pos.latitude,
+        lng: pos.longitude,
+        until: until,
+        mine: true,
+        name: _myName ?? 'You',
+        heading: pos.heading,
+        speed: pos.speed,
+        lastTs: now,
+      );
+      _live[id] = me;
+
+      // Durable bubble (notifies the peer, survives reconnect/history).
+      _sendSpecial('live', {
+        'id': id,
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'until': until,
+        'name': _myName ?? 'Me',
+      }, '📍 Live location');
+
+      // Stream the moving pin over the ephemeral presence room.
+      _liveBroadcaster?.stop('superseded');
+      _liveBroadcaster = LiveLocationBroadcaster(
+        id: id,
+        untilEpoch: until,
+        onTick: (lat, lng, hdg, spd) {
+          if (!mounted) return;
+          final t = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          me.apply(lat, lng, t, heading: hdg, speed: spd);
+          _presence?.sendLiveLoc(id, lat, lng, heading: hdg, speed: spd, until: until, ts: t);
+          if (t - _liveTickTelemetryTs >= 30) {
+            _liveTickTelemetryTs = t;
+            Analytics.capture('live_location_tick', {
+              'share_id': id,
+              'is_sender': true,
+              'conv_kind': _isGroup ? 'group' : 'dm',
+            });
+          }
+        },
+        onEnd: (reason) {
+          me.end();
+          _presence?.sendLiveStop(id);
+          Analytics.capture('live_location_stopped', {
+            'share_id': id,
+            'reason': reason,
+            'is_sender': true,
+          });
+          if (mounted) setState(() {});
+        },
+      )..start();
+
+      Analytics.capture('live_location_started', {
+        'share_id': id,
+        'duration_min': minutes,
+        'conv_kind': _isGroup ? 'group' : 'dm',
+        'members': _groupMemberCount,
+      });
+      AvaLog.I.log('location', 'live share started id=${id.substring(0, 8)} dur=${minutes}m');
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't start live location")));
+      Analytics.error(domain: 'location', code: 'live_start_failed', message: '$e', screen: 'chat_thread', action: 'live_share');
+    }
+  }
+
+  void _stopLiveShare(String id) {
+    if (_liveBroadcaster?.id == id) {
+      _liveBroadcaster?.stop('manual');
+    } else {
+      _live[id]?.end();
+      _presence?.sendLiveStop(id);
+      Analytics.capture('live_location_stopped', {'share_id': id, 'reason': 'manual', 'is_sender': true});
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Inline live-location bubble: a small OSM preview that re-pins as ticks
+  /// arrive, a live status line, and (for my own share) a STOP affordance.
+  Widget _liveBubble(LiveLocationSession s) {
+    return AnimatedBuilder(
+      animation: s,
+      builder: (context, _) {
+        final active = s.isActive;
+        return GestureDetector(
+          onTap: () => _openLiveMap(s),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(children: [
+                LiveMapView(lat: s.lat, lng: s.lng, width: 220, height: 120, zoom: 15),
+                if (active)
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                          color: Zine.coral,
+                          borderRadius: BorderRadius.circular(100),
+                          border: Border.all(color: Zine.ink, width: 2)),
+                      child: Text('LIVE', style: ZineText.tag(size: 9.5, color: Colors.white)),
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 6),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                PhosphorIcon(
+                    active
+                        ? PhosphorIcons.broadcast(PhosphorIconsStyle.fill)
+                        : PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
+                    color: active ? Zine.coral : Zine.inkSoft,
+                    size: 16),
+                const SizedBox(width: 6),
+                Flexible(child: Text(s.statusLabel(), style: ZineText.value(size: 12.5, color: Zine.blueInk))),
+              ]),
+              if (s.mine && active)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: GestureDetector(
+                    onTap: () => _stopLiveShare(s.id),
+                    child: Text('STOP SHARING', style: ZineText.tag(size: 10, color: Zine.coral)),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openLiveMap(LiveLocationSession s) {
+    Analytics.capture('live_location_opened', {'share_id': s.id, 'is_sender': s.mine});
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => LiveMapScreen(
+        session: s,
+        title: s.mine ? 'Your live location' : '${s.name} · live',
+        onStop: s.mine ? () => _stopLiveShare(s.id) : null,
+        onTelemetry: (ev) => Analytics.capture(ev, {'share_id': s.id, 'is_sender': s.mine}),
+      ),
+    ));
   }
 
   Future<void> _shareContactCard() async {
@@ -1066,6 +1317,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             Text('Location · open in Maps', style: ZineText.value(size: 13.5, color: Zine.blueInk)),
           ]),
         );
+      case 'live':
+        {
+          final id = (e['id'] ?? '').toString();
+          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          final s = _live.putIfAbsent(
+            id,
+            () => LiveLocationSession(
+              id: id,
+              lat: (e['lat'] as num?)?.toDouble() ?? 0,
+              lng: (e['lng'] as num?)?.toDouble() ?? 0,
+              until: (e['until'] as num?)?.toInt() ?? now,
+              mine: m.mine,
+              name: (e['name'] ?? widget.chat.name).toString(),
+            ),
+          );
+          return _liveBubble(s);
+        }
       case 'card':
         return Row(mainAxisSize: MainAxisSize.min, children: [
           Container(
@@ -1724,6 +1992,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             _attachItem(ctx, PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), 'Video', Zine.accents[2], () => _pickVideo(ImageSource.camera)),
             _attachItem(ctx, PhosphorIcons.file(PhosphorIconsStyle.bold), 'File', Zine.accents[3], _pickFile),
             _attachItem(ctx, PhosphorIcons.mapPin(PhosphorIconsStyle.bold), 'Location', Zine.accents[4], _shareLocation),
+            _attachItem(ctx, PhosphorIcons.broadcast(PhosphorIconsStyle.bold), 'Live location', Zine.accents[2], _shareLiveLocation),
             _attachItem(ctx, PhosphorIcons.user(PhosphorIconsStyle.bold), 'Contact', Zine.accents[0], _shareContactCard),
             _attachItem(ctx, PhosphorIcons.chartBar(PhosphorIconsStyle.bold), 'Poll', Zine.accents[1], _createPoll),
             _attachItem(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), 'Sticker', Zine.accents[3], _stickerPicker),
