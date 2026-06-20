@@ -107,16 +107,19 @@ class AvaOnDeviceLlm {
   /// proven fallback so loading can never regress.
   static const List<OnDeviceModel> kCandidates = <OnDeviceModel>[
     OnDeviceModel(
-      'lfm2.5-350m',
-      'LFM2.5-350M',
+      'ava-ai-350',
+      'Ava AI 350',
       vision: false,
-      // Not in the Flutter catalog → pull from HF directly. LFM2 arch IS
-      // supported by the engine, so this loads (unlike Qwen3.5).
+      // Hosted on OUR Cloudflare R2 (avatok-blobs), served publicly via
+      // blossom.avatok.ai with no Worker in the path. This gives the download a
+      // professional "Ava AI 350" name and removes the third-party host
+      // dependency. (Same LFM2.5-350M int4 weights; the engine loads it by the
+      // local folder name = slug, so renaming the slug is safe.)
       zipUrl:
-          'https://huggingface.co/Cactus-Compute/LFM2.5-350M/resolve/main/weights/lfm2.5-350m-int4.zip',
-      zipName: 'lfm2.5-350m-int4.zip',
+          'https://blossom.avatok.ai/models/ava-ai-350/ava-ai-350-int4.zip',
+      zipName: 'ava-ai-350-int4.zip',
       configUrl:
-          'https://huggingface.co/Cactus-Compute/LFM2.5-350M/resolve/main/config.json',
+          'https://blossom.avatok.ai/models/ava-ai-350/config.json',
     ),
     // LFM2-350M — the proven LFM2 generation (it's the text backbone of the
     // LFM2-VL-450M that already loaded), pinned to v1.11. Tried if LFM2.5 won't init.
@@ -134,7 +137,13 @@ class AvaOnDeviceLlm {
   ];
 
   /// Previous models whose weights we delete on first run to reclaim space.
-  static const List<String> kPurgeSlugs = ['lfm2-vl-450m', 'qwen3.5-0.8b'];
+  /// Includes the old 'lfm2.5-350m' folder so devices that fetched it before the
+  /// rename reclaim the space and re-fetch once as the branded 'ava-ai-350'.
+  static const List<String> kPurgeSlugs = [
+    'lfm2-vl-450m',
+    'qwen3.5-0.8b',
+    'lfm2.5-350m',
+  ];
 
   static const String kChatSystem =
       "You are Ava, the user's personal assistant inside the AvaTOK app. Be "
