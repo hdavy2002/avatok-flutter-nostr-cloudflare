@@ -127,6 +127,7 @@ class AvaInvoke {
       // ignore: unawaited_futures
       Analytics.capture('ava_local_turn', {
         'scope': 'apps',
+        'route_raw': decision.raw,
         'route_ms': routeMs,
         'total_ms': total.elapsedMilliseconds,
         'answered': reply.isNotEmpty,
@@ -139,6 +140,7 @@ class AvaInvoke {
       // ignore: unawaited_futures
       Analytics.capture('ava_local_turn', {
         'scope': 'cloud',
+        'route_raw': decision.raw,
         'route_ms': routeMs,
         'total_ms': total.elapsedMilliseconds,
         'escalated': true,
@@ -161,6 +163,7 @@ class AvaInvoke {
       // ignore: unawaited_futures
       Analytics.capture('ava_local_turn', {
         'scope': 'local',
+        'route_raw': decision.raw,
         'route_ms': routeMs,
         'search_ms': searchMs,
         'hits': 0,
@@ -193,6 +196,7 @@ class AvaInvoke {
     // ignore: unawaited_futures
     Analytics.capture('ava_local_turn', {
       'scope': 'local',
+      'route_raw': decision.raw,
       'route_ms': routeMs,
       'search_ms': searchMs,
       'gen_ms': genMs,

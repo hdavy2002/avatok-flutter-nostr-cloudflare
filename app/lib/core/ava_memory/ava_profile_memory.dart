@@ -174,6 +174,7 @@ class AvaProfileMemory {
   /// memories destroys the small model's context. Returns '' when nothing is
   /// known yet (so callers can skip it cleanly).
   Future<String> contextBlock() async {
+    final sw = Stopwatch()..start();
     try {
       await _ensure();
       final db = Db.I;
@@ -226,12 +227,20 @@ class AvaProfileMemory {
       if (hours.isNotEmpty) sb.writeln('- Usually active around: $hours');
       final out = sb.toString().trim();
 
+      // Memory hit-rate breakdown by layer (profile / preference / habit /
+      // trait) + retrieval latency — so we can see WHICH memory type actually
+      // drives usefulness, and that retrieval stays cheap.
       // ignore: unawaited_futures
       Analytics.capture('ava_memory_context', {
         'chars': out.length,
-        'topics': topics.length,
-        'prefs': prefs.length,
-        'traits': traits.length,
+        'ms': sw.elapsedMilliseconds,
+        'profile_hits': prof.length,
+        'pref_hits': prefs.length,
+        'topic_hits': topics.length,
+        'trait_hits': traits.length,
+        'has_name': (prof['name'] ?? '').isNotEmpty,
+        'has_bio': (prof['bio'] ?? '').isNotEmpty,
+        'injected': out.isNotEmpty,
       });
       return out;
     } catch (e) {

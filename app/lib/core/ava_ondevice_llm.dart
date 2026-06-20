@@ -454,8 +454,13 @@ class AvaOnDeviceLlm {
     final kw = _keywordRoute(request);
     if (kw != null) {
       // ignore: unawaited_futures
-      Analytics.capture('ondevice_route',
-          {'scope': kw.scope.name, 'source': 'keyword', 'ms': 0});
+      Analytics.capture('ondevice_route', {
+        'scope': kw.scope.name,
+        'source': 'keyword',
+        'reason': 'matched explicit app phrase',
+        'confidence': 0.9,
+        'ms': 0,
+      });
       return kw;
     }
     if (!await ensureReady()) {
@@ -487,6 +492,8 @@ class AvaOnDeviceLlm {
       Analytics.capture('ondevice_route', {
         'scope': scope.name,
         'source': 'model',
+        'reason': 'on-device intent classifier',
+        'confidence': 0.6,
         'ms': sw.elapsedMilliseconds,
         'tok_per_s': double.parse(res.tokensPerSecond.toStringAsFixed(1)),
       });
