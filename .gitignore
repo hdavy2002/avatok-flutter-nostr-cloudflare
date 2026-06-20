@@ -99,3 +99,6 @@ avatok-app/
 
 # Google Cloud console exports / OAuth client secrets — keep local only, never commit.
 google console/
+
+# graphify report: non-deterministic centrality metrics, churns every rebuild
+graphify-out/GRAPH_REPORT.md
