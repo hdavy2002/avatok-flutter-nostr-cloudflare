@@ -11,9 +11,13 @@ import 'feature_flags.dart';
 /// Central client-side analytics for AvaTOK → PostHog (EU region, project 139917).
 ///
 /// Everything here is best-effort: a telemetry failure must never throw into the
-/// app or block a user action. Identity is the npub/uid (same distinct_id the
-/// Worker backend uses in `worker/src/hooks.ts`), so client + server events
-/// stitch into one person timeline.
+/// app or block a user action. The client identifies the person by their npub
+/// (device identity); the Worker (`worker/src/hooks.ts`) stamps events with the
+/// Clerk user id (`user_…`). Those are DIFFERENT distinct_ids, so client and
+/// server events used to land on separate people. We bridge them two ways once
+/// the Clerk uid is known: [aliasClerk] links the two distinct_ids in PostHog,
+/// and every event also carries it as a `clerk_uid` property so the timelines
+/// can be joined even before the alias propagates.
 ///
 /// Email + phone are now the human-facing account ids, so — by product decision —
 /// they ride on EVERY event (and as person properties) once known: this is what
@@ -41,6 +45,9 @@ class Analytics {
   /// user's telemetry is retrievable by phone/email. Set via [identify]/[setUserKeys].
   static String? _email;
   static String? _phone;
+  /// The Clerk user id (`user_…`) the Worker stamps server-side. Set via
+  /// [aliasClerk] so client + server events can be joined by `clerk_uid`.
+  static String? _clerkUid;
   static int _seq = 0; // session_seq — monotonic per app session
   static String _net = 'unknown'; // wifi|cell|offline
 
@@ -178,6 +185,9 @@ class Analytics {
         // (errors, slow loads, log lines) by their phone or email.
         if (_email != null) 'email': _email!,
         if (_phone != null) 'phone': _phone!,
+        // Clerk uid (the Worker's distinct_id) on every event so client + server
+        // timelines join even before the PostHog alias propagates.
+        if (_clerkUid != null) 'clerk_uid': _clerkUid!,
         'build': kAppBuild,
         'env': kAvatokEnv,
         'net': _net,
@@ -223,6 +233,20 @@ class Analytics {
     try {
       await Posthog().identify(userId: _accountId!, userProperties: _base());
     } catch (_) {}
+  }
+
+  /// Link this person's npub distinct_id to their Clerk uid (`user_…`) so the
+  /// client (identified by npub) and the Worker (which stamps the Clerk uid) land
+  /// on ONE person in PostHog — closing the cross-stack debugging gap. Also keeps
+  /// [_clerkUid] so it rides every subsequent event as a `clerk_uid` property.
+  /// Idempotent and best-effort: no-op when unchanged or analytics isn't ready.
+  static Future<void> aliasClerk(String clerkUid) async {
+    if (clerkUid.isEmpty || clerkUid == _clerkUid) return;
+    _clerkUid = clerkUid;
+    if (!_ready) return;
+    try {
+      await Posthog().alias(alias: clerkUid);
+    } catch (_) {/* alias is best-effort; the clerk_uid property still joins them */}
   }
 
   static Future<void> capture(String event, [Map<String, Object>? properties]) async {
@@ -284,6 +308,7 @@ class Analytics {
     accountKind = 'personal';
     _email = null;
     _phone = null;
+    _clerkUid = null;
     if (prev != null && prev.isNotEmpty) {
       try { await _sec.delete(key: _emailKey(prev)); } catch (_) {}
     }

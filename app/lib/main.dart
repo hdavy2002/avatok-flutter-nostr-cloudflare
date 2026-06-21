@@ -255,6 +255,9 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       AvaLog.I.log('boot', 'clerk currentUser (online) ${DateTime.now().difference(t0).inMilliseconds}ms signedIn=${cu != null}');
       AccountScope.id = cu?.id; // scope the Nostr identity to this account
       if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
+      // Bridge telemetry: link the npub distinct_id to the Clerk uid the Worker
+      // stamps, so client + server events land on one person in PostHog.
+      if (cu?.id != null && cu!.id.isNotEmpty) unawaited(Analytics.aliasClerk(cu.id));
       signedIn = cu != null;
     } catch (_) {}
     // Fresh / signed-out → start at the Welcome hero (step 1), which leads into
@@ -273,6 +276,9 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       final cu = await _clerk.currentUser();
       AvaLog.I.log('boot', 'clerk validate (bg) ${DateTime.now().difference(t0).inMilliseconds}ms signedIn=${cu != null}');
       if (cu == null) { await _signOut(); return; } // session revoked server-side
+      // Bridge npub ↔ Clerk uid for cross-stack telemetry joins (every app open
+      // hits this background-validate path).
+      if (cu.id.isNotEmpty) unawaited(Analytics.aliasClerk(cu.id));
       if (cu.id != AccountScope.id) { // account changed under us — re-route
         AccountScope.id = cu.id;
         await DiskCache.writeGlobal(_kAcct, cu.id);
