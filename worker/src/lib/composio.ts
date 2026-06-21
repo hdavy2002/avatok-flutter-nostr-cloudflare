@@ -196,8 +196,13 @@ export async function executeTool(env: Env, userId: string, slug: string, args: 
 // ---- the Gemini ⇄ Composio function-calling loop ----------------------------
 // Shared by the /api/ava/apps/run route AND the in-chat @ava hook. The model
 // runs on the user's own Gemini key; tools execute on our Composio key.
-const APPS_MODEL = "gemini-3-flash-preview"; // direct Google API — stronger tool-calling
-const APPS_FALLBACK_MODEL = "gemini-2.5-flash"; // fast, thinking-off fallback if g3 errors
+// SPEED: gemini-3-flash-preview, even with thinking minimised, ran the @ava turn
+// at ~3s (simple) to ~14s (with a memory-search tool hop = two sequential calls).
+// gemini-2.5-flash with thinking OFF is a verified ~1s/call, so a tool turn is ~2–3s
+// instead of ~14s. We make it primary; lite is the fast fallback. (gemini-3 can be
+// restored here later if its latency improves — it's competent, just slow today.)
+const APPS_MODEL = "gemini-2.5-flash";
+const APPS_FALLBACK_MODEL = "gemini-2.5-flash-lite";
 
 function textOf(parts: any[]): string {
   return (parts ?? [])

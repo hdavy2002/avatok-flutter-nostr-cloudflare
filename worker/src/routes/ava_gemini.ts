@@ -26,7 +26,9 @@ import { emailFor } from "../lib/identity";
 // Gateway (per-uid metering + caching). If the 3.x partner model is ever down we
 // fall back to Gemini 2.5 Flash-Lite — NEVER Gemma 4 (owner decision: Gemini for
 // everything online). Both have thinking OFF by default → no chain-of-thought leak.
-const CHAT_MODEL = "gemini-3-flash-preview";     // DIRECT Google API id
+// SPEED: gemini-2.5-flash (thinking off) is ~1s vs gemini-3-flash-preview's ~3–5s.
+// gemini-3 stays available but is too slow per call for a chat reply today.
+const CHAT_MODEL = "gemini-2.5-flash";           // DIRECT Google API id (fast, thinking off)
 const FALLBACK_MODEL = "gemini-2.5-flash-lite";  // DIRECT Google API id
 const MAX_TOKENS = 700;
 
