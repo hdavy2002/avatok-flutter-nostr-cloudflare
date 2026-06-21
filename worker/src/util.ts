@@ -44,6 +44,18 @@ export function geminiText(out: any): string {
   return aiText(out).trim();
 }
 
+// Per-model "thinking off" config for LOW LATENCY. Gemini 3 spends ~5s reasoning
+// silently by default (thinkingLevel "medium"), which dominates @ava latency and
+// defeats streaming (no visible token until thinking ends). We turn it down:
+// Gemini 3 uses `thinkingLevel` ("low"); Gemini 2.x uses `thinkingBudget:0`.
+// NOTE: sending `thinkingBudget` to a Gemini-3 model returns HTTP 400 — never mix
+// the two. Returns a generationConfig fragment to merge into the request body.
+export function thinkingCfg(model: string): Record<string, unknown> {
+  return model.startsWith("gemini-3")
+    ? { thinkingConfig: { thinkingLevel: "low" } }
+    : { thinkingConfig: { thinkingBudget: 0 } };
+}
+
 // Build a Gemini-native request body — one user turn, system as systemInstruction.
 export function geminiBody(system: string, user: string, maxTokens = 700, temperature = 0.7): any {
   const body: any = {
@@ -73,12 +85,14 @@ export async function geminiRun(
   const body = geminiBody(system, user, maxTokens, temperature);
   for (const model of [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]) {
     try {
+      // Thinking off (per-model) so a one-shot reasoner reply is ~1s, not ~4–5s.
+      const mbody = { ...body, generationConfig: { ...body.generationConfig, ...thinkingCfg(model) } };
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: "POST",
           headers: { "content-type": "application/json", "x-goog-api-key": key },
-          body: JSON.stringify(body),
+          body: JSON.stringify(mbody),
         },
       );
       const out: any = await res.json().catch(() => ({}));

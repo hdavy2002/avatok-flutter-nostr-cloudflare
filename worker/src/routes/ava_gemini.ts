@@ -14,7 +14,7 @@
 // plain, and strip any <think> block so raw reasoning never reaches the user.
 
 import type { Env } from "../types";
-import { json, aiText, CORS } from "../util";
+import { json, aiText, CORS, thinkingCfg } from "../util";
 import { requireUser, isFail } from "../authz";
 import { runGated, intentGate, aiRunOpts } from "../lib/ai_gate";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
@@ -151,12 +151,14 @@ async function generate(env: Env, uid: string, email: string | null, system: str
   let fellBackReason = "";
   for (const model of [CHAT_MODEL, FALLBACK_MODEL]) {
     try {
+      // Thinking off (per-model) → ~1s replies instead of ~4–5s of silent g3 reasoning.
+      const mbody = { ...body, generationConfig: { ...body.generationConfig, ...thinkingCfg(model) } };
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: "POST",
           headers: { "content-type": "application/json", "x-goog-api-key": key },
-          body: JSON.stringify(body),
+          body: JSON.stringify(mbody),
         },
       );
       const out: any = await res.json().catch(() => ({}));
@@ -280,7 +282,9 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: buildGeminiContents(history, message, []),
-    generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
+    // Thinking off so the first streamed token arrives in ~1s, not after ~5s of
+    // silent g3 reasoning (the whole reason streaming felt no faster).
+    generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7, ...thinkingCfg(CHAT_MODEL) },
   };
   let upstream: Response;
   try {
