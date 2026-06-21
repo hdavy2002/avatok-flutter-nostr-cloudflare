@@ -327,6 +327,12 @@ def patch_signing() -> None:
         "-dontwarn org.webrtc.**\n"
         "-keep class io.livekit.** { *; }\n"
         "-dontwarn io.livekit.**\n"
+        "# sherpa-onnx on-device voice runtime. The Dart side loads the native\n"
+        "# libs via FFI (DynamicLibrary.open), so keep the plugin's classes and\n"
+        "# all JNI native-method bridges so R8 shrinking can't drop an entry point.\n"
+        "-keep class com.k2fsa.sherpa.onnx.** { *; }\n"
+        "-dontwarn com.k2fsa.sherpa.onnx.**\n"
+        "-keepclasseswithmembernames class * { native <methods>; }\n"
         "# Annotation processors / build-time-only libraries whose compiler-only\n"
         "# classes (javax.lang.model.*, javapoet, AutoValue, error_prone, checker)\n"
         "# leak into R8's reference graph. They are never on the Android runtime\n"
@@ -399,12 +405,14 @@ def patch_signing() -> None:
         t2 = re.sub(
             r'release\s*\{\s*\n(?:\s*//[^\n]*\n)*\s*signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
             'release {\n'
-            '            // Side-load test APK: try to skip R8 minify/shrink (heavy on this\n'
-            '            // WebRTC/LiveKit app). NOTE: the Flutter Gradle plugin still forces\n'
-            '            // R8 on for release builds even with these flags + --no-shrink, so\n'
-            '            // proguardFiles below ships the keep/dontwarn rules R8 needs.\n'
-            '            isMinifyEnabled = false\n'
-            '            isShrinkResources = false\n'
+            '            // R8 code + resource SHRINKING is ENABLED to trim the APK.\n'
+            '            // proguardFiles below ships the keep/dontwarn rules R8 needs\n'
+            '            // (Stripe/WebRTC/LiveKit/sherpa-onnx + native-method bridges).\n'
+            '            // Optimization/obfuscation stay off (R8 non-full mode via\n'
+            '            // gradle.properties) to keep crash traces readable. Validate\n'
+            '            // every change with a CI APK build + on-device smoke test.\n'
+            '            isMinifyEnabled = true\n'
+            '            isShrinkResources = true\n'
             '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")\n'
             '            signingConfig = if (System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH").isNullOrEmpty()) signingConfigs.getByName("debug") else signingConfigs.getByName("release")',
             t2, count=1)
