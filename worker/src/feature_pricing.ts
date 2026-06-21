@@ -44,6 +44,32 @@ export async function chargeFeature(
   });
   if (r.status === 402) return { ok: false, reason: "insufficient", balance: r.body?.balance };
   if (r.status !== 200) return { ok: false, reason: "error" };
+
+  // Double-entry (audit item A2): a feature/AI charge moves PAID coins from the
+  // user's account into the platform:fees bucket. Promo FREE coins are not real
+  // money and never enter the wallet_ledger, so ONLY the paid portion is ledgered.
+  // Emitted as a ledger-only Q_WALLET message (no uid/type) → the consumer writes
+  // the wallet_ledger row and recomputes the platform:fees bucket, WITHOUT a
+  // duplicate wallet_transactions row (the DO already wrote that legacy row).
+  // Idempotent: id = `${opId}:fee` is the wallet_ledger PK. Without this, the DO
+  // balance drifts below ledger Σ and trips nightly recon (the exact gap seen on
+  // 2026-06-21: a 10-coin ava_mcp_tool spend with no matching ledger row).
+  const paidUsed = Number(r.body?.paid_used ?? cost);
+  if (paidUsed > 0) {
+    try {
+      await env.Q_WALLET.send({
+        id: `${opId}:fee`,
+        ts: Date.now(),
+        ledger: {
+          debit: `user:${uid}`,
+          credit: "platform:fees",
+          type: "spend",
+          ref: opId,
+          meta: JSON.stringify({ amount: paidUsed, feature: featureKey }),
+        },
+      });
+    } catch { /* best-effort; recon catches any missed row */ }
+  }
   return { ok: true, charged: cost, balance: r.body?.balance };
 }
 
