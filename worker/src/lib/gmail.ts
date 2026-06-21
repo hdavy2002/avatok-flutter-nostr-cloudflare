@@ -60,6 +60,24 @@ function shortTime(ts: unknown): string {
   return d.toISOString().slice(5, 10); // MM-DD
 }
 
+// Gmail full-message bodies come back as HTML (`messageText`). Strip to readable
+// plain text so the in-chat viewer doesn't render raw tags. (Verified against a
+// live fetch — messageText is HTML, preview.body is a short clean snippet.)
+export function htmlToText(html: string): string {
+  return String(html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<\/(p|div|tr|h[1-6]|li|table)>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">").replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // Result-shape helpers — Composio wraps tool output under `data` (sometimes not).
 export function toolOk(r: any): boolean { return !(r && (r.successful === false || r.error)); }
 export function toolErr(r: any): string {
@@ -101,7 +119,10 @@ export async function getMessageBody(
   });
   if (!toolOk(r)) throw new Error(toolErr(r));
   const d = r?.data ?? r ?? {};
-  const body = String(d?.messageText ?? d?.preview?.body ?? d?.body ?? d?.snippet ?? "").trim();
+  // Prefer the full message stripped to text; fall back to the clean preview.
+  const rawHtml = String(d?.messageText ?? "");
+  const stripped = /<[a-z!/]/i.test(rawHtml) ? htmlToText(rawHtml) : rawHtml.trim();
+  const body = (stripped || String(d?.preview?.body ?? d?.body ?? d?.snippet ?? "")).trim();
   const { name, addr } = parseSender(d?.sender ?? "");
   return {
     body,
