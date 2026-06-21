@@ -253,7 +253,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
           const SizedBox(width: 6),
-          Text('BETA PHASE', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
+          Text('BETA-FREE', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
         ]),
       );
     }

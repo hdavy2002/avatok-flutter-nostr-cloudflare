@@ -29,6 +29,7 @@ import '../../core/ava_log.dart';
 import '../../core/ava_ondevice_rag.dart';
 import '../../core/ava_ondevice_stt.dart';
 import '../../core/kokoro_voice.dart';
+import '../../core/voice/voice_feature.dart';
 import '../../core/ui/mic_input_sheet.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
@@ -130,6 +131,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // Live voice-to-text (on-device Whisper) — types into the composer as you speak.
   SttSession? _sttSession;
   bool _sttActive = false;
+  bool _sttPreparing = false; // model loading between tap and "Listening…"
 
   // Server-routed DM (Cloudflare-native transport) for contacts.
   AvaDm? _dm;
@@ -1989,7 +1991,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Start on-device Whisper dictation — text fills the composer live as you talk.
   Future<void> _startVoiceToText() async {
-    if (_sttActive) return;
+    if (_sttActive || _sttPreparing) return;
+    // The on-device voice models must be downloaded first (Settings → Ava voice →
+    // "Enable Ava Voice"). Without this, dictation would silently try to fetch
+    // ~100 MB and look like nothing happened — so point the user there instead.
+    await VoiceFeature.I.refresh();
+    if (!mounted) return;
+    if (!VoiceFeature.I.isReady) {
+      _capNote('Turn on Ava Voice in Settings → Ava voice to use voice-to-text.');
+      return;
+    }
+    setState(() => _sttPreparing = true);
+    _capNote('Preparing voice-to-text…'); // visible feedback while the model loads
     final lang = KokoroVoicePref.current.sttLang;
     final session = await AvaOnDeviceStt.I.startDictation(
       lang: lang,
@@ -2002,8 +2015,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         });
       },
     );
+    if (!mounted) return;
+    setState(() => _sttPreparing = false);
     if (session == null) {
-      _capNote('Voice-to-text needs microphone access.');
+      _capNote('Couldn’t start voice-to-text. Try again, or re-enable Ava Voice in Settings.');
       return;
     }
     setState(() { _sttSession = session; _sttActive = true; });

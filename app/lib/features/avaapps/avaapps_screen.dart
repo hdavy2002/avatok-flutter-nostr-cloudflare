@@ -430,7 +430,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
         const SizedBox(width: 6),
-        Text('BETA PHASE', style: ZineText.tag(size: 12, color: Zine.mintInk)),
+        Text('BETA-FREE', style: ZineText.tag(size: 12, color: Zine.mintInk)),
       ]),
     );
   }

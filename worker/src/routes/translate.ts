@@ -134,6 +134,18 @@ async function prepaidConsumed(env: Env, trlOrderId: string): Promise<number> {
  * wallet. Returns the state the client must act on.
  */
 async function meter(env: Env, s: TrlSession, now: number): Promise<{ ok: boolean; reason?: string; billedMin: number; billedCoins: number; mode: string }> {
+  // BETA PHASE: live translation is free for everyone — keep the session active
+  // and never bill (no wallet spend, no escrow consume). billed_coins stays as-is
+  // (0 for beta sessions), so translateStop's true-up moves nothing. Flip
+  // betaFreePremium off in KV to restore $3/h metering.
+  try {
+    if ((await readConfig(env)).betaFreePremium) {
+      await metaDb(env).prepare(
+        "UPDATE translation_sessions SET status='active', last_beat_at=?2, updated_at=?2 WHERE id=?1",
+      ).bind(s.id, now).run();
+      return { ok: true, billedMin: s.billed_min, billedCoins: s.billed_coins, mode: s.mode };
+    }
+  } catch { /* meter normally if the config lookup fails */ }
   const elapsedMin = Math.floor((now - s.started_at) / 60_000);
   const needSlices = slicesDue(elapsedMin);                        // pay-ahead
   let paidSlices = Math.floor(s.billed_min / SLICE_MIN);
@@ -232,7 +244,7 @@ export async function translateStart(req: Request, env: Env): Promise<Response> 
 
   // Wallet runway check for payg starts — the FIRST pop-up ("you don't have
   // AvaCoins in your wallet to listen to live translation").
-  if (mode === "payg") {
+  if (mode === "payg" && !cfg.betaFreePremium) {
     const bal = await balance(env, ctx.uid);
     if (bal < MIN_START_COINS) {
       return json({ error: "insufficient_avacoins", needed: MIN_START_COINS, balance: bal, rate_per_min: RATE_PER_MIN }, 402);

@@ -43,10 +43,14 @@ class AvaOnDeviceStt {
     statusLine.value = 'Preparing Whisper…';
     if (!await SherpaVoiceEngine.I.ensureStt(lang: lang)) {
       statusLine.value = 'Voice model not ready';
+      Analytics.capture('stt_unavailable', {'lang': lang, 'reason': 'model_not_ready'});
       return null;
     }
     final session = SttSession._(this, lang: lang, onText: onText);
-    if (!await session._start()) return null;
+    if (!await session._start()) {
+      Analytics.capture('stt_unavailable', {'lang': lang, 'reason': 'start_failed'});
+      return null;
+    }
     _active = session;
     Analytics.capture('stt_start', {'lang': lang, 'engine': 'sherpa_whisper'});
     return session;
@@ -85,6 +89,7 @@ class SttSession {
     try {
       if (!await _rec.hasPermission()) {
         _owner.statusLine.value = 'Microphone permission needed';
+        Analytics.capture('stt_unavailable', {'lang': lang, 'reason': 'no_permission'});
         return false;
       }
       _owner.statusLine.value = 'Listening…';
@@ -102,6 +107,7 @@ class SttSession {
       return true;
     } catch (e) {
       AvaLog.I.log('ava_stt', 'start FAILED: $e');
+      Analytics.capture('stt_unavailable', {'lang': lang, 'reason': 'start_error', 'error': e.toString()});
       _owner.statusLine.value = 'Voice-to-text failed to start';
       await _teardown();
       return false;

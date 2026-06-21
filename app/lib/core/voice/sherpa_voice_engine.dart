@@ -19,8 +19,16 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as so;
 
+import '../analytics.dart';
 import '../ava_log.dart';
 import 'sherpa_models.dart';
+
+/// Log + report a voice-engine failure so it shows up in PostHog (native/Dart
+/// load errors were previously only in the local log, making them invisible).
+void _voiceErr(String stage, Object e) {
+  AvaLog.I.log('sherpa', '$stage FAILED: $e');
+  Analytics.capture('voice_engine_error', {'stage': stage, 'error': e.toString()});
+}
 
 /// Result of a Kokoro synthesis: PCM16 samples + their sample rate (24000).
 class TtsAudio {
@@ -53,7 +61,10 @@ class SherpaVoiceEngine {
   /// Build the Whisper recognizer for [lang] ('' / 'auto' = multilingual auto).
   /// Rebuilds if the language changed. Returns false if models aren't ready.
   Future<bool> ensureStt({String lang = ''}) async {
-    if (!await VoiceModels.I.ensureVadAndStt()) return false;
+    if (!await VoiceModels.I.ensureVadAndStt()) {
+      Analytics.capture('voice_engine_error', {'stage': 'ensureStt', 'error': 'models_not_ready'});
+      return false;
+    }
     try {
       _ensureBindings();
       if (_recognizer != null && _recognizerLang == lang) return true;
@@ -72,9 +83,10 @@ class SherpaVoiceEngine {
       );
       _recognizer = so.OfflineRecognizer(so.OfflineRecognizerConfig(model: model));
       _recognizerLang = lang;
+      Analytics.capture('voice_engine_ok', {'stage': 'ensureStt'});
       return true;
     } catch (e) {
-      AvaLog.I.log('sherpa', 'ensureStt FAILED: $e');
+      _voiceErr('ensureStt', e);
       return false;
     }
   }
@@ -91,7 +103,7 @@ class SherpaVoiceEngine {
       stream.free();
       return text.trim();
     } catch (e) {
-      AvaLog.I.log('sherpa', 'transcribe FAILED: $e');
+      _voiceErr('transcribe', e);
       return '';
     }
   }
@@ -116,7 +128,7 @@ class SherpaVoiceEngine {
       );
       return true;
     } catch (e) {
-      AvaLog.I.log('sherpa', 'ensureVad FAILED: $e');
+      _voiceErr('ensureVad', e);
       return false;
     }
   }
@@ -170,9 +182,10 @@ class SherpaVoiceEngine {
       final model = so.OfflineTtsModelConfig(
         supertonic: supertonic, numThreads: 2, debug: false, provider: 'cpu');
       _tts = so.OfflineTts(so.OfflineTtsConfig(model: model, maxNumSenetences: 1));
+      Analytics.capture('voice_engine_ok', {'stage': 'ensureTts'});
       return true;
     } catch (e) {
-      AvaLog.I.log('sherpa', 'ensureTts FAILED: $e');
+      _voiceErr('ensureTts', e);
       return false;
     }
   }
@@ -201,7 +214,7 @@ class SherpaVoiceEngine {
       }
       return TtsAudio(pcm, audio.sampleRate);
     } catch (e) {
-      AvaLog.I.log('sherpa', 'synthesize FAILED: $e');
+      _voiceErr('synthesize', e);
       return null;
     }
   }
