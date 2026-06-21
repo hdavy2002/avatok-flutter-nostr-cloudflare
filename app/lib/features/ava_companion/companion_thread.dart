@@ -23,6 +23,12 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../settings/sections/voice_section.dart';
 import '../../core/paid_feature.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'calendar/ava_calendar_service.dart';
+import 'calendar/calendar_day_card.dart';
+import 'calendar/calendar_intent.dart';
+import 'calendar/calendar_models.dart';
 import 'companion_session_store.dart';
 import 'persona.dart';
 
@@ -77,7 +83,12 @@ class _CompanionMsg {
   // streamed) even though it arrives whole — the output still passes the
   // server-side llama-guard gate first. Everything else shows fully right away.
   int reveal;
-  _CompanionMsg(this.id, this.text, this.me, {this.blocked = false, this.reason, int? reveal})
+  // When non-null, this Ava turn renders a rich in-chat CARD (e.g. the calendar
+  // day card) instead of a text bubble. [text] still holds a short summary used
+  // for the saved transcript / session preview.
+  final Widget? card;
+  _CompanionMsg(this.id, this.text, this.me,
+      {this.blocked = false, this.reason, int? reveal, this.card})
       : reveal = reveal ?? text.length;
 }
 
@@ -90,6 +101,10 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   String? _playingId;
   String _lastAnswerSource = ''; // for attributing a follow-up correction
   Timer? _revealTimer; // drives the typewriter reveal of Ava's latest reply
+  // In-chat AvaApps: the calendar action service + whether the previous Ava turn
+  // was a calendar card (so a bare "and tomorrow?" follow-up routes to a card).
+  final AvaCalendarService _cal = AvaCalendarService.I;
+  bool _lastWasCalendar = false;
   // AvaChat history is saved locally (per-account SQLite) + to D1 after each turn
   // and on close. A resumed session keeps its id; a new one gets a fresh id.
   late final String _sessionId =
@@ -261,7 +276,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   List<Map<String, String>> _history() {
     final out = <Map<String, String>>[];
     for (final m in _msgs) {
-      if (m.id == 'intro' || m.blocked) continue;
+      // Card turns (calendar, etc.) carry no model-useful text — skip them.
+      if (m.id == 'intro' || m.blocked || m.card != null) continue;
       out.add({'role': m.me ? 'user' : 'model', 'text': m.text});
     }
     return out;
@@ -288,6 +304,17 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     Analytics.capture('avachat_turn_sent', {'persona': widget.persona.id, 'len': t.length});
     // ignore: unawaited_futures
     AvaProfileMemory.I.observeUserMessage(t);
+
+    // In-chat AvaApps — calendar intent. "what's my calendar today / and
+    // tomorrow?" renders a live calendar CARD (via Strata → Google Calendar)
+    // instead of a plain model reply. Conservative: a non-calendar turn falls
+    // straight through to the normal Ava model path below.
+    final calDate = CalendarRoute.resolve(t, lastWasCalendar: _lastWasCalendar);
+    if (calDate != null) {
+      await _runCalendar(calDate);
+      return;
+    }
+    _lastWasCalendar = false;
     // Build the history BEFORE this user turn (ask() takes prior turns + message).
     final priorHistory = _history()..removeLast();
     // Tell Ava who she's talking to so the companion feels personal.
@@ -379,6 +406,82 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     _ingestTurn('You', t);
     if (!ans.blocked) _ingestTurn('Ava', answer);
     _persist();
+  }
+
+  /// Run the calendar intent: fetch the day via Strata and append a live card.
+  /// Card buttons (Schedule / Block focus / Reminder / Join / Email invite) open
+  /// the action sheets and push follow-up result cards back into the thread.
+  Future<void> _runCalendar(DateTime date) async {
+    Analytics.capture('avachat_calendar_intent', {
+      'persona': widget.persona.id,
+      'days_from_today':
+          DateTime(date.year, date.month, date.day).difference(DateTime.now()).inDays + 1,
+    });
+    CalDayOutcome outcome;
+    try {
+      // Paint instantly from this session's memo if present, then it refreshes.
+      outcome = await _cal.fetchDay(date);
+    } catch (e) {
+      Analytics.error(
+          domain: 'avaapps', code: 'calendar_fetch_failed',
+          message: e.toString(), screen: 'avachat_thread', action: 'calendar');
+      outcome = const CalDayOutcome(CalState.error, message: 'Something went wrong reaching your calendar.');
+    }
+    if (!mounted) return;
+
+    void postCard(Widget w) {
+      if (!mounted) return;
+      setState(() => _msgs.add(_CompanionMsg(
+          'c${DateTime.now().microsecondsSinceEpoch}', 'Calendar', false, card: w)));
+      _jumpToEnd();
+      _persist();
+    }
+
+    final card = AvaCalendarCard(
+      outcome: outcome,
+      service: _cal,
+      onOpenUrl: _openUrl,
+      onPostCard: postCard,
+      stamp: _clock(),
+    );
+    setState(() {
+      _msgs.add(_CompanionMsg(
+          'c${DateTime.now().microsecondsSinceEpoch}', _calSummary(outcome), false, card: card));
+      _busy = false;
+      _lastWasCalendar = outcome.state == CalState.ok;
+    });
+    _jumpToEnd();
+    _persist();
+  }
+
+  /// Short transcript breadcrumb for a calendar card (session preview / resume).
+  String _calSummary(CalDayOutcome o) {
+    if (o.state != CalState.ok || o.day == null) {
+      return o.message ?? 'Calendar';
+    }
+    final d = o.day!;
+    return d.isOpen
+        ? 'Showed your calendar — open day.'
+        : 'Showed your calendar — ${d.eventCount} event${d.eventCount == 1 ? '' : 's'}.';
+  }
+
+  Future<void> _openUrl(String url) async {
+    if (url.isEmpty) return;
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Could not open that link.')));
+      }
+    }
+  }
+
+  String _clock() {
+    final n = DateTime.now();
+    var h = n.hour % 12;
+    if (h == 0) h = 12;
+    return '$h:${n.minute.toString().padLeft(2, '0')}';
   }
 
   /// Index one chat line into on-device memory (when Local Ava AI is loaded) and
@@ -530,6 +633,13 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       );
 
   Widget _bubble(_CompanionMsg m) {
+    // Rich card turn (calendar day card, result chip, …): render full-width.
+    if (m.card != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: m.card!,
+      );
+    }
     final isAva = !m.me;
     final showListen = isAva && m.id != 'intro' && !m.blocked && AvaVoice.enabled;
     return Padding(
