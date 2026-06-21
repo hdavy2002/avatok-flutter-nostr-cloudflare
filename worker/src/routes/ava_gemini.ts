@@ -21,13 +21,13 @@ import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 
-// Ava chat text model: Gemini 2.5 Flash-Lite as a Workers-AI THIRD-PARTY model
-// ({author}/{model} id), called through env.AI.run so it still flows via our CF
-// AI Gateway (per-uid metering + caching), same as the Gemma path did. Flash-Lite
-// is fast and has thinking OFF by default → quick replies, no chain-of-thought
-// leak. Gemma 4 stays as a resilient fallback if the partner model is ever down.
-const CHAT_MODEL = "google/gemini-2.5-flash-lite";
-const FALLBACK_MODEL = "@cf/google/gemma-4-26b-a4b-it";
+// Ava chat text model: Gemini 3 Flash (preview) as a Workers-AI THIRD-PARTY model
+// ({author}/{model} id), called through env.AI.run so it flows via our CF AI
+// Gateway (per-uid metering + caching). If the 3.x partner model is ever down we
+// fall back to Gemini 2.5 Flash-Lite — NEVER Gemma 4 (owner decision: Gemini for
+// everything online). Both have thinking OFF by default → no chain-of-thought leak.
+const CHAT_MODEL = "google/gemini-3-flash-preview";
+const FALLBACK_MODEL = "google/gemini-2.5-flash-lite";
 const MAX_TOKENS = 700;
 
 const SYSTEM_BASE = [
@@ -156,18 +156,21 @@ async function generate(env: Env, uid: string, email: string | null, system: str
   } catch (e: any) {
     fellBackReason = String(e?.message ?? e).slice(0, 160);
   }
-  // Fallback: Workers-AI Gemma 4 (OpenAI-style messages). Emit a telemetry event
-  // so a degraded/disabled Google provider on the AI Gateway is visible per user
-  // (this is the canary for "is gemini-2.5-flash-lite actually serving?").
+  // Fallback: Gemini 2.5 Flash-Lite (same Gemini contents shape, NOT Gemma). Emit
+  // a telemetry canary so a degraded gemini-3 partner model is visible per user.
   trackUser(env, uid, email, "ava_model_fallback", "avaai", {
     route: "chat", from: CHAT_MODEL, to: FALLBACK_MODEL, reason: fellBackReason,
   });
   const out: any = await env.AI.run(
     FALLBACK_MODEL,
-    { messages: buildMessages(sys, history, message, images), max_tokens: MAX_TOKENS } as any,
+    {
+      systemInstruction: { parts: [{ text: sys }] },
+      contents: buildGeminiContents(history, message, images),
+      generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
+    } as any,
     aiRunOpts(env, uid),
   );
-  return stripReasoning(aiText(out).trim());
+  return stripReasoning(extractGeminiText(out));
 }
 
 export async function avaGemini(req: Request, env: Env): Promise<Response> {
