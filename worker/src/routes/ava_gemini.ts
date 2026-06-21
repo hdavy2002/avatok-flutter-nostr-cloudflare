@@ -14,7 +14,7 @@
 // plain, and strip any <think> block so raw reasoning never reaches the user.
 
 import type { Env } from "../types";
-import { json, aiText } from "../util";
+import { json, aiText, CORS } from "../util";
 import { requireUser, isFail } from "../authz";
 import { runGated, intentGate, aiRunOpts } from "../lib/ai_gate";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
@@ -258,4 +258,75 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     ...(result.remaining != null ? { remaining: result.remaining } : {}),
   });
   return json({ answer: result.answer, blocked: false, tier: premium ? "premium" : "free", premium, ...(result.remaining != null ? { remaining: result.remaining } : {}) });
+}
+
+// POST /api/ava/gemini/stream — streaming companion chat (SSE). Pipes Gemini's
+// streamGenerateContent tokens to the client as `data: {"delta":"…"}` so the UI
+// types the answer out LIVE (feels far faster). Same model + system as avaGemini.
+// Output moderation is skipped (you can't gate a stream before it's sent) — this
+// is the user's own companion chat; the input was already theirs.
+export async function avaGeminiStream(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: AvaGeminiBody;
+  try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const message = String(b.message ?? "").trim();
+  if (!message) return json({ error: "message required" }, 400);
+  const context = String(b.context ?? "").trim();
+  const history = normHistory(b.history);
+  const key = (env as any).GEMINI_API_KEY;
+  if (!key) return json({ error: "unavailable" }, 502);
+  const system = context ? `${SYSTEM_BASE}\nStyle/persona for this chat: ${context}` : SYSTEM_BASE;
+  const body = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: buildGeminiContents(history, message, []),
+    generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
+  };
+  let upstream: Response;
+  try {
+    upstream = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:streamGenerateContent?alt=sse`,
+      { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body) },
+    );
+  } catch (e: any) {
+    return json({ error: `stream upstream failed: ${String(e?.message ?? e).slice(0, 120)}` }, 502);
+  }
+  if (!upstream.ok || !upstream.body) return json({ error: `stream upstream ${upstream.status}` }, 502);
+
+  const reader = upstream.body.getReader();
+  const dec = new TextDecoder();
+  const enc = new TextEncoder();
+  let carry = "";
+  const out = new ReadableStream({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) { controller.enqueue(enc.encode("data: [DONE]\n\n")); controller.close(); return; }
+        carry += dec.decode(value, { stream: true });
+        const lines = carry.split("\n");
+        carry = lines.pop() ?? "";
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          const payload = t.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const j = JSON.parse(payload);
+            const parts = j?.candidates?.[0]?.content?.parts;
+            if (Array.isArray(parts)) {
+              const delta = parts.filter((p: any) => p?.thought !== true).map((p: any) => String(p?.text ?? "")).join("");
+              if (delta) controller.enqueue(enc.encode(`data: ${JSON.stringify({ delta })}\n\n`));
+            }
+          } catch { /* skip malformed SSE line */ }
+        }
+      } catch {
+        try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
+        controller.close();
+      }
+    },
+    cancel() { try { reader.cancel(); } catch { /* ignore */ } },
+  });
+  return new Response(out, {
+    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", ...CORS },
+  });
 }

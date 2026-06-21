@@ -82,7 +82,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 // CONSEQUENCE: the worker will NOT typecheck/build until those files exist — this
 // is expected and accepted for Phase 0 (Phase 11 reconciles). See
 // Specs/ava-build/INTEGRATION-NOTES.md.
-import { avaGemini } from "./routes/ava_gemini";        // P2
+import { avaGemini, avaGeminiStream } from "./routes/ava_gemini";        // P2
 import { avaRagIngest, avaRagStore, avaRagSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Composio)
 import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, driveBackupUploadRoute, driveBackupDownloadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
@@ -209,6 +209,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- Ava in-chat AI (Phase 0 registered routes; handlers filled by the
       // owner phases — master-plan §4). Order: most-specific first. ---
       if (p === "/api/ava/gemini" && req.method === "POST") return await avaGemini(req, env);          // P2
+      if (p === "/api/ava/gemini/stream" && req.method === "POST") return await avaGeminiStream(req, env); // P2 streaming
       if (p === "/api/ava/thread/turn" && req.method === "POST") return await avaThreadTurn(req, env); // P3
       if (p === "/api/ava/rag/ingest" && req.method === "POST") return await avaRagIngest(req, env);   // RAG
       if (p === "/api/ava/rag/store" && req.method === "GET") return await avaRagStore(req, env);      // RAG

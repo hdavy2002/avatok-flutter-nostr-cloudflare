@@ -33,7 +33,7 @@ import { json, aiText, geminiRun } from "../util";
 import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
 import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
-import { runAppsToolLoop } from "../lib/composio"; // AvaApps (premium) — Composio tools
+import { runAppsToolLoop, runAgentLoop } from "../lib/composio"; // AvaApps + unified agentic loop
 import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
 import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
 import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
@@ -474,111 +474,59 @@ export class AvaAgentDO {
       // 2. Bounded context: recent window + rolling summary (+ optional RAG stub).
       const { window, attachments, maxId } = await this.recentWindow(uid, conv);
       this.bumpSummaryCounter(conv, maxId, 1);
-      const summary = await this.maybeSummarize(conv, window);
-      const snippets = await this.brainSearch(uid, userText); // P4 no-op for now
 
-      // Understand intent, THEN act (replaces the brittle looksLikeX keyword
-      // gates). The router reads the message + in-thread attachments and picks one
-      // route; it is capability-aware and falls back to heuristics on any error.
+      // ONE agentic call replaces the old summarize → search → classify → guard →
+      // generate pipeline (4–5 sequential model calls = the latency). We send the
+      // message + a small toolset to Gemini and let IT decide: just chat, call
+      // search_memory (the user's own notes/messages/files, server-side), or act
+      // on connected apps. Gemini does intent + safety natively. The rolling
+      // summary refreshes in the BACKGROUND, off the reply path.
       const tier: AiTier = byoKey ? "byo" : "ourkeys";
-      const caps = {
-        apps: !!this.env.COMPOSIO_API_KEY,
-        web: !!byoKey,             // Google Search grounding needs the user's own key
-        files: !!byoKey && !!store, // File Search needs the user's key + a store
-      };
-      const { intent, source: intentSource } = await this.classifyIntent(uid, userText, attachments, caps);
-      trackUserContact(this.env, uid, email, phone, "ava_intent", "avaai", {
-        conv_kind: convKind, intent, intent_source: intentSource,
-        has_attachments: attachments.length > 0, tier,
-      });
+      const appsCap = !!this.env.COMPOSIO_API_KEY;
+      this.maybeSummarize(conv, window).catch(() => {}); // non-blocking
+      const premium = appsCap
+        ? (await isPremiumAI(new Request("https://internal/premium"), this.env, uid)).premium
+        : false;
 
-      // 2.5 AvaApps: if the user wants to ACT on their connected apps (e.g. "check
-      // my email") and Composio is configured, handle it HERE so the chat model
-      // never flatly refuses with "I can't access your email". Two cases:
-      //   • NOT premium → a clear, actionable guide (top up + connect Gmail in
-      //     Account & Settings → Connectors) instead of a refusal.
-      //   • premium     → run the Composio tool loop on OUR Google key (BYOK
-      //     removed); the loop itself guides the user to Connectors if nothing is
-      //     connected yet. Falls through to normal chat only on an unexpected error.
-      if (caps.apps && intent === "apps") {
-        const { premium } = await isPremiumAI(
-          new Request("https://internal/premium"), this.env, uid);
-        if (!premium) {
-          const guide =
-            "I can work with your email, calendar, docs and drive — but I need two "
-            + "things first: 1) top up your wallet to unlock premium, and 2) connect "
-            + "Gmail in Account & Settings → Connectors (tap Gmail and follow the "
-            + "connection steps). Once both are done, just say “@ava check my "
-            + "email” and I’ll fetch it for you.";
-          await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
-          await this.postAva({ conv, uid, text: guide, private: priv, source: "apps" });
-          trackUserContact(this.env, uid, email, phone, "ava_apps_gate", "avaai", {
-            conv_kind: convKind, reason: "not_premium", intent: "apps",
-            latency_ms: Date.now() - t0,
-          });
-          return { ok: true, status_id: statusId };
-        }
-        try {
-          const ctx = window.map((w) => `${w.mine ? "User" : "Other"}: ${w.text}`).join("\n");
-          const answer = await runAppsToolLoop(this.env, uid, userText, ctx); // OUR key
-          if (answer && answer.trim()) {
-            await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
-            await this.postAva({ conv, uid, text: answer, private: priv, source: "apps" });
-            trackUserContact(this.env, uid, email, phone, "ava_thread_apps_used", "avaai", {
-              conv_kind: convKind, intent_source: intentSource,
-              answer_len: answer.length, latency_ms: Date.now() - t0,
-            });
-            return { ok: true, status_id: statusId };
-          }
-        } catch (e: any) {
-          trackUserContact(this.env, uid, email, phone, "ava_apps_error", "avaai", {
-            conv_kind: convKind, detail: String(e?.message ?? e).slice(0, 200),
-            latency_ms: Date.now() - t0,
-          });
-          /* fall through to normal chat generation */
-        }
-      }
-
-      // 3. Generate THROUGH the P2 gate: kill-switch + intent gate + daily cap +
-      //    input/output moderation (regenerate once → safe refusal). When the
-      //    caller forwarded their BYO Gemini key, run the FREE tier on the user's
-      //    own key (Gemma 4 chat; Flash-Lite + Google Search for search intent)
-      //    and bypass the daily cap. No key → our-keys Workers-AI Gemma (capped).
-      // Route per the classified intent. RAG (the user's File Search store) and
-      // web search both need the BYO key and can't combine, so files wins.
-      const wantRag = intent === "files" && caps.files;
-      const wantSearch = intent === "web" && caps.web && !wantRag
-          && await webSearchAllowed(this.env, tier);
-      const gated = await runGated(this.env, {
-        uid, tier, userText,
-        generate: (steer) => {
-          const ut = steer ? `${userText}\n\n(${steer})` : userText;
-          const { sys, user } = this.buildPrompt(summary, window, ut, snippets, wantSearch || wantRag, attachments);
-          if (byoKey && wantRag) return this.generateGeminiFileSearch(byoKey, store, sys, user);
-          if (byoKey) {
-            return this.generateGemini(
-              byoKey, wantSearch ? BYO_SEARCH_MODEL : BYO_CHAT_MODEL, sys, user, wantSearch);
-          }
-          return this.generateOurKeys(uid, email, sys, user);
-        },
-      });
-
-      if (gated.blocked) {
-        trackUserContact(this.env, uid, email, phone, "ava_thread_blocked", "avaai", {
-          conv_kind: convKind, tier, reason: gated.reason, latency_ms: Date.now() - t0,
-          ...(gated.remaining != null ? { remaining: gated.remaining } : {}),
+      // Fast upsell: an obvious app request from a NON-premium user gets the
+      // "top up + connect Gmail" guide instead of a refusal — no model call.
+      if (appsCap && !premium && this.looksLikeApps(userText)) {
+        const guide =
+          "I can work with your email, calendar, docs and drive — but I need two "
+          + "things first: 1) top up your wallet to unlock premium, and 2) connect "
+          + "Gmail in Account & Settings → Connectors. Once both are done, just say "
+          + "“@ava check my email” and I’ll fetch it for you.";
+        await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+        await this.postAva({ conv, uid, text: guide, private: priv, source: "apps" });
+        trackUserContact(this.env, uid, email, phone, "ava_apps_gate", "avaai", {
+          conv_kind: convKind, reason: "not_premium", latency_ms: Date.now() - t0,
         });
+        return { ok: true, status_id: statusId };
       }
-      let answer = gated.answer;
+
+      // THE single agentic call: Gemini chats directly, calls search_memory for
+      // the user's own data, or acts on connected apps — its own choice, one loop.
+      const ctx = window.map((w) => `${w.mine ? "User" : "Other"}: ${w.text}`).join("\n");
+      let answer = "";
+      try {
+        answer = await runAgentLoop(
+          this.env, uid, userText, ctx,
+          (q) => this.brainSearch(uid, q),
+          { apps: appsCap && premium },
+        );
+      } catch (e: any) {
+        trackUserContact(this.env, uid, email, phone, "ava_thread_error", "avaai", {
+          conv_kind: convKind, detail: String(e?.message ?? e).slice(0, 200), latency_ms: Date.now() - t0,
+        });
+        answer = "";
+      }
       if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
 
-      // 4. Clear the chip + post the answer into the SAME conversation.
       await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
       await this.postAva({ conv, uid, text: answer, private: priv, source: "chat" });
       trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
-        conv_kind: convKind, tier, intent, intent_source: intentSource,
-        want_search: wantSearch, want_rag: wantRag, has_attachments: attachments.length > 0,
-        blocked: !!gated.blocked, answer_len: answer.length, latency_ms: Date.now() - t0,
+        conv_kind: convKind, tier, agentic: true,
+        answer_len: answer.length, latency_ms: Date.now() - t0,
       });
       return { ok: true, status_id: statusId };
     } catch (e: any) {

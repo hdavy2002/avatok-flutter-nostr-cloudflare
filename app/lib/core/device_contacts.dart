@@ -73,7 +73,11 @@ class DeviceContact {
 class DeviceContactsService {
   static bool _syncing = false; // single-flight guard
   static int _lastSyncMs = 0; // throttle resume-triggered refreshes
-  static const _minIntervalMs = 25 * 1000; // ≤ one device re-read per 25s on resume
+  // The address book rarely changes, but a full read of a big book is ~10–20s
+  // and was running on EVERY resume (every couple of minutes) — a real drag.
+  // Throttle resume-triggered reads to once every few hours; cold start and
+  // pull-to-refresh pass force:true and always get a fresh read immediately.
+  static const _minIntervalMs = 3 * 60 * 60 * 1000; // ≤ one device re-read per 3h on resume
 
   /// Normalize to the same E.164-ish shape the Worker's `normalizePhone` uses
   /// (strip everything but digits/+, force a leading +), so client and server
