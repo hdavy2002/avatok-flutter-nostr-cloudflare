@@ -8,6 +8,7 @@ import '../../../core/paid_feature.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/voice/kokoro_tts.dart';
+import '../../../core/voice/voice_feature.dart';
 import '../settings_registry.dart';
 import 'kokoro_voice_screen.dart';
 
@@ -86,6 +87,7 @@ class _VoiceCardState extends State<_VoiceCard> {
     super.initState();
     AvaVoicePref.load();
     KokoroVoicePref.load();
+    VoiceFeature.I.refresh();
   }
 
   @override
@@ -144,7 +146,116 @@ class _VoiceCardState extends State<_VoiceCard> {
         Container(height: Zine.bw, color: Zine.ink.withValues(alpha: 0.12)),
         const SizedBox(height: 10),
         _voiceLangRow(context),
+        const SizedBox(height: 12),
+        Container(height: Zine.bw, color: Zine.ink.withValues(alpha: 0.12)),
+        const SizedBox(height: 10),
+        _avaVoiceCallBlock(),
       ]),
+    );
+  }
+
+  /// "Voice call with Ava" — the explicit enable + background-download gate for
+  /// the heavy on-device voice models. Shows: Enable → Downloading → Getting it
+  /// ready → Ready ✓.
+  Widget _avaVoiceCallBlock() {
+    return ValueListenableBuilder<VoiceFeatureState>(
+      valueListenable: VoiceFeature.I.state,
+      builder: (context, st, _) {
+        switch (st) {
+          case VoiceFeatureState.ready:
+            return Row(children: [
+              ZineIconBadge(
+                  icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
+                  color: Zine.mint,
+                  size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Text('Ava Voice is ready', style: ZineText.value(size: 14.5)),
+                    const SizedBox(width: 8),
+                    PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                        size: 20, color: Zine.mintInk),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text('Hands-free voice calls with Ava are on.',
+                      style: ZineText.sub(size: 12)),
+                ]),
+              ),
+            ]);
+
+          case VoiceFeatureState.downloading:
+          case VoiceFeatureState.preparing:
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ZineIconBadge(
+                    icon: PhosphorIcons.waveform(PhosphorIconsStyle.fill),
+                    color: Zine.lilac,
+                    size: 36),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: VoiceFeature.I.status,
+                    builder: (context, s, _) => Text(
+                      s.isEmpty
+                          ? (st == VoiceFeatureState.preparing
+                              ? 'Getting it ready…'
+                              : 'Downloading Ava Voice…')
+                          : s,
+                      style: ZineText.value(size: 14),
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              ValueListenableBuilder<double>(
+                valueListenable: VoiceFeature.I.progress,
+                builder: (context, pr, _) => ClipRRect(
+                  borderRadius: BorderRadius.circular(100),
+                  child: LinearProgressIndicator(
+                    value: (st == VoiceFeatureState.preparing || pr < 0) ? null : pr,
+                    minHeight: 8,
+                    backgroundColor: Zine.paper2,
+                    color: Zine.lime,
+                  ),
+                ),
+              ),
+            ]);
+
+          default: // off / error
+            final failed = st == VoiceFeatureState.error;
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ZineIconBadge(
+                    icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
+                    color: Zine.blue,
+                    size: 36),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Voice call with Ava', style: ZineText.value(size: 14.5)),
+                    const SizedBox(height: 2),
+                    Text(
+                      failed
+                          ? 'Download didn’t finish. Check your connection and try again.'
+                          : 'Talk to Ava hands-free. Downloads her voice once (~350 MB) '
+                              'over Wi-Fi, then runs fully on your phone.',
+                      style: ZineText.sub(size: 12),
+                    ),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              ZineButton(
+                label: failed ? 'Retry download' : 'Enable Ava Voice',
+                icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
+                trailingIcon: false,
+                fontSize: 15,
+                onPressed: () { VoiceFeature.I.enable(); },
+              ),
+            ]);
+        }
+      },
     );
   }
 

@@ -17,6 +17,7 @@ import '../../core/kokoro_voice.dart';
 import '../../core/ui/mic_input_sheet.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/voice/voice_feature.dart';
 import '../avabrain/brain_settings_screen.dart';
 import 'voice_call/voice_call_screen.dart';
 
@@ -98,7 +99,18 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     ]);
   }
 
-  void _openVoiceCall() {
+  Future<void> _openVoiceCall() async {
+    // The heavy voice models must be enabled (downloaded) first — that happens in
+    // Settings → Ava voice. If not ready, point the user there instead of a
+    // silent multi-hundred-MB download.
+    await VoiceFeature.I.refresh();
+    if (!mounted) return;
+    if (!VoiceFeature.I.isReady) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Turn on Ava Voice in Settings → Ava voice to call Ava'),
+      ));
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const VoiceCallScreen()),
     );

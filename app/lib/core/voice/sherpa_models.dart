@@ -113,46 +113,83 @@ class VoiceModels {
     }
   }
 
-  /// Download + extract the Kokoro TTS bundle. Large (~330 MB) — first call only.
-  Future<bool> ensureTts() async {
+  /// Resolve VAD + Whisper paths from cache WITHOUT downloading. Returns true if
+  /// all files already exist on disk (so the engine can load on demand).
+  Future<bool> resolveVadStt() async {
+    if (_vadSttReady) return true;
+    final base = await _baseDir();
+    vadPath = await _existing(base, _kVad.dest);
+    whisperEncoder = await _existing(base, _kWhisper[0].dest);
+    whisperDecoder = await _existing(base, _kWhisper[1].dest);
+    whisperTokens = await _existing(base, _kWhisper[2].dest);
+    _vadSttReady = vadPath.isNotEmpty &&
+        whisperEncoder.isNotEmpty &&
+        whisperDecoder.isNotEmpty &&
+        whisperTokens.isNotEmpty;
+    return _vadSttReady;
+  }
+
+  /// DOWNLOAD + extract the Kokoro TTS bundle (~330 MB). Called only from the
+  /// explicit "Enable Ava Voice" flow — never silently on first synth.
+  Future<bool> downloadTts() async {
     if (_ttsReady) return true;
     try {
       final base = await _baseDir();
       final kokoroRoot = p.join(base, _kKokoroDir);
       final model = p.join(kokoroRoot, 'model.onnx');
       if (!await File(model).exists()) {
-        status.value = 'Downloading Ava voice (one time)…';
+        status.value = 'Downloading Ava Voice (one time)…';
         final tarPath = p.join(base, 'kokoro.tar.bz2');
         final ok = await _download(_kKokoroTarUrl, tarPath);
         if (!ok) { status.value = 'Voice download failed'; return false; }
-        status.value = 'Unpacking Ava voice…';
+        status.value = 'Unpacking Ava Voice…';
         progress.value = -1;
         await _extractTarBz2(tarPath, base);
         try { await File(tarPath).delete(); } catch (_) {}
       }
-      kokoroModel = model;
-      kokoroVoices = p.join(kokoroRoot, 'voices.bin');
-      kokoroTokens = p.join(kokoroRoot, 'tokens.txt');
-      kokoroDataDir = p.join(kokoroRoot, 'espeak-ng-data');
-      final dict = Directory(p.join(kokoroRoot, 'dict'));
-      kokoroDictDir = await dict.exists() ? dict.path : '';
-      // Optional multilingual lexicons (comma-joined if present).
-      final lex = <String>[];
-      for (final name in ['lexicon-us-en.txt', 'lexicon-zh.txt', 'lexicon.txt']) {
-        final f = File(p.join(kokoroRoot, name));
-        if (await f.exists()) lex.add(f.path);
-      }
-      kokoroLexicons = lex.join(',');
-      _ttsReady = await File(kokoroModel).exists() && await File(kokoroVoices).exists();
+      await _setKokoroPaths(kokoroRoot);
       status.value = _ttsReady ? '' : 'Voice files incomplete';
       return _ttsReady;
     } catch (e) {
-      AvaLog.I.log('voice_models', 'ensureTts FAILED: $e');
+      AvaLog.I.log('voice_models', 'downloadTts FAILED: $e');
       status.value = 'Voice download failed';
       return false;
     } finally {
       progress.value = 0;
     }
+  }
+
+  /// Resolve Kokoro paths from cache WITHOUT downloading. True if ready.
+  Future<bool> resolveTts() async {
+    if (_ttsReady) return true;
+    final base = await _baseDir();
+    final kokoroRoot = p.join(base, _kKokoroDir);
+    if (!await File(p.join(kokoroRoot, 'model.onnx')).exists()) return false;
+    await _setKokoroPaths(kokoroRoot);
+    return _ttsReady;
+  }
+
+  /// True if every voice model (VAD + Whisper + Kokoro) is on disk. No download.
+  Future<bool> isAllReady() async {
+    final a = await resolveVadStt();
+    final b = await resolveTts();
+    return a && b;
+  }
+
+  Future<void> _setKokoroPaths(String kokoroRoot) async {
+    kokoroModel = p.join(kokoroRoot, 'model.onnx');
+    kokoroVoices = p.join(kokoroRoot, 'voices.bin');
+    kokoroTokens = p.join(kokoroRoot, 'tokens.txt');
+    kokoroDataDir = p.join(kokoroRoot, 'espeak-ng-data');
+    final dict = Directory(p.join(kokoroRoot, 'dict'));
+    kokoroDictDir = await dict.exists() ? dict.path : '';
+    final lex = <String>[];
+    for (final name in ['lexicon-us-en.txt', 'lexicon-zh.txt', 'lexicon.txt']) {
+      final f = File(p.join(kokoroRoot, name));
+      if (await f.exists()) lex.add(f.path);
+    }
+    kokoroLexicons = lex.join(',');
+    _ttsReady = await File(kokoroModel).exists() && await File(kokoroVoices).exists();
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────
@@ -163,6 +200,13 @@ class VoiceModels {
     if (await f.exists() && await f.length() > 0) return dest;
     final ok = await _download(rf.url, dest);
     return ok ? dest : '';
+  }
+
+  /// Path if the file already exists (and is non-empty), else '' — no download.
+  Future<String> _existing(String base, String rel) async {
+    final pth = p.join(base, rel);
+    final f = File(pth);
+    return (await f.exists() && await f.length() > 0) ? pth : '';
   }
 
   /// Stream a URL to [dest], updating [progress]. Returns false on any error.

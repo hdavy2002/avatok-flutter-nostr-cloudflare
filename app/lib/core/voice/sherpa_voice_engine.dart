@@ -150,8 +150,11 @@ class SherpaVoiceEngine {
 
   // ── TTS (Kokoro) ────────────────────────────────────────────────────────────
 
+  /// Build the Kokoro TTS from CACHED files only (never downloads — the big
+  /// download happens via the explicit "Enable Ava Voice" flow). Returns false
+  /// if the model isn't downloaded yet.
   Future<bool> ensureTts() async {
-    if (!await VoiceModels.I.ensureTts()) return false;
+    if (!await VoiceModels.I.resolveTts()) return false;
     try {
       _ensureBindings();
       if (_tts != null) return true;
@@ -190,6 +193,32 @@ class SherpaVoiceEngine {
       AvaLog.I.log('sherpa', 'synthesize FAILED: $e');
       return null;
     }
+  }
+
+  // ── on-demand memory: free native models when a session ends ─────────────────
+
+  void releaseStt() {
+    try { _recognizer?.free(); } catch (_) {}
+    _recognizer = null;
+    _recognizerLang = '';
+  }
+
+  void releaseVad() {
+    try { _vad?.free(); } catch (_) {}
+    _vad = null;
+  }
+
+  void releaseTts() {
+    try { _tts?.free(); } catch (_) {}
+    _tts = null;
+  }
+
+  /// Free everything (call ended) so the ~hundreds-of-MB native models leave RAM.
+  /// The on-disk model files stay cached, so the next session reloads instantly.
+  void releaseAll() {
+    releaseStt();
+    releaseVad();
+    releaseTts();
   }
 
   // ── utils ────────────────────────────────────────────────────────────────────

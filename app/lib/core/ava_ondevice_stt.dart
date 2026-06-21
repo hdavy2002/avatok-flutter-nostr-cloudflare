@@ -173,5 +173,7 @@ class SttSession {
   Future<void> _teardown() async {
     try { _rec.dispose(); } catch (_) {}
     _owner._clearActive(this);
+    // Free the Whisper model after dictation — load on demand again next time.
+    SherpaVoiceEngine.I.releaseStt();
   }
 }

@@ -232,6 +232,8 @@ class VoiceCallController {
     try { await _rec.dispose(); } catch (_) {}
     try { await _player.stop(); } catch (_) {}
     try { await _player.dispose(); } catch (_) {}
-    SherpaVoiceEngine.I.vadReset();
+    // Free the native models so the call's RAM is released; the on-disk cache
+    // stays, so the next call reloads instantly.
+    SherpaVoiceEngine.I.releaseAll();
   }
 }
