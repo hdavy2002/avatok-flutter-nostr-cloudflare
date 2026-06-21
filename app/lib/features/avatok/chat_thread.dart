@@ -79,6 +79,7 @@ class _Msg {
   final String? senderLabel; // group: who sent (null for mine / 1:1)
   String? reaction;
   ChatMedia? media;
+  String mediaCaption; // caption shown UNDER the photo in the SAME bubble (WhatsApp-style)
   Uint8List? localBytes; // instant preview of self-sent media
   bool uploading;
   bool failed;
@@ -93,7 +94,7 @@ class _Msg {
   bool aiLocal; // a PRIVATE @ava question — local-only, never sent to the peer (no delivery ticks)
   Map<int, int> pollVotes = {}; // option index → count (local tally)
   _Msg(this.id, this.me, this.text, this.time,
-      {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.localBytes,
+      {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
        this.starred = false, this.forwarded = false, this.expireAt, this.special, this.extra,
        this.aiLocal = false});
@@ -1674,13 +1675,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e['name']} added')));
   }
 
-  Future<void> _sendMedia(MediaKind kind, Uint8List bytes, String ct, String name) async {
+  Future<void> _sendMedia(MediaKind kind, Uint8List bytes, String ct, String name, {String caption = ''}) async {
     // Stamp the message with a real send time. Without this it defaulted to ts=0,
     // so any list re-sort floated the bubble to the very TOP of the thread and it
     // appeared to "disappear" from the bottom where it was just added.
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final msg = _Msg(_seq++, true, _caption(kind, name), _fmtTime(now),
-        ts: now, localBytes: bytes, uploading: true);
+        ts: now, localBytes: bytes, uploading: true, mediaCaption: caption);
     setState(() => _msgs.add(msg));
     _jump();
     // Index shared docs/images into the user's own RAG store (File Search
@@ -1689,13 +1690,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       // ignore: unawaited_futures
       RagService.I.ingestFileBytes(bytes, ct, name);
     }
-    await _upload(msg, bytes, kind, ct, name);
+    await _upload(msg, bytes, kind, ct, name, caption: caption);
   }
 
-  Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name) async {
+  Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name, {String caption = ''}) async {
     setState(() { msg.uploading = true; msg.failed = false; });
     try {
-      final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name);
+      final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name, caption: caption);
       if (!mounted) return;
       setState(() { msg.media = m; msg.uploading = false; });
       final keyShort = m.id.length > 12 ? m.id.substring(m.id.length - 8) : m.id;
@@ -1737,18 +1738,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   // Photo caption step: preview the picked image and let the user "say something
-  // about the pic" before it goes out (the input box that was missing). Sends the
-  // image, then — if a caption was typed — the caption as a normal message (so
-  // @ava summon, RAG indexing and delivery all work through the usual path).
+  // about the pic" before it goes out. WhatsApp-style: the caption rides INSIDE
+  // the photo's own message envelope, so the picture + its text are ONE bubble.
+  // This is what lets Ava link an "@ava send this as email" instruction to the
+  // photo it refers to — previously the caption went out as a SEPARATE text
+  // message, so by the time Ava processed the request the attachment wasn't tied
+  // to it and she'd ask "where's the photo / what's its S3 key?".
   Future<void> _sendImageWithCaption(Uint8List bytes, String ct, String name) async {
     final caption = await _captionSheet(bytes);
     if (caption == null) return; // user backed out
-    await _sendMedia(MediaKind.image, bytes, ct, name);
     final c = caption.trim();
-    if (c.isNotEmpty) {
-      _ctrl.text = c;
-      _hasText = true;
-      _send();
+    // ONE message: photo + caption together (awaits upload + delivery so the
+    // attachment is on the InboxDO before we summon Ava below).
+    await _sendMedia(MediaKind.image, bytes, ct, name, caption: c);
+    if (c.isEmpty) return;
+    // Index the caption into the user's own RAG store (same as a normal line),
+    // but skip @ava control lines.
+    _ragAddLine('You', c);
+    // If the caption summons Ava (@ava / #ava / Ava-mode), fire the in-thread
+    // turn now — the photo (with this caption) is already on the InboxDO, so the
+    // server's recentWindow sees the attachment AND the instruction together.
+    if (_editing == null && onSummonAva != null) {
+      final lower = c.toLowerCase();
+      final shared = lower.contains(_avaShareWord);
+      final atAva = lower.contains(_avaWakeWord);
+      final avaModePrivate = _avaMode && !shared && !atAva;
+      if (atAva || shared || avaModePrivate) {
+        // ignore: unawaited_futures
+        onSummonAva!(avaModePrivate ? '$_avaWakeWord $c' : c);
+      }
     }
   }
 
@@ -2710,7 +2728,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       ]),
                     ),
                   if (m.special != null) _specialContent(m)
-                  else if (hasMedia) _mediaContent(m)
+                  else if (hasMedia) ...[
+                    _mediaContent(m),
+                    // WhatsApp-style caption: the photo's own text, in the SAME
+                    // bubble (no longer a separate message).
+                    if (_mediaCaptionOf(m).isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
+                        child: Text(_mediaCaptionOf(m),
+                            style: ZineText.sub(size: 13.5, color: Zine.ink)),
+                      ),
+                  ]
                   else Text(m.text, style: ZineText.sub(size: 13.5, color: Zine.ink)),
                   Padding(
                     padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
@@ -2784,6 +2812,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       ),
     );
   }
+
+  // The caption to show under a media bubble — the instant local value (set on
+  // send) or, for received/restored messages, whatever rode in the envelope.
+  String _mediaCaptionOf(_Msg m) =>
+      m.mediaCaption.isNotEmpty ? m.mediaCaption : (m.media?.caption ?? '');
 
   Widget _mediaContent(_Msg m) {
     final kind = m.media?.kind ??

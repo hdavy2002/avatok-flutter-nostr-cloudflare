@@ -29,10 +29,16 @@ class ChatMedia {
   final String contentType;
   final String name;
   final int size;
+  /// Optional caption typed alongside the attachment. Rides in the SAME message
+  /// envelope (WhatsApp-style) so the photo + its text are ONE bubble — and so an
+  /// `@ava` instruction stays attached to the file it refers to (the server reads
+  /// `cap` to link the request to this attachment).
+  final String caption;
   ChatMedia({
     required this.kind, required this.id, required this.keyB64,
     required this.nonceB64, required this.macB64,
     required this.contentType, required this.name, required this.size,
+    this.caption = '',
   });
 
   String get downloadUrl => '$kBlossomBaseUrl/$id';
@@ -41,6 +47,7 @@ class ChatMedia {
   Map<String, dynamic> toEnvelope() => {
         't': 'media', 'kind': kind.name, 'id': id, 'k': keyB64, 'n': nonceB64,
         'mac': macB64, 'ct': contentType, 'name': name, 'size': size,
+        if (caption.isNotEmpty) 'cap': caption,
       };
 
   static ChatMedia fromEnvelope(Map<String, dynamic> j) => ChatMedia(
@@ -52,6 +59,14 @@ class ChatMedia {
         contentType: j['ct'].toString(),
         name: j['name'].toString(),
         size: (j['size'] as num?)?.toInt() ?? 0,
+        caption: (j['cap'] ?? '').toString(),
+      );
+
+  /// Copy with a caption attached (set after the picker's caption step, before
+  /// the envelope is sent).
+  ChatMedia withCaption(String c) => ChatMedia(
+        kind: kind, id: id, keyB64: keyB64, nonceB64: nonceB64, macB64: macB64,
+        contentType: contentType, name: name, size: size, caption: c,
       );
 }
 
@@ -65,6 +80,7 @@ class MediaService {
     required MediaKind kind,
     required String contentType,
     required String name,
+    String caption = '',
   }) async {
     final secretKey = await _aes.newSecretKey();
     final nonce = _aes.newNonce();
@@ -100,6 +116,7 @@ class MediaService {
       contentType: contentType,
       name: name,
       size: bytes.length,
+      caption: caption,
     );
     // Cache the SENDER's own plaintext now (content-addressed by id). Without
     // this, reopening the chat re-downloaded + re-decrypted media we just sent;
