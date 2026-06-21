@@ -13,9 +13,7 @@ import 'core/api_auth.dart';
 import 'core/app_registry.dart';
 import 'core/apps.dart';
 import 'core/ava_bootstrap.dart';
-import 'core/ava_local_mode.dart';
 import 'core/ava_log.dart';
-import 'core/ava_ondevice_llm.dart';
 import 'core/disk_cache.dart';
 import 'core/guest_session.dart';
 import 'core/onboarding_store.dart';
@@ -149,17 +147,6 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
-    }
-    // Local Ava AI must be ready whenever the app is in use — the app depends on
-    // it. The OS frees the native model's memory while we're backgrounded, so the
-    // "Connected" status drops after a few minutes idle. Re-warm it on resume (no
-    // download, no-op if already loaded) so the user never has to reconnect by
-    // hand. Cold start is covered by AvaLocalMode.load() in ava_bootstrap.
-    if (state == AppLifecycleState.resumed &&
-        AvaLocalMode.I.enabled.value &&
-        !AvaOnDeviceLlm.I.isReady) {
-      // ignore: unawaited_futures
-      AvaOnDeviceLlm.I.ensureReady();
     }
   }
 

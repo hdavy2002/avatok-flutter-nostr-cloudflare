@@ -7,10 +7,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
-import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
 import '../../core/ava_planner.dart';
-import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/brain_api.dart';
 import '../../core/config.dart';
@@ -155,9 +153,6 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     final isApps = plan != null &&
         plan.scope == PlanScope.apps &&
         plan.confidence >= AvaPlanner.kExecuteThreshold;
-    final isLocalLookup = plan != null &&
-        plan.scope == PlanScope.local &&
-        plan.confidence >= AvaPlanner.kExecuteThreshold;
     if (!mounted) return;
     if (isApps) {
       final ok = await _confirmAction(text);
@@ -189,59 +184,9 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       _addAva(res);
       return;
     }
-    // Not a clear app action or memory lookup → the smart cloud brain handles it.
-    if (!isLocalLookup) { await _handleCloud(text); return; }
-    // LOCAL find (clear memory lookup).
-    final hits = await AvaOnDeviceRag.I.search(text, limit: 5);
-    if (!mounted) return;
-    if (hits.isEmpty) {
-      // Nothing on-device → the cloud brain (the user's full store) takes over
-      // instead of a dead-end "I don't have it".
-      await _handleCloud(text);
-      return;
-    }
-    // Cap RAG + memory to a hard token budget so the prompt never bloats as
-    // memory grows (keeps the 350M model responsive).
-    final ctx = AvaPromptBudget.rag(hits.map((h) => '• ${h.content}').join('\n'));
-    // Give Ava the "about the user" note so she answers as a personal AI that
-    // knows who she's helping — not a generic assistant.
-    final about = AvaPromptBudget.memory(await AvaProfileMemory.I.contextBlock());
-    final reply = await AvaOnDeviceLlm.I.ask(
-      text,
-      system: about.isEmpty ? null : '${AvaOnDeviceLlm.kChatSystem}\n\n$about',
-      context: ctx,
-      maxTokens: 96,
-    );
-    if (!mounted) return;
-    AvaQuality.answer(
-      surface: 'avachat',
-      source: about.isEmpty ? 'rag' : 'hybrid',
-      grounded: true,
-      citations: hits.length,
-      memoryUsed: about.isNotEmpty,
-      sourcesFound: hits.length,
-      ok: reply.ok,
-      systemText: about,
-      ragText: ctx,
-      userText: text,
-    );
-    AvaQuality.roi(
-      surface: 'avachat',
-      retrieved: hits.length,
-      injected: ctx,
-      answer: reply.ok ? reply.text : ctx,
-    );
-    _lastAnswerSource = about.isEmpty ? 'rag' : 'hybrid';
-    _addAva(
-      reply.ok && reply.text.isNotEmpty ? reply.text : ctx,
-      sources: hits
-          .map((h) => <String, dynamic>{
-                'kind': 'message',
-                'name': h.source,
-                'snippet': h.content,
-              })
-          .toList(),
-    );
+    // Everything else → the smart cloud brain (it retrieves the user's data
+    // server-side AND generates). No on-device generation anymore.
+    await _handleCloud(text);
   }
 
   Future<void> _handleCloud(String text) async {

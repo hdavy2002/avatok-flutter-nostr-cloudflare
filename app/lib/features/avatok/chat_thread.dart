@@ -781,11 +781,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // route it to the in-thread agent. No-op in Phase 0 (onSummonAva stays null).
     if (onSummonAva != null && t.toLowerCase().contains(_avaWakeWord)) {
       // ignore: unawaited_futures
-      onSummonAva!(t); // Phase 3 decides whether to also send the human message
-      // Local Ava AI answers on-device, so there's no server "working…" frame.
-      // Show a local thinking chip (added after this turn's own bubble) that
-      // collapses as soon as the answer bubble arrives.
-      if (AvaLocalMode.I.isActive) _showLocalAvaThinking();
+      onSummonAva!(t); // routes to the cloud agent, which posts its own working
+      // chip + the answer over the InboxDO (no local generation anymore).
     }
     // RAG memory: index this outgoing line into the user's own File Search store
     // (full-thread indexing — incoming lines are added in the receive handlers).

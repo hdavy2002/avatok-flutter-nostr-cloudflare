@@ -90,15 +90,14 @@ dependencies:
   # the same on every device; with split-per-ABI it adds ~1.5MB.
   drift: ^2.16.0
   sqlite3_flutter_libs: ^0.5.18
-  # ── On-device AI engine (Cactus) ──────────────────────────────────────────
-  # All-in-one on-device runtime: LLM completion + function-calling/tool-filter,
-  # embeddings, Whisper STT, and a local RAG vector store (ObjectBox), all GGUF.
-  # Phase A goal: run Qwen3-0.6B fully on-device/offline behind a swappable engine.
-  # NATIVE FFI PLUGIN — pulls in objectbox/objectbox_flutter_libs + native libs,
-  # so it MUST be validated by a CI APK build (this repo can't compile headless).
-  # Requires Android API 24+ (minSdk=24 ✓) and iOS 12+. Telemetry is disabled in
-  # code (CactusConfig.isTelemetryEnabled=false — see core/ava_ondevice_llm.dart).
-  cactus: ^1.3.0
+  # ── On-device AI engine (Cactus) — REMOVED 2026-06-21 ─────────────────────
+  # The Cactus on-device LLM was ripped out: it was too weak (hallucinated intent
+  # + answers, ~8s TTFT, failed to init LFM2.5 on the shipped engine) and bloated
+  # the APK with native libs. ALL generation/intent/tools are now the cloud
+  # (Gemini 3). On-device we keep only the user's PRIVATE memory as SQLite FTS5
+  # keyword search (core/ava_ondevice_rag.dart) — no native dep, FTS5 ships in
+  # sqlite3_flutter_libs below. Voice (sherpa-onnx STT/VAD + Supertonic TTS) and
+  # an optional ONNX embedding rerank are separate, later builds.
   # Phase 4 (Two-Lane Memory) — on-device vector + embedder deps DEFERRED here by
   # Phase 0. DECISION: NO new packages are needed for the free on-device lane.
   #   • FTS5 keyword search → already available (sqlite3_flutter_libs bundles

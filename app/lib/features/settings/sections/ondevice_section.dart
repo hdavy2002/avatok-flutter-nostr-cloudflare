@@ -1,19 +1,16 @@
-/// Settings → "Ava AI" section — activate/deactivate Local Ava AI (LFM2-350M
-/// on-device via Cactus).
+/// Settings → "Ava AI" section — the "keep my memory on this phone" toggle.
 ///
-/// OFF by default → Ava uses the cloud. Activating downloads + loads the tiny
-/// model so Ava runs on-device: faster, private, works offline. Shows live
-/// status — green "Connected (on-device)" when ready, "Loading…" while
-/// downloading/initialising, "Off — using cloud" otherwise — and a Disconnect
-/// button to fall back to cloud. Registered via [SettingsSectionRegistry] from
-/// [AvaBootstrap.init] (`registerOnDeviceSection()`).
+/// ARCHITECTURE (2026-06-21): the on-device LLM (Cactus/LFM350M) was removed —
+/// all of Ava's thinking is the cloud (Gemini 3) now. This toggle controls
+/// whether your messages/notes are indexed into a PRIVATE on-device search index
+/// (SQLite FTS5), so recall stays on your phone. No model download, instant.
+/// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init].
 library;
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ava_local_mode.dart';
-import '../../../core/ava_ondevice_llm.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
@@ -36,7 +33,6 @@ class _LocalAvaCard extends StatefulWidget {
 }
 
 class _LocalAvaCardState extends State<_LocalAvaCard> {
-  final _llm = AvaOnDeviceLlm.I;
   final _mode = AvaLocalMode.I;
   bool _busy = false;
 
@@ -63,21 +59,12 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
       radius: Zine.rSm,
       padding: const EdgeInsets.all(14),
       boxShadow: Zine.shadowXs,
-      child: AnimatedBuilder(
-        animation: Listenable.merge([
-          _mode.enabled,
-          _llm.status,
-          _llm.statusLine,
-          _llm.downloadProgress,
-        ]),
-        builder: (context, _) {
-          final on = _mode.enabled.value;
-          final st = _llm.status.value;
-          final (dotColor, label) = _statusFor(on, st);
-          final downloading = on &&
-              (st == OnDeviceStatus.downloading ||
-                  st == OnDeviceStatus.initializing);
-
+      child: ValueListenableBuilder<bool>(
+        valueListenable: _mode.enabled,
+        builder: (context, on, _) {
+          final (dotColor, label) = on
+              ? (const Color(0xFF22A06B), 'On — your memory stays on this phone')
+              : (Zine.inkMute, 'Off — Ava uses the cloud');
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -91,7 +78,7 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Run Ava AI on this phone',
+                        Text('Keep my memory on this phone',
                             style: ZineText.value(size: 14.5)),
                         const SizedBox(height: 3),
                         Row(children: [
@@ -103,8 +90,8 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
                           ),
                           const SizedBox(width: 6),
                           Flexible(
-                            child: Text(label,
-                                style: ZineText.sub(size: 12)),
+                            child:
+                                Text(label, style: ZineText.sub(size: 12)),
                           ),
                         ]),
                       ]),
@@ -112,35 +99,23 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
               ]),
               const SizedBox(height: 10),
               Text(
-                'Faster, private, and works offline — best on a powerful phone. '
-                'When off, Ava uses the cloud.',
+                'When on, your messages and notes are indexed privately on this '
+                'phone so Ava can recall them offline. Ava still thinks in the '
+                'cloud for answers — only your data stays local.',
                 style: ZineText.sub(size: 12),
               ),
-              if (downloading) ...[
-                const SizedBox(height: 10),
-                ValueListenableBuilder<double>(
-                  valueListenable: _llm.downloadProgress,
-                  builder: (context, p, _) => ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                        value: p > 0 ? p : null, minHeight: 7),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(_llm.statusLine.value, style: ZineText.sub(size: 11.5)),
-              ],
               const SizedBox(height: 12),
               if (!on)
                 ZineButton(
-                  label: _busy ? 'Activating…' : 'Activate Ava AI locally',
+                  label: _busy ? 'Turning on…' : 'Keep memory on this phone',
                   onPressed: _busy ? null : _activate,
                   variant: ZineButtonVariant.lime,
                   fontSize: 14,
                 )
               else
                 ZineButton(
-                  label: 'Disconnect (use cloud Ava)',
-                  onPressed: downloading ? null : _disconnect,
+                  label: 'Turn off (use cloud only)',
+                  onPressed: _disconnect,
                   variant: ZineButtonVariant.ghost,
                   fontSize: 14,
                 ),
@@ -149,16 +124,5 @@ class _LocalAvaCardState extends State<_LocalAvaCard> {
         },
       ),
     );
-  }
-
-  (Color, String) _statusFor(bool on, OnDeviceStatus st) {
-    if (!on) return (Zine.inkMute, 'Off — using cloud Ava');
-    return switch (st) {
-      OnDeviceStatus.ready => (const Color(0xFF22A06B), 'Connected (on-device)'),
-      OnDeviceStatus.downloading => (const Color(0xFFE8A23D), 'Model downloading…'),
-      OnDeviceStatus.initializing => (const Color(0xFFE8A23D), 'Model loading…'),
-      OnDeviceStatus.error => (Zine.coral, 'Error — using cloud Ava'),
-      OnDeviceStatus.idle => (const Color(0xFFE8A23D), 'Starting…'),
-    };
   }
 }
