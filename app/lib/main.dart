@@ -68,10 +68,56 @@ void main() async {
     Analytics.captureException(details.exception, details.stack);
   };
   WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-    Analytics.captureException(error, stack);
-    return false; // let the platform continue its default handling too
+    // A Wi-Fi / DNS blip (failed host lookup on clerk.avatok.ai, an inbox-WS
+    // 401/abort, a dropped tool call) surfaces here as an UNCAUGHT async error.
+    // Previously we returned false, so the platform's default handling could
+    // terminate the app — i.e. a transient network drop crashed AvaTOK. Swallow
+    // those connectivity errors (still logged, tagged so they don't pollute the
+    // crash dashboard) so the app degrades gracefully; let genuine bugs fall
+    // through to default handling as before.
+    final transient = _isTransientNetworkError(error);
+    Analytics.captureException(error, stack,
+        screen: transient ? 'network_transient' : null);
+    return transient; // true = handled (no crash); false = default handling
   };
   runApp(const AvaTalkApp());
+}
+
+/// True for transient connectivity failures (no network / DNS / socket / WS drop)
+/// that should NOT crash the app. Matched by type name + message so we don't have
+/// to import dart:io / http / web_socket_channel just for `is` checks.
+bool _isTransientNetworkError(Object error) {
+  final type = error.runtimeType.toString();
+  final msg = error.toString().toLowerCase();
+  const typeMarkers = [
+    'SocketException',
+    'WebSocketException',
+    'WebSocketChannelException',
+    'ClientException',
+    'HandshakeException',
+    'TimeoutException',
+    'HttpException',
+  ];
+  for (final t in typeMarkers) {
+    if (type.contains(t)) return true;
+  }
+  const msgMarkers = [
+    'failed host lookup',
+    'no address associated with hostname',
+    'software caused connection abort',
+    'connection closed',
+    'connection reset',
+    'connection refused',
+    'connection timed out',
+    'network is unreachable',
+    'was not upgraded to websocket',
+    'os error: errno = 7',
+    'broken pipe',
+  ];
+  for (final m in msgMarkers) {
+    if (msg.contains(m)) return true;
+  }
+  return false;
 }
 
 class AvaTalkApp extends StatelessWidget {

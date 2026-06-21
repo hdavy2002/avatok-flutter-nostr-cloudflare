@@ -32,7 +32,24 @@ class AppIconCache {
   static String _name(String url) {
     final safe = url.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
     final tail = safe.length > 72 ? safe.substring(safe.length - 72) : safe;
-    return '${tail}_${url.hashCode.toRadixString(16)}.icon';
+    return '${tail}_${_stableHash(url)}.icon';
+  }
+
+  /// Deterministic 64-bit FNV-1a digest of [s] as hex. We do NOT use
+  /// `String.hashCode`: Dart seeds it randomly at each VM/app startup (a
+  /// hash-flooding defence), so it returns a DIFFERENT value every cold open.
+  /// That made the on-disk filename change every launch — the disk lookup always
+  /// missed and the grid re-downloaded (and re-wrote a duplicate of) every icon
+  /// on each open. This hash is stable across runs, so the file is found locally
+  /// and served from disk. (App is mobile/AOT → native 64-bit int wraparound.)
+  static String _stableHash(String s) {
+    var h = 0xcbf29ce484222325; // FNV-1a 64-bit offset basis
+    const prime = 0x100000001b3;
+    for (final c in s.codeUnits) {
+      h ^= c;
+      h *= prime; // wraps mod 2^64 on native ints
+    }
+    return h.toUnsigned(64).toRadixString(16);
   }
 
   /// Synchronous peek at the in-session cache — lets callers render instantly

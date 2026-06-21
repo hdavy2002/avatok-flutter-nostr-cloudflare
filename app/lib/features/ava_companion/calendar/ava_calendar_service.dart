@@ -24,7 +24,11 @@ import 'calendar_models.dart';
 /// store is introduced here, so there is no cross-account key to scope — when a
 /// disk cache is added later it MUST go through `scopedKey(...)` per the rulebook.
 
-const String _kCalProvider = 'gcalendar';
+// Composio toolkit slugs — MUST match the live AvaApps/worker connector ids
+// (worker/src/lib/composio.ts GOOGLE_TOOLKITS + ava_agent.ts
+// `connected.includes("googlecalendar")`). Using 'gcalendar' here would never
+// match the user's connection, so Ava would always report "no access".
+const String _kCalProvider = 'googlecalendar';
 const String _kGmailProvider = 'gmail';
 
 const String _aList = 'GOOGLECALENDAR_LIST_CALENDARS';
