@@ -138,8 +138,8 @@ export class AvaAgentDO {
   // ---- read a bounded recent window from the caller's InboxDO -----------------
   // We read the caller's own log (they are a member of the conv) and filter to
   // this conversation. Returns oldest→newest, text-only (envelopes decoded).
-  private async recentWindow(callerUid: string, conv: string): Promise<{ window: { mine: boolean; text: string }[]; attachments: { mine: boolean; name: string; kind: string; mime: string }[]; maxId: number }> {
-    const window: { mine: boolean; text: string }[] = [];
+  private async recentWindow(callerUid: string, conv: string): Promise<{ window: { mine: boolean; ava?: boolean; text: string }[]; attachments: { mine: boolean; name: string; kind: string; mime: string }[]; maxId: number }> {
+    const window: { mine: boolean; ava?: boolean; text: string }[] = [];
     const attachments: { mine: boolean; name: string; kind: string; mime: string }[] = [];
     let maxId = 0;
     try {
@@ -157,7 +157,7 @@ export class AvaAgentDO {
         if (media) { attachments.push({ mine, ...media }); continue; }
         const text = this.decodeBody(String(r.body ?? ""));
         if (!text) continue;
-        window.push({ mine, text });
+        window.push({ mine, ava: String(r.sender) === "ava", text });
       }
     } catch { /* best-effort; an empty window still produces a turn */ }
     // Keep the most recent WINDOW messages + last 8 attachments (bounded context).
@@ -173,7 +173,11 @@ export class AvaAgentDO {
       const env = JSON.parse(body);
       if (env && typeof env === "object") {
         const t = String(env.t ?? "");
-        if (t === "ava" || t === "ava_private" || t === "ava_status") return "";
+        // Keep Ava's OWN prior answers (ava/ava_private) in context so follow-ups
+        // like "send the above", "reply to that", "expand on what you said" work —
+        // they are labelled "Ava:" in the transcript, not fed back as instructions.
+        // Only the transient "working…" chip and pure control envelopes are dropped.
+        if (t === "ava_status") return "";
         if (t === "receipt" || t === "read" || t === "vote" || t === "edit" || t === "gedit") return "";
         if (typeof env.text === "string") return env.text;
         if (typeof env.body === "string") return env.body;
@@ -506,7 +510,7 @@ export class AvaAgentDO {
 
       // THE single agentic call: Gemini chats directly, calls search_memory for
       // the user's own data, or acts on connected apps — its own choice, one loop.
-      const ctx = window.map((w) => `${w.mine ? "User" : "Other"}: ${w.text}`).join("\n");
+      const ctx = window.map((w) => `${w.ava ? "Ava" : (w.mine ? "User" : "Other")}: ${w.text}`).join("\n");
 
       // Live token streaming (kill-switchable via AVA_STREAM_OFF). We push the
       // answer to the summoner's socket AS Gemini produces it (first token in
