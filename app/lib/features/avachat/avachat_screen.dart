@@ -1,17 +1,23 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:record/record.dart';
 
 import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_ondevice_stt.dart';
 import '../../core/ava_planner.dart';
 import '../../core/ava_quality.dart';
 import '../../core/brain_api.dart';
 import '../../core/config.dart';
+import '../../core/kokoro_voice.dart';
+import '../../core/ui/mic_input_sheet.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avabrain/brain_settings_screen.dart';
@@ -39,10 +45,17 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _audio = AudioPlayer();
+  final _recorder = AudioRecorder();
   final List<_ChatMsg> _msgs = [];
   bool _thinking = false;
   bool _loadingHistory = true;
   String? _playingRef;
+  // Voice input (on-device Whisper): live dictation + record-then-transcribe.
+  SttSession? _stt;
+  bool _sttActive = false;
+  bool _recording = false;
+  bool _transcribing = false;
+  String? _recPath;
   // Source of the last Ava answer (memory|rag|tool|llm|hybrid) so a correction
   // right after can be attributed — corrections of memory-backed answers matter.
   String _lastAnswerSource = '';
@@ -66,7 +79,97 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     _input.dispose();
     _scroll.dispose();
     _audio.dispose();
+    _stt?.cancel();
+    _recorder.dispose();
     super.dispose();
+  }
+
+  // ---- mic menu: record audio OR convert voice to text ----
+  void _openMicMenu() {
+    FocusScope.of(context).unfocus();
+    showMicInputSheet(
+      context,
+      recordSubtitle: 'Record, then drop the words in the box',
+      onRecordAudio: _recordToText,
+      onVoiceToText: _startVoiceToText,
+    );
+  }
+
+  // Live on-device dictation — fills the input box as the user speaks.
+  Future<void> _startVoiceToText() async {
+    if (_sttActive) return;
+    final lang = KokoroVoicePref.current.sttLang;
+    final s = await AvaOnDeviceStt.I.startDictation(
+      lang: lang,
+      onText: (t) {
+        if (!mounted) return;
+        setState(() {
+          _input.text = t;
+          _input.selection = TextSelection.collapsed(offset: t.length);
+        });
+      },
+    );
+    if (s == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Voice-to-text needs microphone access')));
+      }
+      return;
+    }
+    setState(() { _stt = s; _sttActive = true; });
+  }
+
+  Future<void> _stopVoiceToText() async {
+    final s = _stt;
+    if (s == null) return;
+    setState(() => _sttActive = false);
+    final text = await s.stop();
+    if (!mounted) return;
+    setState(() {
+      if (text.isNotEmpty) {
+        _input.text = text;
+        _input.selection = TextSelection.collapsed(offset: text.length);
+      }
+      _stt = null;
+    });
+  }
+
+  // Record a clip, then transcribe once and drop the text into the box. (AvaChat
+  // is a text brain, so "record audio" becomes text the user can review + send.)
+  Future<void> _recordToText() async {
+    if (_recording) {
+      setState(() { _recording = false; _transcribing = true; });
+      String path = '';
+      try { path = await _recorder.stop() ?? ''; } catch (_) {}
+      if (path.isEmpty) { if (mounted) setState(() => _transcribing = false); return; }
+      final lang = KokoroVoicePref.current.sttLang;
+      final text = await AvaOnDeviceStt.I.transcribeFile(path, lang);
+      try { await File(path).delete(); } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _transcribing = false;
+        if (text.isNotEmpty) {
+          final joined = _input.text.isEmpty ? text : '${_input.text} $text';
+          _input.text = joined;
+          _input.selection = TextSelection.collapsed(offset: joined.length);
+        }
+      });
+      return;
+    }
+    if (!await _recorder.hasPermission()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission needed')));
+      }
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    _recPath = '${dir.path}/avachat_rec_${DateTime.now().millisecondsSinceEpoch}.wav';
+    await _recorder.start(
+      const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
+      path: _recPath!,
+    );
+    setState(() => _recording = true);
   }
 
   Future<void> _loadHistory() async {
@@ -482,62 +585,98 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
 
   // Input bar: paper-2 band with top ink border, ink-bordered pill field and
   // the lime send circle (the ONE lime primary on this screen).
-  Widget _inputBar() => Container(
-        decoration: const BoxDecoration(
-          color: Zine.paper2,
-          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+  Widget _inputBar() {
+    final voiceBusy = _sttActive || _recording || _transcribing;
+    final hint = _sttActive
+        ? 'Listening…'
+        : _recording
+            ? 'Recording…'
+            : _transcribing
+                ? 'Transcribing…'
+                : 'Ask your AvaBrain…';
+    return Container(
+      decoration: const BoxDecoration(
+        color: Zine.paper2,
+        border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 14, 12),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            // Mic → slide-out menu (record audio / convert voice to text).
+            IconButton(
+              tooltip: 'Voice',
+              icon: PhosphorIcon(
+                  PhosphorIcons.microphone(
+                      voiceBusy ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
+                  color: voiceBusy ? Zine.mintInk : Zine.ink, size: 24),
+              onPressed: _transcribing ? null : _openMicMenu,
+            ),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Zine.card,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Zine.border,
+                  boxShadow: Zine.shadowXs,
+                ),
+                child: TextField(
+                  controller: _input,
+                  minLines: 1, maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
+                  cursorColor: Zine.blueInk,
+                  style: ZineText.input(size: 15),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: ZineText.input(size: 15).copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+                    isDense: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _trailingButton(),
+          ]),
         ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Zine.card,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Zine.border,
-                    boxShadow: Zine.shadowXs,
-                  ),
-                  child: TextField(
-                    controller: _input,
-                    minLines: 1, maxLines: 4,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _send(),
-                    cursorColor: Zine.blueInk,
-                    style: ZineText.input(size: 15),
-                    decoration: InputDecoration(
-                      hintText: 'Ask your AvaBrain…',
-                      hintStyle: ZineText.input(size: 15).copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
-                      isDense: true,
-                      filled: false,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              ZinePressable(
-                onTap: _thinking ? null : _send,
-                color: _thinking ? Zine.paper2 : Zine.lime,
-                radius: BorderRadius.circular(100),
-                boxShadow: Zine.shadowXs,
-                child: SizedBox(
-                  width: 46, height: 46,
-                  child: Center(
-                    child: PhosphorIcon(
-                      PhosphorIcons.arrowUp(PhosphorIconsStyle.bold),
-                      size: 21, color: _thinking ? Zine.inkMute : Zine.ink,
-                    ),
-                  ),
-                ),
-              ),
-            ]),
-          ),
+      ),
+    );
+  }
+
+  // Send, or a stop button while a voice session is live.
+  Widget _trailingButton() {
+    if (_sttActive || _recording) {
+      return ZinePressable(
+        onTap: _sttActive ? _stopVoiceToText : _recordToText,
+        color: Zine.coral,
+        radius: BorderRadius.circular(100),
+        boxShadow: Zine.shadowXs,
+        child: const SizedBox(
+          width: 46, height: 46,
+          child: Center(child: Icon(Icons.stop_rounded, color: Colors.white, size: 24)),
         ),
       );
+    }
+    return ZinePressable(
+      onTap: _thinking ? null : _send,
+      color: _thinking ? Zine.paper2 : Zine.lime,
+      radius: BorderRadius.circular(100),
+      boxShadow: Zine.shadowXs,
+      child: SizedBox(
+        width: 46, height: 46,
+        child: Center(
+          child: PhosphorIcon(
+            PhosphorIcons.arrowUp(PhosphorIconsStyle.bold),
+            size: 21, color: _thinking ? Zine.inkMute : Zine.ink,
+          ),
+        ),
+      ),
+    );
+  }
 }

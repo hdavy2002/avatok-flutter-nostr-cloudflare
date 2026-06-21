@@ -127,6 +127,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _hasText = false;
   bool _recording = false;
   String? _recPath;
+  // Live voice-to-text (on-device Whisper) — types into the composer as you speak.
+  SttSession? _sttSession;
+  bool _sttActive = false;
 
   // Server-routed DM (Cloudflare-native transport) for contacts.
   AvaDm? _dm;
@@ -713,6 +716,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _audio.dispose();
     _sfx.dispose();
     _recorder.dispose();
+    _sttSession?.cancel();
     if (_convKey != null) DraftStore().set(_convKey!, _ctrl.text.trim());
     _dm?.stop();
     _gdm?.stop();
@@ -1951,6 +1955,56 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  // ---- mic menu: record audio OR convert voice to text ----
+  void _openMicMenu() {
+    FocusScope.of(context).unfocus();
+    showMicInputSheet(
+      context,
+      recordSubtitle: 'Record a voice note and send it',
+      onRecordAudio: _toggleRecord,
+      onVoiceToText: _startVoiceToText,
+    );
+  }
+
+  // Start on-device Whisper dictation — text fills the composer live as you talk.
+  Future<void> _startVoiceToText() async {
+    if (_sttActive) return;
+    final lang = KokoroVoicePref.current.sttLang;
+    final session = await AvaOnDeviceStt.I.startDictation(
+      lang: lang,
+      onText: (t) {
+        if (!mounted) return;
+        setState(() {
+          _ctrl.text = t;
+          _ctrl.selection = TextSelection.collapsed(offset: t.length);
+          _hasText = t.trim().isNotEmpty;
+        });
+      },
+    );
+    if (session == null) {
+      _capNote('Voice-to-text needs microphone access.');
+      return;
+    }
+    setState(() { _sttSession = session; _sttActive = true; });
+  }
+
+  Future<void> _stopVoiceToText() async {
+    final s = _sttSession;
+    if (s == null) return;
+    setState(() => _sttActive = false);
+    final text = await s.stop();
+    if (!mounted) return;
+    setState(() {
+      if (text.isNotEmpty) {
+        _ctrl.text = text;
+        _ctrl.selection = TextSelection.collapsed(offset: text.length);
+        _hasText = text.trim().isNotEmpty;
+      }
+      _sttSession = null;
+    });
+    _composerFocus.requestFocus();
+  }
+
   // ---- voice note record ----
   Future<void> _toggleRecord() async {
     if (_recording) {
@@ -2497,6 +2551,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       decoration: bandDeco,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_replyTo != null || _editing != null) _replyBanner(),
+        if (_sttActive) _listeningBanner(),
         _composerTools(),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 12, 10),
@@ -2538,16 +2593,46 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ),
         ),
         const SizedBox(width: 10),
-        _sendCircle(
-            _hasText
-                ? PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill)
-                : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
-            _hasText ? _send : _toggleRecord),
+        if (_sttActive)
+          GestureDetector(
+            onTap: _stopVoiceToText,
+            child: Container(width: 44, height: 44,
+                decoration: BoxDecoration(
+                    color: Zine.coral, shape: BoxShape.circle,
+                    border: Zine.border, boxShadow: Zine.shadowXs),
+                child: Icon(Icons.stop_rounded, color: Colors.white, size: 22)),
+          )
+        else
+          _sendCircle(
+              _hasText
+                  ? PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill)
+                  : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
+              _hasText ? _send : _openMicMenu),
           ]),
         ),
       ]),
     );
   }
+
+  // Thin "Listening…" banner shown above the composer during voice-to-text.
+  Widget _listeningBanner() => Container(
+        padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
+        child: Row(children: [
+          PhosphorIcon(PhosphorIcons.waveform(PhosphorIconsStyle.fill),
+              color: Zine.mintInk, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: ValueListenableBuilder<String>(
+              valueListenable: AvaOnDeviceStt.I.statusLine,
+              builder: (_, s, __) => Text(
+                s.isEmpty ? 'Listening…' : s,
+                style: ZineText.kicker(size: 11, color: Zine.mintInk),
+              ),
+            ),
+          ),
+          Text('TAP ■ TO INSERT', style: ZineText.kicker(size: 9.5)),
+        ]),
+      );
 
   // ===========================================================================
   // Composer quick-tools row (Translate · Fix grammar · Rewrite · Reply ideas)

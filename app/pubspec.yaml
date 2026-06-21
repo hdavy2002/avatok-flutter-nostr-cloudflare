@@ -96,8 +96,14 @@ dependencies:
   # the APK with native libs. ALL generation/intent/tools are now the cloud
   # (Gemini 3). On-device we keep only the user's PRIVATE memory as SQLite FTS5
   # keyword search (core/ava_ondevice_rag.dart) — no native dep, FTS5 ships in
-  # sqlite3_flutter_libs below. Voice (sherpa-onnx STT/VAD + Supertonic TTS) and
-  # an optional ONNX embedding rerank are separate, later builds.
+  # sqlite3_flutter_libs below. Voice TTS = KOKORO (Kokoro-82M, multilingual —
+  # owner decision 2026-06-21, replacing the dropped Supertonic-3 plan); STT = the
+  # on-device Whisper engine below. An optional ONNX embedding rerank is a separate,
+  # later build.
+  # On-device speech-to-text (whisper.cpp via whisper_ggml) for "Convert voice to
+  # text" — private, multilingual, loads whisper-tiny into memory (see
+  # core/ava_ondevice_stt.dart). Replaces the removed Cactus CactusSTT.
+  whisper_ggml: ^1.7.0
   # Phase 4 (Two-Lane Memory) — on-device vector + embedder deps DEFERRED here by
   # Phase 0. DECISION: NO new packages are needed for the free on-device lane.
   #   • FTS5 keyword search → already available (sqlite3_flutter_libs bundles

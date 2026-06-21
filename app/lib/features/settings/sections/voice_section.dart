@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/disk_cache.dart';
+import '../../../core/kokoro_voice.dart';
 import '../../../core/paid_feature.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../settings_registry.dart';
+import 'kokoro_voice_screen.dart';
 
 /// Settings → "Ava voice" section (Phase 6 — Companion / Blank Ava Chat).
 ///
@@ -78,6 +80,7 @@ class _VoiceCardState extends State<_VoiceCard> {
   void initState() {
     super.initState();
     AvaVoicePref.load();
+    KokoroVoicePref.load();
   }
 
   @override
@@ -86,7 +89,8 @@ class _VoiceCardState extends State<_VoiceCard> {
       radius: Zine.rSm,
       padding: const EdgeInsets.all(14),
       boxShadow: Zine.shadowXs,
-      child: ValueListenableBuilder<bool>(
+      child: Column(children: [
+        ValueListenableBuilder<bool>(
         valueListenable: AvaVoicePref.enabled,
         builder: (context, on, _) {
           final body = Row(children: [
@@ -130,7 +134,52 @@ class _VoiceCardState extends State<_VoiceCard> {
           ]);
           return body;
         },
-      ),
+        ),
+        const SizedBox(height: 12),
+        Container(height: Zine.bw, color: Zine.ink.withValues(alpha: 0.12)),
+        const SizedBox(height: 10),
+        _voiceLangRow(context),
+      ]),
+    );
+  }
+
+  /// Tappable row → the Kokoro language + voice picker. Shows the current choice.
+  Widget _voiceLangRow(BuildContext context) {
+    return ValueListenableBuilder<KokoroSelection>(
+      valueListenable: KokoroVoicePref.selection,
+      builder: (context, sel, _) {
+        return ZinePressable(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const KokoroVoiceScreen()),
+          ),
+          color: Zine.card,
+          radius: BorderRadius.circular(Zine.rBadge),
+          boxShadow: const <BoxShadow>[],
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Row(children: [
+            ZineIconBadge(
+                icon: PhosphorIcons.translate(PhosphorIconsStyle.fill),
+                color: Zine.mint,
+                size: 34),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Voice & language', style: ZineText.value(size: 14.5)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${sel.language.name} · ${sel.voice.name} '
+                      '(${sel.voice.female ? "Female" : "Male"})',
+                      style: ZineText.sub(size: 12),
+                    ),
+                  ]),
+            ),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                size: 16, color: Zine.inkSoft),
+          ]),
+        );
+      },
     );
   }
 }
@@ -147,13 +196,13 @@ class _VoiceCardState extends State<_VoiceCard> {
 ///
 /// So this phase ships the per-account PREFERENCE + the on-demand "Listen"
 /// affordance, and leaves the actual synthesis call as a single documented hook:
-/// [synthesizer]. When a text→speech endpoint that returns audio for arbitrary
-/// text exists (e.g. a future `/api/ava/voice` using ElevenLabs, or an extension
-/// of `/api/agent/tts` that accepts raw text), assign [synthesizer] to a function
-/// that returns the spoken bytes (or a streamable URL) for [text]. The companion
-/// thread already calls [AvaVoice.speak] on demand and plays the result via
-/// audioplayers; until [synthesizer] is wired it shows a friendly "voice is
-/// coming soon" notice instead of failing.
+/// [synthesizer]. The chosen TTS engine is KOKORO (Kokoro-82M, multilingual —
+/// owner decision 2026-06-21); when it comes online, assign [synthesizer] to a
+/// function that synthesises [text] in the user's selected language + voice from
+/// [KokoroVoicePref.current] (see core/kokoro_voice.dart) and returns a playable
+/// local audio path. The companion thread already calls [AvaVoice.speak] on demand
+/// and plays the result via audioplayers; until [synthesizer] is wired it shows a
+/// friendly "voice is coming soon" notice instead of failing.
 class AvaVoice {
   AvaVoice._();
 
