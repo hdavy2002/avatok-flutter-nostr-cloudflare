@@ -68,7 +68,7 @@ class CompanionThreadScreen extends StatefulWidget {
 
 class _CompanionMsg {
   final String id;
-  final String text;
+  String text; // mutable so streamed deltas can append live
   final bool me; // true = user, false = Ava
   final bool blocked; // Ava turn refused by the gate
   final String? reason; // gate reason, e.g. 'premium_required' | 'insufficient_coins'
@@ -310,23 +310,58 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     final ctxParts = <String>[widget.persona.systemPrompt];
     if (about.isNotEmpty) ctxParts.add(about);
     if (notes.isNotEmpty) ctxParts.add(notes);
+    final ctxStr = ctxParts.join('\n\n');
+    _lastAnswerSource = notes.isNotEmpty ? 'hybrid' : (about.isEmpty ? 'llm' : 'hybrid');
+
+    // STREAM FIRST — type the answer out token-by-token as it arrives (feels
+    // instant). Fall back to a single ask() on any stream failure.
+    final live = _CompanionMsg(
+        'a${DateTime.now().microsecondsSinceEpoch}', '', false, reveal: 0);
+    var streamed = false;
+    try {
+      await for (final delta in AvaAiClient.I.askStream(
+        message: t,
+        context: ctxStr,
+        history: priorHistory.isEmpty ? null : priorHistory,
+      )) {
+        if (!mounted) return;
+        if (!streamed) {
+          streamed = true;
+          setState(() { _msgs.add(live); _busy = false; });
+        }
+        setState(() { live.text += delta; live.reveal = live.text.length; });
+        if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    } catch (_) {
+      streamed = false;
+    }
+
+    if (streamed && live.text.trim().isNotEmpty) {
+      if (notes.isNotEmpty) {
+        AvaQuality.roi(surface: 'companion', retrieved: hitCount, injected: notes, answer: live.text);
+      }
+      Analytics.capture('avachat_turn_replied', {
+        'persona': widget.persona.id, 'streamed': true,
+        'latency_ms': DateTime.now().difference(startedAt).inMilliseconds,
+      });
+      _ingestTurn('You', t);
+      _ingestTurn('Ava', live.text);
+      _persist();
+      return;
+    }
+    // Fallback path: drop any empty streamed bubble, then one-shot ask().
+    if (streamed) setState(() => _msgs.remove(live));
     final ans = await AvaAiClient.I.ask(
       message: t,
-      context: ctxParts.join('\n\n'),
+      context: ctxStr,
       history: priorHistory.isEmpty ? null : priorHistory,
     );
-    _lastAnswerSource = notes.isNotEmpty ? 'hybrid' : (about.isEmpty ? 'llm' : 'hybrid');
     if (notes.isNotEmpty) {
-      AvaQuality.roi(
-          surface: 'companion',
-          retrieved: hitCount,
-          injected: notes,
-          answer: ans.answer);
+      AvaQuality.roi(surface: 'companion', retrieved: hitCount, injected: notes, answer: ans.answer);
     }
     if (!mounted) return;
     Analytics.capture('avachat_turn_replied', {
-      'persona': widget.persona.id,
-      'blocked': ans.blocked,
+      'persona': widget.persona.id, 'blocked': ans.blocked, 'streamed': false,
       if (ans.reason != null) 'reason': ans.reason!,
       'latency_ms': DateTime.now().difference(startedAt).inMilliseconds,
     });
@@ -334,27 +369,16 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         ? "I couldn't reach my thoughts just now — try again?"
         : ans.answer;
     final avaMsg = _CompanionMsg(
-      'a${DateTime.now().microsecondsSinceEpoch}',
-      answer,
-      false,
-      blocked: ans.blocked,
-      reason: ans.reason,
-      // Stream the normal answers in; show refusals/notices immediately.
+      'a${DateTime.now().microsecondsSinceEpoch}', answer, false,
+      blocked: ans.blocked, reason: ans.reason,
       reveal: ans.blocked ? answer.length : 0,
     );
-    setState(() {
-      _msgs.add(avaMsg);
-      _busy = false;
-    });
+    setState(() { _msgs.add(avaMsg); _busy = false; });
     _jumpToEnd();
     if (!ans.blocked) _streamIn(avaMsg);
-    // Make this chat findable later. Index both turns into the on-device store
-    // (so @ava and AvaChat can recall it offline) and the user's cloud File
-    // Search store. On-device only when Local Ava AI is loaded, so we never
-    // trigger a model download just from chatting.
     _ingestTurn('You', t);
     if (!ans.blocked) _ingestTurn('Ava', answer);
-    _persist(); // save history (local + D1) after each completed turn
+    _persist();
   }
 
   /// Index one chat line into on-device memory (when Local Ava AI is loaded) and

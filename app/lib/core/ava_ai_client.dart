@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:http/http.dart' as http;
+
 import 'api_auth.dart';
 import 'ava_ai_store.dart';
 import 'ava_contracts.dart';
@@ -88,6 +90,55 @@ class AvaAiClient {
         blocked: true,
         reason: 'network',
       );
+    }
+  }
+
+  /// Streaming companion chat — yields text deltas as the worker's SSE endpoint
+  /// (`/api/ava/gemini/stream`) produces them, so the UI types the answer out
+  /// LIVE (feels far faster). Throws on any failure so the caller can fall back
+  /// to [ask]. Same signed-auth + optional BYO key as [ask].
+  Stream<String> askStream({
+    required String message,
+    String? context,
+    List<Map<String, String>>? history,
+    Duration timeout = const Duration(seconds: 60),
+  }) async* {
+    final body = <String, dynamic>{
+      'message': message,
+      if (context != null && context.isNotEmpty) 'context': context,
+      if (history != null && history.isNotEmpty) 'history': history,
+    };
+    final extra = <String, String>{};
+    final key = await _store.apiKey();
+    if (key != null && key.isNotEmpty) extra['X-Ava-Gemini-Key'] = key;
+
+    final url = '$_url/stream';
+    final bytes = utf8.encode(jsonEncode(body));
+    final headers = await ApiAuth.signedHeaders('POST', url, body: bytes, extra: extra);
+
+    final client = http.Client();
+    try {
+      final req = http.Request('POST', Uri.parse(url))
+        ..headers.addAll(headers)
+        ..bodyBytes = bytes;
+      final resp = await client.send(req).timeout(timeout);
+      if (resp.statusCode != 200) {
+        throw Exception('stream http ${resp.statusCode}');
+      }
+      final lines = resp.stream.transform(utf8.decoder).transform(const LineSplitter());
+      await for (final line in lines) {
+        final t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        final payload = t.substring(5).trim();
+        if (payload.isEmpty || payload == '[DONE]') continue;
+        try {
+          final j = jsonDecode(payload) as Map<String, dynamic>;
+          final delta = j['delta'] as String?;
+          if (delta != null && delta.isNotEmpty) yield delta;
+        } catch (_) {/* skip a malformed SSE line */}
+      }
+    } finally {
+      client.close();
     }
   }
 

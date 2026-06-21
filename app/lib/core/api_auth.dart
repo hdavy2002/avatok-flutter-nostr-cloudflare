@@ -58,6 +58,13 @@ class ApiAuth {
     return h;
   }
 
+  /// Public signed headers for a manual request (e.g. an SSE streaming POST that
+  /// reads the response stream itself). Same NIP-98 + Clerk signing as the rest.
+  static Future<Map<String, String>> signedHeaders(String method, String url,
+          {List<int>? body, Map<String, String>? extra}) =>
+      _headers(method, url,
+          body: body, base: {'Content-Type': 'application/json', ...?extra});
+
   static String _traceId() {
     final r = Random.secure();
     String h(int n) => List<int>.generate(n, (_) => r.nextInt(256)).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
