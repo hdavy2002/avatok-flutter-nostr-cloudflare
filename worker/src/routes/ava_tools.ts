@@ -174,6 +174,8 @@ async function callStrata(
     method: "POST",
     headers,
     body: JSON.stringify({ op, args, user: uid }),
+    // Fail fast rather than hang the Worker if the Strata origin is slow/down.
+    signal: AbortSignal.timeout(20000),
   });
   // Pass Strata's JSON through verbatim (status + body) so progressive-
   // disclosure responses (categories / actions / schemas / results) reach the

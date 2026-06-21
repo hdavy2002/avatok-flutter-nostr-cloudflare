@@ -47,18 +47,55 @@ const CURATED: Record<string, string[]> = {
   ],
 };
 
-async function cfetch(env: Env, path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(`${B}${path}`, {
-    ...init,
-    headers: {
-      "x-api-key": env.COMPOSIO_API_KEY ?? "",
-      "Content-Type": "application/json",
-      ...(init?.headers as Record<string, string> | undefined),
-    },
-  });
-  const j: any = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`composio ${path} ${res.status}: ${JSON.stringify(j).slice(0, 200)}`);
-  return j;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Every Composio REST call goes through here. Hardened (the apps/status 502 +
+// `_ClientSocketException` fix): a plain unbounded fetch let a slow/hanging
+// Composio backend hold the Worker subrequest until the client socket dropped or
+// Cloudflare returned a 502, and a transient upstream 5xx/429 surfaced straight
+// to the user. Now: (a) a hard timeout fails FAST with a clear error, and (b)
+// idempotent GET reads retry transient failures with backoff. Writes (connect/
+// execute) are NEVER auto-retried — replaying them could duplicate a connected
+// account or double-run a tool — so they only get the timeout.
+async function cfetch(
+  env: Env,
+  path: string,
+  init?: RequestInit & { timeoutMs?: number; retries?: number },
+): Promise<any> {
+  const { timeoutMs = 15000, retries, ...rest } = init ?? {};
+  const method = String(rest.method ?? "GET").toUpperCase();
+  const idempotent = method === "GET";
+  const maxRetries = retries ?? (idempotent ? 2 : 0);
+
+  let lastErr: unknown;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(`${B}${path}`, {
+        ...rest,
+        headers: {
+          "x-api-key": env.COMPOSIO_API_KEY ?? "",
+          "Content-Type": "application/json",
+          ...(rest.headers as Record<string, string> | undefined),
+        },
+        // Fail fast instead of hanging the Worker until the client socket drops.
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      // Retry transient upstream errors (429/5xx) on idempotent reads.
+      if (!res.ok && (res.status === 429 || res.status >= 500) && attempt < maxRetries) {
+        lastErr = new Error(`composio ${path} ${res.status}`);
+        await sleep(250 * (attempt + 1) * (attempt + 1)); // 250ms, 1s
+        continue;
+      }
+      const j: any = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`composio ${path} ${res.status}: ${JSON.stringify(j).slice(0, 200)}`);
+      return j;
+    } catch (e) {
+      lastErr = e;
+      // Network error / timeout (AbortError) — retry idempotent reads, else bail.
+      if (attempt >= maxRetries) throw e;
+      await sleep(250 * (attempt + 1) * (attempt + 1));
+    }
+  }
 }
 
 // One Composio-managed OAuth auth config per toolkit, created once + cached in KV.
@@ -185,11 +222,15 @@ export async function geminiTools(env: Env, slugs: string[]): Promise<any[]> {
   return decls;
 }
 
-// Execute one Composio tool for the user.
+// Execute one Composio tool for the user. Tool execution is the slow path (it
+// hits the user's Google account), so it gets a longer timeout — but it is a
+// side-effecting POST, so it is NEVER auto-retried (retries: 0).
 export async function executeTool(env: Env, userId: string, slug: string, args: unknown): Promise<any> {
   return cfetch(env, `/tools/execute/${slug}`, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, arguments: args ?? {} }),
+    timeoutMs: 30000,
+    retries: 0,
   });
 }
 
