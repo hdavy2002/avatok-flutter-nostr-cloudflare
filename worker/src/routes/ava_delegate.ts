@@ -44,8 +44,8 @@ import { postAvaMessage } from "./ava_thread";
 import { runGated } from "../lib/ai_gate";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Prefs store — self-creating D1 table (no migration; mirrors P5's
-// ava_tool_tokens self-create pattern). One row per (uid, conv).
+// Prefs store — self-creating D1 table (no migration; the same self-create
+// pattern other DB_META tables use). One row per (uid, conv).
 //   monitor         1 → Ava may auto-reply on this user's behalf in this chat
 //   alert_mentions  1 → push the user on every @mention in this chat
 // ─────────────────────────────────────────────────────────────────────────────

@@ -43,7 +43,7 @@
 // (P2 ai_gate.ts) as the heavier classifier; the existing push queue (env.Q_PUSH
 // "notify") for the parent digest delivery hook. Per-user/per-chat secure-chat
 // prefs + parent↔child links live in SELF-CREATING D1 tables (DB_META), mirroring
-// P5's ava_tool_tokens / P7's ava_delegate_prefs self-create pattern (no migration).
+// P7's ava_delegate_prefs self-create pattern (no migration).
 
 import type { Env } from "../types";
 import { json } from "../util";
@@ -287,7 +287,7 @@ function cheapScan(text: string): CheapVerdict {
 //   2. An external detector (Hive, Sightengine, Reality Defender) behind a Worker
 //      secret + fetch — return {score, label}.
 //   3. A self-hosted ONNX classifier (e.g. an EfficientNet/ViT trained on the
-//      DFDC / FaceForensics++ corpus) reached over STRATA_URL or a sidecar.
+//      DFDC / FaceForensics++ corpus) reached over a self-hosted endpoint/sidecar.
 // Wire by replacing `detectSynthetic` below; the pipeline + flag-raising stays.
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@
 /// the extension points from their own bootstrap code, invoked via AvaBootstrap
 /// or a registry):
 ///   • P4 (memory): register the on-device FTS5/vector lane + embedder download.
-///   • P5 (tools):  register core AvaTools + Strata/MCP brokers into a ToolRegistry.
+///   • P5 (tools):  register the small always-on core AvaTools into a ToolRegistry.
 ///   • P3/P6/P8/P9: register their settings sections via SettingsSectionRegistry
 ///     (see features/settings/settings_registry.dart).
 library;
@@ -39,7 +39,7 @@ class AvaBootstrap {
     if (_done) return;
     _done = true;
     // Phase 4 fills: memory-lane registration + embedder download hook.
-    // Phase 5 fills: tool-registry population (core tools, Strata, MCP).
+    // Phase 5 fills: tool-registry population (the small always-on core tools).
     // Phases 3/6/8/9 fill: SettingsSectionRegistry.register(...) from their files.
     // Phase 1: Focus mode settings section (menu show/hide toggle).
     registerFocusSection();
@@ -49,7 +49,7 @@ class AvaBootstrap {
     registerAvaMemory();
     // Phase 5: populate the small always-on core ToolRegistry (brain.search,
     // translate, schedule, send_to, image.generate-shim) + register the
-    // "Tools & connectors" settings section (opens the MCP connect screen).
+    // "Tools & connectors" settings section (opens the AvaApps Composio screen).
     registerCoreTools();
     registerToolsSection();
     // Phase 9: the REAL image.generate tool. Registered AFTER registerCoreTools()

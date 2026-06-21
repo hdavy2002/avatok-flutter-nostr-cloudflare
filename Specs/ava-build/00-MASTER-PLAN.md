@@ -135,10 +135,11 @@ Per-phase briefs: `Specs/ava-build/PHASE-0N-*.md`. Each brief is self-contained
 - **InboxDO.append scope**: `'thread'` (default) | `'to:<uid>'` (private).
 - **AvaApi routes** (registered in `api.ts`, handlers filled by owners):
   `POST /api/ava/gemini` (P2), `POST /api/ava/thread/turn` (P3),
-  `GET/POST /api/ava/tools/*` (P5), `POST /api/ava/guardian/scan` (P8),
+  `GET/POST /api/ava/tools/*` (P5 — ⚠️ REMOVED 2026-06-22, Strata purged; apps run via Composio),
+  `POST /api/ava/guardian/scan` (P8),
   `POST /api/ava/image` (P9), `*/api/backup/*` (P10).
 - **SettingsSection** + `SettingsSectionRegistry.register(...)`.
-- **AvaTool** interface + `ToolRegistry.register(...)` (core tools, Strata, MCP).
+- **AvaTool** interface + `ToolRegistry.register(...)` (core tools only; Strata/MCP removed 2026-06-22).
 - **AvaFlags**: `focusMode`, `aiEnabled`, `webSearchEnabled`, `fileAnalysisEnabled`,
   `openChatUncapped`, `dailyAvaTurnLimit`, `guardianEnabled`, `conferenceEnabled`
   (exists), `companionEnabled`, `generativeEnabled`.

@@ -1,5 +1,16 @@
 # Phase 5 — Tool Layer (Strata + Broker + MCP connect)
 
+> ## ⚠️ DEPRECATED — STRATA REMOVED (2026-06-22)
+> The Strata / Klavis MCP gateway tool layer described below was **removed** and
+> never shipped (`STRATA_URL` was never provisioned, so every op 503'd). Connected
+> apps (Gmail, Drive, Docs, Sheets, Calendar) now run **entirely via Composio**
+> — see `worker/src/lib/composio.ts`, `worker/src/routes/ava_apps.ts`, and the
+> AvaApps screen. Removed in commits `3cc7c02` (route/client/env purge) and
+> `b5749c3` (dead wrangler config). The only surviving pieces of this phase are
+> the on-device core-tool **registry** (`app/lib/core/ava_tools/ava_tool.dart` +
+> `core_tools.dart`), which is generic (used by the image tool), **not** Strata.
+> This document is kept for historical reference only.
+
 **Read `00-MASTER-PLAN.md` first. 🚫 No commit/push — leave the tree for Phase 11.**
 
 ## Depends on

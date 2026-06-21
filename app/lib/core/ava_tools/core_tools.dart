@@ -21,8 +21,8 @@
 ///                     tool documents the contract and returns a TODO.
 ///
 /// All core tools here are FREE-BUNDLED (paid:false) — they run without a wallet
-/// check. Subscription tools are the discovered Strata connectors, gated by the
-/// broker (worker) + PaidFeature (UI) at the point of use.
+/// check. Connected-app actions (Gmail, Drive, Calendar, …) are NOT core tools:
+/// they run server-side via the AvaApps Composio path and are coin-metered there.
 library;
 
 import '../ava_memory/ava_memory.dart';

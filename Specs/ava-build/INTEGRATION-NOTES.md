@@ -1428,3 +1428,26 @@ applied; worker typecheck is clean.
     backup/sync) PLUS this Phase 11 integration wiring: the `@ava` composer hook, the
     ava_agent gate+RAG swaps, the messaging.ts delegate/guardian scans, the `/api/ava/delegate`
     route, the `STRATA_TOKEN_KEY` Env field, and the one ava_gemini typecheck fix.
+
+---
+
+## Post-launch — Strata REMOVED (2026-06-22)
+
+⚠️ **The Phase-5 Strata / Klavis MCP tool layer was removed.** It never shipped
+(`STRATA_URL` was never provisioned, so `/api/ava/tools/*` 503'd by design). All
+references in the P5 blocks above are **historical** — do not wire Strata.
+
+What changed:
+- **Deleted** `worker/src/routes/ava_tools.ts` (the `/api/ava/tools/*` broker+proxy
+  and its `ava_tool_tokens` D1 OAuth store), the `/api/ava/tools` route in
+  `index.ts`, client `app/lib/core/ava_tools/strata_client.dart`, and
+  `app/lib/features/ava_tools/mcp_connect_screen.dart`. Removed `STRATA_URL` /
+  `STRATA_TOKEN_KEY` from the worker `Env` and `wrangler.toml`.
+- **Repointed** the Settings "Tools & connectors" row to the Composio `AvaAppsScreen`.
+- **Kept** the on-device core-tool registry (`app/lib/core/ava_tools/ava_tool.dart`
+  + `core_tools.dart`) — it is generic (the image tool registers through it), not
+  Strata — and the `ava_mcp_tool` pricing (now meters Composio).
+- Connected apps (Gmail, Drive, Docs, Sheets, Calendar) run **entirely via Composio**
+  (`worker/src/lib/composio.ts` + `routes/ava_apps.ts`).
+- Commits: `3cc7c02` (route/client/env purge), `b5749c3` (dead wrangler config),
+  plus a comment/spec-deprecation pass.

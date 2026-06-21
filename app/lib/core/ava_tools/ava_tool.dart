@@ -89,8 +89,8 @@ class ToolRegistry {
   /// Names of the surfaced core tools.
   static List<String> get names => List<String>.unmodifiable(_tools.keys);
 
-  /// Look up a core tool by name (null if not a core tool — the caller then
-  /// falls through to Strata discovery for the long tail).
+  /// Look up a core tool by name (null if not a core tool — the long tail of
+  /// connector actions runs server-side via the AvaApps Composio path, not here).
   static AvaTool? byName(String name) => _tools[name];
 
   /// The compact tool manifest handed to the model: the core tools only, each
