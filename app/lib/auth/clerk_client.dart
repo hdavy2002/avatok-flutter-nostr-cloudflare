@@ -16,8 +16,9 @@ class ClerkClient {
   final FlutterSecureStorage _storage;
   final String _domain;
   String? _clientToken;
-  String? _sessionJwt;       // short-lived Clerk session JWT (verifiable via JWKS)
-  int _sessionJwtExpiry = 0; // epoch seconds when the cached JWT should be refreshed
+  String? _sessionJwt;            // short-lived Clerk session JWT (verifiable via JWKS)
+  int _sessionJwtSoftExpiry = 0;  // epoch s: refresh proactively after this (~TTL-15s)
+  int _sessionJwtHardExpiry = 0;  // epoch s: token still genuinely valid until this
 
   ClerkClient([FlutterSecureStorage? s])
       : _storage = s ??
@@ -87,22 +88,55 @@ class ClerkClient {
 
   /// Mint a short-lived Clerk SESSION JWT (RS256, ~60 s) for the active session.
   /// This is what the Worker verifies against the JWKS endpoint — NOT the FAPI
-  /// client token. Cached ~50 s. Returns null when signed out / unavailable, so
-  /// the API helper simply omits the Bearer header (NIP-98 still gates).
+  /// client token. Returns null when signed out / unavailable, so the API helper
+  /// simply omits the Bearer header (NIP-98 still gates).
+  ///
+  /// Resilience (the Drive blank-screen fix): a returning-from-background flow —
+  /// e.g. an app-connect OAuth round-trip in the browser — can leave the cached
+  /// JWT past its SOFT refresh point while a fresh mint transiently fails (flaky
+  /// network on resume). Rather than return null — which strips the Authorization
+  /// header and 401-storms the chat thread into a blank screen — we keep serving
+  /// the cached JWT until its true (HARD) expiry, giving up only once it is
+  /// genuinely expired.
   Future<String?> sessionToken() async {
     await _loadToken();
     if (_clientToken == null) return null;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    if (_sessionJwt != null && now < _sessionJwtExpiry) return _sessionJwt;
-    final sid = await _activeSessionId();
-    if (sid == null) return null;
-    // POST /v1/client/sessions/{sid}/tokens → { jwt: "<RS256 session token>" }
-    final body = await _send('/client/sessions/$sid/tokens', body: {});
-    final jwt = (body['jwt'] ?? (body['response'] as Map<String, dynamic>?)?['jwt'])?.toString();
-    if (jwt == null || jwt.isEmpty) return null;
-    _sessionJwt = jwt;
-    _sessionJwtExpiry = now + 50; // refresh before the ~60 s TTL elapses
-    return jwt;
+    if (_sessionJwt != null && now < _sessionJwtSoftExpiry) return _sessionJwt;
+    final minted = await _mintSessionJwt();
+    if (minted != null) return minted;
+    // Mint failed — serve a still-genuinely-valid cached token instead of nulling
+    // auth and triggering 401s.
+    if (_sessionJwt != null && now < _sessionJwtHardExpiry) return _sessionJwt;
+    return null;
+  }
+
+  /// Force a fresh session-JWT mint, bypassing the soft cache. Call on app RESUME
+  /// (after a backgrounded OAuth/browser round-trip) so the chat thread's authed
+  /// read/poll loops resume with a valid token instead of 401-storming.
+  Future<void> warmSession() async {
+    _sessionJwtSoftExpiry = 0; // invalidate the soft cache so we re-mint
+    try { await sessionToken(); } catch (_) {/* best-effort warm-up */}
+  }
+
+  /// One mint attempt with a single retry (network on resume is often briefly
+  /// flaky). Returns the JWT and updates the soft/hard expiry, or null on failure.
+  Future<String?> _mintSessionJwt() async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final sid = await _activeSessionId();
+      if (sid == null) return null;
+      // POST /v1/client/sessions/{sid}/tokens → { jwt: "<RS256 session token>" }
+      final body = await _send('/client/sessions/$sid/tokens', body: {});
+      final jwt = (body['jwt'] ?? (body['response'] as Map<String, dynamic>?)?['jwt'])?.toString();
+      if (jwt != null && jwt.isNotEmpty) {
+        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        _sessionJwt = jwt;
+        _sessionJwtSoftExpiry = now + 45; // refresh proactively before the ~60s TTL
+        _sessionJwtHardExpiry = now + 58; // ...but keep serving until truly expired
+        return jwt;
+      }
+    }
+    return null;
   }
 
   Future<String?> _activeSessionId() async {
@@ -204,7 +238,8 @@ class ClerkClient {
     await _send('/client'); // DELETE /client → sign out all sessions
     _clientToken = null;
     _sessionJwt = null;
-    _sessionJwtExpiry = 0;
+    _sessionJwtSoftExpiry = 0;
+    _sessionJwtHardExpiry = 0;
     await _storage.delete(key: 'clerk_client_token');
   }
 
@@ -212,7 +247,8 @@ class ClerkClient {
     await _send('/me'); // DELETE /me → delete the current user
     _clientToken = null;
     _sessionJwt = null;
-    _sessionJwtExpiry = 0;
+    _sessionJwtSoftExpiry = 0;
+    _sessionJwtHardExpiry = 0;
     await _storage.delete(key: 'clerk_client_token');
   }
 

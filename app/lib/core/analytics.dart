@@ -93,6 +93,38 @@ class Analytics {
         'retry_count': retryCount,
       });
 
+  // ── In-chat health signals (ANALYTICS-OBSERVABILITY) ───────────────────────
+  // Rich, queryable signals for issues a user hits INSIDE the chat interface, so
+  // support can pull them by email/phone (auto-stamped via [_base]). These add
+  // product context on top of the generic api_error: which app, and why it broke.
+
+  /// The Clerk session lapsed and an authed call 401'd (e.g. after a backgrounded
+  /// app-connect OAuth round-trip). This is the signal that precedes a blank
+  /// thread — emitted once per cooldown by the HTTP wrapper, not per failed call.
+  static Future<void> authSessionLost({required String endpoint}) =>
+      capture('auth_session_lost', {'endpoint': endpoint});
+
+  /// A connected-apps / Composio call (status, catalog, run) failed — the chat
+  /// couldn't reach the user's Google apps (Drive/Gmail/Calendar/…).
+  static Future<void> appsUnavailable(
+          {required String endpoint, String? slug, int? status, String? code}) =>
+      capture('apps_unavailable', {
+        'endpoint': endpoint,
+        if (slug != null) 'slug': slug,
+        if (status != null) 'status': status,
+        if (code != null) 'code': code,
+      });
+
+  /// A GenUI/A2UI surface arrived but rendered to nothing (missing root or no
+  /// components) — the "blank card" case behind a blank-looking Ava reply.
+  static Future<void> genuiBlankSurface(
+          {String? tool, required String reason, int nodes = 0}) =>
+      capture('genui_blank_surface', {
+        if (tool != null) 'tool': tool,
+        'reason': reason,
+        'nodes': nodes,
+      });
+
   static void _applyNet(List<ConnectivityResult> rs) {
     if (rs.isEmpty || rs.every((r) => r == ConnectivityResult.none)) {
       _net = 'offline';

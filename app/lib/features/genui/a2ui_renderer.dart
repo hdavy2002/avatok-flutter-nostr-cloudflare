@@ -35,11 +35,23 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   void initState() {
     super.initState();
     final comps = widget.surface['components'];
+    final nodes = comps is Map ? comps.length : 0;
     Analytics.capture('genui_render', {
       'surface_id': (widget.surface['surfaceId'] ?? '').toString(),
       'mode': 'client',
-      'nodes': comps is Map ? comps.length : 0,
+      'nodes': nodes,
     });
+    // Blank-card guard: a surface with no components, or whose root id isn't in
+    // the component map, renders to an empty SizedBox — a blank-looking reply.
+    // Surface it as a distinct signal so these are queryable, not invisible.
+    final root = (widget.surface['root'] ?? '').toString();
+    if (nodes == 0 || _node(root) == null) {
+      Analytics.genuiBlankSurface(
+        tool: widget.surface['tool']?.toString(),
+        reason: nodes == 0 ? 'no_components' : 'root_missing',
+        nodes: nodes,
+      );
+    }
   }
 
   Map<String, dynamic> get _components =>

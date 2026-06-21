@@ -167,6 +167,10 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // Dual auth: every signed API call carries NIP-98 (key ownership) + a Clerk
     // session JWT (verified account). The Worker requires both on mutations.
     ApiAuth.clerkBearer = _clerk.sessionToken;
+    // On a 401 (e.g. the session JWT lapsed during a backgrounded OAuth round-
+    // trip), repair the session once — rate-limited inside ApiAuth — instead of
+    // letting authed calls storm and blank the thread.
+    ApiAuth.onAuthExpired = _clerk.warmSession;
     // Let any deep widget upgrade an L0 guest to an L1 member (AccountGate):
     // it drives the Clerk sign-up, then calls back here to re-scope the app.
     AccountGate.clerk = _clerk;
@@ -193,6 +197,13 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
+    }
+    // Returning from background — often an app-connect OAuth round-trip in the
+    // browser — can leave the cached Clerk session JWT stale. Refresh it BEFORE
+    // the chat thread's read/poll loops resume so authed calls (/api/msg/read,
+    // InboxDO WS) don't 401-storm the thread into a blank screen.
+    if (state == AppLifecycleState.resumed && ApiAuth.identity != null) {
+      unawaited(_clerk.warmSession());
     }
   }
 

@@ -24,6 +24,13 @@ class ApiAuth {
   /// Optional provider of a Clerk session JWT (RS256, verifiable via JWKS).
   static Future<String?> Function()? clerkBearer;
 
+  /// Optional repair hook, invoked (at most once per [_authRepairCooldown]) when
+  /// an authed request comes back 401 — wired in main to refresh the Clerk
+  /// session so the NEXT call carries a valid Bearer instead of 401-storming.
+  static Future<void> Function()? onAuthExpired;
+  static DateTime _lastAuthRepair = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _authRepairCooldown = Duration(seconds: 10);
+
   /// Build the `X-Nostr-Auth` value: base64 of a signed kind-27235 event with
   /// `u` (url), `method`, and optional `payload` (sha256 of the body) tags.
   static String? nip98(String method, String url, {List<int>? body}) {
@@ -83,6 +90,7 @@ class ApiAuth {
           status: res.statusCode,
           latencyMs: DateTime.now().difference(t0).inMilliseconds,
         );
+        if (res.statusCode == 401) _onUnauthorized(Uri.parse(url).path);
       }
       return res;
     } catch (e) {
@@ -93,6 +101,23 @@ class ApiAuth {
         latencyMs: DateTime.now().difference(t0).inMilliseconds,
       );
       rethrow;
+    }
+  }
+
+  /// Coordinated, rate-limited reaction to a 401: emit a rich `auth_session_lost`
+  /// signal AND trigger a single session refresh. The cooldown stops a screenful
+  /// of concurrent authed calls (e.g. the chat thread's read/poll loop) from each
+  /// firing a repair + signal — which is exactly what produced the 401 storm that
+  /// blanked the thread after an app-connect OAuth round-trip.
+  static void _onUnauthorized(String endpoint) {
+    final now = DateTime.now();
+    if (now.difference(_lastAuthRepair) < _authRepairCooldown) return;
+    _lastAuthRepair = now;
+    Analytics.authSessionLost(endpoint: endpoint);
+    final hook = onAuthExpired;
+    if (hook != null) {
+      // ignore: unawaited_futures
+      hook();
     }
   }
 

@@ -190,6 +190,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String _transLangCode = 'Spanish';
   ComposerLang get _transLang => ComposerAi.langByCode(_transLangCode);
 
+  Timer? _markReadTimer;
+
   void _markRead() {
     final key = _convKey;
     if (key == null) return;
@@ -199,14 +201,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Server: persist MY read position in my own InboxDO so a fresh login or a
     // second device (e.g. desktop) restores it and stops recounting already-read
     // messages as new. Best-effort — never blocks the UI.
+    //
+    // COALESCE the server POST: _markRead fires on init, on every incoming
+    // message, and on each Ava stream frame, so an un-debounced POST-per-call
+    // turns a brief token gap (e.g. just after a backgrounded app-connect OAuth
+    // round-trip) into a 401 STORM that blanks the thread. Debounce to at most
+    // one POST every few seconds; only the latest read position matters anyway.
     final myUid = _meId?.uid;
-    if (myUid != null && myUid.isNotEmpty) {
-      final conv = serverConvFromKey(key, myUid);
-      if (conv != null) {
-        ApiAuth.postJson(kMsgReadUrl, {'conv': conv, 'read_ts': nowSec})
-            .then((_) {}, onError: (_) {});
-      }
-    }
+    if (myUid == null || myUid.isEmpty) return;
+    final conv = serverConvFromKey(key, myUid);
+    if (conv == null) return;
+    _markReadTimer?.cancel();
+    _markReadTimer = Timer(const Duration(seconds: 3), () {
+      final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      ApiAuth.postJson(kMsgReadUrl, {'conv': conv, 'read_ts': ts})
+          .then((_) {}, onError: (_) {});
+    });
   }
 
   @override
@@ -731,6 +741,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _confTimer?.cancel();
     _pruneTimer?.cancel();
     _persistTimer?.cancel();
+    _markReadTimer?.cancel();
     _persistNow(); // flush any pending message-cache write on exit
     // NOTE: do NOT dispose _nostr — it's the shared SyncHub client owned by the
     // whole app. _dm.stop()/_gdm.stop() above already cancel this screen's

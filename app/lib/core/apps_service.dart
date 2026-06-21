@@ -56,7 +56,10 @@ class AppsService {
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (j['connected'] as List?)?.map((e) => e.toString().toLowerCase()) ?? const [];
       return list.toSet();
-    } catch (_) {
+    } catch (e) {
+      // The chat couldn't reach the user's connected Google apps — surface it
+      // (api_error already logs HTTP failures; this adds the apps-layer context).
+      Analytics.appsUnavailable(endpoint: AvaApi.appsStatus, code: e.runtimeType.toString());
       return <String>{};
     }
   }
@@ -78,7 +81,8 @@ class AppsService {
               ))
           .where((a) => a.slug.isNotEmpty)
           .toList();
-    } catch (_) {
+    } catch (e) {
+      Analytics.appsUnavailable(endpoint: AvaApi.appsCatalog, code: e.runtimeType.toString());
       return const [];
     }
   }
