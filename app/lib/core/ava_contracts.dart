@@ -87,9 +87,6 @@ class AvaApi {
   /// AvaChat — session-list metadata mutations (rename/star/archive/delete/reorder).
   static const String chatHistoryMeta = '/api/ava/chat/history/meta';
 
-  /// P5 — tool broker / Strata progressive disclosure (prefix; sub-paths vary).
-  static const String toolsPrefix = '/api/ava/tools/';
-
   /// P8 — Guardian classifier scan (private warnings via ava_private).
   static const String guardianScan = '/api/ava/guardian/scan';
 

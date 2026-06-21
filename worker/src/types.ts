@@ -222,12 +222,4 @@ export interface Env {
   TEST_CLOCK_OFFSET_MS?: string;
   // DLQ alert recipient (defaults to hdavy2005@gmail.com).
   ALERT_EMAIL?: string;
-
-  // Ava tool layer — Klavis Strata (self-hosted) base URL (P5). Unset/empty ⇒
-  // /api/ava/tools/* returns 503 until the self-host origin is configured.
-  STRATA_URL?: string;
-  // AES-GCM key material for the per-user MCP OAuth token store (P5
-  // ava_tool_tokens). Read via (env as any) until now; declared here for type
-  // visibility. Falls back to GCAL_TOKEN_KEY, then a dev constant.
-  STRATA_TOKEN_KEY?: string;
 }

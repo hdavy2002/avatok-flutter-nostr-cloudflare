@@ -16,7 +16,7 @@ export const FEATURE_COSTS: Record<string, number> = {
   ava_image_generate: 80,    // $0.08  — one premium image (Gemini "Nano Banana 2")
   ava_voice_reply: 20,       // $0.02  — Ava speaks a reply
   ava_vision_snapshot: 10,   // $0.01  — one analyzed snapshot beyond the free quota
-  ava_mcp_tool: 10,          // $0.01  — one connected-app (Strata) tool call
+  ava_mcp_tool: 10,          // $0.01  — one connected-app (Composio) tool call
   guardian_always_on: 300,   // $0.30/mo — always-on safety monitoring for a chat
 };
 

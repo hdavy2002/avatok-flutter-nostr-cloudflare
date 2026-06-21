@@ -3,13 +3,13 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
-import '../../ava_tools/mcp_connect_screen.dart';
+import '../../avaapps/avaapps_screen.dart';
 import '../settings_registry.dart';
 
-/// Settings → "Tools & connectors" section (Phase 5 — Tool Layer). A single
-/// row that opens [McpConnectScreen], where the user connects their own
-/// accounts (Gmail, Drive, …) for Ava to use via the self-hosted Strata MCP
-/// gateway. Subscription connectors carry a PaidBadge in that screen.
+/// Settings → "Tools & connectors" section. A single row that opens
+/// [AvaAppsScreen], where the user connects their own Google accounts
+/// (Gmail, Drive, Calendar, …) for Ava to use via Composio. Subscription
+/// connectors carry a PaidBadge in that screen.
 ///
 /// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init] (the one
 /// sanctioned bootstrap append) — never by editing settings_screen.dart.
@@ -34,7 +34,7 @@ class _ToolsCard extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       boxShadow: Zine.shadowXs,
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const McpConnectScreen()),
+        MaterialPageRoute(builder: (_) => const AvaAppsScreen()),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),

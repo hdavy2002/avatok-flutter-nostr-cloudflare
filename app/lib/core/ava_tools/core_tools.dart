@@ -1,9 +1,9 @@
 /// Core AvaTools (Phase 5 — Tool Layer).
 ///
 /// The SMALL always-on toolset Ava carries everywhere. Per the proposal §3.3,
-/// the surfaced set is ~5–7 tools; everything else is discovered on demand via
-/// Strata ([StrataClient]). Registered into [ToolRegistry] from
-/// [AvaBootstrap.init] via [registerCoreTools].
+/// the surfaced set is ~5–7 tools; everything else (connected Google apps) runs
+/// server-side via the AvaApps Composio path. Registered into [ToolRegistry]
+/// from [AvaBootstrap.init] via [registerCoreTools].
 ///
 /// What's real vs stubbed (see INTEGRATION-NOTES Phase 5):
 ///   • brain.search  — REAL. Wired to Phase 4's on-device + server memory

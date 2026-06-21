@@ -6,12 +6,11 @@
 /// ── The whole point: keep the surfaced set SMALL ─────────────────────────────
 /// Tool/context overload is the failure mode we are designing against. The
 /// registry only ever holds the small ALWAYS-ON CORE toolset (~5 tools — see
-/// core_tools.dart). Everything else (Gmail, Drive, hundreds of MCP actions) is
-/// NEVER registered here — it is discovered ON DEMAND through Strata's
-/// progressive-disclosure flow ([StrataClient]) and the one action's schema is
-/// loaded only at the moment it's about to run. So [ToolRegistry.tools] is the
-/// thing handed to the model as "tools you always have"; the Strata path is the
-/// "and you can go find more" escape hatch.
+/// core_tools.dart). Everything else (Gmail, Drive, Calendar, hundreds of
+/// connector actions) is NEVER registered here — it runs server-side via the
+/// AvaApps Composio path (worker ava_agent + routes/ava_apps.ts). So
+/// [ToolRegistry.tools] is the thing handed to the model as "tools you always
+/// have"; connected-app actions are handled by the agent loop on the worker.
 library;
 
 /// A single always-on core tool. Concrete tools live in core_tools.dart.
@@ -70,8 +69,8 @@ class AvaToolContext {
 
 /// The small, always-on core tool registry. Idempotent by [AvaTool.name].
 ///
-/// Deliberately NOT a catalog of every connector — see the library doc. Strata
-/// discovery ([StrataClient]) covers the long tail without bloating this set.
+/// Deliberately NOT a catalog of every connector — see the library doc. The
+/// AvaApps Composio path covers the long tail without bloating this set.
 class ToolRegistry {
   ToolRegistry._();
 

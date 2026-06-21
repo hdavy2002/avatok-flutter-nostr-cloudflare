@@ -89,7 +89,6 @@ import { avaEmailList, avaEmailGet, avaEmailSpam, avaEmailTrash, avaEmailReply }
 import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, driveBackupUploadRoute, driveBackupDownloadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
 import { avaChatHistorySave, avaChatHistoryGet, avaChatHistoryMeta } from "./routes/ava_chat_history"; // AvaChat history (D1)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
-import { avaTools } from "./routes/ava_tools";          // P5
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
 import { avaImage } from "./routes/ava_image";          // P9
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
@@ -239,7 +238,6 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/chat/history" && req.method === "GET") return await avaChatHistoryGet(req, env);
       if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
       if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env);            // P9
-      if (p.startsWith("/api/ava/tools/")) return await avaTools(req, env, p.slice("/api/ava/tools/".length)); // P5
       if (p === "/api/ava/delegate") return await delegateHandler(req, env); // P7 (GET reads prefs, POST writes)
       // Backup & sync (P10): GET pull, PUT push, GET status.
       if (p === "/api/backup/status" && req.method === "GET") return await backupStatus(req, env);
