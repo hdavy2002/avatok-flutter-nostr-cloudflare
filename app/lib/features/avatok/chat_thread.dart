@@ -1958,12 +1958,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // ---- mic menu: record audio OR convert voice to text ----
   void _openMicMenu() {
     FocusScope.of(context).unfocus();
-    showMicInputSheet(
-      context,
-      recordSubtitle: 'Record a voice note and send it',
-      onRecordAudio: _toggleRecord,
-      onVoiceToText: _startVoiceToText,
-    );
+    showMicInputSheet(context, options: [
+      MicSheetOption(
+        icon: PhosphorIcons.microphone(PhosphorIconsStyle.fill),
+        color: Zine.coral,
+        title: 'Record audio',
+        subtitle: 'Record a voice note and send it',
+        onTap: _toggleRecord,
+      ),
+      MicSheetOption(
+        icon: PhosphorIcons.textT(PhosphorIconsStyle.bold),
+        color: Zine.mint,
+        title: 'Convert voice to text',
+        subtitle: 'Speak and watch it type into the box',
+        onTap: _startVoiceToText,
+      ),
+    ]);
   }
 
   // Start on-device Whisper dictation — text fills the composer live as you talk.

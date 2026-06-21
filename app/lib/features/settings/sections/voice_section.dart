@@ -7,6 +7,7 @@ import '../../../core/kokoro_voice.dart';
 import '../../../core/paid_feature.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../../core/voice/kokoro_tts.dart';
 import '../settings_registry.dart';
 import 'kokoro_voice_screen.dart';
 
@@ -26,6 +27,10 @@ import 'kokoro_voice_screen.dart';
 /// (`registerVoiceSection()`), the one sanctioned bootstrap append — never by
 /// editing settings_screen.dart.
 void registerVoiceSection() {
+  // Wire on-device Kokoro TTS as the synthesiser so the "Listen" affordance
+  // speaks in the user's chosen voice. Lazy: the model only downloads when first
+  // asked to speak. Safe to set at bootstrap (no model work happens here).
+  AvaVoice.synthesizer = KokoroTts.speakToFile;
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_voice',

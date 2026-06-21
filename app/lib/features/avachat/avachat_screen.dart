@@ -1,11 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:record/record.dart';
 
 import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
@@ -21,6 +18,7 @@ import '../../core/ui/mic_input_sheet.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avabrain/brain_settings_screen.dart';
+import 'voice_call/voice_call_screen.dart';
 
 /// AvaChat (Phase 9) — a ChatGPT-style conversation with the user's OWN
 /// AvaBrain: their messages, files, images and voice notes. Answers come from
@@ -45,17 +43,13 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _audio = AudioPlayer();
-  final _recorder = AudioRecorder();
   final List<_ChatMsg> _msgs = [];
   bool _thinking = false;
   bool _loadingHistory = true;
   String? _playingRef;
-  // Voice input (on-device Whisper): live dictation + record-then-transcribe.
+  // Voice input (on-device Whisper): live dictation into the message box.
   SttSession? _stt;
   bool _sttActive = false;
-  bool _recording = false;
-  bool _transcribing = false;
-  String? _recPath;
   // Source of the last Ava answer (memory|rag|tool|llm|hybrid) so a correction
   // right after can be attributed — corrections of memory-backed answers matter.
   String _lastAnswerSource = '';
@@ -80,18 +74,33 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     _scroll.dispose();
     _audio.dispose();
     _stt?.cancel();
-    _recorder.dispose();
     super.dispose();
   }
 
-  // ---- mic menu: record audio OR convert voice to text ----
+  // ---- mic menu: voice call Ava OR convert voice to text ----
   void _openMicMenu() {
     FocusScope.of(context).unfocus();
-    showMicInputSheet(
-      context,
-      recordSubtitle: 'Record, then drop the words in the box',
-      onRecordAudio: _recordToText,
-      onVoiceToText: _startVoiceToText,
+    showMicInputSheet(context, options: [
+      MicSheetOption(
+        icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
+        color: Zine.blue,
+        title: 'Voice call Ava',
+        subtitle: 'Hands-free chat — talk and Ava talks back',
+        onTap: _openVoiceCall,
+      ),
+      MicSheetOption(
+        icon: PhosphorIcons.textT(PhosphorIconsStyle.bold),
+        color: Zine.mint,
+        title: 'Convert voice to text',
+        subtitle: 'Speak and watch it type into the box',
+        onTap: _startVoiceToText,
+      ),
+    ]);
+  }
+
+  void _openVoiceCall() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const VoiceCallScreen()),
     );
   }
 
@@ -132,44 +141,6 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       }
       _stt = null;
     });
-  }
-
-  // Record a clip, then transcribe once and drop the text into the box. (AvaChat
-  // is a text brain, so "record audio" becomes text the user can review + send.)
-  Future<void> _recordToText() async {
-    if (_recording) {
-      setState(() { _recording = false; _transcribing = true; });
-      String path = '';
-      try { path = await _recorder.stop() ?? ''; } catch (_) {}
-      if (path.isEmpty) { if (mounted) setState(() => _transcribing = false); return; }
-      final lang = KokoroVoicePref.current.sttLang;
-      final text = await AvaOnDeviceStt.I.transcribeFile(path, lang);
-      try { await File(path).delete(); } catch (_) {}
-      if (!mounted) return;
-      setState(() {
-        _transcribing = false;
-        if (text.isNotEmpty) {
-          final joined = _input.text.isEmpty ? text : '${_input.text} $text';
-          _input.text = joined;
-          _input.selection = TextSelection.collapsed(offset: joined.length);
-        }
-      });
-      return;
-    }
-    if (!await _recorder.hasPermission()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission needed')));
-      }
-      return;
-    }
-    final dir = await getTemporaryDirectory();
-    _recPath = '${dir.path}/avachat_rec_${DateTime.now().millisecondsSinceEpoch}.wav';
-    await _recorder.start(
-      const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
-      path: _recPath!,
-    );
-    setState(() => _recording = true);
   }
 
   Future<void> _loadHistory() async {
@@ -586,14 +557,8 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
   // Input bar: paper-2 band with top ink border, ink-bordered pill field and
   // the lime send circle (the ONE lime primary on this screen).
   Widget _inputBar() {
-    final voiceBusy = _sttActive || _recording || _transcribing;
-    final hint = _sttActive
-        ? 'Listening…'
-        : _recording
-            ? 'Recording…'
-            : _transcribing
-                ? 'Transcribing…'
-                : 'Ask your AvaBrain…';
+    final voiceBusy = _sttActive;
+    final hint = _sttActive ? 'Listening…' : 'Ask your AvaBrain…';
     return Container(
       decoration: const BoxDecoration(
         color: Zine.paper2,
@@ -611,7 +576,7 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
                   PhosphorIcons.microphone(
                       voiceBusy ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
                   color: voiceBusy ? Zine.mintInk : Zine.ink, size: 24),
-              onPressed: _transcribing ? null : _openMicMenu,
+              onPressed: _openMicMenu,
             ),
             Expanded(
               child: Container(
@@ -649,11 +614,11 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
     );
   }
 
-  // Send, or a stop button while a voice session is live.
+  // Send, or a stop button while dictation is live.
   Widget _trailingButton() {
-    if (_sttActive || _recording) {
+    if (_sttActive) {
       return ZinePressable(
-        onTap: _sttActive ? _stopVoiceToText : _recordToText,
+        onTap: _stopVoiceToText,
         color: Zine.coral,
         radius: BorderRadius.circular(100),
         boxShadow: Zine.shadowXs,

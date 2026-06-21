@@ -34,7 +34,14 @@ class KokoroVoice {
   /// `true` = female character, `false` = male. Drives the gender label/icon.
   final bool female;
 
-  const KokoroVoice(this.id, this.name, {required this.female});
+  /// Speaker index passed to the sherpa-onnx Kokoro TTS (`sid`). ⚠️ VERIFY: these
+  /// indices must match the voice ordering packed in the kokoro-multi-lang voices.bin.
+  /// They are a best-effort id-sorted mapping; if a voice sounds wrong, fix the sid
+  /// here against the model's published voice list. A wrong sid only picks a
+  /// different voice — it never crashes.
+  final int sid;
+
+  const KokoroVoice(this.id, this.name, {required this.female, this.sid = 0});
 }
 
 /// One language group in the catalog.
@@ -65,64 +72,70 @@ class KokoroSelection {
 
   /// Whisper STT language code for the chosen language.
   String get sttLang => language.sttLang;
+
+  /// Kokoro TTS speaker index for the chosen voice.
+  int get sid => voice.sid;
 }
 
 /// The Kokoro-82M voice catalog (curated subset — female + male per language).
 class KokoroCatalog {
   KokoroCatalog._();
 
+  // NOTE: `sid` values are a best-effort, id-sorted mapping into the Kokoro
+  // multi-lang voices.bin. They MUST be validated on device against the model's
+  // published voice list — a wrong sid only selects a different voice.
   static const List<KokoroLanguage> languages = [
     KokoroLanguage('en-us', 'English (US)', 'en', [
-      KokoroVoice('af_heart', 'Heart', female: true),
-      KokoroVoice('af_bella', 'Bella', female: true),
-      KokoroVoice('af_nicole', 'Nicole', female: true),
-      KokoroVoice('af_sarah', 'Sarah', female: true),
-      KokoroVoice('am_michael', 'Michael', female: false),
-      KokoroVoice('am_adam', 'Adam', female: false),
-      KokoroVoice('am_eric', 'Eric', female: false),
-      KokoroVoice('am_liam', 'Liam', female: false),
+      KokoroVoice('af_heart', 'Heart', female: true, sid: 0),
+      KokoroVoice('af_bella', 'Bella', female: true, sid: 1),
+      KokoroVoice('af_nicole', 'Nicole', female: true, sid: 2),
+      KokoroVoice('af_sarah', 'Sarah', female: true, sid: 3),
+      KokoroVoice('am_michael', 'Michael', female: false, sid: 4),
+      KokoroVoice('am_adam', 'Adam', female: false, sid: 5),
+      KokoroVoice('am_eric', 'Eric', female: false, sid: 6),
+      KokoroVoice('am_liam', 'Liam', female: false, sid: 7),
     ]),
     KokoroLanguage('en-gb', 'English (UK)', 'en', [
-      KokoroVoice('bf_emma', 'Emma', female: true),
-      KokoroVoice('bf_isabella', 'Isabella', female: true),
-      KokoroVoice('bf_alice', 'Alice', female: true),
-      KokoroVoice('bm_george', 'George', female: false),
-      KokoroVoice('bm_daniel', 'Daniel', female: false),
-      KokoroVoice('bm_lewis', 'Lewis', female: false),
+      KokoroVoice('bf_emma', 'Emma', female: true, sid: 8),
+      KokoroVoice('bf_isabella', 'Isabella', female: true, sid: 9),
+      KokoroVoice('bf_alice', 'Alice', female: true, sid: 10),
+      KokoroVoice('bm_george', 'George', female: false, sid: 11),
+      KokoroVoice('bm_daniel', 'Daniel', female: false, sid: 12),
+      KokoroVoice('bm_lewis', 'Lewis', female: false, sid: 13),
     ]),
     KokoroLanguage('es', 'Spanish', 'es', [
-      KokoroVoice('ef_dora', 'Dora', female: true),
-      KokoroVoice('em_alex', 'Alex', female: false),
-      KokoroVoice('em_santa', 'Santa', female: false),
+      KokoroVoice('ef_dora', 'Dora', female: true, sid: 14),
+      KokoroVoice('em_alex', 'Alex', female: false, sid: 15),
+      KokoroVoice('em_santa', 'Santa', female: false, sid: 16),
     ]),
     KokoroLanguage('fr', 'French', 'fr', [
-      KokoroVoice('ff_siwis', 'Siwis', female: true),
+      KokoroVoice('ff_siwis', 'Siwis', female: true, sid: 17),
     ]),
     KokoroLanguage('hi', 'Hindi', 'hi', [
-      KokoroVoice('hf_alpha', 'Alpha', female: true),
-      KokoroVoice('hf_beta', 'Beta', female: true),
-      KokoroVoice('hm_omega', 'Omega', female: false),
-      KokoroVoice('hm_psi', 'Psi', female: false),
+      KokoroVoice('hf_alpha', 'Alpha', female: true, sid: 18),
+      KokoroVoice('hf_beta', 'Beta', female: true, sid: 19),
+      KokoroVoice('hm_omega', 'Omega', female: false, sid: 20),
+      KokoroVoice('hm_psi', 'Psi', female: false, sid: 21),
     ]),
     KokoroLanguage('it', 'Italian', 'it', [
-      KokoroVoice('if_sara', 'Sara', female: true),
-      KokoroVoice('im_nicola', 'Nicola', female: false),
+      KokoroVoice('if_sara', 'Sara', female: true, sid: 22),
+      KokoroVoice('im_nicola', 'Nicola', female: false, sid: 23),
     ]),
     KokoroLanguage('pt-br', 'Portuguese (BR)', 'pt', [
-      KokoroVoice('pf_dora', 'Dora', female: true),
-      KokoroVoice('pm_alex', 'Alex', female: false),
-      KokoroVoice('pm_santa', 'Santa', female: false),
+      KokoroVoice('pf_dora', 'Dora', female: true, sid: 24),
+      KokoroVoice('pm_alex', 'Alex', female: false, sid: 25),
+      KokoroVoice('pm_santa', 'Santa', female: false, sid: 26),
     ]),
     KokoroLanguage('ja', 'Japanese', 'ja', [
-      KokoroVoice('jf_alpha', 'Alpha', female: true),
-      KokoroVoice('jf_nezumi', 'Nezumi', female: true),
-      KokoroVoice('jm_kumo', 'Kumo', female: false),
+      KokoroVoice('jf_alpha', 'Alpha', female: true, sid: 27),
+      KokoroVoice('jf_nezumi', 'Nezumi', female: true, sid: 28),
+      KokoroVoice('jm_kumo', 'Kumo', female: false, sid: 29),
     ]),
     KokoroLanguage('zh', 'Chinese (Mandarin)', 'zh', [
-      KokoroVoice('zf_xiaoxiao', 'Xiaoxiao', female: true),
-      KokoroVoice('zf_xiaoni', 'Xiaoni', female: true),
-      KokoroVoice('zm_yunxi', 'Yunxi', female: false),
-      KokoroVoice('zm_yunyang', 'Yunyang', female: false),
+      KokoroVoice('zf_xiaoxiao', 'Xiaoxiao', female: true, sid: 30),
+      KokoroVoice('zf_xiaoni', 'Xiaoni', female: true, sid: 31),
+      KokoroVoice('zm_yunxi', 'Yunxi', female: false, sid: 32),
+      KokoroVoice('zm_yunyang', 'Yunyang', female: false, sid: 33),
     ]),
   ];
 

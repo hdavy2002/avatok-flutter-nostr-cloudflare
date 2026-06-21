@@ -100,10 +100,20 @@ dependencies:
   # owner decision 2026-06-21, replacing the dropped Supertonic-3 plan); STT = the
   # on-device Whisper engine below. An optional ONNX embedding rerank is a separate,
   # later build.
-  # On-device speech-to-text (whisper.cpp via whisper_ggml) for "Convert voice to
-  # text" — private, multilingual, loads whisper-tiny into memory (see
-  # core/ava_ondevice_stt.dart). Replaces the removed Cactus CactusSTT.
-  whisper_ggml: ^1.7.0
+  # On-device VOICE STACK — one native engine (sherpa-onnx / k2-fsa) for all three:
+  #   • Silero VAD (~2 MB)         → speech detection for the hands-free Ava call
+  #   • Whisper-tiny STT           → "Convert voice to text" + the call's listening
+  #   • Kokoro-82M TTS (multiling) → Ava's spoken voice (the picked language/voice)
+  # This REPLACES whisper_ggml (consolidation, owner decision 2026-06-21) so there
+  # is a single voice runtime. Models are large (Kokoro ≈ 330 MB) → downloaded +
+  # cached on first use, never bundled (see core/voice/sherpa_models.dart). All of
+  # it is local; only the reasoning (Gemini) is online. Engine wrapper:
+  # core/voice/sherpa_voice_engine.dart.
+  sherpa_onnx: ^1.13.2
+  # tar.bz2 extraction for the Kokoro model bundle (espeak-ng-data dir etc.).
+  archive: ^4.0.0
+  # path joining for the on-device model cache (used by core/voice/*).
+  path: ^1.9.0
   # Phase 4 (Two-Lane Memory) — on-device vector + embedder deps DEFERRED here by
   # Phase 0. DECISION: NO new packages are needed for the free on-device lane.
   #   • FTS5 keyword search → already available (sqlite3_flutter_libs bundles

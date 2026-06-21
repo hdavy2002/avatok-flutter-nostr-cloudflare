@@ -1,102 +1,61 @@
-/// AvaOnDeviceStt — on-device speech-to-text (Whisper) for "Convert voice to text".
+/// AvaOnDeviceStt — on-device speech-to-text for "Convert voice to text".
 ///
-/// ENGINE (2026-06-21): the original Phase-2b version ran on Cactus' `CactusSTT`,
-/// which was ripped out with the Cactus on-device LLM. This rebuild runs Whisper
-/// fully on-device via `whisper_ggml` (whisper.cpp). It is PRIVATE (no audio leaves
-/// the phone — the right fit for a local-first messenger) and multilingual, taking
-/// the same language the user picked for their Kokoro voice.
+/// ENGINE (2026-06-21): runs on the consolidated [SherpaVoiceEngine] (sherpa-onnx
+/// Whisper-tiny), replacing the earlier whisper_ggml build (which itself replaced
+/// the removed Cactus STT). Private, on-device, multilingual — it takes the same
+/// language the user picked for their Kokoro voice.
 ///
-/// LIVE DICTATION: tapping "Convert voice to text" opens a [SttSession]. We capture
-/// the mic as 16 kHz PCM16 mono (same config as the translation/vision engines),
-/// accumulate it, and every ~1.8 s transcribe a WAV snapshot of everything spoken
-/// so far — so the text grows in the message box AS the user talks. On stop we run
-/// one final transcription and return the full text. The model is loaded into
-/// memory on first use (whisper-tiny, auto-downloaded + cached by the package).
-///
-/// Local only. No message content is sent to telemetry — only counters (ms, chars).
+/// LIVE DICTATION: a [SttSession] captures the mic as 16 kHz PCM16 mono, accumulates
+/// it, and every ~1.8 s transcribes everything spoken so far — so the text grows in
+/// the message box AS the user talks. stop() runs a final pass and returns the full
+/// text. Public API is unchanged from the previous build so the chat composers keep
+/// working. Local only; no message content is sent to telemetry (only counters).
 library;
 
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'analytics.dart';
 import 'ava_log.dart';
+import 'voice/sherpa_voice_engine.dart';
 
 class AvaOnDeviceStt {
   AvaOnDeviceStt._();
   static final AvaOnDeviceStt I = AvaOnDeviceStt._();
 
-  /// whisper-tiny: ~75 MB, fast on phones, good enough for dictation. (Bump to
-  /// [WhisperModel.base] later if accuracy needs it.)
-  static const WhisperModel kModel = WhisperModel.tiny;
-
-  final WhisperController _whisper = WhisperController();
-
-  /// Human-readable status for the composer ("Loading Whisper…", "Listening…").
+  /// Human-readable status for the composer ("Preparing…", "Listening…").
   final ValueNotifier<String> statusLine = ValueNotifier<String>('');
 
-  bool _modelReady = false;
   SttSession? _active;
   bool get isListening => _active != null;
 
-  /// Make sure whisper-tiny is downloaded/cached before the first transcription.
-  /// Idempotent and safe to await repeatedly. Never throws.
-  Future<void> _ensureModel() async {
-    if (_modelReady) return;
-    try {
-      statusLine.value = 'Preparing Whisper…';
-      await _whisper.downloadModel(kModel);
-      _modelReady = true;
-    } catch (e) {
-      AvaLog.I.log('ava_stt', 'model prepare failed: $e');
-    }
-  }
-
   /// Start a live dictation session. [lang] is a Whisper language code ("en",
-  /// "es", …) or "auto". [onText] is called with the FULL transcript so far each
-  /// time it updates — the caller replaces the message-box text with it. Returns
-  /// null if the mic permission is denied or the engine fails to start.
+  /// "es", …) or "" / "auto" for auto-detect. [onText] is called with the FULL
+  /// transcript so far each time it updates. Returns null on mic-denied / failure.
   Future<SttSession?> startDictation({
     required String lang,
     required void Function(String fullText) onText,
   }) async {
     if (_active != null) return _active;
-    await _ensureModel();
+    statusLine.value = 'Preparing Whisper…';
+    if (!await SherpaVoiceEngine.I.ensureStt(lang: lang)) {
+      statusLine.value = 'Voice model not ready';
+      return null;
+    }
     final session = SttSession._(this, lang: lang, onText: onText);
-    final ok = await session._start();
-    if (!ok) return null;
+    if (!await session._start()) return null;
     _active = session;
-    Analytics.capture('stt_start', {'lang': lang, 'engine': 'whisper_ggml'});
+    Analytics.capture('stt_start', {'lang': lang, 'engine': 'sherpa_whisper'});
     return session;
   }
 
-  /// Transcribe a finished audio file once (e.g. "record audio → text" in a
-  /// text-only chat). Returns '' on failure. [lang] is a Whisper code or "auto".
-  Future<String> transcribeFile(String audioPath, String lang) async {
-    await _ensureModel();
-    return _transcribeFile(audioPath, lang);
-  }
-
-  /// Transcribe a finished WAV file once (used for the final pass and for
-  /// "record audio → text"). Returns '' on failure.
-  Future<String> _transcribeFile(String wavPath, String lang) async {
-    try {
-      final r = await _whisper.transcribe(
-        model: kModel,
-        audioPath: wavPath,
-        lang: lang,
-      );
-      return (r?.transcription.text ?? '').trim();
-    } catch (e) {
-      AvaLog.I.log('ava_stt', 'transcribe FAILED: $e');
-      return '';
-    }
+  /// One-shot transcription of a buffer of 16 kHz PCM16 bytes. '' on failure.
+  Future<String> transcribePcm16(Uint8List pcm16, String lang) async {
+    final f32 = SherpaVoiceEngine.pcm16ToFloat32(pcm16);
+    return SherpaVoiceEngine.I.transcribe(f32, lang: lang);
   }
 
   void _clearActive(SttSession s) {
@@ -120,7 +79,7 @@ class SttSession {
   bool _stopped = false;
   String _lastText = '';
 
-  static const int _sampleRate = 16000;
+  static const int _sampleRate = SherpaVoiceEngine.sampleRate; // 16 kHz
 
   Future<bool> _start() async {
     try {
@@ -139,7 +98,6 @@ class SttSession {
       _sub = stream.listen((chunk) {
         if (chunk.isNotEmpty) _pcm.add(chunk);
       });
-      // Re-transcribe the growing buffer so the box fills in as the user speaks.
       _tick = Timer.periodic(const Duration(milliseconds: 1800), (_) => _transcribePartial());
       return true;
     } catch (e) {
@@ -153,12 +111,11 @@ class SttSession {
   Future<void> _transcribePartial() async {
     if (_transcribing || _stopped) return;
     final bytes = _pcm.toBytes();
-    // Need at least ~0.4 s of audio before the first pass.
-    if (bytes.length < _sampleRate * 2 * 0.4) return;
+    if (bytes.length < _sampleRate * 2 * 0.4) return; // need ~0.4 s
     _transcribing = true;
     try {
-      final wav = await _writeWav(bytes);
-      final text = await _owner._transcribeFile(wav, lang);
+      final f32 = SherpaVoiceEngine.pcm16ToFloat32(bytes);
+      final text = await SherpaVoiceEngine.I.transcribe(f32, lang: lang);
       if (!_stopped && text.isNotEmpty && text != _lastText) {
         _lastText = text;
         onText(text);
@@ -184,8 +141,8 @@ class SttSession {
     String finalText = _lastText;
     if (bytes.length >= _sampleRate * 2 * 0.3) {
       try {
-        final wav = await _writeWav(bytes);
-        final text = await _owner._transcribeFile(wav, lang);
+        final f32 = SherpaVoiceEngine.pcm16ToFloat32(bytes);
+        final text = await SherpaVoiceEngine.I.transcribe(f32, lang: lang);
         if (text.isNotEmpty) finalText = text;
       } catch (_) {}
     }
@@ -195,7 +152,7 @@ class SttSession {
       'lang': lang,
       'ms': sw.elapsedMilliseconds,
       'chars': finalText.length,
-      'engine': 'whisper_ggml',
+      'engine': 'sherpa_whisper',
     });
     await _teardown();
     return finalText;
@@ -209,38 +166,12 @@ class SttSession {
     _sub = null;
     try { await _rec.stop(); } catch (_) {}
     _owner.statusLine.value = '';
-    Analytics.capture('stt_cancel', {'lang': lang, 'engine': 'whisper_ggml'});
+    Analytics.capture('stt_cancel', {'lang': lang, 'engine': 'sherpa_whisper'});
     await _teardown();
   }
 
   Future<void> _teardown() async {
     try { _rec.dispose(); } catch (_) {}
     _owner._clearActive(this);
-  }
-
-  // Build a self-contained 16 kHz/mono/16-bit WAV from raw PCM so each snapshot
-  // is a valid file Whisper can read (avoids reading a half-written stream).
-  Future<String> _writeWav(Uint8List pcm) async {
-    final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/ava_stt_live.wav';
-    final f = File(path);
-    await f.writeAsBytes(_wavBytes(pcm), flush: true);
-    return path;
-  }
-
-  Uint8List _wavBytes(Uint8List pcm) {
-    const channels = 1;
-    const bitsPerSample = 16;
-    final byteRate = _sampleRate * channels * bitsPerSample ~/ 8;
-    final blockAlign = channels * bitsPerSample ~/ 8;
-    final dataLen = pcm.length;
-    final buf = BytesBuilder();
-    void s(String x) => buf.add(x.codeUnits);
-    void u32(int v) => buf.add(Uint8List(4)..buffer.asByteData().setUint32(0, v, Endian.little));
-    void u16(int v) => buf.add(Uint8List(2)..buffer.asByteData().setUint16(0, v, Endian.little));
-    s('RIFF'); u32(36 + dataLen); s('WAVE');
-    s('fmt '); u32(16); u16(1); u16(channels); u32(_sampleRate); u32(byteRate); u16(blockAlign); u16(bitsPerSample);
-    s('data'); u32(dataLen); buf.add(pcm);
-    return buf.toBytes();
   }
 }
