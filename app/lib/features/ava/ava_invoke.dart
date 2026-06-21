@@ -24,9 +24,15 @@ import 'ava_turn_controller.dart';
 class AvaInvoke {
   AvaInvoke._();
 
-  /// The wake word the composer watches for. Mirrors `_avaWakeWord` in
-  /// chat_thread.dart (kept here so this file is self-contained).
+  /// The wake words the composer watches for. Mirrors `_avaWakeWord` /
+  /// `_avaShareWord` in chat_thread.dart (kept here so this file is self-contained).
+  ///
+  /// `@ava` is a PRIVATE personal call to Ava — the user's question is never sent
+  /// to the other participant and the reply comes back `ava_private` (only the
+  /// caller sees it). `#ava` is a SHARED call — both parties see the question and
+  /// Ava's reply in the thread.
   static const String wakeWord = '@ava';
+  static const String shareWord = '#ava';
 
   /// Build a composer handler bound to a specific [convKey] ('1:<peerUid>' for a
   /// DM, 'g:<gid>' for a group). Assign the result to a chat-thread state's
@@ -66,16 +72,13 @@ class AvaInvoke {
   /// wake word) is forwarded to the worker, which treats it as untrusted data.
   static AvaInvokeParse? parse(String text) {
     final lower = text.toLowerCase();
-    final idx = lower.indexOf(wakeWord);
-    if (idx < 0) return null;
+    final at = lower.indexOf(wakeWord);     // '@ava' → private personal call
+    final hash = lower.indexOf(shareWord);  // '#ava' → shared, both parties see
+    if (at < 0 && hash < 0) return null;
 
-    // Look at what immediately follows the wake word for a private modifier.
-    final after = text.substring(idx + wakeWord.length).trimLeft();
-    final afterLower = after.toLowerCase();
-    final private = text.substring(idx, idx + wakeWord.length + 1) == '$wakeWord!' ||
-        afterLower.startsWith('private') ||
-        afterLower.startsWith('(private)');
-
+    // '@ava' (private) is the default and wins if both markers somehow appear —
+    // privacy is the safe default for a personal AI call.
+    final private = at >= 0;
     return AvaInvokeParse(request: text.trim(), privateReply: private);
   }
 }

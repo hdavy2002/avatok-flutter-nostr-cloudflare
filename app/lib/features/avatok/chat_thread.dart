@@ -90,11 +90,13 @@ class _Msg {
   int? expireAt; // epoch secs after which the message disappears
   String? special; // 'loc' | 'card' | 'poll' | 'sticker'
   Map<String, dynamic>? extra;
+  bool aiLocal; // a PRIVATE @ava question — local-only, never sent to the peer (no delivery ticks)
   Map<int, int> pollVotes = {}; // option index → count (local tally)
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
-       this.starred = false, this.forwarded = false, this.expireAt, this.special, this.extra});
+       this.starred = false, this.forwarded = false, this.expireAt, this.special, this.extra,
+       this.aiLocal = false});
 }
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
@@ -242,6 +244,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       for (final m in rows) {
         _onDm(DmMessage(rumorId: m.rumorId, mine: m.mine, payload: m.payload, createdAt: m.createdAt), seed: true);
       }
+      _jumpToEndSettled(); // open ON the latest message, not mid-thread
     });
     // Restore persisted delivery/read marks so ticks are correct immediately on
     // reopen (before any fresh receipt arrives) — survives app restarts.
@@ -464,6 +467,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// message is: still sending → on the relay but not yet on the phone →
   /// delivered to the phone → actually read.
   ({IconData icon, Color color, String label})? _statusFor(_Msg m) {
+    if (m.aiLocal) return null; // private @ava question — never sent, so no ticks
     if (!m.me || !_realMode || _isGroup || m.ts <= 0) return null;
     // My bubbles are lime (ink text), so status ticks read in ink tones:
     // read = blue-ink, everything in-flight = ink-soft, failed = coral.
@@ -713,9 +717,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// Grows an Ava bubble as deltas arrive; the durable answer replaces it.
   StreamSubscription<Map<String, dynamic>>? _avaStreamSub;
 
-  /// The wake word the composer watches for (proposal open-decision #3:
-  /// `@ava` + button). Phase 3 owns the actual trigger + UI affordance.
+  /// The wake words the composer watches for. `@ava` = a PRIVATE personal call
+  /// to Ava (never sent to the peer, private reply). `#ava` = a SHARED call (both
+  /// parties see the question + reply).
   static const String _avaWakeWord = '@ava';
+  static const String _avaShareWord = '#ava';
+
+  /// Composer "Ava mode": when ON, every message you send is a PRIVATE @ava call
+  /// (no need to type @ava) — handy for quietly drafting a reply with Ava, then
+  /// flipping back to message the person. Toggled by the ✦ button in the composer.
+  bool _avaMode = false;
 
   /// Buffer of conversation lines (everyone's), flushed into THIS member's own
   /// RAG store (Gemini File Search) in batches so @ava can recall the whole
@@ -835,21 +846,47 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
-    // Phase 3 fills this: if the message summons Ava (@ava) and a hook is wired,
-    // route it to the in-thread agent. No-op in Phase 0 (onSummonAva stays null).
-    if (onSummonAva != null && t.toLowerCase().contains(_avaWakeWord)) {
-      // ignore: unawaited_futures
-      onSummonAva!(t); // routes to the cloud agent, which posts its own working
-      // chip + the answer over the InboxDO (no local generation anymore).
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final expire = _disappearSecs > 0 ? now + _disappearSecs : null;
+
+    // ----- Ava routing (fresh sends only, never edits) -----
+    // `@ava` (or Ava-mode) = a PRIVATE personal call: the question is NOT sent to
+    // the peer (so it's instant — no "waiting to reach phone") and the reply comes
+    // back privately. `#ava` = SHARED: falls through to a normal send so the peer
+    // sees the question, and Ava replies in the thread for both.
+    if (_editing == null && onSummonAva != null) {
+      final lower = t.toLowerCase();
+      final shared = lower.contains(_avaShareWord);
+      final atAva = lower.contains(_avaWakeWord);
+      final avaModePrivate = _avaMode && !shared && !atAva;
+      final privateAva = (atAva && !shared) || avaModePrivate;
+      if (privateAva || shared) {
+        // Ava-mode plain text carries no marker → prefix so AvaInvoke parses it
+        // as a private @ava call.
+        // ignore: unawaited_futures
+        onSummonAva!(avaModePrivate ? '$_avaWakeWord $t' : t);
+      }
+      if (privateAva) {
+        _ragAddLine('You', t);
+        _composerFocus.requestFocus();
+        setState(() {
+          // aiLocal: rendered locally only, never sent → no delivery ticks.
+          _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, aiLocal: true));
+          _ctrl.clear(); _hasText = false; _replyTo = null;
+        });
+        _jump();
+        if (_convKey != null) DraftStore().set(_convKey!, '');
+        _schedulePersist();
+        return;
+      }
     }
+
     // RAG memory: index this outgoing line into the user's own File Search store
     // (full-thread indexing — incoming lines are added in the receive handlers).
     _ragAddLine('You', t);
     // Tapping the send button steals focus from the field; grab it back so the
     // keyboard stays up and the user can keep typing without re-tapping the box.
     _composerFocus.requestFocus();
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final expire = _disappearSecs > 0 ? now + _disappearSecs : null;
 
     // Editing an existing message?
     if (_editing != null && _editing!.evId != null) {
@@ -916,6 +953,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _jump() => WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
       });
+
+  /// Robust "land on the latest message" used when a thread first opens. A single
+  /// post-frame jump can miss because rows/media are still laying out (the extent
+  /// grows after the first frame), leaving the view mid-thread. So we jump after
+  /// the frame AND again after a short settle so we reliably end at the bottom.
+  void _jumpToEndSettled() {
+    void toEnd() { if (mounted && _scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent); }
+    WidgetsBinding.instance.addPostFrameCallback((_) => toEnd());
+    Future.delayed(const Duration(milliseconds: 250), toEnd);
+    Future.delayed(const Duration(milliseconds: 600), toEnd);
+  }
 
   // ---- calls ----
   // 1:1 = P2P (CallRoom DO) via _call(). Groups = LiveKit conference via
@@ -1854,6 +1902,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ]),
           const Divider(height: 24),
           _action(ctx, PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), 'Reply', () => setState(() => _replyTo = m)),
+          if (m.text.trim().isNotEmpty && m.special != 'ava_status')
+            _action(ctx, PhosphorIcons.copy(PhosphorIconsStyle.bold),
+                m.media != null ? 'Copy caption' : 'Copy text', () => _copyText(m)),
           _action(ctx, PhosphorIcons.pushPin(PhosphorIconsStyle.bold), 'Pin message', () => _pinMessage(m)),
           _action(ctx, PhosphorIcons.star(m.starred ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
               m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
@@ -1877,6 +1928,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             style: ZineText.value(size: 15, color: danger ? Zine.coral : Zine.ink)),
         onTap: () { Navigator.pop(ctx); onTap(); },
       );
+
+  /// Copy a bubble's text (or a media caption) to the system clipboard — e.g.
+  /// copy Ava's private reply, flip out of Ava-mode, and paste it to the person.
+  void _copyText(_Msg m) {
+    final text = m.text.trim();
+    if (text.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: text));
+    HapticFeedback.selectionClick();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
+    }
+  }
 
   Future<void> _toggleStar(_Msg m) async {
     if (m.evId == null) { setState(() => m.starred = !m.starred); return; }
@@ -2299,6 +2363,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 12, 10),
           child: Row(children: [
+        // Ava-mode toggle: flip to talk privately to Ava without typing @ava;
+        // flip back to message the person. Highlights when ON.
+        IconButton(
+            tooltip: _avaMode ? 'Talking to Ava (tap to message ${widget.chat.name})' : 'Talk privately to Ava',
+            icon: PhosphorIcon(PhosphorIcons.sparkle(_avaMode ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
+                color: _avaMode ? Zine.blueInk : Zine.ink, size: 24),
+            onPressed: () {
+              setState(() => _avaMode = !_avaMode);
+              _composerFocus.requestFocus();
+            }),
         IconButton(
             icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), color: Zine.ink, size: 26),
             onPressed: _attach),
@@ -2306,7 +2380,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-                color: Zine.card,
+                color: _avaMode ? Zine.lilac : Zine.card,
                 borderRadius: BorderRadius.circular(100),
                 border: Zine.border),
             child: TextField(
@@ -2317,7 +2391,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               style: ZineText.input(size: 15.5),
               cursorColor: Zine.blueInk,
               decoration: InputDecoration(
-                  hintText: 'Message',
+                  hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
                   hintStyle: ZineText.input(size: 15.5).copyWith(
                       color: Zine.placeholder, fontWeight: FontWeight.w700),
                   border: InputBorder.none, isDense: true,

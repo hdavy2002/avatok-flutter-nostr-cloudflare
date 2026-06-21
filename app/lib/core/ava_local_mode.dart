@@ -23,8 +23,11 @@ class AvaLocalMode {
 
   static const String _kKey = 'ava_local_enabled';
 
-  /// Whether on-device memory is ON. Live for the UI + chat surfaces.
-  final ValueNotifier<bool> enabled = ValueNotifier<bool>(false);
+  /// Whether on-device memory is ON. Live for the UI + chat surfaces. Defaults
+  /// ON (opt-out): post-Cactus there is no model to download, so local FTS5
+  /// indexing is essentially free — keeping it ON by default means notes and
+  /// messages are searchable locally/offline without the user flipping a switch.
+  final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
 
   bool _loaded = false;
 
@@ -39,7 +42,10 @@ class AvaLocalMode {
     if (_loaded) return;
     _loaded = true;
     final v = await DiskCache.read(_kKey);
-    enabled.value = v == '1';
+    // Default ON (opt-out): only an explicit '0' disables local memory. A fresh
+    // install has no saved value → ON, and we persist that so the choice sticks.
+    enabled.value = v != '0';
+    if (v == null) { await DiskCache.write(_kKey, '1'); }
     if (enabled.value) {
       // ignore: unawaited_futures
       AvaOnDeviceRag.I.ensureReady();
