@@ -238,8 +238,8 @@ class _VoiceCardState extends State<_VoiceCard> {
                     Text(
                       failed
                           ? 'Download didn’t finish. Check your connection and try again.'
-                          : 'Talk to Ava hands-free. Downloads her voice once '
-                              '(~200 MB) over Wi-Fi, then runs fully on your phone.',
+                          : 'Talk to Ava hands-free. Downloads the voice models once '
+                              '(~130 MB) over Wi-Fi, then runs fully on your phone.',
                       style: ZineText.sub(size: 12),
                     ),
                   ]),

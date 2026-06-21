@@ -53,9 +53,10 @@ class VoiceFeature {
     state.value = VoiceFeatureState.downloading;
     Analytics.capture('voice_feature_enable_start', const <String, Object>{});
     try {
-      // 1) speech models (VAD + Whisper, ~110 MB)
+      // 1) speech models (Silero VAD + Whisper-tiny int8, ~100 MB) — now the
+      //    larger of the two downloads (the decoder is ~86 MB).
       final sttOk = await VoiceModels.I.ensureVadAndStt();
-      // 2) Ava's voice (Kokoro, ~330 MB) — the big one
+      // 2) Ava's voice (Supertonic-3 int8 TTS, ~30 MB)
       final ttsOk = await VoiceModels.I.downloadTts();
       state.value = VoiceFeatureState.preparing;
       final ready = await VoiceModels.I.isAllReady();

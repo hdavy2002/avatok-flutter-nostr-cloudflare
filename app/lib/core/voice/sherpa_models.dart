@@ -1,15 +1,16 @@
 /// VoiceModels — downloads & caches the on-device sherpa-onnx model files.
 ///
-/// The voice stack (Silero VAD + Whisper-tiny STT + Kokoro-82M TTS) needs model
-/// files on local disk. They are too big to bundle in the APK (Kokoro alone is
-/// ~330 MB), so we fetch them once on first use and cache under the app-support
-/// dir. Everything here is defensive: a failed or offline download just leaves
-/// the feature "not ready" (the UI degrades gracefully), never crashes.
+/// The voice stack (Silero VAD + Whisper-tiny int8 STT + Supertonic-3 int8 TTS)
+/// needs model files on local disk. They are too big to bundle in the APK
+/// (Whisper-tiny int8 ≈ 100 MB, Supertonic ≈ 30 MB → ~130 MB total), so we fetch
+/// them once on first use and cache under the app-support dir. Everything here is
+/// defensive: a failed or offline download just leaves the feature "not ready"
+/// (the UI degrades gracefully), never crashes.
 ///
 /// ⚠️ VERIFY IN CI / ON DEVICE: the download URLs + in-archive filenames below are
 /// the k2-fsa canonical names as of 2026-06; if a release renames a file this is
-/// the ONE place to fix. Kokoro is a tar.bz2 → extracted with `archive` (heavy,
-/// one-time). VAD + Whisper are single files (no extraction).
+/// the ONE place to fix. Supertonic is a tar.bz2 → extracted with `archive`
+/// (one-time). VAD + Whisper are single files (no extraction).
 library;
 
 import 'dart:io';
@@ -241,7 +242,7 @@ class VoiceModels {
 
   /// Decompress a .tar.bz2 and write every entry under [outDir].
   ///
-  /// CRITICAL: pure-Dart bzip2 on a ~330 MB bundle is CPU-heavy and was running on
+  /// CRITICAL: pure-Dart bzip2 on the TTS bundle is CPU-heavy and was running on
   /// the UI isolate — that froze the app (Android "App isn't responding — wait or
   /// close?"). It now runs on a BACKGROUND isolate via [compute] so the UI stays
   /// responsive and just shows the indeterminate "Unpacking…" state.
