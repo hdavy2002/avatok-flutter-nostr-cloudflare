@@ -51,3 +51,24 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: web
           command: pages deploy dist --project-name=avatok-app --branch=main --commit-hash=${{ github.sha }}
+
+      # Automatic deploy tracking: drop a PostHog annotation (commit SHA + message)
+      # on the project timeline so every web deploy is visible against metrics and
+      # errors. Best-effort — skips cleanly if POSTHOG_PERSONAL_API_KEY isn't set
+      # and never fails the deploy. Needs repo secret POSTHOG_PERSONAL_API_KEY (phx_…).
+      - name: PostHog deploy annotation
+        if: success()
+        env:
+          POSTHOG_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_HOST: https://eu.posthog.com
+          POSTHOG_PROJECT_ID: '139917'
+          GIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "$POSTHOG_KEY" ]; then echo "POSTHOG_PERSONAL_API_KEY unset — skipping annotation"; exit 0; fi
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          SUBJECT=$(printf '%s' "${COMMIT_MSG:-manual deploy}" | head -n1)
+          curl -sS -X POST "$POSTHOG_HOST/api/projects/$POSTHOG_PROJECT_ID/annotations/" \
+            -H "Authorization: Bearer $POSTHOG_KEY" -H "Content-Type: application/json" \
+            --data "$(jq -n --arg c "Web deploy ${GIT_SHA:0:7} — $SUBJECT" --arg d "$NOW" '{content:$c,date_marker:$d,scope:"project"}')" \
+            -o /dev/null -w "PostHog annotation HTTP %{http_code}\n" || echo "annotation post failed (non-fatal)"

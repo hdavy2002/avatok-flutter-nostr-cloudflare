@@ -28,6 +28,10 @@ export function track(
         app_name,
         app: String(props.app ?? app_name),
         app_version: String(props.app_version ?? "server"),
+        // Git commit SHA of the deployed Worker (set via `wrangler deploy --var
+        // WORKER_RELEASE:<sha>`), 'dev' when unset → ties server errors/metrics to
+        // the exact deploy, matching the client's `release` property.
+        release: String(props.release ?? (env as any).WORKER_RELEASE ?? "dev"),
         service_name: SERVICE,
         // Envelope (ANALYTICS-OBSERVABILITY §1/§4): server-truth events are
         // distinguishable from client mirrors and join on the same account_id.
