@@ -185,6 +185,14 @@ export interface Env {
   // Also powers the AvaAffiliate v2 marketing-asset kit (Nano Banana 2 images).
   GEMINI_API_KEY?: string;
 
+  // GenUI global template cache (Upstash Redis REST). URL is a [var]; TOKEN is a
+  // secret. Absent → cache no-ops (compose every time; nothing breaks).
+  UPSTASH_REDIS_REST_URL?: string;
+  UPSTASH_REDIS_REST_TOKEN?: string;
+  // GenUI kill-switch: "1" disables generative in-chat UI for everyone (else ON
+  // for premium users with a connected app).
+  GENUI_OFF?: string;
+
   // Ava Receptionist — override the Gemini Live model (owner asked for "3.5").
   // Defaults to gemini-live-2.5-flash-native-audio (proven token mint in repo).
   RECEPTIONIST_MODEL?: string;

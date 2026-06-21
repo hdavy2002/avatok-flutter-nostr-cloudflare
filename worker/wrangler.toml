@@ -25,6 +25,10 @@ custom_domain = true
 # SECRET (`wrangler secret put AI_GATEWAY_TOKEN`), never in this file.
 AI_GATEWAY_ID = "avatok-ai"
 CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
+# GenUI global template cache (Upstash Redis). REST URL is public-safe; the token
+# is a SECRET (`wrangler secret put UPSTASH_REDIS_REST_TOKEN`), never in this file.
+# If unset, the GenUI template cache simply no-ops (composes each time).
+UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worker in path)
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"  # Gemma 4 26B-A4B MoE (~4B-class cost, thinking-mode reasoning)
@@ -345,6 +349,7 @@ custom_domain = true
 
 [env.staging.vars]
 TEST_CLOCK_ALLOWED = "1"   # Phase 7 A2 — refund-engine test clock (staging ONLY)
+UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"   # GenUI template cache (token = secret)
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"

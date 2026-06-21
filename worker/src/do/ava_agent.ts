@@ -36,7 +36,7 @@ import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
 import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composio"; // AvaApps + unified agentic loop
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
-import { composeSurface, isRenderable } from "../lib/genui_compose"; // GENERIC GenUI: any Composio result → A2UI
+import { renderData } from "../lib/genui"; // GENERIC GenUI: any Composio result → cached A2UI template + data
 import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
 import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
 import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
@@ -599,7 +599,7 @@ export class AvaAgentDO {
       // the Ava envelope; the Flutter A2UI renderer composes it from the Zine
       // catalog (no hard-coded calendar widget). Any failure falls through to the
       // normal agent loop. Read-only for the pilot.
-      if ((this.env as any).GENUI_ENABLED === "1" && appsCap && premium && this.looksLikeCalendar(userText)) {
+      if ((this.env as any).GENUI_OFF !== "1" && appsCap && premium && this.looksLikeCalendar(userText)) {
         const cl0 = Date.now();
         try {
           const connected = await connectedToolkits(this.env, uid);
@@ -724,19 +724,19 @@ export class AvaAgentDO {
       // into an A2UI surface with Gemini and render it as cards in the chat,
       // instead of a wall of text. Falls back to plain text on any failure.
       let a2uiSurface: unknown = null;
-      if ((this.env as any).GENUI_ENABLED === "1" && premium && lastApp && isRenderable((lastApp as any).data)) {
+      if ((this.env as any).GENUI_OFF !== "1" && premium && lastApp) {
         const gx0 = Date.now();
         try {
-          const surface = await composeSurface(this.env, {
+          const { surface, cache } = await renderData(this.env, {
             request: userText, tool: (lastApp as any).tool, data: (lastApp as any).data,
           });
           if (surface) a2uiSurface = surface;
-          trackUserContact(this.env, uid, email, phone, "genui_compose", "avaai", {
-            conv_kind: convKind, tool: (lastApp as any).tool, ok: !!surface,
-            ms: Date.now() - gx0, components: surface ? Object.keys(surface.components).length : 0,
+          trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
+            conv_kind: convKind, tool: (lastApp as any).tool, ok: !!surface, cache,
+            ms: Date.now() - gx0, components: surface ? Object.keys((surface as any).components).length : 0,
           });
         } catch (e: any) {
-          trackUserContact(this.env, uid, email, phone, "genui_compose", "avaai", {
+          trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
             conv_kind: convKind, tool: (lastApp as any).tool, ok: false, ms: Date.now() - gx0,
             error: String(e?.message ?? e).slice(0, 200),
           });

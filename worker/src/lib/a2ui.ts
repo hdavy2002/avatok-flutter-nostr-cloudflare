@@ -38,13 +38,21 @@ export type A2uiNode =
   | { type: "spacer"; size: number }
   | { type: "icon"; name: string; size?: number; color?: Token }
   | { type: "eventRow"; start: string; end: string; title: string; location?: string; video?: boolean; guests?: number; accent?: Token }
-  | { type: "openDay"; title: string; subtitle: string };
+  | { type: "openDay"; title: string; subtitle: string }
+  // Template iteration: render `item` once per element of the array at `path`
+  // (resolved against the data model); each element becomes the item's scope.
+  // This is what lets a CACHED template render any user's data.
+  | { type: "list"; path: string; item: string; gap?: number };
 
 export interface A2uiSurface {
   version: "v0.9";
   surfaceId: string;
   root: string;
   components: Record<string, A2uiNode>;
+  // Optional data model. Text fields may contain `${path}` bindings resolved
+  // against this (and list nodes iterate arrays in it). The components are the
+  // cacheable TEMPLATE; `data` is per-request and never cached.
+  data?: unknown;
 }
 
 // Tiny builder: accumulates components, hands back ids, assembles a surface.
