@@ -103,7 +103,11 @@ google console/
 # graphify report: non-deterministic centrality metrics, churns every rebuild
 graphify-out/GRAPH_REPORT.md
 
-# Design source kit (Claude Design export) — reference mocks for the in-chat email
-# UI; bulky (fonts + compiled DS bundle). Keep local; the app implements from it.
+# Design source kits (Claude Design exports) — reference mocks; bulky (fonts +
+# compiled DS bundle). Keep local; the app implements from them.
 theme/design/gmail/
 theme/design/gmail.zip
+theme/design/AvaTOK Design System/
+theme/design/AvaTOK Design System.zip
+theme/design/calender/
+theme/design/calender.zip

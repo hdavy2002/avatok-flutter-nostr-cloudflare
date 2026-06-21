@@ -35,6 +35,7 @@ import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_ga
 import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
 import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composio"; // AvaApps + unified agentic loop
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
+import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
 import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
 import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
 import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
@@ -326,6 +327,14 @@ export class AvaAgentDO {
     return /\bin(my )?box\b|\bmy e?mails?\b|\b(latest|recent|new|unread) e?mails?\b|\bcheck (my )?(e?mail|inbox)\b|\b(show|see|read|open|list) (me )?(my )?(e?mail|emails|inbox)\b|\bany (new )?e?mails?\b|\bwhat'?s (new )?in (my )?inbox\b/i.test(text);
   }
 
+  // Does this turn want to SEE the day's calendar as cards (the GenUI/A2UI
+  // pilot)? e.g. "what's on my calendar", "am I free today", "my schedule".
+  // Excludes pure create/schedule phrasing (handled later / by the agent loop).
+  private looksLikeCalendar(text: string): boolean {
+    if (/\b(send|email|reply|compose)\b/i.test(text)) return false;
+    return /\b(calendar|schedule|agenda|my day|today'?s? (events|meetings|schedule)|what'?s on (today|my (day|calendar))|am i (free|busy)|any (meetings|events))\b/i.test(text);
+  }
+
   // Does this turn refer to a file/photo/attachment shared IN this chat (vs. an
   // emailed file, which is `apps`)? Heuristic fallback for the LLM router below.
   private looksLikeMedia(text: string): boolean {
@@ -584,6 +593,43 @@ export class AvaAgentDO {
         }
       }
 
+      // In-chat calendar (GenUI/A2UI pilot, opt-in via GENUI_ENABLED). "What's on
+      // my calendar today" → fetch the day's events and emit an A2UI SURFACE in
+      // the Ava envelope; the Flutter A2UI renderer composes it from the Zine
+      // catalog (no hard-coded calendar widget). Any failure falls through to the
+      // normal agent loop. Read-only for the pilot.
+      if ((this.env as any).GENUI_ENABLED === "1" && appsCap && premium && this.looksLikeCalendar(userText)) {
+        const cl0 = Date.now();
+        try {
+          const connected = await connectedToolkits(this.env, uid);
+          if (connected.includes("googlecalendar")) {
+            const { events, label } = await fetchDayEvents(this.env, uid);
+            const surface = buildCalendarSurface(events, label);
+            const head = events.length === 0
+              ? "Good news — your schedule is wide open today."
+              : `Here's your day — ${events.length} ${events.length === 1 ? "event" : "events"} on the calendar.`;
+            await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+            await this.postAva({ conv, uid, text: head, private: priv, source: "calendar", a2ui: surface });
+            trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
+              conv_kind: convKind, surface: "calendar", mode: "template", ok: true,
+              ms: Date.now() - cl0, count: events.length,
+            });
+            trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
+              conv_kind: convKind, tier, agentic: false, surface: "calendar_genui",
+              answer_len: head.length, latency_ms: Date.now() - t0,
+              tools_called: 1, tool_names: "GOOGLECALENDAR_EVENTS_LIST", tools_ms: Date.now() - cl0, tool_error: false,
+              attachments: 0, attachments_captioned: 0,
+            });
+            return { ok: true, status_id: statusId };
+          }
+        } catch (e: any) {
+          trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
+            conv_kind: convKind, surface: "calendar", ok: false, ms: Date.now() - cl0,
+            error: String(e?.message ?? e).slice(0, 200),
+          });
+        }
+      }
+
       // THE single agentic call: Gemini chats directly, calls search_memory for
       // the user's own data, or acts on connected apps — its own choice, one loop.
       let ctx = window.map((w) => `${w.ava ? "Ava" : (w.mine ? "User" : "Other")}: ${w.text}`).join("\n");
@@ -699,7 +745,7 @@ export class AvaAgentDO {
   private async postAva(b: {
     conv: string; uid: string; text: string; private?: boolean;
     source?: string; media_ref?: string; meta?: Record<string, unknown>;
-    emails?: unknown[];
+    emails?: unknown[]; a2ui?: unknown;
   }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
@@ -715,6 +761,9 @@ export class AvaAgentDO {
       // Structured email cards (the in-chat inbox UI) ride alongside the text so
       // the FROZEN chat renderer can show View/Spam/Delete cards from one bubble.
       ...(Array.isArray(b.emails) && b.emails.length ? { emails: b.emails } : {}),
+      // A2UI surface (GenUI pilot) — the Flutter A2UI renderer composes it from
+      // the Zine catalog. Generic; used by calendar today, any tool tomorrow.
+      ...(b.a2ui ? { a2ui: b.a2ui } : {}),
       ...(b.meta ? { meta: b.meta } : {}),
     });
 

@@ -16,12 +16,20 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../../core/account_storage.dart';
 import '../../core/api_auth.dart';
+import '../../core/ava_ai_client.dart';
+import '../../core/composer_ai.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_local_replies.dart';
 import '../../core/ava_log.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_ondevice_stt.dart';
+import '../../core/kokoro_voice.dart';
+import '../../core/ui/mic_input_sheet.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
@@ -47,6 +55,7 @@ import '../../push/push_service.dart';
 import '../../core/remote_config.dart';
 import '../ava/ava_invoke.dart';
 import 'ava_email.dart';
+import '../genui/a2ui_renderer.dart';
 import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
 import '../../core/analytics.dart';
@@ -165,6 +174,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String _wallpaperId = 'default';
   List<String> _mentionMatches = [];
 
+  // Composer quick-tools (Translate · Fix grammar · Rewrite · Reply ideas).
+  // Each runs ONE Ava text call (AvaAiClient.ask) and drops the result straight
+  // back into the input box so the user just hits send. _aiTool is the chip
+  // currently spinning (null = idle); _aiBusy locks the row to one job at a time.
+  bool _aiBusy = false;
+  String? _aiTool;
+  final FlutterSecureStorage _aiPrefs = const FlutterSecureStorage();
+  static const _kTransLangKey = 'composer_translate_lang';
+  // Remembered translate target (account-scoped). Defaults to Spanish until the
+  // saved value loads / the user picks another.
+  String _transLangCode = 'Spanish';
+  ComposerLang get _transLang => ComposerAi.langByCode(_transLangCode);
+
   void _markRead() {
     final key = _convKey;
     if (key == null) return;
@@ -200,6 +222,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       setState(() { if (p.displayName.isNotEmpty) _myName = p.displayName; _sharePresence = p.sharePresence; });
     });
     _starStore.load().then((s) { if (mounted) setState(() => _starred = s); });
+    // Restore the remembered translate target (account-scoped — a parent and a
+    // child sharing the phone keep separate defaults).
+    readScoped(_aiPrefs, _kTransLangKey).then((code) {
+      if (mounted && code != null && code.isNotEmpty) {
+        setState(() => _transLangCode = code);
+      }
+    }).catchError((_) {});
     _pruneTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       if (mounted && _msgs.any((m) => m.expireAt != null && m.expireAt! < nowS)) {
@@ -1576,6 +1605,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             EmailInboxCards(emails: inbox),
           ]);
         }
+        // GenUI/A2UI surface (generic): the agent composed a layout from our Zine
+        // catalog (calendar today, any tool tomorrow). Rendered natively.
+        final a2ui = e['a2ui'];
+        if (a2ui is Map) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (body.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(bottom: 8), child: _avaRich(body, fg)),
+            AvaA2uiSurface(
+              surface: a2ui.cast<String, dynamic>(),
+              onPrompt: (t) { if (onSummonAva != null) onSummonAva!('$_avaWakeWord $t'); },
+            ),
+          ]);
+        }
         return _avaRich(body, fg);
       default:
         return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
@@ -2455,6 +2497,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       decoration: bandDeco,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_replyTo != null || _editing != null) _replyBanner(),
+        _composerTools(),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 12, 10),
           child: Row(children: [
@@ -2503,6 +2546,377 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ]),
         ),
       ]),
+    );
+  }
+
+  // ===========================================================================
+  // Composer quick-tools row (Translate · Fix grammar · Rewrite · Reply ideas)
+  // ===========================================================================
+
+  /// The little horizontally-scrolling chip bar that sits right on top of the
+  /// text field. Each chip runs one Ava call and writes the result back into
+  /// the input box. The whole row dims while a job is in flight.
+  Widget _composerTools() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: SizedBox(
+        height: 34,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          children: [
+            _translateChip(),
+            _toolChip(
+              tool: 'grammar',
+              icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
+              label: 'Fix grammar',
+              onTap: _runFixGrammar,
+            ),
+            _toolChip(
+              tool: 'rewrite',
+              icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
+              label: 'Rewrite',
+              onTap: _runRewrite,
+            ),
+            _toolChip(
+              tool: 'reply_ideas',
+              icon: PhosphorIcons.lightbulb(PhosphorIconsStyle.bold),
+              label: 'Reply ideas',
+              onTap: _runReplyIdeas,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A single pill chip. Shows a spinner in place of its icon while it's the
+  /// active job; the rest of the row is greyed (tap-disabled) meanwhile.
+  Widget _toolChip({
+    required String tool,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final busy = _aiTool == tool;
+    final dimmed = _aiBusy && !busy;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Opacity(
+        opacity: dimmed ? 0.4 : 1,
+        child: GestureDetector(
+          onTap: _aiBusy ? null : onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: busy ? Zine.lime : Zine.card,
+              borderRadius: BorderRadius.circular(100),
+              border: Zine.border,
+              boxShadow: Zine.shadowXs,
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (busy)
+                const SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
+                )
+              else
+                PhosphorIcon(icon, size: 15, color: Zine.ink),
+              const SizedBox(width: 6),
+              Text(label, style: ZineText.tag(size: 12.5)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Translate chip — split into two tap zones: the left runs a translation
+  /// into the remembered language; the trailing language + caret opens the
+  /// picker to change it.
+  Widget _translateChip() {
+    final busy = _aiTool == 'translate';
+    final dimmed = _aiBusy && !busy;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Opacity(
+        opacity: dimmed ? 0.4 : 1,
+        child: Container(
+          decoration: BoxDecoration(
+            color: busy ? Zine.lime : Zine.card,
+            borderRadius: BorderRadius.circular(100),
+            border: Zine.border,
+            boxShadow: Zine.shadowXs,
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            GestureDetector(
+              onTap: _aiBusy ? null : _runTranslate,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (busy)
+                    const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
+                    )
+                  else
+                    PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                        size: 15, color: Zine.ink),
+                  const SizedBox(width: 6),
+                  Text('Translate', style: ZineText.tag(size: 12.5)),
+                ]),
+              ),
+            ),
+            GestureDetector(
+              onTap: _aiBusy ? null : _pickTransLang,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(8, 6, 11, 6),
+                decoration: const BoxDecoration(
+                  border: Border(left: BorderSide(color: Zine.ink, width: Zine.bw)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_transLang.label,
+                      style: ZineText.tag(size: 12.5, color: Zine.blueInk)),
+                  const SizedBox(width: 3),
+                  PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                      size: 12, color: Zine.blueInk),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Shared runner: flips the busy flags, fires the [call], reports failures,
+  /// and returns the trimmed answer (or null on block/empty/error).
+  Future<String?> _runAiTool(String tool, Future<AvaAnswer> Function() call,
+      {Map<String, Object> props = const <String, Object>{}}) async {
+    if (_aiBusy) return null;
+    setState(() { _aiBusy = true; _aiTool = tool; });
+    Analytics.capture('composer_ai_used', <String, Object>{
+      'tool': tool, 'is_group': _isGroup, ...props,
+    });
+    try {
+      final a = await call();
+      if (!mounted) return null;
+      if (a.blocked) {
+        _toolHint(a.hitDailyCap
+            ? 'Daily free AI limit reached — connect your own key in Settings for unlimited.'
+            : 'Ava couldn’t help with that right now.');
+        Analytics.capture('composer_ai_blocked',
+            <String, Object>{'tool': tool, 'reason': a.reason ?? 'unknown'});
+        return null;
+      }
+      final out = a.answer.trim();
+      if (out.isEmpty) { _toolHint('Ava returned nothing — try again.'); return null; }
+      Analytics.capture('composer_ai_ok',
+          <String, Object>{'tool': tool, 'tier': a.tier ?? 'unknown'});
+      return out;
+    } catch (e) {
+      if (mounted) _toolHint('Something went wrong. Check your connection.');
+      Analytics.capture('composer_ai_error', {'tool': tool});
+      return null;
+    } finally {
+      if (mounted) setState(() { _aiBusy = false; _aiTool = null; });
+    }
+  }
+
+  /// Drop [out] into the input box (replacing the draft), cursor at the end,
+  /// keyboard kept up — the user just hits send.
+  void _replaceComposer(String out) {
+    _ctrl.value = TextEditingValue(
+      text: out,
+      selection: TextSelection.collapsed(offset: out.length),
+    );
+    setState(() => _hasText = out.trim().isNotEmpty);
+    _composerFocus.requestFocus();
+  }
+
+  void _toolHint(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 3),
+    ));
+  }
+
+  Future<void> _runTranslate() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) { _toolHint('Type a message first, then tap Translate'); return; }
+    final out = await _runAiTool('translate',
+        () => ComposerAi.translate(text, _transLang.code),
+        props: {'lang': _transLang.code});
+    if (out != null) _replaceComposer(out);
+  }
+
+  Future<void> _runFixGrammar() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) { _toolHint('Type a message first, then tap Fix grammar'); return; }
+    final out = await _runAiTool('grammar', () => ComposerAi.fixGrammar(text));
+    if (out != null) _replaceComposer(out);
+  }
+
+  Future<void> _runRewrite() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) { _toolHint('Type a draft first, then tap Rewrite'); return; }
+    final tone = await _pickRewriteTone();
+    if (tone == null) return;
+    final out = await _runAiTool('rewrite',
+        () => ComposerAi.rewrite(text, tone.style), props: {'tone': tone.label});
+    if (out != null) _replaceComposer(out);
+  }
+
+  Future<void> _runReplyIdeas() async {
+    final incoming = _lastIncomingText();
+    if (incoming == null) { _toolHint('No message to reply to yet'); return; }
+    final out = await _runAiTool('reply_ideas',
+        () => ComposerAi.replyIdeas(incoming));
+    if (out == null) return;
+    final ideas = ComposerAi.parseIdeas(out);
+    if (ideas.isEmpty) { _toolHint('No suggestions — try again.'); return; }
+    _showReplyIdeas(ideas);
+  }
+
+  /// The most recent non-empty message FROM the other side (skips my own
+  /// messages, control envelopes and special bubbles like polls/location).
+  String? _lastIncomingText() {
+    for (var i = _msgs.length - 1; i >= 0; i--) {
+      final m = _msgs[i];
+      if (m.me || m.special != null) continue;
+      final t = m.text.trim();
+      if (t.isEmpty || _isControlEnvelope(t)) continue;
+      return t;
+    }
+    return null;
+  }
+
+  // ---- pickers --------------------------------------------------------------
+
+  Future<void> _pickTransLang() async {
+    final picked = await showModalBottomSheet<ComposerLang>(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(children: [
+              PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                  size: 20, color: Zine.ink),
+              const SizedBox(width: 10),
+              Text('Translate into…', style: ZineText.cardTitle(size: 18)),
+            ]),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final l in ComposerAi.languages)
+                  ListTile(
+                    title: Text(l.label, style: ZineText.value(size: 16)),
+                    subtitle: l.code != l.label
+                        ? Text(l.code, style: ZineText.sub(size: 13))
+                        : null,
+                    trailing: l.code == _transLangCode
+                        ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
+                            color: Zine.blueInk)
+                        : null,
+                    onTap: () => Navigator.pop(ctx, l),
+                  ),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+    if (picked == null) return;
+    setState(() => _transLangCode = picked.code);
+    try {
+      await _aiPrefs.write(key: scopedKey(_kTransLangKey), value: picked.code);
+    } catch (_) {/* preference best-effort */}
+    // Translate straight away with the new choice — one tap less.
+    await _runTranslate();
+  }
+
+  Future<ComposerTone?> _pickRewriteTone() {
+    return showModalBottomSheet<ComposerTone>(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(children: [
+              PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
+                  size: 20, color: Zine.ink),
+              const SizedBox(width: 10),
+              Text('Rewrite as…', style: ZineText.cardTitle(size: 18)),
+            ]),
+          ),
+          for (final t in ComposerAi.tones)
+            ListTile(
+              title: Text(t.label, style: ZineText.value(size: 16)),
+              onTap: () => Navigator.pop(ctx, t),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
+  void _showReplyIdeas(List<String> ideas) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+            child: Row(children: [
+              PhosphorIcon(PhosphorIcons.lightbulb(PhosphorIconsStyle.bold),
+                  size: 20, color: Zine.ink),
+              const SizedBox(width: 10),
+              Text('Reply ideas', style: ZineText.cardTitle(size: 18)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Tap one to drop it into your message.',
+                  style: ZineText.sub(size: 13)),
+            ),
+          ),
+          for (final idea in ideas)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: GestureDetector(
+                onTap: () { Navigator.pop(ctx); _replaceComposer(idea); },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Zine.card,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Zine.border,
+                    boxShadow: Zine.shadowXs,
+                  ),
+                  child: Text(idea, style: ZineText.value(size: 15, weight: FontWeight.w600)),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+        ]),
+      ),
     );
   }
 
@@ -2675,11 +3089,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               padding: hasMedia && (m.media?.kind == MediaKind.image)
                   ? const EdgeInsets.all(4)
                   : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              // Ava email-card bubbles need more room (the design uses ~92%);
-              // everything else stays at the standard 76%.
+              // Ava email-card and GenUI/A2UI bubbles need more room (the design
+              // uses ~92%); everything else stays at the standard 76%.
               constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(context).size.width *
-                      ((m.extra?['emails'] is List && (m.extra!['emails'] as List).isNotEmpty) ? 0.92 : 0.76)),
+                      (((m.extra?['emails'] is List && (m.extra!['emails'] as List).isNotEmpty) ||
+                              m.extra?['a2ui'] is Map)
+                          ? 0.92
+                          : 0.76)),
               // Chat bubble (§7.14): 2.5px ink border, radius 16 with one
               // squared corner toward the sender; me = lime, them = card.
               decoration: BoxDecoration(
