@@ -28,6 +28,33 @@ export function aiText(out: any): string {
   return (out.description ?? "") as string;
 }
 
+// Extract answer text from a Gemini (candidates/parts) response, dropping any
+// "thought" parts so raw reasoning never leaks. Falls back to aiText for other
+// (OpenAI / Workers-AI) shapes, so it's safe on any env.AI.run result.
+export function geminiText(out: any): string {
+  const parts = out?.candidates?.[0]?.content?.parts
+    ?? out?.response?.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    return parts
+      .filter((p: any) => p?.thought !== true)
+      .map((p: any) => String(p?.text ?? ""))
+      .join("")
+      .trim();
+  }
+  return aiText(out).trim();
+}
+
+// Build a Gemini-native request body for env.AI.run("google/gemini-…", …) — one
+// user turn, with the system carried as systemInstruction.
+export function geminiBody(system: string, user: string, maxTokens = 700, temperature = 0.7): any {
+  const body: any = {
+    contents: [{ role: "user", parts: [{ text: user }] }],
+    generationConfig: { maxOutputTokens: maxTokens, temperature },
+  };
+  if (system && system.trim()) body.systemInstruction = { parts: [{ text: system }] };
+  return body;
+}
+
 // D1 caps bound parameters at 100 per query. Split arrays into safe batches.
 export function chunk<T>(arr: T[], size = 90): T[][] {
   const out: T[][] = [];

@@ -5,7 +5,7 @@
 // native thinking-mode for better reasoning). Importance is decayed LAZILY at read
 // time. It holds no in-memory state, so it idles to nothing between requests.
 import type { Env } from "../types";
-import { json, aiText } from "../util";
+import { json, aiText, geminiText, geminiBody } from "../util";
 
 const DECAY_PER_DAY = 0.995;
 
@@ -253,18 +253,16 @@ export class UserBrain {
   }
 
   private async reason(system: string, user: string): Promise<string> {
-    const model = this.env.BRAIN_REASONER_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+    // Gemini 3 Flash (preview) via the partner route — never Gemma (owner
+    // decision: Gemini for everything online). Gemini-native request + extractor.
+    const model = "google/gemini-3-flash-preview";
     const started = Date.now();
     try {
-      // Single user message (sys + ask): portable to Gemma 4 (no system role).
-      // max_tokens leaves room for thinking-mode before the answer; aiText reads
-      // the final content out of the choices/message shape.
-      const out = (await this.env.AI.run(model as any, {
-        messages: [{ role: "user", content: `${system}\n\n${user}` }],
-        max_tokens: 1536, temperature: 0.2,
-      })) as unknown;
+      const out = (await this.env.AI.run(
+        model as any, geminiBody(system, user, 1536, 0.2),
+      )) as unknown;
       try { this.env.ANALYTICS?.writeDataPoint({ blobs: ["brain_reason", model], doubles: [Date.now() - started, 1], indexes: ["brain"] }); } catch { /* noop */ }
-      return aiText(out).trim() || "I don't have enough in memory to answer that yet.";
+      return geminiText(out) || "I don't have enough in memory to answer that yet.";
     } catch {
       return "I couldn't think that through just now — please try again.";
     }
