@@ -1558,15 +1558,80 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]);
       case 'ava':
       case 'ava_private':
-        // Ava's turn. The feminine bubble color + "AVA" label are applied in
-        // _bubble; here we just render the body (text + optional media ref).
-        // Generic: any phase posting an 'ava'/'ava_private' kind with a {text}
-        // body renders here with no further UI change.
+        // Ava's turn. The feminine bubble + "AVA" label are applied in _bubble;
+        // here we render her answer as light markdown (bold, numbered lists,
+        // bullets, headings) so structured results (e.g. an email digest) look
+        // clean instead of showing raw ** and 1. markers.
         final body = (e['text'] ?? e['body'] ?? m.text).toString();
-        return Text(body, style: ZineText.sub(size: 13.5, color: fg));
+        return _avaRich(body, fg);
       default:
         return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
     }
+  }
+
+  /// Lightweight markdown renderer for Ava's bubbles (no extra dependency).
+  /// Handles: # headings, **bold**, `code`, numbered lists (1.) and bullets
+  /// (- / *), and blank-line spacing — enough to make digests/results look neat.
+  Widget _avaRich(String text, Color fg) {
+    final base = ZineText.sub(size: 13.5, color: fg).copyWith(height: 1.32);
+    final lines = text.replaceAll('\r\n', '\n').split('\n');
+    final out = <Widget>[];
+    final numRe = RegExp(r'^\s*(\d+)\.\s+(.*)$');
+    final bulRe = RegExp(r'^\s*[-*]\s+(.*)$');
+    final headRe = RegExp(r'^#{1,6}\s+(.*)$');
+    for (final raw in lines) {
+      final line = raw.trimRight();
+      if (line.trim().isEmpty) { out.add(const SizedBox(height: 7)); continue; }
+      final head = headRe.firstMatch(line);
+      final num = numRe.firstMatch(line);
+      final bul = bulRe.firstMatch(line);
+      if (head != null) {
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 3),
+          child: _avaInline(head.group(1)!, base.copyWith(fontWeight: FontWeight.w800, fontSize: 14.5)),
+        ));
+      } else if (num != null) {
+        out.add(Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(width: 22, child: Text('${num.group(1)}.',
+                style: base.copyWith(fontWeight: FontWeight.w800, color: Zine.blueInk))),
+            Expanded(child: _avaInline(num.group(2)!, base)),
+          ]),
+        ));
+      } else if (bul != null) {
+        out.add(Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Padding(padding: const EdgeInsets.only(left: 2, right: 8, top: 1),
+                child: Text('•', style: base.copyWith(fontWeight: FontWeight.w800, color: Zine.blueInk))),
+            Expanded(child: _avaInline(bul.group(1)!, base)),
+          ]),
+        ));
+      } else {
+        out.add(_avaInline(line, base));
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: out);
+  }
+
+  /// Render inline **bold** and `code` spans within one line.
+  Widget _avaInline(String text, TextStyle base) {
+    final spans = <TextSpan>[];
+    final re = RegExp(r'\*\*(.+?)\*\*|`([^`]+?)`');
+    var i = 0;
+    for (final mt in re.allMatches(text)) {
+      if (mt.start > i) spans.add(TextSpan(text: text.substring(i, mt.start)));
+      if (mt.group(1) != null) {
+        spans.add(TextSpan(text: mt.group(1), style: base.copyWith(fontWeight: FontWeight.w800)));
+      } else {
+        spans.add(TextSpan(text: ' ${mt.group(2)} ',
+            style: base.copyWith(fontFeatures: const [], backgroundColor: Zine.paper2)));
+      }
+      i = mt.end;
+    }
+    if (i < text.length) spans.add(TextSpan(text: text.substring(i)));
+    return RichText(text: TextSpan(style: base, children: spans.isEmpty ? [TextSpan(text: text)] : spans));
   }
 
   /// True when this message is one of Ava's persisted bubble kinds. Uses the
