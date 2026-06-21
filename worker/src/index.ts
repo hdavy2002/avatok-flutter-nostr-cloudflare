@@ -85,6 +85,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 import { avaGemini, avaGeminiStream } from "./routes/ava_gemini";        // P2
 import { avaRagIngest, avaRagStore, avaRagSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun } from "./routes/ava_apps"; // AvaApps (Composio)
+import { avaEmailList, avaEmailGet, avaEmailSpam, avaEmailTrash, avaEmailReply } from "./routes/ava_email"; // in-chat email (Composio Gmail)
 import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, driveBackupUploadRoute, driveBackupDownloadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
 import { avaChatHistorySave, avaChatHistoryGet, avaChatHistoryMeta } from "./routes/ava_chat_history"; // AvaChat history (D1)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
@@ -219,6 +220,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/apps/disconnect" && req.method === "POST") return await avaAppsDisconnect(req, env); // AvaApps
       if (p === "/api/ava/apps/status" && req.method === "GET") return await avaAppsStatus(req, env);    // AvaApps
       if (p === "/api/ava/apps/run" && req.method === "POST") return await avaAppsRun(req, env);         // AvaApps
+      if (p === "/api/ava/email/list" && req.method === "POST") return await avaEmailList(req, env);    // in-chat email
+      if (p === "/api/ava/email/get" && req.method === "POST") return await avaEmailGet(req, env);      // in-chat email
+      if (p === "/api/ava/email/spam" && req.method === "POST") return await avaEmailSpam(req, env);    // in-chat email
+      if (p === "/api/ava/email/trash" && req.method === "POST") return await avaEmailTrash(req, env);  // in-chat email
+      if (p === "/api/ava/email/reply" && req.method === "POST") return await avaEmailReply(req, env);  // in-chat email
       // AvaTOK own-file storage in the user's Google Drive (connect reuses the
       // Google OAuth — same consent grants calendar.events + drive.file).
       if (p === "/api/ava/drive/connect" && req.method === "POST") return await gcalConnect(req, env);

@@ -33,7 +33,8 @@ import { json, aiText, geminiRun } from "../util";
 import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
 import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
-import { runAppsToolLoop, runAgentLoop } from "../lib/composio"; // AvaApps + unified agentic loop
+import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composio"; // AvaApps + unified agentic loop
+import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
 import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
 import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
@@ -315,6 +316,16 @@ export class AvaAgentDO {
     return /\b(e?mail|gmail|inbox|send (it|this|an? e?mail)|draft|reply to|calendar|schedule|meeting|appointment|event|google ?doc|create (a )?(doc|document|sheet|spreadsheet)|spreadsheet|google ?sheet|add a row|google ?drive|upload|fetch (my )?(e?mail|inbox)|check (my )?(e?mail|inbox|calendar)|search (my )?(e?mail|gmail|inbox|drive)|find .*(in|on|from) (my )?(drive|gmail|inbox|e?mail)|save (this|it|that) (to|in) (drive|docs?|a doc))\b/i.test(text);
   }
 
+  // Does this turn want to SEE the inbox as cards (the in-chat email UI)? e.g.
+  // "what's in my inbox", "check my email", "show my latest emails". Excludes
+  // send/compose/reply phrasing (those go through the apps tool loop, not the
+  // card list). When this matches for a premium + Gmail-connected user, turn()
+  // posts the 5 latest emails as an Ava bubble the Flutter EmailCard renders.
+  private looksLikeInbox(text: string): boolean {
+    if (/\b(send|reply|compose|draft|write|forward)\b/i.test(text)) return false;
+    return /\bin(my )?box\b|\bmy e?mails?\b|\b(latest|recent|new|unread) e?mails?\b|\bcheck (my )?(e?mail|inbox)\b|\b(show|see|read|open|list) (me )?(my )?(e?mail|emails|inbox)\b|\bany (new )?e?mails?\b|\bwhat'?s (new )?in (my )?inbox\b/i.test(text);
+  }
+
   // Does this turn refer to a file/photo/attachment shared IN this chat (vs. an
   // emailed file, which is `apps`)? Heuristic fallback for the LLM router below.
   private looksLikeMedia(text: string): boolean {
@@ -536,6 +547,43 @@ export class AvaAgentDO {
         return { ok: true, status_id: statusId };
       }
 
+      // In-chat email: "what's in my inbox" from a premium + Gmail-connected user
+      // returns the 5 latest emails as STRUCTURED cards (the AvaTOK email UI) in an
+      // Ava bubble — the Flutter chat renders View/Spam/Delete + the read→reply
+      // overlay. Powered by Composio. Any failure falls through to the normal
+      // agent loop (graceful text answer), so this never breaks a turn.
+      if (appsCap && premium && this.looksLikeInbox(userText)) {
+        const il0 = Date.now();
+        try {
+          const connected = await connectedToolkits(this.env, uid);
+          if (connected.includes("gmail")) {
+            const emails = await fetchInbox(this.env, uid, 5);
+            const flagged = emails.filter((e) => e.flag).length;
+            const head = emails.length === 0
+              ? "Your inbox is all caught up — nothing new right now."
+              : `Here are your ${emails.length} latest emails${flagged ? " — one needs a look." : "."}`;
+            await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+            await this.postAva({ conv, uid, text: head, private: priv, source: "email", emails });
+            trackUserContact(this.env, uid, email, phone, "ava_email_list", "avaai", {
+              conv_kind: convKind, ok: true, ms: Date.now() - il0, count: emails.length, surface: "ava_chat",
+            });
+            trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
+              conv_kind: convKind, tier, agentic: false, surface: "email_inbox",
+              answer_len: head.length, latency_ms: Date.now() - t0,
+              tools_called: 1, tool_names: "GMAIL_FETCH_EMAILS", tools_ms: Date.now() - il0, tool_error: false,
+              attachments: 0, attachments_captioned: 0,
+            });
+            return { ok: true, status_id: statusId };
+          }
+        } catch (e: any) {
+          // Log + fall through to the agent loop (which can still answer in text).
+          trackUserContact(this.env, uid, email, phone, "ava_email_list", "avaai", {
+            conv_kind: convKind, ok: false, ms: Date.now() - il0,
+            error: String(e?.message ?? e).slice(0, 200), surface: "ava_chat",
+          });
+        }
+      }
+
       // THE single agentic call: Gemini chats directly, calls search_memory for
       // the user's own data, or acts on connected apps — its own choice, one loop.
       let ctx = window.map((w) => `${w.ava ? "Ava" : (w.mine ? "User" : "Other")}: ${w.text}`).join("\n");
@@ -651,6 +699,7 @@ export class AvaAgentDO {
   private async postAva(b: {
     conv: string; uid: string; text: string; private?: boolean;
     source?: string; media_ref?: string; meta?: Record<string, unknown>;
+    emails?: unknown[];
   }): Promise<any> {
     const conv = String(b.conv || "");
     const uid = String(b.uid || "");
@@ -663,6 +712,9 @@ export class AvaAgentDO {
     const envelope = JSON.stringify({
       t: kind, text, source: b.source ?? "chat",
       ...(priv ? { for_uid: uid } : {}),
+      // Structured email cards (the in-chat inbox UI) ride alongside the text so
+      // the FROZEN chat renderer can show View/Spam/Delete cards from one bubble.
+      ...(Array.isArray(b.emails) && b.emails.length ? { emails: b.emails } : {}),
       ...(b.meta ? { meta: b.meta } : {}),
     });
 

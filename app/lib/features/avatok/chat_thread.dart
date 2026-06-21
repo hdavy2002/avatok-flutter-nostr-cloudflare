@@ -46,6 +46,7 @@ import '../../sync/sync_hub.dart';
 import '../../push/push_service.dart';
 import '../../core/remote_config.dart';
 import '../ava/ava_invoke.dart';
+import 'ava_email.dart';
 import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
 import '../../core/analytics.dart';
@@ -1564,6 +1565,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         // bullets, headings) so structured results (e.g. an email digest) look
         // clean instead of showing raw ** and 1. markers.
         final body = (e['text'] ?? e['body'] ?? m.text).toString();
+        // In-chat email: when the turn carried structured inbox cards, render the
+        // AvaTOK email UI (View / Spam / Delete + read→reply overlay) under the
+        // lead line instead of plain text.
+        final inbox = AvaInboxEmail.listFrom(e['emails']);
+        if (inbox.isNotEmpty) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (body.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(bottom: 8), child: _avaRich(body, fg)),
+            EmailInboxCards(emails: inbox),
+          ]);
+        }
         return _avaRich(body, fg);
       default:
         return Text(m.text, style: ZineText.sub(size: 13.5, color: fg));
@@ -2663,7 +2675,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               padding: hasMedia && (m.media?.kind == MediaKind.image)
                   ? const EdgeInsets.all(4)
                   : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
+              // Ava email-card bubbles need more room (the design uses ~92%);
+              // everything else stays at the standard 76%.
+              constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width *
+                      ((m.extra?['emails'] is List && (m.extra!['emails'] as List).isNotEmpty) ? 0.92 : 0.76)),
               // Chat bubble (§7.14): 2.5px ink border, radius 16 with one
               // squared corner toward the sender; me = lime, them = card.
               decoration: BoxDecoration(
