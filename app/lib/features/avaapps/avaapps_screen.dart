@@ -1,8 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/analytics.dart';
+import '../../core/app_icon_cache.dart';
 import '../../core/apps_service.dart';
 import '../../core/money_api.dart';
 import '../../core/paid_feature.dart';
@@ -18,7 +22,7 @@ class AvaAppsScreen extends StatefulWidget {
   State<AvaAppsScreen> createState() => _AvaAppsScreenState();
 }
 
-class _AvaAppsScreenState extends State<AvaAppsScreen> {
+class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserver {
   final _q = TextEditingController();
   final _ask = TextEditingController();
   List<AvaCatalogApp> _all = [];
@@ -27,14 +31,38 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
   bool _loading = true, _running = false, _premium = false;
   String? _answer;
 
+  /// Memoized logo futures (one per url) so scroll / search rebuilds reuse the
+  /// in-flight or cached fetch instead of re-requesting + flashing the fallback.
+  final Map<String, Future<Uint8List?>> _iconFutures = {};
+
+  /// True between launching the in-app OAuth tab and the user returning, so we
+  /// refresh connection status the moment the app resumes.
+  bool _awaitingConnect = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
-  void dispose() { _q.dispose(); _ask.dispose(); super.dispose(); }
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _q.dispose();
+    _ask.dispose();
+    super.dispose();
+  }
+
+  /// When the in-app browser tab closes, the app resumes — pull fresh status so
+  /// a just-connected app lights up its green dot without a manual refresh.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _awaitingConnect) {
+      _awaitingConnect = false;
+      _load();
+    }
+  }
 
   Future<void> _load() async {
     final results = await Future.wait([
@@ -106,14 +134,67 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
     if (!mounted) return;
     if (r.premium) { _showTopUp(); return; }
     if (r.url.isNotEmpty) {
-      await launchUrl(Uri.parse(r.url), mode: LaunchMode.externalApplication);
+      // Open the OAuth flow in an IN-APP browser tab (Android Custom Tabs /
+      // iOS SFSafariViewController) so the user stays inside AvaApps and slides
+      // right back to this grid when done. We deliberately do NOT use a raw
+      // WebView: Google blocks OAuth in embedded webviews (disallowed_useragent).
+      // A Custom Tab IS a real browser, so Google sign-in works.
+      // ignore: unawaited_futures
+      Analytics.capture('avaapps_connect_open', {'slug': app.slug, 'mode': 'in_app_tab'});
+      _awaitingConnect = true;
+      final uri = Uri.parse(r.url);
+      var opened = false;
+      try {
+        opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      } catch (_) {/* fall back below */}
+      if (!opened) {
+        // Custom Tabs unavailable (rare) → external browser still completes it.
+        try {
+          opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (_) {/* surfaced via snackbar below */}
+      }
+      if (!opened) _awaitingConnect = false;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Authorize in your browser, then pull to refresh.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(opened
+                ? 'Authorize ${app.name} — you’ll come right back here.'
+                : 'Couldn’t open the ${app.name} sign-in. Please try again.')));
+      }
+      if (opened) {
+        // ignore: unawaited_futures
+        _pollConnected(app);
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('${app.name} is already connected ✓')));
+    }
+  }
+
+  /// After launching the OAuth tab, poll status a few times so the green dot
+  /// appears as soon as Composio marks the account ACTIVE — covering the case
+  /// where it connects while the tab is still open (the resume refresh covers
+  /// the rest).
+  Future<void> _pollConnected(AvaCatalogApp app) async {
+    for (final delay in const [
+      Duration(seconds: 2),
+      Duration(seconds: 3),
+      Duration(seconds: 4),
+      Duration(seconds: 6),
+    ]) {
+      await Future.delayed(delay);
+      if (!mounted) return;
+      final connected = await AppsService.I.status();
+      if (!mounted) return;
+      final justConnected =
+          connected.contains(app.slug) && !_connected.contains(app.slug);
+      if (connected.length != _connected.length || justConnected) {
+        setState(() => _connected = connected);
+      }
+      if (justConnected) {
+        // ignore: unawaited_futures
+        Analytics.capture('avaapps_connected', {'slug': app.slug});
+        return;
+      }
     }
   }
 
@@ -283,20 +364,34 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> {
     );
   }
 
-  /// The real, colorful brand logo. Composio serves logos as SVG
-  /// (logos.composio.dev/api/<slug>), which Image.network can't render — so we
-  /// use SvgPicture. A colored monogram (never a grey grid icon) shows while
+  /// The real, colorful brand logo, served local-first from [AppIconCache] so it
+  /// is fetched ONCE and then loaded instantly from disk on every later open
+  /// (no re-download per app launch). Composio serves logos as SVG
+  /// (logos.composio.dev/api/<slug>) or raster — we sniff the bytes and render
+  /// the right widget. A colored monogram (never a grey grid icon) shows while
   /// loading or if the logo is missing, so the grid always looks branded.
   Widget _appLogo(AvaCatalogApp app) {
     final url = app.logo.isNotEmpty ? app.logo : _composioLogo(app.slug);
     final mono = _monogram(app);
-    if (url.toLowerCase().endsWith('.svg') || url.contains('logos.composio.dev')) {
-      return SvgPicture.network(
-        url, fit: BoxFit.contain,
-        placeholderBuilder: (_) => mono,
-      );
+    // Already in the in-session cache → render synchronously, zero flash.
+    final hot = AppIconCache.cached(url);
+    if (hot != null) return _bytesLogo(hot, mono);
+    return FutureBuilder<Uint8List?>(
+      future: _iconFutures[url] ??= AppIconCache.get(url),
+      builder: (_, snap) {
+        final bytes = snap.data;
+        if (bytes == null) return mono; // loading or failed → branded fallback
+        return _bytesLogo(bytes, mono);
+      },
+    );
+  }
+
+  Widget _bytesLogo(Uint8List bytes, Widget mono) {
+    if (AppIconCache.isSvg(bytes)) {
+      return SvgPicture.memory(bytes, fit: BoxFit.contain,
+          placeholderBuilder: (_) => mono);
     }
-    return Image.network(url, fit: BoxFit.contain,
+    return Image.memory(bytes, fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => mono);
   }
 
