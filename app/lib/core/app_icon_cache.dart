@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+
+import 'analytics.dart';
 
 /// Disk cache for AvaApps connector logos (the Composio app-catalog grid).
 ///
@@ -22,11 +25,36 @@ class AppIconCache {
   /// touch disk or flash the fallback.
   static final Map<String, Uint8List> _mem = {};
 
+  /// Deduped one-time prune (assigned once per process; awaited by all callers).
+  static Future<void>? _prune;
+
   static Future<Directory> _dir() async {
     final base = await getApplicationSupportDirectory();
     final d = Directory('${base.path}/app_icons');
     if (!await d.exists()) await d.create(recursive: true);
+    // One-time cleanup of legacy *.icon files written under the old, unstable
+    // `url.hashCode` filenames (which changed every launch → duplicates leaked).
+    // Idempotent across sessions via a marker file; runs the actual delete once.
+    _prune ??= _pruneLegacyOnce(d);
+    await _prune;
     return d;
+  }
+
+  /// Delete pre-fix orphaned icon files exactly once (guarded by a marker), so
+  /// the cache rebuilds cleanly under the new stable names. Best-effort.
+  static Future<void> _pruneLegacyOnce(Directory d) async {
+    try {
+      final marker = File('${d.path}/.iconcache_v2');
+      if (await marker.exists()) return;
+      var removed = 0;
+      await for (final e in d.list()) {
+        if (e is File && e.path.endsWith('.icon')) {
+          try { await e.delete(); removed++; } catch (_) {/* skip */}
+        }
+      }
+      await marker.writeAsString('1', flush: true);
+      if (removed > 0) Analytics.capture('app_icon_cache_pruned', {'removed': removed});
+    } catch (_) {/* prune is best-effort; never block icon loads */}
   }
 
   static String _name(String url) {
@@ -61,22 +89,57 @@ class AppIconCache {
   static Future<Uint8List?> get(String url) async {
     if (url.isEmpty) return null;
     final hot = _mem[url];
-    if (hot != null) return hot;
+    if (hot != null) { _track('mem'); return hot; }
     try {
       final f = File('${(await _dir()).path}/${_name(url)}');
       if (await f.exists() && await f.length() > 0) {
         final b = await f.readAsBytes();
         _mem[url] = b;
+        _track('disk');
         return b;
       }
       final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
       if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
         await f.writeAsBytes(res.bodyBytes, flush: true);
         _mem[url] = res.bodyBytes;
+        _track('net');
         return res.bodyBytes;
       }
     } catch (_) {/* fall through to null → monogram */}
     return null;
+  }
+
+  // ── Telemetry: disk-hit vs network-fetch breadcrumb ────────────────────────
+  // We were blind to the re-download regression because the cache had ZERO
+  // instrumentation. These counters aggregate per screen-load and flush ONE
+  // `app_icon_cache` event (debounced), so a future regression shows up as a
+  // spike in `network_fetch` instead of waiting on a user to notice. When
+  // healthy, `network_fetch` is ~0 after the first install (served from disk).
+  static int _netFetch = 0, _diskHit = 0, _memHit = 0;
+  static Timer? _flushTimer;
+
+  static void _track(String kind) {
+    if (kind == 'net') {
+      _netFetch++;
+    } else if (kind == 'disk') {
+      _diskHit++;
+    } else {
+      _memHit++;
+    }
+    _flushTimer?.cancel();
+    _flushTimer = Timer(const Duration(seconds: 3), _flush);
+  }
+
+  static void _flush() {
+    final n = _netFetch, d = _diskHit, m = _memHit;
+    _netFetch = _diskHit = _memHit = 0;
+    if (n == 0 && d == 0 && m == 0) return;
+    Analytics.capture('app_icon_cache', {
+      'network_fetch': n, // > 0 on every open == regression signal
+      'disk_hit': d,
+      'mem_hit': m,
+      'total': n + d + m,
+    });
   }
 
   /// True when the bytes look like SVG (Composio's common logo format).
