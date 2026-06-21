@@ -9,6 +9,7 @@ import '../../core/ava_local_mode.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_planner.dart';
 import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/brain_api.dart';
@@ -145,9 +146,20 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
   /// first from the on-device store) / CLOUD (escalate). Retrieval-first keeps
   /// "find" fast — we return the matching snippets, not a long generation.
   Future<void> _handleLocal(String text) async {
-    final decision = await AvaOnDeviceLlm.I.route(text);
+    // Intent is decided by the deterministic planner for the obvious offline
+    // cases, and by the SMART CLOUD model for everything else — never by the
+    // 350M (it's unreliable at classification). A clear app action runs the
+    // tool; a clear memory lookup is answered on-device; anything else goes to
+    // the cloud brain, which understands messy phrasing.
+    final plan = AvaPlanner.plan(text);
+    final isApps = plan != null &&
+        plan.scope == PlanScope.apps &&
+        plan.confidence >= AvaPlanner.kExecuteThreshold;
+    final isLocalLookup = plan != null &&
+        plan.scope == PlanScope.local &&
+        plan.confidence >= AvaPlanner.kExecuteThreshold;
     if (!mounted) return;
-    if (decision.isApps) {
+    if (isApps) {
       final ok = await _confirmAction(text);
       if (!mounted) return;
       if (!ok) { _addAva('Okay, cancelled.'); return; }
@@ -177,17 +189,15 @@ class _AvaChatScreenState extends State<AvaChatScreen> {
       _addAva(res);
       return;
     }
-    if (decision.isCloud) { await _handleCloud(text); return; }
-    // LOCAL find.
+    // Not a clear app action or memory lookup → the smart cloud brain handles it.
+    if (!isLocalLookup) { await _handleCloud(text); return; }
+    // LOCAL find (clear memory lookup).
     final hits = await AvaOnDeviceRag.I.search(text, limit: 5);
     if (!mounted) return;
     if (hits.isEmpty) {
-      AvaQuality.answer(
-        surface: 'avachat', source: 'llm', grounded: false,
-        sourcesFound: 0, userText: text,
-      );
-      _lastAnswerSource = 'llm';
-      _addAva("I don't have anything about that in your on-device memory yet.");
+      // Nothing on-device → the cloud brain (the user's full store) takes over
+      // instead of a dead-end "I don't have it".
+      await _handleCloud(text);
       return;
     }
     // Cap RAG + memory to a hard token budget so the prompt never bloats as

@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import '../../core/analytics.dart';
-import '../../core/apps_service.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_local_replies.dart';
 import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_ondevice_llm.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_planner.dart';
 import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import 'ava_turn_controller.dart';
@@ -58,10 +58,12 @@ class AvaInvoke {
     // ignore: unawaited_futures
     AvaProfileMemory.I.observeUserMessage(parsed.request);
 
-    // Local Ava AI active → let the on-device router decide what to do. A LOCAL
-    // lookup is answered on-device (offline, grounded in the user's own memory);
-    // an APPS action runs through the user's connected apps; anything needing real
-    // reasoning (CLOUD) — or any failure — falls through to the cloud agent.
+    // Local Ava AI active → answer ONLY a clear OFFLINE memory lookup on-device.
+    // For EVERYTHING else (actions, app/tool requests, or anything that needs
+    // real understanding) we escalate to the cloud agent (ava_agent.ts: Gemma 4
+    // LLM intent + Composio tool-calling). The tiny 350M is NOT trusted to
+    // classify intent — telemetry showed it returns garbage, which is what made
+    // it hallucinate a fake email. Intent understanding is the capable LLM's job.
     if (AvaLocalMode.I.isActive) {
       try {
         final answer = await _localAnswer(parsed.request);
@@ -69,7 +71,7 @@ class AvaInvoke {
           AvaLocalReplies.I.post(convKey, answer);
           return;
         }
-        // answer == null → route said CLOUD: escalate below.
+        // answer == null → not a clear local lookup; escalate to the cloud agent.
       } catch (e) {
         AvaLog.I.log('ava', 'local answer failed → cloud: $e');
       }
@@ -82,95 +84,51 @@ class AvaInvoke {
     );
   }
 
-  /// On-device answer using the same router as AvaChat: route the request, then
-  ///   • APPS  → run it through the user's connected apps (real tool result, no
-  ///             hallucinated "I checked your email"),
-  ///   • CLOUD → return null so [handle] escalates to the cloud agent for real
-  ///             reasoning (the user's rule: retrieval local, reasoning cloud),
-  ///   • LOCAL → retrieval-first, grounded reply from the on-device store; if
-  ///             nothing matches, say so instead of inventing an answer.
-  /// Returns the reply text, or null to mean "escalate to cloud".
+  /// Answer ONLY a clear, offline memory lookup ("what did I note about X")
+  /// from the on-device store. Returns null for everything else so [handle]
+  /// escalates to the cloud agent, which does proper LLM intent understanding
+  /// AND real tool-calling (Gmail/Calendar/Drive). We never let the 350M decide
+  /// whether to call a tool — that's exactly the mistake that hallucinated an
+  /// email from notes.
   static Future<String?> _localAnswer(String request) async {
     final total = Stopwatch()..start();
     final q = request.replaceAll(RegExp(r'@ava!?', caseSensitive: false), '').trim();
     final query = q.isEmpty ? request : q;
 
-    final rsw = Stopwatch()..start();
-    final decision = await AvaOnDeviceLlm.I.route(query);
-    final routeMs = rsw.elapsedMilliseconds;
-    AvaLog.I.log('ava', 'route=${decision.scope} q="$query"');
+    final plan = AvaPlanner.plan(query);
+    final isLocalLookup = plan != null &&
+        plan.scope == PlanScope.local &&
+        plan.confidence >= AvaPlanner.kExecuteThreshold;
 
-    // APPS: the user wants an action in a connected app (check/send email, etc.).
-    if (decision.isApps) {
-      final tsw = Stopwatch()..start();
-      final reply = await AppsService.I.run(query);
-      final toolMs = tsw.elapsedMilliseconds;
-      final lower = reply.toLowerCase();
-      final succeeded = reply.isNotEmpty &&
-          !lower.startsWith('top up') &&
-          !lower.contains('something went wrong');
-      AvaQuality.tool(
-        tool: AvaQuality.toolGuess(query),
-        succeeded: succeeded,
-        ms: toolMs,
-        reason: succeeded
-            ? 'ok'
-            : (lower.contains('top up') ? 'premium_required' : 'error'),
-      );
-      AvaQuality.answer(
-        surface: 'ava_thread',
-        source: 'tool',
-        grounded: succeeded,
-        sourcesFound: succeeded ? 1 : 0,
-        ok: succeeded,
-        userText: query,
-      );
-      // ignore: unawaited_futures
-      Analytics.capture('ava_local_turn', {
-        'scope': 'apps',
-        'route_raw': decision.raw,
-        'route_ms': routeMs,
-        'total_ms': total.elapsedMilliseconds,
-        'answered': reply.isNotEmpty,
-      });
-      return reply.isNotEmpty ? reply : null; // empty → let the cloud try
-    }
-
-    // CLOUD: real reasoning/analysis belongs on the server.
-    if (decision.isCloud) {
+    if (!isLocalLookup) {
+      // Not a clear offline lookup → the cloud agent understands intent + acts.
       // ignore: unawaited_futures
       Analytics.capture('ava_local_turn', {
         'scope': 'cloud',
-        'route_raw': decision.raw,
-        'route_ms': routeMs,
-        'total_ms': total.elapsedMilliseconds,
+        'route_raw': plan != null ? 'planner:${plan.intent}' : 'escalate',
         'escalated': true,
+        'total_ms': total.elapsedMilliseconds,
       });
       return null;
     }
 
-    // LOCAL: grounded retrieval from on-device memory.
+    // Clear offline memory lookup — answer from on-device RAG, grounded.
     final ssw = Stopwatch()..start();
     final hits = await AvaOnDeviceRag.I.search(query, limit: 5);
     final searchMs = ssw.elapsedMilliseconds;
     if (hits.isEmpty) {
-      AvaQuality.answer(
-        surface: 'ava_thread',
-        source: 'llm',
-        grounded: false,
-        sourcesFound: 0,
-        userText: query,
-      );
+      // Nothing on-device → let the cloud agent try (it has the user's store)
+      // instead of a dead-end "I don't have it".
       // ignore: unawaited_futures
       Analytics.capture('ava_local_turn', {
-        'scope': 'local',
-        'route_raw': decision.raw,
-        'route_ms': routeMs,
+        'scope': 'cloud',
+        'route_raw': 'local_miss',
         'search_ms': searchMs,
         'hits': 0,
+        'escalated': true,
         'total_ms': total.elapsedMilliseconds,
       });
-      return "I don't have anything about that in this device's memory yet.";
+      return null;
     }
     // Hard token budget so the prompt stays small no matter how much memory grows.
     final ctx = AvaPromptBudget.rag(
@@ -205,8 +163,7 @@ class AvaInvoke {
     // ignore: unawaited_futures
     Analytics.capture('ava_local_turn', {
       'scope': 'local',
-      'route_raw': decision.raw,
-      'route_ms': routeMs,
+      'route_raw': 'planner:${plan.intent}',
       'search_ms': searchMs,
       'gen_ms': genMs,
       'hits': hits.length,
@@ -214,7 +171,7 @@ class AvaInvoke {
       'total_ms': total.elapsedMilliseconds,
     });
     if (reply.ok && reply.text.isNotEmpty) return reply.text;
-    return ctx; // generation failed but we have real matches — show those
+    return null; // generation failed → escalate to the cloud agent
   }
 
   /// Parse [text] for the wake word and the optional private modifier. Returns
