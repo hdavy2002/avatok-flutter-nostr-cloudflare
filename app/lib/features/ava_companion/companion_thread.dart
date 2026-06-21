@@ -15,6 +15,7 @@ import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_memory/local_index.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
@@ -291,14 +292,37 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     final priorHistory = _history()..removeLast();
     // Tell Ava who she's talking to so the companion feels personal.
     final about = await AvaProfileMemory.I.contextBlock();
+    // Ground the companion in the user's OWN notes/messages (saved from ANY Ava
+    // surface) so "what was my note for April" actually finds it. Searches the
+    // on-device memory when Local Ava AI is on.
+    var hitCount = 0;
+    String notes = '';
+    if (AvaLocalMode.I.isActive) {
+      try {
+        final hits = await AvaOnDeviceRag.I.search(t, limit: 4);
+        hitCount = hits.length;
+        if (hits.isNotEmpty) {
+          notes = AvaPromptBudget.rag(
+              "The user's own saved notes/messages that may be relevant (use them to answer; if they don't cover it, say you don't have it):\n${hits.map((h) => '• ${h.content}').join('\n')}");
+        }
+      } catch (_) {}
+    }
+    final ctxParts = <String>[widget.persona.systemPrompt];
+    if (about.isNotEmpty) ctxParts.add(about);
+    if (notes.isNotEmpty) ctxParts.add(notes);
     final ans = await AvaAiClient.I.ask(
       message: t,
-      context: about.isEmpty
-          ? widget.persona.systemPrompt
-          : '${widget.persona.systemPrompt}\n\n$about',
+      context: ctxParts.join('\n\n'),
       history: priorHistory.isEmpty ? null : priorHistory,
     );
-    _lastAnswerSource = about.isEmpty ? 'llm' : 'hybrid';
+    _lastAnswerSource = notes.isNotEmpty ? 'hybrid' : (about.isEmpty ? 'llm' : 'hybrid');
+    if (notes.isNotEmpty) {
+      AvaQuality.roi(
+          surface: 'companion',
+          retrieved: hitCount,
+          injected: notes,
+          answer: ans.answer);
+    }
     if (!mounted) return;
     Analytics.capture('avachat_turn_replied', {
       'persona': widget.persona.id,

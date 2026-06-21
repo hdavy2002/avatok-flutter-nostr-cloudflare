@@ -118,7 +118,7 @@ class AvaPlanner {
         'find_memory',
         PlanScope.local,
         RegExp(
-            r'^(?:find|show me|what did i (?:say|tell you)|recall|do i have)\b.*\b(?:note|notes|message|said|about)\b',
+            r"^(?:find|show me|recall|do i have|what did i (?:say|tell you)|what(?:'s| was| is| were)? my)\b.*\b(?:note|notes|message|said|about|told|wrote)\b",
             caseSensitive: false),
         0.9,
         const []),
@@ -126,10 +126,21 @@ class AvaPlanner {
     // ("call my lawyer about this" needs no dialer). The model router handles it.
   ];
 
+  /// Leading wake-word / politeness / filler we strip before matching the
+  /// anchored rules — real users say "can you check my email", "@ava please
+  /// check my email", not just "check my email". Without this the patterns miss.
+  static final RegExp _leadFiller = RegExp(
+    r"^(?:@?ava\b[,:]?\s+|hey\s+ava\b[,:]?\s+|ok\s+ava\b[,:]?\s+|hey\b[,:]?\s+|please\s+|pls\s+|kindly\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|will\s+you\s+|can\s+u\s+|i\s+want\s+to\s+|i'?d\s+like\s+to\s+|i\s+would\s+like\s+to\s+|i\s+need\s+to\s+)+",
+    caseSensitive: false,
+  );
+
   /// Match [text] to a structured intent, or null if nothing fits. The caller
   /// decides whether [PlannerResult.confidence] clears [kExecuteThreshold].
   static PlannerResult? plan(String text) {
-    final t = text.trim();
+    var t = text.trim();
+    if (t.isEmpty) return null;
+    // Normalise away the wake word + politeness so commands match.
+    t = t.replaceFirst(_leadFiller, '').trim();
     if (t.isEmpty) return null;
     for (final p in _patterns) {
       final m = p.re.firstMatch(t);

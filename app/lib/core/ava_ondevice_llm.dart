@@ -533,10 +533,13 @@ class AvaOnDeviceLlm {
       final RouteScope scope;
       if (raw.contains('APPS')) {
         scope = RouteScope.apps;
-      } else if (raw.contains('CLOUD')) {
-        scope = RouteScope.cloud;
-      } else {
+      } else if (raw.contains('LOCAL')) {
         scope = RouteScope.local;
+      } else {
+        // 'CLOUD' OR any unrecognised/garbled output → escalate to the cloud
+        // agent. Defaulting junk to LOCAL is what let the model hallucinate a
+        // fake email from RAG; only answer locally when it clearly said LOCAL.
+        scope = RouteScope.cloud;
       }
       // ignore: unawaited_futures
       Analytics.capture('ondevice_route', {
