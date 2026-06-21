@@ -349,7 +349,7 @@ export async function runAgentLoop(
     // Per-tool telemetry hook — fired once per executed tool (Composio app tool
     // or search_memory) with timing + success/error so we can pinpoint failures,
     // latency and call volume in PostHog.
-    onTool?: (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number }) => void;
+    onTool?: (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number; result?: unknown; is_app?: boolean }) => void;
   },
 ): Promise<string> {
   const geminiKey = env.GEMINI_API_KEY ?? "";
@@ -472,6 +472,9 @@ export async function runAgentLoop(
           args_keys: Object.keys(args || {}).slice(0, 12),
           result_chars: (() => { try { return JSON.stringify(result).length; } catch { return 0; } })(),
           ...(count != null ? { count } : {}),
+          // The trimmed tool result + whether it's a connected-app tool (vs.
+          // search_memory) — lets the caller render the data as a GenUI surface.
+          result, is_app: name !== "search_memory",
         });
       } catch { /* telemetry is best-effort, never breaks the loop */ }
       contents.push({ role: "tool", parts: [{ functionResponse: { name, response: { result } } }] });

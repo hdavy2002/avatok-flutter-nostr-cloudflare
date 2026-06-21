@@ -36,6 +36,7 @@ import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
 import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composio"; // AvaApps + unified agentic loop
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
+import { composeSurface, isRenderable } from "../lib/genui_compose"; // GENERIC GenUI: any Composio result → A2UI
 import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
 import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
 import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
@@ -681,8 +682,12 @@ export class AvaAgentDO {
       const toolNames: string[] = [];
       let toolMs = 0;
       let toolError = false;
-      const onTool = (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number }) => {
+      // Capture the last successful CONNECTED-APP tool result so we can render it
+      // as a GenUI surface (generic across all of Composio, not per-app).
+      let lastApp: { tool: string; data: unknown } | null = null;
+      const onTool = (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number; result?: unknown; is_app?: boolean }) => {
         toolCount++; toolNames.push(ev.tool); toolMs += ev.ms; if (!ev.ok) toolError = true;
+        if (ev.ok && ev.is_app && ev.result != null) lastApp = { tool: ev.tool, data: ev.result };
         trackUserContact(this.env, uid, email, phone, "ava_tool_call", "avaai", {
           conv_kind: convKind, tool: ev.tool, ok: ev.ok, ms: ev.ms, premium, apps: appsCap && premium,
           ...(ev.error ? { error: ev.error } : {}),
@@ -713,9 +718,39 @@ export class AvaAgentDO {
       // briefly re-show "Ava is working…" above the streamed text). Peers who got
       // no stream still have their 'start' chip auto-collapse under the answer.
       if (!started) await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
-      await this.postAva({ conv, uid, text: answer, private: priv, source: "chat", meta: started ? { stream_id: statusId } : undefined });
+
+      // GENERIC GenUI: if this turn pulled structured data from a connected app
+      // (any of Composio's apps — Notion, YouTube, Drive, Sheets, …), compose it
+      // into an A2UI surface with Gemini and render it as cards in the chat,
+      // instead of a wall of text. Falls back to plain text on any failure.
+      let a2uiSurface: unknown = null;
+      if ((this.env as any).GENUI_ENABLED === "1" && premium && lastApp && isRenderable((lastApp as any).data)) {
+        const gx0 = Date.now();
+        try {
+          const surface = await composeSurface(this.env, {
+            request: userText, tool: (lastApp as any).tool, data: (lastApp as any).data,
+          });
+          if (surface) a2uiSurface = surface;
+          trackUserContact(this.env, uid, email, phone, "genui_compose", "avaai", {
+            conv_kind: convKind, tool: (lastApp as any).tool, ok: !!surface,
+            ms: Date.now() - gx0, components: surface ? Object.keys(surface.components).length : 0,
+          });
+        } catch (e: any) {
+          trackUserContact(this.env, uid, email, phone, "genui_compose", "avaai", {
+            conv_kind: convKind, tool: (lastApp as any).tool, ok: false, ms: Date.now() - gx0,
+            error: String(e?.message ?? e).slice(0, 200),
+          });
+        }
+      }
+
+      await this.postAva({
+        conv, uid, text: answer, private: priv,
+        source: a2uiSurface ? "apps_genui" : "chat",
+        ...(a2uiSurface ? { a2ui: a2uiSurface } : {}),
+        meta: started ? { stream_id: statusId } : undefined,
+      });
       trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
-        conv_kind: convKind, tier, agentic: true, streamed: started,
+        conv_kind: convKind, tier, agentic: true, streamed: started, genui: !!a2uiSurface,
         ttfb_ms: started ? ttfbMs : null, stream_frames: frames, stream_chars: streamedChars,
         answer_len: answer.length, latency_ms: Date.now() - t0,
         // Tool-layer summary for this turn (0 = answered directly, no tool hop).
