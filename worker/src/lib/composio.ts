@@ -210,6 +210,30 @@ function textOf(parts: any[]): string {
     .map((p: any) => p.text).join("").trim();
 }
 
+// Shrink a raw Composio tool result before feeding it back to the model.
+// CRITICAL: the previous `JSON.parse(JSON.stringify(r).slice(0, N))` corrupted
+// large results — slicing a JSON STRING mid-way yields invalid JSON, JSON.parse
+// throws, and the tool result became `{error}`. Gmail fetches are 50k+ chars of
+// HTML per message, so "check my email" failed EVERY time. We now (a) keep only
+// the useful fields for known noisy tools (Gmail) and (b) never parse a sliced
+// string — when something is still too big we hand the model a safe truncation.
+function trimToolResult(name: string, r: any): any {
+  try {
+    const msgs = r?.data?.messages ?? r?.data?.emails;
+    if (Array.isArray(msgs) && /GMAIL/i.test(name)) {
+      const slim = msgs.slice(0, 12).map((m: any) => ({
+        from: m?.sender, to: m?.to, subject: m?.subject, date: m?.messageTimestamp,
+        snippet: String(m?.preview?.body ?? m?.snippet ?? "").replace(/\s+/g, " ").slice(0, 400),
+        labels: m?.labelIds, messageId: m?.messageId, threadId: m?.threadId,
+      }));
+      return { messages: slim, count: msgs.length };
+    }
+  } catch { /* fall through to the generic safe trim */ }
+  const s = JSON.stringify(r ?? null);
+  if (s.length <= RESULT_CHARS) return r;
+  return { truncated: true, preview: s.slice(0, RESULT_CHARS) };
+}
+
 // Stream ONE generation step over SSE (`:streamGenerateContent?alt=sse`). Calls
 // onText(fragment) for each text delta as it arrives (so the UI types the answer
 // out live), and assembles the model `content` — text PLUS any functionCall parts
@@ -301,7 +325,7 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
       let result: any;
       try {
         const r = await executeTool(env, userId, name, c.functionCall.args ?? {});
-        result = JSON.parse(JSON.stringify(r).slice(0, RESULT_CHARS));
+        result = trimToolResult(name, r);
       } catch (e: any) {
         result = { error: String(e?.message ?? e).slice(0, 200) };
       }
@@ -416,7 +440,7 @@ export async function runAgentLoop(
           result = { matches: lines.slice(0, 8) };
         } else {
           const r = await executeTool(env, userId, name, c.functionCall.args ?? {});
-          result = JSON.parse(JSON.stringify(r).slice(0, RESULT_CHARS));
+          result = trimToolResult(name, r);
         }
       } catch (e: any) {
         result = { error: String(e?.message ?? e).slice(0, 200) };
