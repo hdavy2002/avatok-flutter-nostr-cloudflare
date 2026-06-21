@@ -59,9 +59,6 @@ LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
 # applicationId from app/android/app/build.gradle.kts). APP_STORE_ID is
 # deliberately NOT set (Android-only launch): unset ⇒ no App Store badge.
 PLAY_PACKAGE_ID = "ai.avatok.avatok_call"
-# Ava tool layer — Klavis Strata (self-hosted) base URL (P5). Placeholder; set to
-# the real self-host origin before P5 ships. Unset/empty ⇒ tool routes 503.
-STRATA_URL = ""
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
@@ -365,7 +362,6 @@ CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.avatok.ai"
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 PLAY_PACKAGE_ID = "ai.avatok.avatok_call"   # staging APK = applicationIdSuffix .staging, but the Play listing is the prod package
-STRATA_URL = ""   # Ava tool layer (Klavis Strata self-host) — set before P5
 
 [[env.staging.d1_databases]]
 binding = "DB_META"
