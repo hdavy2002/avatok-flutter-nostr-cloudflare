@@ -63,13 +63,15 @@ android {
 
     buildTypes {
         release {
-            // The AvaVision MediaPipe/TFLite deps drag R8 into the release build
-            // (this app shipped un-minified before). Run R8 deterministically as a
-            // pass-through via proguard-rules.pro (-dontshrink/-optimize/-obfuscate
-            // + -dontwarn for the phantom javax.lang.model.* classes) so the build
-            // succeeds without changing the shipped artifact's behavior.
+            // R8 code + resource shrinking is ON to trim the APK. proguard-rules.pro
+            // keeps OPTIMIZATION and OBFUSCATION off (-dontoptimize/-dontobfuscate)
+            // — the lower-risk subset — but enables dead-code/resource SHRINKING,
+            // which is the real size win. Reflection/JNI-loaded native plugin
+            // classes (sherpa-onnx, WebRTC/LiveKit, Stripe) are protected by -keep
+            // rules there. Validate every change with a CI APK build + on-device
+            // smoke test (Stripe PaymentSheet, calls, Ava voice) before shipping.
             isMinifyEnabled = true
-            isShrinkResources = false
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
             // CI exports ANDROID_UPLOAD_KEYSTORE_PATH for Play Store .aab builds → use
             // the upload keystore. Otherwise (local builds, side-load APK lane) keep

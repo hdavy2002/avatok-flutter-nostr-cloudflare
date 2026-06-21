@@ -158,14 +158,15 @@ jobs:
       # can't be sideloaded). Same release signing config as the bundle above.
       # arm64-only: the universal APK carries native libs (WebRTC/LiveKit) for
       # THREE ABIs (~143 MB); modern phones (incl. Samsung) are arm64, so building
-      # one ABI gives a ~75 MB sideload. The .aab above stays universal — Play
-      # still ships every device the right split.
-      # --no-shrink skips R8 code shrinking (a heavy memory/time consumer) — fine
-      # for a sideload test APK; the bundle re-enables it for Play. arm64-only
-      # keeps it to a single ABI (~75 MB).
+      # one ABI gives a much smaller sideload. The .aab above stays universal —
+      # Play still ships every device the right split.
+      # R8 code + resource shrinking is now ENABLED (no --no-shrink) so the test
+      # APK matches the Play artifact's shrinking and we measure the real shipped
+      # size. If the CI runner OOMs on R8, bump org.gradle.jvmargs in
+      # android/gradle.properties rather than re-adding --no-shrink.
       - name: Build release APK (for testing)
         working-directory: app
-        run: flutter build apk --release --no-shrink --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
+        run: flutter build apk --release --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
