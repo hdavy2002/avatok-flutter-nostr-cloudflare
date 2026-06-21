@@ -44,8 +44,7 @@ export function geminiText(out: any): string {
   return aiText(out).trim();
 }
 
-// Build a Gemini-native request body for env.AI.run("google/gemini-…", …) — one
-// user turn, with the system carried as systemInstruction.
+// Build a Gemini-native request body — one user turn, system as systemInstruction.
 export function geminiBody(system: string, user: string, maxTokens = 700, temperature = 0.7): any {
   const body: any = {
     contents: [{ role: "user", parts: [{ text: user }] }],
@@ -53,6 +52,43 @@ export function geminiBody(system: string, user: string, maxTokens = 700, temper
   };
   if (system && system.trim()) body.systemInstruction = { parts: [{ text: system }] };
   return body;
+}
+
+// Our online brain model. gemini-3-flash-preview is NOT a valid Workers-AI
+// partner id ('google/gemini-3-flash-preview' → 7003 "User Input Error", which
+// wasted a failed round-trip on every turn). It DOES work via the DIRECT Google
+// API (same path AvaVision + the Composio tool-loop use), so we call it there.
+export const GEMINI_MODEL = "gemini-3-flash-preview";
+export const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite";
+
+/// Run a single-turn Gemini generation via the DIRECT generativelanguage API
+/// using env.GEMINI_API_KEY. Tries gemini-3, falls back to gemini-2.5; returns
+/// the answer text (or "" on total failure). One real call, no 7003 penalty.
+export async function geminiRun(
+  env: any, system: string, user: string,
+  maxTokens = 700, temperature = 0.7,
+): Promise<string> {
+  const key = env?.GEMINI_API_KEY;
+  if (!key) return "";
+  const body = geminiBody(system, user, maxTokens, temperature);
+  for (const model of [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify(body),
+        },
+      );
+      const out: any = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const t = geminiText(out);
+        if (t) return t;
+      }
+    } catch { /* try the fallback model */ }
+  }
+  return "";
 }
 
 // D1 caps bound parameters at 100 per query. Split arrays into safe batches.

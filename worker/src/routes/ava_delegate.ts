@@ -38,7 +38,7 @@
 // generation. Per-chat prefs live in a SELF-CREATING D1 table (DB_META).
 
 import type { Env } from "../types";
-import { json, aiText, geminiText, geminiBody } from "../util";
+import { json, aiText, geminiRun } from "../util";
 import { requireUser, isFail } from "../authz";
 import { postAvaMessage } from "./ava_thread";
 import { runGated } from "../lib/ai_gate";
@@ -401,10 +401,8 @@ async function generateDelegateReply(
 // tier) — never Gemma. Kept local so the delegate path has no DO dependency.
 async function callReasoner(env: Env, prompt: string): Promise<string> {
   try {
-    const out: any = await env.AI.run(
-      "google/gemini-3-flash-preview" as any, geminiBody("", prompt, 160, 0.7),
-    );
-    return geminiText(out);
+    // gemini-3-flash-preview via the DIRECT Google API (partner route 7003s).
+    return await geminiRun(env, "", prompt, 160, 0.7);
   } catch {
     return "";
   }

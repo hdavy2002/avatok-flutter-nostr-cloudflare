@@ -195,7 +195,7 @@ export async function executeTool(env: Env, userId: string, slug: string, args: 
 // ---- the Gemini ⇄ Composio function-calling loop ----------------------------
 // Shared by the /api/ava/apps/run route AND the in-chat @ava hook. The model
 // runs on the user's own Gemini key; tools execute on our Composio key.
-const APPS_MODEL = "gemini-2.5-flash-lite";
+const APPS_MODEL = "gemini-3-flash-preview"; // direct Google API — stronger tool-calling
 
 function textOf(parts: any[]): string {
   return (parts ?? [])

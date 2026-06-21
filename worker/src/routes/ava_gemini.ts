@@ -26,8 +26,8 @@ import { emailFor } from "../lib/identity";
 // Gateway (per-uid metering + caching). If the 3.x partner model is ever down we
 // fall back to Gemini 2.5 Flash-Lite — NEVER Gemma 4 (owner decision: Gemini for
 // everything online). Both have thinking OFF by default → no chain-of-thought leak.
-const CHAT_MODEL = "google/gemini-3-flash-preview";
-const FALLBACK_MODEL = "google/gemini-2.5-flash-lite";
+const CHAT_MODEL = "gemini-3-flash-preview";     // DIRECT Google API id
+const FALLBACK_MODEL = "gemini-2.5-flash-lite";  // DIRECT Google API id
 const MAX_TOKENS = 700;
 
 const SYSTEM_BASE = [
@@ -138,39 +138,45 @@ async function retrieveMemory(env: Env, uid: string, query: string): Promise<str
 
 async function generate(env: Env, uid: string, email: string | null, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
-  // Primary: Gemini 2.5 Flash-Lite (third-party model) through the AI Gateway.
+  const key = (env as any).GEMINI_API_KEY;
+  if (!key) return "Ava is temporarily unavailable.";
+  const body = {
+    systemInstruction: { parts: [{ text: sys }] },
+    contents: buildGeminiContents(history, message, images),
+    generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
+  };
+  // DIRECT Google API (gemini-3-flash-preview is NOT a valid Workers-AI partner
+  // id — it 7003s and wasted a round-trip per turn). One real call; fall back to
+  // gemini-2.5 only on a hard failure. NEVER Gemma.
   let fellBackReason = "";
-  try {
-    const out: any = await env.AI.run(
-      CHAT_MODEL,
-      {
-        systemInstruction: { parts: [{ text: sys }] },
-        contents: buildGeminiContents(history, message, images),
-        generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
-      } as any,
-      aiRunOpts(env, uid),
-    );
-    const t = stripReasoning(extractGeminiText(out));
-    if (t) return t;
-    fellBackReason = "empty"; // partner returned nothing usable
-  } catch (e: any) {
-    fellBackReason = String(e?.message ?? e).slice(0, 160);
+  for (const model of [CHAT_MODEL, FALLBACK_MODEL]) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify(body),
+        },
+      );
+      const out: any = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const t = stripReasoning(extractGeminiText(out));
+        if (t) return t;
+        fellBackReason = "empty";
+      } else {
+        fellBackReason = `${res.status}: ${String(out?.error?.message ?? "").slice(0, 120)}`;
+      }
+    } catch (e: any) {
+      fellBackReason = String(e?.message ?? e).slice(0, 160);
+    }
+    if (model === CHAT_MODEL) {
+      trackUser(env, uid, email, "ava_model_fallback", "avaai", {
+        route: "chat", from: CHAT_MODEL, to: FALLBACK_MODEL, reason: fellBackReason,
+      });
+    }
   }
-  // Fallback: Gemini 2.5 Flash-Lite (same Gemini contents shape, NOT Gemma). Emit
-  // a telemetry canary so a degraded gemini-3 partner model is visible per user.
-  trackUser(env, uid, email, "ava_model_fallback", "avaai", {
-    route: "chat", from: CHAT_MODEL, to: FALLBACK_MODEL, reason: fellBackReason,
-  });
-  const out: any = await env.AI.run(
-    FALLBACK_MODEL,
-    {
-      systemInstruction: { parts: [{ text: sys }] },
-      contents: buildGeminiContents(history, message, images),
-      generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
-    } as any,
-    aiRunOpts(env, uid),
-  );
-  return stripReasoning(extractGeminiText(out));
+  return "I couldn't reach my thoughts just now — try again?";
 }
 
 export async function avaGemini(req: Request, env: Env): Promise<Response> {

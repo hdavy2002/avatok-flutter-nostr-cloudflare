@@ -10,7 +10,7 @@
 //   • records estimated neurons to each user's AgentDO (budget circuit-breaker).
 //   • self-destructs (storage wipe) 30 days after creation via alarm.
 import type { Env } from "../types";
-import { json, aiText, geminiText, geminiBody } from "../util";
+import { json, aiText, geminiRun } from "../util";
 
 const REASONER = "@cf/google/gemma-4-26b-a4b-it";
 const GUARD = "@cf/meta/llama-guard-3-8b";
@@ -50,11 +50,8 @@ export class ConversationDO {
   }
 
   private async gen(systemPrompt: string, userPrompt: string): Promise<string> {
-    // Gemini 3 Flash (preview) — never Gemma.
-    const out: any = await this.env.AI.run(
-      "google/gemini-3-flash-preview", geminiBody(systemPrompt, userPrompt, 220, 0.7),
-    );
-    return geminiText(out);
+    // gemini-3-flash-preview via the DIRECT Google API (partner route 7003s).
+    return geminiRun(this.env, systemPrompt, userPrompt, 220, 0.7);
   }
 
   // Build the system prompt for ONE side (isolation: only this side's persona).
