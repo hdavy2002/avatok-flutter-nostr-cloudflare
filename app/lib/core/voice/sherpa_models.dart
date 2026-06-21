@@ -53,10 +53,12 @@ class VoiceModels {
       'whisper/tiny-tokens.txt',
     ),
   ];
-  static const _kKokoroTarUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2';
+  // TTS = SupertonicTTS-3 (owner decision 2026-06-21, replacing Kokoro): ~10x
+  // smaller + far faster, int8, multi-speaker, 31 languages, no espeak-ng-data dir.
+  static const _kTtsTarUrl =
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-supertonic-3-tts-int8-2026-05-11.tar.bz2';
   // The tarball extracts into this top-level folder.
-  static const _kKokoroDir = 'kokoro-multi-lang-v1_0';
+  static const _kTtsDir = 'sherpa-onnx-supertonic-3-tts-int8-2026-05-11';
 
   String? _base;
   Future<String> _baseDir() async {
@@ -81,12 +83,14 @@ class VoiceModels {
   String whisperEncoder = '';
   String whisperDecoder = '';
   String whisperTokens = '';
-  String kokoroModel = '';
-  String kokoroVoices = '';
-  String kokoroTokens = '';
-  String kokoroDataDir = '';
-  String kokoroDictDir = '';
-  String kokoroLexicons = ''; // comma-joined, '' if none
+  // SupertonicTTS-3 files (no tokens/voices/espeak-data — different from Kokoro).
+  String ttsDurationPredictor = '';
+  String ttsTextEncoder = '';
+  String ttsVectorEstimator = '';
+  String ttsVocoder = '';
+  String ttsJson = '';
+  String ttsUnicodeIndexer = '';
+  String ttsVoiceStyle = '';
 
   /// Download (if needed) the VAD + Whisper files. Cheap when already cached.
   Future<bool> ensureVadAndStt() async {
@@ -129,25 +133,25 @@ class VoiceModels {
     return _vadSttReady;
   }
 
-  /// DOWNLOAD + extract the Kokoro TTS bundle (~330 MB). Called only from the
-  /// explicit "Enable Ava Voice" flow — never silently on first synth.
+  /// DOWNLOAD + extract the SupertonicTTS-3 bundle (small int8 ~tens of MB).
+  /// Called only from the explicit "Enable Ava Voice" flow — never silently.
   Future<bool> downloadTts() async {
     if (_ttsReady) return true;
     try {
       final base = await _baseDir();
-      final kokoroRoot = p.join(base, _kKokoroDir);
-      final model = p.join(kokoroRoot, 'model.onnx');
-      if (!await File(model).exists()) {
+      final ttsRoot = p.join(base, _kTtsDir);
+      final encoder = p.join(ttsRoot, 'text_encoder.int8.onnx');
+      if (!await File(encoder).exists()) {
         status.value = 'Downloading Ava Voice (one time)…';
-        final tarPath = p.join(base, 'kokoro.tar.bz2');
-        final ok = await _download(_kKokoroTarUrl, tarPath);
+        final tarPath = p.join(base, 'supertonic.tar.bz2');
+        final ok = await _download(_kTtsTarUrl, tarPath);
         if (!ok) { status.value = 'Voice download failed'; return false; }
         status.value = 'Unpacking Ava Voice…';
         progress.value = -1;
         await _extractTarBz2(tarPath, base);
         try { await File(tarPath).delete(); } catch (_) {}
       }
-      await _setKokoroPaths(kokoroRoot);
+      await _setTtsPaths(ttsRoot);
       status.value = _ttsReady ? '' : 'Voice files incomplete';
       return _ttsReady;
     } catch (e) {
@@ -159,37 +163,32 @@ class VoiceModels {
     }
   }
 
-  /// Resolve Kokoro paths from cache WITHOUT downloading. True if ready.
+  /// Resolve Supertonic paths from cache WITHOUT downloading. True if ready.
   Future<bool> resolveTts() async {
     if (_ttsReady) return true;
     final base = await _baseDir();
-    final kokoroRoot = p.join(base, _kKokoroDir);
-    if (!await File(p.join(kokoroRoot, 'model.onnx')).exists()) return false;
-    await _setKokoroPaths(kokoroRoot);
+    final ttsRoot = p.join(base, _kTtsDir);
+    if (!await File(p.join(ttsRoot, 'text_encoder.int8.onnx')).exists()) return false;
+    await _setTtsPaths(ttsRoot);
     return _ttsReady;
   }
 
-  /// True if every voice model (VAD + Whisper + Kokoro) is on disk. No download.
+  /// True if every voice model (VAD + Whisper + Supertonic) is on disk. No download.
   Future<bool> isAllReady() async {
     final a = await resolveVadStt();
     final b = await resolveTts();
     return a && b;
   }
 
-  Future<void> _setKokoroPaths(String kokoroRoot) async {
-    kokoroModel = p.join(kokoroRoot, 'model.onnx');
-    kokoroVoices = p.join(kokoroRoot, 'voices.bin');
-    kokoroTokens = p.join(kokoroRoot, 'tokens.txt');
-    kokoroDataDir = p.join(kokoroRoot, 'espeak-ng-data');
-    final dict = Directory(p.join(kokoroRoot, 'dict'));
-    kokoroDictDir = await dict.exists() ? dict.path : '';
-    final lex = <String>[];
-    for (final name in ['lexicon-us-en.txt', 'lexicon-zh.txt', 'lexicon.txt']) {
-      final f = File(p.join(kokoroRoot, name));
-      if (await f.exists()) lex.add(f.path);
-    }
-    kokoroLexicons = lex.join(',');
-    _ttsReady = await File(kokoroModel).exists() && await File(kokoroVoices).exists();
+  Future<void> _setTtsPaths(String ttsRoot) async {
+    ttsDurationPredictor = p.join(ttsRoot, 'duration_predictor.int8.onnx');
+    ttsTextEncoder = p.join(ttsRoot, 'text_encoder.int8.onnx');
+    ttsVectorEstimator = p.join(ttsRoot, 'vector_estimator.int8.onnx');
+    ttsVocoder = p.join(ttsRoot, 'vocoder.int8.onnx');
+    ttsJson = p.join(ttsRoot, 'tts.json');
+    ttsUnicodeIndexer = p.join(ttsRoot, 'unicode_indexer.bin');
+    ttsVoiceStyle = p.join(ttsRoot, 'voice.bin');
+    _ttsReady = await File(ttsTextEncoder).exists() && await File(ttsVocoder).exists();
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────

@@ -103,12 +103,12 @@ dependencies:
   # On-device VOICE STACK — one native engine (sherpa-onnx / k2-fsa) for all three:
   #   • Silero VAD (~2 MB)         → speech detection for the hands-free Ava call
   #   • Whisper-tiny STT           → "Convert voice to text" + the call's listening
-  #   • Kokoro-82M TTS (multiling) → Ava's spoken voice (the picked language/voice)
-  # This REPLACES whisper_ggml (consolidation, owner decision 2026-06-21) so there
-  # is a single voice runtime. Models are large (Kokoro ≈ 330 MB) → downloaded +
-  # cached on first use, never bundled (see core/voice/sherpa_models.dart). All of
-  # it is local; only the reasoning (Gemini) is online. Engine wrapper:
-  # core/voice/sherpa_voice_engine.dart.
+  #   • SupertonicTTS-3 (int8)     → Ava's spoken voice — small + very fast, 31 langs
+  # TTS switched Kokoro→Supertonic (owner decision 2026-06-21): Kokoro's ~330 MB
+  # model froze low-end phones during unpack; Supertonic int8 is ~10x smaller and
+  # far faster. This REPLACES whisper_ggml too (one runtime). Models are downloaded
+  # + cached on first use, never bundled (see core/voice/sherpa_models.dart). All
+  # local; only the reasoning (Gemini) is online. Engine: sherpa_voice_engine.dart.
   sherpa_onnx: ^1.13.2
   # tar.bz2 extraction for the Kokoro model bundle (espeak-ng-data dir etc.).
   archive: ^4.0.0

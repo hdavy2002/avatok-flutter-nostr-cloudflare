@@ -34,11 +34,11 @@ class KokoroVoice {
   /// `true` = female character, `false` = male. Drives the gender label/icon.
   final bool female;
 
-  /// Speaker index passed to the sherpa-onnx Kokoro TTS (`sid`). ⚠️ VERIFY: these
-  /// indices must match the voice ordering packed in the kokoro-multi-lang voices.bin.
-  /// They are a best-effort id-sorted mapping; if a voice sounds wrong, fix the sid
-  /// here against the model's published voice list. A wrong sid only picks a
-  /// different voice — it never crashes.
+  /// Speaker index passed to the on-device TTS (`sid`). The engine now uses
+  /// SupertonicTTS-3, which addresses voices by integer speaker id and is CLAMPED
+  /// to the model's speaker count (`sid % numSpeakers`), so these values never go
+  /// out of range — they just pick one of Supertonic's speakers. The names below
+  /// are cosmetic; refine the sid↔gender mapping once the speaker list is confirmed.
   final int sid;
 
   const KokoroVoice(this.id, this.name, {required this.female, this.sid = 0});

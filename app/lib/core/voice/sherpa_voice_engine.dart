@@ -3,7 +3,7 @@
 /// Wraps three sherpa-onnx capabilities behind one lazy-loaded API:
 ///   • Whisper-tiny STT  → [transcribe] (Float32List 16 kHz mono → text)
 ///   • Silero VAD        → [vadAccept]/[vadDetected]/[vadDrain] for the call loop
-///   • Kokoro-82M TTS    → [synthesize] (text → 24 kHz PCM, the picked voice)
+///   • SupertonicTTS-3   → [synthesize] (text → PCM at the model's own rate, picked voice)
 ///
 /// Model files come from [VoiceModels] (downloaded + cached on first use). Native
 /// objects are created once and reused; everything is null-safe so a missing model
@@ -150,23 +150,25 @@ class SherpaVoiceEngine {
 
   // ── TTS (Kokoro) ────────────────────────────────────────────────────────────
 
-  /// Build the Kokoro TTS from CACHED files only (never downloads — the big
-  /// download happens via the explicit "Enable Ava Voice" flow). Returns false
-  /// if the model isn't downloaded yet.
+  /// Build the SupertonicTTS-3 engine from CACHED files only (never downloads —
+  /// the download happens via the explicit "Enable Ava Voice" flow). Returns
+  /// false if the model isn't downloaded yet.
   Future<bool> ensureTts() async {
     if (!await VoiceModels.I.resolveTts()) return false;
     try {
       _ensureBindings();
       if (_tts != null) return true;
-      final kokoro = so.OfflineTtsKokoroModelConfig(
-        model: VoiceModels.I.kokoroModel,
-        voices: VoiceModels.I.kokoroVoices,
-        tokens: VoiceModels.I.kokoroTokens,
-        dataDir: VoiceModels.I.kokoroDataDir,
-        lexicon: VoiceModels.I.kokoroLexicons,
+      final supertonic = so.OfflineTtsSupertonicModelConfig(
+        durationPredictor: VoiceModels.I.ttsDurationPredictor,
+        textEncoder: VoiceModels.I.ttsTextEncoder,
+        vectorEstimator: VoiceModels.I.ttsVectorEstimator,
+        vocoder: VoiceModels.I.ttsVocoder,
+        ttsJson: VoiceModels.I.ttsJson,
+        unicodeIndexer: VoiceModels.I.ttsUnicodeIndexer,
+        voiceStyle: VoiceModels.I.ttsVoiceStyle,
       );
       final model = so.OfflineTtsModelConfig(
-        kokoro: kokoro, numThreads: 2, debug: false, provider: 'cpu');
+        supertonic: supertonic, numThreads: 2, debug: false, provider: 'cpu');
       _tts = so.OfflineTts(so.OfflineTtsConfig(model: model, maxNumSenetences: 1));
       return true;
     } catch (e) {
@@ -175,12 +177,21 @@ class SherpaVoiceEngine {
     }
   }
 
-  /// Synthesize [text] in Kokoro voice [sid]. Returns PCM16 @ 24 kHz, or null.
+  /// Synthesize [text] with Supertonic voice [sid]. Returns PCM16 at the model's
+  /// own sample rate (read from the result, not hardcoded), or null.
+  ///
+  /// NOTE: Supertonic addresses voices by integer speaker id; [sid] is clamped to
+  /// the model's speaker count so an out-of-range pick can't fail. Language is
+  /// English via the stable `generate()` API; per-language synthesis (Supertonic
+  /// supports 31 langs via `generateWithConfig` + an `extra` lang map) is a small
+  /// follow-up once confirmed against the pinned package version.
   Future<TtsAudio?> synthesize(String text, {required int sid, double speed = 1.0}) async {
     if (text.trim().isEmpty) return null;
     if (!await ensureTts()) return null;
     try {
-      final audio = _tts!.generate(text: text, sid: sid, speed: speed);
+      final n = _tts!.numSpeakers;
+      final safeSid = n > 0 ? (sid % n) : 0;
+      final audio = _tts!.generate(text: text, sid: safeSid, speed: speed);
       final f32 = audio.samples;
       final pcm = Int16List(f32.length);
       for (var i = 0; i < f32.length; i++) {

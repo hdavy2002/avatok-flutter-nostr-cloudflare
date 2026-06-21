@@ -1,5 +1,7 @@
-/// KokoroTts — turns text into a playable WAV using on-device Kokoro (sherpa-onnx),
-/// in the user's chosen language + voice ([KokoroVoicePref]).
+/// KokoroTts — turns text into a playable WAV using the on-device TTS engine
+/// (now SupertonicTTS-3 via sherpa-onnx; the class name is kept to avoid churn),
+/// in the user's chosen voice ([KokoroVoicePref]). The voice `sid` is clamped to
+/// the model's speaker count inside the engine.
 ///
 /// Used in two places:
 ///   • wired into [AvaVoice.synthesizer] so the existing "Listen" affordance in
