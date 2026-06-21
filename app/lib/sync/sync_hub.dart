@@ -68,6 +68,13 @@ class SyncHub {
   final _storage = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get storage => _storage.stream;
 
+  /// Live `@ava` token stream (frame {type:'ava_stream', conv, stream_id, phase,
+  /// delta}). Transient — never persisted; the open chat thread grows an Ava
+  /// bubble as deltas arrive, then the durable answer replaces it. Each emitted
+  /// map carries a derived `convKey` so a thread can filter to its own conv.
+  final _avaStream = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get avaStream => _avaStream.stream;
+
   String? get _myUid => AccountScope.id;
 
   /// Start (idempotent) the shared InboxDO socket. The priv/pub args are legacy
@@ -223,6 +230,18 @@ class SyncHub {
         // AvaStorage live summary (Phase 4): transient system event — fan to any
         // open AvaStorage screen. Same multiplexed socket, no extra connection.
         _storage.add(m);
+        break;
+      case 'ava_stream':
+        {
+          // Live @ava token preview — derive the convKey the open thread uses so
+          // it can filter to its own conversation, then fan out (transient).
+          final conv = (m['conv'] ?? '').toString();
+          final myUid = _myUid ?? '';
+          final convKey = conv.startsWith('dm_')
+              ? '1:${dmPeer(conv, myUid) ?? conv}'
+              : 'g:$conv';
+          _avaStream.add({...m, 'convKey': convKey});
+        }
         break;
     }
   }

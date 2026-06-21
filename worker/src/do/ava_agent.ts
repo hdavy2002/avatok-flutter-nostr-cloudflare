@@ -507,12 +507,36 @@ export class AvaAgentDO {
       // THE single agentic call: Gemini chats directly, calls search_memory for
       // the user's own data, or acts on connected apps — its own choice, one loop.
       const ctx = window.map((w) => `${w.mine ? "User" : "Other"}: ${w.text}`).join("\n");
+
+      // Live token streaming (kill-switchable via AVA_STREAM_OFF). We push the
+      // answer to the summoner's socket AS Gemini produces it (first token in
+      // ~1s instead of waiting for the whole reply), throttled to coalesce tiny
+      // SSE chunks into ~24-char frames so we don't spam the InboxDO. The durable
+      // answer is still posted whole below — streaming is a preview, not storage.
+      const streaming = (this.env as any).AVA_STREAM_OFF !== "1";
+      let started = false;
+      let pending = "";
+      let ttfbMs = 0;
+      let frames = 0;
+      let streamedChars = 0;
+      const flush = async (): Promise<void> => {
+        if (!pending) return;
+        const delta = pending; pending = "";
+        if (!started) { started = true; ttfbMs = Date.now() - t0; await this.streamFrame(uid, conv, statusId, "start", ""); }
+        frames++;
+        await this.streamFrame(uid, conv, statusId, "delta", delta);
+      };
+      const onDelta = async (t: string): Promise<void> => {
+        pending += t; streamedChars += t.length;
+        if (pending.length >= 24) await flush();
+      };
+
       let answer = "";
       try {
         answer = await runAgentLoop(
           this.env, uid, userText, ctx,
           (q) => this.brainSearch(uid, q),
-          { apps: appsCap && premium },
+          { apps: appsCap && premium, ...(streaming ? { onDelta } : {}) },
         );
       } catch (e: any) {
         trackUserContact(this.env, uid, email, phone, "ava_thread_error", "avaai", {
@@ -520,12 +544,18 @@ export class AvaAgentDO {
         });
         answer = "";
       }
+      if (streaming) { await flush(); if (started) await this.streamFrame(uid, conv, statusId, "end", ""); }
       if (!answer) answer = "Ava is unavailable right now. Please try again shortly.";
 
-      await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
-      await this.postAva({ conv, uid, text: answer, private: priv, source: "chat" });
+      // When we streamed a live preview the summoner already saw the chip vanish
+      // under the growing bubble, so SKIP the persisted ava_status 'end' (it would
+      // briefly re-show "Ava is working…" above the streamed text). Peers who got
+      // no stream still have their 'start' chip auto-collapse under the answer.
+      if (!started) await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
+      await this.postAva({ conv, uid, text: answer, private: priv, source: "chat", meta: started ? { stream_id: statusId } : undefined });
       trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
-        conv_kind: convKind, tier, agentic: true,
+        conv_kind: convKind, tier, agentic: true, streamed: started,
+        ttfb_ms: started ? ttfbMs : null, stream_frames: frames, stream_chars: streamedChars,
         answer_len: answer.length, latency_ms: Date.now() - t0,
       });
       return { ok: true, status_id: statusId };
@@ -610,6 +640,23 @@ export class AvaAgentDO {
         body: JSON.stringify({ conv, label, status_id: statusId, phase }),
       });
     } catch { /* best-effort */ }
+  }
+
+  // ---- live token streaming (the @ava "types out" preview) --------------------
+  // Transient broadcast ONLY to the summoning user's InboxDO (they're watching) —
+  // peers still get the durable answer whole via postAva, so this halves cost and
+  // never persists. Reuses the generic /event fan-out (broadcast, never stored).
+  // The client (sync_hub → chat_thread) grows an Ava bubble keyed by `stream_id`;
+  // the persisted `postAva` answer then replaces the preview seamlessly. Old
+  // clients that don't know `ava_stream` simply ignore it and see the final
+  // answer arrive whole — graceful degradation.
+  private async streamFrame(uid: string, conv: string, streamId: string, phase: "start" | "delta" | "end", delta: string): Promise<void> {
+    try {
+      await this.inbox(uid).fetch("https://inbox/event", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "ava_stream", conv, stream_id: streamId, phase, delta }),
+      });
+    } catch { /* best-effort; streaming is a progressive enhancement */ }
   }
 
   private async appendTo(owner: string, payload: Record<string, unknown>): Promise<void> {

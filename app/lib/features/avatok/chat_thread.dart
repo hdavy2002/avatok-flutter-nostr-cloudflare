@@ -230,6 +230,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _convKey = '1:$peerHex';
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
+    _bindAvaStream(); // render LIVE server @ava answers as they stream in
     // Seed instantly from the shared hub's in-memory store (this session).
     for (final m in SyncHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
     // Durable history from the local SQLite DB — the source of truth. Covers
@@ -296,6 +297,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _convKey = 'g:${g.id}';
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
+    _bindAvaStream(); // render LIVE server @ava answers as they stream in
     _markRead();
     _loadChatExtras();
     _loadCachedMessages();
@@ -424,6 +426,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final exp = (env2['exp'] as num?)?.toInt();
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return; // already gone
     setState(() {
+      // Durable Ava answer landed — drop any live streaming preview for this turn.
+      if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
@@ -523,6 +527,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } catch (_) {/* legacy/plain text */}
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return;
     setState(() {
+      // Durable Ava answer landed — drop any live streaming preview for this turn.
+      if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: forwarded, expireAt: exp, special: special, extra: extra,
@@ -665,6 +671,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void dispose() {
     _localAvaSub?.cancel();
+    _avaStreamSub?.cancel();
     _ctrl.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
@@ -701,6 +708,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   /// Subscription to on-device Ava answers for THIS conversation (Local Ava AI).
   StreamSubscription<AvaLocalReply>? _localAvaSub;
+
+  /// Subscription to LIVE `@ava` token streaming from the server (cloud agent).
+  /// Grows an Ava bubble as deltas arrive; the durable answer replaces it.
+  StreamSubscription<Map<String, dynamic>>? _avaStreamSub;
 
   /// The wake word the composer watches for (proposal open-decision #3:
   /// `@ava` + button). Phase 3 owns the actual trigger + UI affordance.
@@ -756,6 +767,53 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       });
       _jump();
     });
+  }
+
+  /// Render LIVE server `@ava` answers for THIS conversation as they stream in
+  /// (cloud agent). Each delta grows a single Ava bubble keyed by `stream_id`;
+  /// when the durable answer lands ([_onDm]/[_onGroupMsg]) it removes this
+  /// preview so there's no duplicate. Purely additive: if no stream arrives the
+  /// answer still appears whole via the normal message path.
+  void _bindAvaStream() {
+    _avaStreamSub?.cancel();
+    final key = _convKey;
+    if (key == null) return;
+    _avaStreamSub = SyncHub.I.avaStream.listen((m) {
+      if (!mounted || m['convKey'] != key) return;
+      final phase = (m['phase'] ?? '').toString();
+      final sid = (m['stream_id'] ?? '').toString();
+      if (sid.isEmpty) return;
+      final delta = (m['delta'] ?? '').toString();
+      final evId = 'stream_$sid';
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      setState(() {
+        final i = _msgs.indexWhere((x) => x.evId == evId);
+        if (phase == 'end') return; // keep the preview; durable answer replaces it
+        if (i >= 0) {
+          if (phase == 'delta') _msgs[i].text = _msgs[i].text + delta;
+          return;
+        }
+        // First frame for this turn (start, or a delta if start was missed):
+        // drop the "working…" chip and open the growing bubble.
+        _msgs.removeWhere((x) => x.special == 'ava_status');
+        _msgs.add(_Msg(_seq++, false, delta, _fmtTime(now),
+            ts: now, special: 'ava', evId: evId));
+        _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+      });
+      _jump();
+    });
+  }
+
+  /// Remove any live streaming preview bubble(s) once the durable Ava answer
+  /// arrives. Prefers exact correlation via the answer's `meta.stream_id`; falls
+  /// back to clearing all `stream_` previews (turns are sequential).
+  void _clearAvaStreamPreview(Map<String, dynamic>? extra) {
+    final sid = (extra?['meta'] is Map) ? (extra!['meta'] as Map)['stream_id']?.toString() : null;
+    if (sid != null && sid.isNotEmpty) {
+      _msgs.removeWhere((x) => x.evId == 'stream_$sid');
+    } else {
+      _msgs.removeWhere((x) => (x.evId ?? '').startsWith('stream_'));
+    }
   }
 
   /// Show a transient on-device "Ava is thinking…" chip. Scheduled after the
