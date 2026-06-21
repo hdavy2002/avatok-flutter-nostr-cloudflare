@@ -9,7 +9,6 @@ import '../../../core/ui/zine.dart';
 /// defensive: the Strata/Composio result envelope varies ({data:{items}},
 /// {items}, {result:{...}}), so every reader falls back gracefully and a missing
 /// field never throws — a malformed event is simply skipped.
-library;
 
 /// A source calendar (one row in the "checked across N calendars" list).
 class CalSource {

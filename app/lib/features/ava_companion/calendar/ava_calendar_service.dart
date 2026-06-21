@@ -23,7 +23,6 @@ import 'calendar_models.dart';
 /// in the same session repaint instantly while a fresh fetch runs. No persistent
 /// store is introduced here, so there is no cross-account key to scope — when a
 /// disk cache is added later it MUST go through `scopedKey(...)` per the rulebook.
-library;
 
 const String _kCalProvider = 'gcalendar';
 const String _kGmailProvider = 'gmail';

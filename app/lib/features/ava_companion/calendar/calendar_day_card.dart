@@ -15,7 +15,6 @@ import 'calendar_models.dart';
 /// and, on success, push a follow-up [AvaResultCard] back into the thread via
 /// [onPostCard]. [onOpenUrl] is used for OAuth connect + "Join" video links
 /// (the thread owns url_launcher).
-library;
 
 /// Shared lilac shell used by every AVA card so they all match the mockups.
 class AvaCalendarShell extends StatelessWidget {

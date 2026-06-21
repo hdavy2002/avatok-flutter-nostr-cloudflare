@@ -11,7 +11,6 @@ import 'calendar_models.dart';
 /// [CreatedResult] (or null if dismissed) that the calling card turns into an
 /// [AvaResultCard] confirmation chip. All writes go through [AvaCalendarService]
 /// → Strata `GOOGLECALENDAR_CREATE_EVENT` / `GMAIL_SEND_EMAIL`.
-library;
 
 /// Outcome of a successful create-sheet, used to render the confirmation card.
 class CreatedResult {
