@@ -20,6 +20,7 @@ import { notifyUser } from "../notify";
 import { withIdempotency, rateLimit, RL } from "../money";
 import { acctUser, sendReceipt } from "../ledger";
 import { payAffiliateOnTopup } from "./affiliate";
+import { readConfig } from "./config";
 
 // Coin economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 coins,
 // i.e. 1 coin = $0.01. So 1 coin == 1 USD cent and usdCentsForCoins is identity.
@@ -297,6 +298,16 @@ export async function walletBalance(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const r = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
+  // BETA PHASE: report every user as premium so the whole client renders the
+  // premium experience (sidebar "BETA PHASE" pill, no PAID badges, no upsell).
+  // Read-only patch — does NOT mutate stored wallet state. Real coin balance is
+  // untouched; flip betaFreePremium off in KV to restore the free/premium split.
+  try {
+    if (r.status === 200 && r.body && (await readConfig(env)).betaFreePremium) {
+      r.body.premium = 1;
+      r.body.beta = true;
+    }
+  } catch { /* serve the raw snapshot if config lookup fails */ }
   return json(r.body, r.status);
 }
 

@@ -240,21 +240,33 @@ class VoiceModels {
     }
   }
 
-  /// Decompress a .tar.bz2 and write every entry under [outDir]. Heavy (pure
-  /// Dart bzip2) but runs once. Done off the UI isolate where possible.
+  /// Decompress a .tar.bz2 and write every entry under [outDir].
+  ///
+  /// CRITICAL: pure-Dart bzip2 on a ~330 MB bundle is CPU-heavy and was running on
+  /// the UI isolate — that froze the app (Android "App isn't responding — wait or
+  /// close?"). It now runs on a BACKGROUND isolate via [compute] so the UI stays
+  /// responsive and just shows the indeterminate "Unpacking…" state.
   Future<void> _extractTarBz2(String tarBz2Path, String outDir) async {
-    final bytes = await File(tarBz2Path).readAsBytes();
-    final tarBytes = BZip2Decoder().decodeBytes(bytes);
-    final archive = TarDecoder().decodeBytes(tarBytes);
-    for (final entry in archive) {
-      final outPath = p.join(outDir, entry.name);
-      if (entry.isFile) {
-        final f = File(outPath);
-        await f.parent.create(recursive: true);
-        await f.writeAsBytes(entry.content as List<int>);
-      } else {
-        await Directory(outPath).create(recursive: true);
-      }
+    await compute(_extractTarBz2Isolate, <String>[tarBz2Path, outDir]);
+  }
+}
+
+/// Top-level isolate entry point for [compute] — must not touch any instance
+/// state. Decompresses [args] = [tarBz2Path, outDir] and writes every entry.
+Future<void> _extractTarBz2Isolate(List<String> args) async {
+  final tarBz2Path = args[0];
+  final outDir = args[1];
+  final bytes = await File(tarBz2Path).readAsBytes();
+  final tarBytes = BZip2Decoder().decodeBytes(bytes);
+  final archive = TarDecoder().decodeBytes(tarBytes);
+  for (final entry in archive) {
+    final outPath = p.join(outDir, entry.name);
+    if (entry.isFile) {
+      final f = File(outPath);
+      await f.parent.create(recursive: true);
+      await f.writeAsBytes(entry.content as List<int>);
+    } else {
+      await Directory(outPath).create(recursive: true);
     }
   }
 }

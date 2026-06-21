@@ -7,6 +7,7 @@
 import type { Env } from "./types";
 import { json } from "./util";
 import { walletOp } from "./routes/wallet";
+import { readConfig } from "./routes/config";
 
 export const FEATURE_COSTS: Record<string, number> = {
   ava_chat: 2,               // $0.002 — one Ava chat message (Workers-AI Gemma 4; 3x cost)
@@ -37,6 +38,9 @@ export async function chargeFeature(
   const cost = featureCost(featureKey);
   if (cost == null) return { ok: false, reason: "unknown_feature" };
   if (cost === 0) return { ok: true, charged: 0 };
+  // BETA PHASE: all services are free for everyone — never deduct coins. Flip
+  // betaFreePremium off in KV to re-enable metering. (Lookup failure → charge as normal.)
+  try { if ((await readConfig(env)).betaFreePremium) return { ok: true, charged: 0 }; } catch { /* meter normally */ }
   const r = await walletOp(env, uid, {
     // allow_free: feature/AI costs may be paid with the daily FREE coins first
     // (then paid coins). Real marketplace spends omit this → paid-only.

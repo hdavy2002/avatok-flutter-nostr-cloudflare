@@ -411,8 +411,9 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     );
   }
 
-  /// Top-right status pill. Premium (topped up) → GREEN with a tick. Free → the
-  /// ghost "PREMIUM" crown hint (an upsell cue).
+  /// Top-right status pill. BETA PHASE: server reports all users premium → the
+  /// green pill shows for everyone and reads "BETA PHASE". Post-beta it reverts to
+  /// the topped-up green pill / ghost "PREMIUM" crown upsell automatically.
   Widget _premiumBadge() {
     if (!_premium) {
       return ZineSticker('PREMIUM', kind: ZineStickerKind.hint,
@@ -429,7 +430,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
         const SizedBox(width: 6),
-        Text('PREMIUM', style: ZineText.tag(size: 12, color: Zine.mintInk)),
+        Text('BETA PHASE', style: ZineText.tag(size: 12, color: Zine.mintInk)),
       ]),
     );
   }

@@ -236,8 +236,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
         ]);
   }
 
-  /// Plan pill. Premium (topped-up wallet) → solid GREEN with a seal-check tick.
-  /// Free → a ghost chip that taps through to the Wallet to top up.
+  /// Plan pill. BETA PHASE: the server reports every user as premium, so this
+  /// green pill shows for everyone and reads "BETA PHASE" (all services free
+  /// while in beta). Post-beta (betaFreePremium off), it reverts to the topped-up
+  /// premium pill / "top up" ghost chip automatically.
   Widget _planChip() {
     if (_premium) {
       return Container(
@@ -251,7 +253,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(PhosphorIcons.sealCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.mintInk),
           const SizedBox(width: 6),
-          Text('PREMIUM', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
+          Text('BETA PHASE', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
         ]),
       );
     }

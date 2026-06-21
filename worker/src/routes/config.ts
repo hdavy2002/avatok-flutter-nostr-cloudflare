@@ -53,6 +53,13 @@ export interface PlatformConfig {
   // ringback playback. OFF → generation 503s and callers fall back to today's
   // silent ring + system busy. Client mirror: kRingbackEnabledDefault.
   ringbackEnabled: boolean;
+  // BETA PHASE (2026-06-21, owner): open EVERYTHING at premium tier, free for all.
+  // When true: isPremiumAI is true for every user (all AI tools unlocked, daily cap
+  // bypassed), chargeFeature deducts nothing (no AvaCoin metering), and the wallet
+  // balance reports premium:1 so the whole client renders premium (green pill →
+  // "BETA PHASE", no PAID badges, no upsell). Flip to false in KV to restore the
+  // normal free/premium + coin-metering model — no redeploy needed.
+  betaFreePremium: boolean;
   minAppBuild: number;
 }
 
@@ -86,6 +93,7 @@ const DEFAULTS: PlatformConfig = {
   companionEnabled: true,
   generativeEnabled: true,
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
+  betaFreePremium: true,           // BETA: everyone premium, all services free, no coin metering
   minAppBuild: 0,
 };
 
