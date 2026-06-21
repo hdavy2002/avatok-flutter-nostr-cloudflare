@@ -21,6 +21,8 @@ import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/voice/voice_feature.dart';
+import '../avachat/voice_call/voice_call_screen.dart';
 import '../settings/sections/voice_section.dart';
 import '../../core/paid_feature.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -711,6 +713,23 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     );
   }
 
+  // Tap the mic → open the hands-free voice agent (Silero VAD → Whisper STT →
+  // Gemini → Supertonic-3 TTS, English). Requires the on-device voice models,
+  // which are downloaded once via Settings → Ava voice → "Enable Ava Voice".
+  Future<void> _openVoiceCall() async {
+    await VoiceFeature.I.refresh();
+    if (!mounted) return;
+    if (!VoiceFeature.I.isReady) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Turn on Ava Voice in Settings → Ava voice to talk to Ava'),
+      ));
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const VoiceCallScreen()),
+    );
+  }
+
   Widget _composer() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
@@ -724,6 +743,12 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: Zine.ink, size: 24),
           onPressed: _busy ? null : _attachFile,
           tooltip: 'Attach a file (saved to AvaLibrary + indexed for Ava)',
+        ),
+        // Mic → start a hands-free voice conversation with Ava (the voice agent).
+        IconButton(
+          icon: PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.fill), color: Zine.blueInk, size: 24),
+          onPressed: _openVoiceCall,
+          tooltip: 'Voice call Ava — hands-free',
         ),
         Expanded(
           child: Container(
