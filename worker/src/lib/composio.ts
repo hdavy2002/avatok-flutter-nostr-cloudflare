@@ -343,7 +343,14 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
 export async function runAgentLoop(
   env: Env, userId: string, query: string, context: string,
   memorySearch: (q: string) => Promise<string[]>,
-  opts?: { apps?: boolean; onDelta?: (t: string) => void | Promise<void> },
+  opts?: {
+    apps?: boolean;
+    onDelta?: (t: string) => void | Promise<void>;
+    // Per-tool telemetry hook — fired once per executed tool (Composio app tool
+    // or search_memory) with timing + success/error so we can pinpoint failures,
+    // latency and call volume in PostHog.
+    onTool?: (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number }) => void;
+  },
 ): Promise<string> {
   const geminiKey = env.GEMINI_API_KEY ?? "";
   if (!geminiKey) return "Ava is temporarily unavailable.";
@@ -376,6 +383,7 @@ export async function runAgentLoop(
     + "if nothing is found, say so. "
     + (appDecls.length
       ? "Only call a Google-apps tool (Gmail, Calendar, Docs, Sheets, Drive) when the user clearly asks you to check or act on those apps; then report the outcome (subjects/links). If a tool fails, say so plainly. "
+        + "If the user asks to SEND or create something but wants to review it first, compose it and show a clear preview — recipient (To), Subject, and the full body — then ask them to confirm; do NOT call the send tool yet. When they confirm in a later message, THEN call the send tool and report the result. "
       : "")
     + "Do not show your reasoning.";
   const userText = context && context.trim()
@@ -432,19 +440,40 @@ export async function runAgentLoop(
 
     for (const c of calls) {
       const name = String(c.functionCall.name);
+      const args = c.functionCall.args ?? {};
+      const tStart = Date.now();
       let result: any;
+      let ok = true;
+      let errMsg = "";
+      let count: number | undefined;
       try {
         if (name === "search_memory") {
-          const q = String(c.functionCall.args?.query ?? query);
+          const q = String(args?.query ?? query);
           const lines = await memorySearch(q);
+          count = lines.length;
           result = { matches: lines.slice(0, 8) };
         } else {
-          const r = await executeTool(env, userId, name, c.functionCall.args ?? {});
+          const r = await executeTool(env, userId, name, args);
+          // Composio can return HTTP 200 with a tool-level failure (successful:false
+          // / error) — surface that so it's not counted as a success.
+          if (r && (r.successful === false || r.error)) {
+            ok = false; errMsg = String(r.error ?? r.message ?? "tool reported failure").slice(0, 200);
+          }
           result = trimToolResult(name, r);
         }
       } catch (e: any) {
-        result = { error: String(e?.message ?? e).slice(0, 200) };
+        ok = false; errMsg = String(e?.message ?? e).slice(0, 200);
+        result = { error: errMsg };
       }
+      try {
+        opts?.onTool?.({
+          tool: name, ok, ms: Date.now() - tStart,
+          ...(errMsg ? { error: errMsg } : {}),
+          args_keys: Object.keys(args || {}).slice(0, 12),
+          result_chars: (() => { try { return JSON.stringify(result).length; } catch { return 0; } })(),
+          ...(count != null ? { count } : {}),
+        });
+      } catch { /* telemetry is best-effort, never breaks the loop */ }
       contents.push({ role: "tool", parts: [{ functionResponse: { name, response: { result } } }] });
     }
   }

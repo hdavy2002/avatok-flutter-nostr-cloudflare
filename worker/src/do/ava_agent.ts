@@ -531,12 +531,31 @@ export class AvaAgentDO {
         if (pending.length >= 24) await flush();
       };
 
+      // Per-tool telemetry: each Composio/app or search_memory call emits an
+      // ava_tool_call event (tool, ok, ms, error, args, result size) so we can
+      // pinpoint WHY something like "send email" did or didn't work, plus speed
+      // and call volume. We also aggregate counts onto ava_thread_completed.
+      let toolCount = 0;
+      const toolNames: string[] = [];
+      let toolMs = 0;
+      let toolError = false;
+      const onTool = (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number }) => {
+        toolCount++; toolNames.push(ev.tool); toolMs += ev.ms; if (!ev.ok) toolError = true;
+        trackUserContact(this.env, uid, email, phone, "ava_tool_call", "avaai", {
+          conv_kind: convKind, tool: ev.tool, ok: ev.ok, ms: ev.ms, premium, apps: appsCap && premium,
+          ...(ev.error ? { error: ev.error } : {}),
+          ...(ev.args_keys ? { args_keys: ev.args_keys } : {}),
+          ...(ev.result_chars != null ? { result_chars: ev.result_chars } : {}),
+          ...(ev.count != null ? { count: ev.count } : {}),
+        });
+      };
+
       let answer = "";
       try {
         answer = await runAgentLoop(
           this.env, uid, userText, ctx,
           (q) => this.brainSearch(uid, q),
-          { apps: appsCap && premium, ...(streaming ? { onDelta } : {}) },
+          { apps: appsCap && premium, onTool, ...(streaming ? { onDelta } : {}) },
         );
       } catch (e: any) {
         trackUserContact(this.env, uid, email, phone, "ava_thread_error", "avaai", {
@@ -557,6 +576,8 @@ export class AvaAgentDO {
         conv_kind: convKind, tier, agentic: true, streamed: started,
         ttfb_ms: started ? ttfbMs : null, stream_frames: frames, stream_chars: streamedChars,
         answer_len: answer.length, latency_ms: Date.now() - t0,
+        // Tool-layer summary for this turn (0 = answered directly, no tool hop).
+        tools_called: toolCount, tool_names: toolNames.join(","), tools_ms: toolMs, tool_error: toolError,
       });
       return { ok: true, status_id: statusId };
     } catch (e: any) {
