@@ -158,11 +158,21 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
   history bisectable if the final merge build fails.
 - **All git writes go through the mandated wrapper — never run `git add` or `git commit`
   directly.** The wrapper serializes every agent's commits through one shared advisory
-  lock and works on both macOS and Linux:
+  lock and works on both macOS and Linux. **ALWAYS pass the explicit paths you changed**
+  so your commit contains ONLY your files:
 
   ```bash
-  python3 scripts/git_safe_commit.py "[ISSUE-123] short description"
+  python3 scripts/git_safe_commit.py "[ISSUE-123] short description" path/one path/two
   ```
+
+  - **Why paths are required in this shared tree.** The lock serializes commits but does
+    NOT isolate the working tree: the bare `git add -A` form stages EVERYTHING currently
+    changed, so whichever agent commits first sweeps every other agent's uncommitted files
+    into ITS commit and mislabels history (a GenUI change landing inside an `[AVA-VOICE-…]`
+    commit, etc.). Passing paths makes the wrapper run `git add -- <paths>` then
+    `git commit -- <paths>`, so concurrent agents' changes can never ride along.
+  - The no-paths form (`… "msg"` with no paths → legacy `git add -A`) still works for
+    backward compatibility, but do NOT use it while other agents may be active.
 
 - **Do NOT use the `flock` command.** It is not installed on macOS (where commits run via
   Desktop Commander), so it fails silently and breaks serialization. `scripts/git_safe_commit.py`
