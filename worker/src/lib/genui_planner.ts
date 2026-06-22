@@ -17,9 +17,21 @@
 // the planner may only PICK from affordances we already resolved.
 
 import type { Env } from "../types";
-import type { A2uiNode, A2uiSurface } from "./a2ui";
+import type { A2uiNode, A2uiSurface, A2uiAction } from "./a2ui";
 import { affordanceToAction, type Affordance } from "./capabilities";
 import { redisGetJson, redisSetJson } from "./redis";
+
+// Hard ceiling on how many records we put into ONE card. The trim layer already
+// caps the data, but the builder bounds it again so a huge list can NEVER blow up
+// the A2UI payload — we show the first MAX_DISPLAY and a "Showing N of M" footer
+// instead of breaking or dropping to text.
+const MAX_DISPLAY = 50;
+
+// True record count from the result (trim stamps `_total` when it caps).
+function totalCount(data: any, shown: number): number {
+  const t = Number(data?._total);
+  return Number.isFinite(t) && t > shown ? t : shown;
+}
 
 const PLAN_MODEL = "gemini-2.5-flash";
 const PLAN_TTL = 60 * 60 * 24 * 30; // 30 days — plans are stable per app+shape
@@ -253,10 +265,13 @@ export function buildPlannedSurface(
   const byId = new Map(affordances.map((a) => [a.id, a]));
 
   const found = findListPath(data);
-  const count = found ? found.items.length : 0;
-  let surfaceData: unknown = data; // rebound to {_groups} when grouping
+  const allItems = found ? found.items : [];
+  const displayItems = allItems.slice(0, MAX_DISPLAY);
+  const count = displayItems.length;
+  const total = totalCount(data, allItems.length);
+  let surfaceData: unknown = data; // rebound to a bounded slice / {_groups} below
 
-  const headerId = add({ type: "pill", label: `${plan.app_label} · ${count} ${count === 1 ? "item" : "items"}`, icon: "tray", fill: "lime", fg: "ink" });
+  const headerId = add({ type: "pill", label: `${plan.app_label} · ${total} ${total === 1 ? "item" : "items"}`, icon: "tray", fill: "lime", fg: "ink" });
 
   const kids: string[] = [headerId, add({ type: "spacer", size: 8 })];
 
@@ -291,7 +306,7 @@ export function buildPlannedSurface(
     // Grouped (Claude chose a category field) vs flat list. Grouping uses nested
     // A2UI lists (already client-supported) and rebinds the data to {_groups}.
     if (plan.group_by && found) {
-      const groups = groupItems(found.items, plan.group_by);
+      const groups = groupItems(displayItems, plan.group_by);
       surfaceData = { _groups: groups };
       const inner = add({ type: "list", path: "items", item: itemCard, gap: 7 });
       const section = add({ type: "column", children: [
@@ -302,7 +317,16 @@ export function buildPlannedSurface(
       ], gap: 0 });
       kids.push(add({ type: "list", path: "_groups", item: section, gap: 0 }));
     } else {
-      kids.push(add({ type: "list", path: plan.list_path, item: itemCard, gap: 7 }));
+      // Bound the rendered slice: rebind data to {items: first N} so a huge list
+      // never bloats the A2UI payload.
+      surfaceData = { items: displayItems };
+      kids.push(add({ type: "list", path: "items", item: itemCard, gap: 7 }));
+    }
+
+    // "Showing N of M" when the list was capped — never silently drop records.
+    if (total > count) {
+      kids.push(add({ type: "spacer", size: 8 }));
+      kids.push(add({ type: "card", child: add({ type: "text", value: `Showing first ${count} of ${total} — ask me to filter or search to narrow it down.`, variant: "sub", color: "inkSoft" }), fill: "paper2" }));
     }
   }
 
@@ -360,45 +384,70 @@ function shortDate(v: unknown): string {
   catch { return ""; }
 }
 
-// type label + order rank + icon, from mimeType (preferred) or filename ext.
-function driveType(file: any): { label: string; rank: number; icon: string } {
+// type label + order rank + per-file ICON + contextual "open" verb, from
+// mimeType (preferred) or filename extension. The icon names map to glyphs in
+// the Flutter renderer (file-pdf, file-xls, image, film-strip, music-notes, …).
+function driveType(file: any): { label: string; rank: number; icon: string; open: { label: string; icon: string } } {
   const mime = String(file?.mimeType ?? "").toLowerCase();
   const name = String(file?.name ?? "").toLowerCase();
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
-  const T = (label: string, rank: number, icon: string) => ({ label, rank, icon });
+  const open = { label: "Open", icon: "arrow-square-out" };
+  const view = { label: "View", icon: "eye" };
+  const play = { label: "Play", icon: "play" };
+  const T = (label: string, rank: number, icon: string, o = open) => ({ label, rank, icon, open: o });
   if (mime.includes("folder")) return T("Folders", 0, "folder");
-  if (mime.includes("document") || ext === "doc" || ext === "docx") return T("Docs", 1, "tray");
-  if (mime.includes("spreadsheet") || ext === "xls" || ext === "xlsx" || ext === "csv") return T("Sheets", 2, "tray");
-  if (mime.includes("presentation") || ext === "ppt" || ext === "pptx") return T("Slides", 3, "tray");
-  if (mime.includes("pdf") || ext === "pdf") return T("PDFs", 4, "tray");
-  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic", "svg"].includes(ext)) return T("Images", 5, "tray");
-  if (mime.startsWith("video/") || ["mp4", "mov", "mkv", "webm", "avi"].includes(ext)) return T("Videos", 6, "video-camera");
-  if (mime.startsWith("audio/") || ["mp3", "m4a", "wav", "aac", "ogg"].includes(ext)) return T("Audio", 7, "tray");
-  // backups: db dumps + the long "backup_*" archives
-  if (/(^|[_-])backup/.test(name) || ext === "gz" || ext === "tgz" || /\.sql/.test(name) || ext === "avbk") return T("Backups", 8, "tray");
-  if (["zip", "rar", "7z", "tar"].includes(ext) || mime.includes("zip") || mime.includes("compressed")) return T("Archives", 9, "tray");
-  return T("Files", 10, "tray");
+  if (mime.includes("document") || ext === "doc" || ext === "docx") return T("Docs", 1, "file-doc");
+  if (mime.includes("spreadsheet") || ext === "xls" || ext === "xlsx" || ext === "csv") return T("Sheets", 2, "file-xls");
+  if (mime.includes("presentation") || ext === "ppt" || ext === "pptx") return T("Slides", 3, "file-ppt");
+  if (mime.includes("pdf") || ext === "pdf") return T("PDFs", 4, "file-pdf", view);
+  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic", "svg"].includes(ext)) return T("Images", 5, "image", view);
+  if (mime.startsWith("video/") || ["mp4", "mov", "mkv", "webm", "avi"].includes(ext)) return T("Videos", 6, "film-strip", play);
+  if (mime.startsWith("audio/") || ["mp3", "m4a", "wav", "aac", "ogg"].includes(ext)) return T("Audio", 7, "music-notes", play);
+  if (/(^|[_-])backup/.test(name) || ext === "gz" || ext === "tgz" || /\.sql/.test(name) || ext === "avbk") return T("Backups", 8, "file-zip");
+  if (["zip", "rar", "7z", "tar"].includes(ext) || mime.includes("zip") || mime.includes("compressed")) return T("Archives", 9, "file-zip");
+  if (["json", "txt", "md", "log", "yaml", "yml", "xml"].includes(ext)) return T("Text & code", 10, "file-text");
+  return T("Files", 11, "file");
 }
 
+function driveFileId(f: any): string {
+  return String(f?.id ?? f?.fileId ?? f?.fileID ?? f?.documentId ?? "");
+}
+
+// Bind an affordance's id arg(s) to a CONCRETE row id (we unroll Drive cards, so
+// there's no per-element ${id} scope to resolve at render time).
+function concreteAction(a: Affordance, idVal: string): A2uiAction {
+  const act = affordanceToAction(a);
+  if (act.type === "composio" && act.args) {
+    const args: Record<string, string> = {};
+    for (const [k, v] of Object.entries(act.args)) args[k] = (typeof v === "string" && v.includes("${")) ? idVal : v;
+    return { ...act, args };
+  }
+  return act;
+}
+
+// Google Drive presenter. UNROLLED per file (bounded to MAX_DISPLAY) so EACH
+// file gets its own type icon + contextual primary action (Play video, View
+// image/PDF, Open doc) — things a flat list/template can't do because icons
+// aren't data-bound. Grouped into type sections, with a "Showing N of M" footer
+// when the list is capped. Deterministic, never falls back to text.
 export function buildDriveSurface(
   data: unknown, affordances: Affordance[], opts: { tool: string; gid: string },
 ): A2uiSurface | null {
   const found = findListPath(data);
   if (!found) return null;
-  const files = found.items;
+  const all = found.items;
+  const total = totalCount(data, all.length);
+  const files = all.slice(0, MAX_DISPLAY);
 
-  // group + decorate
-  const groupsMap = new Map<string, { label: string; rank: number; icon: string; files: any[] }>();
+  // group by type, preserving type order
+  const groupsMap = new Map<string, { rank: number; icon: string; files: any[] }>();
   for (const f of files) {
     const t = driveType(f);
-    const decorated = { ...f, _type: t.label.replace(/s$/, ""), _size: prettyBytes(f?.size), _modified: shortDate(f?.modifiedTime ?? f?.createdTime) };
-    const g = groupsMap.get(t.label) ?? { label: t.label, rank: t.rank, icon: t.icon, files: [] };
-    g.files.push(decorated);
+    const g = groupsMap.get(t.label) ?? { rank: t.rank, icon: t.icon, files: [] };
+    g.files.push(f);
     groupsMap.set(t.label, g);
   }
-  const groups = [...groupsMap.values()].sort((a, b) => a.rank - b.rank)
-    .map((g) => ({ _label: g.label, _count: g.files.length, files: g.files }));
-  const grouped = { _groups: groups };
+  const groups = [...groupsMap.entries()].sort((a, b) => a[1].rank - b[1].rank);
 
   const comps: Record<string, A2uiNode> = {};
   let n = 0;
@@ -406,40 +455,48 @@ export function buildDriveSurface(
   const itemActs = affordances.filter((a) => a.scope === "item");
   const surfaceActs = affordances.filter((a) => a.scope === "surface");
 
-  // file card (bound to a file element inside group.files)
-  const fileKids: string[] = [add({ type: "text", value: "${name}", variant: "title", maxLines: 1 })];
-  const meta: string[] = [];
-  meta.push(add({ type: "pill", label: "${_type}", fill: "paper2", fg: "ink" }));
-  // size · modified subtitle
-  fileKids.push(add({ type: "text", value: "${_size}  ·  ${_modified}", variant: "sub", color: "inkSoft", maxLines: 1 }));
-  // open chip + actions row
-  const chip: string[] = [...meta];
-  chip.push(add({ type: "button", label: "Open", icon: "arrow-square-out", fill: "card", action: { type: "link", url: "${webViewLink}" } }));
-  fileKids.splice(1, 0, add({ type: "row", children: chip, gap: 6, align: "start" }));
-  if (itemActs.length) {
-    const btns = itemActs.map((a) => add({ type: "button", label: a.label, icon: a.icon, fill: a.destructive ? "coral" : "card", action: affordanceToAction(a) }));
-    fileKids.push(add({ type: "row", children: btns, gap: 6, align: "start" }));
-  }
-  const fileCard = add({ type: "card", child: add({ type: "column", children: fileKids, gap: 4 }), accent: "blue" });
-  const fileList = add({ type: "list", path: "files", item: fileCard, gap: 7 });
-
-  // group section = header pill + the file list
-  const groupCol = add({ type: "column", children: [
-    add({ type: "pill", label: "${_label} · ${_count}", icon: "tray", fill: "ink", fg: "paper" }),
-    add({ type: "spacer", size: 6 }),
-    fileList,
-    add({ type: "spacer", size: 10 }),
-  ], gap: 0 });
-  const groupList = add({ type: "list", path: "_groups", item: groupCol, gap: 0 });
-
   const kids: string[] = [
-    add({ type: "pill", label: `Google Drive · ${files.length} ${files.length === 1 ? "file" : "files"}`, icon: "tray", fill: "lime", fg: "ink" }),
+    add({ type: "pill", label: `Google Drive · ${total} ${total === 1 ? "file" : "files"}`, icon: "folder", fill: "lime", fg: "ink" }),
     add({ type: "spacer", size: 10 }),
-    groupList,
   ];
+
+  for (const [label, g] of groups) {
+    kids.push(add({ type: "pill", label: `${label} · ${g.files.length}`, icon: g.icon, fill: "ink", fg: "paper" }));
+    kids.push(add({ type: "spacer", size: 6 }));
+    for (const f of g.files) {
+      const t = driveType(f);
+      const idVal = driveFileId(f);
+      const link = String(f?.webViewLink ?? f?.webContentLink ?? "");
+      const sizeMod = [prettyBytes(f?.size), shortDate(f?.modifiedTime ?? f?.createdTime)].filter(Boolean).join("  ·  ");
+
+      const col: string[] = [add({ type: "text", value: String(f?.name ?? "Untitled"), variant: "title", maxLines: 1 })];
+      if (sizeMod) col.push(add({ type: "text", value: sizeMod, variant: "sub", color: "inkSoft", maxLines: 1 }));
+      const actRow: string[] = [];
+      if (link) actRow.push(add({ type: "button", label: t.open.label, icon: t.open.icon, fill: "card", action: { type: "link", url: link } }));
+      for (const a of itemActs) actRow.push(add({ type: "button", label: a.label, icon: a.icon, fill: a.destructive ? "coral" : "card", action: concreteAction(a, idVal) }));
+      if (actRow.length) col.push(add({ type: "row", children: actRow, gap: 6, align: "start" }));
+
+      // leading type icon + the text/action column
+      const body = add({ type: "row", children: [
+        add({ type: "icon", name: t.icon, size: 22, color: "ink" }),
+        add({ type: "column", children: col, gap: 4 }),
+      ], gap: 10, align: "start" });
+      kids.push(add({ type: "card", child: body, accent: "blue" }));
+      kids.push(add({ type: "spacer", size: 6 }));
+    }
+    kids.push(add({ type: "spacer", size: 6 }));
+  }
+
+  if (total > files.length) {
+    kids.push(add({ type: "card", child: add({ type: "text", value: `Showing first ${files.length} of ${total} — ask me to filter (e.g. "only PDFs" or "from last week").`, variant: "sub", color: "inkSoft" }), fill: "paper2" }));
+  }
+
   for (const a of surfaceActs) {
+    kids.push(add({ type: "spacer", size: 6 }));
     kids.push(add({ type: "button", label: a.label, icon: a.icon ?? "plus", fill: "lime", full: true, action: affordanceToAction(a) }));
   }
+
   const root = add({ type: "column", children: kids, gap: 0 });
-  return { version: "v0.9", surfaceId: `gx_${Date.now()}`, gid: opts.gid, tool: opts.tool, ts: Date.now(), root, components: comps, data: grouped };
+  // Unrolled → all values are literal; no data model needed.
+  return { version: "v0.9", surfaceId: `gx_${Date.now()}`, gid: opts.gid, tool: opts.tool, ts: Date.now(), root, components: comps, data: {} };
 }

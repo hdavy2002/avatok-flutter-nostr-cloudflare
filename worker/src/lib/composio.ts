@@ -295,19 +295,32 @@ function trimToolResult(name: string, r: any): any {
   } catch { /* fall through to the generic safe trim */ }
   const s = JSON.stringify(r ?? null);
   if (s.length <= RESULT_CHARS) return r;
-  // STRUCTURE-PRESERVING trim. The old `{truncated, preview:<string>}` destroyed
-  // the array, so GenUI couldn't render it (no list to show) and a long Drive
-  // listing fell back to an ugly plain-text bullet list. Instead, keep the shape
-  // and just CAP arrays + clip long string fields, so the result stays a real
-  // object with its records array intact → the card renders.
+  // STRUCTURE-PRESERVING trim + SAFEGUARD for huge results (Composio can return
+  // thousands of records). The old `{truncated, preview:<string>}` destroyed the
+  // array, so GenUI couldn't render it (no list) and a long listing fell back to
+  // an ugly plain-text bullet list. Instead we keep the shape, CAP the records to
+  // a bounded, A2UI-friendly slice, clip long string fields, and stamp `_total`
+  // (the true record count) so the card can show "Showing first N of M" — never
+  // breaking and never switching to text.
   try {
     const clone = JSON.parse(s);
-    capArrays(clone, 40);
-    let s2 = JSON.stringify(clone);
-    if (s2.length > RESULT_CHARS * 2) { capArrays(clone, 18); s2 = JSON.stringify(clone); }
+    const total = primaryArrayLen(clone);
+    capArrays(clone, 50);
+    if (JSON.stringify(clone).length > RESULT_CHARS * 2) capArrays(clone, 20);
+    if (clone && typeof clone === "object" && !Array.isArray(clone)) (clone as any)._total = total;
     return clone;
   } catch { /* fall through */ }
   return { truncated: true, preview: s.slice(0, RESULT_CHARS) };
+}
+
+// Length of the primary array-of-records in a (possibly nested) result, so we
+// can report the true total even after capping the displayed slice.
+function primaryArrayLen(v: any, depth = 0): number {
+  if (depth > 4 || v == null || typeof v !== "object") return 0;
+  if (Array.isArray(v)) return (v.length && typeof v[0] === "object") ? v.length : 0;
+  let best = 0;
+  for (const k of Object.keys(v)) { const n = primaryArrayLen(v[k], depth + 1); if (n > best) best = n; }
+  return best;
 }
 
 // Cap every array to `maxItems` and clip very long string fields, in place, so a

@@ -624,6 +624,19 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       case 'arrow-bend-up-left': return PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold);
       case 'plus': return PhosphorIcons.plus(PhosphorIconsStyle.bold);
       case 'dots-three': return PhosphorIcons.dotsThree(PhosphorIconsStyle.bold);
+      // file-type glyphs (Drive presenter) + contextual verbs
+      case 'file-pdf': return PhosphorIcons.filePdf(PhosphorIconsStyle.fill);
+      case 'file-doc': return PhosphorIcons.fileDoc(PhosphorIconsStyle.fill);
+      case 'file-xls': return PhosphorIcons.fileXls(PhosphorIconsStyle.fill);
+      case 'file-ppt': return PhosphorIcons.filePpt(PhosphorIconsStyle.fill);
+      case 'file-text': return PhosphorIcons.fileText(PhosphorIconsStyle.fill);
+      case 'file-zip': return PhosphorIcons.fileZip(PhosphorIconsStyle.fill);
+      case 'file': return PhosphorIcons.file(PhosphorIconsStyle.fill);
+      case 'image': return PhosphorIcons.image(PhosphorIconsStyle.fill);
+      case 'film-strip': return PhosphorIcons.filmStrip(PhosphorIconsStyle.fill);
+      case 'music-notes': return PhosphorIcons.musicNotes(PhosphorIconsStyle.fill);
+      case 'play': return PhosphorIcons.play(PhosphorIconsStyle.fill);
+      case 'eye': return PhosphorIcons.eye(PhosphorIconsStyle.fill);
       default: return PhosphorIcons.circle(PhosphorIconsStyle.bold);
     }
   }
