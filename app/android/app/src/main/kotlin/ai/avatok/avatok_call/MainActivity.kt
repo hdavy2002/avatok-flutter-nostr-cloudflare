@@ -17,6 +17,9 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         // AvaVision live-session native bridge (camera + on-device vision).
         flutterEngine.plugins.add(ai.avatok.avavision.AvaVisionPlugin())
+        // Full-duplex voice-call audio engine with platform echo cancellation
+        // (Gemini Live "AI Voice Agent" — true barge-in on speaker).
+        flutterEngine.plugins.add(ai.avatok.avavoiceaudio.AvaVoiceAudioPlugin())
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, secureChannel)
             .setMethodCallHandler { call, result ->

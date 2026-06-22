@@ -170,7 +170,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
               const SizedBox(height: 18),
               _captions(),
               const Spacer(),
-              _endButton(),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                _routeButton(),
+                const SizedBox(width: 16),
+                _endButton(),
+              ]),
               const SizedBox(height: 28),
             ]),
             if (_needContinue) _continueOverlay(),
@@ -351,20 +355,36 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
         ]),
       );
 
-  Widget _endButton() => Center(
-        child: ZinePressable(
-          onTap: _end,
-          color: Zine.coral,
+  Widget _endButton() => ZinePressable(
+        onTap: _end,
+        color: Zine.coral,
+        radius: BorderRadius.circular(100),
+        boxShadow: Zine.shadowSm,
+        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 16),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill),
+              color: Colors.white, size: 22),
+          const SizedBox(width: 10),
+          Text('End call',
+              style: ZineText.button(size: 16, color: Colors.white)),
+        ]),
+      );
+
+  // Audio-route toggle: loudspeaker ⇆ earpiece/Bluetooth. Speaker ON is hands-free;
+  // OFF hands the route to a connected Bluetooth/wired headset or the earpiece
+  // (privacy). The choice is remembered for next time by the controller.
+  Widget _routeButton() => ValueListenableBuilder<bool>(
+        valueListenable: _call.speakerOn,
+        builder: (context, on, _) => ZinePressable(
+          onTap: () => _call.setSpeaker(!on),
+          color: on ? Zine.blue : Zine.card,
           radius: BorderRadius.circular(100),
           boxShadow: Zine.shadowSm,
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 16),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.phoneX(PhosphorIconsStyle.fill),
-                color: Colors.white, size: 22),
-            const SizedBox(width: 10),
-            Text('End call',
-                style: ZineText.button(size: 16, color: Colors.white)),
-          ]),
+          padding: const EdgeInsets.all(16),
+          child: Icon(
+            on ? Icons.volume_up_rounded : Icons.phone_in_talk_rounded,
+            color: on ? Colors.white : Zine.ink, size: 24,
+          ),
         ),
       );
 }

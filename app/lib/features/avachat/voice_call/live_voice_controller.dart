@@ -22,6 +22,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/analytics.dart';
 import '../../../core/ava_live_api.dart';
 import '../../../core/ava_log.dart';
+import '../../../core/disk_cache.dart';
+import '../../../core/voice/native_voice_audio.dart';
 import 'voice_call_api.dart';
 
 class LiveVoiceController implements VoiceCallApi {
@@ -44,6 +46,14 @@ class LiveVoiceController implements VoiceCallApi {
   StreamSubscription<Uint8List>? _micSub;
   bool _pcmReady = false;
   bool _disposed = false;
+
+  // Native full-duplex audio engine (Android): one communication audio session
+  // with the platform AcousticEchoCanceler attached, so Ava's voice is removed
+  // from the mic and barge-in works on speaker. When unavailable we fall back to
+  // the record + flutter_pcm_sound + half-duplex path.
+  final NativeVoiceAudio _native = NativeVoiceAudio();
+  bool _useNative = false;
+  StreamSubscription<Uint8List>? _nativeMicSub;
   bool _paused = false;
   bool _greeted = false;
   int _reconnects = 0;
@@ -61,6 +71,12 @@ class LiveVoiceController implements VoiceCallApi {
   bool _firstAudio = false;
   bool _ready = false;
 
+  // Echo guard. Timestamp of Ava's most recent audio chunk; on loudspeaker we
+  // half-duplex the mic around it so the speaker echo of her own voice isn't
+  // transcribed (which made her answer herself). Headset/earpiece stays full-duplex.
+  DateTime _lastAvaAudioAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static const int _echoTailMs = 400;
+
   /// Capture a voice_live_* event with the call_id merged in.
   void _ev(String name, [Map<String, Object> props = const {}]) {
     Analytics.capture(name, {'call_id': _callId, ...props});
@@ -71,7 +87,9 @@ class LiveVoiceController implements VoiceCallApi {
   Future<void> pause() async {
     if (_disposed || _paused) return;
     _paused = true;
-    await _stopMic();
+    // Native engine keeps running; _sendMic/_playAudio gate on _paused so nothing
+    // is billed. Legacy path stops the mic stream outright.
+    if (!_useNative) await _stopMic();
     status.value = 'Paused';
     avaSpeaking.value = false;
     _ev('voice_live_pause', {'at_ms': _callSw.elapsedMilliseconds});
@@ -81,7 +99,7 @@ class LiveVoiceController implements VoiceCallApi {
   Future<void> resume() async {
     if (_disposed || !_paused) return;
     _paused = false;
-    await _startMic();
+    if (!_useNative) await _startMic();
     _setListening();
     _ev('voice_live_resume', {'at_ms': _callSw.elapsedMilliseconds});
   }
@@ -93,6 +111,7 @@ class LiveVoiceController implements VoiceCallApi {
     _ev('voice_live_dial'); // user tapped Call
     state.value = CallState.preparing;
     status.value = 'Connecting to Ava…';
+    await _loadSpeakerPref(); // restore the user's last speaker/earpiece choice
     final tokenSw = Stopwatch()..start();
     final t = await AvaLiveApi.token();
     final ok200 = (t['status'] as num?)?.toInt() == 200 && (t['token'] ?? '').toString().isNotEmpty;
@@ -138,13 +157,7 @@ class LiveVoiceController implements VoiceCallApi {
       // is IGNORED — send an EMPTY setup (the protocol still needs a first frame).
       ws.sink.add(jsonEncode({'setup': <String, dynamic>{}}));
       ws.stream.listen(_onMessage, onError: (e) => _onSocketDown('error: $e'), onDone: () => _onSocketDown('closed'));
-      await _setupPcm();
-      await _startMic();
-      // ROUTE TO LOUDSPEAKER. Opening the mic with AEC puts Android into
-      // communication audio mode, which otherwise routes Ava's playback to the
-      // quiet earpiece (user hears nothing). Every other call screen forces the
-      // speaker via flutter_webrtc's Helper; do the same here so it's hands-free.
-      await _forceSpeaker(true);
+      await _startAudio();
       // Stay "Connecting…" until the server confirms setupComplete; only then do we
       // greet + listen (sending audio/turns before that can get the session closed).
       status.value = 'Connecting…';
@@ -156,16 +169,49 @@ class LiveVoiceController implements VoiceCallApi {
     }
   }
 
-  bool _speakerForced = false;
-  Future<void> _forceSpeaker(bool on) async {
+  // Audio route. Default is the loudspeaker (hands-free), but the user can switch
+  // to earpiece/Bluetooth for privacy: turning the speaker OFF lets Android route
+  // to a connected Bluetooth/wired headset, otherwise the earpiece. The choice is
+  // persisted per account (DiskCache is account-scoped) so it sticks across calls.
+  static const _kSpeakerKey = 'voice_call_speaker';
+  final ValueNotifier<bool> speakerOn = ValueNotifier<bool>(true);
+  bool _routeApplied = false;
+
+  Future<void> _loadSpeakerPref() async {
+    final raw = await DiskCache.read(_kSpeakerKey);
+    speakerOn.value = raw == null || raw.isEmpty ? true : raw == '1';
+  }
+
+  // Apply the saved route (legacy path only — the native engine sets its route in
+  // [_native.start]). Opening the mic with AEC puts Android into communication
+  // audio mode; without an explicit route Ava's playback goes to the quiet
+  // earpiece. We default to the loudspeaker but honour the user's saved choice.
+  Future<void> _applyRoute() async {
     try {
-      await Helper.setSpeakerphoneOn(on);
-      if (on && !_speakerForced) {
-        _speakerForced = true;
-        _ev('voice_live_speaker', {'on': true, 'ok': true});
+      await Helper.setSpeakerphoneOn(speakerOn.value);
+      if (!_routeApplied) {
+        _routeApplied = true;
+        _ev('voice_live_speaker', {'on': speakerOn.value, 'ok': true});
       }
     } catch (e) {
-      if (on) _ev('voice_live_speaker', {'on': true, 'ok': false, 'error': e.toString()});
+      _ev('voice_live_speaker', {'on': speakerOn.value, 'ok': false, 'error': e.toString()});
+    }
+  }
+
+  /// Toggle speaker ⇆ earpiece/Bluetooth mid-call (UI button). Speaker OFF lets
+  /// Android route to a connected Bluetooth/wired headset, else the earpiece.
+  Future<void> setSpeaker(bool on) async {
+    speakerOn.value = on;
+    try { await DiskCache.write(_kSpeakerKey, on ? '1' : '0'); } catch (_) {}
+    try {
+      if (_useNative) {
+        await _native.setSpeaker(on);
+      } else {
+        await Helper.setSpeakerphoneOn(on);
+      }
+      _ev('voice_live_route_change', {'on': on, 'ok': true});
+    } catch (e) {
+      _ev('voice_live_route_change', {'on': on, 'ok': false, 'error': e.toString()});
     }
   }
 
@@ -205,9 +251,10 @@ class LiveVoiceController implements VoiceCallApi {
       for (final p in parts) {
         final inline = ((p as Map)['inlineData'] as Map?);
         final data = inline?['data']?.toString();
-        if (data != null && data.isNotEmpty) { _playPcm(base64Decode(data)); gotAudio = true; }
+        if (data != null && data.isNotEmpty) { _playAudio(base64Decode(data)); gotAudio = true; }
       }
       if (gotAudio) {
+        _lastAvaAudioAt = DateTime.now(); // drives the half-duplex echo guard
         if (!_firstAudio) {
           _firstAudio = true;
           // Time-to-first-audio: dial → Ava's first spoken byte (the greeting).
@@ -279,7 +326,7 @@ class LiveVoiceController implements VoiceCallApi {
       if (_disposed) return;
       final t = await AvaLiveApi.token();
       if (!_disposed && (t['status'] as num?)?.toInt() == 200) {
-        await _stopMic();
+        await _stopAudio();
         await _connect(t['token']?.toString() ?? '');
       } else if (!_disposed) {
         _fail('Connection lost');
@@ -287,7 +334,72 @@ class LiveVoiceController implements VoiceCallApi {
     });
   }
 
-  // ── audio in (mic 16k PCM16) / out (Gemini 24k PCM16) ───────────────────────
+  // ── audio engine: native full-duplex (AEC) on Android, else legacy fallback ──
+
+  Future<bool> _hasMicPermission() async {
+    try { _rec ??= AudioRecorder(); return await _rec!.hasPermission(); }
+    catch (_) { return false; }
+  }
+
+  /// Bring up audio. Prefer the native full-duplex engine (platform AEC → real
+  /// barge-in on speaker); fall back to record + flutter_pcm_sound + half-duplex.
+  Future<void> _startAudio() async {
+    if (NativeVoiceAudio.isSupported) {
+      if (!await _hasMicPermission()) {
+        _ev('voice_live_engine', {'native': false, 'reason': 'no_permission'});
+        _fail('Microphone permission needed');
+        return;
+      }
+      final ok = await _native.start(
+        micSampleRate: 16000, playSampleRate: 24000, speaker: speakerOn.value);
+      if (ok) {
+        _useNative = true;
+        _routeApplied = true;
+        _ev('voice_live_engine', {'native': true});
+        _ev('voice_live_speaker', {'on': speakerOn.value, 'ok': true});
+        _nativeMicSub = _native.micStream().listen(_sendMic);
+        return;
+      }
+      _ev('voice_live_engine', {'native': false, 'reason': 'start_failed'});
+      // fall through to the legacy path
+    }
+    _useNative = false;
+    await _setupPcm();
+    await _startMic();
+    await _applyRoute();
+  }
+
+  Future<void> _stopAudio() async {
+    if (_useNative) {
+      await _nativeMicSub?.cancel();
+      _nativeMicSub = null;
+      await _native.stop();
+    } else {
+      await _stopMic();
+    }
+  }
+
+  // Upload one mic PCM16/16k frame to Gemini. Native frames carry AEC already; the
+  // legacy listener applies its own half-duplex gate before calling this.
+  void _sendMic(Uint8List chunk) {
+    final ws = _ws;
+    if (ws == null || chunk.isEmpty || _paused) return;
+    try {
+      ws.sink.add(jsonEncode({
+        'realtimeInput': {
+          'audio': {'data': base64Encode(chunk), 'mimeType': 'audio/pcm;rate=16000'},
+        },
+      }));
+    } catch (_) {}
+  }
+
+  // Play one chunk of Ava's PCM16/24k. Native engine plays on the AEC'd comm
+  // stream; legacy uses flutter_pcm_sound.
+  void _playAudio(Uint8List bytes) {
+    if (_disposed || _paused) return;
+    if (_useNative) { _native.feed(bytes); return; }
+    _playPcm(bytes);
+  }
 
   Future<void> _startMic() async {
     if (_micSub != null) return;
@@ -299,15 +411,15 @@ class LiveVoiceController implements VoiceCallApi {
         echoCancel: true, noiseSuppress: true,
       ));
       _micSub = stream.listen((chunk) {
-        final ws = _ws;
-        if (ws == null || chunk.isEmpty) return;
-        try {
-          ws.sink.add(jsonEncode({
-            'realtimeInput': {
-              'audio': {'data': base64Encode(chunk), 'mimeType': 'audio/pcm;rate=16000'},
-            },
-          }));
-        } catch (_) {}
+        // Half-duplex echo guard (loudspeaker only): while Ava is producing audio
+        // — and for a short tail after — don't upload the mic, else her own voice
+        // echoes back, gets transcribed, and she replies to herself. On earpiece/
+        // Bluetooth the echo is negligible so we keep full-duplex barge-in.
+        if (speakerOn.value &&
+            DateTime.now().difference(_lastAvaAudioAt).inMilliseconds < _echoTailMs) {
+          return;
+        }
+        _sendMic(chunk);
       });
     } catch (e) {
       AvaLog.I.log('voice_live', 'mic stream failed: $e');
@@ -356,11 +468,17 @@ class LiveVoiceController implements VoiceCallApi {
     });
     _callSw.stop();
     _reconnect?.cancel();
-    if (_speakerForced) { try { await Helper.setSpeakerphoneOn(false); } catch (_) {} }
-    await _stopMic();
+    // Native engine resets its own audio mode/route on stop; only the legacy path
+    // needs the speakerphone reset + flutter_pcm_sound release.
+    if (!_useNative && _routeApplied) {
+      try { await Helper.setSpeakerphoneOn(false); } catch (_) {}
+    }
+    await _stopAudio();
     try { await _ws?.sink.close(); } catch (_) {}
     _ws = null;
-    try { if (_pcmReady) await FlutterPcmSound.release(); } catch (_) {}
-    _pcmReady = false;
+    if (!_useNative) {
+      try { if (_pcmReady) await FlutterPcmSound.release(); } catch (_) {}
+      _pcmReady = false;
+    }
   }
 }
