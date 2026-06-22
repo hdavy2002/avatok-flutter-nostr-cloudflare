@@ -72,6 +72,9 @@ class _VoiceCardState extends State<_VoiceCard> {
     GoogleVoicePref.load().then((_) {
       if (mounted) setState(() {});
     });
+    AvaVoiceLangPref.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -123,6 +126,29 @@ class _VoiceCardState extends State<_VoiceCard> {
               ],
             );
           },
+        ),
+        const SizedBox(height: 18),
+        const Divider(height: 1, color: Zine.inkMute),
+        const SizedBox(height: 16),
+        Text('LANGUAGE', style: ZineText.kicker(size: 11)),
+        const SizedBox(height: 4),
+        Text('The language Ava speaks on a call. Auto follows whatever you speak.',
+            style: ZineText.sub(size: 12)),
+        const SizedBox(height: 10),
+        ValueListenableBuilder<String>(
+          valueListenable: AvaVoiceLangPref.lang,
+          builder: (context, code, _) => Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final l in AvaLangCatalog.all)
+                ZineChip(
+                  label: l.label,
+                  active: l.code == code,
+                  onTap: () => AvaVoiceLangPref.set(l.code),
+                ),
+            ],
+          ),
         ),
       ]),
     );

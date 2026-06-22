@@ -20,6 +20,7 @@ class AvaLiveApi {
   /// session server-side, so Ava can greet them by name).
   static Future<Map<String, dynamic>> token() async {
     await GoogleVoicePref.load();
+    await AvaVoiceLangPref.load();
     String firstName = '';
     try {
       final p = await ProfileStore().load();
@@ -27,7 +28,12 @@ class AvaLiveApi {
     } catch (_) {}
     final r = await ApiAuth.postJson(
       _url,
-      {'voice': GoogleVoicePref.current, 'name': firstName},
+      {
+        'voice': GoogleVoicePref.current,
+        'name': firstName,
+        // '' = Auto (server omits languageCode and lets Gemini auto-detect).
+        'lang': AvaVoiceLangPref.current,
+      },
       timeout: const Duration(seconds: 15),
     );
     return {..._j(r.body), 'status': r.statusCode};
