@@ -220,7 +220,14 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       appBar: const ZineAppBar(title: 'AvaApps', markWord: 'Apps'),
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.all(20), children: [
+        child: CustomScrollView(
+          // Always scrollable so pull-to-refresh works even when content is short.
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // Header (intro, search) — fixed, non-grid content.
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              sliver: SliverList(delegate: SliverChildListDelegate([
           Row(children: [
             Expanded(child: Text('Connect your apps and let Ava act across them — read '
                 'email, find a file, create a doc, check your calendar.',
@@ -262,26 +269,38 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           ),
           const SizedBox(height: 14),
           if (_loading)
-            const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
-          else if (_visible.isEmpty)
+            const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+          if (!_loading && _visible.isEmpty)
             Padding(padding: const EdgeInsets.all(20),
                 child: Center(child: Text('No apps found.', style: ZineText.sub(size: 13)))),
-          if (!_loading && _visible.isNotEmpty)
-            GridView.builder(
-              shrinkWrap: true,
-              primary: false,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.zero,
-              itemCount: _visible.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 18,
-                childAspectRatio: 0.74,
-              ),
-              itemBuilder: (_, i) => _appTile(_visible[i]),
+              ])),
             ),
-          const SizedBox(height: 24),
+            // The icon grid — a LAZY SliverGrid so only the on-screen tiles build.
+            // Previously this was a shrink-wrapped GridView inside a ListView, which
+            // forces Flutter to build ALL ~300 tiles at once on every open → every
+            // icon's AppIconCache.get() fired each open (looked like a full
+            // re-download). As a real sliver it builds ~one screenful, so each open
+            // loads only the visible icons (from disk after first fetch).
+            if (!_loading && _visible.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 18,
+                    childAspectRatio: 0.74,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (_, i) => _appTile(_visible[i]),
+                    childCount: _visible.length,
+                  ),
+                ),
+              ),
+            // Trailing content (Ask Ava, answer, tip).
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              sliver: SliverList(delegate: SliverChildListDelegate([
           Text('ASK AVA', style: ZineText.kicker()),
           const SizedBox(height: 10),
           ZineCard(
@@ -319,7 +338,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
           const SizedBox(height: 16),
           Center(child: Text('Tip: from any chat, type "@ava …" to use your apps inline',
               style: ZineText.sub(size: 11.5, color: Zine.inkMute))),
-        ]),
+              ])),
+            ),
+          ],
+        ),
       ),
     );
   }
