@@ -27,9 +27,11 @@ export interface PlatformConfig {
   // AvaVoice — creator-built AI voice agents (Specs/AVAVOICE-PROPOSAL.md).
   avavoiceEnabled: boolean;          // master switch for /api/avavoice/*
   avavisionEnabled: boolean;         // master switch for /api/avavision/* (vision coaching agents)
-  // Ava Receptionist — premium "Ava answers after 5 rings" (Specs/PROPOSAL-AI-RECEPTIONIST.md).
-  // First real AvaVoice deployment. Gemini Live via CF AI Gateway, 2-min cap.
+  // Ava Receptionist — premium "Ava answers after N rings" (Specs/PROPOSAL-AI-RECEPTIONIST.md
+  // + PROPOSAL-RECEPTIONIST-V2.md). First real AvaVoice deployment. Gemini Live via CF AI
+  // Gateway, 2-min cap.
   receptionistEnabled: boolean;      // master switch for /api/receptionist/* (default OFF until tested)
+  receptionistRings: number;         // v2 Mode A: rings before auto-handoff (default 5)
   // AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md). OFF stops
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
@@ -80,6 +82,7 @@ const DEFAULTS: PlatformConfig = {
   avavoiceEnabled: true,
   avavisionEnabled: true,
   receptionistEnabled: false,      // Ava Receptionist — OFF until dogfood passes
+  receptionistRings: 5,            // v2 Mode A: auto-handoff after 5 rings
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
@@ -126,7 +129,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // Whitelist merge — unknown keys are rejected so a typo can't ship a dead flag.
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...DEFAULTS, ...current };
-  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit"]);
+  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
