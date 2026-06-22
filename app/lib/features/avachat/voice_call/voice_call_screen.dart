@@ -3,20 +3,22 @@
 /// An animated voice orb sits in the middle of the screen (no Ava portrait asset
 /// yet); it breathes while listening and pulses brighter while Ava speaks. Live
 /// captions show the last thing the user said and Ava's reply. One big End button.
-/// All the audio/logic lives in [VoiceCallController]; this screen just renders it.
+/// All the audio/logic lives in [LiveVoiceController]; this screen just renders it.
+/// Every 5 minutes it pauses and asks "Keep going?" — a spend guardrail for the
+/// online Live session (which also runs sliding-window context compression).
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
-import '../../../core/voice/voice_call_mode.dart';
 import 'live_voice_controller.dart';
 import 'voice_call_api.dart';
-import 'voice_call_controller.dart';
 
 class VoiceCallScreen extends StatefulWidget {
   const VoiceCallScreen({super.key});
@@ -26,27 +28,61 @@ class VoiceCallScreen extends StatefulWidget {
 
 class _VoiceCallScreenState extends State<VoiceCallScreen>
     with SingleTickerProviderStateMixin {
-  // Fast online (Gemini Live) vs private on-device — the user's VoiceCallMode pick.
-  final VoiceCallApi _call =
-      VoiceCallMode.I.online.value ? LiveVoiceController() : VoiceCallController();
+  final LiveVoiceController _call = LiveVoiceController();
   late final AnimationController _pulse;
+
+  // 5-minute "still there?" guardrail — pause + ask before each new segment.
+  static const _segment = Duration(minutes: 5);
+  Timer? _segTimer;
+  bool _started = false;
+  bool _needContinue = false;
 
   @override
   void initState() {
     super.initState();
     _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))
       ..repeat();
+    _call.state.addListener(_onState);
     _call.start();
+  }
+
+  // Start the segment timer once the call is actually live.
+  void _onState() {
+    if (!_started && _call.state.value == CallState.listening) {
+      _started = true;
+      _startSegTimer();
+    }
+  }
+
+  void _startSegTimer() {
+    _segTimer?.cancel();
+    _segTimer = Timer(_segment, _onSegmentEnd);
+  }
+
+  Future<void> _onSegmentEnd() async {
+    if (!mounted) return;
+    await _call.pause();
+    SystemSound.play(SystemSoundType.alert); // beep
+    if (mounted) setState(() => _needContinue = true);
+  }
+
+  Future<void> _continue() async {
+    setState(() => _needContinue = false);
+    await _call.resume();
+    _startSegTimer();
   }
 
   @override
   void dispose() {
+    _segTimer?.cancel();
+    _call.state.removeListener(_onState);
     _pulse.dispose();
     _call.dispose();
     super.dispose();
   }
 
   Future<void> _end() async {
+    _segTimer?.cancel();
     await _call.dispose();
     if (mounted) Navigator.of(context).pop();
   }
@@ -64,22 +100,72 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
       backgroundColor: Zine.paper,
       body: ZinePaper(
         child: SafeArea(
-          child: Column(children: [
-            _topBar(),
-            const Spacer(),
-            _orb(),
-            const SizedBox(height: 28),
-            _statusLine(),
-            const SizedBox(height: 18),
-            _captions(),
-            const Spacer(),
-            _endButton(),
-            const SizedBox(height: 28),
+          child: Stack(children: [
+            Column(children: [
+              _topBar(),
+              const Spacer(),
+              _orb(),
+              const SizedBox(height: 28),
+              _statusLine(),
+              const SizedBox(height: 18),
+              _captions(),
+              const Spacer(),
+              _endButton(),
+              const SizedBox(height: 28),
+            ]),
+            if (_needContinue) _continueOverlay(),
           ]),
         ),
       ),
     );
   }
+
+  // After 5 minutes the call pauses (no billing) and asks to keep going.
+  Widget _continueOverlay() => Positioned.fill(
+        child: Container(
+          color: Zine.ink.withValues(alpha: 0.45),
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: ZineCard(
+              radius: Zine.rSm,
+              padding: const EdgeInsets.all(20),
+              boxShadow: Zine.shadowSm,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                PhosphorIcon(PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill),
+                    size: 40, color: Zine.lilac),
+                const SizedBox(height: 12),
+                Text('Still there?', style: ZineText.value(size: 18)),
+                const SizedBox(height: 6),
+                Text(
+                  "You've been talking with Ava for 5 minutes. Keep going?",
+                  textAlign: TextAlign.center,
+                  style: ZineText.sub(size: 13),
+                ),
+                const SizedBox(height: 18),
+                Row(children: [
+                  Expanded(
+                    child: ZineButton(
+                      label: 'End call',
+                      variant: ZineButtonVariant.coral,
+                      fontSize: 15,
+                      onPressed: _end,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ZineButton(
+                      label: 'Continue',
+                      fontSize: 15,
+                      onPressed: _continue,
+                    ),
+                  ),
+                ]),
+              ]),
+            ),
+          ),
+        ),
+      );
 
   Widget _topBar() => Padding(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
@@ -92,7 +178,6 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
             textAlign: TextAlign.left,
           ),
           const Spacer(),
-          Text('LOCAL · GEMINI', style: ZineText.kicker(size: 10)),
         ]),
       );
 

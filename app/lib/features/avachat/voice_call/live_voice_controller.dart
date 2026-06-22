@@ -43,7 +43,26 @@ class LiveVoiceController implements VoiceCallApi {
   StreamSubscription<Uint8List>? _micSub;
   bool _pcmReady = false;
   bool _disposed = false;
+  bool _paused = false;
   Timer? _reconnect;
+
+  /// Pause the call (the 5-minute "still there?" guardrail): stop sending mic and
+  /// drop incoming audio so no tokens are billed while we wait for the user.
+  Future<void> pause() async {
+    if (_disposed || _paused) return;
+    _paused = true;
+    await _stopMic();
+    status.value = 'Paused';
+    avaSpeaking.value = false;
+  }
+
+  /// Resume after the user taps Continue.
+  Future<void> resume() async {
+    if (_disposed || !_paused) return;
+    _paused = false;
+    await _startMic();
+    _setListening();
+  }
 
   @override
   Future<bool> start() async {
@@ -190,7 +209,7 @@ class LiveVoiceController implements VoiceCallApi {
   }
 
   void _playPcm(Uint8List bytes) {
-    if (!_pcmReady || _disposed) return;
+    if (!_pcmReady || _disposed || _paused) return;
     try {
       final samples = Int16List.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes ~/ 2);
       FlutterPcmSound.feed(PcmArrayInt16(bytes: samples.buffer.asByteData()));

@@ -21,8 +21,8 @@ import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
-import '../../core/voice/voice_call_mode.dart';
-import '../../core/voice/voice_feature.dart';
+import '../../core/ava_ondevice_stt.dart';
+import '../../core/ui/mic_input_sheet.dart';
 import '../avachat/voice_call/voice_call_screen.dart';
 import '../settings/sections/voice_section.dart';
 import '../../core/paid_feature.dart';
@@ -92,6 +92,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   final List<_CompanionMsg> _msgs = [];
   bool _busy = false;
   String? _playingId;
+  // On-device dictation (Convert voice to text → message box).
+  SttSession? _stt;
+  bool _sttActive = false;
   String _lastAnswerSource = ''; // for attributing a follow-up correction
   Timer? _revealTimer; // drives the typewriter reveal of Ava's latest reply
   // AvaChat history is saved locally (per-account SQLite) + to D1 after each turn
@@ -147,6 +150,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   @override
   void dispose() {
     _revealTimer?.cancel();
+    _stt?.cancel();
     _persist(); // save the session on close (local + D1)
     _input.dispose();
     _scroll.dispose();
@@ -606,28 +610,71 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     );
   }
 
-  // Tap the mic → open the hands-free voice agent (Silero VAD → Whisper STT →
-  // Gemini → Supertonic-3 TTS, English). Requires the on-device voice models,
-  // which are downloaded once via Settings → Ava voice → "Enable Ava Voice".
-  Future<void> _openVoiceCall() async {
-    await VoiceCallMode.I.load();
-    // ONLINE (Gemini Live) needs no model download — go straight in. ON-DEVICE
-    // requires the voice models (Settings → Ava voice → Enable Ava Voice).
-    if (!VoiceCallMode.I.online.value) {
-      await VoiceFeature.I.refresh();
-      if (!mounted) return;
-      if (!VoiceFeature.I.isReady) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('On-device voice needs a one-time download in Settings → '
-              'Ava voice, or switch to Fast (online) calls there.'),
-        ));
-        return;
-      }
-    }
-    if (!mounted) return;
+  // Mic menu: a hands-free voice CALL (online Gemini Live) or dictate text
+  // (on-device Whisper → message box).
+  void _openMicMenu() {
+    FocusScope.of(context).unfocus();
+    showMicInputSheet(context, options: [
+      MicSheetOption(
+        icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
+        color: Zine.blue,
+        title: 'Voice call Ava',
+        subtitle: 'Hands-free conversation — talk and Ava talks back',
+        onTap: _openVoiceCall,
+      ),
+      MicSheetOption(
+        icon: PhosphorIcons.textT(PhosphorIconsStyle.bold),
+        color: Zine.mint,
+        title: 'Convert voice to text',
+        subtitle: 'Speak and watch it type into the box',
+        onTap: _startVoiceToText,
+      ),
+    ]);
+  }
+
+  // Online voice call (Gemini Live) — no model download needed.
+  void _openVoiceCall() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const VoiceCallScreen()),
     );
+  }
+
+  // On-device dictation into the message box (private; the Whisper model
+  // downloads on first use).
+  Future<void> _startVoiceToText() async {
+    if (_sttActive) return;
+    final s = await AvaOnDeviceStt.I.startDictation(
+      lang: 'en',
+      onText: (t) {
+        if (!mounted) return;
+        setState(() {
+          _input.text = t;
+          _input.selection = TextSelection.collapsed(offset: t.length);
+        });
+      },
+    );
+    if (!mounted) return;
+    if (s == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Couldn’t start voice-to-text.')));
+      return;
+    }
+    setState(() { _stt = s; _sttActive = true; });
+  }
+
+  Future<void> _stopVoiceToText() async {
+    final s = _stt;
+    if (s == null) return;
+    setState(() => _sttActive = false);
+    final text = await s.stop();
+    if (!mounted) return;
+    setState(() {
+      if (text.isNotEmpty) {
+        _input.text = text;
+        _input.selection = TextSelection.collapsed(offset: text.length);
+      }
+      _stt = null;
+    });
   }
 
   Widget _composer() {
@@ -644,11 +691,16 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
           onPressed: _busy ? null : _attachFile,
           tooltip: 'Attach a file (saved to AvaLibrary + indexed for Ava)',
         ),
-        // Mic → start a hands-free voice conversation with Ava (the voice agent).
+        // Mic → voice call (online) or dictation (on-device). Tap again to stop
+        // dictation.
         IconButton(
-          icon: PhosphorIcon(PhosphorIcons.microphone(PhosphorIconsStyle.fill), color: Zine.blueInk, size: 24),
-          onPressed: _openVoiceCall,
-          tooltip: 'Voice call Ava — hands-free',
+          icon: PhosphorIcon(
+              _sttActive
+                  ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
+                  : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
+              color: _sttActive ? Zine.coral : Zine.blueInk, size: 24),
+          onPressed: _sttActive ? _stopVoiceToText : _openMicMenu,
+          tooltip: _sttActive ? 'Stop voice-to-text' : 'Voice call or dictate',
         ),
         Expanded(
           child: Container(

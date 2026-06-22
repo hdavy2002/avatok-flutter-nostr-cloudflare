@@ -9,9 +9,9 @@
 /// objects are created once and reused; everything is null-safe so a missing model
 /// or unsupported device degrades to "not ready" instead of crashing.
 ///
-/// ⚠️ VERIFY ON DEVICE: native sherpa-onnx build config (Android NDK / iOS) and the
-/// exact Kokoro voice→sid table (see [KokoroVoice.sid]). All STT/VAD audio is
-/// 16 kHz mono; Kokoro outputs 24 kHz.
+/// ⚠️ NOTE: only the STT (Whisper) path is used now — the on-device TTS/VAD methods
+/// remain but are dead (the voice call is online Gemini Live). All STT audio is
+/// 16 kHz mono.
 library;
 
 import 'dart:typed_data';

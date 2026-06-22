@@ -3,63 +3,47 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/disk_cache.dart';
-import '../../../core/kokoro_voice.dart';
-import '../../../core/paid_feature.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
-import '../../../core/voice/kokoro_tts.dart';
-import '../../../core/voice/voice_call_mode.dart';
-import '../../../core/voice/voice_feature.dart';
+import '../../../core/voice/google_voice.dart';
 import '../settings_registry.dart';
-import 'kokoro_voice_screen.dart';
 
-/// Settings → "Ava voice" section (Phase 6 — Companion / Blank Ava Chat).
+/// Settings → "Ava voice".
 ///
-/// A PREMIUM (paid) toggle: when ON, Ava can speak her replies in the companion
-/// chat (rendered on demand — the user taps "Listen", we never synthesise ahead
-/// of time). The toggle stores a per-account preference via [AvaVoicePref]
-/// ([DiskCache], account-scoped). Actual synthesis goes through the existing TTS
-/// path on the Worker (no NEW worker route is added — `index.ts` is frozen).
-///
-/// Because turning the feature on is the premium gate, the ENABLE action is
-/// wrapped in [PaidFeature]: a non-entitled tap routes to the top-up sheet
-/// (Phase-0 stub wallet = empty today). Turning it OFF is always free.
+/// Voice calls are ONLINE-only (Gemini Live native audio) — there is no on-device
+/// TTS. This section just lets the user pick the Google voice (male/female) Ava
+/// speaks with on a call; the choice is sent to /api/ava/live/token and locked
+/// into the session server-side.
 ///
 /// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init]
-/// (`registerVoiceSection()`), the one sanctioned bootstrap append — never by
-/// editing settings_screen.dart.
+/// (`registerVoiceSection()`) — never by editing settings_screen.dart.
 void registerVoiceSection() {
-  // Wire on-device Kokoro TTS as the synthesiser so the "Listen" affordance
-  // speaks in the user's chosen voice. Lazy: the model only downloads when first
-  // asked to speak. Safe to set at bootstrap (no model work happens here).
-  AvaVoice.synthesizer = KokoroTts.speakToFile;
+  // On-device TTS was removed: Ava's spoken voice is the ONLINE Gemini Live call,
+  // so [AvaVoice.synthesizer] stays null (the companion "Listen" affordance shows
+  // its "voice coming soon" notice). On-device is kept only for STT (dictation).
   SettingsSectionRegistry.register(
     SettingsSection(
       id: 'ava_voice',
       title: 'Ava voice',
-      order: 25, // between Tools (30) and the upper sections
+      order: 25,
       builder: (context) => const _VoiceCard(),
     ),
   );
 }
 
-/// Per-account "Ava voice" on/off preference (premium feature). Non-secret →
-/// [DiskCache], account-scoped automatically under `cache/<AccountScope.id>/`.
-/// Default OFF (premium, opt-in). Exposes a [ValueListenable] so the companion
-/// thread's "Listen" affordance reacts instantly when the toggle flips.
+/// Per-account "Let Ava speak" preference, kept ONLY so the companion "Listen"
+/// affordance has a flag to read. With on-device TTS removed it stays OFF and the
+/// affordance is inert until an online synthesiser is wired. [DiskCache]-backed.
 class AvaVoicePref {
   AvaVoicePref._();
 
   static const _kKey = 'ava_voice_enabled';
 
-  /// Live value any screen can listen to. Default OFF.
   static final ValueNotifier<bool> enabled = ValueNotifier<bool>(false);
 
   static bool _loaded = false;
   static bool get isLoaded => _loaded;
 
-  /// Read the persisted value for the current account into [enabled]. Cheap to
-  /// re-call (reflects an account switch). Never throws.
   static Future<bool> load() async {
     final raw = await DiskCache.read(_kKey);
     final v = raw == '1';
@@ -68,7 +52,6 @@ class AvaVoicePref {
     return v;
   }
 
-  /// Flip + persist for the current account; updates [enabled] synchronously.
   static Future<void> set(bool v) async {
     enabled.value = v;
     _loaded = true;
@@ -86,10 +69,9 @@ class _VoiceCardState extends State<_VoiceCard> {
   @override
   void initState() {
     super.initState();
-    AvaVoicePref.load();
-    KokoroVoicePref.load();
-    VoiceFeature.I.refresh();
-    VoiceCallMode.I.load();
+    GoogleVoicePref.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -98,283 +80,70 @@ class _VoiceCardState extends State<_VoiceCard> {
       radius: Zine.rSm,
       padding: const EdgeInsets.all(14),
       boxShadow: Zine.shadowXs,
-      child: Column(children: [
-        _callModeRow(),
-        const SizedBox(height: 12),
-        Container(height: Zine.bw, color: Zine.ink.withValues(alpha: 0.12)),
-        const SizedBox(height: 10),
-        ValueListenableBuilder<bool>(
-        valueListenable: AvaVoicePref.enabled,
-        builder: (context, on, _) {
-          final body = Row(children: [
-            ZineIconBadge(
-                icon: PhosphorIcons.waveform(PhosphorIconsStyle.fill),
-                color: Zine.lilac,
-                size: 36),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Text('Let Ava speak', style: ZineText.value(size: 14.5)),
-                  const SizedBox(width: 8),
-                  const PaidBadge(),
-                ]),
-                const SizedBox(height: 2),
-                Text(
-                  on
-                      ? 'Ava can read her replies aloud in companion chats. Tap '
-                          '“Listen” on a message to hear it — nothing is voiced '
-                          'until you ask.'
-                      : 'Premium. Turn on so Ava can voice her replies in '
-                          'companion chats (on-demand only).',
-                  style: ZineText.sub(size: 12),
-                ),
-              ]),
-            ),
-            const SizedBox(width: 10),
-            // Turning OFF is free; turning ON is the premium gate → wrap the
-            // "enable" tap in PaidFeature. The toggle itself is non-interactive
-            // (its onChanged is null) so taps flow through PaidFeature/our handler.
-            if (on)
-              ZineToggle(value: true, onChanged: (_) => AvaVoicePref.set(false))
-            else
-              PaidFeature(
-                actionLabel: 'Enable Ava voice',
-                onRun: () async => AvaVoicePref.set(true),
-                child: const IgnorePointer(
-                    child: ZineToggle(value: false, onChanged: null)),
-              ),
-          ]);
-          return body;
-        },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          ZineIconBadge(
+              icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
+              color: Zine.lilac,
+              size: 36),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text("Ava's voice", style: ZineText.value(size: 14.5)),
+              const SizedBox(height: 2),
+              Text('Choose the voice Ava speaks with on a hands-free call.',
+                  style: ZineText.sub(size: 12)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        ValueListenableBuilder<String>(
+          valueListenable: GoogleVoicePref.voice,
+          builder: (context, current, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('FEMALE', style: ZineText.kicker(size: 11)),
+              const SizedBox(height: 8),
+              _voiceWrap(GoogleVoiceCatalog.female, current),
+              const SizedBox(height: 16),
+              Text('MALE', style: ZineText.kicker(size: 11)),
+              const SizedBox(height: 8),
+              _voiceWrap(GoogleVoiceCatalog.male, current),
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
-        Container(height: Zine.bw, color: Zine.ink.withValues(alpha: 0.12)),
-        const SizedBox(height: 10),
-        _voiceLangRow(context),
-        const SizedBox(height: 12),
-        Container(height: Zine.bw, color: Zine.ink.withValues(alpha: 0.12)),
-        const SizedBox(height: 10),
-        _avaVoiceCallBlock(),
       ]),
     );
   }
 
-  /// "Voice call with Ava" — the explicit enable + background-download gate for
-  /// the heavy on-device voice models. Shows: Enable → Downloading → Getting it
-  /// ready → Ready ✓.
-  /// Fast (online Gemini Live) vs Private (on-device) voice calls.
-  Widget _callModeRow() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: VoiceCallMode.I.online,
-      builder: (context, online, _) {
-        return Row(children: [
-          ZineIconBadge(
-            icon: online
-                ? PhosphorIcons.lightning(PhosphorIconsStyle.fill)
-                : Icons.lock_rounded,
-            color: online ? Zine.lime : Zine.lilac,
-            size: 36,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(online ? 'Voice call: Fast (online)' : 'Voice call: Private (on-device)',
-                  style: ZineText.value(size: 14.5)),
-              const SizedBox(height: 2),
-              Text(
-                online
-                    ? 'Talks to Ava in about half a second via the cloud. No download.'
-                    : 'Runs fully on your phone — private and offline, but a bit slower. '
-                        'Needs the one-time download below.',
-                style: ZineText.sub(size: 12),
-              ),
-            ]),
-          ),
-          const SizedBox(width: 10),
-          ZineToggle(value: online, onChanged: (v) => VoiceCallMode.I.set(v)),
-        ]);
-      },
-    );
-  }
-
-  Widget _avaVoiceCallBlock() {
-    return ValueListenableBuilder<VoiceFeatureState>(
-      valueListenable: VoiceFeature.I.state,
-      builder: (context, st, _) {
-        switch (st) {
-          case VoiceFeatureState.ready:
-            return Row(children: [
-              ZineIconBadge(
-                  icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
-                  color: Zine.mint,
-                  size: 36),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Text('Ava Voice is ready', style: ZineText.value(size: 14.5)),
-                    const SizedBox(width: 8),
-                    PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                        size: 20, color: Zine.mintInk),
-                  ]),
-                  const SizedBox(height: 2),
-                  Text('Hands-free voice calls with Ava are on.',
-                      style: ZineText.sub(size: 12)),
-                ]),
-              ),
-            ]);
-
-          case VoiceFeatureState.downloading:
-          case VoiceFeatureState.preparing:
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                ZineIconBadge(
-                    icon: PhosphorIcons.waveform(PhosphorIconsStyle.fill),
-                    color: Zine.lilac,
-                    size: 36),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ValueListenableBuilder<String>(
-                    valueListenable: VoiceFeature.I.status,
-                    builder: (context, s, _) => Text(
-                      s.isEmpty
-                          ? (st == VoiceFeatureState.preparing
-                              ? 'Getting it ready…'
-                              : 'Downloading Ava Voice…')
-                          : s,
-                      style: ZineText.value(size: 14),
-                    ),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              ValueListenableBuilder<double>(
-                valueListenable: VoiceFeature.I.progress,
-                builder: (context, pr, _) => ClipRRect(
-                  borderRadius: BorderRadius.circular(100),
-                  child: LinearProgressIndicator(
-                    value: (st == VoiceFeatureState.preparing || pr < 0) ? null : pr,
-                    minHeight: 8,
-                    backgroundColor: Zine.paper2,
-                    color: Zine.lime,
-                  ),
-                ),
-              ),
-            ]);
-
-          default: // off / error
-            final failed = st == VoiceFeatureState.error;
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                ZineIconBadge(
-                    icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
-                    color: Zine.blue,
-                    size: 36),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Voice call with Ava', style: ZineText.value(size: 14.5)),
-                    const SizedBox(height: 2),
-                    Text(
-                      failed
-                          ? 'Download didn’t finish. Check your connection and try again.'
-                          : 'Talk to Ava hands-free. Downloads the voice models once '
-                              '(~130 MB) over Wi-Fi, then runs fully on your phone.',
-                      style: ZineText.sub(size: 12),
-                    ),
-                  ]),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              ZineButton(
-                label: failed ? 'Retry download' : 'Enable Ava Voice',
-                icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold),
-                trailingIcon: false,
-                fontSize: 15,
-                onPressed: () { VoiceFeature.I.enable(); },
-              ),
-            ]);
-        }
-      },
-    );
-  }
-
-  /// Tappable row → the Kokoro language + voice picker. Shows the current choice.
-  Widget _voiceLangRow(BuildContext context) {
-    return ValueListenableBuilder<KokoroSelection>(
-      valueListenable: KokoroVoicePref.selection,
-      builder: (context, sel, _) {
-        return ZinePressable(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const KokoroVoiceScreen()),
-          ),
-          color: Zine.card,
-          radius: BorderRadius.circular(Zine.rBadge),
-          boxShadow: const <BoxShadow>[],
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          child: Row(children: [
-            ZineIconBadge(
-                icon: PhosphorIcons.translate(PhosphorIconsStyle.fill),
-                color: Zine.mint,
-                size: 34),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Voice & language', style: ZineText.value(size: 14.5)),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${sel.language.name} · ${sel.voice.name} '
-                      '(${sel.voice.female ? "Female" : "Male"})',
-                      style: ZineText.sub(size: 12),
-                    ),
-                  ]),
+  Widget _voiceWrap(List<GoogleVoice> voices, String current) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final v in voices)
+            ZineChip(
+              label: v.name,
+              active: v.name == current,
+              onTap: () => GoogleVoicePref.set(v.name),
             ),
-            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                size: 16, color: Zine.inkSoft),
-          ]),
-        );
-      },
-    );
-  }
+        ],
+      );
 }
 
-/// Companion voice synthesis (Phase 6).
-///
-/// STATUS — DEFERRED SYNTHESIS WIRING. The brief asked to reuse the existing
-/// `/api/agent/tts` route if it fits. It does NOT fit the companion case: that
-/// route ([worker/src/routes/agent_tts.ts]) synthesises a whole
-/// `agent_conversations` TRANSCRIPT keyed by `conversation_id` (Deepgram Aura-2),
-/// and a free-form companion chat has no agent_conversation row and no
-/// conversation_id. Adding a general "voice this text" route would mean a NEW
-/// worker route, which the Phase 6 brief forbids (`index.ts` is frozen).
-///
-/// So this phase ships the per-account PREFERENCE + the on-demand "Listen"
-/// affordance, and leaves the actual synthesis call as a single documented hook:
-/// [synthesizer]. The chosen TTS engine is KOKORO (Kokoro-82M, multilingual —
-/// owner decision 2026-06-21); when it comes online, assign [synthesizer] to a
-/// function that synthesises [text] in the user's selected language + voice from
-/// [KokoroVoicePref.current] (see core/kokoro_voice.dart) and returns a playable
-/// local audio path. The companion thread already calls [AvaVoice.speak] on demand
-/// and plays the result via audioplayers; until [synthesizer] is wired it shows a
-/// friendly "voice is coming soon" notice instead of failing.
+/// Companion "Listen" hook. With on-device TTS removed, [synthesizer] stays null
+/// and [available] is false, so the companion thread shows a "voice coming soon"
+/// notice instead of synthesising. Kept so the companion thread keeps compiling
+/// and can be re-wired to an online synthesiser later.
 class AvaVoice {
   AvaVoice._();
 
-  /// Injected synthesiser. Returns the path to a playable local audio file for
-  /// [text], or null if synthesis is unavailable. Defaults to null (deferred).
+  /// Injected synthesiser → playable local audio path for [text], or null.
   static Future<String?> Function(String text)? synthesizer;
 
-  /// Whether the premium voice feature is enabled for this account.
   static bool get enabled => AvaVoicePref.enabled.value;
 
-  /// Whether synthesis is actually wired (else "Listen" shows the coming-soon
-  /// notice). Today this is false until [synthesizer] is set (see class doc).
   static bool get available => synthesizer != null;
 
-  /// Synthesise [text] to a local audio file path, or null if unavailable.
   static Future<String?> speak(String text) async {
     final s = synthesizer;
     if (s == null) return null;

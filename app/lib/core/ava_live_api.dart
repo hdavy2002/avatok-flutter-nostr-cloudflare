@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'api_auth.dart';
 import 'config.dart';
+import 'voice/google_voice.dart';
 
 /// Client for the fast online voice call (worker routes/ava_live.ts).
 /// Mints a short-lived Gemini Live ephemeral token (model + Ava persona + voice
@@ -14,8 +15,11 @@ class AvaLiveApi {
   }
 
   /// → { status, token, model, expires_at } or { status, error }.
+  /// Sends the user's chosen Gemini voice (locked into the session server-side).
   static Future<Map<String, dynamic>> token() async {
-    final r = await ApiAuth.postJson(_url, const {}, timeout: const Duration(seconds: 15));
+    await GoogleVoicePref.load();
+    final r = await ApiAuth.postJson(
+        _url, {'voice': GoogleVoicePref.current}, timeout: const Duration(seconds: 15));
     return {..._j(r.body), 'status': r.statusCode};
   }
 }

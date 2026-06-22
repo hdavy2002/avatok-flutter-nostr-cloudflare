@@ -14,8 +14,12 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 
 const LIVE_MODEL = "gemini-live-2.5-flash-native-audio";
-// Warm, natural prebuilt Gemini voice. (Swap if a different timbre is preferred.)
-const VOICE_NAME = "Aoede";
+// Default prebuilt Gemini voice; the client may request another from this allowlist.
+const DEFAULT_VOICE = "Aoede";
+const VOICES = new Set([
+  "Aoede", "Kore", "Leda", "Zephyr", "Callirrhoe", "Autonoe", // female
+  "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", // male
+]);
 
 const SYSTEM =
   "You are Ava, a warm, friendly voice companion talking with the user hands-free. " +
@@ -25,8 +29,10 @@ const SYSTEM =
 
 async function mintToken(
   env: Env,
+  voice: string,
 ): Promise<{ token: string; model: string; expires_at: number } | { error: string }> {
   if (!env.GEMINI_API_KEY) return { error: "voice unavailable: GEMINI_API_KEY unset" };
+  const voiceName = VOICES.has(voice) ? voice : DEFAULT_VOICE;
   const expireMs = Date.now() + 30 * 60_000;
   const body = {
     uses: 1,
@@ -36,11 +42,16 @@ async function mintToken(
       model: `models/${LIVE_MODEL}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } },
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
       },
       systemInstruction: { parts: [{ text: SYSTEM }] },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
+      // COST CONTROL — the Live API re-feeds the whole growing session context on
+      // every turn, so a long chatty call costs super-linearly. Sliding-window
+      // compression keeps it ~linear (bounds the re-fed context). Essential given
+      // AvaTok's per-session economics.
+      contextWindowCompression: { slidingWindow: {} },
     },
   };
   const r = await fetch("https://generativelanguage.googleapis.com/v1alpha/auth_tokens", {
@@ -57,7 +68,9 @@ async function mintToken(
 export async function avaLiveToken(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const t = await mintToken(env);
+  let voice = DEFAULT_VOICE;
+  try { const b: any = await req.json(); if (typeof b?.voice === "string") voice = b.voice; } catch { /* no body */ }
+  const t = await mintToken(env, voice);
   if ("error" in t) return json({ error: t.error }, 502);
   return json(t);
 }
