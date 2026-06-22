@@ -195,6 +195,15 @@ jobs:
           files: |
             dist/avatok-call.apk
           fail_on_unmatched_files: false
+          body: |
+            Play Store Android App Bundle, built by CI from `app/`.
+            Download `avatok-call.aab` and upload it in Play Console → pick a
+            track (Internal testing / Production) → Create new release.
+            Download `avatok-call.apk` to sideload directly on a device for testing.
+
+            Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
+            (+ store/alias/key password) secrets are set; otherwise signed with
+            the committed fallback keystore so the build still succeeds.
 
       # Automatic build tracking: drop a PostHog annotation (commit SHA + message)
       # on the project timeline for every APK/AAB build, matching the `release`
@@ -216,12 +225,3 @@ jobs:
             -H "Authorization: Bearer $POSTHOG_KEY" -H "Content-Type: application/json" \
             --data "$(jq -n --arg c "Android $AVATOK_ENV build ${GIT_SHA:0:7} — $SUBJECT" --arg d "$NOW" '{content:$c,date_marker:$d,scope:"project"}')" \
             -o /dev/null -w "PostHog annotation HTTP %{http_code}\n" || echo "annotation post failed (non-fatal)"
-          body: |
-            Play Store Android App Bundle, built by CI from `app/`.
-            Download `avatok-call.aab` and upload it in Play Console → pick a
-            track (Internal testing / Production) → Create new release.
-            Download `avatok-call.apk` to sideload directly on a device for testing.
-
-            Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
-            (+ store/alias/key password) secrets are set; otherwise signed with
-            the committed fallback keystore so the build still succeeds.
