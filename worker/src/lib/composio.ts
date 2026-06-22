@@ -18,7 +18,7 @@ const B = "https://backend.composio.dev/api/v3";
 
 /// The Google set shipped by default in AvaApps (Composio toolkit slugs).
 export const GOOGLE_TOOLKITS = ["gmail", "googledocs", "googlesheets", "googledrive", "googlecalendar"];
-const RESULT_CHARS = 6000;        // trim tool results before feeding back to the model
+const RESULT_CHARS = 8000;        // trim tool results before feeding back to the model
 
 // Curated high-value action tools per toolkit (verified slugs). Keeping the set
 // tight (vs. all 23–51 tools each) means the model reliably picks the right tool
@@ -295,7 +295,35 @@ function trimToolResult(name: string, r: any): any {
   } catch { /* fall through to the generic safe trim */ }
   const s = JSON.stringify(r ?? null);
   if (s.length <= RESULT_CHARS) return r;
+  // STRUCTURE-PRESERVING trim. The old `{truncated, preview:<string>}` destroyed
+  // the array, so GenUI couldn't render it (no list to show) and a long Drive
+  // listing fell back to an ugly plain-text bullet list. Instead, keep the shape
+  // and just CAP arrays + clip long string fields, so the result stays a real
+  // object with its records array intact → the card renders.
+  try {
+    const clone = JSON.parse(s);
+    capArrays(clone, 40);
+    let s2 = JSON.stringify(clone);
+    if (s2.length > RESULT_CHARS * 2) { capArrays(clone, 18); s2 = JSON.stringify(clone); }
+    return clone;
+  } catch { /* fall through */ }
   return { truncated: true, preview: s.slice(0, RESULT_CHARS) };
+}
+
+// Cap every array to `maxItems` and clip very long string fields, in place, so a
+// large tool result stays structurally intact (arrays preserved) but small.
+function capArrays(obj: any, maxItems: number, depth = 0): void {
+  if (depth > 6 || obj == null || typeof obj !== "object") return;
+  if (Array.isArray(obj)) {
+    if (obj.length > maxItems) obj.splice(maxItems);
+    for (const el of obj) capArrays(el, maxItems, depth + 1);
+    return;
+  }
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (typeof v === "string" && v.length > 400) obj[k] = v.slice(0, 400);
+    else capArrays(v, maxItems, depth + 1);
+  }
 }
 
 // Stream ONE generation step over SSE (`:streamGenerateContent?alt=sse`). Calls
@@ -448,6 +476,7 @@ export async function runAgentLoop(
     + (appDecls.length
       ? "Only call a Google-apps tool (Gmail, Calendar, Docs, Sheets, Drive) when the user clearly asks you to check or act on those apps; then report the outcome (subjects/links). If a tool fails, say so plainly. "
         + "If the user asks to SEND or create something but wants to review it first, compose it and show a clear preview — recipient (To), Subject, and the full body — then ask them to confirm; do NOT call the send tool yet. When they confirm in a later message, THEN call the send tool and report the result. "
+        + "DRAFT vs SEND — be precise and truthful: creating a draft (GMAIL_CREATE_EMAIL_DRAFT) SAVES it to the Drafts folder; it does NOT send. NEVER tell the user a message was 'sent' unless you actually called GMAIL_SEND_EMAIL and it succeeded. After making a draft, say exactly 'Saved to your Drafts — say \"send it\" to send.' Sending and drafting are different actions; do not conflate them. "
       : "")
     + "Do not show your reasoning.";
   const userText = context && context.trim()

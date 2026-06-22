@@ -34,6 +34,7 @@ export interface UiPlan {
   item_actions: string[];     // affordance ids to show per row (the response-tool bundle)
   surface_actions: string[];  // affordance ids shown full-width under the list
   empty_text: string;         // shown when the array is empty
+  group_by?: string;          // optional element field to group rows into sections
 }
 
 export interface PlanResult { surface: A2uiSurface | null; planCache: "hit" | "miss" | "none"; }
@@ -119,6 +120,7 @@ export async function planSurface(
   plan.item_subtitle = (plan.item_subtitle ?? []).filter((f) => fieldSet.has(f)).slice(0, 2);
   if (!plan.item_subtitle.length) plan.item_subtitle = heur.item_subtitle;
   if (plan.item_badge && !fieldSet.has(plan.item_badge)) plan.item_badge = undefined;
+  if (plan.group_by && !fieldSet.has(plan.group_by)) plan.group_by = undefined;
   if (plan.item_open && !fieldSet.has(plan.item_open)) plan.item_open = heur.item_open;
   if (!plan.item_open) plan.item_open = heur.item_open;
   plan.list_path = found.path;
@@ -148,18 +150,17 @@ async function llmPlan(
   input: { request: string; toolkit: string; entity: string; affordances: Affordance[] },
   listPath: string, fields: Record<string, string>,
 ): Promise<UiPlan | null> {
-  const key = env.GEMINI_API_KEY ?? "";
-  if (!key) return null;
   const affLines = input.affordances.map((a) =>
     `  - id:"${a.id}" label:"${a.label}" verb:${a.verb} scope:${a.scope}${a.destructive ? " [destructive]" : ""}`).join("\n");
   const sys =
-    "You design the SEMANTICS of an in-chat card that shows a user's data from one of their connected apps, like a small native app screen. " +
-    "You do NOT write UI — you choose which fields to display and which of the user's available actions to offer. " +
-    "Return ONLY JSON matching: {app_label, list_path, item_title, item_subtitle:[..≤2..], item_badge?, item_open?, item_actions:[ids], surface_actions:[ids], empty_text}. " +
-    "Rules: item_title/subtitle/badge/open MUST be field names from the element fields given. " +
-    "item_actions/surface_actions MUST be ids from the affordance list (never invent). " +
-    "Pick item_actions that match what the user most likely wants to DO next given their request (e.g. for files: open, rename, move, delete, share). " +
-    "Prefer a concise title field and 1–2 informative subtitle fields. If a field holds a URL, use it as item_open.";
+    "You are a senior product designer. You design the SEMANTICS of an in-chat card that shows a user's data from one of their connected apps (Drive, Calendar, Gmail, Sheets, Notion, …) as a clean, premium little native-app screen. " +
+    "You do NOT write UI markup — you choose which fields to display, how to group them, and which of the user's available actions to offer; code renders it consistently from your plan. " +
+    "Return ONLY JSON matching: {app_label, list_path, item_title, item_subtitle:[..≤2..], item_badge?, item_open?, group_by?, item_actions:[ids], surface_actions:[ids], empty_text}. " +
+    "Rules: item_title/subtitle/badge/open/group_by MUST be field names from the element fields given (or omit). " +
+    "item_actions/surface_actions MUST be ids from the affordance list (never invent a tool). " +
+    "Choose item_actions matching what the user most likely wants to DO next given their request (e.g. files: open, rename, move, delete, share). " +
+    "Prefer a concise title and 1–2 informative subtitle fields. If a field holds a URL, use it as item_open. " +
+    "If the rows have a natural category field (type/status/kind/folder/label), set group_by so the list is organised into sections instead of one long flat list. Make app_label and empty_text human and friendly.";
   const usr =
     `User request (their intent): "${String(input.request).slice(0, 300)}"\n` +
     `App: ${humanApp(input.toolkit)} (${input.entity})\n` +
@@ -168,19 +169,7 @@ async function llmPlan(
     `Available actions (affordances):\n${affLines || "  (none)"}\n\n` +
     "Return the plan JSON now.";
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${PLAN_MODEL}:generateContent`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sys }] },
-        contents: [{ role: "user", parts: [{ text: usr }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } },
-      }),
-    });
-    if (!res.ok) return null;
-    const out: any = await res.json().catch(() => null);
-    const text = out?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join("") ?? "";
+    const text = await llmJson(env, sys, usr);
     if (!text) return null;
     const p = JSON.parse(text);
     if (!p || typeof p !== "object") return null;
@@ -194,8 +183,61 @@ async function llmPlan(
       item_actions: Array.isArray(p.item_actions) ? p.item_actions.map(String) : [],
       surface_actions: Array.isArray(p.surface_actions) ? p.surface_actions.map(String) : [],
       empty_text: String(p.empty_text ?? ""),
+      group_by: p.group_by ? String(p.group_by) : undefined,
     };
   } catch { return null; }
+}
+
+// The thinking/design brain. Prefers Claude Opus 4.8 via OpenRouter (a stronger
+// designer) when OPENROUTER_API_KEY is set; otherwise falls back to Gemini. Both
+// return a JSON object as a string.
+const OPENROUTER_PLANNER_MODEL = "anthropic/claude-opus-4.8";
+async function llmJson(env: Env, sys: string, usr: string): Promise<string> {
+  const orKey = (env as any).OPENROUTER_API_KEY as string | undefined;
+  if (orKey) {
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${orKey}`,
+          "HTTP-Referer": "https://avatok.ai",
+          "X-Title": "AvaTOK GenUI",
+        },
+        body: JSON.stringify({
+          model: (env as any).OPENROUTER_PLANNER_MODEL || OPENROUTER_PLANNER_MODEL,
+          messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          max_tokens: 900,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (res.ok) {
+        const out: any = await res.json().catch(() => null);
+        const text = out?.choices?.[0]?.message?.content ?? "";
+        if (text) return String(text);
+      }
+    } catch { /* fall back to Gemini */ }
+  }
+  // Gemini fallback
+  const key = env.GEMINI_API_KEY ?? "";
+  if (!key) return "";
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${PLAN_MODEL}:generateContent`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: sys }] },
+        contents: [{ role: "user", parts: [{ text: usr }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } },
+      }),
+    });
+    if (!res.ok) return "";
+    const out: any = await res.json().catch(() => null);
+    return out?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join("") ?? "";
+  } catch { return ""; }
 }
 
 // ---- the BUILDER: deterministic, consistent, premium A2UI from the plan -------
@@ -212,8 +254,9 @@ export function buildPlannedSurface(
 
   const found = findListPath(data);
   const count = found ? found.items.length : 0;
+  let surfaceData: unknown = data; // rebound to {_groups} when grouping
 
-  const headerId = add({ type: "pill", label: `${plan.app_label} · ${count} ${count === 1 ? "item" : "items"}`, icon: "tray", fill: "ink", fg: "paper" });
+  const headerId = add({ type: "pill", label: `${plan.app_label} · ${count} ${count === 1 ? "item" : "items"}`, icon: "tray", fill: "lime", fg: "ink" });
 
   const kids: string[] = [headerId, add({ type: "spacer", size: 8 })];
 
@@ -244,7 +287,23 @@ export function buildPlannedSurface(
     }
 
     const itemCard = add({ type: "card", child: add({ type: "column", children: rowKids, gap: 4 }), accent: "blue" });
-    kids.push(add({ type: "list", path: plan.list_path, item: itemCard, gap: 7 }));
+
+    // Grouped (Claude chose a category field) vs flat list. Grouping uses nested
+    // A2UI lists (already client-supported) and rebinds the data to {_groups}.
+    if (plan.group_by && found) {
+      const groups = groupItems(found.items, plan.group_by);
+      surfaceData = { _groups: groups };
+      const inner = add({ type: "list", path: "items", item: itemCard, gap: 7 });
+      const section = add({ type: "column", children: [
+        add({ type: "pill", label: "${_label} · ${_count}", icon: "tray", fill: "ink", fg: "paper" }),
+        add({ type: "spacer", size: 6 }),
+        inner,
+        add({ type: "spacer", size: 10 }),
+      ], gap: 0 });
+      kids.push(add({ type: "list", path: "_groups", item: section, gap: 0 }));
+    } else {
+      kids.push(add({ type: "list", path: plan.list_path, item: itemCard, gap: 7 }));
+    }
   }
 
   // surface-level actions (e.g. New / Schedule a meeting) — full-width
@@ -259,8 +318,20 @@ export function buildPlannedSurface(
   const root = add({ type: "column", children: kids, gap: 0 });
   return {
     version: "v0.9", surfaceId: `gx_${Date.now()}`, gid: opts.gid, tool: opts.tool, ts: Date.now(),
-    root, components: comps, data,
+    root, components: comps, data: surfaceData,
   };
+}
+
+// Bucket records by a field's value into ordered sections (largest first).
+function groupItems(items: any[], field: string): Array<{ _label: string; _count: number; items: any[] }> {
+  const map = new Map<string, any[]>();
+  for (const it of items) {
+    const label = String((it?.[field] ?? "Other")).trim() || "Other";
+    (map.get(label) ?? map.set(label, []).get(label)!).push(it);
+  }
+  return [...map.entries()]
+    .map(([_label, arr]) => ({ _label, _count: arr.length, items: arr }))
+    .sort((a, b) => b._count - a._count);
 }
 
 // ============================================================================

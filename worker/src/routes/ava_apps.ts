@@ -112,6 +112,24 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   }
 }
 
+// Truthful, tool-aware success message — a DRAFT must never claim it was "sent".
+// Derived from the slug's verb/entity so it's correct for any app, not just Gmail.
+function outcomeText(tool: string): string {
+  const t = tool.toUpperCase();
+  if (/DRAFT/.test(t)) return "Saved to your Drafts — it has NOT been sent. Say \"send it\" to send.";
+  if (/SEND/.test(t)) return "Sent ✓";
+  if (/CREATE_EVENT|QUICK_ADD/.test(t)) return "Added to your calendar ✓";
+  if (/DELETE|REMOVE|TRASH/.test(t)) return "Deleted ✓";
+  if (/RENAME/.test(t)) return "Renamed ✓";
+  if (/MOVE/.test(t)) return "Moved ✓";
+  if (/COPY|DUPLICATE/.test(t)) return "Copied ✓";
+  if (/SHARE|PERMISSION/.test(t)) return "Shared ✓";
+  if (/REPLY/.test(t)) return "Reply sent ✓";
+  if (/CREATE|ADD|INSERT|NEW/.test(t)) return "Created ✓";
+  if (/UPDATE|EDIT|PATCH/.test(t)) return "Updated ✓";
+  return "Done ✓";
+}
+
 // POST /api/ava/genui/action — PREMIUM. Execute ONE Composio tool fired from a
 // GenUI card (a `composio` action button/form). This is the executable backbone
 // that makes cards functional: "Rename", "Delete", "Schedule a meeting", etc.
@@ -194,7 +212,7 @@ export async function avaGenuiAction(req: Request, env: Env): Promise<Response> 
       args_keys: Object.keys(clean).slice(0, 12), args_count: Object.keys(clean).length,
       ...(ok ? {} : { error: String((r as any)?.error ?? "tool error").slice(0, 200) }),
     });
-    const answer = ok ? "Done." : `That didn't go through: ${String((r as any)?.error ?? "the app rejected it").slice(0, 160)}`;
+    const answer = ok ? outcomeText(tool) : `That didn't go through: ${String((r as any)?.error ?? "the app rejected it").slice(0, 160)}`;
     return json({ ok, answer, gid, ...(surface ? { a2ui: surface } : {}) }, ok ? 200 : 502);
   } catch (e: any) {
     trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", { gid, tool, toolkit, ok: false, stage: "exception", ms: Date.now() - t0, error: String(e?.message ?? e).slice(0, 200) });
