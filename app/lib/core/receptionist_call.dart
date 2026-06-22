@@ -54,6 +54,8 @@ class ReceptionistCall {
   String? _sessionId;
   bool _wsConnected = false;
   bool _ended = false;
+  bool _firstAudio = false;
+  int _connectMs = 0; // when start() began — basis for first-audio latency
   Timer? _hardCap;
   final Completer<String> _done = Completer<String>();
 
@@ -64,6 +66,7 @@ class ReceptionistCall {
 
   /// Returns true if Ava picked up (caller is now talking to Ava).
   Future<bool> start() async {
+    _connectMs = DateTime.now().millisecondsSinceEpoch;
     final cfg = await ReceptionistApi.configFor(calleeUid);
     if (cfg == null) return false; // not premium / disabled / off
     final s = await ReceptionistApi.start(
@@ -99,6 +102,9 @@ class ReceptionistCall {
       onStatus?.call('connected');
       Analytics.capture('ava_recept_call_started', {
         'callee_hash': calleeUid.hashCode.toString(),
+        'activation_mode': activationMode,
+        'ws_connect_ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
+        if (callId != null) 'call_id': callId,
       });
       AvaLog.I.log('receptionist', 'session started ${_sessionId ?? "?"}');
       return true;
@@ -112,6 +118,16 @@ class ReceptionistCall {
   void _onWs(dynamic data) {
     if (_ended) return;
     if (data is List<int>) {
+      // Time-to-first-audio (perceived latency) — client-side mirror of the DO's
+      // ava_recept_first_audio; carries email/phone via the Analytics envelope.
+      if (!_firstAudio) {
+        _firstAudio = true;
+        Analytics.capture('ava_recept_first_audio', {
+          'ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
+          'activation_mode': activationMode,
+          if (callId != null) 'call_id': callId,
+        });
+      }
       _pcmBuf.add(data);
       if (_pcmBuf.length >= _flushBytes) _enqueueSegment();
     } else if (data is String) {
@@ -159,7 +175,12 @@ class ReceptionistCall {
     if (!_wsConnected && _sessionId != null) {
       await ReceptionistApi.finish(_sessionId!, reason: reason);
     }
-    Analytics.capture('ava_recept_call_ended', {'reason': reason});
+    Analytics.capture('ava_recept_call_ended', {
+      'reason': reason,
+      'activation_mode': activationMode,
+      'got_audio': _firstAudio,
+      if (callId != null) 'call_id': callId,
+    });
     AvaLog.I.log('receptionist', 'ended: $reason');
     onStatus?.call('ended');
     if (!_done.isCompleted) _done.complete(reason);

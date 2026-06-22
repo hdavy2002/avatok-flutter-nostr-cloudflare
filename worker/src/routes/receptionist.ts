@@ -24,7 +24,8 @@ import { json, normalizePhone } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { readConfig } from "./config";
-import { track, metric } from "../hooks";
+import { track, trackUserContact, metric } from "../hooks";
+import { contactFor } from "../lib/identity";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 
 const APP = "receptionist";
@@ -332,8 +333,11 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   };
   await env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
 
-  track(env, ctx.uid, "ava_recept_triggered", APP,
-    { owner: to, has_phone: !!callerPhone, call_id: callId, activation_mode: activationMode });
+  // Stamp the caller's email/phone so support can pull a complainant's
+  // receptionist calls by contact. trace_id = the session id (one-call trace).
+  const caller = await contactFor(env, ctx.uid).catch(() => ({ email: null, phone: null }));
+  trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_triggered", APP,
+    { owner: to, has_phone: !!callerPhone, call_id: callId, activation_mode: activationMode }, sid);
   metric(env, "ava_recept_triggered", [1]);
 
   return json({

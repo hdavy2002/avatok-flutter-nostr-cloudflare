@@ -18,8 +18,9 @@
 // MUST be verified against a live session on first deploy (cannot be unit-tested
 // here). All paths are guarded; failures finalize gracefully with a text message.
 import type { Env } from "../types";
-import { track, metric } from "../hooks";
+import { trackUserContact, metric } from "../hooks";
 import { dmConvId } from "../authz";
+import { contactFor } from "../lib/identity";
 
 interface InitBlob {
   sid: string; owner_uid: string; caller_uid: string;
@@ -42,6 +43,12 @@ export class ReceptionRoom {
   private softTimer: ReturnType<typeof setTimeout> | null = null;
   private hardTimer: ReturnType<typeof setTimeout> | null = null;
   private finalized = false;
+
+  // Owner contact, resolved once so EVERY event carries email/phone (support
+  // pulls a user's receptionist calls by email/phone). v2 telemetry spec.
+  private ownerEmail: string | null = null;
+  private ownerPhone: string | null = null;
+  private firstAudioSent = false;
 
   private inText: string[] = [];   // caller transcript
   private outText: string[] = [];  // Ava transcript
@@ -69,6 +76,13 @@ export class ReceptionRoom {
     }
     this.init = init;
     this.startedAt = Date.now();
+    // Resolve owner contact once (best-effort) so all events are pullable by
+    // email/phone. The caller's app emits its own client-side voice_live_* +
+    // ava_recept_* events (already stamped with email/phone by Analytics).
+    try {
+      const c = await contactFor(this.env, init.owner_uid);
+      this.ownerEmail = c.email; this.ownerPhone = c.phone;
+    } catch { /* best-effort */ }
 
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
@@ -90,6 +104,15 @@ export class ReceptionRoom {
     this.hardTimer = setTimeout(() => this.finalize("hard_cap"), init.hard_cap_ms);
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** Emit a receptionist telemetry event stamped with owner email/phone +
+   *  one-call trace (trace_id=sid, call_id, activation_mode). v2 spec. */
+  private ev(event: string, props: Record<string, unknown> = {}): void {
+    const i = this.init;
+    if (!i) return;
+    trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
+      { ...props, call_id: i.call_id, activation_mode: i.activation_mode ?? null }, i.sid);
   }
 
   // -------------------------------------------------------------------------
@@ -128,6 +151,14 @@ export class ReceptionRoom {
     gem.addEventListener("close", () => this.finalize("model_closed"));
     gem.addEventListener("error", () => this.failHard("gemini_error"));
 
+    // Telemetry: upstream connected — connect latency + AI Gateway join key.
+    this.ev("ava_recept_gemini_connect", {
+      latency_ms: Date.now() - this.startedAt,
+      via_gateway: !!(this.env.AI_GATEWAY_ID && this.env.CF_ACCOUNT_ID),
+      aig_id: (this as any)._aigId ?? null,
+      model: init.model, voice: init.voice_name, language: init.language_code ?? "auto",
+    });
+
     // setup — model, voice, locked system prompt, transcription on, optional RAG.
     const speechConfig: any = { voiceConfig: { prebuiltVoiceConfig: { voiceName: init.voice_name } } };
     // v2: pin the spoken language when the owner chose one (NULL = auto-detect).
@@ -146,6 +177,9 @@ export class ReceptionRoom {
       setup.tools = [{ fileSearch: { fileSearchStoreNames: [init.file_search_store] } }];
     }
     this.sendGem({ setup });
+    this.ev("ava_recept_session_started", {
+      setup_latency_ms: Date.now() - this.startedAt, has_kb: !!init.file_search_store,
+    });
   }
 
   // caller → Gemini : binary = PCM16 16k; (control JSON tolerated but ignored)
@@ -184,6 +218,12 @@ export class ReceptionRoom {
             if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES) {
               this.pcmOut.push(pcm); this.pcmBytes += pcm.byteLength;
             }
+            // Telemetry: time-to-first-audio (perceived latency — the headline UX
+            // metric: trigger → Ava's first audible word).
+            if (!this.firstAudioSent) {
+              this.firstAudioSent = true;
+              this.ev("ava_recept_first_audio", { ms: Date.now() - this.startedAt });
+            }
             try { this.client?.send(pcm); } catch { /* caller gone */ }
           }
         }
@@ -201,6 +241,7 @@ export class ReceptionRoom {
     });
     try { this.client?.send(JSON.stringify({ t: "softcap" })); } catch { /* ignore */ }
     metric(this.env, "ava_recept_softcap", [1]);
+    this.ev("ava_recept_softcap", { at_ms: Date.now() - this.startedAt });
   }
 
   private sendGem(obj: unknown): void {
@@ -208,6 +249,7 @@ export class ReceptionRoom {
   }
 
   private failHard(reason: string): void {
+    this.ev("ava_recept_error", { stage: reason, fatal: true, ms: Date.now() - this.startedAt });
     try { this.client?.send(JSON.stringify({ t: "error", reason })); } catch { /* ignore */ }
     this.finalize(reason);
   }
@@ -257,9 +299,10 @@ export class ReceptionRoom {
     // Deliver: message + recording under the caller's phone number, then push.
     try { await this.postMessage(init, summary, transcript, recordingUrl, durationS); } catch { /* best-effort */ }
 
-    track(this.env, init.owner_uid, "ava_recept_message_posted", "receptionist", {
-      caller_phone: init.caller_phone, duration_s: durationS, reason,
+    this.ev("ava_recept_message_posted", {
+      caller_phone: init.caller_phone, duration_s: durationS, cutoff_reason: reason,
       has_recording: !!recordingUrl, has_transcript: !!transcript,
+      in_chars: this.inText.join("").length, out_chars: this.outText.join("").length,
     });
     metric(this.env, reason === "hard_cap" ? "ava_recept_hardcap" : "ava_recept_completed", [1, durationS]);
   }
@@ -358,9 +401,9 @@ export class ReceptionRoom {
       });
     } catch { /* best-effort */ }
     // v2 telemetry: did the message reach the caller's real DM thread?
-    track(this.env, init.owner_uid, "ava_recept_delivered_inthread", "receptionist", {
+    this.ev("ava_recept_delivered_inthread", {
       in_thread: inThread, conv_kind: inThread ? "dm" : "recept_fallback",
-      activation_mode: init.activation_mode ?? null, has_recording: !!recordingUrl,
+      has_recording: !!recordingUrl,
     });
   }
 }
