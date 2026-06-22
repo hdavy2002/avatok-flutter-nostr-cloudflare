@@ -26,6 +26,8 @@ interface InitBlob {
   rtc_token: string; voice_name: string; file_search_store: string | null;
   system_prompt: string; model: string;
   soft_cap_ms: number; hard_cap_ms: number; started_at: number;
+  // v2
+  language_code?: string | null; activation_mode?: string | null;
 }
 
 export class ReceptionRoom {
@@ -126,11 +128,14 @@ export class ReceptionRoom {
     gem.addEventListener("error", () => this.failHard("gemini_error"));
 
     // setup — model, voice, locked system prompt, transcription on, optional RAG.
+    const speechConfig: any = { voiceConfig: { prebuiltVoiceConfig: { voiceName: init.voice_name } } };
+    // v2: pin the spoken language when the owner chose one (NULL = auto-detect).
+    if (init.language_code) speechConfig.languageCode = init.language_code;
     const setup: any = {
       model: `models/${init.model}`,
       generationConfig: {
         responseModalities: ["AUDIO"],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: init.voice_name } } },
+        speechConfig,
       },
       systemInstruction: { parts: [{ text: init.system_prompt }] },
       inputAudioTranscription: {},

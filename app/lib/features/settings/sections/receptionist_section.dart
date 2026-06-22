@@ -11,7 +11,21 @@ import '../../../core/paid_feature.dart';
 import '../../../core/receptionist_api.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../../core/voice/google_voice.dart' show AvaLangCatalog;
 import '../settings_registry.dart';
+
+/// Availability presets (Mode B). id → label shown in the dropdown. Must match
+/// the server's STATUS_PRESETS keys in worker/src/routes/receptionist.ts.
+const Map<String, String> kReceptionistStatusPresets = {
+  '': 'No status',
+  'busy': 'Busy',
+  'travelling': 'Travelling',
+  'meeting': 'In a meeting',
+  'driving': 'Driving',
+  'holiday': 'On holiday',
+  'after_hours': 'After hours',
+  'custom': 'Custom…',
+};
 
 /// Settings → "Ava Receptionist" section (Specs/PROPOSAL-AI-RECEPTIONIST.md).
 ///
@@ -66,7 +80,16 @@ class _ReceptionistCard extends StatefulWidget {
 class _ReceptionistCardState extends State<_ReceptionistCard> {
   final _instr = TextEditingController();
   final _name = TextEditingController();
+  final _persona = TextEditingController();       // v2: Ava's own name
+  final _greeting = TextEditingController();       // v2: exact opening line
+  final _custom = TextEditingController();         // v2: advanced behaviour prompt
+  final _statusCustom = TextEditingController();   // v2: custom availability text
   String _voice = 'Puck';
+  String _lang = '';                               // v2: '' = auto-detect
+  String _statusPreset = '';                       // v2
+  bool _answerAll = false;                          // v2: Mode B
+  bool _declineToAva = false;                       // v2: Mode C decline path
+  bool _advancedOpen = false;                       // v2: custom-prompt expander
   bool _enabled = false;
   bool _premium = false;
   bool _loading = true;
@@ -84,6 +107,10 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   void dispose() {
     _instr.dispose();
     _name.dispose();
+    _persona.dispose();
+    _greeting.dispose();
+    _custom.dispose();
+    _statusCustom.dispose();
     super.dispose();
   }
 
@@ -98,6 +125,16 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         _voice = s.voiceName.isEmpty ? 'Puck' : s.voiceName;
         _premium = s.premium;
         _hasKb = s.hasKb;
+        // v2
+        _persona.text = s.personaName;
+        _greeting.text = s.greetingText;
+        _custom.text = s.customPrompt;
+        _statusCustom.text = s.statusCustom;
+        _lang = AvaLangCatalog.isValid(s.languageCode) ? s.languageCode : '';
+        _statusPreset = kReceptionistStatusPresets.containsKey(s.statusPreset) ? s.statusPreset : '';
+        _answerAll = s.answerAll;
+        _declineToAva = s.declineToAva;
+        _advancedOpen = s.customPrompt.isNotEmpty;
       }
       _loading = false;
     });
@@ -111,6 +148,14 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       instructions: _instr.text.trim(),
       voiceName: _voice,
       displayName: _name.text.trim(),
+      personaName: _persona.text.trim(),
+      languageCode: _lang,
+      greetingText: _greeting.text.trim(),
+      customPrompt: _custom.text.trim(),
+      answerAll: _answerAll,
+      statusPreset: _statusPreset,
+      statusCustom: _statusCustom.text.trim(),
+      declineToAva: _declineToAva,
     );
     if (!mounted) return res.ok;
     setState(() {
@@ -236,6 +281,93 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   maxLength: 60,
                   textCapitalization: TextCapitalization.words,
                 ),
+                const SizedBox(height: 10),
+                ZineField(
+                  controller: _persona,
+                  label: 'Ava’s name (how she introduces herself)',
+                  hint: 'e.g. Maya — leave blank to use “Ava”',
+                  maxLength: 40,
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 10),
+                ZineField(
+                  controller: _greeting,
+                  label: 'Opening greeting (optional)',
+                  hint: 'e.g. Hi, you’ve reached Sonal’s assistant.',
+                  maxLines: 2,
+                  maxLength: 200,
+                  textCapitalization: TextCapitalization.sentences,
+                ),
+                const SizedBox(height: 14),
+                // ── Availability (Mode B) ──────────────────────────────────
+                Text('Availability', style: ZineText.value(size: 13)),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Text('Ava says you’re', style: ZineText.sub(size: 12.5)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _statusPreset,
+                      underline: const SizedBox.shrink(),
+                      items: [
+                        for (final e in kReceptionistStatusPresets.entries)
+                          DropdownMenuItem(value: e.key, child: Text(e.value, style: ZineText.sub(size: 12.5))),
+                      ],
+                      onChanged: (v) => setState(() => _statusPreset = v ?? ''),
+                    ),
+                  ),
+                ]),
+                if (_statusPreset == 'custom') ...[
+                  const SizedBox(height: 8),
+                  ZineField(
+                    controller: _statusCustom,
+                    hint: 'e.g. is away from the desk until Monday',
+                    maxLength: 120,
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
+                ],
+                const SizedBox(height: 10),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: _answerAll,
+                  onChanged: (v) => setState(() => _answerAll = v),
+                  title: Text('Answer every call on the first ring',
+                      style: ZineText.value(size: 12.5)),
+                  subtitle: Text(
+                      'For when you’re away. Ava picks up immediately instead of waiting 5 rings.',
+                      style: ZineText.sub(size: 11)),
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: _declineToAva,
+                  onChanged: (v) => setState(() => _declineToAva = v),
+                  title: Text('Let Ava take calls I decline',
+                      style: ZineText.value(size: 12.5)),
+                  subtitle: Text(
+                      'When you hit Decline, Ava answers instead of a plain missed call.',
+                      style: ZineText.sub(size: 11)),
+                ),
+                const SizedBox(height: 12),
+                // ── Language ───────────────────────────────────────────────
+                Row(children: [
+                  Text('Ava’s language', style: ZineText.sub(size: 12.5)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: AvaLangCatalog.isValid(_lang) ? _lang : '',
+                      underline: const SizedBox.shrink(),
+                      items: [
+                        for (final l in AvaLangCatalog.all)
+                          DropdownMenuItem(value: l.code, child: Text(l.label, style: ZineText.sub(size: 12.5))),
+                      ],
+                      onChanged: (v) => setState(() => _lang = v ?? ''),
+                    ),
+                  ),
+                ]),
                 const SizedBox(height: 12),
                 Row(children: [
                   Text('Ava’s voice', style: ZineText.sub(size: 12.5)),
@@ -253,6 +385,28 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                     ),
                   ),
                 ]),
+                const SizedBox(height: 12),
+                // ── Advanced: custom behaviour prompt ──────────────────────
+                InkWell(
+                  onTap: () => setState(() => _advancedOpen = !_advancedOpen),
+                  child: Row(children: [
+                    Text('Advanced', style: ZineText.sub(size: 12.5)),
+                    const SizedBox(width: 4),
+                    Icon(_advancedOpen ? Icons.expand_less : Icons.expand_more,
+                        size: 18, color: Zine.inkMute),
+                  ]),
+                ),
+                if (_advancedOpen) ...[
+                  const SizedBox(height: 8),
+                  ZineField(
+                    controller: _custom,
+                    hint: 'Extra behaviour for Ava. Safety rules and the 2-minute '
+                        'limit always apply and can’t be overridden here.',
+                    maxLines: 4,
+                    maxLength: 1000,
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 ZineButton(
                   label: _saving ? 'Saving…' : 'Save instructions',

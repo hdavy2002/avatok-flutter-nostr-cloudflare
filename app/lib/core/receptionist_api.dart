@@ -18,6 +18,15 @@ class ReceptionistSettings {
   final bool hasKb;
   final int softCapMs;
   final int hardCapMs;
+  // v2 — persona / language / activation
+  final String personaName;
+  final String languageCode; // '' = auto-detect
+  final String greetingText;
+  final String customPrompt;
+  final bool answerAll;      // Mode B: answer on first ring
+  final String statusPreset; // busy|travelling|meeting|driving|holiday|after_hours|custom|''
+  final String statusCustom;
+  final bool declineToAva;   // Mode C: red Decline routes to Ava
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -27,6 +36,14 @@ class ReceptionistSettings {
     required this.hasKb,
     required this.softCapMs,
     required this.hardCapMs,
+    this.personaName = '',
+    this.languageCode = '',
+    this.greetingText = '',
+    this.customPrompt = '',
+    this.answerAll = false,
+    this.statusPreset = '',
+    this.statusCustom = '',
+    this.declineToAva = false,
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -37,6 +54,14 @@ class ReceptionistSettings {
         hasKb: j['has_kb'] == true,
         softCapMs: (j['soft_cap_ms'] as num?)?.toInt() ?? 80000,
         hardCapMs: (j['hard_cap_ms'] as num?)?.toInt() ?? 120000,
+        personaName: (j['persona_name'] ?? '').toString(),
+        languageCode: (j['language_code'] ?? '').toString(),
+        greetingText: (j['greeting_text'] ?? '').toString(),
+        customPrompt: (j['custom_prompt'] ?? '').toString(),
+        answerAll: j['answer_all'] == true,
+        statusPreset: (j['status_preset'] ?? '').toString(),
+        statusCustom: (j['status_custom'] ?? '').toString(),
+        declineToAva: j['decline_to_ava'] == true,
       );
 }
 
@@ -67,6 +92,15 @@ class ReceptionistApi {
     required String instructions,
     required String voiceName,
     String? displayName,
+    // v2 — persona / language / activation
+    String? personaName,
+    String? languageCode,
+    String? greetingText,
+    String? customPrompt,
+    bool? answerAll,
+    String? statusPreset,
+    String? statusCustom,
+    bool? declineToAva,
   }) async {
     try {
       final r = await ApiAuth.putJson('$_base/settings', {
@@ -74,6 +108,14 @@ class ReceptionistApi {
         'instructions_text': instructions,
         'voice_name': voiceName,
         'display_name': displayName,
+        if (personaName != null) 'persona_name': personaName,
+        if (languageCode != null) 'language_code': languageCode,
+        if (greetingText != null) 'greeting_text': greetingText,
+        if (customPrompt != null) 'custom_prompt': customPrompt,
+        if (answerAll != null) 'answer_all': answerAll,
+        if (statusPreset != null) 'status_preset': statusPreset,
+        if (statusCustom != null) 'status_custom': statusCustom,
+        if (declineToAva != null) 'decline_to_ava': declineToAva,
       });
       if (r.statusCode != 200) return const ReceptionistSaveResult(false, false);
       final j = jsonDecode(r.body) as Map<String, dynamic>;
