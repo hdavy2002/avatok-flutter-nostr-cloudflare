@@ -385,7 +385,7 @@ export class ReceptionRoom {
       kind: "receptionist",
       body: envelope,
       media_ref: recordingUrl,              // voicemail recording (R2 key)
-      scope: `to:${init.owner_uid}` as const, // owner-private within the dm_ thread
+      scope: `to:${init.owner_uid}`, // owner-private within the dm_ thread
       created_at: Date.now(),
     };
     const stub = this.env.INBOX.get(this.env.INBOX.idFromName(init.owner_uid));
