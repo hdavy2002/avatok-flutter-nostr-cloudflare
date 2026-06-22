@@ -88,10 +88,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
             // Connectors, Wallet and View Storage now live in the ACCOUNT section
             // in BOTH modes, so they never appear in the APPS list.
             .where((a) => a.id != 'avaapps' && a.id != 'avawallet' && a.id != 'avastorage')
-            // AvaTOK, AvaChat and Library render as featured tiles when focus is OFF,
-            // so drop them from the APPS list only then (no duplicate). In focus mode
-            // the featured tiles are hidden, so they appear in the list.
-            .where((a) => focus || (a.id != 'avalibrary' && a.id != 'avachat' && a.id != 'avatok'))
+            // AvaTOK/Messenger, AvaChat/ChatAVA and Library now render as featured
+            // tiles in BOTH focus and non-focus modes (see _column), so always drop
+            // them from the APPS list to avoid duplicates.
+            .where((a) => a.id != 'avalibrary' && a.id != 'avachat' && a.id != 'avatok')
             .toList();
         final body = SafeArea(child: _column(context, apps, focus));
         if (widget.permanent) {
@@ -187,22 +187,20 @@ class _AvaSidebarState extends State<AvaSidebar> {
           ),
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), children: [
-              // Featured tiles — hidden in focus mode (those apps live outside
-              // AvaTOK + account essentials). Shown normally when focus is OFF.
-              if (!focus) ...[
-                // Featured apps. AvaTOK first (message people), AvaChat directly
-                // below it (talk privately to Ava), then Library. Connectors moved
-                // to the ACCOUNT section (owner 2026-06-19). AvaExplore/AvaVerse
-                // hidden (owner 2026-06-17).
-                _special('avatok', 'Messenger', 'Messages & calls',
-                    PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue),
-                _special('avachat', 'ChatAVA', 'Chat privately with Ava',
-                    PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
-                _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
-                    PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint),
-                _special('library', 'Library', 'Saved media & files',
-                    PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
-              ],
+              // Featured tiles — shown in BOTH focus and non-focus modes so the
+              // renamed Messenger/ChatAVA + the AI Voice Agent item are always
+              // visible (focus mode default is ON; these are the core surfaces).
+              // AvaTOK first (message people), ChatAVA below it (talk to Ava), then
+              // AI Voice Agent (hands-free call), then Library. Connectors live in
+              // the ACCOUNT section; AvaExplore/AvaVerse hidden.
+              _special('avatok', 'Messenger', 'Messages & calls',
+                  PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue),
+              _special('avachat', 'ChatAVA', 'Chat privately with Ava',
+                  PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
+              _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
+                  PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint),
+              _special('library', 'Library', 'Saved media & files',
+                  PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),
               // APPS section — hidden when empty (in the default non-focus menu all
