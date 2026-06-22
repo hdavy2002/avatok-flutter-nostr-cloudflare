@@ -2609,19 +2609,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _composerTools(),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 12, 10),
-          // Bottom-align so the +, sparkle and send controls stay pinned to the
-          // bottom as the multi-line field grows upward.
+          // Bottom-align so the + and send controls stay pinned to the bottom
+          // as the multi-line field grows upward. (The Ava-mode toggle now
+          // lives in the quick-tools row above — see _avaModeChip.)
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        // Ava-mode toggle: flip to talk privately to Ava without typing @ava;
-        // flip back to message the person. Highlights when ON.
-        IconButton(
-            tooltip: _avaMode ? 'Talking to Ava (tap to message ${widget.chat.name})' : 'Talk privately to Ava',
-            icon: PhosphorIcon(PhosphorIcons.sparkle(_avaMode ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
-                color: _avaMode ? Zine.blueInk : Zine.ink, size: 24),
-            onPressed: () {
-              setState(() => _avaMode = !_avaMode);
-              _composerFocus.requestFocus();
-            }),
         IconButton(
             icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), color: Zine.ink, size: 26),
             onPressed: _attach),
@@ -2630,7 +2621,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
                 color: _avaMode ? Zine.lilac : Zine.card,
-                borderRadius: BorderRadius.circular(100),
+                borderRadius: BorderRadius.circular(2),
                 border: Zine.border),
             child: TextField(
               controller: _ctrl,
@@ -2713,6 +2704,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
           children: [
+            _avaModeChip(),
             _translateChip(),
             _toolChip(
               tool: 'grammar',
@@ -2733,6 +2725,41 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               onTap: _runReplyIdeas,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Ava-mode toggle chip — sits at the front of the quick-tools row. Flip ON
+  /// to talk privately to Ava without typing @ava; flip back to message the
+  /// person. Fills lilac + sparkle-fill when ON.
+  Widget _avaModeChip() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Tooltip(
+        message: _avaMode
+            ? 'Talking to Ava (tap to message ${widget.chat.name})'
+            : 'Talk privately to Ava',
+        child: GestureDetector(
+          onTap: () {
+            setState(() => _avaMode = !_avaMode);
+            _composerFocus.requestFocus();
+          },
+          child: Container(
+            width: 34, height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _avaMode ? Zine.lilac : Zine.card,
+              shape: BoxShape.circle,
+              border: Zine.border,
+              boxShadow: Zine.shadowXs,
+            ),
+            child: PhosphorIcon(
+                PhosphorIcons.sparkle(
+                    _avaMode ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
+                size: 16,
+                color: _avaMode ? Zine.blueInk : Zine.ink),
+          ),
         ),
       ),
     );

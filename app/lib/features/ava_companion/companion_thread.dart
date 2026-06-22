@@ -653,63 +653,76 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         color: Zine.paper2,
         border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
       ),
-      child: Row(children: [
-        // Attach a file → saves it to the user's AvaTOK Google Drive folder.
-        IconButton(
-          icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: Zine.ink, size: 24),
-          onPressed: _busy ? null : _attachFile,
-          tooltip: 'Attach a file (saved to AvaLibrary + indexed for Ava)',
-        ),
-        // Mic → voice call (online) or dictation (on-device). Tap again to stop
-        // dictation.
-        IconButton(
-          icon: PhosphorIcon(
-              _sttActive
-                  ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
-                  : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
-              color: _sttActive ? Zine.coral : Zine.blueInk, size: 24),
-          onPressed: _sttActive ? _stopVoiceToText : _startVoiceToText,
-          tooltip: _sttActive ? 'Stop voice-to-text' : 'Voice call or dictate',
-        ),
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Zine.card,
-              borderRadius: BorderRadius.circular(Zine.rField),
-              border: Border.all(color: Zine.ink, width: 2),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: TextField(
-              controller: _input,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              style: ZineText.input(size: 15),
-              decoration: InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                hintText: 'Message Ava…',
-                hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Top icon row — attach + mic sit above the field so the input itself
+        // can run full-width and rectangular for more typing space.
+        Row(children: [
+          // Attach a file → saves it to the user's AvaTOK Google Drive folder.
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            icon: PhosphorIcon(PhosphorIcons.paperclip(PhosphorIconsStyle.bold), color: Zine.ink, size: 24),
+            onPressed: _busy ? null : _attachFile,
+            tooltip: 'Attach a file (saved to AvaLibrary + indexed for Ava)',
+          ),
+          const SizedBox(width: 4),
+          // Mic → voice call (online) or dictation (on-device). Tap again to stop
+          // dictation.
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            icon: PhosphorIcon(
+                _sttActive
+                    ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
+                    : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
+                color: _sttActive ? Zine.coral : Zine.blueInk, size: 24),
+            onPressed: _sttActive ? _stopVoiceToText : _startVoiceToText,
+            tooltip: _sttActive ? 'Stop voice-to-text' : 'Voice call or dictate',
+          ),
+        ]),
+        const SizedBox(height: 6),
+        // Bottom row — full-width rectangular field + send button.
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Zine.card,
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: Zine.ink, width: 2),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: TextField(
+                controller: _input,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+                style: ZineText.input(size: 15),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  hintText: 'Message Ava…',
+                  hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        ZinePressable(
-          onTap: _busy ? null : _send,
-          color: Zine.lime,
-          radius: BorderRadius.circular(100),
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: Center(
-              child: PhosphorIcon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
-                  size: 20, color: Zine.ink),
+          const SizedBox(width: 8),
+          ZinePressable(
+            onTap: _busy ? null : _send,
+            color: Zine.lime,
+            radius: BorderRadius.circular(100),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Center(
+                child: PhosphorIcon(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
+                    size: 20, color: Zine.ink),
+              ),
             ),
           ),
-        ),
+        ]),
       ]),
     );
   }
