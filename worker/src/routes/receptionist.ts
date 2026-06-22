@@ -305,8 +305,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const callerPhone = b.caller_phone ? normalizePhone(String(b.caller_phone)) : null;
   const callerName = b.caller_name == null ? null : String(b.caller_name).slice(0, 80);
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
-  // v2: how the call was handed off (rings | first_ring | manual | decline).
-  const VALID_MODES = new Set(["rings", "first_ring", "manual", "decline"]);
+  // v2: how the call was handed off. Standard 2-button incoming UI, so the
+  // triggers are: rings (no answer), first_ring (answer-all), decline (callee
+  // hit Decline with decline-to-Ava on).
+  const VALID_MODES = new Set(["rings", "first_ring", "decline"]);
   let activationMode = String(b.activation_mode || "rings");
   if (!VALID_MODES.has(activationMode)) activationMode = "rings";
 

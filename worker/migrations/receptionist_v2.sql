@@ -20,4 +20,4 @@ ALTER TABLE receptionist_settings ADD COLUMN status_custom  TEXT;     -- free te
 ALTER TABLE receptionist_settings ADD COLUMN decline_to_ava INTEGER NOT NULL DEFAULT 0; -- 0/1: red Decline routes to Ava
 
 -- How a given call was handed off (telemetry / analytics split).
-ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT;    -- rings|first_ring|manual|decline
+ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT;    -- rings|first_ring|decline

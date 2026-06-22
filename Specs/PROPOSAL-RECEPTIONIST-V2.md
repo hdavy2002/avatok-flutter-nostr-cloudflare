@@ -39,9 +39,10 @@ Gateway metering, 2-min cap, summary, recording, premium gate, telemetry) is reu
   2. **Answer on first ring** (opt-in toggle) — when the owner is busy/travelling, Ava answers
      immediately on the first ring for *every* incoming call. Paired with a **status dropdown**
      (Busy / Travelling / In a meeting / …) that Ava speaks naturally.
-  3. **Manual hand-off** — a **third "Agent" button on the incoming-call ringing screen** (next
-     to the green accept / red decline). The owner taps/swipes it to hand the live call straight
-     to Ava. Declining a call can also route to Ava (opt-in).
+  3. **Decline hand-off** — the owner hits the standard **red Decline** button and, when the
+     "let Ava take calls I decline" opt-in is on, the call routes to Ava instead of becoming a
+     plain missed call. **No third button** — the incoming UI stays the standard two-button
+     Accept/Decline (Decline IS the trigger).
 - **Settings gets a persona.** Ava can self-introduce under a chosen **name**, speak a chosen
   **language**, and use an optional **custom greeting / system prompt** on top of the safety
   scaffold.
@@ -89,33 +90,27 @@ travelling, in meetings, etc.
 - Server-authoritative: `config?to=<uid>` returns `mode: "first_ring"` so the caller app knows to
   hand off immediately instead of waiting 5 rings.
 
-### 2.3 Mode C — Manual hand-off from the incoming-call screen
-When B's phone rings, B can actively send the call to Ava instead of ignoring it.
+### 2.3 Mode C — Decline routes to Ava (the reject trigger)
+The incoming-call UI stays **standard** — the usual **green Accept** / **red Decline** that
+`flutter_callkit_incoming` shows (native CallKit on iOS / ConnectionService full-screen intent on
+Android). **No third button.** Instead, *Decline* becomes a hand-off trigger:
 
-- **Add a third action to the incoming-call ringing UI.** Today the incoming call uses
-  `flutter_callkit_incoming` (native CallKit on iOS / ConnectionService full-screen intent on
-  Android), which shows the usual **green Accept** / **red Decline**. Add a **third "Agent"
-  action** (robot/headset icon, brand colour) between them: *"Let Ava answer."*
-- **Tapping Agent** → B's side declines the human leg and signals the caller to connect to Ava;
-  A starts talking to Ava immediately (reading B's Settings → Receptionist config).
-- **Decline → Ava (opt-in).** A setting *"When I decline a call, let Ava take it"* — for the
-  "I'm in a meeting and cut the call" case. When on, pressing red Decline routes to Ava instead of
-  a plain missed call. Default OFF so Decline stays Decline unless the owner opts in.
+- A new opt-in setting *"Let Ava take calls I decline."* When ON and B hits **red Decline** on an
+  audio call, the call routes to Ava instead of becoming a plain missed call — the "I'm in a
+  meeting and reject the call, let Ava handle it" case.
+- Default **OFF**, so Decline stays Decline unless the owner opts in.
+- Works identically on iOS and Android (no native incoming-UI changes — the decline event is all
+  we need).
 
-#### UI build note (platform reality)
-- **Android:** the full-screen incoming UI can be customised — add the third Agent button directly
-  to the incoming-call screen / notification actions.
-- **iOS CallKit:** the native call screen is **locked to two buttons** (Accept/Decline) and cannot
-  show a third. Options: (a) treat **Decline-routes-to-Ava** as the iOS path (opt-in), and/or (b)
-  present an **in-app incoming screen** (when the app is foregrounded) carrying the three buttons.
-  Flag this for the iOS build; Android gets the true three-button UI first.
-- If a dedicated in-app ringing UI doesn't already exist (only the native CallKit one does), build
-  one so the Agent action has a home on both platforms.
+How it works: on the CallKit decline event the callee app checks its per-account local mirror
+(`receptionist_enabled` + `receptionist_decline_to_ava`) and signals **`decline_ava`** to the
+caller (instead of plain `decline`); the caller's status listener then connects to Ava
+(activation `decline`) rather than ending.
 
 ### 2.4 Precedence
-First-ring mode (B) wins when on. Otherwise the call rings; B may hand off manually at any ring
-(C); if B does nothing, auto-handoff fires at ring 5 (A). All three are gated by premium + Ava
-enabled + `receptionistEnabled`.
+First-ring mode (B) wins when on. Otherwise the call rings; if B presses **Decline** (with the
+opt-in on) it hands off immediately (C); if B does nothing, auto-handoff fires at ring 5 (A). All
+three are gated by premium + Ava enabled + `receptionistEnabled`.
 
 ---
 
@@ -248,7 +243,7 @@ A (Flutter)                                  B (owner, premium)
    | call B  ───────────────────────────────────▶|  rings…
    |                                              |
    |  Mode B (answer_all): hand off on ring 1     |
-   |  Mode C: B taps "Agent" on incoming UI ──────┤  [NEW §2.3]  (or Decline→Ava if opted in)
+   |  Mode C: B hits Decline (decline_to_ava on) ─┤  [NEW §2.3]  standard 2-button UI
    |  Mode A: no pickup by ring 5  ───────────────┘  [§2.1]
    |        └─ any of the above → ReceptionistCall.start()
    v
@@ -319,16 +314,17 @@ quality) is specified in **`Specs/RECEPTIONIST-V2-TELEMETRY.md`**. Headlines:
 4. **Activation modes** —
    (A) express auto-handoff as **5 rings** (`receptionistRings`) in `call_screen.dart`;
    (B) **first-ring** mode: `config` returns `mode:"first_ring"` → caller hands off on ring 1;
-   (C) **manual Agent button** on the incoming-call UI (Android three-button first; iOS via
-   decline-to-Ava and/or in-app ringing screen) + the decline-routes-to-Ava path.
+   (C) **decline-routes-to-Ava**: standard 2-button incoming UI; the callee's decline event signals
+   `decline_ava` → caller connects to Ava. No native incoming-UI change.
 5. **Native full-duplex audio engine** — shared plugin; AEC + half-duplex-on-speaker + route
    toggle (per-account); swap `ReceptionistCall` onto it; reuse for live/translation calls.
 6. **Telemetry + diagnostics** surfacing (incl. `activation_mode` on every session).
 7. **Premium dogfood on staging → limited cohort → widen.**
 
-> Ship order note: 2 and 3 are independent and low-risk — do them first. 4C (incoming-UI Agent
-> button) needs platform-specific work (iOS CallKit can't show a third button — see §2.3). 5
-> (native audio) is the heaviest and benefits live calls too, so scope it as its own workstream.
+> Ship order note: 2 and 3 are independent and low-risk — do them first. 4C (decline-to-Ava)
+> needs no native incoming-UI work — it rides the existing decline event, so it ships on both
+> platforms together. 5 (native audio) is the heaviest and benefits live calls too, so scope it as
+> its own workstream.
 
 ---
 
@@ -344,8 +340,8 @@ spend bounded.
 ## 12. Open questions
 
 - Ring count: **5** default — confirm; expose to the owner or keep RemoteConfig-only?
-- iOS Mode C: accept that iOS gets **decline-to-Ava / in-app ringing screen** rather than a true
-  third CallKit button? (proposal: yes — Android ships the three-button UI first.)
+- Mode C uses the standard 2-button UI with **Decline as the trigger** (no third button) — confirmed
+  by owner 2026-06-22. Default OFF (opt-in).
 - Should **first-ring mode** auto-expire (e.g. after N hours / next morning) so the owner can't
   forget it's on? (proposal: optional auto-off timer + a persistent "Ava is answering your calls"
   banner.)
@@ -362,14 +358,13 @@ spend bounded.
 v1 already works end-to-end. v2 adds four things on top, all additive: **(1)** **three activation
 modes** — auto after **5 rings** (default), an **"answer every call on the first ring"** toggle for
 when the owner is away (with a **status dropdown**: busy / travelling / in a meeting / … that Ava
-speaks), and a **manual "Agent" button on the incoming-call screen** plus optional
-decline-routes-to-Ava (no missed-call counter — the trigger is ring-based); **(2)** a richer
+speaks), and **decline-routes-to-Ava** (opt-in: hitting the standard red Decline hands the call to
+Ava — no third button, no missed-call counter, the trigger is ring/decline-based); **(2)** a richer
 **Settings → Receptionist** card with **persona name, language (auto + 27), greeting, availability
 status, and an advanced custom prompt**, all layered over the unchangeable safety scaffold + 2-min
 cap; **(3)** a **native full-duplex audio engine** (platform AEC, half-duplex on loudspeaker,
 speaker/earpiece toggle remembered per account) shared with live calls; and **(4)** the taken
 message delivered **inside the caller's real chat thread as an agent bubble** with the transcript +
 a play button — instead of a hidden separate conversation. Ship the Settings fields and the
-in-thread bubble first; the incoming-UI Agent button needs platform-specific work (iOS CallKit
-caps at two buttons); treat the native audio engine as its own workstream since live calls benefit
-too.
+in-thread bubble first; decline-to-Ava ships on both platforms together (no native incoming-UI
+work); treat the native audio engine as its own workstream since live calls benefit too.

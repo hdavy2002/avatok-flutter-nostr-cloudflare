@@ -60,13 +60,13 @@ it and add the new props. Everything else is new.
 | Event | Key props | Catches |
 |---|---|---|
 | `ava_recept_config_checked` | `available`, `mode` (`rings`\|`first_ring`), `reason`, `latency_ms` | config round-trip cost |
-| `ava_recept_handoff` | **`activation_mode`** (`rings`\|`first_ring`\|`manual`\|`decline`), `ring_at` (which ring), `status_preset` | **how** Ava took the call |
+| `ava_recept_handoff` | **`activation_mode`** (`rings`\|`first_ring`\|`decline`), `ring_at` (which ring), `status_preset` | **how** Ava took the call |
 | `ava_recept_skipped` | `reason` (`not_premium`\|`off`\|`disabled`\|`video_call`\|`no_model_key`) | why Ava *didn't* take it |
 | `ava_recept_triggered` **(EXISTING)** | `owner`, `has_phone`, `call_id`, `activation_mode` | takeover started |
 
 > `activation_mode` is also persisted on `receptionist_sessions` so analytics can split latency /
-> quality / outcome by **how** the call was handed off (auto-5-rings vs first-ring vs the manual
-> Agent button vs decline-to-Ava).
+> quality / outcome by **how** the call was handed off (auto-5-rings vs first-ring vs
+> decline-to-Ava).
 
 ### 2.2 Connection & setup latency (cold-start cost)
 | Event | Key props | Catches |

@@ -134,16 +134,16 @@ class _CallScreenState extends State<CallScreen> {
         });
       }
     }
-    // Server-relayed call status (declined / busy / to-Ava) for this call.
+    // Server-relayed call status (declined / busy / decline-to-Ava) for this call.
     _statusSub = callStatusBus.stream.listen((e) {
       if (e.callId == widget.room && mounted && !_connected) {
-        // v2 Mode C: the callee chose to send us to Ava — 'decline_ava' (they hit
-        // Decline with the opt-in on) or 'to_ava' (the Agent button). Hand off to
-        // the receptionist instead of ending. Audio only.
-        if ((e.status == 'decline_ava' || e.status == 'to_ava') && !widget.video && !_ended) {
+        // v2 Mode C: the callee hit Decline with "let Ava take calls I decline"
+        // on → 'decline_ava'. Hand off to the receptionist instead of ending.
+        // Audio only. (Standard 2-button incoming UI — Decline IS the trigger.)
+        if (e.status == 'decline_ava' && !widget.video && !_ended) {
           _ringTimeout?.cancel();
           // ignore: unawaited_futures
-          _handoffToAva(e.status == 'to_ava' ? 'manual' : 'decline');
+          _handoffToAva('decline');
           return;
         }
         _endWith(e.status == 'decline' ? 'declined' : e.status);
@@ -470,8 +470,8 @@ class _CallScreenState extends State<CallScreen> {
     } catch (_) {/* keep default window */}
   }
 
-  /// Callee actively sent us to Ava (decline-to-Ava or the Agent button). Stop
-  /// ringing and connect to the receptionist; if she can't pick up, end normally.
+  /// Callee declined the call with decline-to-Ava enabled. Stop ringing and
+  /// connect to the receptionist; if she can't pick up, end normally.
   Future<void> _handoffToAva(String activationMode) async {
     _ringback.stop();
     final started = await _tryReceptionist(activationMode: activationMode);
