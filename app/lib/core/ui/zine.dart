@@ -127,31 +127,37 @@ class ZineText {
         fontFamily: display, fontWeight: FontWeight.w600, fontSize: size,
         height: 1.0, letterSpacing: -0.2, color: color);
 
-  /// Body / subtitle — Nunito 700, ink-soft.
+  // SLIM PASS (owner request 2026-06-22): body/UI text dropped to w600, the
+  // LIGHTEST weight currently bundled (only 600/700/800/900 ship — see pubspec).
+  // To go truly regular, add Nunito-Regular.ttf (400) + Nunito-Medium.ttf (500)
+  // to assets/fonts, register them in pubspec, then set sub→w400, input/tag→w500.
+
+  /// Body / subtitle — Nunito 600 (was w700; floor weight until 400 is bundled).
   static TextStyle sub({double size = 15.5, Color color = Zine.inkSoft}) => TextStyle(
-        fontFamily: body, fontWeight: FontWeight.w700, fontSize: size,
+        fontFamily: body, fontWeight: FontWeight.w600, fontSize: size,
         height: 1.42, color: color);
 
-  /// Emphasized body value — Nunito 800–900.
-  static TextStyle value({double size = 16, Color color = Zine.ink, FontWeight weight = FontWeight.w800}) =>
+  /// Emphasized body value — Nunito 600 (slimmed from 800). Callers can still
+  /// pass a heavier [weight] for intentionally bold spots.
+  static TextStyle value({double size = 16, Color color = Zine.ink, FontWeight weight = FontWeight.w600}) =>
       TextStyle(fontFamily: body, fontWeight: weight, fontSize: size, height: 1.3, color: color);
 
-  /// Input text — Nunito 800, 18–19px.
+  /// Input text — Nunito 600 (slimmed from 800), 18–19px.
   static TextStyle input({double size = 18, Color color = Zine.ink}) => TextStyle(
-        fontFamily: body, fontWeight: FontWeight.w800, fontSize: size,
+        fontFamily: body, fontWeight: FontWeight.w600, fontSize: size,
         letterSpacing: -0.18, color: color);
 
-  /// Field label / kicker — Nunito 700 11px UPPERCASE.
+  /// Field label / kicker — Nunito 600 11px UPPERCASE (slimmed from 700).
   static TextStyle kicker({double size = 11, Color color = Zine.inkSoft}) => TextStyle(
-        fontFamily: mono, fontWeight: FontWeight.w700, fontSize: size,
+        fontFamily: mono, fontWeight: FontWeight.w600, fontSize: size,
         letterSpacing: 0.08 * size, color: color);
 
-  /// Caption / tag / sticker — Nunito 700 10.5–14px UPPERCASE.
+  /// Caption / tag / sticker — Nunito 600 10.5–14px UPPERCASE (slimmed from 700).
   static TextStyle tag({double size = 12, Color color = Zine.ink}) => TextStyle(
-        fontFamily: mono, fontWeight: FontWeight.w700, fontSize: size,
+        fontFamily: mono, fontWeight: FontWeight.w600, fontSize: size,
         letterSpacing: 0.04 * size, color: color);
 
-  /// Mono link — Nunito 700, blue-ink.
+  /// Mono link — Nunito 600, blue-ink (slimmed from 700).
   static TextStyle link({double size = 13, Color color = Zine.blueInk}) => TextStyle(
-        fontFamily: mono, fontWeight: FontWeight.w700, fontSize: size, color: color);
+        fontFamily: mono, fontWeight: FontWeight.w600, fontSize: size, color: color);
 }

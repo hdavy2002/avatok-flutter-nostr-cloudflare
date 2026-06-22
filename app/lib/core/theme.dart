@@ -126,7 +126,7 @@ class AvaTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: false,
         isDense: true,
-        hintStyle: ZineText.input(size: 16).copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+        hintStyle: ZineText.input(size: 16).copyWith(color: Zine.placeholder, fontWeight: FontWeight.w600),
         labelStyle: ZineText.kicker(size: 12),
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
