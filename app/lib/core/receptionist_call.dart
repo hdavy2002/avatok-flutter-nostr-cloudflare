@@ -104,7 +104,7 @@ class ReceptionistCall {
         'callee_hash': calleeUid.hashCode.toString(),
         'activation_mode': activationMode,
         'ws_connect_ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
-        if (callId != null) 'call_id': callId,
+        if (callId case final id?) 'call_id': id,
       });
       AvaLog.I.log('receptionist', 'session started ${_sessionId ?? "?"}');
       return true;
@@ -125,7 +125,7 @@ class ReceptionistCall {
         Analytics.capture('ava_recept_first_audio', {
           'ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
           'activation_mode': activationMode,
-          if (callId != null) 'call_id': callId,
+          if (callId case final id?) 'call_id': id,
         });
       }
       _pcmBuf.add(data);
@@ -179,7 +179,7 @@ class ReceptionistCall {
       'reason': reason,
       'activation_mode': activationMode,
       'got_audio': _firstAudio,
-      if (callId != null) 'call_id': callId,
+      if (callId case final id?) 'call_id': id,
     });
     AvaLog.I.log('receptionist', 'ended: $reason');
     onStatus?.call('ended');
