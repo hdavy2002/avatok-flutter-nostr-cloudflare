@@ -28,56 +28,140 @@ export interface CalEvent {
 
 const ACCENTS: Token[] = ["blue", "lime", "mint", "lilac", "coral"];
 
-function clock(iso?: string): string {
+// ---- timezone-correct formatting -------------------------------------------
+// Google returns each event's `start.dateTime` as an RFC3339 instant WITH its
+// own UTC offset, and the events.list response carries the calendar's IANA
+// `timeZone`. We MUST render in a real zone, not UTC: the old code called
+// getUTCHours(), so a noon-local event showed as "7:00 PM" etc. We format the
+// instant in the resolved IANA zone via Intl (DST-safe, same approach as
+// cal/engine.ts). `tz` resolution: explicit caller hint → calendar's own zone →
+// UTC. A bad/unknown zone falls back to UTC rather than throwing.
+function safeTz(tz?: string): string {
+  if (!tz) return "UTC";
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch { return "UTC"; }
+}
+
+function clock(iso: string | undefined, tz: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  let h = d.getUTCHours();
-  const m = d.getUTCMinutes();
-  const ap = h < 12 ? "AM" : "PM";
-  h = h % 12 === 0 ? 12 : h % 12;
-  return `${h}:${m === 0 ? "00" : String(m).padStart(2, "0")} ${ap}`;
+  try {
+    // e.g. "3:00 PM" in the viewer's zone.
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true,
+    }).format(d);
+  } catch {
+    // Defensive: unknown zone — render the UTC wall clock so we never crash.
+    let h = d.getUTCHours(); const m = d.getUTCMinutes();
+    const ap = h < 12 ? "AM" : "PM"; h = h % 12 === 0 ? 12 : h % 12;
+    return `${h}:${m === 0 ? "00" : String(m).padStart(2, "0")} ${ap}`;
+  }
 }
 
-// Day window [00:00, 24:00) in UTC for `dayIso` (defaults to today).
-function dayWindow(dayIso?: string): { timeMin: string; timeMax: string; label: string } {
+// Offset (ms) of IANA `tz` at instant `utcMs`. DST-safe (ported from cal/engine.ts).
+function zoneOffsetMs(tz: string, utcMs: number): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(new Date(utcMs))) p[part.type] = part.value;
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second);
+  return asUTC - utcMs;
+}
+
+// UTC instant of local-wall midnight for (y,mo,da) in `tz`. Two-pass DST fix.
+function zonedMidnight(y: number, mo: number, da: number, tz: string): number {
+  const wall = Date.UTC(y, mo, da, 0, 0, 0);
+  let utc = wall - zoneOffsetMs(tz, wall);
+  utc = wall - zoneOffsetMs(tz, utc);
+  return utc;
+}
+
+// Day window [00:00, 24:00) for `dayIso` (defaults to now), computed in `tz` so
+// "today" means the user's local day — not the UTC day. Label is also in `tz`.
+function dayWindow(dayIso: string | undefined, tz: string): { timeMin: string; timeMax: string; label: string } {
   const base = dayIso ? new Date(dayIso) : new Date();
-  const y = base.getUTCFullYear(), mo = base.getUTCMonth(), da = base.getUTCDate();
-  const min = new Date(Date.UTC(y, mo, da, 0, 0, 0));
-  const max = new Date(Date.UTC(y, mo, da + 1, 0, 0, 0));
-  const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][min.getUTCDay()];
-  const mn = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][mo];
-  return { timeMin: min.toISOString(), timeMax: max.toISOString(), label: `${wd} · ${mn} ${da}` };
+  // Calendar date (Y-M-D) as seen in `tz` for the given instant.
+  const p: Record<string, string> = {};
+  for (const part of new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(base)) p[part.type] = part.value;
+  const y = +p.year, mo = +p.month - 1, da = +p.day;
+  const minMs = zonedMidnight(y, mo, da, tz);
+  const maxMs = zonedMidnight(y, mo, da + 1, tz);
+  const label = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, weekday: "short", month: "short", day: "numeric",
+  }).format(new Date(minMs)).replace(",", " ·").replace(/ (\d)/, " $1"); // "Mon · Jun 22"
+  return { timeMin: new Date(minMs).toISOString(), timeMax: new Date(maxMs).toISOString(), label };
 }
 
+// Local calendar date "YYYY-MM-DD" of `ms` as seen in `tz` (for all-day match).
+function localDateStr(ms: number, tz: string): string {
+  const p: Record<string, string> = {};
+  for (const part of new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(ms))) p[part.type] = part.value;
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+// `tzHint` (optional, IANA) forces the viewer's zone (e.g. the client device/geo
+// zone). When omitted we adopt the calendar's own zone from the events.list
+// response. The query uses a PADDED window (±18h covers every UTC offset) so a
+// single read is enough; we then keep only events that fall on the local day in
+// the resolved zone and format their times in it. "today" = the local day, and
+// the times shown match what the user sees in Google Calendar.
 export async function fetchDayEvents(
-  env: Env, uid: string, dayIso?: string,
+  env: Env, uid: string, dayIso?: string, tzHint?: string,
 ): Promise<{ events: CalEvent[]; label: string }> {
-  const { timeMin, timeMax, label } = dayWindow(dayIso);
+  const base = dayIso ? new Date(dayIso) : new Date();
+  // Padded window so the single query is guaranteed to include the local day for
+  // any timezone (max real offset is ±14h; ±18h is safe headroom).
+  const pad = 18 * 60 * 60 * 1000;
+  const timeMin = new Date(base.getTime() - pad).toISOString();
+  const timeMax = new Date(base.getTime() + 24 * 60 * 60 * 1000 + pad).toISOString();
   const r = await executeTool(env, uid, "GOOGLECALENDAR_EVENTS_LIST", {
     calendarId: "primary", timeMin, timeMax,
-    singleEvents: true, orderBy: "startTime", maxResults: 10,
+    singleEvents: true, orderBy: "startTime", maxResults: 50,
   });
   if (!toolOk(r)) throw new Error(toolErr(r));
-  const data = r?.data ?? {};
+  const data: any = r?.data ?? {};
+  // Resolve the viewer zone: explicit hint → calendar's own zone → UTC.
+  const tz = safeTz(tzHint ?? data?.timeZone ?? data?.response_data?.timeZone);
+  const win = dayWindow(dayIso, tz);
+  const dayMin = new Date(win.timeMin).getTime();
+  const dayMax = new Date(win.timeMax).getTime();
+  const dayDate = localDateStr(dayMin, tz);
+
   const items: any[] = data?.items ?? data?.response_data?.items ?? [];
-  const events = items.map((e: any, i: number): CalEvent => {
+  const events: CalEvent[] = [];
+  items.forEach((e: any, i: number) => {
     const startDt = e?.start?.dateTime;
     const endDt = e?.end?.dateTime;
     const allDay = !startDt && !!(e?.start?.date);
-    return {
+    // Keep only events on the local day. Timed: instant inside [00:00,24:00) of
+    // the local day. All-day: its date equals the local day's date.
+    if (allDay) {
+      if (String(e?.start?.date ?? "") !== dayDate) return;
+    } else {
+      const t = new Date(startDt).getTime();
+      if (isNaN(t) || t < dayMin || t >= dayMax) return;
+    }
+    const evTz = safeTz(e?.start?.timeZone ?? tz);
+    events.push({
       id: String(e?.id ?? `ev${i}`),
       title: String(e?.summary ?? "(no title)"),
-      start: allDay ? "All day" : clock(startDt),
-      end: allDay ? "" : clock(endDt),
+      start: allDay ? "All day" : clock(startDt, evTz),
+      end: allDay ? "" : clock(endDt, evTz),
       allDay,
       location: e?.location ? String(e.location) : undefined,
       video: !!(e?.hangoutLink || e?.conferenceData),
       guests: Array.isArray(e?.attendees) ? e.attendees.length : 0,
-      accent: ACCENTS[i % ACCENTS.length],
-    };
+      accent: ACCENTS[events.length % ACCENTS.length],
+    });
   });
-  return { events, label };
+  return { events, label: win.label };
 }
 
 // Compose the A2UI surface for a day (mirrors kit-calendar.jsx).
