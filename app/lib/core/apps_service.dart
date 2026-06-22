@@ -146,6 +146,31 @@ class AppsService {
     return (j['error'] ?? 'Something went wrong running that.').toString();
   }
 
+  /// Execute ONE Composio tool fired from a GenUI card (a `composio` action:
+  /// Rename, Delete, Schedule a meeting…). Returns the short answer + any
+  /// refreshed A2UI surface the server rendered from the result. This is a
+  /// MUTATING action — never cached. The server re-validates the tool against
+  /// the user's connected toolkits and coerces args to the tool schema.
+  Future<GenuiActionResult> genuiAction(String tool, Map<String, dynamic> args, {String? request}) async {
+    try {
+      final body = <String, dynamic>{'tool': tool, 'args': args, if (request != null) 'request': request};
+      final res = await ApiAuth.postJsonH(_url(AvaApi.genuiAction), body, const {},
+          timeout: const Duration(seconds: 60));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      if (j['reason'] == 'premium_required') {
+        return GenuiActionResult(ok: false, answer: (j['message'] ?? 'Top up to use this.').toString());
+      }
+      final ok = j['ok'] == true;
+      final answer = (j['answer'] ?? j['error'] ?? (ok ? 'Done.' : 'That didn\'t go through.')).toString();
+      final surface = j['a2ui'] is Map ? (j['a2ui'] as Map).cast<String, dynamic>() : null;
+      Analytics.capture('genui_action_client', {'tool': tool, 'ok': ok, 'rendered': surface != null});
+      return GenuiActionResult(ok: ok, answer: answer, surface: surface);
+    } catch (e) {
+      Analytics.appsUnavailable(endpoint: AvaApi.genuiAction, code: e.runtimeType.toString());
+      return GenuiActionResult(ok: false, answer: 'Couldn\'t reach the app just now.');
+    }
+  }
+
   /// Only cache reads. If the request looks like it CHANGES something, always
   /// hit the server so we never skip a real send/create/delete.
   static bool _isReadOnly(String q) {
@@ -173,6 +198,14 @@ class _CachedResult {
   final String answer;
   final DateTime expires;
   const _CachedResult(this.answer, this.expires);
+}
+
+/// Result of a GenUI card action: the short answer + any refreshed A2UI surface.
+class GenuiActionResult {
+  final bool ok;
+  final String answer;
+  final Map<String, dynamic>? surface;
+  const GenuiActionResult({required this.ok, required this.answer, this.surface});
 }
 
 /// One app in the Composio catalog grid.

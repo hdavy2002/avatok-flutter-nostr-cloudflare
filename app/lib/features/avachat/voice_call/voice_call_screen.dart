@@ -31,12 +31,19 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   final LiveVoiceController _call = LiveVoiceController();
   late final AnimationController _pulse;
 
-  // 5-minute "still there?" guardrail — a visible countdown; at 0 it pauses + asks.
+  // 5-minute "still there?" guardrail — a visible countdown. At 50s left it beeps
+  // a warning; at 0 it pauses + asks "Keep going?"; if the user doesn't respond
+  // within _autoEndFrom seconds the call auto-disconnects.
   static const _segment = Duration(minutes: 5);
+  static const int _warnAt = 50; // seconds-left warning beep
+  static const int _autoEndFrom = 20; // overlay auto-disconnect countdown
   Timer? _segTimer;
+  Timer? _autoEndTimer;
   bool _started = false;
   bool _needContinue = false;
+  bool _warned = false;
   int _remaining = 300; // seconds left in the current 5-min segment
+  int _autoEnd = _autoEndFrom; // seconds left before auto-disconnect on the prompt
 
   @override
   void initState() {
@@ -58,9 +65,15 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   void _startSegTimer() {
     _segTimer?.cancel();
     _remaining = _segment.inSeconds;
+    _warned = false;
     _segTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _remaining--);
+      // Heads-up beep ~50s before the segment ends.
+      if (!_warned && _remaining == _warnAt) {
+        _warned = true;
+        SystemSound.play(SystemSoundType.alert);
+      }
       if (_remaining <= 0) {
         _segTimer?.cancel();
         _onSegmentEnd();
@@ -70,13 +83,28 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
 
   Future<void> _onSegmentEnd() async {
     if (!mounted) return;
-    await _call.pause();
+    await _call.pause(); // stop billing while we wait for the user
     SystemSound.play(SystemSoundType.alert); // beep
-    if (mounted) setState(() => _needContinue = true);
+    if (!mounted) return;
+    setState(() { _needContinue = true; _autoEnd = _autoEndFrom; });
+    // Auto-disconnect if the user doesn't tap Continue in time.
+    _autoEndTimer?.cancel();
+    _autoEndTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _autoEnd--);
+      if (_autoEnd <= 0) {
+        _autoEndTimer?.cancel();
+        _end();
+      }
+    });
   }
 
   Future<void> _continue() async {
+    _autoEndTimer?.cancel();
     setState(() => _needContinue = false);
+    // Resume the SAME Live session: sliding-window context compression (set in the
+    // token) keeps the running context bounded and carries it into the next turn,
+    // so a long 2-hour call stays roughly linear in tokens.
     await _call.resume();
     _startSegTimer();
   }
@@ -91,6 +119,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   @override
   void dispose() {
     _segTimer?.cancel();
+    _autoEndTimer?.cancel();
     _call.state.removeListener(_onState);
     _pulse.dispose();
     _call.dispose();
@@ -99,6 +128,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
 
   Future<void> _end() async {
     _segTimer?.cancel();
+    _autoEndTimer?.cancel();
     await _call.dispose();
     if (mounted) Navigator.of(context).pop();
   }
@@ -157,6 +187,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
                   "You've been talking with Ava for 5 minutes. Keep going?",
                   textAlign: TextAlign.center,
                   style: ZineText.sub(size: 13),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Ending in ${_autoEnd}s…',
+                  textAlign: TextAlign.center,
+                  style: ZineText.kicker(size: 11, color: Zine.coral),
                 ),
                 const SizedBox(height: 18),
                 Row(children: [

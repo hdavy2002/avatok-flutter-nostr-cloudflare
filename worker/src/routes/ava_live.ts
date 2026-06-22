@@ -20,9 +20,13 @@ import { requireUser, isFail } from "../authz";
 const LIVE_MODEL = "gemini-3.1-flash-live-preview";
 // Default prebuilt Gemini voice; the client may request another from this allowlist.
 const DEFAULT_VOICE = "Aoede";
+// All 30 prebuilt Gemini Live voices (verified accepted by gemini-3.1-flash-live).
 const VOICES = new Set([
-  "Aoede", "Kore", "Leda", "Zephyr", "Callirrhoe", "Autonoe", // female
-  "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", // male
+  "Aoede", "Kore", "Leda", "Zephyr", "Autonoe", "Callirrhoe", "Despina", "Erinome",
+  "Laomedeia", "Achernar", "Gacrux", "Pulcherrima", "Vindemiatrix", "Sulafat",
+  "Achird", "Sadachbia",
+  "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", "Umbriel", "Algieba",
+  "Algenib", "Rasalgethi", "Alnilam", "Schedar", "Zubenelgenubi", "Sadaltager",
 ]);
 
 function systemPrompt(firstName: string): string {
@@ -43,7 +47,9 @@ async function mintToken(
 ): Promise<{ token: string; model: string; expires_at: number } | { error: string }> {
   if (!env.GEMINI_API_KEY) return { error: "voice unavailable: GEMINI_API_KEY unset" };
   const voiceName = VOICES.has(voice) ? voice : DEFAULT_VOICE;
-  const expireMs = Date.now() + 30 * 60_000;
+  // 2h token lifetime so a long call can run in ONE session (sliding-window
+  // compression keeps the running context — and tokens — bounded).
+  const expireMs = Date.now() + 120 * 60_000;
   const body = {
     uses: 1,
     expireTime: new Date(expireMs).toISOString(),

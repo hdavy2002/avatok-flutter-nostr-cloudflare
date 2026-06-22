@@ -65,10 +65,21 @@ export interface Affordance {
   fields: AffordanceField[];        // user-supplied inputs
 }
 
+// Per-call telemetry so the whole intent→presentation pipeline is measurable.
+export interface CapsDiag {
+  catalog_cache: "hit" | "miss" | "skip" | "empty"; // KV catalog cache outcome
+  catalog_ms: number;        // time to obtain the catalog (KV read or Composio fetch + classify)
+  catalog_tools: number;     // tools in the toolkit catalog
+  resolve_ms: number;        // time to classify + rank affordances
+  item: number;              // per-row affordances kept
+  surface: number;           // per-surface affordances kept
+}
+
 export interface ResolvedCapabilities {
   toolkit: string;
   entity: string;
   affordances: Affordance[];
+  diag: CapsDiag;
 }
 
 // Composio slugs are `${TOOLKIT}_${ACTION}` in upper snake-case; the toolkit
@@ -139,16 +150,26 @@ function classify(t: { slug: string; name: string; description: string; params: 
 }
 
 // ---- catalog (full, cached per toolkit) -------------------------------------
-export async function getToolkitCapabilities(env: Env, toolkit: string): Promise<CapTool[]> {
+// Instrumented variant: returns the catalog PLUS the KV cache outcome + timing
+// so callers can prove the catalog cache is doing its job (a "miss" hits Composio
+// + the classifier, a "hit" is a single KV read).
+export async function getToolkitCapabilitiesDiag(
+  env: Env, toolkit: string,
+): Promise<{ caps: CapTool[]; cache: CapsDiag["catalog_cache"]; ms: number }> {
+  const t0 = Date.now();
   const key = `ava_caps:${CAPS_VERSION}:${toolkit}`;
   try {
     const cached = await env.TOKENS.get(key);
-    if (cached) return JSON.parse(cached) as CapTool[];
+    if (cached) return { caps: JSON.parse(cached) as CapTool[], cache: "hit", ms: Date.now() - t0 };
   } catch { /* fall through */ }
   const raw = await listToolkitTools(env, toolkit);
   const caps = raw.map(classify);
   if (caps.length) { try { await env.TOKENS.put(key, JSON.stringify(caps), { expirationTtl: CATALOG_TTL }); } catch { /* best-effort */ } }
-  return caps;
+  return { caps, cache: caps.length ? "miss" : "empty", ms: Date.now() - t0 };
+}
+
+export async function getToolkitCapabilities(env: Env, toolkit: string): Promise<CapTool[]> {
+  return (await getToolkitCapabilitiesDiag(env, toolkit)).caps;
 }
 
 // ---- schema → form fields ---------------------------------------------------
@@ -301,9 +322,15 @@ export async function resolveAffordances(
 ): Promise<ResolvedCapabilities | null> {
   const toolkit = toolkitOf(producingTool);
   if (!toolkit) return null;
-  const caps = await getToolkitCapabilities(env, toolkit);
+  const cat = await getToolkitCapabilitiesDiag(env, toolkit);
+  const caps = cat.caps;
+  const baseDiag: CapsDiag = {
+    catalog_cache: cat.cache, catalog_ms: cat.ms, catalog_tools: caps.length,
+    resolve_ms: 0, item: 0, surface: 0,
+  };
   if (!caps.length) return null;
 
+  const r0 = Date.now();
   // Entity rendered = what the producing (list/get) tool acts on, unless hinted.
   const producer = caps.find((c) => c.slug === producingTool);
   const entity = opts?.entityHint ?? producer?.entity ?? dominantEntity(caps);
@@ -323,8 +350,8 @@ export async function resolveAffordances(
     .slice(0, opts?.maxSurface ?? 2);
 
   const affordances = [...itemAff, ...surfaceAff];
-  if (!affordances.length) return { toolkit, entity, affordances: [] };
-  return { toolkit, entity, affordances };
+  const diag: CapsDiag = { ...baseDiag, resolve_ms: Date.now() - r0, item: itemAff.length, surface: surfaceAff.length };
+  return { toolkit, entity, affordances, diag };
 }
 
 // Convert a resolved affordance into the A2UI `composio` action the client
@@ -377,7 +404,7 @@ export async function coerceArgs(env: Env, toolSlug: string, args: Record<string
       const n = Number(v); if (Number.isFinite(n)) out[k] = n; continue;
     }
     if (schema?.type === "boolean") { out[k] = v === true || v === "true" || v === 1 || v === "1"; continue; }
-    out[k] = typeof v === "string" ? v : v;
+    out[k] = v;
   }
   return out;
 }

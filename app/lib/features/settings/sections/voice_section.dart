@@ -96,21 +96,33 @@ class _VoiceCardState extends State<_VoiceCard> {
             ]),
           ),
         ]),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         ValueListenableBuilder<String>(
           valueListenable: GoogleVoicePref.voice,
-          builder: (context, current, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('FEMALE', style: ZineText.kicker(size: 11)),
-              const SizedBox(height: 8),
-              _voiceWrap(GoogleVoiceCatalog.female, current),
-              const SizedBox(height: 16),
-              Text('MALE', style: ZineText.kicker(size: 11)),
-              const SizedBox(height: 8),
-              _voiceWrap(GoogleVoiceCatalog.male, current),
-            ],
-          ),
+          builder: (context, current, _) {
+            final sel = GoogleVoiceCatalog.byName(current);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (sel != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Selected: ${sel.name} · ${sel.style} '
+                      '(${sel.female ? "female" : "male"})',
+                      style: ZineText.sub(size: 12.5, color: Zine.blueInk),
+                    ),
+                  ),
+                Text('FEMALE', style: ZineText.kicker(size: 11)),
+                const SizedBox(height: 8),
+                _voiceWrap(GoogleVoiceCatalog.female, current),
+                const SizedBox(height: 16),
+                Text('MALE', style: ZineText.kicker(size: 11)),
+                const SizedBox(height: 8),
+                _voiceWrap(GoogleVoiceCatalog.male, current),
+              ],
+            );
+          },
         ),
       ]),
     );

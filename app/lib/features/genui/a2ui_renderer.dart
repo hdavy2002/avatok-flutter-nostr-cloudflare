@@ -728,6 +728,8 @@ class _ComposioFormState extends State<_ComposioForm> {
           ),
         ]);
       case 'select':
+        final cur = (_values[f.name] as String?) ?? '';
+        final sel = f.options.any((o) => o.value == cur) ? cur : (f.options.isNotEmpty ? f.options.first.value : null);
         return _FieldLabel(
           label: f.label,
           child: Container(
@@ -736,7 +738,7 @@ class _ComposioFormState extends State<_ComposioForm> {
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 isExpanded: true,
-                value: (_values[f.name] as String?)?.isNotEmpty == true ? _values[f.name] as String : (f.options.isNotEmpty ? f.options.first.value : null),
+                value: sel,
                 items: f.options.map((o) => DropdownMenuItem(value: o.value, child: Text(o.label, style: ZineText.value(size: 14)))).toList(),
                 onChanged: (v) => setState(() => _values[f.name] = v),
               ),

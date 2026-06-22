@@ -55,6 +55,7 @@ import '../../core/remote_config.dart';
 import '../ava/ava_invoke.dart';
 import 'ava_email.dart';
 import '../genui/a2ui_renderer.dart';
+import '../../core/apps_service.dart';
 import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
 import '../../core/analytics.dart';
@@ -824,6 +825,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       });
       _jump();
     });
+  }
+
+  /// A GenUI card fired a `composio` action (Rename, Delete, Schedule a
+  /// meeting…). Execute it via the server-validated route; if the server renders
+  /// a refreshed surface from the result (e.g. the updated list / created event),
+  /// drop it into the thread as a fresh Ava bubble so the chat reflects the new
+  /// state. Returns the short answer for the renderer's snackbar.
+  Future<String?> _onGenuiComposio(String tool, Map<String, dynamic> args) async {
+    final r = await AppsService.I.genuiAction(tool, args);
+    if (!mounted) return r.answer;
+    if (r.surface != null) {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final body = r.ok ? '' : r.answer;
+      setState(() {
+        _msgs.add(_Msg(_seq++, false, body, _fmtTime(now),
+            ts: now, special: 'ava', extra: {'a2ui': r.surface, 'text': body}));
+        _msgs.sort((a, b) => a.ts.compareTo(b.ts));
+      });
+      _jump();
+    }
+    return r.answer;
   }
 
   /// Render LIVE server `@ava` answers for THIS conversation as they stream in
@@ -1630,6 +1652,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             AvaA2uiSurface(
               surface: a2ui.cast<String, dynamic>(),
               onPrompt: (t) { if (onSummonAva != null) onSummonAva!('$_avaWakeWord $t'); },
+              onComposio: _onGenuiComposio,
             ),
           ]);
         }

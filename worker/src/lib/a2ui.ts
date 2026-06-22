@@ -79,6 +79,15 @@ export type A2uiNode =
 export interface A2uiSurface {
   version: "v0.9";
   surfaceId: string;
+  // Correlation id for the whole intent→presentation trace: the same `gid` is
+  // stamped on the server `genui_render`, the client presentation event, and any
+  // action fired from this surface, so the funnel can be stitched in PostHog.
+  gid?: string;
+  // The Composio tool that produced the data (for client telemetry + blank-card
+  // diagnostics; never user data).
+  tool?: string;
+  // Epoch ms the surface was composed (client computes presentation latency).
+  ts?: number;
   root: string;
   components: Record<string, A2uiNode>;
   // Optional data model. Text fields may contain `${path}` bindings resolved
