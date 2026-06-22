@@ -615,7 +615,14 @@ export class AvaAgentDO {
             const ra0 = Date.now();
             try {
               const caps = await resolveAffordances(this.env, "GOOGLECALENDAR_CREATE_EVENT", { entityHint: "event" });
-              const create = caps?.affordances.find((a) => a.verb === "create");
+              // Target the EXACT create-event tool — never just "first create
+              // affordance" (that once picked CALENDAR_LIST_INSERT, whose fields
+              // are calendar id/hidden/colour, not a meeting). Fall back to
+              // QUICK_ADD, then any event-entity create.
+              const create =
+                caps?.affordances.find((a) => a.tool === "GOOGLECALENDAR_CREATE_EVENT")
+                ?? caps?.affordances.find((a) => a.tool === "GOOGLECALENDAR_QUICK_ADD")
+                ?? caps?.affordances.find((a) => a.verb === "create");
               if (create) scheduleAction = affordanceToAction(create);
               if (caps) { schedCatalogCache = caps.diag.catalog_cache; schedCatalogMs = caps.diag.catalog_ms; }
             } catch { /* button omitted if unresolved */ }

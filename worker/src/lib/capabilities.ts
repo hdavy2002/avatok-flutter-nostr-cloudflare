@@ -25,7 +25,11 @@ import { listToolkitTools } from "./composio";
 
 // Bump to invalidate cached catalogs AND GenUI templates when the affordance
 // shape changes (the GenUI cache key folds this in via genui_compose).
-export const CAPS_VERSION = "v1";
+// v2: fixed entity classification (calendar-management tools were misclassified
+// as "event", wiring "Schedule a meeting" to CALENDAR_LIST_INSERT). Bumping this
+// abandons the stale KV catalog cache AND invalidates cached GenUI templates that
+// baked in the wrong affordance (cacheKey folds CAPS_VERSION in).
+export const CAPS_VERSION = "v2";
 const CATALOG_TTL = 60 * 60 * 24 * 7; // 7 days — toolkit catalogs are stable
 
 export type Verb =
@@ -120,8 +124,16 @@ function classifyVerb(action: string, desc: string): Verb {
   return "other";
 }
 
+// Order matters — first match wins. "event" MUST be checked before "calendar":
+// a calendar event's slug/description ("create_event", "events_list") mentions
+// both words, and we want it classified as an EVENT. Conversely a calendar-
+// management tool (GOOGLECALENDAR_CALENDAR_LIST_INSERT — add a calendar to the
+// sidebar) is the "calendar" entity, NOT "event". Folding "calendar" into "event"
+// was the bug that wired "Schedule a meeting" to calendarList.insert (id/hidden/
+// selected/background-colour fields) instead of CREATE_EVENT.
 const ENTITY_KEYS: Array<[string, RegExp]> = [
-  ["event", /\b(event|meeting|calendar)\b/],
+  ["event", /\b(event|events|meeting|appointment)\b/],
+  ["calendar", /\b(calendar|calendarlist|calendar_list)\b/],
   ["folder", /\bfolder\b/],
   ["file", /\bfile\b/],
   ["draft", /\bdraft\b/],
@@ -335,18 +347,36 @@ export async function resolveAffordances(
   const producer = caps.find((c) => c.slug === producingTool);
   const entity = opts?.entityHint ?? producer?.entity ?? dominantEntity(caps);
 
-  const matches = (c: CapTool) => c.entity === entity || c.entity === "generic" || entity === "generic";
+  // Prefer tools whose entity EXACTLY matches what's on screen; only fall back to
+  // "generic" tools when the producing entity is itself unknown. This stops a
+  // sibling entity's create/edit tool (e.g. calendar-management vs. event) from
+  // leaking into the card.
+  const matches = (c: CapTool) =>
+    c.entity === entity || (entity === "generic" && c.entity === "generic") || (entity !== "generic" && c.entity === "generic");
 
-  const itemAff = caps
+  // Collapse affordances that would render as the same button (same label) — e.g.
+  // CREATE_EVENT and QUICK_ADD both label "Schedule a meeting"; keep the best-ranked.
+  const dedupe = (list: Affordance[]): Affordance[] => {
+    const seen = new Set<string>();
+    const out: Affordance[] = [];
+    for (const a of list) {
+      const key = a.label.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key); out.push(a);
+    }
+    return out;
+  };
+
+  const itemAff = dedupe(caps
     .filter((c) => ITEM_VERBS.includes(c.verb) && matches(c))
     .map((c) => affordanceFrom(c, "item"))
-    .sort((a, b) => rank(a) - rank(b))
+    .sort((a, b) => rank(a) - rank(b)))
     .slice(0, opts?.maxItem ?? 4);
 
-  const surfaceAff = caps
+  const surfaceAff = dedupe(caps
     .filter((c) => SURFACE_VERBS.includes(c.verb) && matches(c))
     .map((c) => affordanceFrom(c, "surface"))
-    .sort((a, b) => rank(a) - rank(b))
+    .sort((a, b) => rank(a) - rank(b)))
     .slice(0, opts?.maxSurface ?? 2);
 
   const affordances = [...itemAff, ...surfaceAff];
