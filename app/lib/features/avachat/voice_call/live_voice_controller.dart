@@ -15,6 +15,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:record/record.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -139,6 +140,11 @@ class LiveVoiceController implements VoiceCallApi {
       ws.stream.listen(_onMessage, onError: (e) => _onSocketDown('error: $e'), onDone: () => _onSocketDown('closed'));
       await _setupPcm();
       await _startMic();
+      // ROUTE TO LOUDSPEAKER. Opening the mic with AEC puts Android into
+      // communication audio mode, which otherwise routes Ava's playback to the
+      // quiet earpiece (user hears nothing). Every other call screen forces the
+      // speaker via flutter_webrtc's Helper; do the same here so it's hands-free.
+      await _forceSpeaker(true);
       // Stay "Connecting…" until the server confirms setupComplete; only then do we
       // greet + listen (sending audio/turns before that can get the session closed).
       status.value = 'Connecting…';
@@ -147,6 +153,19 @@ class LiveVoiceController implements VoiceCallApi {
       AvaLog.I.log('voice_live', 'ws connect failed: $e');
       _fail('Could not reach Ava');
       return false;
+    }
+  }
+
+  bool _speakerForced = false;
+  Future<void> _forceSpeaker(bool on) async {
+    try {
+      await Helper.setSpeakerphoneOn(on);
+      if (on && !_speakerForced) {
+        _speakerForced = true;
+        _ev('voice_live_speaker', {'on': true, 'ok': true});
+      }
+    } catch (e) {
+      if (on) _ev('voice_live_speaker', {'on': true, 'ok': false, 'error': e.toString()});
     }
   }
 
@@ -337,6 +356,7 @@ class LiveVoiceController implements VoiceCallApi {
     });
     _callSw.stop();
     _reconnect?.cancel();
+    if (_speakerForced) { try { await Helper.setSpeakerphoneOn(false); } catch (_) {} }
     await _stopMic();
     try { await _ws?.sink.close(); } catch (_) {}
     _ws = null;
