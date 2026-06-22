@@ -32,11 +32,13 @@ enum CallState { preparing, listening, thinking, speaking, error, ended }
 class VoiceCallController {
   VoiceCallController();
 
+  // SPEED: a voice call must feel instant. Force ONE short spoken sentence — less
+  // to generate (faster LLM) and less to synthesize (faster TTS).
   static const _system =
-      'You are Ava, a warm, concise voice companion talking to the user hands-free. '
-      'Reply in a natural spoken style, short (1–3 sentences), no markdown, no lists, '
-      'no emojis. You can role-play characters or give advice when asked. If you did '
-      'not understand, ask the user to repeat briefly.';
+      'You are Ava, a warm voice companion talking to the user hands-free. '
+      'Reply with ONE short, natural spoken sentence (about 20 words max), no '
+      'markdown, no lists, no emojis. Be direct. You can role-play or give advice. '
+      'If you did not understand, ask them to repeat in a few words.';
 
   final ValueNotifier<CallState> state = ValueNotifier<CallState>(CallState.preparing);
   final ValueNotifier<String> status = ValueNotifier<String>('Warming up…');
@@ -177,26 +179,44 @@ class VoiceCallController {
     avaCaption.value = '';
     _history.add({'role': 'user', 'text': text});
 
-    // LLM (Gemini 2.5-flash, thinking OFF server-side — speed-first)
+    // LLM via the STREAM endpoint (/api/ava/gemini/stream): skips output
+    // moderation + premium memory retrieval and streams Gemini-2.5-flash with
+    // thinking off — far faster than the blocking ask() (which paid for
+    // input+output llama-guard + memory + up to 700 tokens ≈ ~6s). Captions grow
+    // live; we speak once the (short, one-sentence) reply is in.
     final llmSw = Stopwatch()..start();
-    final ans = await AvaAiClient.I.ask(
-      message: text,
-      context: _system,
-      history: _trimHistory(),
-    );
+    var ttfbMs = -1;
+    final buf = StringBuffer();
+    try {
+      await for (final delta in AvaAiClient.I.askStream(
+        message: text, context: _system, history: _trimHistory(),
+      )) {
+        if (_disposed) return;
+        if (ttfbMs < 0) ttfbMs = llmSw.elapsedMilliseconds;
+        buf.write(delta);
+        avaCaption.value = buf.toString();
+      }
+    } catch (e) {
+      AvaLog.I.log('voice_call', 'stream failed, fallback to ask: $e');
+    }
+    var reply = buf.toString().trim();
+    if (reply.isEmpty) {
+      // streaming gave nothing → one blocking retry
+      final ans = await AvaAiClient.I.ask(message: text, context: _system, history: _trimHistory());
+      reply = ans.answer.trim();
+      avaCaption.value = reply;
+    }
     final llmMs = llmSw.elapsedMilliseconds;
     if (_disposed) return;
-    final reply = ans.answer.trim();
     if (reply.isEmpty) { _setListening(); return; }
-    avaCaption.value = reply;
     _history.add({'role': 'model', 'text': reply});
 
     await _speak(reply,
-        sttMs: sttMs, llmMs: llmMs, userChars: text.length, turnSw: turnSw, blocked: ans.blocked);
+        sttMs: sttMs, llmMs: llmMs, ttfbMs: ttfbMs, userChars: text.length, turnSw: turnSw);
   }
 
   Future<void> _speak(String text,
-      {int sttMs = 0, int llmMs = 0, int userChars = 0, Stopwatch? turnSw, bool blocked = false}) async {
+      {int sttMs = 0, int llmMs = 0, int ttfbMs = -1, int userChars = 0, Stopwatch? turnSw}) async {
     if (_disposed) return;
     // TTS (on-device Supertonic synth → wav). Measure synth separately from playback.
     final ttsSw = Stopwatch()..start();
@@ -206,11 +226,11 @@ class VoiceCallController {
     Analytics.capture('voice_call_turn_timing', {
       'stt_ms': sttMs,
       'llm_ms': llmMs,
+      'ttfb_ms': ttfbMs,
       'tts_ms': ttsMs,
       'total_ms': turnSw?.elapsedMilliseconds ?? (sttMs + llmMs + ttsMs),
       'user_chars': userChars,
       'ava_chars': text.length,
-      'blocked': blocked,
       'spoke': path != null,
     });
     if (_disposed) return;
