@@ -266,6 +266,13 @@ function str(x: any): string | undefined { const s = x == null ? "" : String(x);
 function sanitizeAction(a: any): any {
   if (!a || typeof a !== "object") return undefined;
   if (a.type === "prompt" && typeof a.text === "string") return { type: "prompt", text: a.text.slice(0, 300) };
-  if (a.type === "link" && typeof a.url === "string" && /^https?:\/\//.test(a.url)) return { type: "link", url: a.url };
+  // Allow a literal http(s) URL OR a ${binding} that resolves to one at render
+  // time (e.g. "${webViewLink}" for a Drive/Docs "Open" button). Without the
+  // binding case, every link whose URL comes from the data was silently stripped
+  // here, leaving a dead button. The client re-checks startsWith('http') after
+  // resolving the binding before launching, so passing a binding through is safe.
+  if (a.type === "link" && typeof a.url === "string" && (/^https?:\/\//.test(a.url) || a.url.includes("${"))) {
+    return { type: "link", url: a.url };
+  }
   return undefined;
 }
