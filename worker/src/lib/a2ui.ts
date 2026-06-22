@@ -57,7 +57,7 @@ export type A2uiAction =
 export type A2uiNode =
   | { type: "column"; children: string[]; gap?: number }
   | { type: "row"; children: string[]; gap?: number; align?: "start" | "center" | "between" }
-  | { type: "text"; value: string; variant?: TextVariant; color?: Token; weight?: number }
+  | { type: "text"; value: string; variant?: TextVariant; color?: Token; weight?: number; maxLines?: number }
   | { type: "card"; child: string; fill?: Token; pad?: number; accent?: Token }
   | { type: "pill"; label: string; icon?: string; fill?: Token; fg?: Token }
   | { type: "button"; label: string; icon?: string; fill?: Token; action?: A2uiAction; full?: boolean }

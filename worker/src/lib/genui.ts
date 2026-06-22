@@ -17,7 +17,7 @@ import { redisGetJson, redisSetJson } from "./redis";
 import {
   composeTemplate, cacheKey, isRenderable, type Template,
 } from "./genui_compose";
-import { planSurface, buildPlannedSurface, findListPath } from "./genui_planner";
+import { planSurface, buildPlannedSurface, buildDriveSurface, findListPath } from "./genui_planner";
 
 const TEMPLATE_TTL = 60 * 60 * 24 * 30; // 30 days — templates are stable
 
@@ -41,7 +41,7 @@ export interface RenderDiag {
   components: number;
   total_ms: number;
   // which presenter produced the surface + its plan-cache outcome
-  path: "planner" | "template" | "none";
+  path: "planner" | "planner_drive" | "template" | "none";
   plan_cache: "hit" | "miss" | "none";
 }
 
@@ -93,6 +93,21 @@ export async function renderData(
     } catch { affordances = []; }
   }
   diag.affordances = affordances.length;
+
+  // Google Drive gets a dedicated, app-aware presenter: files grouped by type
+  // into sections, type badge + pretty size + modified date, long names
+  // truncated, per-file action bundle. Fully deterministic (no LLM hop).
+  if (toolkitOf(input.tool) === "googledrive" && findListPath(input.data)) {
+    try {
+      const surface = buildDriveSurface(input.data, affordances ?? [], { tool: input.tool, gid });
+      if (surface) {
+        diag.path = "planner_drive";
+        diag.components = Object.keys(surface.components).length;
+        diag.total_ms = Date.now() - t0;
+        return { surface, cache: "none", diag };
+      }
+    } catch { /* fall through to the generic planner */ }
+  }
 
   // PRIMARY PATH — the planner "brain" + deterministic builder. The LLM decides
   // semantics (app identity, which fields to show, which of the resolved actions

@@ -221,7 +221,7 @@ export function buildPlannedSurface(
     kids.push(add({ type: "card", child: add({ type: "text", value: plan.empty_text, variant: "sub", color: "inkSoft" }), fill: "card" }));
   } else {
     // ---- the repeating row template (bound per element) ----
-    const titleId = add({ type: "text", value: `\${${plan.item_title}}`, variant: "title" });
+    const titleId = add({ type: "text", value: `\${${plan.item_title}}`, variant: "title", maxLines: 1 });
     const rowKids: string[] = [titleId];
     if (plan.item_subtitle.length) {
       const sub = plan.item_subtitle.map((f) => `\${${f}}`).join("  ·  ");
@@ -261,4 +261,114 @@ export function buildPlannedSurface(
     version: "v0.9", surfaceId: `gx_${Date.now()}`, gid: opts.gid, tool: opts.tool, ts: Date.now(),
     root, components: comps, data,
   };
+}
+
+// ============================================================================
+// Google Drive — a dedicated, app-aware presenter. Drive results are long lists
+// of raw filenames (backups, db dumps, zips) that look like noise as a flat
+// list. This groups files by TYPE into sections, shows a type badge + pretty
+// size + modified date, truncates long names (maxLines), and attaches the
+// per-file action bundle. Fully deterministic (no LLM) → fast + reliable.
+// Renders via NESTED lists (groups → files), which the client already supports.
+// ============================================================================
+
+function prettyBytes(v: unknown): string {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0; let x = n;
+  while (x >= 1024 && i < u.length - 1) { x /= 1024; i++; }
+  return `${x >= 10 || i === 0 ? Math.round(x) : x.toFixed(1)} ${u[i]}`;
+}
+
+function shortDate(v: unknown): string {
+  if (!v) return "";
+  const d = new Date(String(v));
+  if (isNaN(d.getTime())) return "";
+  try { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d); }
+  catch { return ""; }
+}
+
+// type label + order rank + icon, from mimeType (preferred) or filename ext.
+function driveType(file: any): { label: string; rank: number; icon: string } {
+  const mime = String(file?.mimeType ?? "").toLowerCase();
+  const name = String(file?.name ?? "").toLowerCase();
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
+  const T = (label: string, rank: number, icon: string) => ({ label, rank, icon });
+  if (mime.includes("folder")) return T("Folders", 0, "folder");
+  if (mime.includes("document") || ext === "doc" || ext === "docx") return T("Docs", 1, "tray");
+  if (mime.includes("spreadsheet") || ext === "xls" || ext === "xlsx" || ext === "csv") return T("Sheets", 2, "tray");
+  if (mime.includes("presentation") || ext === "ppt" || ext === "pptx") return T("Slides", 3, "tray");
+  if (mime.includes("pdf") || ext === "pdf") return T("PDFs", 4, "tray");
+  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic", "svg"].includes(ext)) return T("Images", 5, "tray");
+  if (mime.startsWith("video/") || ["mp4", "mov", "mkv", "webm", "avi"].includes(ext)) return T("Videos", 6, "video-camera");
+  if (mime.startsWith("audio/") || ["mp3", "m4a", "wav", "aac", "ogg"].includes(ext)) return T("Audio", 7, "tray");
+  // backups: db dumps + the long "backup_*" archives
+  if (/(^|[_-])backup/.test(name) || ext === "gz" || ext === "tgz" || /\.sql/.test(name) || ext === "avbk") return T("Backups", 8, "tray");
+  if (["zip", "rar", "7z", "tar"].includes(ext) || mime.includes("zip") || mime.includes("compressed")) return T("Archives", 9, "tray");
+  return T("Files", 10, "tray");
+}
+
+export function buildDriveSurface(
+  data: unknown, affordances: Affordance[], opts: { tool: string; gid: string },
+): A2uiSurface | null {
+  const found = findListPath(data);
+  if (!found) return null;
+  const files = found.items;
+
+  // group + decorate
+  const groupsMap = new Map<string, { label: string; rank: number; icon: string; files: any[] }>();
+  for (const f of files) {
+    const t = driveType(f);
+    const decorated = { ...f, _type: t.label.replace(/s$/, ""), _size: prettyBytes(f?.size), _modified: shortDate(f?.modifiedTime ?? f?.createdTime) };
+    const g = groupsMap.get(t.label) ?? { label: t.label, rank: t.rank, icon: t.icon, files: [] };
+    g.files.push(decorated);
+    groupsMap.set(t.label, g);
+  }
+  const groups = [...groupsMap.values()].sort((a, b) => a.rank - b.rank)
+    .map((g) => ({ _label: g.label, _count: g.files.length, files: g.files }));
+  const grouped = { _groups: groups };
+
+  const comps: Record<string, A2uiNode> = {};
+  let n = 0;
+  const add = (node: A2uiNode): string => { const i = `d${n++}_${(node as any).type}`; comps[i] = node; return i; };
+  const itemActs = affordances.filter((a) => a.scope === "item");
+  const surfaceActs = affordances.filter((a) => a.scope === "surface");
+
+  // file card (bound to a file element inside group.files)
+  const fileKids: string[] = [add({ type: "text", value: "${name}", variant: "title", maxLines: 1 })];
+  const meta: string[] = [];
+  meta.push(add({ type: "pill", label: "${_type}", fill: "paper2", fg: "ink" }));
+  // size · modified subtitle
+  fileKids.push(add({ type: "text", value: "${_size}  ·  ${_modified}", variant: "sub", color: "inkSoft", maxLines: 1 }));
+  // open chip + actions row
+  const chip: string[] = [...meta];
+  chip.push(add({ type: "button", label: "Open", icon: "arrow-square-out", fill: "card", action: { type: "link", url: "${webViewLink}" } }));
+  fileKids.splice(1, 0, add({ type: "row", children: chip, gap: 6, align: "start" }));
+  if (itemActs.length) {
+    const btns = itemActs.map((a) => add({ type: "button", label: a.label, icon: a.icon, fill: a.destructive ? "coral" : "card", action: affordanceToAction(a) }));
+    fileKids.push(add({ type: "row", children: btns, gap: 6, align: "start" }));
+  }
+  const fileCard = add({ type: "card", child: add({ type: "column", children: fileKids, gap: 4 }), accent: "blue" });
+  const fileList = add({ type: "list", path: "files", item: fileCard, gap: 7 });
+
+  // group section = header pill + the file list
+  const groupCol = add({ type: "column", children: [
+    add({ type: "pill", label: "${_label} · ${_count}", icon: "tray", fill: "ink", fg: "paper" }),
+    add({ type: "spacer", size: 6 }),
+    fileList,
+    add({ type: "spacer", size: 10 }),
+  ], gap: 0 });
+  const groupList = add({ type: "list", path: "_groups", item: groupCol, gap: 0 });
+
+  const kids: string[] = [
+    add({ type: "pill", label: `Google Drive · ${files.length} ${files.length === 1 ? "file" : "files"}`, icon: "tray", fill: "lime", fg: "ink" }),
+    add({ type: "spacer", size: 10 }),
+    groupList,
+  ];
+  for (const a of surfaceActs) {
+    kids.push(add({ type: "button", label: a.label, icon: a.icon ?? "plus", fill: "lime", full: true, action: affordanceToAction(a) }));
+  }
+  const root = add({ type: "column", children: kids, gap: 0 });
+  return { version: "v0.9", surfaceId: `gx_${Date.now()}`, gid: opts.gid, tool: opts.tool, ts: Date.now(), root, components: comps, data: grouped };
 }

@@ -222,12 +222,17 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   Widget _text(Map<String, dynamic> n, Map scope) {
     final v = _resolve(n['value'], scope);
     final color = _tok(n['color']?.toString(), fallback: Zine.ink);
+    // Optional truncation: long values (e.g. Drive backup filenames) shouldn't
+    // blow up the card — maxLines clamps with an ellipsis.
+    final ml = (n['maxLines'] as num?)?.toInt();
+    final max = ml != null && ml > 0 ? ml : null;
+    final ov = max != null ? TextOverflow.ellipsis : TextOverflow.clip;
     switch ((n['variant'] ?? 'body').toString()) {
-      case 'display': return Text(v, style: ZineText.cardTitle(size: 19, color: color));
-      case 'title': return Text(v, style: ZineText.value(size: 16, color: color));
-      case 'tag': return Text(v.toUpperCase(), style: ZineText.tag(size: 9.5, color: color));
-      case 'sub': return Text(v, style: ZineText.sub(size: 12.5, color: color));
-      default: return Text(v, style: ZineText.sub(size: 13.5, color: color));
+      case 'display': return Text(v, maxLines: max, overflow: ov, style: ZineText.cardTitle(size: 19, color: color));
+      case 'title': return Text(v, maxLines: max, overflow: ov, style: ZineText.value(size: 16, color: color));
+      case 'tag': return Text(v.toUpperCase(), maxLines: max, overflow: ov, style: ZineText.tag(size: 9.5, color: color));
+      case 'sub': return Text(v, maxLines: max, overflow: ov, style: ZineText.sub(size: 12.5, color: color));
+      default: return Text(v, maxLines: max, overflow: ov, style: ZineText.sub(size: 13.5, color: color));
     }
   }
 
