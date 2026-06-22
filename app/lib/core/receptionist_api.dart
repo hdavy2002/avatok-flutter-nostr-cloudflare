@@ -145,6 +145,7 @@ class ReceptionistApi {
     String? callId,
     String? callerPhone,
     String? callerName,
+    String activationMode = 'rings', // rings|first_ring|manual|decline
   }) async {
     try {
       final r = await ApiAuth.postJson('$_base/start', {
@@ -152,6 +153,7 @@ class ReceptionistApi {
         'call_id': callId,
         'caller_phone': callerPhone,
         'caller_name': callerName,
+        'activation_mode': activationMode,
       });
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;

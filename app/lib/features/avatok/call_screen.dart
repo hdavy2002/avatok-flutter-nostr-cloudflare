@@ -15,6 +15,7 @@ import '../../core/call_log_store.dart';
 import '../../core/call_telemetry.dart';
 import '../../core/config.dart';
 import '../../core/ice_cache.dart';
+import '../../core/receptionist_api.dart';
 import '../../core/receptionist_call.dart';
 import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
@@ -78,6 +79,9 @@ class _CallScreenState extends State<CallScreen> {
   // the busy tone. One player per call; stopped on every end path.
   final RingbackPlayer _ringback = RingbackPlayer();
   ReceptionistCall? _receptionist; // Ava answers if the callee doesn't (audio only)
+  // v2 activation: probed from /api/receptionist/config at dial time.
+  String _receptMode = 'rings';    // rings | first_ring
+  int _receptRings = 5;            // Mode A ring count (RemoteConfig-driven)
   StreamSubscription? _statusSub;
   // ICE candidates that arrive before the remote description is set must be
   // buffered — addCandidate throws otherwise and the dropped candidate is often
@@ -109,9 +113,16 @@ class _CallScreenState extends State<CallScreen> {
     _speaker = widget.video;
     _phase = widget.outgoing ? 'ringing' : 'connecting';
     if (widget.outgoing) {
+      // Default ring window (Mode A, ~5 rings). Audio calls also probe the
+      // callee's receptionist config: if they're on "answer every call on the
+      // first ring" (Mode B), we re-arm a short window and hand off to Ava early.
       _ringTimeout = Timer(const Duration(seconds: 35), () {
         if (mounted && !_connected) _onNoAnswer();
       });
+      if (!widget.video) {
+        // ignore: unawaited_futures
+        _probeReceptionist();
+      }
       // Caller hears the callee's AI ringback (or the bundled default) while
       // ringing. Gated by the server kill switch (mirrored in RemoteConfig).
       if (RemoteConfig.ringbackEnabled) {
@@ -123,9 +134,18 @@ class _CallScreenState extends State<CallScreen> {
         });
       }
     }
-    // Server-relayed call status (declined / busy) for this call.
+    // Server-relayed call status (declined / busy / to-Ava) for this call.
     _statusSub = callStatusBus.stream.listen((e) {
       if (e.callId == widget.room && mounted && !_connected) {
+        // v2 Mode C: the callee chose to send us to Ava — 'decline_ava' (they hit
+        // Decline with the opt-in on) or 'to_ava' (the Agent button). Hand off to
+        // the receptionist instead of ending. Audio only.
+        if ((e.status == 'decline_ava' || e.status == 'to_ava') && !widget.video && !_ended) {
+          _ringTimeout?.cancel();
+          // ignore: unawaited_futures
+          _handoffToAva(e.status == 'to_ava' ? 'manual' : 'decline');
+          return;
+        }
         _endWith(e.status == 'decline' ? 'declined' : e.status);
       }
     });
@@ -417,13 +437,50 @@ class _CallScreenState extends State<CallScreen> {
   Future<void> _onNoAnswer() async {
     _ringback.stop(); // ringing window over — stop before receptionist takeover
     if (!widget.video && !_ended) {
-      final started = await _tryReceptionist();
+      final started = await _tryReceptionist(
+          activationMode: _receptMode == 'first_ring' ? 'first_ring' : 'rings');
       if (started) return;
     }
     if (mounted && !_connected) _endWith('no-answer', reason: 'timeout-ringing');
   }
 
-  Future<bool> _tryReceptionist() async {
+  /// Probe the callee's receptionist config at dial time (audio only) so we know
+  /// HOW to hand off. Mode B ("answer on first ring") shortens the ring window to
+  /// one ring; Mode A re-arms to the configured ring count. Best-effort: on any
+  /// failure we keep the default 35s no-answer window.
+  Future<void> _probeReceptionist() async {
+    try {
+      final cfg = await ReceptionistApi.configFor(widget.seed);
+      if (!mounted || _connected || _ended || cfg == null) return;
+      _receptMode = (cfg['mode'] ?? 'rings').toString();
+      _receptRings = (cfg['rings'] as num?)?.toInt() ?? 5;
+      if (_receptMode == 'first_ring') {
+        _ringTimeout?.cancel();
+        _ringTimeout = Timer(const Duration(seconds: 6), () {
+          if (mounted && !_connected) _onNoAnswer();
+        });
+      } else {
+        // Map ring count to a window (~7s/ring), capped so a misconfig can't hang.
+        final secs = (_receptRings * 7).clamp(20, 60);
+        _ringTimeout?.cancel();
+        _ringTimeout = Timer(Duration(seconds: secs), () {
+          if (mounted && !_connected) _onNoAnswer();
+        });
+      }
+    } catch (_) {/* keep default window */}
+  }
+
+  /// Callee actively sent us to Ava (decline-to-Ava or the Agent button). Stop
+  /// ringing and connect to the receptionist; if she can't pick up, end normally.
+  Future<void> _handoffToAva(String activationMode) async {
+    _ringback.stop();
+    final started = await _tryReceptionist(activationMode: activationMode);
+    if (!started && mounted && !_connected) {
+      _endWith('declined', reason: 'receptionist-unavailable');
+    }
+  }
+
+  Future<bool> _tryReceptionist({String activationMode = 'rings'}) async {
     try {
       // Free the WebRTC mic so the PCM recorder can capture (no double-grab).
       try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
@@ -432,7 +489,8 @@ class _CallScreenState extends State<CallScreen> {
       // Caller didn't get an answer → stop the callee's phone ringing; Ava takes it.
       _notifyCalleeCanceled();
 
-      final call = ReceptionistCall(calleeUid: widget.seed, callId: widget.room);
+      final call = ReceptionistCall(
+          calleeUid: widget.seed, callId: widget.room, activationMode: activationMode);
       call.onStatus = (s) {
         if (!mounted) return;
         setState(() {

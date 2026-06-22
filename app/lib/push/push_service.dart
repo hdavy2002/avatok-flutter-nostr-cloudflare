@@ -15,6 +15,7 @@ import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/call_log_store.dart';
 import '../core/config.dart';
+import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
 import '../features/avatok/call_screen.dart';
 import '../sync/sync_hub.dart';
@@ -282,8 +283,11 @@ class PushService {
         case Event.actionCallDecline:
           final extra = event.body['extra'];
           if (extra is Map) {
-            _signalStatus((extra['callId'] ?? '').toString(), 'decline', (extra['from'] ?? '').toString());
-            _logMissed(extra);
+            // v2 Mode C: if the owner enabled "let Ava take calls I decline",
+            // signal 'decline_ava' so the caller hands off to the receptionist
+            // instead of getting a plain decline. Else signal a normal decline.
+            // ignore: unawaited_futures
+            _declineRouting(extra);
           }
           break;
         case Event.actionCallTimeout:
@@ -296,6 +300,26 @@ class PushService {
           break;
       }
     });
+  }
+
+  /// Decline routing (v2 Mode C). Audio calls only — Ava is audio. Reads the
+  /// per-account local mirror written by the Settings card (DiskCache keys
+  /// receptionist_enabled + receptionist_decline_to_ava) so it works even when
+  /// the app was woken cold for the call.
+  static Future<void> _declineRouting(Map extra) async {
+    final callId = (extra['callId'] ?? '').toString();
+    final from = (extra['from'] ?? '').toString();
+    var status = 'decline';
+    try {
+      final isAudio = extra['kind'] != 'video';
+      if (isAudio) {
+        final enabled = (await DiskCache.read('receptionist_enabled')) == '1';
+        final declineToAva = (await DiskCache.read('receptionist_decline_to_ava')) == '1';
+        if (enabled && declineToAva) status = 'decline_ava';
+      }
+    } catch (_) {/* fall back to plain decline */}
+    _signalStatus(callId, status, from);
+    _logMissed(extra);
   }
 
   static void _logMissed(Map extra) {

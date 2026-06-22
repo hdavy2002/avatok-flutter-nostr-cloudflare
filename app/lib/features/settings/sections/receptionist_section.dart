@@ -56,18 +56,29 @@ void registerReceptionistSection() {
 class ReceptionistPref {
   ReceptionistPref._();
   static const _kKey = 'receptionist_enabled';
+  static const _kDecline = 'receptionist_decline_to_ava'; // v2 Mode C mirror
   static final ValueNotifier<bool> enabled = ValueNotifier<bool>(false);
+  /// Local mirror of decline_to_ava so the incoming-call decline handler (in
+  /// push_service) can route a declined call to Ava without a network round-trip.
+  static final ValueNotifier<bool> declineToAva = ValueNotifier<bool>(false);
 
   static Future<bool> load() async {
     final raw = await DiskCache.read(_kKey);
     final v = raw == '1';
     if (enabled.value != v) enabled.value = v;
+    final d = (await DiskCache.read(_kDecline)) == '1';
+    if (declineToAva.value != d) declineToAva.value = d;
     return v;
   }
 
   static Future<void> set(bool v) async {
     enabled.value = v;
     await DiskCache.write(_kKey, v ? '1' : '0');
+  }
+
+  static Future<void> setDeclineToAva(bool v) async {
+    declineToAva.value = v;
+    await DiskCache.write(_kDecline, v ? '1' : '0');
   }
 }
 
@@ -164,7 +175,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     });
     if (res.ok) {
       await ReceptionistPref.set(enabled);
-      Analytics.capture('ava_recept_settings_saved', {'enabled': enabled, 'voice': _voice});
+      await ReceptionistPref.setDeclineToAva(enabled && _declineToAva);
+      Analytics.capture('ava_recept_settings_saved', {
+        'enabled': enabled, 'voice': _voice, 'answer_all': _answerAll,
+        'decline_to_ava': _declineToAva, 'has_persona': _persona.text.trim().isNotEmpty,
+        'language': _lang.isEmpty ? 'auto' : _lang, 'status_preset': _statusPreset,
+      });
       AvaLog.I.log('receptionist', 'settings saved (enabled=$enabled, voice=$_voice)');
       _toast(enabled ? 'Ava will answer your missed calls' : 'Saved');
     } else if (res.blocked) {

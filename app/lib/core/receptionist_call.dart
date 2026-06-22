@@ -29,12 +29,14 @@ class ReceptionistCall {
     this.callId,
     this.callerPhone,
     this.callerName,
+    this.activationMode = 'rings', // rings|first_ring|manual|decline
   });
 
   final String calleeUid;
   final String? callId;
   final String? callerPhone;
   final String? callerName;
+  final String activationMode;
 
   /// 'connecting' | 'connected' | 'wrapup' | 'ended'
   void Function(String status)? onStatus;
@@ -65,7 +67,8 @@ class ReceptionistCall {
     final cfg = await ReceptionistApi.configFor(calleeUid);
     if (cfg == null) return false; // not premium / disabled / off
     final s = await ReceptionistApi.start(
-      to: calleeUid, callId: callId, callerPhone: callerPhone, callerName: callerName);
+      to: calleeUid, callId: callId, callerPhone: callerPhone, callerName: callerName,
+      activationMode: activationMode);
     if (s == null) return false;
 
     _sessionId = s['session_id'] as String?;
