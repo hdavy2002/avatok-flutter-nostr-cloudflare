@@ -23,23 +23,44 @@ class NativeVoiceAudio {
 
   Stream<Uint8List>? _micStream;
 
+  /// Async diagnostics pushed from native (capture_error, play_error, …). The
+  /// controller forwards these to PostHog so runtime audio faults are visible.
+  void Function(Map<String, dynamic> event)? onEvent;
+  bool _handlerSet = false;
+
+  void _ensureHandler() {
+    if (_handlerSet) return;
+    _handlerSet = true;
+    _m.setMethodCallHandler((call) async {
+      if (call.method == 'event' && call.arguments is Map) {
+        try {
+          onEvent?.call(Map<String, dynamic>.from(call.arguments as Map));
+        } catch (_) {}
+      }
+      return null;
+    });
+  }
+
   /// Start the engine. [speaker] selects loudspeaker vs earpiece/Bluetooth.
-  /// Returns false if it couldn't start (e.g. mic permission denied) so the
-  /// caller can fall back to the legacy audio path.
-  Future<bool> start({
+  /// Returns a diagnostics map: {ok, aec_available, aec_enabled, ns_*, agc_*,
+  /// record_state, track_state, in_buf, out_buf, …}. `ok` is false (with a
+  /// `reason`) if it couldn't start, so the caller can fall back.
+  Future<Map<String, dynamic>> start({
     int micSampleRate = 16000,
     int playSampleRate = 24000,
     bool speaker = true,
   }) async {
+    _ensureHandler();
     try {
-      final ok = await _m.invokeMethod<bool>('start', {
+      final r = await _m.invokeMethod<dynamic>('start', {
         'micSampleRate': micSampleRate,
         'playSampleRate': playSampleRate,
         'speaker': speaker,
       });
-      return ok ?? false;
-    } catch (_) {
-      return false;
+      if (r is Map) return Map<String, dynamic>.from(r);
+      return {'ok': false, 'reason': 'no_result'};
+    } catch (e) {
+      return {'ok': false, 'reason': 'invoke_failed', 'error': e.toString()};
     }
   }
 
@@ -57,7 +78,14 @@ class NativeVoiceAudio {
     try { await _m.invokeMethod('setSpeaker', {'on': on}); } catch (_) {}
   }
 
-  Future<void> stop() async {
-    try { await _m.invokeMethod('stop'); } catch (_) {}
+  /// Stop the engine. Returns final counters {frames_captured, bytes_played,
+  /// capture_errors, play_errors} for a rich end-of-call telemetry event.
+  Future<Map<String, dynamic>?> stop() async {
+    try {
+      final r = await _m.invokeMethod<dynamic>('stop');
+      return r is Map ? Map<String, dynamic>.from(r) : null;
+    } catch (_) {
+      return null;
+    }
   }
 }

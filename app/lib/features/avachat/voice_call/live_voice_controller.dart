@@ -23,6 +23,7 @@ import '../../../core/analytics.dart';
 import '../../../core/ava_live_api.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/disk_cache.dart';
+import '../../../core/voice/google_voice.dart';
 import '../../../core/voice/native_voice_audio.dart';
 import 'voice_call_api.dart';
 
@@ -77,10 +78,28 @@ class LiveVoiceController implements VoiceCallApi {
   DateTime _lastAvaAudioAt = DateTime.fromMillisecondsSinceEpoch(0);
   static const int _echoTailMs = 400;
 
+  // Throughput counters (summarised in voice_live_end) — distinguish "no mic"
+  // from "heard nothing" from "echo storm" at a glance.
+  int _micFrames = 0;
+  int _micBytes = 0;
+  int _avaChunks = 0;
+  int _avaBytes = 0;
+  int _echoSuppressed = 0; // mic frames dropped by the half-duplex guard
+
   /// Capture a voice_live_* event with the call_id merged in.
   void _ev(String name, [Map<String, Object> props = const {}]) {
     Analytics.capture(name, {'call_id': _callId, ...props});
   }
+
+  /// Coerce a native diagnostics map into telemetry props (drop nulls).
+  Map<String, Object> _clean(Map<String, dynamic> m) {
+    final out = <String, Object>{};
+    m.forEach((k, v) { if (v != null) out[k] = v as Object; });
+    return out;
+  }
+
+  String get _langTag =>
+      AvaVoiceLangPref.current.isEmpty ? 'auto' : AvaVoiceLangPref.current;
 
   /// Pause the call (the 5-minute "still there?" guardrail): stop sending mic and
   /// drop incoming audio so no tokens are billed while we wait for the user.
@@ -127,7 +146,16 @@ class LiveVoiceController implements VoiceCallApi {
     }
     _model = t['model']?.toString() ?? _model;
     final ok = await _connect(t['token'].toString());
-    if (ok) _ev('voice_live_start', {'model': _model, 'connect_ms': _callSw.elapsedMilliseconds});
+    if (ok) {
+      _ev('voice_live_start', {
+        'model': _model,
+        'connect_ms': _callSw.elapsedMilliseconds,
+        'native': _useNative,
+        'speaker': speakerOn.value,
+        'lang': _langTag,
+        'voice': GoogleVoicePref.current,
+      });
+    }
     return ok;
   }
 
@@ -350,8 +378,15 @@ class LiveVoiceController implements VoiceCallApi {
         _fail('Microphone permission needed');
         return;
       }
-      final ok = await _native.start(
+      // Forward native async faults (capture_error/play_error) to PostHog.
+      _native.onEvent = (e) => _ev('voice_live_native_event', _clean(e));
+      final res = await _native.start(
         micSampleRate: 16000, playSampleRate: 24000, speaker: speakerOn.value);
+      final ok = res['ok'] == true;
+      // Rich native bring-up diagnostics: AEC/NS/AGC availability + enabled,
+      // record/track states, session id, buffer sizes — pinpoints "echo not
+      // cancelled" (aec_enabled=false) or "no audio" (track_state) at a glance.
+      _ev('voice_live_native', _clean(res));
       if (ok) {
         _useNative = true;
         _routeApplied = true;
@@ -360,7 +395,8 @@ class LiveVoiceController implements VoiceCallApi {
         _nativeMicSub = _native.micStream().listen(_sendMic);
         return;
       }
-      _ev('voice_live_engine', {'native': false, 'reason': 'start_failed'});
+      _ev('voice_live_engine',
+          {'native': false, 'reason': (res['reason'] ?? 'start_failed').toString()});
       // fall through to the legacy path
     }
     _useNative = false;
@@ -373,7 +409,8 @@ class LiveVoiceController implements VoiceCallApi {
     if (_useNative) {
       await _nativeMicSub?.cancel();
       _nativeMicSub = null;
-      await _native.stop();
+      final stats = await _native.stop();
+      if (stats != null) _ev('voice_live_native_end', _clean(stats));
     } else {
       await _stopMic();
     }
@@ -384,6 +421,8 @@ class LiveVoiceController implements VoiceCallApi {
   void _sendMic(Uint8List chunk) {
     final ws = _ws;
     if (ws == null || chunk.isEmpty || _paused) return;
+    _micFrames++;
+    _micBytes += chunk.length;
     try {
       ws.sink.add(jsonEncode({
         'realtimeInput': {
@@ -397,6 +436,8 @@ class LiveVoiceController implements VoiceCallApi {
   // stream; legacy uses flutter_pcm_sound.
   void _playAudio(Uint8List bytes) {
     if (_disposed || _paused) return;
+    _avaChunks++;
+    _avaBytes += bytes.length;
     if (_useNative) { _native.feed(bytes); return; }
     _playPcm(bytes);
   }
@@ -417,6 +458,7 @@ class LiveVoiceController implements VoiceCallApi {
         // Bluetooth the echo is negligible so we keep full-duplex barge-in.
         if (speakerOn.value &&
             DateTime.now().difference(_lastAvaAudioAt).inMilliseconds < _echoTailMs) {
+          _echoSuppressed++;
           return;
         }
         _sendMic(chunk);
@@ -465,6 +507,17 @@ class LiveVoiceController implements VoiceCallApi {
       'model': _model,
       'reached_ready': _ready,
       'heard_ava': _firstAudio,
+      // engine + route + language context
+      'native': _useNative,
+      'speaker': speakerOn.value,
+      'lang': _langTag,
+      'voice': GoogleVoicePref.current,
+      // throughput — "no mic" vs "heard nothing" vs "echo storm" at a glance
+      'mic_frames': _micFrames,
+      'mic_bytes': _micBytes,
+      'ava_chunks': _avaChunks,
+      'ava_bytes': _avaBytes,
+      'echo_suppressed': _echoSuppressed,
     });
     _callSw.stop();
     _reconnect?.cancel();

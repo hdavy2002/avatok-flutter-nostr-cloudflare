@@ -18,6 +18,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * AvaVoiceAudioPlugin — a full-duplex voice-call audio engine with PLATFORM echo
@@ -68,6 +69,19 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private val playQueue = LinkedBlockingQueue<ByteArray>()
     private var prevAudioMode = AudioManager.MODE_NORMAL
 
+    // Telemetry counters (surfaced to Dart on stop / on error).
+    private val framesCaptured = AtomicLong(0)
+    private val bytesPlayed = AtomicLong(0)
+    private val captureErrors = AtomicLong(0)
+    private val playErrors = AtomicLong(0)
+
+    // Push a diagnostic event to Dart (LiveVoiceController forwards it to PostHog).
+    private fun emit(name: String, data: Map<String, Any?> = emptyMap()) {
+        val payload = HashMap<String, Any?>(data)
+        payload["name"] = name
+        main.post { try { methodChannel?.invokeMethod("event", payload) } catch (_: Throwable) {} }
+    }
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
         methodChannel = MethodChannel(binding.binaryMessenger, METHOD_CHANNEL).also {
@@ -97,6 +111,8 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 val micRate = (call.argument<Int>("micSampleRate")) ?: 16000
                 val playRate = (call.argument<Int>("playSampleRate")) ?: 24000
                 val speaker = (call.argument<Boolean>("speaker")) ?: true
+                // Returns a rich diagnostics map (ok + AEC/NS/AGC state + buffers …)
+                // so the Dart side can pinpoint init failures in PostHog.
                 result.success(startEngine(micRate, playRate, speaker))
             }
             "feed" -> {
@@ -108,7 +124,18 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 setSpeaker(call.argument<Boolean>("on") ?: true)
                 result.success(null)
             }
-            "stop" -> { stopEngine(); result.success(null) }
+            "stop" -> {
+                // Return final throughput/error counters so Dart can log a rich
+                // voice_live_native_end (heard-nothing vs no-mic, AEC health, etc.).
+                val stats = mapOf(
+                    "frames_captured" to framesCaptured.get(),
+                    "bytes_played" to bytesPlayed.get(),
+                    "capture_errors" to captureErrors.get(),
+                    "play_errors" to playErrors.get()
+                )
+                stopEngine()
+                result.success(stats)
+            }
             else -> result.notImplemented()
         }
     }
@@ -125,10 +152,11 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         } catch (_: Throwable) {}
     }
 
-    private fun startEngine(micRate: Int, playRate: Int, speaker: Boolean): Boolean {
-        if (running.get()) return true
+    private fun startEngine(micRate: Int, playRate: Int, speaker: Boolean): Map<String, Any?> {
+        if (running.get()) return mapOf("ok" to true, "reason" to "already_running")
+        framesCaptured.set(0); bytesPlayed.set(0); captureErrors.set(0); playErrors.set(0)
         try {
-            val am = audioManager() ?: return false
+            val am = audioManager() ?: return mapOf("ok" to false, "reason" to "no_audio_manager")
             prevAudioMode = am.mode
             am.mode = AudioManager.MODE_IN_COMMUNICATION
             @Suppress("DEPRECATION")
@@ -172,18 +200,32 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 // Usually a missing RECORD_AUDIO permission.
                 r.release(); t.release(); track = null
                 am.mode = prevAudioMode
-                return false
+                return mapOf(
+                    "ok" to false, "reason" to "record_not_initialized",
+                    "record_state" to r.state, "track_state" to t.state,
+                    "in_buf" to inBuf, "out_buf" to outBuf
+                )
             }
+            val trackState = t.state
             val session = r.audioSessionId
+            // Platform AEC/NS/AGC. Record availability + whether each actually enabled
+            // — THE key signal for "speaker echo not cancelled" diagnosis.
+            val aecAvail = AcousticEchoCanceler.isAvailable()
+            val nsAvail = NoiseSuppressor.isAvailable()
+            val agcAvail = AutomaticGainControl.isAvailable()
+            var aecOn = false; var nsOn = false; var agcOn = false
             // setEnabled(boolean) returns int, so call it directly (no `enabled =`).
-            if (AcousticEchoCanceler.isAvailable()) {
+            if (aecAvail) {
                 aec = AcousticEchoCanceler.create(session)?.also { it.setEnabled(true) }
+                aecOn = aec?.enabled ?: false
             }
-            if (NoiseSuppressor.isAvailable()) {
+            if (nsAvail) {
                 ns = NoiseSuppressor.create(session)?.also { it.setEnabled(true) }
+                nsOn = ns?.enabled ?: false
             }
-            if (AutomaticGainControl.isAvailable()) {
+            if (agcAvail) {
                 agc = AutomaticGainControl.create(session)?.also { it.setEnabled(true) }
+                agcOn = agc?.enabled ?: false
             }
             record = r
 
@@ -198,10 +240,12 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     if (!running.get()) break
                     var off = 0
                     while (off < chunk.size && running.get()) {
-                        val w = try { tk.write(chunk, off, chunk.size - off) } catch (_: Throwable) { -1 }
+                        val w = try { tk.write(chunk, off, chunk.size - off) }
+                                catch (e: Throwable) { playErrors.incrementAndGet(); emit("play_error", mapOf("error" to (e.message ?: e.toString()))); -1 }
                         if (w <= 0) break
                         off += w
                     }
+                    if (off > 0) bytesPlayed.addAndGet(off.toLong())
                 }
             }.also { it.isDaemon = true; it.start() }
 
@@ -210,18 +254,31 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             captureThread = Thread {
                 val rec = record
                 while (running.get() && rec != null) {
-                    val n = try { rec.read(frame, 0, frame.size) } catch (_: Throwable) { -1 }
+                    val n = try { rec.read(frame, 0, frame.size) }
+                            catch (e: Throwable) { captureErrors.incrementAndGet(); emit("capture_error", mapOf("error" to (e.message ?: e.toString()))); -1 }
                     if (n > 0) {
+                        framesCaptured.incrementAndGet()
                         val out = frame.copyOf(n)
                         main.post { micSink?.success(out) }
                     } else if (n < 0) break
                 }
             }.also { it.isDaemon = true; it.start() }
 
-            return true
-        } catch (_: Throwable) {
+            return mapOf(
+                "ok" to true,
+                "aec_available" to aecAvail, "aec_enabled" to aecOn,
+                "ns_available" to nsAvail, "ns_enabled" to nsOn,
+                "agc_available" to agcAvail, "agc_enabled" to agcOn,
+                "record_state" to AudioRecord.STATE_INITIALIZED,
+                "track_state" to trackState,
+                "session_id" to session,
+                "mic_rate" to micRate, "play_rate" to playRate,
+                "in_buf" to inBuf, "out_buf" to outBuf,
+                "speaker" to speaker
+            )
+        } catch (e: Throwable) {
             stopEngine()
-            return false
+            return mapOf("ok" to false, "reason" to "exception", "error" to (e.message ?: e.toString()))
         }
     }
 
