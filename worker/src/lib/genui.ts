@@ -12,11 +12,12 @@
 import type { Env } from "../types";
 import type { A2uiSurface } from "./a2ui";
 import type { Affordance, CapsDiag } from "./capabilities";
-import { resolveAffordances } from "./capabilities";
+import { resolveAffordances, toolkitOf } from "./capabilities";
 import { redisGetJson, redisSetJson } from "./redis";
 import {
   composeTemplate, cacheKey, isRenderable, type Template,
 } from "./genui_compose";
+import { planSurface, buildPlannedSurface, findListPath } from "./genui_planner";
 
 const TEMPLATE_TTL = 60 * 60 * 24 * 30; // 30 days — templates are stable
 
@@ -39,6 +40,9 @@ export interface RenderDiag {
   entity: string;
   components: number;
   total_ms: number;
+  // which presenter produced the surface + its plan-cache outcome
+  path: "planner" | "template" | "none";
+  plan_cache: "hit" | "miss" | "none";
 }
 
 export interface RenderResult {
@@ -58,6 +62,7 @@ export async function renderData(
     gid, renderable: true, template_cache: "none", template_write: false,
     compose_ms: 0, resolve_ms: 0, catalog_cache: "skip", catalog_ms: 0, catalog_tools: 0,
     affordances: 0, affordances_item: 0, affordances_surface: 0, entity: "", components: 0, total_ms: 0,
+    path: "none", plan_cache: "none",
   };
 
   if (!isRenderable(input.data)) {
@@ -70,11 +75,13 @@ export async function renderData(
   // is unreachable we still render the (display-only) card. Caller may pass them
   // in to avoid a duplicate lookup.
   let affordances = input.affordances;
+  let entity = "";
   if (!affordances) {
     try {
       const resolved = await resolveAffordances(env, input.tool);
       affordances = resolved?.affordances ?? [];
       if (resolved) {
+        entity = resolved.entity;
         diag.catalog_cache = resolved.diag.catalog_cache;
         diag.catalog_ms = resolved.diag.catalog_ms;
         diag.catalog_tools = resolved.diag.catalog_tools;
@@ -86,6 +93,28 @@ export async function renderData(
     } catch { affordances = []; }
   }
   diag.affordances = affordances.length;
+
+  // PRIMARY PATH — the planner "brain" + deterministic builder. The LLM decides
+  // semantics (app identity, which fields to show, which of the resolved actions
+  // to offer for this intent); code assembles a consistent A2UI surface. Plan is
+  // cached per app+shape. Falls through to the freeform template composer only if
+  // there's no list-shaped data to plan over.
+  if (findListPath(input.data)) {
+    try {
+      const { plan, cache: planCache } = await planSurface(env, {
+        request: input.request, toolkit: toolkitOf(input.tool), entity, tool: input.tool,
+        data: input.data, affordances,
+      });
+      diag.plan_cache = planCache;
+      if (plan) {
+        const surface = buildPlannedSurface(plan, affordances, input.data, { tool: input.tool, gid });
+        diag.path = "planner";
+        diag.components = Object.keys(surface.components).length;
+        diag.total_ms = Date.now() - t0;
+        return { surface, cache: planCache === "hit" ? "hit" : "miss", diag };
+      }
+    } catch { /* fall through to template composer */ }
+  }
 
   const key = cacheKey(input.tool, input.data);
   let tpl = await redisGetJson<Template>(env, key);
@@ -102,6 +131,7 @@ export async function renderData(
   }
 
   diag.components = Object.keys(tpl.components).length;
+  diag.path = "template";
   diag.total_ms = Date.now() - t0;
 
   const surface: A2uiSurface = {

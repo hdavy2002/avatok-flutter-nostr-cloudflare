@@ -766,7 +766,7 @@ export class AvaAgentDO {
           trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
             conv_kind: convKind, stage: "server_compose", mode: "generic",
             gid: diag.gid, tool: (lastApp as any).tool, entity: diag.entity,
-            ok: !!surface, cache,
+            ok: !!surface, cache, path: diag.path, plan_cache: diag.plan_cache,
             // cache visibility (Redis template + KV catalog)
             template_cache: diag.template_cache, template_write: diag.template_write,
             catalog_cache: diag.catalog_cache, catalog_ms: diag.catalog_ms, catalog_tools: diag.catalog_tools,
