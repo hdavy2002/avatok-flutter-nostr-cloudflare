@@ -39,21 +39,13 @@ class VoiceModels {
     'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx',
     'silero_vad.onnx',
   );
-  // Multilingual whisper-tiny (matches the multilingual Kokoro voices).
-  static const _kWhisper = <_RemoteFile>[
-    _RemoteFile(
-      'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/tiny-encoder.int8.onnx',
-      'whisper/tiny-encoder.int8.onnx',
-    ),
-    _RemoteFile(
-      'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/tiny-decoder.int8.onnx',
-      'whisper/tiny-decoder.int8.onnx',
-    ),
-    _RemoteFile(
-      'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/tiny-tokens.txt',
-      'whisper/tiny-tokens.txt',
-    ),
-  ];
+  // Multilingual whisper-tiny — OFFICIAL k2-fsa release TARBALL (guaranteed real
+  // binaries). Previously fetched as individual HF files, which could come back as
+  // Git-LFS pointer text / partial files that pass the "non-empty" check but make
+  // onnxruntime CRASH natively on load. The tarball avoids that entirely.
+  static const _kWhisperTarUrl =
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2';
+  static const _kWhisperDir = 'sherpa-onnx-whisper-tiny';
   // TTS = SupertonicTTS-3 (owner decision 2026-06-21, replacing Kokoro): ~10x
   // smaller + far faster, int8, multi-speaker, 31 languages, no espeak-ng-data dir.
   static const _kTtsTarUrl =
@@ -93,20 +85,56 @@ class VoiceModels {
   String ttsUnicodeIndexer = '';
   String ttsVoiceStyle = '';
 
+  // Minimum plausible sizes so a Git-LFS pointer / HTML error / partial download
+  // is treated as "not ready" instead of being handed to the native loader (which
+  // would crash). whisper int8 encoder ≈ 38 MB, decoder ≈ 86 MB, silero ≈ 2 MB.
+  static const int _kMinOnnx = 4 * 1024 * 1024; // 4 MB
+  static const int _kMinVad = 512 * 1024; // 0.5 MB
+
+  void _setWhisperPaths(String whisperRoot) {
+    whisperEncoder = p.join(whisperRoot, 'tiny-encoder.int8.onnx');
+    whisperDecoder = p.join(whisperRoot, 'tiny-decoder.int8.onnx');
+    whisperTokens = p.join(whisperRoot, 'tiny-tokens.txt');
+  }
+
+  Future<bool> _bigEnough(String path, int minBytes) async {
+    try {
+      final f = File(path);
+      return await f.exists() && await f.length() >= minBytes;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _whisperValid() async =>
+      await _bigEnough(whisperEncoder, _kMinOnnx) &&
+      await _bigEnough(whisperDecoder, _kMinOnnx) &&
+      await File(whisperTokens).exists();
+
   /// Download (if needed) the VAD + Whisper files. Cheap when already cached.
   Future<bool> ensureVadAndStt() async {
     if (_vadSttReady) return true;
     try {
       final base = await _baseDir();
       status.value = 'Preparing speech models…';
+      // VAD: single small GitHub release asset (direct binary, no LFS).
       vadPath = await _ensureFile(_kVad, base);
-      whisperEncoder = await _ensureFile(_kWhisper[0], base);
-      whisperDecoder = await _ensureFile(_kWhisper[1], base);
-      whisperTokens = await _ensureFile(_kWhisper[2], base);
-      _vadSttReady = vadPath.isNotEmpty &&
-          whisperEncoder.isNotEmpty &&
-          whisperDecoder.isNotEmpty &&
-          whisperTokens.isNotEmpty;
+      // Whisper: official tarball. Re-download if the cached copy is missing or
+      // too small (e.g. a previous corrupt/LFS-pointer download).
+      final whisperRoot = p.join(base, _kWhisperDir);
+      _setWhisperPaths(whisperRoot);
+      if (!await _whisperValid()) {
+        status.value = 'Downloading speech model…';
+        final tarPath = p.join(base, 'whisper.tar.bz2');
+        final ok = await _download(_kWhisperTarUrl, tarPath);
+        if (!ok) { status.value = 'Speech model download failed'; return false; }
+        status.value = 'Unpacking speech model…';
+        progress.value = -1;
+        await _extractTarBz2(tarPath, base);
+        try { await File(tarPath).delete(); } catch (_) {}
+        _setWhisperPaths(whisperRoot);
+      }
+      _vadSttReady = await _bigEnough(vadPath, _kMinVad) && await _whisperValid();
       status.value = _vadSttReady ? '' : 'Speech model download failed';
       return _vadSttReady;
     } catch (e) {
@@ -118,19 +146,14 @@ class VoiceModels {
     }
   }
 
-  /// Resolve VAD + Whisper paths from cache WITHOUT downloading. Returns true if
-  /// all files already exist on disk (so the engine can load on demand).
+  /// Resolve VAD + Whisper paths from cache WITHOUT downloading. Returns true only
+  /// if the files exist AND are big enough to be real (so corrupt caches re-download).
   Future<bool> resolveVadStt() async {
     if (_vadSttReady) return true;
     final base = await _baseDir();
     vadPath = await _existing(base, _kVad.dest);
-    whisperEncoder = await _existing(base, _kWhisper[0].dest);
-    whisperDecoder = await _existing(base, _kWhisper[1].dest);
-    whisperTokens = await _existing(base, _kWhisper[2].dest);
-    _vadSttReady = vadPath.isNotEmpty &&
-        whisperEncoder.isNotEmpty &&
-        whisperDecoder.isNotEmpty &&
-        whisperTokens.isNotEmpty;
+    _setWhisperPaths(p.join(base, _kWhisperDir));
+    _vadSttReady = await _bigEnough(vadPath, _kMinVad) && await _whisperValid();
     return _vadSttReady;
   }
 
