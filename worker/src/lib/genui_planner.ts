@@ -106,13 +106,24 @@ function heuristicPlan(appLabel: string, listPath: string, items: any[], afforda
   };
 }
 
+// Telemetry about the planning step — lets us pinpoint whether Claude (via
+// OpenRouter) actually ran, fell back to Gemini, or to the heuristic, and how long.
+export interface LlmCall { provider: "openrouter" | "gemini" | "none"; model: string; ms: number; ok: boolean; status: number; }
+export interface PlanDiag extends LlmCall {
+  source: "cache" | "llm" | "heuristic";
+  item_actions: number;
+  surface_actions: number;
+  group_by: string;
+}
+
 // ---- the PLANNER: LLM decides semantics, validated against real data + tools --
 export async function planSurface(
   env: Env,
   input: { request: string; toolkit: string; entity: string; tool: string; data: unknown; affordances: Affordance[] },
-): Promise<{ plan: UiPlan | null; cache: "hit" | "miss" | "none" }> {
+): Promise<{ plan: UiPlan | null; cache: "hit" | "miss" | "none"; diag: PlanDiag }> {
+  const noDiag: PlanDiag = { source: "heuristic", provider: "none", model: "", ms: 0, ok: false, status: 0, item_actions: 0, surface_actions: 0, group_by: "" };
   const found = findListPath(input.data);
-  if (!found) return { plan: null, cache: "none" };
+  if (!found) return { plan: null, cache: "none", diag: noDiag };
   const fields = elementFields(found.items);
 
   // Cache the PLAN by app+entity+shape (NOT by intent) so similar later requests
@@ -121,9 +132,11 @@ export async function planSurface(
   const key = `genui:plan:v1:${shapeKey}`;
 
   const cached = await redisGetJson<UiPlan>(env, key);
-  if (cached) return { plan: cached, cache: "hit" };
+  if (cached) {
+    return { plan: cached, cache: "hit", diag: { ...noDiag, source: "cache", ok: true, item_actions: cached.item_actions?.length ?? 0, surface_actions: cached.surface_actions?.length ?? 0, group_by: cached.group_by ?? "" } };
+  }
 
-  const llm = await llmPlan(env, input, found.path, fields);
+  const { plan: llm, call } = await llmPlan(env, input, found.path, fields);
   const plan = llm ?? heuristicPlan(humanApp(input.toolkit), found.path, found.items, input.affordances);
   // Validate field paths exist; fall back per-field to the heuristic if not.
   const fieldSet = new Set(Object.keys(fields));
@@ -146,7 +159,14 @@ export async function planSurface(
   if (!plan.empty_text) plan.empty_text = heur.empty_text;
 
   await redisSetJson(env, key, plan, PLAN_TTL).catch(() => {});
-  return { plan, cache: "miss" };
+  const diag: PlanDiag = {
+    ...call,
+    source: llm ? "llm" : "heuristic",
+    item_actions: plan.item_actions.length,
+    surface_actions: plan.surface_actions.length,
+    group_by: plan.group_by ?? "",
+  };
+  return { plan, cache: "miss", diag };
 }
 
 function humanApp(toolkit: string): string {
@@ -161,7 +181,7 @@ async function llmPlan(
   env: Env,
   input: { request: string; toolkit: string; entity: string; affordances: Affordance[] },
   listPath: string, fields: Record<string, string>,
-): Promise<UiPlan | null> {
+): Promise<{ plan: UiPlan | null; call: LlmCall }> {
   const affLines = input.affordances.map((a) =>
     `  - id:"${a.id}" label:"${a.label}" verb:${a.verb} scope:${a.scope}${a.destructive ? " [destructive]" : ""}`).join("\n");
   const sys =
@@ -180,33 +200,43 @@ async function llmPlan(
     `Element fields (name:type): ${JSON.stringify(fields)}\n` +
     `Available actions (affordances):\n${affLines || "  (none)"}\n\n` +
     "Return the plan JSON now.";
+  const r = await llmJson(env, sys, usr);
+  const call: LlmCall = { provider: r.provider, model: r.model, ms: r.ms, ok: r.ok, status: r.status };
+  if (!r.text) return { plan: null, call };
   try {
-    const text = await llmJson(env, sys, usr);
-    if (!text) return null;
-    const p = JSON.parse(text);
-    if (!p || typeof p !== "object") return null;
+    const p = JSON.parse(r.text);
+    if (!p || typeof p !== "object") return { plan: null, call };
     return {
-      app_label: String(p.app_label ?? ""),
-      list_path: listPath,
-      item_title: String(p.item_title ?? ""),
-      item_subtitle: Array.isArray(p.item_subtitle) ? p.item_subtitle.map(String).slice(0, 2) : [],
-      item_badge: p.item_badge ? String(p.item_badge) : undefined,
-      item_open: p.item_open ? String(p.item_open) : undefined,
-      item_actions: Array.isArray(p.item_actions) ? p.item_actions.map(String) : [],
-      surface_actions: Array.isArray(p.surface_actions) ? p.surface_actions.map(String) : [],
-      empty_text: String(p.empty_text ?? ""),
-      group_by: p.group_by ? String(p.group_by) : undefined,
+      plan: {
+        app_label: String(p.app_label ?? ""),
+        list_path: listPath,
+        item_title: String(p.item_title ?? ""),
+        item_subtitle: Array.isArray(p.item_subtitle) ? p.item_subtitle.map(String).slice(0, 2) : [],
+        item_badge: p.item_badge ? String(p.item_badge) : undefined,
+        item_open: p.item_open ? String(p.item_open) : undefined,
+        item_actions: Array.isArray(p.item_actions) ? p.item_actions.map(String) : [],
+        surface_actions: Array.isArray(p.surface_actions) ? p.surface_actions.map(String) : [],
+        empty_text: String(p.empty_text ?? ""),
+        group_by: p.group_by ? String(p.group_by) : undefined,
+      },
+      call: { ...call, ok: true },
     };
-  } catch { return null; }
+  } catch { return { plan: null, call }; }
 }
 
 // The thinking/design brain. Prefers Claude Opus 4.8 via OpenRouter (a stronger
 // designer) when OPENROUTER_API_KEY is set; otherwise falls back to Gemini. Both
 // return a JSON object as a string.
 const OPENROUTER_PLANNER_MODEL = "anthropic/claude-opus-4.8";
-async function llmJson(env: Env, sys: string, usr: string): Promise<string> {
+// Returns the JSON text PLUS which provider/model actually answered, latency and
+// HTTP status — so telemetry can show whether Claude(OpenRouter) ran or it fell
+// back to Gemini, and surface OpenRouter failures (the key thing to pinpoint).
+async function llmJson(env: Env, sys: string, usr: string): Promise<{ text: string; provider: "openrouter" | "gemini" | "none"; model: string; ms: number; ok: boolean; status: number }> {
   const orKey = (env as any).OPENROUTER_API_KEY as string | undefined;
+  const orModel = (env as any).OPENROUTER_PLANNER_MODEL || OPENROUTER_PLANNER_MODEL;
   if (orKey) {
+    const t0 = Date.now();
+    let status = 0;
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -217,7 +247,7 @@ async function llmJson(env: Env, sys: string, usr: string): Promise<string> {
           "X-Title": "AvaTOK GenUI",
         },
         body: JSON.stringify({
-          model: (env as any).OPENROUTER_PLANNER_MODEL || OPENROUTER_PLANNER_MODEL,
+          model: orModel,
           messages: [{ role: "system", content: sys }, { role: "user", content: usr }],
           response_format: { type: "json_object" },
           temperature: 0.2,
@@ -225,16 +255,20 @@ async function llmJson(env: Env, sys: string, usr: string): Promise<string> {
         }),
         signal: AbortSignal.timeout(20000),
       });
+      status = res.status;
       if (res.ok) {
         const out: any = await res.json().catch(() => null);
         const text = out?.choices?.[0]?.message?.content ?? "";
-        if (text) return String(text);
+        if (text) return { text: String(text), provider: "openrouter", model: orModel, ms: Date.now() - t0, ok: true, status };
       }
     } catch { /* fall back to Gemini */ }
+    // OpenRouter failed — record it but continue to Gemini (don't break the card).
+    // (provider stays openrouter so the failure is attributable; ok=false.)
   }
   // Gemini fallback
   const key = env.GEMINI_API_KEY ?? "";
-  if (!key) return "";
+  if (!key) return { text: "", provider: "none", model: "", ms: 0, ok: false, status: 0 };
+  const g0 = Date.now();
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${PLAN_MODEL}:generateContent`;
     const res = await fetch(url, {
@@ -246,10 +280,11 @@ async function llmJson(env: Env, sys: string, usr: string): Promise<string> {
         generationConfig: { responseMimeType: "application/json", temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } },
       }),
     });
-    if (!res.ok) return "";
+    if (!res.ok) return { text: "", provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: false, status: res.status };
     const out: any = await res.json().catch(() => null);
-    return out?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join("") ?? "";
-  } catch { return ""; }
+    const text = out?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join("") ?? "";
+    return { text, provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: !!text, status: res.status };
+  } catch { return { text: "", provider: "gemini", model: PLAN_MODEL, ms: Date.now() - g0, ok: false, status: 0 }; }
 }
 
 // ---- the BUILDER: deterministic, consistent, premium A2UI from the plan -------
@@ -430,11 +465,14 @@ function concreteAction(a: Affordance, idVal: string): A2uiAction {
 // image/PDF, Open doc) — things a flat list/template can't do because icons
 // aren't data-bound. Grouped into type sections, with a "Showing N of M" footer
 // when the list is capped. Deterministic, never falls back to text.
+export interface DriveDiag { total: number; shown: number; groups: number; types: string; capped: boolean; item_actions: number; }
+
 export function buildDriveSurface(
   data: unknown, affordances: Affordance[], opts: { tool: string; gid: string },
-): A2uiSurface | null {
+): { surface: A2uiSurface | null; diag: DriveDiag } {
+  const empty: DriveDiag = { total: 0, shown: 0, groups: 0, types: "", capped: false, item_actions: 0 };
   const found = findListPath(data);
-  if (!found) return null;
+  if (!found) return { surface: null, diag: empty };
   const all = found.items;
   const total = totalCount(data, all.length);
   const files = all.slice(0, MAX_DISPLAY);
@@ -498,5 +536,10 @@ export function buildDriveSurface(
 
   const root = add({ type: "column", children: kids, gap: 0 });
   // Unrolled → all values are literal; no data model needed.
-  return { version: "v0.9", surfaceId: `gx_${Date.now()}`, gid: opts.gid, tool: opts.tool, ts: Date.now(), root, components: comps, data: {} };
+  const surface: A2uiSurface = { version: "v0.9", surfaceId: `gx_${Date.now()}`, gid: opts.gid, tool: opts.tool, ts: Date.now(), root, components: comps, data: {} };
+  const diag: DriveDiag = {
+    total, shown: files.length, groups: groups.length,
+    types: groups.map(([label]) => label).join(","), capped: total > files.length, item_actions: itemActs.length,
+  };
+  return { surface, diag };
 }

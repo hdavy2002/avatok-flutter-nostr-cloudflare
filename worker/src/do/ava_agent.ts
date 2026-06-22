@@ -775,9 +775,26 @@ export class AvaAgentDO {
             // shape of what we built
             components: diag.components, renderable: diag.renderable,
             affordances: diag.affordances, affordances_item: diag.affordances_item, affordances_surface: diag.affordances_surface,
+            // planner "brain": which model designed it, latency, fallback
+            planner_source: diag.planner_source, planner_provider: diag.planner_provider, planner_model: diag.planner_model,
+            planner_llm_ms: diag.planner_llm_ms, planner_llm_ok: diag.planner_llm_ok, planner_llm_status: diag.planner_llm_status,
+            plan_group_by: diag.plan_group_by, plan_item_actions: diag.plan_item_actions, plan_surface_actions: diag.plan_surface_actions,
+            // safeguard: how big the result was + whether we capped the displayed slice
+            total: diag.total, shown: diag.shown, capped: diag.capped,
+            drive_groups: diag.drive_groups, drive_types: diag.drive_types,
             // tie into the turn (intent timestamp): time from turn start to surface ready
             intent_to_surface_ms: Date.now() - t0, tools_ms: toolMs, tools_called: toolCount,
           });
+          // Dedicated brain-call event when the planner actually invoked an LLM —
+          // isolates Claude(OpenRouter)/Gemini reliability + latency from rendering.
+          if (diag.planner_source === "llm" || (diag.planner_provider && diag.planner_provider !== "none")) {
+            trackUserContact(this.env, uid, email, phone, "genui_plan", "avaai", {
+              gid: diag.gid, tool: (lastApp as any).tool, entity: diag.entity,
+              provider: diag.planner_provider, model: diag.planner_model, ok: diag.planner_llm_ok,
+              status: diag.planner_llm_status, ms: diag.planner_llm_ms, source: diag.planner_source,
+              group_by: diag.plan_group_by, item_actions: diag.plan_item_actions, surface_actions: diag.plan_surface_actions,
+            });
+          }
         } catch (e: any) {
           trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
             conv_kind: convKind, stage: "server_compose", mode: "generic",

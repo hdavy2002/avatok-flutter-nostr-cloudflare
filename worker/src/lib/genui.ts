@@ -43,6 +43,23 @@ export interface RenderDiag {
   // which presenter produced the surface + its plan-cache outcome
   path: "planner" | "planner_drive" | "template" | "none";
   plan_cache: "hit" | "miss" | "none";
+  // planner "brain" telemetry — pinpoint Claude-vs-Gemini, latency, fallback
+  planner_source: "cache" | "llm" | "heuristic" | "none";
+  planner_provider: "openrouter" | "gemini" | "none";
+  planner_model: string;
+  planner_llm_ms: number;
+  planner_llm_ok: boolean;
+  planner_llm_status: number;
+  plan_group_by: string;
+  plan_item_actions: number;
+  plan_surface_actions: number;
+  // safeguard — how big the result was and whether we capped the displayed slice
+  total: number;
+  shown: number;
+  capped: boolean;
+  // drive-specific shape
+  drive_groups: number;
+  drive_types: string;
 }
 
 export interface RenderResult {
@@ -63,6 +80,9 @@ export async function renderData(
     compose_ms: 0, resolve_ms: 0, catalog_cache: "skip", catalog_ms: 0, catalog_tools: 0,
     affordances: 0, affordances_item: 0, affordances_surface: 0, entity: "", components: 0, total_ms: 0,
     path: "none", plan_cache: "none",
+    planner_source: "none", planner_provider: "none", planner_model: "", planner_llm_ms: 0, planner_llm_ok: false, planner_llm_status: 0,
+    plan_group_by: "", plan_item_actions: 0, plan_surface_actions: 0,
+    total: 0, shown: 0, capped: false, drive_groups: 0, drive_types: "",
   };
 
   if (!isRenderable(input.data)) {
@@ -99,10 +119,12 @@ export async function renderData(
   // truncated, per-file action bundle. Fully deterministic (no LLM hop).
   if (toolkitOf(input.tool) === "googledrive" && findListPath(input.data)) {
     try {
-      const surface = buildDriveSurface(input.data, affordances ?? [], { tool: input.tool, gid });
+      const { surface, diag: dd } = buildDriveSurface(input.data, affordances ?? [], { tool: input.tool, gid });
       if (surface) {
         diag.path = "planner_drive";
         diag.components = Object.keys(surface.components).length;
+        diag.total = dd.total; diag.shown = dd.shown; diag.capped = dd.capped;
+        diag.drive_groups = dd.groups; diag.drive_types = dd.types; diag.plan_item_actions = dd.item_actions;
         diag.total_ms = Date.now() - t0;
         return { surface, cache: "none", diag };
       }
@@ -114,13 +136,20 @@ export async function renderData(
   // to offer for this intent); code assembles a consistent A2UI surface. Plan is
   // cached per app+shape. Falls through to the freeform template composer only if
   // there's no list-shaped data to plan over.
-  if (findListPath(input.data)) {
+  const lp = findListPath(input.data);
+  if (lp) {
     try {
-      const { plan, cache: planCache } = await planSurface(env, {
+      const { plan, cache: planCache, diag: pd } = await planSurface(env, {
         request: input.request, toolkit: toolkitOf(input.tool), entity, tool: input.tool,
         data: input.data, affordances,
       });
       diag.plan_cache = planCache;
+      diag.planner_source = pd.source; diag.planner_provider = pd.provider; diag.planner_model = pd.model;
+      diag.planner_llm_ms = pd.ms; diag.planner_llm_ok = pd.ok; diag.planner_llm_status = pd.status;
+      diag.plan_group_by = pd.group_by; diag.plan_item_actions = pd.item_actions; diag.plan_surface_actions = pd.surface_actions;
+      diag.total = (input.data as any)?._total ?? lp.items.length;
+      diag.shown = Math.min(lp.items.length, 50);
+      diag.capped = diag.total > diag.shown;
       if (plan) {
         const surface = buildPlannedSurface(plan, affordances, input.data, { tool: input.tool, gid });
         diag.path = "planner";

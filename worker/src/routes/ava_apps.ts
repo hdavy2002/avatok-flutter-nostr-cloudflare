@@ -112,6 +112,23 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   }
 }
 
+// Short outcome category for telemetry (distinct from the user-facing text).
+function outcomeTag(tool: string): string {
+  const t = tool.toUpperCase();
+  if (/DRAFT/.test(t)) return "drafted";
+  if (/SEND/.test(t)) return "sent";
+  if (/REPLY/.test(t)) return "replied";
+  if (/CREATE_EVENT|QUICK_ADD/.test(t)) return "event_created";
+  if (/DELETE|REMOVE|TRASH/.test(t)) return "deleted";
+  if (/RENAME/.test(t)) return "renamed";
+  if (/MOVE/.test(t)) return "moved";
+  if (/COPY|DUPLICATE/.test(t)) return "copied";
+  if (/SHARE|PERMISSION/.test(t)) return "shared";
+  if (/CREATE|ADD|INSERT|NEW/.test(t)) return "created";
+  if (/UPDATE|EDIT|PATCH/.test(t)) return "updated";
+  return "other";
+}
+
 // Truthful, tool-aware success message — a DRAFT must never claim it was "sent".
 // Derived from the slug's verb/entity so it's correct for any app, not just Gmail.
 function outcomeText(tool: string): string {
@@ -205,6 +222,9 @@ export async function avaGenuiAction(req: Request, env: Env): Promise<Response> 
     }
     trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", {
       gid, tool, toolkit, ok, stage: ok ? "executed" : "tool_failed",
+      // outcome category (draft vs sent vs deleted vs …) — pinpoints the
+      // draft≠send class of bug at a glance.
+      outcome: outcomeTag(tool),
       // per-step latency: validate → coerce → exec → re-render
       ms: Date.now() - t0, validate_ms: validateMs, coerce_ms: coerceMs, exec_ms: execMs, render_ms: renderMs,
       // cache visibility on the refresh render
