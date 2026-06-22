@@ -120,8 +120,14 @@ class LiveVoiceController implements VoiceCallApi {
   Future<bool> _connect(String token) async {
     if (token.isEmpty || _disposed) return false;
     try {
+      // EPHEMERAL-TOKEN AUTH: when the api key is an ephemeral token (name starts
+      // with `auth_tokens/`), the Live WS method MUST be `BidiGenerateContentConstrained`
+      // with `?access_token=` — the plain `BidiGenerateContent` method rejects the
+      // token with close 1008 "unregistered caller / use API Key" (verified live, and
+      // per googleapis/js-genai live.ts). Our /api/ava/live/token mints exactly such a
+      // token, so we always use the Constrained method here.
       final uri = Uri.parse(
-        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?access_token=${Uri.encodeComponent(token)}',
+        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=${Uri.encodeComponent(token)}',
       );
       final ws = WebSocketChannel.connect(uri);
       _ws = ws;
