@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
+import '../../core/config.dart';
 import '../../core/ui/zine.dart';
 
 class AvaA2uiSurface extends StatefulWidget {
@@ -159,6 +160,8 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     switch ((n['type'] ?? '').toString()) {
       case 'column': return _column(n, scope);
       case 'row': return _row(n, scope);
+      case 'expanded': return _expanded(n, scope);
+      case 'image': return _image(n, scope);
       case 'list': return _list(n, scope);
       case 'text': return _text(n, scope);
       case 'card': return _card(n, scope);
@@ -179,13 +182,12 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   List<String> _childIds(Map<String, dynamic> n) =>
       (n['children'] as List?)?.map((e) => e.toString()).toList() ?? const [];
 
-  Widget _stack(List<Widget> kids, double gap, {bool row = false, String align = 'start'}) {
-    // Mobile-safe rows: a normal (non-space-between) row of action/chip buttons
-    // wraps to the next line instead of overflowing off the right edge on a
-    // narrow phone screen (fixes the "card actions run off-screen" bug, where
-    // e.g. Open · Edit · Move · Download clipped). spaceBetween rows still need
-    // a real Row, so they keep the original layout.
-    if (row && align != 'between') {
+  Widget _stack(List<Widget> kids, double gap, {bool row = false, String align = 'start', bool wrap = false}) {
+    // Opt-in wrapping: only rows explicitly marked wrap:true (action/chip button
+    // groups) flow onto extra lines so they never overflow off a narrow phone
+    // screen. Structural rows (e.g. leading icon + content column) stay a real
+    // Row — an `expanded` child keeps long text ellipsizing instead of clipping.
+    if (row && wrap) {
       return Wrap(
         spacing: gap,
         runSpacing: gap,
@@ -216,7 +218,48 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
         _childIds(n).map((c) => _render(c, scope)).toList(),
         (n['gap'] as num?)?.toDouble() ?? 6,
         row: true, align: (n['align'] ?? 'center').toString(),
+        wrap: n['wrap'] == true,
       );
+
+  /// Flex wrapper — expands its child to fill the remaining space inside a row,
+  /// so long text ellipsizes instead of pushing siblings off the screen edge.
+  Widget _expanded(Map<String, dynamic> n, Map scope) {
+    final c = (n['child'] ?? '').toString();
+    return Expanded(child: c.isEmpty ? const SizedBox.shrink() : _render(c, scope));
+  }
+
+  /// Preview thumbnail (photo/video/PDF/doc). The url may be a signed proxy path
+  /// (`/api/ava/genui/thumb?…`) — we prefix the API host. While loading or on any
+  /// error we show the file-type fallback icon, so a card never looks broken.
+  Widget _image(Map<String, dynamic> n, Map scope) {
+    final raw = _resolve(n['url'], scope).trim();
+    final w = (n['w'] as num?)?.toDouble() ?? 46;
+    final h = (n['h'] as num?)?.toDouble() ?? 46;
+    final radius = (n['radius'] as num?)?.toDouble() ?? 10;
+    final fallbackIcon = n['fallbackIcon']?.toString() ?? 'file';
+    final url = raw.startsWith('/') ? 'https://$kSignalingHost$raw' : raw;
+
+    Widget fallback() => Container(
+          width: w, height: h,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Zine.paper2,
+            borderRadius: BorderRadius.circular(radius),
+            border: Zine.border),
+          child: PhosphorIcon(_icon(fallbackIcon), size: w * 0.5, color: Zine.inkSoft),
+        );
+
+    if (!url.startsWith('http')) return fallback();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Image.network(
+        url, width: w, height: h, fit: BoxFit.cover,
+        cacheWidth: (w * 3).round(),
+        errorBuilder: (_, __, ___) => fallback(),
+        loadingBuilder: (_, child, progress) => progress == null ? child : fallback(),
+      ),
+    );
+  }
 
   // Repeat `item` once per array element at `path`; each element is the scope.
   Widget _list(Map<String, dynamic> n, Map scope) {
@@ -293,7 +336,28 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     final fill = _tok(n['fill']?.toString(), fallback: Zine.card);
     final icon = n['icon']?.toString();
     final full = n['full'] == true;
+    final iconOnly = n['iconOnly'] == true;
     final label = _resolve(n['label'], scope);
+
+    // Compact icon-only button: a 42px tappable chip with the label exposed as a
+    // tooltip (long-press). Keeps action rows tiny so cards fit a phone screen.
+    if (iconOnly) {
+      return Tooltip(
+        message: label,
+        child: GestureDetector(
+          onTap: () => _dispatch(n['action'], scope),
+          child: Container(
+            width: 42, height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: fill, border: Zine.border,
+              borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowSm),
+            child: PhosphorIcon(_icon(icon ?? 'dots-three'), size: 19, color: Zine.ink),
+          ),
+        ),
+      );
+    }
+
     final inner = Container(
       height: full ? 46 : null,
       padding: full ? null : const EdgeInsets.symmetric(horizontal: 13, vertical: 9),

@@ -18,7 +18,7 @@ const COMPOSE_MODEL = "gemini-2.5-flash";
 export const CATALOG_VERSION = "v2";
 
 const TYPES = new Set([
-  "column", "row", "text", "card", "pill", "button", "divider", "spacer", "icon",
+  "column", "row", "text", "card", "pill", "button", "divider", "spacer", "icon", "image", "expanded",
   "openDay", "eventRow", "list", "input", "form",
 ]);
 const TOKENS = new Set([
@@ -111,7 +111,7 @@ PER-ITEM actions (place a compact "row" of small buttons INSIDE the list item ca
 ${item.length ? item.map(line).join("\n") : "  (none)"}
 SURFACE actions (place at the BOTTOM of the top column, full-width):
 ${surface.length ? surface.map(line).join("\n") : "  (none)"}
-RULES: Every list item card MUST end with a "row" of the per-item action buttons. Add the surface actions as full-width buttons after the list. Use small (full:false) buttons for per-item actions with their icon; use the action's label. Do NOT use type "prompt" for anything that has a composio ref. NEVER invent a ref, tool name, or args. When an action needs typed input the client collects it automatically — you only wire the button ref.`;
+RULES: DESIGN FOR A NARROW PHONE SCREEN (~360dp wide). Every list item card MUST end with a wrapping "row" (set wrap:true) of COMPACT ICON-ONLY buttons (set iconOnly:true, full:false) for the per-item actions — each must have an "icon"; the label is shown only as a tooltip, so the actions stay tiny and never stack into a full-width tower. Add the surface actions as full-width buttons after the list. Do NOT use type "prompt" for anything that has a composio ref. NEVER invent a ref, tool name, or args. When an action needs typed input the client collects it automatically — you only wire the button ref.`;
 }
 
 const EXAMPLE = `EXAMPLE — for data {"projects":[{"name":"Roadmap","status":"Active","url":"https://x"}]} a good template is:
@@ -199,7 +199,8 @@ export function sanitizeTemplate(s: any, data: unknown, affordances: Affordance[
     switch (type) {
       case "column": return { type, children: refs(raw.children ?? raw.items, depth + 1), gap: num(raw.gap) } as A2uiNode;
       case "row": return { type, children: refs(raw.children ?? raw.items, depth + 1), gap: num(raw.gap),
-        align: ["start", "center", "between"].includes(raw.align) ? raw.align : undefined } as A2uiNode;
+        align: ["start", "center", "between"].includes(raw.align) ? raw.align : undefined,
+        wrap: raw.wrap === true } as A2uiNode;
       case "text": return { type, value: String(raw.value ?? raw.text ?? raw.label ?? raw.title ?? ""),
         variant: normVariant(raw.variant ?? raw.font ?? raw.style ?? raw.size), color: tok(raw.color) as any } as A2uiNode;
       case "card": {
@@ -215,7 +216,7 @@ export function sanitizeTemplate(s: any, data: unknown, affordances: Affordance[
         let label = String(raw.label ?? raw.text ?? raw.title ?? "");
         if (action && (action as any).type === "composio" && (action as any).label && !label) label = String((action as any).label);
         return { type, label, icon: str(raw.icon), fill: tok(raw.fill) as any,
-          full: raw.full === true, action } as A2uiNode;
+          full: raw.full === true, iconOnly: raw.iconOnly === true, action } as A2uiNode;
       }
       case "input": return { type, name: String(raw.name ?? ""), label: str(raw.label),
         inputKind: normInputKind(raw.inputKind ?? raw.kind), options: normOptions(raw.options),
@@ -231,6 +232,9 @@ export function sanitizeTemplate(s: any, data: unknown, affordances: Affordance[
         location: str(raw.location), video: raw.video === true, guests: num(raw.guests), accent: tok(raw.accent) as any } as A2uiNode;
       case "openDay": return { type, title: String(raw.title ?? ""), subtitle: String(raw.subtitle ?? raw.subTitle ?? "") } as A2uiNode;
       case "icon": return { type, name: String(raw.name ?? "circle"), size: num(raw.size), color: tok(raw.color) as any } as A2uiNode;
+      case "image": return { type, url: String(raw.url ?? raw.src ?? ""), w: num(raw.w ?? raw.width), h: num(raw.h ?? raw.height),
+        radius: num(raw.radius), fit: str(raw.fit), fallbackIcon: str(raw.fallbackIcon ?? raw.icon) } as A2uiNode;
+      case "expanded": return { type, child: ref(raw.child ?? raw.children, depth + 1) ?? "" } as A2uiNode;
       case "list": return { type, path: String(raw.path ?? raw.items ?? raw.data ?? ""),
         item: ref(raw.item ?? raw.template ?? raw.child, depth + 1) ?? "", gap: num(raw.gap) } as A2uiNode;
       case "divider": return { type } as A2uiNode;
@@ -304,7 +308,8 @@ function normType(t: any): string | null {
     list: "list", repeat: "list", foreach: "list", "for-each": "list", listview: "list", items: "list",
     eventrow: "eventRow", event: "eventRow",
     openday: "openDay",
-    icon: "icon", divider: "divider", separator: "divider", spacer: "spacer", space: "spacer",
+    icon: "icon", image: "image", img: "image", thumbnail: "image", photo: "image", expanded: "expanded", flex: "expanded",
+    divider: "divider", separator: "divider", spacer: "spacer", space: "spacer",
     input: "input", field: "input", textfield: "input", textinput: "input", select: "input", dropdown: "input", checkbox: "input",
     form: "form",
   };

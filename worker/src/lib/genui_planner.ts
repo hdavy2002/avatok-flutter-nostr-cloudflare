@@ -20,6 +20,7 @@ import type { Env } from "../types";
 import type { A2uiNode, A2uiSurface, A2uiAction } from "./a2ui";
 import { affordanceToAction, type Affordance } from "./capabilities";
 import { redisGetJson, redisSetJson } from "./redis";
+import { signThumbUrl } from "./genui_thumb_sign";
 
 // Hard ceiling on how many records we put into ONE card. The trim layer already
 // caps the data, but the builder bounds it again so a huge list can NEVER blow up
@@ -324,17 +325,18 @@ export function buildPlannedSurface(
     // badge + open chip line
     const chipRow: string[] = [];
     if (plan.item_badge) chipRow.push(add({ type: "pill", label: `\${${plan.item_badge}}`, fill: "paper2", fg: "ink" }));
-    if (plan.item_open) chipRow.push(add({ type: "button", label: "Open", icon: "arrow-square-out", fill: "card", action: { type: "link", url: `\${${plan.item_open}}` } }));
-    if (chipRow.length) rowKids.push(add({ type: "row", children: chipRow, gap: 6, align: "start" }));
+    if (plan.item_open) chipRow.push(add({ type: "button", label: "Open", icon: "arrow-square-out", fill: "card", iconOnly: true, action: { type: "link", url: `\${${plan.item_open}}` } }));
+    if (chipRow.length) rowKids.push(add({ type: "row", children: chipRow, gap: 8, align: "start", wrap: true }));
 
-    // per-row action bundle (composio) — small buttons
+    // per-row action bundle (composio) — compact ICON-ONLY buttons in a WRAPPING
+    // row so they never stack into a full-width tower on a phone screen.
     const itemActs = plan.item_actions.map((aid) => byId.get(aid)).filter((a): a is Affordance => !!a);
     if (itemActs.length) {
       const btns = itemActs.map((a) => add({
         type: "button", label: a.label, icon: a.icon, fill: a.destructive ? "coral" : "card",
-        action: affordanceToAction(a),
+        iconOnly: true, action: affordanceToAction(a),
       }));
-      rowKids.push(add({ type: "row", children: btns, gap: 6, align: "start" }));
+      rowKids.push(add({ type: "row", children: btns, gap: 8, align: "start", wrap: true }));
     }
 
     const itemCard = add({ type: "card", child: add({ type: "column", children: rowKids, gap: 4 }), accent: "blue" });
@@ -468,9 +470,9 @@ function concreteAction(a: Affordance, idVal: string): A2uiAction {
 // when the list is capped. Deterministic, never falls back to text.
 export interface DriveDiag { total: number; shown: number; groups: number; types: string; capped: boolean; item_actions: number; }
 
-export function buildDriveSurface(
-  data: unknown, affordances: Affordance[], opts: { tool: string; gid: string },
-): { surface: A2uiSurface | null; diag: DriveDiag } {
+export async function buildDriveSurface(
+  data: unknown, affordances: Affordance[], opts: { tool: string; gid: string; env?: Env; uid?: string },
+): Promise<{ surface: A2uiSurface | null; diag: DriveDiag }> {
   const empty: DriveDiag = { total: 0, shown: 0, groups: 0, types: "", capped: false, item_actions: 0 };
   const found = findListPath(data);
   if (!found) return { surface: null, diag: empty };
@@ -511,14 +513,27 @@ export function buildDriveSurface(
       const col: string[] = [add({ type: "text", value: String(f?.name ?? "Untitled"), variant: "title", maxLines: 1 })];
       if (sizeMod) col.push(add({ type: "text", value: sizeMod, variant: "sub", color: "inkSoft", maxLines: 1 }));
       const actRow: string[] = [];
-      if (link) actRow.push(add({ type: "button", label: t.open.label, icon: t.open.icon, fill: "card", action: { type: "link", url: link } }));
-      for (const a of itemActs) actRow.push(add({ type: "button", label: a.label, icon: a.icon, fill: a.destructive ? "coral" : "card", action: concreteAction(a, idVal) }));
-      if (actRow.length) col.push(add({ type: "row", children: actRow, gap: 6, align: "start" }));
+      // Compact ICON-ONLY actions (label → tooltip) in a WRAPPING row, so they
+      // never stack into a full-width tower that eats the screen on a phone.
+      if (link) actRow.push(add({ type: "button", label: t.open.label, icon: t.open.icon, fill: "card", iconOnly: true, action: { type: "link", url: link } }));
+      for (const a of itemActs) actRow.push(add({ type: "button", label: a.label, icon: a.icon, fill: a.destructive ? "coral" : "card", iconOnly: true, action: concreteAction(a, idVal) }));
+      if (actRow.length) col.push(add({ type: "row", children: actRow, gap: 8, align: "start", wrap: true }));
 
-      // leading type icon + the text/action column
+      // Leading visual: a real PREVIEW thumbnail for files that have one (photos,
+      // video, PDF, docs) via the signed thumbnail proxy; the type icon otherwise.
+      let lead: string;
+      if (f?.hasThumbnail === true && idVal && opts.env && opts.uid) {
+        const turl = await signThumbUrl(opts.env, opts.uid, idVal);
+        lead = add({ type: "image", url: turl, w: 46, h: 46, radius: 10, fallbackIcon: t.icon });
+      } else {
+        lead = add({ type: "icon", name: t.icon, size: 22, color: "ink" });
+      }
+
+      // leading visual + the text/action column (column EXPANDS so long file
+      // names ellipsize instead of pushing the row off-screen).
       const body = add({ type: "row", children: [
-        add({ type: "icon", name: t.icon, size: 22, color: "ink" }),
-        add({ type: "column", children: col, gap: 4 }),
+        lead,
+        add({ type: "expanded", child: add({ type: "column", children: col, gap: 4 }) }),
       ], gap: 10, align: "start" });
       kids.push(add({ type: "card", child: body, accent: "blue" }));
       kids.push(add({ type: "spacer", size: 6 }));

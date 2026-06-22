@@ -46,7 +46,7 @@ export async function ensureAvatokFolder(at: string, bucket?: DriveBucket): Prom
   return bucket ? ensureFolder(at, bucket, root) : root;
 }
 
-export interface DriveFile { id: string; name: string; mimeType?: string; size?: string; createdTime?: string; webViewLink?: string; }
+export interface DriveFile { id: string; name: string; mimeType?: string; size?: string; createdTime?: string; webViewLink?: string; thumbnailLink?: string; hasThumbnail?: boolean; }
 
 /** Multipart-upload raw bytes into the user's AvaTOK/<bucket> folder. */
 export async function driveUpload(
@@ -77,12 +77,37 @@ export async function driveList(env: Env, uid: string, pageSize = 200): Promise<
   const at = await gcalAccessToken(env, uid);
   if (!at) return [];
   const q = `trashed=false and mimeType!='${FOLDER_MIME}'`;
-  const r = await fetch(`${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,size,createdTime,webViewLink)&pageSize=${pageSize}&orderBy=createdTime desc`, {
+  const r = await fetch(`${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,size,createdTime,webViewLink,thumbnailLink,hasThumbnail)&pageSize=${pageSize}&orderBy=createdTime desc`, {
     headers: { Authorization: `Bearer ${at}` },
   });
   if (!r.ok) return [];
   const j: any = await r.json();
   return j?.files ?? [];
+}
+
+/** Fetch one file's preview thumbnail bytes (auth-gated → must use the user's
+ *  token). Used by the signed /api/ava/genui/thumb proxy. `size` sizes Google's
+ *  thumbnail via its =s<N> param. Returns null if the file has no thumbnail. */
+export async function driveThumbnailById(
+  env: Env, uid: string, fileId: string, size = 320,
+): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
+  const at = await gcalAccessToken(env, uid);
+  if (!at) return null;
+  const m = await fetch(`${DRIVE}/files/${encodeURIComponent(fileId)}?fields=thumbnailLink,hasThumbnail`, {
+    headers: { Authorization: `Bearer ${at}` },
+  });
+  if (!m.ok) return null;
+  const meta: any = await m.json();
+  let link: string = meta?.thumbnailLink || "";
+  if (!link) return null;
+  // Request a right-sized thumbnail (Google sizing param: =s<N>, optionally -c).
+  link = link.replace(/=s\d+(-[a-z]+)?$/i, `=s${size}`);
+  // thumbnailLink is sometimes a pre-signed googleusercontent URL (rejects the
+  // bearer) and sometimes needs it — try authed first, then bare.
+  let img = await fetch(link, { headers: { Authorization: `Bearer ${at}` } });
+  if (!img.ok) img = await fetch(link);
+  if (!img.ok) return null;
+  return { bytes: await img.arrayBuffer(), contentType: img.headers.get("content-type") || "image/jpeg" };
 }
 
 // ── FREE backup lane: a dedicated, user-visible "avatok-backup" folder ────────

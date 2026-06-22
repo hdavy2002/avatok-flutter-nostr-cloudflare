@@ -56,14 +56,22 @@ export type A2uiAction =
 
 export type A2uiNode =
   | { type: "column"; children: string[]; gap?: number }
-  | { type: "row"; children: string[]; gap?: number; align?: "start" | "center" | "between" }
+  | { type: "row"; children: string[]; gap?: number; align?: "start" | "center" | "between"; wrap?: boolean }
   | { type: "text"; value: string; variant?: TextVariant; color?: Token; weight?: number; maxLines?: number }
   | { type: "card"; child: string; fill?: Token; pad?: number; accent?: Token }
   | { type: "pill"; label: string; icon?: string; fill?: Token; fg?: Token }
-  | { type: "button"; label: string; icon?: string; fill?: Token; action?: A2uiAction; full?: boolean }
+  // iconOnly: render a compact icon-only button (label → tooltip) to save space.
+  | { type: "button"; label: string; icon?: string; fill?: Token; action?: A2uiAction; full?: boolean; iconOnly?: boolean }
+  // Flex wrapper: makes `child` expand to fill the remaining space inside a row
+  // (so long text ellipsizes instead of pushing siblings off-screen).
+  | { type: "expanded"; child: string }
   | { type: "divider" }
   | { type: "spacer"; size: number }
   | { type: "icon"; name: string; size?: number; color?: Token }
+  // A preview thumbnail (photo/video/PDF/doc). `url` may be a signed proxy path
+  // (/api/ava/genui/thumb?…); the client prefixes its API host + falls back to
+  // `fallbackIcon` while loading or on error.
+  | { type: "image"; url: string; w?: number; h?: number; radius?: number; fit?: string; fallbackIcon?: string }
   | { type: "eventRow"; start: string; end: string; title: string; location?: string; video?: boolean; guests?: number; accent?: Token }
   | { type: "openDay"; title: string; subtitle: string }
   // A single inline input bound to `name`; collected into the enclosing form.

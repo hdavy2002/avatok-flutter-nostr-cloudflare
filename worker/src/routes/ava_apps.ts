@@ -213,7 +213,7 @@ export async function avaGenuiAction(req: Request, env: Env): Promise<Response> 
     if (ok && (env as any).GENUI_OFF !== "1") {
       const rd0 = Date.now();
       try {
-        const rr = await renderData(env, { request, tool, data: (r as any)?.data ?? r });
+        const rr = await renderData(env, { request, tool, data: (r as any)?.data ?? r, uid: ctx.uid });
         surface = rr.surface;
         if (surface) { (surface as any).gid = gid || (surface as any).gid; }
         reTemplateCache = rr.diag.template_cache; reCatalogCache = rr.diag.catalog_cache; reComponents = rr.diag.components;

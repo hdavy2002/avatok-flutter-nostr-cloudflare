@@ -71,7 +71,7 @@ export interface RenderResult {
 function newGid(): string { return `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`; }
 
 export async function renderData(
-  env: Env, input: { request: string; tool: string; data: unknown; affordances?: Affordance[] },
+  env: Env, input: { request: string; tool: string; data: unknown; affordances?: Affordance[]; uid?: string },
 ): Promise<RenderResult> {
   const t0 = Date.now();
   const gid = newGid();
@@ -119,7 +119,7 @@ export async function renderData(
   // truncated, per-file action bundle. Fully deterministic (no LLM hop).
   if (toolkitOf(input.tool) === "googledrive" && findListPath(input.data)) {
     try {
-      const { surface, diag: dd } = buildDriveSurface(input.data, affordances ?? [], { tool: input.tool, gid });
+      const { surface, diag: dd } = await buildDriveSurface(input.data, affordances ?? [], { tool: input.tool, gid, env, uid: input.uid });
       if (surface) {
         diag.path = "planner_drive";
         diag.components = Object.keys(surface.components).length;

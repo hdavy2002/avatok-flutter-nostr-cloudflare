@@ -756,7 +756,7 @@ export class AvaAgentDO {
         const gx0 = Date.now();
         try {
           const { surface, cache, diag } = await renderData(this.env, {
-            request: userText, tool: (lastApp as any).tool, data: (lastApp as any).data,
+            request: userText, tool: (lastApp as any).tool, data: (lastApp as any).data, uid,
           });
           if (surface) a2uiSurface = surface;
           // RICH server-side GenUI telemetry — every step latency + cache outcome,
