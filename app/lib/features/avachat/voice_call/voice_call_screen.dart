@@ -31,11 +31,12 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   final LiveVoiceController _call = LiveVoiceController();
   late final AnimationController _pulse;
 
-  // 5-minute "still there?" guardrail — pause + ask before each new segment.
+  // 5-minute "still there?" guardrail — a visible countdown; at 0 it pauses + asks.
   static const _segment = Duration(minutes: 5);
   Timer? _segTimer;
   bool _started = false;
   bool _needContinue = false;
+  int _remaining = 300; // seconds left in the current 5-min segment
 
   @override
   void initState() {
@@ -56,7 +57,15 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
 
   void _startSegTimer() {
     _segTimer?.cancel();
-    _segTimer = Timer(_segment, _onSegmentEnd);
+    _remaining = _segment.inSeconds;
+    _segTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _remaining--);
+      if (_remaining <= 0) {
+        _segTimer?.cancel();
+        _onSegmentEnd();
+      }
+    });
   }
 
   Future<void> _onSegmentEnd() async {
@@ -70,6 +79,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     setState(() => _needContinue = false);
     await _call.resume();
     _startSegTimer();
+  }
+
+  String _fmt(int s) {
+    if (s < 0) s = 0;
+    final m = s ~/ 60;
+    final ss = (s % 60).toString().padLeft(2, '0');
+    return '$m:$ss';
   }
 
   @override
@@ -178,6 +194,23 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
             textAlign: TextAlign.left,
           ),
           const Spacer(),
+          if (_started)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Zine.card,
+                borderRadius: BorderRadius.circular(100),
+                border: Zine.border,
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold),
+                    size: 14, color: _remaining <= 30 ? Zine.coral : Zine.inkSoft),
+                const SizedBox(width: 6),
+                Text(_fmt(_remaining),
+                    style: ZineText.value(size: 13,
+                        color: _remaining <= 30 ? Zine.coral : Zine.ink)),
+              ]),
+            ),
         ]),
       );
 

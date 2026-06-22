@@ -37,6 +37,7 @@ import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composi
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
 import { renderData } from "../lib/genui"; // GENERIC GenUI: any Composio result → cached A2UI template + data
+import { resolveAffordances, affordanceToAction } from "../lib/capabilities"; // capability catalog → executable card affordances
 import { isPremiumAI } from "../lib/premium"; // premium gate (topped-up wallet)
 import { trackUser, trackUserContact } from "../hooks"; // PostHog telemetry (email/phone-stamped)
 import { contactFor } from "../lib/identity"; // uid → {email, phone} (KV-cached) for telemetry
@@ -605,7 +606,17 @@ export class AvaAgentDO {
           const connected = await connectedToolkits(this.env, uid);
           if (connected.includes("googlecalendar")) {
             const { events, label } = await fetchDayEvents(this.env, uid);
-            const surface = buildCalendarSurface(events, label);
+            // Resolve the REAL create-event affordance (GOOGLECALENDAR_CREATE_EVENT
+            // with its actual fields) so "Schedule a meeting" opens a working form
+            // and creates the event — instead of firing a bare prompt that just
+            // re-lists the day (the loop the user hit).
+            let scheduleAction: any = undefined;
+            try {
+              const caps = await resolveAffordances(this.env, "GOOGLECALENDAR_CREATE_EVENT", { entityHint: "event" });
+              const create = caps?.affordances.find((a) => a.verb === "create");
+              if (create) scheduleAction = affordanceToAction(create);
+            } catch { /* button omitted if unresolved */ }
+            const surface = buildCalendarSurface(events, label, scheduleAction);
             const head = events.length === 0
               ? "Good news — your schedule is wide open today."
               : `Here's your day — ${events.length} ${events.length === 1 ? "event" : "events"} on the calendar.`;

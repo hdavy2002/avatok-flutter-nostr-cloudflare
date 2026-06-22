@@ -17,8 +17,10 @@ import { trackUserContact } from "../hooks";
 import { contactFor } from "../lib/identity";
 import {
   GOOGLE_TOOLKITS, connectToolkits, connectedToolkits, disconnectToolkit,
-  listToolkits, runAppsToolLoop,
+  listToolkits, runAppsToolLoop, executeTool,
 } from "../lib/composio";
+import { toolkitOf, isExecutableTool, coerceArgs } from "../lib/capabilities";
+import { renderData } from "../lib/genui";
 
 // GET /api/ava/apps/catalog — the full Composio app catalog (free to browse).
 export async function avaAppsCatalog(req: Request, env: Env): Promise<Response> {
@@ -107,5 +109,64 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   } catch (e: any) {
     trackUserContact(env, ctx.uid, email, phone, "ai_error", "avaapps", { route: "run", detail: String(e?.message ?? e).slice(0, 200) });
     return json({ error: "apps run failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
+  }
+}
+
+// POST /api/ava/genui/action — PREMIUM. Execute ONE Composio tool fired from a
+// GenUI card (a `composio` action button/form). This is the executable backbone
+// that makes cards functional: "Rename", "Delete", "Schedule a meeting", etc.
+//
+// SECURITY — the body is UNTRUSTED (a card could be tampered with), so the server
+// re-derives and enforces everything:
+//   • premium gate + coin charge (same as apps/run),
+//   • the tool's toolkit MUST be one the user has actually connected,
+//   • the tool slug MUST exist in that toolkit's catalog (isExecutableTool),
+//   • args are coerced/whitelisted against the tool's real input schema.
+// On success we render the result back into a fresh GenUI surface (e.g. the
+// updated list / the created event) so the chat reflects the new state.
+//   Body: { tool: string, args?: object, request?: string }
+//   → { ok, answer, a2ui? }
+export async function avaGenuiAction(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if (!env.COMPOSIO_API_KEY) return json({ error: "AvaApps not configured" }, 503);
+  const { premium } = await isPremiumAI(req, env, ctx.uid);
+  if (!premium) return premiumUpsell(env, ctx.uid, "genui_action");
+
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const tool = String(b.tool ?? "").trim();
+  const args: Record<string, unknown> = (b.args && typeof b.args === "object" && !Array.isArray(b.args)) ? b.args : {};
+  const request = String(b.request ?? tool).slice(0, 300);
+  if (!tool) return json({ error: "tool required" }, 400);
+
+  const toolkit = toolkitOf(tool);
+  const { email, phone } = await contactFor(env, ctx.uid);
+  const t0 = Date.now();
+  try {
+    // Gate: connected toolkit + real, executable tool slug.
+    const connected = await connectedToolkits(env, ctx.uid);
+    if (!connected.includes(toolkit)) return json({ error: "app not connected", toolkit }, 403);
+    if (!(await isExecutableTool(env, tool))) return json({ error: "unknown tool" }, 400);
+
+    const clean = await coerceArgs(env, tool, args);
+    const r = await executeTool(env, ctx.uid, tool, clean);
+    const ok = !(r && (r.successful === false || r.error));
+    await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
+
+    // Re-render the result so the card reflects the new state (best-effort).
+    let surface: unknown = null;
+    if (ok && (env as any).GENUI_OFF !== "1") {
+      try { surface = (await renderData(env, { request, tool, data: (r as any)?.data ?? r })).surface; }
+      catch { /* text fallback */ }
+    }
+    trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", {
+      tool, toolkit, ok, ms: Date.now() - t0, args_keys: Object.keys(clean).slice(0, 12), rendered: !!surface,
+      ...(ok ? {} : { error: String((r as any)?.error ?? "tool error").slice(0, 200) }),
+    });
+    const answer = ok ? "Done." : `That didn't go through: ${String((r as any)?.error ?? "the app rejected it").slice(0, 160)}`;
+    return json({ ok, answer, ...(surface ? { a2ui: surface } : {}) }, ok ? 200 : 502);
+  } catch (e: any) {
+    trackUserContact(env, ctx.uid, email, phone, "ai_error", "avaai", { route: "genui_action", tool, detail: String(e?.message ?? e).slice(0, 200) });
+    return json({ error: "action failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }

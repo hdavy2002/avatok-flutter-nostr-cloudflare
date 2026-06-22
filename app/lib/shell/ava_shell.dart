@@ -9,6 +9,7 @@ import '../core/ui/zine.dart';
 import '../identity/identity.dart';
 import '../features/avaapps/avaapps_screen.dart';
 import '../features/ava_companion/companion_home.dart';
+import '../features/avachat/voice_call/ai_voice_agent_screen.dart';
 import '../features/avalive/avalive_discovery.dart';
 import '../features/affiliate/affiliate_home.dart';
 import '../features/avavoice/avavoice_home.dart';
@@ -112,6 +113,9 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'avachat':
         _push(const CompanionHome()); // talk privately with Ava
+        return;
+      case 'aivoice':
+        _push(const AiVoiceAgentScreen()); // hands-free Gemini Live call
         return;
       case 'avastorage':
       case 'storage':

@@ -71,6 +71,12 @@ class AvaApi {
   static const String appsStatus = '/api/ava/apps/status';
   static const String appsRun = '/api/ava/apps/run';
 
+  /// GenUI card action (PREMIUM) — execute ONE Composio tool fired from a
+  /// generative card (a `composio` action button/form: Rename, Delete, Schedule…).
+  /// Server re-validates the tool against the user's connected toolkits, coerces
+  /// args to the tool schema, runs it, and returns a refreshed A2UI surface.
+  static const String genuiAction = '/api/ava/genui/action';
+
   /// AvaTOK Drive — the user's OWN files in their Google Drive AvaTOK folder
   /// (Hybrid storage; shared chat media stays on encrypted R2).
   static const String driveConnect = '/api/ava/drive/connect';

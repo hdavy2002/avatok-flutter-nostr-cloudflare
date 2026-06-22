@@ -13,7 +13,11 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 
-const LIVE_MODEL = "gemini-live-2.5-flash-native-audio";
+// Gemini 3.1 Flash Live — Google's flagship low-latency audio-to-audio model.
+// Verified working on generativelanguage.googleapis.com (Developer API) via a live
+// BidiGenerateContent test (setupComplete + audio greeting). NOTE: the Vertex name
+// "gemini-live-2.5-flash-native-audio" does NOT exist on this endpoint (close 1008).
+const LIVE_MODEL = "gemini-3.1-flash-live-preview";
 // Default prebuilt Gemini voice; the client may request another from this allowlist.
 const DEFAULT_VOICE = "Aoede";
 const VOICES = new Set([
@@ -21,15 +25,21 @@ const VOICES = new Set([
   "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", // male
 ]);
 
-const SYSTEM =
-  "You are Ava, a warm, friendly voice companion talking with the user hands-free. " +
-  "Reply with ONE short, natural spoken sentence (about 20 words). No markdown, no " +
-  "lists, no emojis. Be direct and conversational. You can role-play characters or " +
-  "give advice when asked. If you didn't catch something, ask them to repeat briefly.";
+function systemPrompt(firstName: string): string {
+  const who = firstName ? ` You are speaking with ${firstName}; address them by name naturally.` : "";
+  return (
+    "You are Ava, a warm, friendly voice companion talking with the user hands-free." +
+    who +
+    " Reply with ONE short, natural spoken sentence (about 20 words). No markdown, no" +
+    " lists, no emojis. Be direct and conversational. You can role-play or give advice." +
+    " If you didn't catch something, ask them to repeat briefly."
+  );
+}
 
 async function mintToken(
   env: Env,
   voice: string,
+  firstName: string,
 ): Promise<{ token: string; model: string; expires_at: number } | { error: string }> {
   if (!env.GEMINI_API_KEY) return { error: "voice unavailable: GEMINI_API_KEY unset" };
   const voiceName = VOICES.has(voice) ? voice : DEFAULT_VOICE;
@@ -44,14 +54,15 @@ async function mintToken(
         responseModalities: ["AUDIO"],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
       },
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: systemPrompt(firstName) }] },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
-      // COST CONTROL — the Live API re-feeds the whole growing session context on
-      // every turn, so a long chatty call costs super-linearly. Sliding-window
-      // compression keeps it ~linear (bounds the re-fed context). Essential given
-      // AvaTok's per-session economics.
-      contextWindowCompression: { slidingWindow: {} },
+      // COST CONTROL — the Live API re-feeds the whole growing session context each
+      // turn, so a long chatty call costs super-linearly. Sliding-window compression
+      // bounds the re-fed context → ~linear. Explicit trigger/target (int64 = string).
+      contextWindowCompression: { triggerTokens: "16000", slidingWindow: { targetTokens: "8000" } },
+      // Lets the client reconnect within the token lifetime without re-minting.
+      sessionResumption: {},
     },
   };
   const r = await fetch("https://generativelanguage.googleapis.com/v1alpha/auth_tokens", {
@@ -64,13 +75,18 @@ async function mintToken(
   return { token: String(j.name), model: LIVE_MODEL, expires_at: expireMs };
 }
 
-// POST /api/ava/live/token — auth required; returns { token, model, expires_at }.
+// POST /api/ava/live/token { voice?, name? } — auth required; returns { token, model }.
 export async function avaLiveToken(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let voice = DEFAULT_VOICE;
-  try { const b: any = await req.json(); if (typeof b?.voice === "string") voice = b.voice; } catch { /* no body */ }
-  const t = await mintToken(env, voice);
+  let firstName = "";
+  try {
+    const b: any = await req.json();
+    if (typeof b?.voice === "string") voice = b.voice;
+    if (typeof b?.name === "string") firstName = b.name.trim().split(/\s+/)[0].slice(0, 40);
+  } catch { /* no body */ }
+  const t = await mintToken(env, voice, firstName);
   if ("error" in t) return json({ error: t.error }, 502);
   return json(t);
 }

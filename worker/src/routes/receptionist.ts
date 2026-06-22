@@ -29,10 +29,10 @@ import { isPremiumAI, premiumUpsell } from "../lib/premium";
 
 const APP = "receptionist";
 
-// Owner asked for "Gemini Live 3.5". The native-audio dialog model is the proven
-// token-minting model in this repo; override via env once the 3.5 native-audio id
-// is confirmed. Vision is irrelevant for a phone receptionist (audio only).
-export const RECEPTIONIST_MODEL_DEFAULT = "gemini-live-2.5-flash-native-audio";
+// AI voice secretary → Gemini 3.1 Flash Live (verified working on the Developer
+// API). The old "gemini-live-2.5-flash-native-audio" is a Vertex-only id and does
+// not exist on generativelanguage.googleapis.com. Vision is irrelevant here (audio).
+export const RECEPTIONIST_MODEL_DEFAULT = "gemini-3.1-flash-live-preview";
 
 export const HARD_CAP_MS = 120_000; // 2:00 — force end
 export const SOFT_CAP_MS = 80_000;  // 1:20 — begin wrap-up

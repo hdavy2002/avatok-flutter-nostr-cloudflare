@@ -181,10 +181,33 @@ export async function connectToolkits(env: Env, userId: string, slugs: string[])
   return urls;
 }
 
+// List the FULL action-tool catalog for a toolkit (slug + name + description +
+// input schema). Unlike `geminiTools` (curated 4–6 for the function-call loop),
+// this returns everything Composio exposes so the capability registry can derive
+// affordances (rename/delete/move/share/create/…) for any connected app. Raw,
+// defensive — returns [] if Composio is unreachable.
+export async function listToolkitTools(
+  env: Env, slug: string, limit = 200,
+): Promise<Array<{ slug: string; name: string; description: string; params: any }>> {
+  let j: any;
+  try { j = await cfetch(env, `/tools?toolkit_slug=${encodeURIComponent(slug)}&limit=${limit}`); } catch { return []; }
+  const items: any[] = j.items ?? [];
+  return items.map((t: any) => {
+    const params = t.input_parameters ?? t.inputParameters;
+    return {
+      slug: String(t.slug ?? ""),
+      name: String(t.name ?? t.slug ?? ""),
+      description: String(t.description ?? "").slice(0, 1024),
+      params: params ? sanitize(params) : { type: "object", properties: {} },
+    };
+  }).filter((t) => t.slug);
+}
+
 // Recursively keep only the JSON-schema fields Gemini's function declarations
 // accept (drop title/examples/default/additionalProperties/$schema, and strip
 // `properties` from non-object nodes — Composio sometimes adds empty ones).
-function sanitize(node: any): any {
+// Exported so the capability registry reuses the exact same schema shape.
+export function sanitize(node: any): any {
   if (!node || typeof node !== "object") return node;
   const out: any = {};
   const t = node.type;

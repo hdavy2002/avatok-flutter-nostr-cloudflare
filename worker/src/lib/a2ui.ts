@@ -22,10 +22,37 @@ export type TextVariant = "display" | "title" | "body" | "sub" | "tag";
 //  - prompt:  send `text` to Ava as a normal turn (e.g. "schedule a meeting")
 //  - link:    open `url` (verified http(s) only on the client)
 //  - composio: call a server action route with {route, args} (server-validated)
+// A form field the client renders + collects before firing a `composio` action.
+// `value` may carry a ${path} binding resolved against the current scope/data.
+export interface A2uiField {
+  name: string;
+  label: string;
+  kind: "text" | "textarea" | "number" | "date" | "time" | "datetime" | "select" | "checkbox";
+  required?: boolean;
+  options?: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  value?: string;
+}
+
 export type A2uiAction =
   | { type: "prompt"; text: string }
   | { type: "link"; url: string }
-  | { type: "composio"; route: string; args?: Record<string, unknown> };
+  // composio: EXECUTE a Composio tool via the server-validated
+  // /api/ava/genui/action route. `tool` is the slug; `args` are static /
+  // ${path}-binding values (e.g. row ids); `fields` (optional) are collected
+  // from the user first (a form sheet) and merged into args; `confirm`
+  // (optional) gates destructive actions. The SERVER re-validates that `tool`
+  // belongs to a connected toolkit and coerces args against its schema before
+  // running it — so a tampered surface can't invoke an arbitrary tool.
+  | {
+      type: "composio";
+      tool: string;
+      label?: string;
+      args?: Record<string, string>;
+      fields?: A2uiField[];
+      confirm?: string;
+      successText?: string;
+    };
 
 export type A2uiNode =
   | { type: "column"; children: string[]; gap?: number }
@@ -39,6 +66,11 @@ export type A2uiNode =
   | { type: "icon"; name: string; size?: number; color?: Token }
   | { type: "eventRow"; start: string; end: string; title: string; location?: string; video?: boolean; guests?: number; accent?: Token }
   | { type: "openDay"; title: string; subtitle: string }
+  // A single inline input bound to `name`; collected into the enclosing form.
+  | { type: "input"; name: string; label?: string; inputKind?: A2uiField["kind"]; options?: A2uiField["options"]; placeholder?: string; value?: string; required?: boolean }
+  // A form: a set of inputs + a submit button that fires `submit` (a composio
+  // action). Collected field values are merged into the action args by name.
+  | { type: "form"; children: string[]; submit: { label: string; icon?: string; action: A2uiAction }; gap?: number }
   // Template iteration: render `item` once per element of the array at `path`
   // (resolved against the data model); each element becomes the item's scope.
   // This is what lets a CACHED template render any user's data.

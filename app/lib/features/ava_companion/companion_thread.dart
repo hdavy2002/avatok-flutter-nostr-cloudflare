@@ -22,8 +22,6 @@ import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/ava_ondevice_stt.dart';
-import '../../core/ui/mic_input_sheet.dart';
-import '../avachat/voice_call/voice_call_screen.dart';
 import '../settings/sections/voice_section.dart';
 import '../../core/paid_feature.dart';
 import 'companion_session_store.dart';
@@ -610,35 +608,6 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     );
   }
 
-  // Mic menu: a hands-free voice CALL (online Gemini Live) or dictate text
-  // (on-device Whisper → message box).
-  void _openMicMenu() {
-    FocusScope.of(context).unfocus();
-    showMicInputSheet(context, options: [
-      MicSheetOption(
-        icon: PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
-        color: Zine.blue,
-        title: 'Voice call Ava',
-        subtitle: 'Hands-free conversation — talk and Ava talks back',
-        onTap: _openVoiceCall,
-      ),
-      MicSheetOption(
-        icon: PhosphorIcons.textT(PhosphorIconsStyle.bold),
-        color: Zine.mint,
-        title: 'Convert voice to text',
-        subtitle: 'Speak and watch it type into the box',
-        onTap: _startVoiceToText,
-      ),
-    ]);
-  }
-
-  // Online voice call (Gemini Live) — no model download needed.
-  void _openVoiceCall() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const VoiceCallScreen()),
-    );
-  }
-
   // On-device dictation into the message box (private; the Whisper model
   // downloads on first use).
   Future<void> _startVoiceToText() async {
@@ -699,7 +668,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                   ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
                   : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
               color: _sttActive ? Zine.coral : Zine.blueInk, size: 24),
-          onPressed: _sttActive ? _stopVoiceToText : _openMicMenu,
+          onPressed: _sttActive ? _stopVoiceToText : _startVoiceToText,
           tooltip: _sttActive ? 'Stop voice-to-text' : 'Voice call or dictate',
         ),
         Expanded(

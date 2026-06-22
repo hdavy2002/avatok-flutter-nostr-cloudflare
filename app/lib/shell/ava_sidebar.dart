@@ -194,10 +194,12 @@ class _AvaSidebarState extends State<AvaSidebar> {
                 // below it (talk privately to Ava), then Library. Connectors moved
                 // to the ACCOUNT section (owner 2026-06-19). AvaExplore/AvaVerse
                 // hidden (owner 2026-06-17).
-                _special('avatok', 'AvaTOK', 'Messages & calls',
+                _special('avatok', 'Messenger', 'Messages & calls',
                     PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue),
-                _special('avachat', 'AvaChat', 'Talk privately with Ava',
+                _special('avachat', 'ChatAVA', 'Chat privately with Ava',
                     PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
+                _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
+                    PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint),
                 _special('library', 'Library', 'Saved media & files',
                     PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
               ],

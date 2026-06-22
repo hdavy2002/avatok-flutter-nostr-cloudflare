@@ -49,7 +49,9 @@ const APP = "avavoice";
 // Voice-only agents stay on the native-audio dialog model for voice quality.
 // Both token-mint verified against our key. Env overrides: AVAVOICE_MODEL /
 // AVAVOICE_VISION_MODEL.
-const DEFAULT_MODEL = "gemini-live-2.5-flash-native-audio";
+// Upgraded to Gemini 3.1 Flash Live (the old "gemini-live-2.5-flash-native-audio"
+// is a Vertex name that doesn't exist on generativelanguage.googleapis.com).
+const DEFAULT_MODEL = "gemini-3.1-flash-live-preview";
 const DEFAULT_VISION_MODEL = "gemini-3.1-flash-live-preview";
 export const MAX_SESSION_MIN = 60;
 export const MAX_CONCURRENT = 10;

@@ -22,7 +22,12 @@ import '../../core/ui/zine.dart';
 class AvaA2uiSurface extends StatefulWidget {
   final Map<String, dynamic> surface;
   final void Function(String text)? onPrompt;
-  const AvaA2uiSurface({super.key, required this.surface, this.onPrompt});
+  // Fires a `composio` card action (Rename, Delete, Schedule a meeting…). The
+  // host (chat thread) POSTs {tool, args} to /api/ava/genui/action, appends any
+  // refreshed surface it returns, and gives back a short answer for a snackbar.
+  // Returns null if no host is wired.
+  final Future<String?> Function(String tool, Map<String, dynamic> args)? onComposio;
+  const AvaA2uiSurface({super.key, required this.surface, this.onPrompt, this.onComposio});
 
   @override
   State<AvaA2uiSurface> createState() => _AvaA2uiSurfaceState();
@@ -80,6 +85,16 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   }
 
   dynamic _lookup(String path, Map scope) {
+    // Alternation: "${id|messageId|event_id}" → first candidate that resolves.
+    // Lets one id binding work across apps (Drive row exposes `id`, Gmail row
+    // exposes `messageId`) without per-app code.
+    if (path.contains('|')) {
+      for (final cand in path.split('|')) {
+        final v = _lookup(cand.trim(), scope);
+        if (v != null && v.toString().isNotEmpty) return v;
+      }
+      return null;
+    }
     final v = _lookupIn(path, scope);
     if (v != null) return v;
     if (!identical(scope, _data)) return _lookupIn(path, _data); // fall back to root
@@ -115,6 +130,8 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
           size: (n['size'] as num?)?.toDouble() ?? 16, color: _tok(n['color']?.toString()));
       case 'openDay': return _openDay(n, scope);
       case 'eventRow': return _eventRow(n, scope);
+      case 'input': return _inlineInput(n, scope);
+      case 'form': return _form(n, scope);
       default: return const SizedBox.shrink();
     }
   }
@@ -289,6 +306,72 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
         Text(label, style: ZineText.sub(size: 11.5, color: color)),
       ]);
 
+  // ---- inline inputs + form (used when the composer emits an explicit form;
+  // affordance actions use the modal sheet path in _dispatchComposio instead) ----
+  _FieldSpec? _inputSpec(Map<String, dynamic> n, Map scope) {
+    final name = (n['name'] ?? '').toString();
+    if (name.isEmpty) return null;
+    return _FieldSpec(
+      name: name,
+      label: (n['label'] ?? name).toString(),
+      kind: (n['inputKind'] ?? n['kind'] ?? 'text').toString(),
+      required: n['required'] == true,
+      placeholder: n['placeholder']?.toString(),
+      initial: n['value'] != null ? _resolve(n['value'], scope) : null,
+      options: (n['options'] is List)
+          ? (n['options'] as List).whereType<Map>().map((o) => _Opt(
+                (o['value'] ?? '').toString(), (o['label'] ?? o['value'] ?? '').toString())).toList()
+          : const [],
+    );
+  }
+
+  // A lone input outside a form: render it read-only (it has nowhere to submit).
+  Widget _inlineInput(Map<String, dynamic> n, Map scope) {
+    final spec = _inputSpec(n, scope);
+    if (spec == null) return const SizedBox.shrink();
+    return _FieldLabel(label: spec.label, child: Text(spec.initial ?? spec.placeholder ?? '', style: ZineText.sub(size: 13, color: Zine.inkSoft)));
+  }
+
+  Widget _form(Map<String, dynamic> n, Map scope) {
+    final specs = <_FieldSpec>[];
+    for (final id in _childIds(n)) {
+      final c = _node(id);
+      if (c != null && (c['type'] ?? '') == 'input') {
+        final s = _inputSpec(c, scope);
+        if (s != null) specs.add(s);
+      }
+    }
+    final submit = (n['submit'] is Map) ? (n['submit'] as Map).cast<String, dynamic>() : const <String, dynamic>{};
+    final action = submit['action'];
+    final label = (submit['label'] ?? 'Submit').toString();
+    return _ComposioForm(
+      title: '',
+      fields: specs,
+      inlineSubmitLabel: label,
+      onInlineSubmit: (values) async {
+        if (action is! Map) return;
+        final a = action.cast<String, dynamic>();
+        final tool = (a['tool'] ?? '').toString();
+        final onComposio = widget.onComposio;
+        if (tool.isEmpty || onComposio == null) return;
+        final args = <String, dynamic>{};
+        if (a['args'] is Map) {
+          (a['args'] as Map).forEach((k, v) {
+            final r = _resolve(v, scope);
+            if (r.isNotEmpty) args[k.toString()] = r;
+          });
+        }
+        final answer = await onComposio(tool, {...args, ...values});
+        if (!mounted) return;
+        final msg = (a['successText'] ?? answer ?? 'Done.').toString();
+        if (msg.isNotEmpty) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2)));
+        }
+      },
+    );
+  }
+
   // ---- actions ----
   Future<void> _dispatch(dynamic action, Map scope) async {
     if (action is! Map) return;
@@ -309,7 +392,115 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
           }
         }
         break;
+      case 'composio':
+        await _dispatchComposio(a, scope);
+        break;
     }
+  }
+
+  // Execute a `composio` action: (1) optional confirm for destructive actions,
+  // (2) optional form to collect the tool's fields, (3) resolve id/${binding}
+  // args against the row, (4) hand {tool, finalArgs} to the host to run + render.
+  Future<void> _dispatchComposio(Map<String, dynamic> a, Map scope) async {
+    final onComposio = widget.onComposio;
+    final tool = (a['tool'] ?? '').toString();
+    if (tool.isEmpty || onComposio == null) return;
+
+    // 1) confirm (destructive)
+    final confirm = a['confirm'];
+    if (confirm != null && confirm.toString().isNotEmpty) {
+      final ok = await _confirmDialog(_resolve(confirm, scope), destructive: true);
+      if (ok != true) return;
+    }
+
+    // 2) collect fields (if any)
+    final fields = _parseFields(a['fields'], scope);
+    Map<String, dynamic> collected = const {};
+    if (fields.isNotEmpty) {
+      final res = await _collectFields(_resolve(a['label'], scope), fields);
+      if (res == null) return; // cancelled
+      collected = res;
+    }
+
+    // 3) resolve static / ${binding} args (ids, container defaults).
+    final args = <String, dynamic>{};
+    final rawArgs = a['args'];
+    if (rawArgs is Map) {
+      rawArgs.forEach((k, v) {
+        final resolved = _resolve(v, scope);
+        if (resolved.isNotEmpty) args[k.toString()] = resolved;
+      });
+    }
+    // collected fields win (user input); ids/defaults fill the rest.
+    final finalArgs = <String, dynamic>{...args, ...collected};
+
+    Analytics.capture('genui_action', {'type': 'composio', 'tool': tool, 'fields': fields.length});
+    final answer = await onComposio(tool, finalArgs);
+    if (!mounted) return;
+    final msg = (a['successText'] ?? answer ?? 'Done.').toString();
+    if (msg.isNotEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2)),
+      );
+    }
+  }
+
+  Future<bool?> _confirmDialog(String message, {bool destructive = false}) => showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Zine.paper,
+          content: Text(message, style: ZineText.value(size: 15)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: ZineText.button(size: 14, color: Zine.inkSoft))),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(destructive ? 'Delete' : 'Confirm', style: ZineText.button(size: 14, color: destructive ? Zine.coralMark : Zine.ink)),
+            ),
+          ],
+        ),
+      );
+
+  // Parse the action's `fields` array into typed specs, resolving any default
+  // `value` bindings against the current row scope.
+  List<_FieldSpec> _parseFields(dynamic raw, Map scope) {
+    if (raw is! List) return const [];
+    final out = <_FieldSpec>[];
+    for (final f in raw) {
+      if (f is! Map) continue;
+      final m = f.cast<String, dynamic>();
+      final name = (m['name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      out.add(_FieldSpec(
+        name: name,
+        label: (m['label'] ?? name).toString(),
+        kind: (m['kind'] ?? 'text').toString(),
+        required: m['required'] == true,
+        placeholder: m['placeholder']?.toString(),
+        initial: m['value'] != null ? _resolve(m['value'], scope) : null,
+        options: (m['options'] is List)
+            ? (m['options'] as List).whereType<Map>().map((o) => _Opt(
+                  (o['value'] ?? '').toString(),
+                  (o['label'] ?? o['value'] ?? '').toString(),
+                )).toList()
+            : const [],
+      ));
+    }
+    return out;
+  }
+
+  // Modal sheet that collects the action's fields. Returns the value map, or null
+  // if the user cancelled. Validates that required fields are filled.
+  Future<Map<String, dynamic>?> _collectFields(String title, List<_FieldSpec> fields) {
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: _ComposioForm(title: title.isEmpty ? 'Details' : title, fields: fields),
+      ),
+    );
   }
 
   // ---- token + icon resolution (the catalog's look) ----
@@ -349,7 +540,280 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       case 'sparkle': return PhosphorIcons.sparkle(PhosphorIconsStyle.fill);
       case 'paper-plane-right': return PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill);
       case 'tray': return PhosphorIcons.tray(PhosphorIconsStyle.fill);
+      // capability-action icons
+      case 'pencil-simple': return PhosphorIcons.pencilSimple(PhosphorIconsStyle.fill);
+      case 'trash': return PhosphorIcons.trash(PhosphorIconsStyle.fill);
+      case 'folder': return PhosphorIcons.folder(PhosphorIconsStyle.fill);
+      case 'copy': return PhosphorIcons.copy(PhosphorIconsStyle.fill);
+      case 'share-network': return PhosphorIcons.shareNetwork(PhosphorIconsStyle.fill);
+      case 'download-simple': return PhosphorIcons.downloadSimple(PhosphorIconsStyle.fill);
+      case 'arrow-square-out': return PhosphorIcons.arrowSquareOut(PhosphorIconsStyle.bold);
+      case 'arrow-bend-up-left': return PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold);
+      case 'plus': return PhosphorIcons.plus(PhosphorIconsStyle.bold);
+      case 'dots-three': return PhosphorIcons.dotsThree(PhosphorIconsStyle.bold);
       default: return PhosphorIcons.circle(PhosphorIconsStyle.bold);
     }
+  }
+}
+
+// ---- form field model + editors (shared by the modal sheet and inline forms) ----
+
+class _Opt {
+  final String value;
+  final String label;
+  const _Opt(this.value, this.label);
+}
+
+class _FieldSpec {
+  final String name;
+  final String label;
+  final String kind; // text|textarea|number|date|time|datetime|select|checkbox
+  final bool required;
+  final String? placeholder;
+  final String? initial;
+  final List<_Opt> options;
+  const _FieldSpec({
+    required this.name,
+    required this.label,
+    required this.kind,
+    required this.required,
+    this.placeholder,
+    this.initial,
+    this.options = const [],
+  });
+}
+
+// A labelled wrapper around any field editor (tag-style label above the control).
+class _FieldLabel extends StatelessWidget {
+  final String label;
+  final Widget child;
+  const _FieldLabel({required this.label, required this.child});
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label.toUpperCase(), style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+          const SizedBox(height: 4),
+          child,
+        ],
+      );
+}
+
+// The collecting form: renders an editor per field, validates required fields,
+// and returns the value map. Used as a modal sheet (Navigator.pop) and inline
+// (onInlineSubmit). One implementation for both keeps behaviour identical.
+class _ComposioForm extends StatefulWidget {
+  final String title;
+  final List<_FieldSpec> fields;
+  final String? inlineSubmitLabel;
+  final Future<void> Function(Map<String, dynamic> values)? onInlineSubmit;
+  const _ComposioForm({required this.title, required this.fields, this.inlineSubmitLabel, this.onInlineSubmit});
+  @override
+  State<_ComposioForm> createState() => _ComposioFormState();
+}
+
+class _ComposioFormState extends State<_ComposioForm> {
+  final Map<String, dynamic> _values = {};
+  final Map<String, TextEditingController> _controllers = {};
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final f in widget.fields) {
+      if (f.kind == 'checkbox') {
+        _values[f.name] = (f.initial == 'true');
+      } else if (f.kind == 'select') {
+        _values[f.name] = f.initial ?? (f.options.isNotEmpty ? f.options.first.value : '');
+      } else if (f.kind == 'date' || f.kind == 'time' || f.kind == 'datetime') {
+        if (f.initial != null && f.initial!.isNotEmpty) _values[f.name] = f.initial;
+      } else {
+        final c = TextEditingController(text: f.initial ?? '');
+        _controllers[f.name] = c;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Map<String, dynamic>? _gather() {
+    final out = <String, dynamic>{};
+    for (final f in widget.fields) {
+      dynamic v;
+      if (_controllers.containsKey(f.name)) {
+        v = _controllers[f.name]!.text.trim();
+      } else {
+        v = _values[f.name];
+      }
+      final empty = v == null || (v is String && v.isEmpty);
+      if (f.required && empty && f.kind != 'checkbox') {
+        setState(() => _error = '${f.label} is required');
+        return null;
+      }
+      if (!empty) out[f.name] = v;
+    }
+    return out;
+  }
+
+  Future<void> _submit() async {
+    final values = _gather();
+    if (values == null) return;
+    if (widget.onInlineSubmit != null) {
+      setState(() => _busy = true);
+      try { await widget.onInlineSubmit!(values); } finally { if (mounted) setState(() => _busy = false); }
+    } else {
+      Navigator.of(context).pop(values);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editors = <Widget>[];
+    for (final f in widget.fields) {
+      editors.add(Padding(padding: const EdgeInsets.only(bottom: 12), child: _editor(f)));
+    }
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.title.isNotEmpty) Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(widget.title, style: ZineText.cardTitle(size: 18)),
+            ),
+            ...editors,
+            if (_error != null) Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_error!, style: ZineText.sub(size: 12, color: Zine.coralMark)),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: GestureDetector(
+                onTap: _busy ? null : _submit,
+                child: Container(
+                  height: 46,
+                  decoration: BoxDecoration(color: Zine.lime, border: Zine.border, borderRadius: BorderRadius.circular(100), boxShadow: Zine.shadowSm),
+                  alignment: Alignment.center,
+                  child: _busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
+                      : Text(widget.inlineSubmitLabel ?? 'Confirm', style: ZineText.button(size: 15)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _editor(_FieldSpec f) {
+    switch (f.kind) {
+      case 'checkbox':
+        return Row(children: [
+          Expanded(child: Text(f.label, style: ZineText.value(size: 14))),
+          Switch(
+            value: _values[f.name] == true,
+            activeColor: Zine.lime,
+            onChanged: (v) => setState(() => _values[f.name] = v),
+          ),
+        ]);
+      case 'select':
+        return _FieldLabel(
+          label: f.label,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(12)),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: (_values[f.name] as String?)?.isNotEmpty == true ? _values[f.name] as String : (f.options.isNotEmpty ? f.options.first.value : null),
+                items: f.options.map((o) => DropdownMenuItem(value: o.value, child: Text(o.label, style: ZineText.value(size: 14)))).toList(),
+                onChanged: (v) => setState(() => _values[f.name] = v),
+              ),
+            ),
+          ),
+        );
+      case 'date':
+      case 'time':
+      case 'datetime':
+        return _FieldLabel(
+          label: f.label,
+          child: GestureDetector(
+            onTap: () => _pickDateTime(f),
+            child: Container(
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.centerLeft,
+              decoration: BoxDecoration(color: Zine.card, border: Zine.border, borderRadius: BorderRadius.circular(12)),
+              child: Text(
+                (_values[f.name] ?? '').toString().isEmpty ? (f.placeholder ?? 'Pick…') : _values[f.name].toString(),
+                style: ZineText.value(size: 14, color: (_values[f.name] ?? '').toString().isEmpty ? Zine.inkSoft : Zine.ink),
+              ),
+            ),
+          ),
+        );
+      case 'number':
+        return _FieldLabel(
+          label: f.label,
+          child: _textField(f, keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+        );
+      case 'textarea':
+        return _FieldLabel(label: f.label, child: _textField(f, maxLines: 4));
+      default:
+        return _FieldLabel(label: f.label, child: _textField(f));
+    }
+  }
+
+  Widget _textField(_FieldSpec f, {int maxLines = 1, TextInputType? keyboardType}) => TextField(
+        controller: _controllers[f.name],
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        style: ZineText.value(size: 14),
+        decoration: InputDecoration(
+          hintText: f.placeholder,
+          hintStyle: ZineText.sub(size: 13, color: Zine.inkMute),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          filled: true,
+          fillColor: Zine.card,
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Zine.ink, width: Zine.bw)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        ),
+      );
+
+  // Pick a date/time and store as an ISO-8601 string Composio accepts
+  // (start_datetime "2025-01-16T13:00:00"; date "2025-01-16"; time "13:00:00").
+  Future<void> _pickDateTime(_FieldSpec f) async {
+    final now = DateTime.now();
+    DateTime? date = now;
+    TimeOfDay? time = TimeOfDay.fromDateTime(now);
+    if (f.kind != 'time') {
+      date = await showDatePicker(context: context, initialDate: now, firstDate: DateTime(now.year - 1), lastDate: DateTime(now.year + 5));
+      if (date == null) return;
+    }
+    if (f.kind != 'date') {
+      time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(now));
+      if (time == null) return;
+    }
+    String two(int x) => x.toString().padLeft(2, '0');
+    String out;
+    if (f.kind == 'date') {
+      out = '${date!.year}-${two(date.month)}-${two(date.day)}';
+    } else if (f.kind == 'time') {
+      out = '${two(time!.hour)}:${two(time.minute)}:00';
+    } else {
+      out = '${date!.year}-${two(date.month)}-${two(date.day)}T${two(time!.hour)}:${two(time.minute)}:00';
+    }
+    setState(() => _values[f.name] = out);
   }
 }

@@ -11,6 +11,8 @@
 
 import type { Env } from "../types";
 import type { A2uiSurface } from "./a2ui";
+import type { Affordance } from "./capabilities";
+import { resolveAffordances } from "./capabilities";
 import { redisGetJson, redisSetJson } from "./redis";
 import {
   composeTemplate, cacheKey, isRenderable, type Template,
@@ -24,16 +26,26 @@ export interface RenderResult {
 }
 
 export async function renderData(
-  env: Env, input: { request: string; tool: string; data: unknown },
+  env: Env, input: { request: string; tool: string; data: unknown; affordances?: Affordance[] },
 ): Promise<RenderResult> {
   if (!isRenderable(input.data)) return { surface: null, cache: "none" };
+
+  // Resolve the toolkit's affordances (rename/delete/move/share/create/…) so the
+  // composed card is FUNCTIONAL, not just a readout. Best-effort: if the catalog
+  // is unreachable we still render the (display-only) card. Caller may pass them
+  // in to avoid a duplicate lookup.
+  let affordances = input.affordances;
+  if (!affordances) {
+    try { affordances = (await resolveAffordances(env, input.tool))?.affordances ?? []; }
+    catch { affordances = []; }
+  }
 
   const key = cacheKey(input.tool, input.data);
   let tpl = await redisGetJson<Template>(env, key);
   let cache: "hit" | "miss" = tpl ? "hit" : "miss";
 
   if (!tpl) {
-    tpl = await composeTemplate(env, input);
+    tpl = await composeTemplate(env, { ...input, affordances });
     if (!tpl) return { surface: null, cache: "none" };
     // Best-effort global cache write (no user data — template only).
     await redisSetJson(env, key, tpl, TEMPLATE_TTL);

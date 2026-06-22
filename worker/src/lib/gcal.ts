@@ -12,7 +12,7 @@
 import type { Env } from "../types";
 import { executeTool } from "./composio";
 import { toolOk, toolErr } from "./gmail";
-import { SurfaceBuilder, type A2uiSurface, type Token } from "./a2ui";
+import { SurfaceBuilder, type A2uiSurface, type A2uiAction, type Token } from "./a2ui";
 
 export interface CalEvent {
   id: string;
@@ -165,7 +165,15 @@ export async function fetchDayEvents(
 }
 
 // Compose the A2UI surface for a day (mirrors kit-calendar.jsx).
-export function buildCalendarSurface(events: CalEvent[], label: string): A2uiSurface {
+//
+// `scheduleAction` is the REAL create-event affordance resolved from Composio's
+// catalog (GOOGLECALENDAR_CREATE_EVENT, with its actual fields: summary,
+// start_datetime, event_duration_*, calendar_id="primary"). Passing it makes the
+// "Schedule a meeting" button OPEN A FORM and create the event — fixing the old
+// bug where the button fired a bare "schedule a meeting" prompt that just
+// re-listed the day. If it couldn't be resolved we omit the button rather than
+// ship a dead-end prompt loop.
+export function buildCalendarSurface(events: CalEvent[], label: string, scheduleAction?: A2uiAction): A2uiSurface {
   const b = new SurfaceBuilder();
   const kids: string[] = [];
 
@@ -177,9 +185,10 @@ export function buildCalendarSurface(events: CalEvent[], label: string): A2uiSur
   if (events.length === 0) {
     // open-day hero + schedule action
     kids.push(b.card(b.openDay("Open day", "No scheduled events — you're free."), { fill: "mint" }));
-    kids.push(b.spacer(8));
-    kids.push(b.button("Schedule a meeting",
-      { type: "prompt", text: "schedule a meeting" }, { icon: "calendar-plus", fill: "lime", full: true }));
+    if (scheduleAction) {
+      kids.push(b.spacer(8));
+      kids.push(b.button("Schedule a meeting", scheduleAction, { icon: "calendar-plus", fill: "lime", full: true }));
+    }
   } else {
     const rows = events.map((e) => b.card(
       b.eventRow({
@@ -189,9 +198,10 @@ export function buildCalendarSurface(events: CalEvent[], label: string): A2uiSur
       { pad: 0 },
     ));
     kids.push(b.column(rows, 7));
-    kids.push(b.spacer(8));
-    kids.push(b.button("Add another",
-      { type: "prompt", text: "schedule a meeting" }, { icon: "calendar-plus", fill: "lime", full: true }));
+    if (scheduleAction) {
+      kids.push(b.spacer(8));
+      kids.push(b.button("Add another", scheduleAction, { icon: "calendar-plus", fill: "lime", full: true }));
+    }
   }
 
   const root = b.column(kids, 0);

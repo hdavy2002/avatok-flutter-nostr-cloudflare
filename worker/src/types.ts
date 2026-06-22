@@ -193,8 +193,8 @@ export interface Env {
   // for premium users with a connected app).
   GENUI_OFF?: string;
 
-  // Ava Receptionist — override the Gemini Live model (owner asked for "3.5").
-  // Defaults to gemini-live-2.5-flash-native-audio (proven token mint in repo).
+  // Ava Receptionist — override the Gemini Live model.
+  // Defaults to gemini-3.1-flash-live-preview (verified on the Developer API).
   RECEPTIONIST_MODEL?: string;
 
   // App-store links on the /a/:linkId web preview (AvaAffiliate). Android-only
