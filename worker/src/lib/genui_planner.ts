@@ -191,6 +191,7 @@ async function llmPlan(
     "Rules: item_title/subtitle/badge/open/group_by MUST be field names from the element fields given (or omit). " +
     "item_actions/surface_actions MUST be ids from the affordance list (never invent a tool). " +
     "Choose item_actions matching what the user most likely wants to DO next given their request (e.g. files: open, rename, move, delete, share). " +
+    "DESIGN FOR A NARROW PHONE SCREEN (~360dp wide), NOT a desktop: pick only the 2–3 most useful item_actions (more buttons get cramped or pushed off the edge), keep item_title short and item_subtitle to 1–2 short fields, and never assume wide horizontal space. " +
     "Prefer a concise title and 1–2 informative subtitle fields. If a field holds a URL, use it as item_open. " +
     "If the rows have a natural category field (type/status/kind/folder/label), set group_by so the list is organised into sections instead of one long flat list. Make app_label and empty_text human and friendly.";
   const usr =

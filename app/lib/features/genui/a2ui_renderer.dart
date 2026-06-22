@@ -180,6 +180,19 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       (n['children'] as List?)?.map((e) => e.toString()).toList() ?? const [];
 
   Widget _stack(List<Widget> kids, double gap, {bool row = false, String align = 'start'}) {
+    // Mobile-safe rows: a normal (non-space-between) row of action/chip buttons
+    // wraps to the next line instead of overflowing off the right edge on a
+    // narrow phone screen (fixes the "card actions run off-screen" bug, where
+    // e.g. Open · Edit · Move · Download clipped). spaceBetween rows still need
+    // a real Row, so they keep the original layout.
+    if (row && align != 'between') {
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: kids,
+      );
+    }
     final out = <Widget>[];
     for (var i = 0; i < kids.length; i++) {
       if (i > 0 && gap > 0) out.add(row ? SizedBox(width: gap) : SizedBox(height: gap));
