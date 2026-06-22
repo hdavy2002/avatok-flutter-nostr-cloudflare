@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../../core/analytics.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import 'live_voice_controller.dart';
@@ -44,6 +45,14 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   bool _warned = false;
   int _remaining = 300; // seconds left in the current 5-min segment
   int _autoEnd = _autoEndFrom; // seconds left before auto-disconnect on the prompt
+  int _segNum = 0; // which 5-min segment we're on
+
+  // Guardrail/timer events, stamped with the controller's call_id so they stitch
+  // into the same call lifecycle in PostHog.
+  void _seg(String action, [Map<String, Object> extra = const {}]) {
+    Analytics.capture('voice_live_segment',
+        {'call_id': _call.callId, 'action': action, 'segment': _segNum, ...extra});
+  }
 
   @override
   void initState() {
@@ -66,6 +75,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     _segTimer?.cancel();
     _remaining = _segment.inSeconds;
     _warned = false;
+    _segNum++;
     _segTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _remaining--);
@@ -73,6 +83,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
       if (!_warned && _remaining == _warnAt) {
         _warned = true;
         SystemSound.play(SystemSoundType.alert);
+        _seg('warn', {'remaining': _remaining});
       }
       if (_remaining <= 0) {
         _segTimer?.cancel();
@@ -87,6 +98,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     SystemSound.play(SystemSoundType.alert); // beep
     if (!mounted) return;
     setState(() { _needContinue = true; _autoEnd = _autoEndFrom; });
+    _seg('prompt');
     // Auto-disconnect if the user doesn't tap Continue in time.
     _autoEndTimer?.cancel();
     _autoEndTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -94,6 +106,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
       setState(() => _autoEnd--);
       if (_autoEnd <= 0) {
         _autoEndTimer?.cancel();
+        _seg('autoend');
         _end();
       }
     });
@@ -102,6 +115,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   Future<void> _continue() async {
     _autoEndTimer?.cancel();
     setState(() => _needContinue = false);
+    _seg('continue');
     // Resume the SAME Live session: sliding-window context compression (set in the
     // token) keeps the running context bounded and carries it into the next turn,
     // so a long 2-hour call stays roughly linear in tokens.

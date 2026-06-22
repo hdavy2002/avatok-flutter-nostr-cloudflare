@@ -611,20 +611,30 @@ export class AvaAgentDO {
             // and creates the event — instead of firing a bare prompt that just
             // re-lists the day (the loop the user hit).
             let scheduleAction: any = undefined;
+            let schedCatalogCache = "skip"; let schedCatalogMs = 0;
+            const ra0 = Date.now();
             try {
               const caps = await resolveAffordances(this.env, "GOOGLECALENDAR_CREATE_EVENT", { entityHint: "event" });
               const create = caps?.affordances.find((a) => a.verb === "create");
               if (create) scheduleAction = affordanceToAction(create);
+              if (caps) { schedCatalogCache = caps.diag.catalog_cache; schedCatalogMs = caps.diag.catalog_ms; }
             } catch { /* button omitted if unresolved */ }
-            const surface = buildCalendarSurface(events, label, scheduleAction);
+            const schedResolveMs = Date.now() - ra0;
+            const calGid = `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+            const surface: any = buildCalendarSurface(events, label, scheduleAction);
+            surface.gid = calGid; surface.tool = "GOOGLECALENDAR_EVENTS_LIST"; surface.ts = Date.now();
             const head = events.length === 0
               ? "Good news — your schedule is wide open today."
               : `Here's your day — ${events.length} ${events.length === 1 ? "event" : "events"} on the calendar.`;
             await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
             await this.postAva({ conv, uid, text: head, private: priv, source: "calendar", a2ui: surface });
             trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
-              conv_kind: convKind, surface: "calendar", mode: "template", ok: true,
+              conv_kind: convKind, stage: "server_compose", surface: "calendar", mode: "template", ok: true,
+              gid: calGid, tool: "GOOGLECALENDAR_EVENTS_LIST", entity: "event",
               ms: Date.now() - cl0, count: events.length,
+              // schedule-affordance catalog visibility + timing
+              has_schedule_action: !!scheduleAction, catalog_cache: schedCatalogCache, catalog_ms: schedCatalogMs, resolve_ms: schedResolveMs,
+              intent_to_surface_ms: Date.now() - t0,
             });
             trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
               conv_kind: convKind, tier, agentic: false, surface: "calendar_genui",
@@ -738,17 +748,33 @@ export class AvaAgentDO {
       if ((this.env as any).GENUI_OFF !== "1" && premium && lastApp) {
         const gx0 = Date.now();
         try {
-          const { surface, cache } = await renderData(this.env, {
+          const { surface, cache, diag } = await renderData(this.env, {
             request: userText, tool: (lastApp as any).tool, data: (lastApp as any).data,
           });
           if (surface) a2uiSurface = surface;
+          // RICH server-side GenUI telemetry — every step latency + cache outcome,
+          // tagged with `gid` so the client presentation event stitches onto it.
+          //   surface_to_emit_ms here = renderData total (compose + resolve + cache)
+          //   tool_to_genui_ms        = time from end of the agent loop to surface
           trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
-            conv_kind: convKind, tool: (lastApp as any).tool, ok: !!surface, cache,
-            ms: Date.now() - gx0, components: surface ? Object.keys((surface as any).components).length : 0,
+            conv_kind: convKind, stage: "server_compose", mode: "generic",
+            gid: diag.gid, tool: (lastApp as any).tool, entity: diag.entity,
+            ok: !!surface, cache,
+            // cache visibility (Redis template + KV catalog)
+            template_cache: diag.template_cache, template_write: diag.template_write,
+            catalog_cache: diag.catalog_cache, catalog_ms: diag.catalog_ms, catalog_tools: diag.catalog_tools,
+            // per-step latency
+            ms: Date.now() - gx0, total_ms: diag.total_ms, compose_ms: diag.compose_ms, resolve_ms: diag.resolve_ms,
+            // shape of what we built
+            components: diag.components, renderable: diag.renderable,
+            affordances: diag.affordances, affordances_item: diag.affordances_item, affordances_surface: diag.affordances_surface,
+            // tie into the turn (intent timestamp): time from turn start to surface ready
+            intent_to_surface_ms: Date.now() - t0, tools_ms: toolMs, tools_called: toolCount,
           });
         } catch (e: any) {
           trackUserContact(this.env, uid, email, phone, "genui_render", "avaai", {
-            conv_kind: convKind, tool: (lastApp as any).tool, ok: false, ms: Date.now() - gx0,
+            conv_kind: convKind, stage: "server_compose", mode: "generic",
+            tool: (lastApp as any).tool, ok: false, ms: Date.now() - gx0,
             error: String(e?.message ?? e).slice(0, 200),
           });
         }

@@ -11,7 +11,7 @@
 
 import type { Env } from "../types";
 import type { A2uiSurface } from "./a2ui";
-import type { Affordance } from "./capabilities";
+import type { Affordance, CapsDiag } from "./capabilities";
 import { resolveAffordances } from "./capabilities";
 import { redisGetJson, redisSetJson } from "./redis";
 import {
@@ -20,15 +20,50 @@ import {
 
 const TEMPLATE_TTL = 60 * 60 * 24 * 30; // 30 days — templates are stable
 
+// Full server-side diagnostics for the compose step — every sub-latency + cache
+// outcome the caller stamps onto `genui_render` so the intent→presentation
+// pipeline is measurable end-to-end.
+export interface RenderDiag {
+  gid: string;                              // correlation id for the whole trace
+  renderable: boolean;
+  template_cache: "hit" | "miss" | "none";  // Redis template cache outcome
+  template_write: boolean;                  // did we write the template back to Redis?
+  compose_ms: number;                       // Gemini compose time (0 on cache hit)
+  resolve_ms: number;                       // affordance resolve time (own + catalog)
+  catalog_cache: CapsDiag["catalog_cache"] | "skip";
+  catalog_ms: number;
+  catalog_tools: number;
+  affordances: number;
+  affordances_item: number;
+  affordances_surface: number;
+  entity: string;
+  components: number;
+  total_ms: number;
+}
+
 export interface RenderResult {
   surface: A2uiSurface | null;
   cache: "hit" | "miss" | "none";
+  diag: RenderDiag;
 }
+
+function newGid(): string { return `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`; }
 
 export async function renderData(
   env: Env, input: { request: string; tool: string; data: unknown; affordances?: Affordance[] },
 ): Promise<RenderResult> {
-  if (!isRenderable(input.data)) return { surface: null, cache: "none" };
+  const t0 = Date.now();
+  const gid = newGid();
+  const diag: RenderDiag = {
+    gid, renderable: true, template_cache: "none", template_write: false,
+    compose_ms: 0, resolve_ms: 0, catalog_cache: "skip", catalog_ms: 0, catalog_tools: 0,
+    affordances: 0, affordances_item: 0, affordances_surface: 0, entity: "", components: 0, total_ms: 0,
+  };
+
+  if (!isRenderable(input.data)) {
+    diag.renderable = false; diag.total_ms = Date.now() - t0;
+    return { surface: null, cache: "none", diag };
+  }
 
   // Resolve the toolkit's affordances (rename/delete/move/share/create/…) so the
   // composed card is FUNCTIONAL, not just a readout. Best-effort: if the catalog
@@ -36,27 +71,48 @@ export async function renderData(
   // in to avoid a duplicate lookup.
   let affordances = input.affordances;
   if (!affordances) {
-    try { affordances = (await resolveAffordances(env, input.tool))?.affordances ?? []; }
-    catch { affordances = []; }
+    try {
+      const resolved = await resolveAffordances(env, input.tool);
+      affordances = resolved?.affordances ?? [];
+      if (resolved) {
+        diag.catalog_cache = resolved.diag.catalog_cache;
+        diag.catalog_ms = resolved.diag.catalog_ms;
+        diag.catalog_tools = resolved.diag.catalog_tools;
+        diag.resolve_ms = resolved.diag.catalog_ms + resolved.diag.resolve_ms;
+        diag.affordances_item = resolved.diag.item;
+        diag.affordances_surface = resolved.diag.surface;
+        diag.entity = resolved.entity;
+      }
+    } catch { affordances = []; }
   }
+  diag.affordances = affordances.length;
 
   const key = cacheKey(input.tool, input.data);
   let tpl = await redisGetJson<Template>(env, key);
-  let cache: "hit" | "miss" = tpl ? "hit" : "miss";
+  const cache: "hit" | "miss" = tpl ? "hit" : "miss";
+  diag.template_cache = cache;
 
   if (!tpl) {
+    const c0 = Date.now();
     tpl = await composeTemplate(env, { ...input, affordances });
-    if (!tpl) return { surface: null, cache: "none" };
+    diag.compose_ms = Date.now() - c0;
+    if (!tpl) { diag.total_ms = Date.now() - t0; return { surface: null, cache: "none", diag }; }
     // Best-effort global cache write (no user data — template only).
-    await redisSetJson(env, key, tpl, TEMPLATE_TTL);
+    try { await redisSetJson(env, key, tpl, TEMPLATE_TTL); diag.template_write = true; } catch { /* best-effort */ }
   }
+
+  diag.components = Object.keys(tpl.components).length;
+  diag.total_ms = Date.now() - t0;
 
   const surface: A2uiSurface = {
     version: "v0.9",
     surfaceId: `gx_${Date.now()}`,
+    gid,
+    tool: input.tool,
+    ts: Date.now(),
     root: tpl.root,
     components: tpl.components,
     data: input.data, // per-request hydration; never cached
   };
-  return { surface, cache };
+  return { surface, cache, diag };
 }

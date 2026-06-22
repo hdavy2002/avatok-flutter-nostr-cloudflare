@@ -137,36 +137,67 @@ export async function avaGenuiAction(req: Request, env: Env): Promise<Response> 
   const tool = String(b.tool ?? "").trim();
   const args: Record<string, unknown> = (b.args && typeof b.args === "object" && !Array.isArray(b.args)) ? b.args : {};
   const request = String(b.request ?? tool).slice(0, 300);
+  // gid: correlation id from the surface the action was fired on (client passes
+  // it) so the action stitches onto the same trace as its source presentation.
+  const gid = String(b.gid ?? "").slice(0, 48);
   if (!tool) return json({ error: "tool required" }, 400);
 
   const toolkit = toolkitOf(tool);
   const { email, phone } = await contactFor(env, ctx.uid);
   const t0 = Date.now();
   try {
-    // Gate: connected toolkit + real, executable tool slug.
+    // Gate: connected toolkit + real, executable tool slug. (validate_ms covers
+    // both the connected-account lookup and the catalog membership check.)
+    const v0 = Date.now();
     const connected = await connectedToolkits(env, ctx.uid);
-    if (!connected.includes(toolkit)) return json({ error: "app not connected", toolkit }, 403);
-    if (!(await isExecutableTool(env, tool))) return json({ error: "unknown tool" }, 400);
+    if (!connected.includes(toolkit)) {
+      trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", { gid, tool, toolkit, ok: false, stage: "blocked_not_connected", validate_ms: Date.now() - v0, ms: Date.now() - t0 });
+      return json({ error: "app not connected", toolkit }, 403);
+    }
+    if (!(await isExecutableTool(env, tool))) {
+      trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", { gid, tool, toolkit, ok: false, stage: "blocked_unknown_tool", validate_ms: Date.now() - v0, ms: Date.now() - t0 });
+      return json({ error: "unknown tool" }, 400);
+    }
+    const validateMs = Date.now() - v0;
 
+    const cz0 = Date.now();
     const clean = await coerceArgs(env, tool, args);
+    const coerceMs = Date.now() - cz0;
+
+    const ex0 = Date.now();
     const r = await executeTool(env, ctx.uid, tool, clean);
+    const execMs = Date.now() - ex0;
     const ok = !(r && (r.successful === false || r.error));
     await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
 
-    // Re-render the result so the card reflects the new state (best-effort).
+    // Re-render the result so the card reflects the new state (best-effort) —
+    // capture its own compose timing + cache so we see whether the refresh hit
+    // the template/catalog caches too.
     let surface: unknown = null;
+    let renderMs = 0; let reTemplateCache = "skip"; let reCatalogCache = "skip"; let reComponents = 0;
     if (ok && (env as any).GENUI_OFF !== "1") {
-      try { surface = (await renderData(env, { request, tool, data: (r as any)?.data ?? r })).surface; }
-      catch { /* text fallback */ }
+      const rd0 = Date.now();
+      try {
+        const rr = await renderData(env, { request, tool, data: (r as any)?.data ?? r });
+        surface = rr.surface;
+        if (surface) { (surface as any).gid = gid || (surface as any).gid; }
+        reTemplateCache = rr.diag.template_cache; reCatalogCache = rr.diag.catalog_cache; reComponents = rr.diag.components;
+      } catch { /* text fallback */ }
+      renderMs = Date.now() - rd0;
     }
     trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", {
-      tool, toolkit, ok, ms: Date.now() - t0, args_keys: Object.keys(clean).slice(0, 12), rendered: !!surface,
+      gid, tool, toolkit, ok, stage: ok ? "executed" : "tool_failed",
+      // per-step latency: validate → coerce → exec → re-render
+      ms: Date.now() - t0, validate_ms: validateMs, coerce_ms: coerceMs, exec_ms: execMs, render_ms: renderMs,
+      // cache visibility on the refresh render
+      rendered: !!surface, render_template_cache: reTemplateCache, render_catalog_cache: reCatalogCache, render_components: reComponents,
+      args_keys: Object.keys(clean).slice(0, 12), args_count: Object.keys(clean).length,
       ...(ok ? {} : { error: String((r as any)?.error ?? "tool error").slice(0, 200) }),
     });
     const answer = ok ? "Done." : `That didn't go through: ${String((r as any)?.error ?? "the app rejected it").slice(0, 160)}`;
-    return json({ ok, answer, ...(surface ? { a2ui: surface } : {}) }, ok ? 200 : 502);
+    return json({ ok, answer, gid, ...(surface ? { a2ui: surface } : {}) }, ok ? 200 : 502);
   } catch (e: any) {
-    trackUserContact(env, ctx.uid, email, phone, "ai_error", "avaai", { route: "genui_action", tool, detail: String(e?.message ?? e).slice(0, 200) });
+    trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", { gid, tool, toolkit, ok: false, stage: "exception", ms: Date.now() - t0, error: String(e?.message ?? e).slice(0, 200) });
     return json({ error: "action failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }

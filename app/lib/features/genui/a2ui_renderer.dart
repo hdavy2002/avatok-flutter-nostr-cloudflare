@@ -26,7 +26,7 @@ class AvaA2uiSurface extends StatefulWidget {
   // host (chat thread) POSTs {tool, args} to /api/ava/genui/action, appends any
   // refreshed surface it returns, and gives back a short answer for a snackbar.
   // Returns null if no host is wired.
-  final Future<String?> Function(String tool, Map<String, dynamic> args)? onComposio;
+  final Future<String?> Function(String tool, Map<String, dynamic> args, {String? gid})? onComposio;
   const AvaA2uiSurface({super.key, required this.surface, this.onPrompt, this.onComposio});
 
   @override
@@ -36,20 +36,60 @@ class AvaA2uiSurface extends StatefulWidget {
 class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   static final _bind = RegExp(r'\$\{([^}]+)\}');
 
+  // initState timestamp — first-frame latency (render_ms) is measured from here.
+  final DateTime _builtAt = DateTime.now();
+
   @override
   void initState() {
     super.initState();
     final comps = widget.surface['components'];
     final nodes = comps is Map ? comps.length : 0;
-    Analytics.capture('genui_render', {
-      'surface_id': (widget.surface['surfaceId'] ?? '').toString(),
-      'mode': 'client',
-      'nodes': nodes,
+    final root = (widget.surface['root'] ?? '').toString();
+
+    // Count what we're about to present so we can correlate "functional" cards
+    // (composio actions) with engagement downstream.
+    int composioActions = 0, lists = 0, buttons = 0;
+    if (comps is Map) {
+      for (final v in comps.values) {
+        if (v is! Map) continue;
+        final t = (v['type'] ?? '').toString();
+        if (t == 'list') lists++;
+        if (t == 'button') {
+          buttons++;
+          final act = v['action'];
+          if (act is Map && (act['type'] ?? '') == 'composio') composioActions++;
+        }
+      }
+    }
+
+    // server compose timestamp → presentation: the network + queue tail of the
+    // intent→presentation latency (server already logged its own compose time).
+    final serverTs = (widget.surface['ts'] as num?)?.toInt();
+    final surfaceAgeMs = serverTs != null ? (_builtAt.millisecondsSinceEpoch - serverTs) : null;
+
+    // Emit the presentation event AFTER first frame so render_ms is real.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Analytics.capture('genui_render', {
+        'stage': 'client_present',
+        'mode': 'client',
+        'gid': (widget.surface['gid'] ?? '').toString(),
+        'surface_id': (widget.surface['surfaceId'] ?? '').toString(),
+        'tool': (widget.surface['tool'] ?? '').toString(),
+        'nodes': nodes,
+        'lists': lists,
+        'buttons': buttons,
+        'composio_actions': composioActions,
+        'has_actions': composioActions > 0,
+        'render_ms': DateTime.now().difference(_builtAt).inMilliseconds,
+        if (surfaceAgeMs != null) 'surface_age_ms': surfaceAgeMs,
+        'blank': nodes == 0 || _node(root) == null,
+      });
     });
+
     // Blank-card guard: a surface with no components, or whose root id isn't in
     // the component map, renders to an empty SizedBox — a blank-looking reply.
     // Surface it as a distinct signal so these are queryable, not invisible.
-    final root = (widget.surface['root'] ?? '').toString();
     if (nodes == 0 || _node(root) == null) {
       Analytics.genuiBlankSurface(
         tool: widget.surface['tool']?.toString(),
@@ -361,7 +401,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
             if (r.isNotEmpty) args[k.toString()] = r;
           });
         }
-        final answer = await onComposio(tool, {...args, ...values});
+        final answer = await onComposio(tool, {...args, ...values}, gid: (widget.surface['gid'] ?? '').toString());
         if (!mounted) return;
         final msg = (a['successText'] ?? answer ?? 'Done.').toString();
         if (msg.isNotEmpty) {
@@ -401,24 +441,43 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
   // Execute a `composio` action: (1) optional confirm for destructive actions,
   // (2) optional form to collect the tool's fields, (3) resolve id/${binding}
   // args against the row, (4) hand {tool, finalArgs} to the host to run + render.
+  // Fully instrumented: every stage emits a `genui_action` event tagged with the
+  // surface `gid`, so we can see the funnel tap → confirm → form → submit →
+  // result and where users drop off, plus the time spent at each step.
   Future<void> _dispatchComposio(Map<String, dynamic> a, Map scope) async {
     final onComposio = widget.onComposio;
     final tool = (a['tool'] ?? '').toString();
+    final gid = (widget.surface['gid'] ?? '').toString();
     if (tool.isEmpty || onComposio == null) return;
 
+    final fields = _parseFields(a['fields'], scope);
+    final destructive = a['confirm'] != null && a['confirm'].toString().isNotEmpty;
+    Analytics.capture('genui_action', {
+      'stage': 'tap', 'gid': gid, 'tool': tool, 'fields': fields.length,
+      'destructive': destructive, 'has_form': fields.isNotEmpty,
+    });
+    final tapAt = DateTime.now();
+
     // 1) confirm (destructive)
-    final confirm = a['confirm'];
-    if (confirm != null && confirm.toString().isNotEmpty) {
-      final ok = await _confirmDialog(_resolve(confirm, scope), destructive: true);
-      if (ok != true) return;
+    if (destructive) {
+      final ok = await _confirmDialog(_resolve(a['confirm'], scope), destructive: true);
+      if (ok != true) {
+        Analytics.capture('genui_action', {'stage': 'cancelled', 'at': 'confirm', 'gid': gid, 'tool': tool, 'ms': DateTime.now().difference(tapAt).inMilliseconds});
+        return;
+      }
     }
 
     // 2) collect fields (if any)
-    final fields = _parseFields(a['fields'], scope);
     Map<String, dynamic> collected = const {};
+    int formMs = 0;
     if (fields.isNotEmpty) {
+      final formStart = DateTime.now();
       final res = await _collectFields(_resolve(a['label'], scope), fields);
-      if (res == null) return; // cancelled
+      formMs = DateTime.now().difference(formStart).inMilliseconds;
+      if (res == null) {
+        Analytics.capture('genui_action', {'stage': 'cancelled', 'at': 'form', 'gid': gid, 'tool': tool, 'form_ms': formMs});
+        return; // cancelled
+      }
       collected = res;
     }
 
@@ -434,9 +493,18 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     // collected fields win (user input); ids/defaults fill the rest.
     final finalArgs = <String, dynamic>{...args, ...collected};
 
-    Analytics.capture('genui_action', {'type': 'composio', 'tool': tool, 'fields': fields.length});
-    final answer = await onComposio(tool, finalArgs);
+    Analytics.capture('genui_action', {
+      'stage': 'submit', 'gid': gid, 'tool': tool, 'fields': fields.length,
+      'arg_count': finalArgs.length, 'form_ms': formMs, 'prep_ms': DateTime.now().difference(tapAt).inMilliseconds,
+    });
+    final reqStart = DateTime.now();
+    final answer = await onComposio(tool, finalArgs, gid: gid);
+    final reqMs = DateTime.now().difference(reqStart).inMilliseconds;
     if (!mounted) return;
+    Analytics.capture('genui_action', {
+      'stage': 'result', 'gid': gid, 'tool': tool,
+      'request_ms': reqMs, 'total_ms': DateTime.now().difference(tapAt).inMilliseconds,
+    });
     final msg = (a['successText'] ?? answer ?? 'Done.').toString();
     if (msg.isNotEmpty) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(

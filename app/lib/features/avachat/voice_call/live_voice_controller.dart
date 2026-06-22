@@ -38,7 +38,7 @@ class LiveVoiceController implements VoiceCallApi {
   final ValueNotifier<bool> avaSpeaking = ValueNotifier<bool>(false);
 
   WebSocketChannel? _ws;
-  String _model = 'gemini-live-2.5-flash-native-audio';
+  String _model = 'gemini-3.1-flash-live-preview';
   AudioRecorder? _rec;
   StreamSubscription<Uint8List>? _micSub;
   bool _pcmReady = false;
@@ -49,6 +49,22 @@ class LiveVoiceController implements VoiceCallApi {
   DateTime? _connectedAt;
   Timer? _reconnect;
 
+  // ── rich telemetry: one correlation id (call_id) stitches the whole call ─────
+  String _callId = '';
+  /// Correlation id for this call — every voice_live_* event carries it, and the
+  /// screen stamps its own timer/segment events with it too.
+  String get callId => _callId;
+  final Stopwatch _callSw = Stopwatch(); // dial → … (whole-call clock)
+  int _turns = 0; // Ava turns completed
+  int _bargeins = 0;
+  bool _firstAudio = false;
+  bool _ready = false;
+
+  /// Capture a voice_live_* event with the call_id merged in.
+  void _ev(String name, [Map<String, Object> props = const {}]) {
+    Analytics.capture(name, {'call_id': _callId, ...props});
+  }
+
   /// Pause the call (the 5-minute "still there?" guardrail): stop sending mic and
   /// drop incoming audio so no tokens are billed while we wait for the user.
   Future<void> pause() async {
@@ -57,6 +73,7 @@ class LiveVoiceController implements VoiceCallApi {
     await _stopMic();
     status.value = 'Paused';
     avaSpeaking.value = false;
+    _ev('voice_live_pause', {'at_ms': _callSw.elapsedMilliseconds});
   }
 
   /// Resume after the user taps Continue.
@@ -65,27 +82,39 @@ class LiveVoiceController implements VoiceCallApi {
     _paused = false;
     await _startMic();
     _setListening();
+    _ev('voice_live_resume', {'at_ms': _callSw.elapsedMilliseconds});
   }
 
   @override
   Future<bool> start() async {
+    _callId = 'vc_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+    _callSw.start();
+    _ev('voice_live_dial'); // user tapped Call
     state.value = CallState.preparing;
     status.value = 'Connecting to Ava…';
+    final tokenSw = Stopwatch()..start();
     final t = await AvaLiveApi.token();
+    final ok200 = (t['status'] as num?)?.toInt() == 200 && (t['token'] ?? '').toString().isNotEmpty;
+    _ev('voice_live_token', {
+      'token_ms': tokenSw.elapsedMilliseconds,
+      'status': (t['status'] as num?)?.toInt() ?? -1,
+      'ok': ok200,
+    });
     if (_disposed) return false;
-    if ((t['status'] as num?)?.toInt() != 200 || (t['token'] ?? '').toString().isEmpty) {
-      _fail(t['error']?.toString() ?? 'Could not start the call');
+    if (!ok200) {
+      _fail(t['error']?.toString() ?? 'Could not start the call', stage: 'token');
       return false;
     }
     _model = t['model']?.toString() ?? _model;
     final ok = await _connect(t['token'].toString());
-    if (ok) Analytics.capture('voice_live_start', {'model': _model});
+    if (ok) _ev('voice_live_start', {'model': _model, 'connect_ms': _callSw.elapsedMilliseconds});
     return ok;
   }
 
-  void _fail(String msg) {
+  void _fail(String msg, {String stage = 'connect'}) {
     state.value = CallState.error;
     status.value = msg;
+    _ev('voice_live_error', {'stage': stage, 'error': msg, 'ms': _callSw.elapsedMilliseconds});
   }
 
   Future<bool> _connect(String token) async {
@@ -130,6 +159,10 @@ class LiveVoiceController implements VoiceCallApi {
       // Session is ready → greet (Ava speaks first) and start listening.
       if (m.containsKey('setupComplete')) {
         _reconnects = 0;
+        if (!_ready) {
+          _ready = true;
+          _ev('voice_live_ready', {'ready_ms': _callSw.elapsedMilliseconds});
+        }
         _sendGreeting();
         _setListening();
         return;
@@ -149,14 +182,29 @@ class LiveVoiceController implements VoiceCallApi {
         final data = inline?['data']?.toString();
         if (data != null && data.isNotEmpty) { _playPcm(base64Decode(data)); gotAudio = true; }
       }
-      if (gotAudio && state.value != CallState.speaking) {
-        state.value = CallState.speaking;
-        avaSpeaking.value = true;
-        status.value = 'Ava is speaking…';
+      if (gotAudio) {
+        if (!_firstAudio) {
+          _firstAudio = true;
+          // Time-to-first-audio: dial → Ava's first spoken byte (the greeting).
+          _ev('voice_live_first_audio', {'ms': _callSw.elapsedMilliseconds});
+        }
+        if (state.value != CallState.speaking) {
+          state.value = CallState.speaking;
+          avaSpeaking.value = true;
+          status.value = 'Ava is speaking…';
+        }
       }
       // Barge-in: Gemini signals it when the user talks over Ava.
-      if (content['interrupted'] == true) _setListening();
-      if (content['turnComplete'] == true) _setListening();
+      if (content['interrupted'] == true) {
+        _bargeins++;
+        _ev('voice_live_bargein', {'at_ms': _callSw.elapsedMilliseconds});
+        _setListening();
+      }
+      if (content['turnComplete'] == true) {
+        _turns++;
+        _ev('voice_live_turn', {'turn': _turns, 'ava_chars': avaCaption.value.length});
+        _setListening();
+      }
     } catch (_) {/* non-JSON keepalives are fine */}
   }
 
@@ -184,7 +232,7 @@ class LiveVoiceController implements VoiceCallApi {
     final reason = _ws?.closeReason;
     final upMs = _connectedAt == null ? -1 : DateTime.now().difference(_connectedAt!).inMilliseconds;
     AvaLog.I.log('voice_live', 'gemini ws down ($why) code=$code reason=$reason up=${upMs}ms');
-    Analytics.capture('voice_live_ws_closed', {
+    _ev('voice_live_ws_closed', {
       'code': code ?? -1,
       'reason': (reason ?? '').toString(),
       'up_ms': upMs,
@@ -272,7 +320,16 @@ class LiveVoiceController implements VoiceCallApi {
     if (_disposed) return;
     _disposed = true;
     state.value = CallState.ended;
-    Analytics.capture('voice_live_end', const <String, Object>{});
+    _ev('voice_live_end', {
+      'duration_ms': _callSw.elapsedMilliseconds,
+      'turns': _turns,
+      'bargeins': _bargeins,
+      'reconnects': _reconnects,
+      'model': _model,
+      'reached_ready': _ready,
+      'heard_ava': _firstAudio,
+    });
+    _callSw.stop();
     _reconnect?.cancel();
     await _stopMic();
     try { await _ws?.sink.close(); } catch (_) {}

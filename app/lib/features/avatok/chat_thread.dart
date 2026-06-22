@@ -832,8 +832,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// a refreshed surface from the result (e.g. the updated list / created event),
   /// drop it into the thread as a fresh Ava bubble so the chat reflects the new
   /// state. Returns the short answer for the renderer's snackbar.
-  Future<String?> _onGenuiComposio(String tool, Map<String, dynamic> args) async {
-    final r = await AppsService.I.genuiAction(tool, args);
+  Future<String?> _onGenuiComposio(String tool, Map<String, dynamic> args, {String? gid}) async {
+    final r = await AppsService.I.genuiAction(tool, args, gid: gid);
     if (!mounted) return r.answer;
     if (r.surface != null) {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;

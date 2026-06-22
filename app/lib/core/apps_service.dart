@@ -151,21 +151,35 @@ class AppsService {
   /// refreshed A2UI surface the server rendered from the result. This is a
   /// MUTATING action — never cached. The server re-validates the tool against
   /// the user's connected toolkits and coerces args to the tool schema.
-  Future<GenuiActionResult> genuiAction(String tool, Map<String, dynamic> args, {String? request}) async {
+  Future<GenuiActionResult> genuiAction(String tool, Map<String, dynamic> args, {String? request, String? gid}) async {
+    final t0 = DateTime.now();
     try {
-      final body = <String, dynamic>{'tool': tool, 'args': args, if (request != null) 'request': request};
+      final body = <String, dynamic>{
+        'tool': tool, 'args': args,
+        if (request != null) 'request': request,
+        if (gid != null && gid.isNotEmpty) 'gid': gid,
+      };
       final res = await ApiAuth.postJsonH(_url(AvaApi.genuiAction), body, const {},
           timeout: const Duration(seconds: 60));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final reqMs = DateTime.now().difference(t0).inMilliseconds;
       if (j['reason'] == 'premium_required') {
+        Analytics.capture('genui_action_client', {'gid': gid ?? '', 'tool': tool, 'ok': false, 'reason': 'premium_required', 'request_ms': reqMs});
         return GenuiActionResult(ok: false, answer: (j['message'] ?? 'Top up to use this.').toString());
       }
       final ok = j['ok'] == true;
       final answer = (j['answer'] ?? j['error'] ?? (ok ? 'Done.' : 'That didn\'t go through.')).toString();
       final surface = j['a2ui'] is Map ? (j['a2ui'] as Map).cast<String, dynamic>() : null;
-      Analytics.capture('genui_action_client', {'tool': tool, 'ok': ok, 'rendered': surface != null});
+      // Round-trip latency + whether the server returned a refreshed surface —
+      // pairs with the server `genui_action_exec` (same gid) to split network vs.
+      // server time.
+      Analytics.capture('genui_action_client', {
+        'gid': (gid ?? j['gid'] ?? '').toString(), 'tool': tool, 'ok': ok,
+        'rendered': surface != null, 'status': res.statusCode, 'request_ms': reqMs,
+      });
       return GenuiActionResult(ok: ok, answer: answer, surface: surface);
     } catch (e) {
+      Analytics.capture('genui_action_client', {'gid': gid ?? '', 'tool': tool, 'ok': false, 'error': e.runtimeType.toString(), 'request_ms': DateTime.now().difference(t0).inMilliseconds});
       Analytics.appsUnavailable(endpoint: AvaApi.genuiAction, code: e.runtimeType.toString());
       return GenuiActionResult(ok: false, answer: 'Couldn\'t reach the app just now.');
     }
