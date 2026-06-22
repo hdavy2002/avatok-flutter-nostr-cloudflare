@@ -186,7 +186,16 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
       clipBehavior: Clip.antiAlias,
       child: accent == null
           ? inner
-          : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Container(width: 7, color: accent), Expanded(child: inner)]),
+          // IntrinsicHeight is REQUIRED: the accent bar is a childless coloured
+          // Container with no height. In a Row(crossAxisAlignment.stretch) under
+          // the chat ListView's UNBOUNDED height, that bar stretches to infinite
+          // height. Debug builds assert; the release APK has assertions stripped,
+          // so it silently lays out NaN/∞ → the whole thread renders BLANK on the
+          // next relayout (e.g. when the keyboard opens). IntrinsicHeight bounds
+          // the Row to its tallest real child so stretch is finite. Do not remove.
+          : IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Container(width: 7, color: accent), Expanded(child: inner)]),
+            ),
     );
   }
 
@@ -248,7 +257,14 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     if (n['video'] == true) meta.add(_metaChip(PhosphorIcons.videoCamera(PhosphorIconsStyle.fill), 'Video call', Zine.blueInk));
     final guests = (n['guests'] as num?)?.toInt() ?? 0;
     if (guests > 0) meta.add(_metaChip(PhosphorIcons.usersThree(PhosphorIconsStyle.fill), '$guests', Zine.inkSoft));
-    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    // IntrinsicHeight is REQUIRED here: the coloured date strip and the 1px
+    // divider are childless/height-less Containers. In Row(stretch) under the
+    // chat ListView's UNBOUNDED height they'd stretch to infinite height —
+    // silently (assertions are stripped from the release APK), blanking the
+    // whole thread on the next relayout (e.g. when the keyboard opens). Bounding
+    // the Row to its tallest real child keeps stretch finite. Do not remove.
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Container(
         width: 64, color: accent, padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -264,7 +280,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
           if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: 10, runSpacing: 4, children: meta)),
         ]),
       )),
-    ]);
+    ]));
   }
 
   Widget _metaChip(IconData icon, String label, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
