@@ -2609,7 +2609,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _composerTools(),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 12, 10),
-          child: Row(children: [
+          // Bottom-align so the +, sparkle and send controls stay pinned to the
+          // bottom as the multi-line field grows upward.
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         // Ava-mode toggle: flip to talk privately to Ava without typing @ava;
         // flip back to message the person. Highlights when ON.
         IconButton(
@@ -2635,12 +2637,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               focusNode: _composerFocus,
               onChanged: _onInputChanged,
               onSubmitted: (_) => _send(),
+              // Auto-grow upward as the user types (1 line → max 5, then it
+              // scrolls internally so the text always stays in view). Enter
+              // still sends — the keyboard action button is wired to send.
+              minLines: 1,
+              maxLines: 5,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.send,
               style: ZineText.input(size: 15.5),
               cursorColor: Zine.blueInk,
               decoration: InputDecoration(
                   hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
                   hintStyle: ZineText.input(size: 15.5).copyWith(
-                      color: Zine.placeholder, fontWeight: FontWeight.w700),
+                      color: Zine.placeholder, fontWeight: FontWeight.w600),
                   border: InputBorder.none, isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12)),
             ),
@@ -2729,8 +2738,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
-  /// A single pill chip. Shows a spinner in place of its icon while it's the
-  /// active job; the rest of the row is greyed (tap-disabled) meanwhile.
+  /// A single icon-only chip. The label is exposed via a tooltip (long-press)
+  /// so the row stays compact and scannable. Shows a spinner in place of its
+  /// icon while it's the active job; the rest of the row is greyed meanwhile.
   Widget _toolChip({
     required String tool,
     required IconData icon,
@@ -2743,27 +2753,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       padding: const EdgeInsets.only(right: 8),
       child: Opacity(
         opacity: dimmed ? 0.4 : 1,
-        child: GestureDetector(
-          onTap: _aiBusy ? null : onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: busy ? Zine.lime : Zine.card,
-              borderRadius: BorderRadius.circular(100),
-              border: Zine.border,
-              boxShadow: Zine.shadowXs,
+        child: Tooltip(
+          message: label,
+          child: GestureDetector(
+            onTap: _aiBusy ? null : onTap,
+            child: Container(
+              width: 34, height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: busy ? Zine.lime : Zine.card,
+                shape: BoxShape.circle,
+                border: Zine.border,
+                boxShadow: Zine.shadowXs,
+              ),
+              child: busy
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
+                    )
+                  : PhosphorIcon(icon, size: 16, color: Zine.ink),
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (busy)
-                const SizedBox(
-                  width: 14, height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
-                )
-              else
-                PhosphorIcon(icon, size: 15, color: Zine.ink),
-              const SizedBox(width: 6),
-              Text(label, style: ZineText.tag(size: 12.5)),
-            ]),
           ),
         ),
       ),
@@ -2788,22 +2797,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             boxShadow: Zine.shadowXs,
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            GestureDetector(
-              onTap: _aiBusy ? null : _runTranslate,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (busy)
-                    const SizedBox(
-                      width: 14, height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
-                    )
-                  else
-                    PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                        size: 15, color: Zine.ink),
-                  const SizedBox(width: 6),
-                  Text('Translate', style: ZineText.tag(size: 12.5)),
-                ]),
+            Tooltip(
+              message: 'Translate',
+              child: GestureDetector(
+                onTap: _aiBusy ? null : _runTranslate,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(11, 8, 9, 8),
+                  child: busy
+                      ? const SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
+                        )
+                      : PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                          size: 16, color: Zine.ink),
+                ),
               ),
             ),
             GestureDetector(
