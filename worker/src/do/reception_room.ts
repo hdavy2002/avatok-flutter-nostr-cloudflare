@@ -19,6 +19,7 @@
 // here). All paths are guarded; failures finalize gracefully with a text message.
 import type { Env } from "../types";
 import { track, metric } from "../hooks";
+import { dmConvId } from "../authz";
 
 interface InitBlob {
   sid: string; owner_uid: string; caller_uid: string;
@@ -308,24 +309,41 @@ export class ReceptionRoom {
     init: InitBlob, summary: any, transcript: string, recordingUrl: string | null, durationS: number,
   ): Promise<void> {
     const callerLabel = init.caller_name || init.caller_phone || "Unknown caller";
-    const conv = init.caller_phone
-      ? `recept_${init.owner_uid}__tel:${init.caller_phone}`
-      : `recept_${init.owner_uid}__${init.caller_uid}`;
+    // v2: deliver into the caller's REAL DM thread (dm_<lo>__<hi>) so the owner
+    // sees an agent bubble where they'd expect it — not an isolated recept_ conv.
+    // Fall back to the recept_ id only when the caller has no AvaTOK uid (phone-
+    // only / unknown caller) and we can't resolve a deterministic DM thread.
+    const conv = init.caller_uid
+      ? dmConvId(init.owner_uid, init.caller_uid)
+      : (init.caller_phone
+          ? `recept_${init.owner_uid}__tel:${init.caller_phone}`
+          : `recept_${init.owner_uid}__unknown`);
+    const inThread = !!init.caller_uid;
     const bodyText = summary
-      ? `📋 Ava took a message from ${summary.caller_name || callerLabel}: ${summary.reason}`
-      : `📋 Ava answered a call from ${callerLabel}.`;
+      ? `📞 ${summary.caller_name || callerLabel} called and left a message: ${summary.reason}`
+      : `📞 ${callerLabel} called — Ava answered.`;
+    // Body is an app envelope {t:'recept', …} so the FROZEN chat_thread renderer
+    // shows a dedicated receptionist card (summary + transcript + play). Scoped
+    // to:<owner> so it's the owner's private voicemail record — the caller, even
+    // though they share the dm_ thread, never sees it (only the owner's InboxDO
+    // is written, and the audience scope enforces it).
+    const envelope = JSON.stringify({
+      t: "recept",
+      text: bodyText,                       // fallback caption for old clients
+      session_id: init.sid,                 // client uses this to stream the recording
+      caller_name: init.caller_name, caller_phone: init.caller_phone,
+      call_id: init.call_id, duration_s: durationS,
+      activation_mode: init.activation_mode ?? null,
+      summary, transcript, has_recording: !!recordingUrl,
+    });
     const payload = {
       conv,
       sender: init.caller_uid || `tel:${init.caller_phone}`,
       kind: "receptionist",
-      body: bodyText,
-      media_ref: recordingUrl,           // voicemail recording (R2 key)
+      body: envelope,
+      media_ref: recordingUrl,              // voicemail recording (R2 key)
+      scope: `to:${init.owner_uid}` as const, // owner-private within the dm_ thread
       created_at: Date.now(),
-      receptionist: {
-        caller_name: init.caller_name, caller_phone: init.caller_phone,
-        call_id: init.call_id, duration_s: durationS,
-        summary, transcript, recording_url: recordingUrl,
-      },
     };
     const stub = this.env.INBOX.get(this.env.INBOX.idFromName(init.owner_uid));
     await stub.fetch("https://inbox/append", {
@@ -335,10 +353,15 @@ export class ReceptionRoom {
     try {
       await this.env.Q_PUSH.send({
         kind: "notify", to: init.owner_uid, fromName: "Ava",
-        title: "Ava took a message", body: bodyText.replace(/^📋\s*/, ""),
+        title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""),
         data: { type: "receptionist", conv, caller_phone: init.caller_phone },
       });
     } catch { /* best-effort */ }
+    // v2 telemetry: did the message reach the caller's real DM thread?
+    track(this.env, init.owner_uid, "ava_recept_delivered_inthread", "receptionist", {
+      in_thread: inThread, conv_kind: inThread ? "dm" : "recept_fallback",
+      activation_mode: init.activation_mode ?? null, has_recording: !!recordingUrl,
+    });
   }
 }
 

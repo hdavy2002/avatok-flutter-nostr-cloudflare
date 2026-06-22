@@ -454,7 +454,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'gmedia') {
@@ -556,7 +556,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'media') {
@@ -1221,6 +1221,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         // Ava kinds (Phase 0 contract) — caption used for chat-list previews etc.
         'ava' || 'ava_private' => (e['text'] ?? e['body'] ?? 'Ava').toString(),
         'ava_status' => (e['label'] ?? 'Ava is working…').toString(),
+        'recept' => (e['text'] ?? '📞 Ava took a message').toString(),
         _ => '',
       };
 
@@ -1624,6 +1625,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ]),
             )),
         ]);
+      case 'recept':
+        return _ReceptionistCard(
+          extra: e,
+          sessionId: (e['session_id'] ?? e['sid'] ?? '').toString(),
+        );
       case 'ava':
       case 'ava_private':
         // Ava's turn. The feminine bubble + "AVA" label are applied in _bubble;
@@ -3444,4 +3450,135 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             maxLines: 1, overflow: TextOverflow.ellipsis,
             style: ZineText.value(size: 14))),
       ]);
+}
+
+/// Ava Receptionist message card (special kind 'recept', v2). Renders inside a
+/// chat bubble when Ava answered a call the owner missed: who called, the
+/// AI summary, an expandable transcript and a play button for the voicemail
+/// recording (streamed from /api/receptionist/recording, owner-authed).
+/// Spec: Specs/PROPOSAL-RECEPTIONIST-V2.md §5.
+class _ReceptionistCard extends StatefulWidget {
+  const _ReceptionistCard({required this.extra, required this.sessionId});
+  final Map<String, dynamic> extra;
+  final String sessionId;
+  @override
+  State<_ReceptionistCard> createState() => _ReceptionistCardState();
+}
+
+class _ReceptionistCardState extends State<_ReceptionistCard> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _expanded = false;
+  bool _loadingAudio = false;
+  bool _playing = false;
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic> get _e => widget.extra;
+
+  String get _caller {
+    final summary = _e['summary'];
+    final name = (summary is Map ? summary['caller_name'] : null) ??
+        _e['caller_name'] ?? _e['caller_phone'] ?? 'Unknown caller';
+    return name.toString();
+  }
+
+  String get _reason {
+    final summary = _e['summary'];
+    if (summary is Map && (summary['reason'] ?? '').toString().trim().isNotEmpty) {
+      return summary['reason'].toString();
+    }
+    return 'Left a message.';
+  }
+
+  String get _durationLabel {
+    final s = (_e['duration_s'] as num?)?.toInt() ?? 0;
+    if (s <= 0) return '';
+    final m = s ~/ 60, sec = s % 60;
+    return '${m}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _togglePlay() async {
+    if (_playing) {
+      await _player.stop();
+      if (mounted) setState(() => _playing = false);
+      return;
+    }
+    if (widget.sessionId.isEmpty) return;
+    setState(() => _loadingAudio = true);
+    try {
+      final url = 'https://$kSignalingHost/api/receptionist/recording?sid=${widget.sessionId}';
+      final r = await ApiAuth.getBytes(url);
+      if (r.statusCode != 200 || r.bodyBytes.isEmpty) {
+        if (mounted) setState(() => _loadingAudio = false);
+        return;
+      }
+      _player.onPlayerComplete.listen((_) {
+        if (mounted) setState(() => _playing = false);
+      });
+      await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/wav'));
+      if (mounted) setState(() { _loadingAudio = false; _playing = true; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingAudio = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final transcript = (_e['transcript'] ?? '').toString().trim();
+    final hasRec = _e['has_recording'] == true || (_e['recording_url'] ?? '').toString().isNotEmpty;
+    final dur = _durationLabel;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.phone_callback, size: 18, color: Zine.lilac),
+        const SizedBox(width: 6),
+        Flexible(child: Text('$_caller called', style: ZineText.value(size: 14))),
+      ]),
+      const SizedBox(height: 2),
+      Text('Ava took a message', style: ZineText.kicker(size: 10.5)),
+      const SizedBox(height: 6),
+      Text(_reason, style: ZineText.sub(size: 13, color: Zine.ink)),
+      const SizedBox(height: 8),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        if (hasRec)
+          GestureDetector(
+            onTap: _loadingAudio ? null : _togglePlay,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Zine.card,
+                borderRadius: BorderRadius.circular(100),
+                border: Border.all(color: Zine.ink, width: 2),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                _loadingAudio
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(_playing ? Icons.stop : Icons.play_arrow, size: 16, color: Zine.ink),
+                const SizedBox(width: 5),
+                Text(_playing ? 'Stop' : 'Play recording', style: ZineText.tag(size: 11)),
+              ]),
+            ),
+          ),
+        if (hasRec && dur.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Text('⏱ $dur', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+        ],
+      ]),
+      if (transcript.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Text(_expanded ? 'Hide transcript' : 'Show transcript',
+              style: ZineText.tag(size: 11, color: Zine.blueInk)),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 4),
+          Text(transcript, style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+        ],
+      ],
+    ]);
+  }
 }

@@ -369,6 +369,31 @@ export async function receptionistFinish(req: Request, env: Env): Promise<Respon
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/receptionist/recording?sid=<session>  — owner streams the voicemail
+// recording for the in-thread bubble's play button. Owner-only (the WAV is the
+// owner's private record); the R2 key is never exposed to the client.
+// ---------------------------------------------------------------------------
+export async function receptionistRecording(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const sid = String(new URL(req.url).searchParams.get("sid") || "");
+  if (!sid) return json({ error: "sid required" }, 400);
+  const s = await metaDb(env).prepare(
+    "SELECT owner_uid, recording_url FROM receptionist_sessions WHERE id=?1").bind(sid).first<any>();
+  if (!s || s.owner_uid !== ctx.uid) return json({ error: "not found" }, 404);
+  if (!s.recording_url) return json({ error: "no recording" }, 404);
+  const obj = await env.BLOBS.get(String(s.recording_url));
+  if (!obj) return json({ error: "gone" }, 404);
+  return new Response(obj.body, {
+    headers: {
+      "content-type": "audio/wav",
+      "cache-control": "private, max-age=86400",
+      "accept-ranges": "bytes",
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Knowledge base (Gemini File Search RAG) — Phase 7.
 // Owner uploads files Ava can answer from. We keep the original in R2 and index
 // it into the owner's Gemini File Search store (stored on receptionist_settings).
