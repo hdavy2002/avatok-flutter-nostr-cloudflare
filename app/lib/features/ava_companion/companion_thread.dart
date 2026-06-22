@@ -21,6 +21,7 @@ import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/voice/voice_call_mode.dart';
 import '../../core/voice/voice_feature.dart';
 import '../avachat/voice_call/voice_call_screen.dart';
 import '../settings/sections/voice_section.dart';
@@ -609,14 +610,21 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
   // Gemini → Supertonic-3 TTS, English). Requires the on-device voice models,
   // which are downloaded once via Settings → Ava voice → "Enable Ava Voice".
   Future<void> _openVoiceCall() async {
-    await VoiceFeature.I.refresh();
-    if (!mounted) return;
-    if (!VoiceFeature.I.isReady) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Turn on Ava Voice in Settings → Ava voice to talk to Ava'),
-      ));
-      return;
+    await VoiceCallMode.I.load();
+    // ONLINE (Gemini Live) needs no model download — go straight in. ON-DEVICE
+    // requires the voice models (Settings → Ava voice → Enable Ava Voice).
+    if (!VoiceCallMode.I.online.value) {
+      await VoiceFeature.I.refresh();
+      if (!mounted) return;
+      if (!VoiceFeature.I.isReady) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('On-device voice needs a one-time download in Settings → '
+              'Ava voice, or switch to Fast (online) calls there.'),
+        ));
+        return;
+      }
     }
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const VoiceCallScreen()),
     );

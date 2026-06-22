@@ -26,10 +26,9 @@ import '../../../core/ava_log.dart';
 import '../../../core/kokoro_voice.dart';
 import '../../../core/voice/kokoro_tts.dart';
 import '../../../core/voice/sherpa_voice_engine.dart';
+import 'voice_call_api.dart';
 
-enum CallState { preparing, listening, thinking, speaking, error, ended }
-
-class VoiceCallController {
+class VoiceCallController implements VoiceCallApi {
   VoiceCallController();
 
   // SPEED: a voice call must feel instant. Force ONE short spoken sentence — less

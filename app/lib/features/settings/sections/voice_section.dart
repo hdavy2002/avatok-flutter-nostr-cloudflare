@@ -8,6 +8,7 @@ import '../../../core/paid_feature.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../../core/voice/kokoro_tts.dart';
+import '../../../core/voice/voice_call_mode.dart';
 import '../../../core/voice/voice_feature.dart';
 import '../settings_registry.dart';
 import 'kokoro_voice_screen.dart';
@@ -88,6 +89,7 @@ class _VoiceCardState extends State<_VoiceCard> {
     AvaVoicePref.load();
     KokoroVoicePref.load();
     VoiceFeature.I.refresh();
+    VoiceCallMode.I.load();
   }
 
   @override
@@ -97,6 +99,10 @@ class _VoiceCardState extends State<_VoiceCard> {
       padding: const EdgeInsets.all(14),
       boxShadow: Zine.shadowXs,
       child: Column(children: [
+        _callModeRow(),
+        const SizedBox(height: 12),
+        Container(height: Zine.bw, color: Zine.ink.withValues(alpha: 0.12)),
+        const SizedBox(height: 10),
         ValueListenableBuilder<bool>(
         valueListenable: AvaVoicePref.enabled,
         builder: (context, on, _) {
@@ -157,6 +163,41 @@ class _VoiceCardState extends State<_VoiceCard> {
   /// "Voice call with Ava" — the explicit enable + background-download gate for
   /// the heavy on-device voice models. Shows: Enable → Downloading → Getting it
   /// ready → Ready ✓.
+  /// Fast (online Gemini Live) vs Private (on-device) voice calls.
+  Widget _callModeRow() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: VoiceCallMode.I.online,
+      builder: (context, online, _) {
+        return Row(children: [
+          ZineIconBadge(
+            icon: online
+                ? PhosphorIcons.lightning(PhosphorIconsStyle.fill)
+                : Icons.lock_rounded,
+            color: online ? Zine.lime : Zine.lilac,
+            size: 36,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(online ? 'Voice call: Fast (online)' : 'Voice call: Private (on-device)',
+                  style: ZineText.value(size: 14.5)),
+              const SizedBox(height: 2),
+              Text(
+                online
+                    ? 'Talks to Ava in about half a second via the cloud. No download.'
+                    : 'Runs fully on your phone — private and offline, but a bit slower. '
+                        'Needs the one-time download below.',
+                style: ZineText.sub(size: 12),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 10),
+          ZineToggle(value: online, onChanged: (v) => VoiceCallMode.I.set(v)),
+        ]);
+      },
+    );
+  }
+
   Widget _avaVoiceCallBlock() {
     return ValueListenableBuilder<VoiceFeatureState>(
       valueListenable: VoiceFeature.I.state,

@@ -13,6 +13,9 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
+import '../../../core/voice/voice_call_mode.dart';
+import 'live_voice_controller.dart';
+import 'voice_call_api.dart';
 import 'voice_call_controller.dart';
 
 class VoiceCallScreen extends StatefulWidget {
@@ -23,7 +26,9 @@ class VoiceCallScreen extends StatefulWidget {
 
 class _VoiceCallScreenState extends State<VoiceCallScreen>
     with SingleTickerProviderStateMixin {
-  final VoiceCallController _call = VoiceCallController();
+  // Fast online (Gemini Live) vs private on-device — the user's VoiceCallMode pick.
+  final VoiceCallApi _call =
+      VoiceCallMode.I.online.value ? LiveVoiceController() : VoiceCallController();
   late final AnimationController _pulse;
 
   @override
