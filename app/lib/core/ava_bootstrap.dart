@@ -26,6 +26,7 @@ import '../features/ava_generative/image_tool.dart';
 import 'ava_local_mode.dart';
 import 'ava_memory/ava_memory.dart';
 import 'ava_tools/core_tools.dart';
+import 'voice/voice_breadcrumb.dart';
 
 class AvaBootstrap {
   AvaBootstrap._();
@@ -62,6 +63,11 @@ class AvaBootstrap {
     // /api/ava/gemini proxy); only synthesis is gated. Synthesis wiring is
     // deferred (no new worker route) — see voice_section.dart's AvaVoice.
     registerVoiceSection();
+    // If a previous run died inside a native voice call, the on-disk breadcrumb
+    // is still there — report it to PostHog now (then it clears itself). This is
+    // how native sherpa-onnx crashes (invisible to in-process telemetry) surface.
+    // ignore: unawaited_futures
+    VoiceBreadcrumb.checkAndReport();
     // Ava Receptionist: "Ava answers after 5 rings" — premium section with the
     // "Leave Instructions for Ava" box. First real AvaVoice deployment.
     // Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.

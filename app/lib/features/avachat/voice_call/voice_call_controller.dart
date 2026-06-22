@@ -165,36 +165,54 @@ class VoiceCallController {
 
   Future<void> _handleTurn(Float32List samples) async {
     if (_disposed) return;
+    final turnSw = Stopwatch()..start();
     state.value = CallState.thinking;
     status.value = 'Thinking…';
+    // STT (on-device Whisper)
+    final sttSw = Stopwatch()..start();
     final text = await SherpaVoiceEngine.I.transcribe(samples, lang: _sttLang);
+    final sttMs = sttSw.elapsedMilliseconds;
     if (text.trim().isEmpty) { _setListening(); return; }
     userCaption.value = text;
     avaCaption.value = '';
     _history.add({'role': 'user', 'text': text});
 
+    // LLM (Gemini 2.5-flash, thinking OFF server-side — speed-first)
+    final llmSw = Stopwatch()..start();
     final ans = await AvaAiClient.I.ask(
       message: text,
       context: _system,
       history: _trimHistory(),
     );
+    final llmMs = llmSw.elapsedMilliseconds;
     if (_disposed) return;
     final reply = ans.answer.trim();
     if (reply.isEmpty) { _setListening(); return; }
     avaCaption.value = reply;
     _history.add({'role': 'model', 'text': reply});
-    Analytics.capture('voice_call_turn', {
-      'user_chars': text.length,
-      'ava_chars': reply.length,
-      'blocked': ans.blocked,
-    });
 
-    await _speak(reply);
+    await _speak(reply,
+        sttMs: sttMs, llmMs: llmMs, userChars: text.length, turnSw: turnSw, blocked: ans.blocked);
   }
 
-  Future<void> _speak(String text) async {
+  Future<void> _speak(String text,
+      {int sttMs = 0, int llmMs = 0, int userChars = 0, Stopwatch? turnSw, bool blocked = false}) async {
     if (_disposed) return;
-    final path = await KokoroTts.speakToFile(text); // on-device Kokoro → wav
+    // TTS (on-device Supertonic synth → wav). Measure synth separately from playback.
+    final ttsSw = Stopwatch()..start();
+    final path = await KokoroTts.speakToFile(text);
+    final ttsMs = ttsSw.elapsedMilliseconds;
+    // Rich per-turn latency — speed is everything in a voice call.
+    Analytics.capture('voice_call_turn_timing', {
+      'stt_ms': sttMs,
+      'llm_ms': llmMs,
+      'tts_ms': ttsMs,
+      'total_ms': turnSw?.elapsedMilliseconds ?? (sttMs + llmMs + ttsMs),
+      'user_chars': userChars,
+      'ava_chars': text.length,
+      'blocked': blocked,
+      'spoke': path != null,
+    });
     if (_disposed) return;
     if (path == null) {
       // No voice model yet — keep the conversation going text-side.

@@ -21,7 +21,9 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../analytics.dart';
 import '../ava_log.dart';
+import 'voice_breadcrumb.dart';
 
 /// A single downloadable file (VAD / Whisper parts).
 class _RemoteFile {
@@ -233,18 +235,25 @@ class VoiceModels {
   }
 
   /// Stream a URL to [dest], updating [progress]. Returns false on any error.
+  /// Captures rich `voice_model_download` telemetry (name, bytes, ms, status, ok).
   Future<bool> _download(String url, String dest) async {
     final client = http.Client();
+    final name = url.split('/').last;
+    final sw = Stopwatch()..start();
+    var received = 0;
+    var status = 0;
     try {
       await File(dest).parent.create(recursive: true);
       final req = http.Request('GET', Uri.parse(url));
       final resp = await client.send(req);
+      status = resp.statusCode;
       if (resp.statusCode != 200) {
         AvaLog.I.log('voice_models', 'download ${resp.statusCode} $url');
+        Analytics.capture('voice_model_download',
+            {'name': name, 'ok': false, 'status': status, 'bytes': 0, 'ms': sw.elapsedMilliseconds});
         return false;
       }
       final total = resp.contentLength ?? 0;
-      var received = 0;
       final sink = File(dest).openWrite();
       await for (final chunk in resp.stream) {
         sink.add(chunk);
@@ -253,10 +262,16 @@ class VoiceModels {
       }
       await sink.flush();
       await sink.close();
+      Analytics.capture('voice_model_download',
+          {'name': name, 'ok': true, 'status': 200, 'bytes': received, 'ms': sw.elapsedMilliseconds});
       return true;
     } catch (e) {
       AvaLog.I.log('voice_models', 'download FAILED $url: $e');
       try { await File(dest).delete(); } catch (_) {}
+      Analytics.capture('voice_model_download', {
+        'name': name, 'ok': false, 'status': status, 'bytes': received,
+        'ms': sw.elapsedMilliseconds, 'error': e.toString(),
+      });
       return false;
     } finally {
       client.close();
@@ -270,7 +285,20 @@ class VoiceModels {
   /// close?"). It now runs on a BACKGROUND isolate via [compute] so the UI stays
   /// responsive and just shows the indeterminate "Unpacking…" state.
   Future<void> _extractTarBz2(String tarBz2Path, String outDir) async {
-    await compute(_extractTarBz2Isolate, <String>[tarBz2Path, outDir]);
+    final name = tarBz2Path.split('/').last;
+    final sw = Stopwatch()..start();
+    // Breadcrumb the unpack too — bzip2 of a big bundle can OOM on low-RAM phones.
+    await VoiceBreadcrumb.enter('unpack', detail: name);
+    try {
+      await compute(_extractTarBz2Isolate, <String>[tarBz2Path, outDir]);
+      await VoiceBreadcrumb.clear();
+      Analytics.capture('voice_model_unpack', {'name': name, 'ok': true, 'ms': sw.elapsedMilliseconds});
+    } catch (e) {
+      await VoiceBreadcrumb.clear();
+      Analytics.capture('voice_model_unpack',
+          {'name': name, 'ok': false, 'ms': sw.elapsedMilliseconds, 'error': e.toString()});
+      rethrow;
+    }
   }
 }
 

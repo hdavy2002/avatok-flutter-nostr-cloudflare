@@ -22,6 +22,7 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as so;
 import '../analytics.dart';
 import '../ava_log.dart';
 import 'sherpa_models.dart';
+import 'voice_breadcrumb.dart';
 
 /// Log + report a voice-engine failure so it shows up in PostHog (native/Dart
 /// load errors were previously only in the local log, making them invisible).
@@ -66,8 +67,13 @@ class SherpaVoiceEngine {
       return false;
     }
     try {
+      await VoiceBreadcrumb.enter('ensureStt', detail: lang); // survives a native crash
+      final sw = Stopwatch()..start();
       _ensureBindings();
-      if (_recognizer != null && _recognizerLang == lang) return true;
+      if (_recognizer != null && _recognizerLang == lang) {
+        await VoiceBreadcrumb.clear();
+        return true;
+      }
       _recognizer?.free();
       final whisper = so.OfflineWhisperModelConfig(
         encoder: VoiceModels.I.whisperEncoder,
@@ -83,9 +89,11 @@ class SherpaVoiceEngine {
       );
       _recognizer = so.OfflineRecognizer(so.OfflineRecognizerConfig(model: model));
       _recognizerLang = lang;
-      Analytics.capture('voice_engine_ok', {'stage': 'ensureStt'});
+      await VoiceBreadcrumb.clear();
+      Analytics.capture('voice_engine_ok', {'stage': 'ensureStt', 'load_ms': sw.elapsedMilliseconds});
       return true;
     } catch (e) {
+      await VoiceBreadcrumb.clear();
       _voiceErr('ensureStt', e);
       return false;
     }
@@ -96,13 +104,16 @@ class SherpaVoiceEngine {
     if (samples.isEmpty) return '';
     if (!await ensureStt(lang: lang)) return '';
     try {
+      await VoiceBreadcrumb.enter('transcribe');
       final stream = _recognizer!.createStream();
       stream.acceptWaveform(samples: samples, sampleRate: sampleRate);
       _recognizer!.decode(stream);
       final text = _recognizer!.getResult(stream).text;
       stream.free();
+      await VoiceBreadcrumb.clear();
       return text.trim();
     } catch (e) {
+      await VoiceBreadcrumb.clear();
       _voiceErr('transcribe', e);
       return '';
     }
@@ -113,8 +124,10 @@ class SherpaVoiceEngine {
   Future<bool> ensureVad() async {
     if (!await VoiceModels.I.ensureVadAndStt()) return false;
     try {
+      await VoiceBreadcrumb.enter('ensureVad');
+      final sw = Stopwatch()..start();
       _ensureBindings();
-      if (_vad != null) return true;
+      if (_vad != null) { await VoiceBreadcrumb.clear(); return true; }
       final silero = so.SileroVadModelConfig(
         model: VoiceModels.I.vadPath,
         minSilenceDuration: 0.35,
@@ -126,8 +139,11 @@ class SherpaVoiceEngine {
         config: so.VadModelConfig(sileroVad: silero, numThreads: 1, debug: false),
         bufferSizeInSeconds: 30,
       );
+      await VoiceBreadcrumb.clear();
+      Analytics.capture('voice_engine_ok', {'stage': 'ensureVad', 'load_ms': sw.elapsedMilliseconds});
       return true;
     } catch (e) {
+      await VoiceBreadcrumb.clear();
       _voiceErr('ensureVad', e);
       return false;
     }
@@ -168,8 +184,10 @@ class SherpaVoiceEngine {
   Future<bool> ensureTts() async {
     if (!await VoiceModels.I.resolveTts()) return false;
     try {
+      await VoiceBreadcrumb.enter('ensureTts');
+      final sw = Stopwatch()..start();
       _ensureBindings();
-      if (_tts != null) return true;
+      if (_tts != null) { await VoiceBreadcrumb.clear(); return true; }
       final supertonic = so.OfflineTtsSupertonicModelConfig(
         durationPredictor: VoiceModels.I.ttsDurationPredictor,
         textEncoder: VoiceModels.I.ttsTextEncoder,
@@ -182,9 +200,11 @@ class SherpaVoiceEngine {
       final model = so.OfflineTtsModelConfig(
         supertonic: supertonic, numThreads: 2, debug: false, provider: 'cpu');
       _tts = so.OfflineTts(so.OfflineTtsConfig(model: model, maxNumSenetences: 1));
-      Analytics.capture('voice_engine_ok', {'stage': 'ensureTts'});
+      await VoiceBreadcrumb.clear();
+      Analytics.capture('voice_engine_ok', {'stage': 'ensureTts', 'load_ms': sw.elapsedMilliseconds});
       return true;
     } catch (e) {
+      await VoiceBreadcrumb.clear();
       _voiceErr('ensureTts', e);
       return false;
     }
@@ -202,9 +222,11 @@ class SherpaVoiceEngine {
     if (text.trim().isEmpty) return null;
     if (!await ensureTts()) return null;
     try {
+      await VoiceBreadcrumb.enter('synthesize');
       final n = _tts!.numSpeakers;
       final safeSid = n > 0 ? (sid % n) : 0;
       final audio = _tts!.generate(text: text, sid: safeSid, speed: speed);
+      await VoiceBreadcrumb.clear();
       final f32 = audio.samples;
       final pcm = Int16List(f32.length);
       for (var i = 0; i < f32.length; i++) {
@@ -214,6 +236,7 @@ class SherpaVoiceEngine {
       }
       return TtsAudio(pcm, audio.sampleRate);
     } catch (e) {
+      await VoiceBreadcrumb.clear();
       _voiceErr('synthesize', e);
       return null;
     }
