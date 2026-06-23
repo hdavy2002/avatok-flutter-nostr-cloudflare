@@ -94,22 +94,39 @@ class DeviceContactsCache extends Table {
   TextColumn get handle => text().withDefault(const Constant(''))();
   TextColumn get avatarUrl => text().withDefault(const Constant(''))();
   TextColumn get matchDisplayName => text().withDefault(const Constant(''))(); // profile name
+  TextColumn get email => text().withDefault(const Constant(''))(); // first email from the device book (invite-by-email)
+  // 1 ⇒ this number is (likely) a WhatsApp contact. Detected from Android contact
+  // accounts (`com.whatsapp`); on iOS we can't detect, so it's set to 1 (show it).
+  IntColumn get hasWhatsapp => integer().withDefault(const Constant(0))();
   IntColumn get matchedAt => integer().withDefault(const Constant(0))(); // epoch ms of last match
   IntColumn get updatedAt => integer().withDefault(const Constant(0))(); // epoch ms last seen on device
   @override
   Set<Column> get primaryKey => {phoneNorm};
 }
 
-@DriftDatabase(tables: [Messages, Contacts, Chats, WalletLedgerCache, DeviceContactsCache])
+/// One "we sent an invite to this number via this channel" record (AvaInvite).
+/// Lives in the per-account DB so the Invite screen can show a persistent "Sent"
+/// tag next to each contact's WhatsApp / SMS / Email button across app restarts.
+@DataClassName('InviteSend')
+class InviteSends extends Table {
+  TextColumn get phoneNorm => text()();
+  TextColumn get channel => text()(); // 'whatsapp' | 'sms' | 'email'
+  IntColumn get sentAt => integer().withDefault(const Constant(0))(); // epoch ms
+  @override
+  Set<Column> get primaryKey => {phoneNorm, channel};
+}
+
+@DriftDatabase(tables: [Messages, Contacts, Chats, WalletLedgerCache, DeviceContactsCache, InviteSends])
 class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). v4:
-  // DeviceContactsCache (instant add-contact + on-AvaTOK match). All added
-  // in-place so an existing on-device DB upgrades without wiping data.
+  // DeviceContactsCache (instant add-contact + on-AvaTOK match). v5: contact
+  // email + hasWhatsapp columns and the InviteSends table (AvaInvite screen).
+  // All added in-place so an existing on-device DB upgrades without wiping data.
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
@@ -123,7 +140,30 @@ class AppDb extends _$AppDb {
           if (from < 4) {
             await m.createTable(deviceContactsCache);
           }
+          if (from < 5) {
+            await m.addColumn(deviceContactsCache, deviceContactsCache.email);
+            await m.addColumn(deviceContactsCache, deviceContactsCache.hasWhatsapp);
+            await m.createTable(inviteSends);
+          }
         },
+      );
+
+  // ── invite-sends (AvaInvite "Sent" state, per-account) ──
+  /// Reactive set of every invite we've sent — the Invite screen watches this so
+  /// a freshly-sent channel flips to "Sent" instantly and stays sent on reopen.
+  Stream<List<InviteSend>> watchInviteSends() => select(inviteSends).watch();
+
+  Future<List<InviteSend>> inviteSendsOnce() => select(inviteSends).get();
+
+  /// Record that we invited [phoneNorm] via [channel] (idempotent on the PK).
+  Future<void> markInviteSent(String phoneNorm, String channel, {int? sentAt}) =>
+      into(inviteSends).insert(
+        InviteSendsCompanion.insert(
+          phoneNorm: phoneNorm,
+          channel: channel,
+          sentAt: Value(sentAt ?? DateTime.now().millisecondsSinceEpoch),
+        ),
+        mode: InsertMode.insertOrReplace,
       );
 
   // ── device-contacts cache (instant add-contact + on-AvaTOK match) ──

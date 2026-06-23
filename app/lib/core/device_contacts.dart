@@ -26,6 +26,8 @@ class DeviceContact {
   final String handle;
   final String avatarUrl;
   final String matchDisplayName;
+  final String email; // first email saved for this contact in the device book (may be empty)
+  final bool hasWhatsapp; // contact is (likely) on WhatsApp — drives the WhatsApp invite icon
 
   const DeviceContact({
     required this.name,
@@ -35,9 +37,12 @@ class DeviceContact {
     this.handle = '',
     this.avatarUrl = '',
     this.matchDisplayName = '',
+    this.email = '',
+    this.hasWhatsapp = false,
   });
 
   bool get onAvatok => uid.isNotEmpty;
+  bool get hasEmail => email.isNotEmpty;
   // Now that people are added by phone number, show them by the name the user
   // saved in their OWN phone address book (WhatsApp-style) — fall back to the
   // AvaTOK display name, then the raw number.
@@ -55,6 +60,8 @@ class DeviceContact {
         handle: r.handle,
         avatarUrl: r.avatarUrl,
         matchDisplayName: r.matchDisplayName,
+        email: r.email,
+        hasWhatsapp: r.hasWhatsapp != 0,
       );
 }
 
@@ -154,13 +161,23 @@ class DeviceContactsService {
       final raw = await FlutterContacts.getContacts(
         withProperties: true,
         withPhoto: false,
+        // Accounts let us flag WhatsApp contacts on Android (account type
+        // `com.whatsapp`) so the Invite screen can show a WhatsApp icon only for
+        // people who actually use it. iOS has no equivalent — we show it anyway.
+        withAccounts: true,
         deduplicateProperties: true,
       );
       rawContactCount = raw.length;
-      // phoneNorm -> (rawPhone, name). First non-empty name wins per number.
-      final byNorm = <String, ({String raw, String name})>{};
+      // phoneNorm -> (rawPhone, name, email, wa). First non-empty value wins per
+      // number; WhatsApp flag is OR-ed across the contacts that share the number.
+      final byNorm = <String, ({String raw, String name, String email, bool wa})>{};
       for (final c in raw) {
         final name = c.displayName.trim();
+        final email = c.emails.isNotEmpty ? c.emails.first.address.trim() : '';
+        // Android: detect WhatsApp via the contact's linked accounts. iOS can't
+        // tell, so default to true (show the icon; wa.me handles non-users).
+        final wa = !Platform.isAndroid ||
+            c.accounts.any((a) => a.type.toLowerCase().contains('whatsapp'));
         for (final p in c.phones) {
           final rawNum = p.number.trim();
           if (rawNum.isEmpty) continue;
@@ -168,8 +185,15 @@ class DeviceContactsService {
           final norm = normPhone(rawNum);
           if (norm.length < 4) continue; // junk
           final existing = byNorm[norm];
-          if (existing == null || (existing.name.isEmpty && name.isNotEmpty)) {
-            byNorm[norm] = (raw: rawNum, name: name);
+          if (existing == null) {
+            byNorm[norm] = (raw: rawNum, name: name, email: email, wa: wa);
+          } else {
+            byNorm[norm] = (
+              raw: existing.raw,
+              name: existing.name.isEmpty && name.isNotEmpty ? name : existing.name,
+              email: existing.email.isEmpty && email.isNotEmpty ? email : existing.email,
+              wa: existing.wa || wa,
+            );
           }
         }
       }
@@ -192,6 +216,10 @@ class DeviceContactsService {
           phoneNorm: norm,
           rawPhone: Value(v.raw),
           name: Value(v.name),
+          // Fresh from the device read each sync (carry forward if this read
+          // somehow lost it, so an existing email/flag isn't wiped).
+          email: Value(v.email.isNotEmpty ? v.email : (prev?.email ?? '')),
+          hasWhatsapp: Value(v.wa ? 1 : (prev?.hasWhatsapp ?? 0)),
           // Carry forward any prior match so a number we already know is on
           // AvaTOK keeps its badge until the fresh match result arrives.
           uid: Value(prev?.uid ?? ''),
@@ -317,13 +345,67 @@ class DeviceContactsService {
     await Share.share(_inviteMessage('there', handle: myHandle), subject: 'Join me on AvaTok');
   }
 
-  static String _inviteMessage(String who, {String? handle}) {
+  static String _inviteMessage(String who, {String? handle, String? myName}) {
     final link = (handle != null && handle.isNotEmpty)
         ? ReferralService.inviteLink(handle)
         : kDownloadUrl;
-    return 'Hey $who, I\'m on AvaTok — come join me. It\'s an AI-powered messenger: '
+    final from = (myName != null && myName.trim().isNotEmpty)
+        ? ' It\'s ${myName.trim()}.'
+        : '';
+    return 'Hey $who,$from I\'m on AvaTok — come join me. It\'s an AI-powered messenger: '
         'Ava, your in-chat assistant, can watch for scams, reply for you when '
         'you\'re away, and pull up files mid-chat — and you can share with up to '
         '25 people. Join with my link: $link';
+  }
+
+  // ── AvaInvite: per-channel invite for ONE contact (Invite screen) ──
+
+  /// First name to greet [c] with in an invite ("Hey Sam, …").
+  static String _who(DeviceContact c) =>
+      c.displayName.trim().isNotEmpty ? c.displayName.trim().split(' ').first : 'there';
+
+  /// The pre-filled invite text shared via WhatsApp / SMS (carries the inviter's
+  /// name + their referral link).
+  static String inviteText(DeviceContact c, {required String myName, String? myHandle}) =>
+      _inviteMessage(_who(c), handle: myHandle, myName: myName);
+
+  /// Deep link that opens WhatsApp with the invite pre-filled for this number.
+  /// The user taps Send inside WhatsApp (apps can't send on their behalf).
+  static Uri whatsappUri(DeviceContact c, String message) {
+    final digits = c.phoneNorm.replaceAll(RegExp(r'[^\d]'), '');
+    return Uri.parse('https://wa.me/$digits?text=${Uri.encodeComponent(message)}');
+  }
+
+  /// Deep link that opens the SMS composer with the invite pre-filled. iOS uses
+  /// `&body=`, Android `?body=` — both handled here.
+  static Uri smsUri(DeviceContact c, String message) {
+    final sep = Platform.isIOS ? '&' : '?';
+    return Uri.parse('sms:${c.rawPhone}${sep}body=${Uri.encodeComponent(message)}');
+  }
+
+  /// Send an invite EMAIL to [c] from the server, on the user's behalf. This is
+  /// the only channel that is truly auto-sent (WhatsApp/SMS need a Send tap).
+  /// Returns true on a 200 `{ok:true}` from the Worker. Best-effort; never throws.
+  static Future<bool> sendInviteEmail(DeviceContact c, {required String myName}) async {
+    if (c.email.isEmpty) return false;
+    try {
+      final res = await ApiAuth.postJson(
+        '$kApiBase/invite/email',
+        {'to_email': c.email, 'to_name': c.displayName, 'from_name': myName},
+        timeout: const Duration(seconds: 15),
+      );
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body) as Map<String, dynamic>;
+        return j['ok'] == true;
+      }
+      Analytics.error(
+          domain: 'invite', code: 'email_http_${res.statusCode}', action: 'send_email',
+          message: 'invite email returned ${res.statusCode}');
+      return false;
+    } catch (e) {
+      Analytics.error(
+          domain: 'invite', code: 'email_failed', action: 'send_email', message: e.toString());
+      return false;
+    }
   }
 }

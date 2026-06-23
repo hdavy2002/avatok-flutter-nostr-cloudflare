@@ -90,7 +90,10 @@ jobs:
 
       - name: Generate code (drift / build_runner)
         working-directory: app
-        run: dart run build_runner build
+        # --delete-conflicting-outputs so a committed *.g.dart (e.g. db.g.dart) is
+        # regenerated from source on a clean checkout instead of failing as a
+        # "conflicting output" (matches the macOS workflow).
+        run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Analyze (non-blocking)
         working-directory: app
