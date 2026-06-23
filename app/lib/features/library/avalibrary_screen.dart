@@ -105,6 +105,12 @@ String _extOf(LibraryItem m) {
   return _catOf(m.category).label.toUpperCase();
 }
 
+/// Just the host of a URL, for telemetry (never the full signed/private URL —
+/// the path can carry account-scoped tokens). Empty on parse failure.
+String _hostOf(String url) {
+  try { return Uri.parse(url).host; } catch (_) { return ''; }
+}
+
 final ImagePicker _imgPicker = ImagePicker();
 
 /// Crude mime from a file name extension — the server re-derives the category,
@@ -722,7 +728,17 @@ class _FolderViewState extends State<_FolderView> {
     // browser). Everything else (video / pdf / doc / audio) still hands off to the
     // OS, which has the right native viewer for that type.
     if (LibThumbs.isImage(m)) {
-      Analytics.capture('library_image_opened', {'id': m.id, 'mime': m.mime});
+      Analytics.capture('library_image_opened', {
+        'id': m.id,
+        'mime': m.mime,
+        'name': m.name,
+        'size_bytes': m.size,
+        'category': m.category,
+        'source_kind': m.sourceKind,
+        'app_origin': m.app,
+        'scope': widget.category ?? (widget.folderId != null ? 'folder' : 'all'),
+        'url_host': _hostOf(m.displayUrl),
+      });
       if (!mounted) return;
       Navigator.of(context).push(PageRouteBuilder<void>(
         opaque: false,
@@ -1039,9 +1055,20 @@ class _ImageViewerState extends State<_ImageViewer> {
   TapDownDetails? _doubleTapPos;
   File? _thumb;
 
+  // ── Telemetry state ──────────────────────────────────────────────────────
+  final DateTime _openedAt = DateTime.now();
+  DateTime? _loadStart; // when the network image began loading
+  bool _fullLoaded = false; // full-res image finished
+  bool _thumbPlaceholderShown = false; // did the user see the cached thumb first
+  bool _failed = false; // network image errored
+  int _zoomGestures = 0; // double-taps + pinches
+  double _maxScale = 1; // peak zoom reached (telemetry for "do people zoom in?")
+  bool _closeLogged = false;
+
   @override
   void initState() {
     super.initState();
+    _loadStart = DateTime.now();
     LibThumbs.thumb(widget.item, px: 480).then((f) {
       if (mounted) setState(() => _thumb = f);
     });
@@ -1049,12 +1076,71 @@ class _ImageViewerState extends State<_ImageViewer> {
 
   @override
   void dispose() {
+    _logClose();
     _tc.dispose();
     super.dispose();
   }
 
+  /// Fired exactly once when the full-resolution image first paints. Carries the
+  /// load latency and whether the cached thumb bridged the gap — this is the
+  /// signal for diagnosing "image took forever / showed black" reports.
+  void _onFullLoaded() {
+    if (_fullLoaded) return;
+    _fullLoaded = true;
+    Analytics.capture('library_image_loaded', {
+      'id': widget.item.id,
+      'latency_ms': _loadStart == null
+          ? -1
+          : DateTime.now().difference(_loadStart!).inMilliseconds,
+      'used_thumb_placeholder': _thumbPlaceholderShown,
+      'url_host': _hostOf(widget.item.displayUrl),
+    });
+  }
+
+  /// Fired once when the full-res image fails to load — routed through the
+  /// standard error envelope (domain=media) so it's queryable with every other
+  /// media failure by the user's email/phone.
+  void _onLoadFailed() {
+    if (_failed) return;
+    _failed = true;
+    Analytics.error(
+      domain: 'media',
+      code: 'library_image_load_failed',
+      screen: 'avalibrary_image_viewer',
+      extra: {
+        'id': widget.item.id,
+        'mime': widget.item.mime,
+        'url_host': _hostOf(widget.item.displayUrl),
+        'had_thumb_fallback': _thumb != null,
+      },
+    );
+  }
+
+  /// Fired once when the viewer is dismissed: dwell time, whether the image ever
+  /// loaded, and how far the user zoomed — lets us see real engagement and catch
+  /// "opened but never rendered" sessions.
+  void _logClose() {
+    if (_closeLogged) return;
+    _closeLogged = true;
+    Analytics.capture('library_image_closed', {
+      'id': widget.item.id,
+      'dwell_ms': DateTime.now().difference(_openedAt).inMilliseconds,
+      'loaded': _fullLoaded,
+      'failed': _failed,
+      'zoom_gestures': _zoomGestures,
+      'max_scale': double.parse(_maxScale.toStringAsFixed(2)),
+    });
+  }
+
+  void _trackScale() {
+    final s = _tc.value.getMaxScaleOnAxis();
+    if (s > _maxScale) _maxScale = s;
+  }
+
   void _toggleZoom() {
-    if (_tc.value != Matrix4.identity()) {
+    _zoomGestures++;
+    final zoomingIn = _tc.value == Matrix4.identity();
+    if (!zoomingIn) {
       _tc.value = Matrix4.identity();
     } else {
       final p = _doubleTapPos?.localPosition;
@@ -1066,6 +1152,12 @@ class _ImageViewerState extends State<_ImageViewer> {
       }
       _tc.value = m;
     }
+    _trackScale();
+    Analytics.capture('library_image_zoomed', {
+      'id': widget.item.id,
+      'gesture': 'double_tap',
+      'direction': zoomingIn ? 'in' : 'out',
+    });
   }
 
   @override
@@ -1089,24 +1181,40 @@ class _ImageViewerState extends State<_ImageViewer> {
               transformationController: _tc,
               minScale: 1,
               maxScale: 5,
+              onInteractionEnd: (d) {
+                _trackScale();
+                // A pinch (scale gesture) ended at non-default zoom — count it.
+                if (d.scaleVelocity != 0 || _tc.value != Matrix4.identity()) {
+                  _zoomGestures++;
+                }
+              },
               child: Center(
                 child: Image.network(
                   m.displayUrl,
                   fit: BoxFit.contain,
                   loadingBuilder: (ctx, child, progress) {
-                    if (progress == null) return child;
-                    // Show the cached thumb (blurred-up) until the full image lands.
+                    if (progress == null) {
+                      // Full image is ready — log latency once, after this frame.
+                      WidgetsBinding.instance.addPostFrameCallback((_) => _onFullLoaded());
+                      return child;
+                    }
+                    // Show the cached thumb until the full image lands.
+                    if (_thumb != null) {
+                      _thumbPlaceholderShown = true;
+                      return Image.file(_thumb!, fit: BoxFit.contain);
+                    }
+                    return const Center(
+                        child: CircularProgressIndicator(color: Colors.white));
+                  },
+                  errorBuilder: (_, __, ___) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _onLoadFailed());
                     return _thumb != null
                         ? Image.file(_thumb!, fit: BoxFit.contain)
-                        : const Center(
-                            child: CircularProgressIndicator(color: Colors.white));
+                        : const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text('Image unavailable',
+                                style: TextStyle(color: Colors.white)));
                   },
-                  errorBuilder: (_, __, ___) => _thumb != null
-                      ? Image.file(_thumb!, fit: BoxFit.contain)
-                      : const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text('Image unavailable',
-                              style: TextStyle(color: Colors.white))),
                 ),
               ),
             ),
