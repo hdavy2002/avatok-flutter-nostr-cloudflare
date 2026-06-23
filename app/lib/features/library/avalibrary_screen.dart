@@ -1009,28 +1009,57 @@ Future<int> _pickAndUpload(String kind, {required String app, String? folderId})
   return 1;
 }
 
-/// Shared little name prompt dialog.
+/// Shared little name prompt dialog — compact, centered card (not a full-height
+/// sheet). Width-capped so it never stretches edge-to-edge on phones, and the
+/// column shrink-wraps its content so the height hugs the field + buttons.
 Future<String?> _promptName(BuildContext context, String title, {String initial = ''}) {
   final ctrl = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: Zine.card,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Zine.r),
-        side: const BorderSide(color: Zine.ink, width: Zine.bw),
-      ),
-      title: Text(title, style: ZineText.cardTitle(size: 17)),
-      content: ZineField(controller: ctrl, autofocus: true, hint: 'Folder name'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: ZineText.link())),
-        ZineButton(
-          label: 'Save it',
-          variant: ZineButtonVariant.blue,
-          fontSize: 15,
-          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+    barrierColor: Colors.black.withOpacity(0.45),
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      alignment: Alignment.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 340),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Zine.card,
+            borderRadius: BorderRadius.circular(Zine.r),
+            border: Border.all(color: Zine.ink, width: Zine.bw),
+            boxShadow: Zine.shadowSm,
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: ZineText.cardTitle(size: 18)),
+              const SizedBox(height: 14),
+              ZineField(controller: ctrl, autofocus: true, hint: 'Folder name'),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text('Cancel', style: ZineText.link()),
+                  ),
+                  const SizedBox(width: 8),
+                  ZineButton(
+                    label: 'Save it',
+                    variant: ZineButtonVariant.blue,
+                    fontSize: 15,
+                    onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ],
+      ),
     ),
   );
 }
