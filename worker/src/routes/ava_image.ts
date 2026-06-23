@@ -36,18 +36,19 @@ import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { guardInput } from "../lib/ai_gate";
-import { isPremiumAI } from "../lib/premium";
-import { chargeFeature, featureCost } from "../feature_pricing";
-import { walletOp } from "./wallet";
 import { track } from "../hooks";
 import { readConfig } from "./config";
+import { tierOf, PLANS, type TierId } from "./plans";
+import { enforceAllowance } from "../lib/usage";
 import { mediaSession } from "../db/shard";
 import { postAvaMessage } from "./ava_thread";
 import type { MessageScope } from "../lib/ava_kinds";
 
-// Image generation is a PREMIUM feature (free tier has no image gen). Premium via
-// a BYO AI Studio key runs on the user's own quota (no coins); premium via top-up
-// runs on our key and deducts coins (ava_image_generate).
+// Image generation is metered by the Phase-1 SUBSCRIPTION ALLOWANCE (plans.ts):
+// every tier — including Free — gets a daily image grant (Free 3, Plus 30,
+// Pro 100, Max unlimited), enforced server-side via enforceAllowance("image").
+// It runs on OUR Google key via the AI Gateway; when the daily grant is spent the
+// caller gets an upgrade prompt (no coins involved in Phase 1).
 const IMAGE_MODEL = "gemini-3.1-flash-image-preview"; // Nano Banana 2
 
 function inboxOf(env: Env, uid: string) {
@@ -202,21 +203,19 @@ async function storePublicImage(env: Env, uid: string, bytes: Uint8Array): Promi
 // fast and the humans keep chatting; the image arrives in-thread when ready.
 async function fulfil(
   env: Env, uid: string, conv: string, prompt: string, key: string,
-  chargeCoins: boolean, statusId: string | undefined, editRef?: string,
+  tier: TierId, statusId: string | undefined, editRef?: string,
 ): Promise<void> {
   try {
     const bytes = await generateImage(env, key, prompt, uid, editRef);
-    // Charge AvaCoins only for top-up premium (our key). BYO-key users run on
-    // their own quota, so no coins. Pre-authorized at request time.
-    if (chargeCoins) {
-      await chargeFeature(env, uid, "ava_image_generate", crypto.randomUUID()).catch(() => ({ ok: false }));
-    }
     // OUTPUT-INTENT moderation: the prompt is llama-guarded BEFORE generation
     // (the gate in avaImage). Pixel-level scanning of the produced image is not
     // run inline here (we write the user_media row directly rather than through
     // /upload/public's async Workers-AI scan); the prompt guard is the
     // enforced gate. A follow-up could enqueue Q_MODERATION on the new r2_key.
     const mediaRef = await storePublicImage(env, uid, bytes);
+    // Consume ONE image from today's per-tier allowance only AFTER a successful
+    // delivery, so a failed generation never burns the user's daily grant.
+    await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
     const caption = editRef ? "Here's the edited image ✨" : "Here's your image ✨";
     await postAvaMessage(env, { ownerUid: uid, conv, text: caption, media_ref: mediaRef, source: "image" });
   } catch (e: any) {
@@ -229,27 +228,6 @@ async function fulfil(
     }).catch(() => { /* best-effort */ });
   } finally {
     await endChip(env, uid, conv, statusId);
-  }
-}
-
-// ---- POST /api/ava/image ----------------------------------------------------
-// Count how many Ava-generated images THIS user produced since UTC midnight
-// today. Reused as the per-user/day fair-use backstop (cfg.imageDailyCap) that
-// applies to EVERY tier — including "unlimited" packages — so a single account
-// (or a runaway loop) can never hammer the Nano Banana 2 endpoint. We derive the
-// count from the user_media rows we already write per generation (no new table):
-// rows are content-addressed `ava-image-<hash>.png`. NOTE: an identical
-// re-generation dedupes (same hash → no new row), which can only make this an
-// UNDER-estimate — fine for a safety cap.
-async function imageCountToday(env: Env, uid: string): Promise<number> {
-  const since = new Date(); since.setUTCHours(0, 0, 0, 0);
-  try {
-    const row = await mediaSession(env).prepare(
-      "SELECT COUNT(*) AS n FROM user_media WHERE uid=?1 AND file_name LIKE 'ava-image-%' AND created_at >= ?2",
-    ).bind(uid, since.getTime()).first<{ n: number }>();
-    return Number(row?.n ?? 0);
-  } catch {
-    return 0; // never block generation on a counter read failure
   }
 }
 
@@ -301,52 +279,40 @@ export async function runAvaImage(
       message: "I can't create that image. Let's keep things safe — try a different idea.", httpStatus: 200 };
   }
 
-  // PREMIUM GATE (per-caller): image generation is premium-only. Free users get
-  // the upsell. The package layer plugs in here via isPremiumAI / the wallet.
-  const { premium } = await isPremiumAI(a.req ?? new Request("https://ava.internal/image"), env, uid, a.body);
-  if (!premium) {
-    track(env, uid, "premium_gate_shown", "avaai", { feature: "image_generation" });
-    return { ok: false, blocked: true, reason: "premium_required",
-      message: "That's a premium feature. Top up your wallet to unlock image generation, file & photo understanding, memory, and more — all included.",
-      httpStatus: 200 };
+  // SUBSCRIPTION ALLOWANCE GATE (Phase 1, per-caller): image generation is metered
+  // per tier per UTC day. EVERY tier — including Free — gets a daily grant
+  // (PLANS[tier].caps.image); image gen is NOT premium-only. When the grant is
+  // spent we return an upgrade prompt (not a hard wall). We PEEK here (commit:false)
+  // and only consume the unit after a successful delivery (in fulfil).
+  const tier = await tierOf(env, uid);
+  const allow = await enforceAllowance(env, uid, tier, "image", 1, { commit: false });
+  if (!allow.allowed) {
+    track(env, uid, "ava_image_capped", "avaai", { used: allow.used, cap: allow.cap, tier });
+    const up = allow.upsell;
+    const upCap = up ? PLANS[up.tier].caps.image : null;
+    const upText = up
+      ? ` Upgrade to ${PLANS[up.tier].name} ($${up.price_usd}/mo) for ${upCap === null ? "unlimited" : upCap} images a day.`
+      : "";
+    return {
+      ok: false, blocked: true, reason: "plan_limit", tier: PLANS[tier].key,
+      message: `You've used all ${allow.cap} of today's AI images on your ${PLANS[tier].name} plan — it resets tomorrow.${upText}`,
+      httpStatus: 200,
+    };
   }
 
-  // Premium runs on OUR Google key (the one place we touch Google), via the AI Gateway.
+  // Image gen runs on OUR Google key (the one place we touch Google), via the AI Gateway.
   const key = env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "no_gemini_key", message: "Image generation is unavailable right now.", httpStatus: 503 };
 
-  // (2.5) FAIR-USE BACKSTOP (per-caller/day): applies to ALL tiers, including
-  // "unlimited" packages, so no single account (or runaway loop) can run away
-  // with Nano Banana 2 cost.
-  const cap = Number(cfg.imageDailyCap ?? 0);
-  if (cap > 0) {
-    const used = await imageCountToday(env, uid);
-    if (used >= cap) {
-      track(env, uid, "ava_image_capped", "avaai", { used, cap });
-      return { ok: false, blocked: true, reason: "daily_cap",
-        message: `You've hit today's image limit (${cap}). It resets tomorrow — thanks for keeping things fair.`,
-        httpStatus: 200 };
-    }
-  }
-
-  // Pre-authorize coins (free daily grant first, then paid) before any work.
-  const bal = await walletOp(env, uid, { op: "balance", uid });
-  const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
-  const cost = featureCost("ava_image_generate") ?? 0;
-  if (spendable < cost) {
-    return { ok: false, blocked: true, reason: "insufficient_coins",
-      message: "You're out of AvaCoins for images. Top up to keep creating.", httpStatus: 200 };
-  }
-
   // (3) drop the working chip immediately so the thread shows "Ava is generating…".
   const statusId = await postChip(env, uid, conv, "Ava is generating an image…");
-  track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef });
+  track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier });
 
   // (4–6) heavy work runs detached — return now while the image is produced and
   // posted into the SAME conversation when ready.
-  void fulfil(env, uid, conv, prompt, key, true, statusId, a.editRef);
+  void fulfil(env, uid, conv, prompt, key, tier, statusId, a.editRef);
 
-  return { ok: true, conv, status_id: statusId ?? null, async: true, tier: "premium", httpStatus: 200 };
+  return { ok: true, conv, status_id: statusId ?? null, async: true, tier: PLANS[tier].key, httpStatus: 200 };
 }
 
 // ---- POST /api/ava/image ----------------------------------------------------
