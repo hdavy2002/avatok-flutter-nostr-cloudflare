@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
@@ -149,11 +150,25 @@ class Directory {
   static Future<Contact?> resolve(String query) async {
     final q = query.trim();
     if (q.isEmpty) return null;
+    // Classify the query so resolve telemetry can be sliced by id type — this is
+    // the key signal for the "DMs stuck on waiting-to-reach-phone" bug class.
+    final kind = q.startsWith('@')
+        ? 'handle'
+        : q.startsWith('npub1')
+            ? 'npub'
+            : q.contains('@')
+                ? 'email'
+                : RegExp(r'^[+\d]').hasMatch(q)
+                    ? 'phone'
+                    : 'name';
     try {
       final r = await http
           .get(Uri.parse('$kResolveUrl?q=${Uri.encodeQueryComponent(q)}'))
           .timeout(const Duration(seconds: 8));
-      if (r.statusCode != 200) return null;
+      if (r.statusCode != 200) {
+        Analytics.capture('contact_resolve', {'kind': kind, 'found': false, 'reason': 'http_${r.statusCode}'});
+        return null;
+      }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final p = j['profile'] as Map<String, dynamic>?;
       // Cloudflare-native: the directory returns `uid` (Clerk id) as the
@@ -161,7 +176,14 @@ class Directory {
       // (older worker shape) so a contact ALWAYS gets a routable id — a missing
       // id here was leaving DMs stuck on "waiting to reach phone".
       final npub = j['uid'] ?? j['npub'] ?? p?['uid'];
-      if (npub == null) return null;
+      if (npub == null) {
+        // Server said found:false (or a shape we can't address) — the exact case
+        // that silently broke delivery. Track it so we catch regressions early.
+        Analytics.capture('contact_resolve',
+            {'kind': kind, 'found': false, 'reason': j['found'] == false ? 'not_registered' : 'no_uid'});
+        return null;
+      }
+      Analytics.capture('contact_resolve', {'kind': kind, 'found': true});
       final name = (p?['name'] ?? p?['display_name'] ?? '').toString();
       return Contact(
         npub: npub.toString(),
@@ -172,11 +194,13 @@ class Directory {
         email: (p?['email'] ?? '').toString(),
         avatarUrl: (p?['avatar_url'] ?? j['avatar_url'] ?? '').toString(),
       );
-    } catch (_) {
+    } catch (e) {
       // Even with no directory hit, a raw npub is still addable.
       if (q.startsWith('npub1')) {
+        Analytics.capture('contact_resolve', {'kind': 'npub', 'found': true, 'reason': 'offline_fallback'});
         return Contact(npub: q, name: _short(q));
       }
+      Analytics.capture('contact_resolve', {'kind': kind, 'found': false, 'reason': 'error'});
       return null;
     }
   }
