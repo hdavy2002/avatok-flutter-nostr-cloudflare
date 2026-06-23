@@ -2011,7 +2011,97 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final res = await FilePicker.platform.pickFiles(withData: true);
     final f = res?.files.single;
     if (f == null || f.bytes == null) return;
-    await _sendMedia(MediaKind.file, f.bytes!, 'application/octet-stream', f.name);
+    await _sendFileWithCaption(f.bytes!, f.name);
+  }
+
+  // Files (PDFs, docs…) get the SAME "say something about it" caption step that
+  // photos do, so you can explain the file — and, in Ask-Ava mode, the caption
+  // is the instruction Ava acts on with the attachment in context. Previously a
+  // file went out silently with no way to add text.
+  Future<void> _sendFileWithCaption(Uint8List bytes, String name) async {
+    final caption = await _fileCaptionSheet(name);
+    if (caption == null) return; // dismissed
+    final c = caption.trim();
+    // ONE message: file + caption together, awaited so the attachment is on the
+    // InboxDO before we summon Ava below.
+    await _sendMedia(MediaKind.file, bytes, 'application/octet-stream', name, caption: c);
+    if (c.isEmpty) return;
+    _ragAddLine('You', c);
+    if (_editing == null && onSummonAva != null) {
+      final lower = c.toLowerCase();
+      final shared = lower.contains(_avaShareWord);
+      final atAva = lower.contains(_avaWakeWord);
+      final avaModePrivate = _avaMode && !shared && !atAva;
+      if (atAva || shared || avaModePrivate) {
+        // ignore: unawaited_futures
+        onSummonAva!(avaModePrivate ? '$_avaWakeWord $c' : c);
+      }
+    }
+  }
+
+  // Compact sheet: a file chip (icon + name) + a caption/instruction field.
+  // Returns the caption (possibly empty → send with no text) or null if dismissed.
+  Future<String?> _fileCaptionSheet(String name) {
+    final cap = TextEditingController();
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 14, right: 14, top: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 14,
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Zine.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Zine.ink, width: 2),
+            ),
+            child: Row(children: [
+              PhosphorIcon(PhosphorIcons.file(PhosphorIconsStyle.bold), size: 22, color: Zine.ink),
+              const SizedBox(width: 10),
+              Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 14))),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: _avaMode ? Zine.lilac : Zine.card,
+                  borderRadius: BorderRadius.circular(Zine.rField),
+                  border: Border.all(color: Zine.ink, width: 2),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(
+                  controller: cap,
+                  autofocus: true,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (v) => Navigator.pop(ctx, v),
+                  style: ZineText.input(size: 15),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    hintText: _avaMode ? 'Tell Ava about this file…' : 'Add a note…',
+                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _sendCircle(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
+                () => Navigator.pop(ctx, cap.text)),
+          ]),
+        ]),
+      ),
+    ).whenComplete(cap.dispose);
   }
 
   MediaKind _kindFromCategory(String c) => c == 'image'
