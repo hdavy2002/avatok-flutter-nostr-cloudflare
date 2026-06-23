@@ -33,6 +33,7 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../translation/translate_overlay.dart';
 import 'conference_api.dart';
+import 'conference_telemetry.dart';
 
 /// The one live conference this device is in (a phone is in ≤1 call at a time).
 /// Owning the Room OUTSIDE the screen lets the user minimize back into the chat
@@ -96,6 +97,7 @@ class ConferenceScreen extends StatefulWidget {
 class _ConferenceScreenState extends State<ConferenceScreen> {
   OngoingConference? _conf;
   lk.EventsListener<lk.RoomEvent>? _events;
+  ConferenceTelemetry? _tel;
   String? _error;
   bool _mic = true, _cam = true, _speaker = true;
   bool _leaving = false;
@@ -117,11 +119,13 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
   Future<void> _connect() async {
     final t = widget.ticket!;
     final video = t.kind != 'audio';
+    _tel = ConferenceTelemetry(gid: widget.gid!, video: video, starter: widget.starter);
     final prefs = await _ConfPrefs.load();
     _mic = prefs['mic'] as bool? ?? true;
     _cam = video && (prefs['cam'] as bool? ?? true);
     _speaker = prefs['speaker'] as bool? ?? true;
     final room = lk.Room(roomOptions: const lk.RoomOptions(adaptiveStream: true, dynacast: true));
+    final connectT0 = DateTime.now().millisecondsSinceEpoch;
     try {
       await room.connect(t.url, t.token);
       await room.localParticipant?.setMicrophoneEnabled(_mic);
@@ -129,10 +133,14 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
       try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
     } catch (e) {
       AvaLog.I.log('conference', 'connect failed: $e');
+      _tel?.joinFailed(e);
       try { await room.dispose(); } catch (_) {}
       if (mounted) setState(() => _error = 'Could not join the call');
       return;
     }
+    _tel?.joined(room,
+        joinMs: DateTime.now().millisecondsSinceEpoch - connectT0,
+        serverHost: Uri.tryParse(t.url)?.host);
     final conf = OngoingConference(
         gid: widget.gid!, title: widget.title!, video: video, starter: widget.starter, room: room);
     OngoingConference.active = conf;
@@ -141,10 +149,18 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
 
   void _attach(OngoingConference conf) {
     _conf = conf;
+    // Resume path (re-attach to an already-running room) had no telemetry instance.
+    if (_tel == null) {
+      _tel = ConferenceTelemetry(gid: conf.gid, video: conf.video, starter: conf.starter);
+      _tel!.resumed(conf.room);
+    }
     conf.room.addListener(_onRoomChanged);
     _events = conf.room.createListener()
+      ..on<lk.ParticipantConnectedEvent>((_) => _tel?.participantChanged(conf.room, 'join'))
+      ..on<lk.ParticipantDisconnectedEvent>((_) => _tel?.participantChanged(conf.room, 'leave'))
       ..on<lk.RoomDisconnectedEvent>((_) {
         // Room ended remotely ("end for all", network) → fully tear down.
+        _tel?.left(conf.room, reason: 'room_disconnected');
         if (identical(OngoingConference.active, conf)) OngoingConference.active = null;
         if (mounted && !_leaving) Navigator.of(context).pop();
       });
@@ -155,6 +171,14 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
 
   @override
   void dispose() {
+    // Safety net for real teardowns only. MINIMIZE also disposes this screen but
+    // keeps the room CONNECTED (call continues), so guard on connectionState —
+    // emitting conference_left on a minimize would wrongly end the call's metrics.
+    // left() is idempotent, so an explicit leave/disconnect already covered.
+    if (_conf != null &&
+        _conf!.room.connectionState == lk.ConnectionState.disconnected) {
+      _tel?.left(_conf!.room, reason: 'dispose');
+    }
     _conf?.room.removeListener(_onRoomChanged);
     _events?.dispose();
     super.dispose();
@@ -214,6 +238,11 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
       );
       if (choice == null) return;
       if (choice == 'end') unawaited(ConferenceApi.end(conf.gid));
+      _tel?.left(conf.room,
+          reason: choice == 'end' ? 'ended_for_all' : 'leave',
+          endedForAll: choice == 'end');
+    } else {
+      _tel?.left(conf.room, reason: 'leave');
     }
     _leaving = true;
     await conf.leave();
