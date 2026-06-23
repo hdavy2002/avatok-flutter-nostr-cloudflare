@@ -176,6 +176,20 @@ class Analytics {
   static String get _platform =>
       Platform.isIOS ? 'ios' : (Platform.isAndroid ? 'android' : 'other');
 
+  /// Device-configured region (e.g. 'US', 'IN') parsed from the OS locale. This
+  /// is the user's SET country; PostHog also adds the NETWORK country server-side
+  /// via GeoIP ($geoip_country_*). Having both lets support answer "country of
+  /// use" even for VPN/roaming users. Best-effort — '' when unknown.
+  static String get _deviceCountry {
+    try {
+      final loc = Platform.localeName; // e.g. en_US, en_IN.UTF-8
+      final m = RegExp(r'[_-]([A-Za-z]{2})').firstMatch(loc);
+      return m != null ? m.group(1)!.toUpperCase() : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   static Map<String, Object> _base([Map<String, Object>? p]) => {
         'platform': _platform,
         'app_version': appVersion,
@@ -196,6 +210,7 @@ class Analytics {
         'build': kAppBuild,
         'env': kAvatokEnv,
         'net': _net,
+        if (_deviceCountry.isNotEmpty) 'device_country': _deviceCountry,
         'session_seq': ++_seq,
         ...?p,
       };

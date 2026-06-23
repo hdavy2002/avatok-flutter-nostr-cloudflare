@@ -100,6 +100,7 @@ class _CallScreenState extends State<CallScreen> {
     super.initState();
     gInCall = true;
     _telemetry = CallTelemetry(callId: widget.room, video: widget.video, outgoing: widget.outgoing);
+    _telemetry.started(); // funnel root: started → connected → ended
     // Wi-Fi ⇆ cellular handoff: don't wait for the transport to time out — restart
     // ICE proactively so the call survives leaving the house mid-conversation.
     _netSub = Connectivity().onConnectivityChanged.listen((_) {
@@ -204,13 +205,22 @@ class _CallScreenState extends State<CallScreen> {
         'audio': true,
         'video': widget.video ? {'facingMode': 'user'} : false,
       });
-    } catch (_) {
+    } catch (e) {
       // Mic/cam permission denied or device busy — don't hang on "Connecting…".
+      // Telemetry: distinct setup-failure reason so support can see "the call
+      // never started because mic/cam was blocked" (pulled by the user's email).
+      Analytics.error(
+        domain: 'call_setup',
+        code: 'media_denied',
+        message: e.toString(),
+        action: widget.video ? 'getUserMedia_av' : 'getUserMedia_audio',
+        extra: {'call_id': widget.room, 'video': widget.video},
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Microphone permission is needed to make a call')));
       }
-      _endWith('ended');
+      _endWith('ended', reason: 'media-denied');
       return;
     }
     _local.srcObject = _stream;
