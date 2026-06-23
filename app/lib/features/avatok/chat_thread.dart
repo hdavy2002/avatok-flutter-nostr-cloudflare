@@ -23,6 +23,11 @@ import '../../core/api_auth.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/composer_ai.dart';
 import '../../core/ava_contracts.dart';
+import '../../core/brain_consent.dart';
+import '../../core/feature_flags.dart';
+import '../ava_companion/companion_thread.dart';
+import '../avachat/discuss_seed.dart';
+import '../avachat/thread_context.dart';
 import '../../core/ava_local_mode.dart';
 import '../../core/ava_local_replies.dart';
 import '../../core/ava_log.dart';
@@ -2319,6 +2324,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
+          if (kDiscussWithAvaEnabled && _convKey != null)
+            _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Discuss with Ava',
+                _discussWithAva),
           _action(ctx, PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), 'Search',
               () { Navigator.pop(ctx); setState(() { _searchMode = true; _searchQuery = ''; }); }),
           _action(ctx, PhosphorIcons.images(PhosphorIconsStyle.bold), 'Media, links & docs',
@@ -2346,6 +2354,56 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]),
       ),
     );
+  }
+
+  /// "Discuss with Ava" — open ChatAVA (the Companion thread) pointed at THIS
+  /// conversation. The transcript is assembled on-device from the already-decoded
+  /// bubbles and passed transiently as grounding context; it is never indexed
+  /// server-side (DM/group content stays on the phone). Gated at use by the
+  /// matching AvaBrain consent toggle.
+  Future<void> _discussWithAva() async {
+    final isGroup = widget.chat.group || widget.chat.gid != null;
+    // Consent gate: DMs use 'avatok_dms' (on-device only), groups 'group_chats'.
+    final allowed = await BrainConsent.isOn(isGroup ? 'group_chats' : 'avatok_dms');
+    if (!mounted) return;
+    if (!allowed) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Turn on AvaBrain for your messages in Settings to discuss '
+            'a chat with Ava. Your messages stay on this device.'),
+      ));
+      return;
+    }
+    // Build the transcript from the visible bubbles (skip Ava/system/special).
+    final turns = <DiscussTurn>[];
+    for (final m in _msgs) {
+      if (m.special != null) continue; // ava bubbles, receipts, calls, etc.
+      final text = m.text.trim();
+      if (text.isEmpty) continue;
+      turns.add(DiscussTurn(me: m.me, text: text));
+    }
+    final transcript = ThreadContext.buildVerbatim(
+      peerLabel: widget.chat.name,
+      turns: turns,
+      isGroup: isGroup,
+    );
+    if (transcript.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Not enough messages here yet for Ava to weigh in.'),
+      ));
+      return;
+    }
+    Analytics.capture('discuss_with_ava_opened', {
+      'surface': 'thread',
+      'is_group': isGroup,
+      'turns': turns.length,
+    });
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => CompanionThreadScreen(
+        persona: discussPersona(widget.chat.name, isGroup: isGroup),
+        discussContext: transcript,
+        initialTitle: 'Chat with ${widget.chat.name}',
+      ),
+    ));
   }
 
   /// Open the chat library — every photo, video, link and doc shared here.

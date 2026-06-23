@@ -55,12 +55,19 @@ class CompanionThreadScreen extends StatefulWidget {
   /// Existing (possibly user-renamed) title to preserve when resuming.
   final String? initialTitle;
 
+  /// "Discuss this chat with Ava" grounding block — the on-device-assembled
+  /// transcript of a Messenger conversation. When set, it is injected into the
+  /// per-turn `context` so Ava can give an opinion on that chat and help draft
+  /// replies. Never persisted server-side (DM/group content stays on-device).
+  final String? discussContext;
+
   const CompanionThreadScreen({
     super.key,
     required this.persona,
     this.sessionId,
     this.initialMessages,
     this.initialTitle,
+    this.discussContext,
   });
 
   @override
@@ -130,6 +137,9 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
 
   String _opener(AvaPersona p) {
     switch (p.id) {
+      case 'discuss':
+        return "I've read through this chat. Ask me what I think, what they "
+            'might mean, or have me help you draft a reply.';
       case 'brainstorm':
         return "Let's brainstorm. What are we cooking up — a name, a plan, a "
             'whole idea? Throw me the seed.';
@@ -315,6 +325,10 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       } catch (_) {}
     }
     final ctxParts = <String>[widget.persona.systemPrompt];
+    // "Discuss this chat" grounding rides right after the system prompt so the
+    // conversation under review is the primary context for every turn.
+    final discuss = widget.discussContext;
+    if (discuss != null && discuss.isNotEmpty) ctxParts.add(discuss);
     if (about.isNotEmpty) ctxParts.add(about);
     if (notes.isNotEmpty) ctxParts.add(notes);
     final ctxStr = ctxParts.join('\n\n');

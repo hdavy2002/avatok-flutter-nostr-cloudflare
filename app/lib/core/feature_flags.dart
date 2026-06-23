@@ -68,6 +68,12 @@ const bool kGuardianEnabledDefault = true;
 /// Companion (blank "New chat with Ava", personas). Default ON; voice is premium.
 const bool kCompanionEnabledDefault = true;
 
+/// "Discuss this chat with Ava" — open ChatAVA pointed at a Messenger thread to
+/// get Ava's opinion + draft replies. Context is assembled on-device and passed
+/// transiently to the moderated proxy (never indexed server-side). Default ON;
+/// the entry point also checks the AvaBrain DM/group consent toggle at use.
+const bool kDiscussWithAvaEnabled = true;
+
 /// Generative image gen (Nano Banana 2) in-thread. Default ON as a surface;
 /// every generation is a premium PaidFeature at the point of use.
 const bool kGenerativeEnabledDefault = true;
