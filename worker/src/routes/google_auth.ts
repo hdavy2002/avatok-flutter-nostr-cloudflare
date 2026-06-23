@@ -19,7 +19,7 @@ const ALLOWED_AUD = new Set<string>([
 ]);
 
 // POST /api/auth/google  { id_token }  ->  { ticket }
-export async function googleAuth(req: Request, env: Env): Promise<Response> {
+export async function googleAuth(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   // Server-side signup telemetry. The Google→Clerk exchange is where signups
   // silently die ("could not create account") with the real Clerk reason in
   // `detail` — until now that detail never left this function. Every branch
@@ -29,12 +29,16 @@ export async function googleAuth(req: Request, env: Env): Promise<Response> {
   const t0 = Date.now();
   let uid: string | undefined;
   const sx = (step: string, email: string | null, props: Record<string, unknown> = {}) =>
-    trackUser(env, uid ?? "anon_signup", email, "signup_server", "avatok", {
-      provider: "google",
-      step,
-      ms: Date.now() - t0,
-      ...props,
-    });
+    // waitUntil keeps the isolate alive until the queue send completes, so these
+    // signup_server events actually reach PostHog instead of being cancelled.
+    ctx.waitUntil(
+      trackUser(env, uid ?? "anon_signup", email, "signup_server", "avatok", {
+        provider: "google",
+        step,
+        ms: Date.now() - t0,
+        ...props,
+      }),
+    );
 
   if (!env.CLERK_SECRET_KEY) {
     sx("config_missing", null, { ok: false });
@@ -81,15 +85,24 @@ export async function googleAuth(req: Request, env: Env): Promise<Response> {
     sx("clerk_lookup_failed", email, { ok: false, http_status: look.status });
   }
   if (!uid) {
+    // The Clerk instance requires username + first/last on user creation
+    // (2026-06-23 config). Google returns email + (usually) given/family name;
+    // derive a unique username from the email local-part with a random suffix so
+    // a first-time Google sign-up satisfies the instance's required fields.
+    const local = (email.split("@")[0] || "ava").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 26) || "ava";
+    const username = `${local}_${Math.random().toString(36).slice(2, 8)}`.slice(0, 40);
+    const firstName = (g.given_name as string) || local;
+    const lastName = (g.family_name as string) || "Ava";
     const create = await fetch(`${CLERK_API}/users`, {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({
         email_address: [email],
+        username,
+        first_name: firstName,
+        last_name: lastName,
         skip_password_checks: true,
         skip_password_requirement: true,
-        first_name: (g.given_name as string) || undefined,
-        last_name: (g.family_name as string) || undefined,
       }),
     });
     if (!create.ok) {

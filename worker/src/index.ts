@@ -342,7 +342,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/referral/summary" && req.method === "GET") return await referralSummary(req, env);
       if (p === "/api/invite/email" && req.method === "POST") return await inviteEmail(req, env);
       if (p === "/api/feature/costs" && req.method === "GET") return await featureCostsRoute(req, env);
-      if (p === "/api/auth/google" && req.method === "POST") return await googleAuth(req, env);
+      if (p === "/api/auth/google" && req.method === "POST") return await googleAuth(req, env, ctx);
       if (p === "/api/wallet/balance" && req.method === "GET") return await walletBalance(req, env);
       if (p === "/api/wallet/transactions" && req.method === "GET") return await walletTransactions(req, env);
       if (p === "/api/wallet/earnings" && req.method === "GET") return await walletEarnings(req, env);

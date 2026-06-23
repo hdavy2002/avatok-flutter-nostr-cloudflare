@@ -16,9 +16,12 @@ export function track(
   app_name: string,
   props: Record<string, unknown> = {},
   trace_id?: string,
-): void {
+): Promise<void> {
   try {
-    void env.Q_ANALYTICS.send({
+    // Return the send promise so callers can `ctx.waitUntil(...)` it. Without
+    // that, an un-awaited send is cancelled when the response returns — which is
+    // why server analytics (incl. signup_server) reached PostHog only sporadically.
+    return env.Q_ANALYTICS.send({
       event,
       uid,
       ts: Date.now(),
@@ -40,6 +43,7 @@ export function track(
       },
     });
   } catch { /* best-effort */ }
+  return Promise.resolve();
 }
 
 /**
@@ -57,8 +61,8 @@ export function trackUser(
   app_name: string,
   props: Record<string, unknown> = {},
   trace_id?: string,
-): void {
-  trackUserContact(env, uid, email, null, event, app_name, props, trace_id);
+): Promise<void> {
+  return trackUserContact(env, uid, email, null, event, app_name, props, trace_id);
 }
 
 /**
@@ -78,14 +82,14 @@ export function trackUserContact(
   app_name: string,
   props: Record<string, unknown> = {},
   trace_id?: string,
-): void {
+): Promise<void> {
   const extra: Record<string, unknown> = {};
   const set: Record<string, unknown> = {};
   if (email) { extra.email = email; set.email = email; }
   if (phone) { extra.phone = phone; set.phone = phone; }
-  if (!email && !phone) { track(env, uid, event, app_name, props, trace_id); return; }
+  if (!email && !phone) { return track(env, uid, event, app_name, props, trace_id); }
   const prevSet = (props.$set as Record<string, unknown> | undefined) ?? {};
-  track(env, uid, event, app_name, { ...props, ...extra, $set: { ...prevSet, ...set } }, trace_id);
+  return track(env, uid, event, app_name, { ...props, ...extra, $set: { ...prevSet, ...set } }, trace_id);
 }
 
 /** Operational metric (Analytics Engine). */
