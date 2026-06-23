@@ -106,7 +106,7 @@ export interface PushMsg {
   recipients?: string[]; payload?: Record<string, unknown>;
 }
 // attachments: Brevo transactional attachment shape — content is base64 (Phase 5 ICS).
-export interface EmailMsg { to: string; subject: string; html: string; from?: string; attachments?: { name: string; content: string }[]; }
+export interface EmailMsg { to: string; subject: string; html: string; from?: string; replyTo?: { email: string; name?: string }; attachments?: { name: string; content: string }[]; }
 export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }
 // AvaBrain: PUBLIC content only (server never gets DM plaintext). payload is JSON.
 export interface BrainMsg { uid: string; event_type: string; source_app: string; payload: Record<string, unknown>; capability?: string; traceId?: string; ts?: number; }

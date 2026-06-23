@@ -34,6 +34,7 @@ import { listNotifications, unreadCount, markRead } from "./routes/notifications
 import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, convList, convCreate } from "./routes/messaging";
 import { getConfig, putConfig } from "./routes/config";
 import { referralClaim, referralSummary } from "./routes/referral";
+import { inviteEmail } from "./routes/invite";
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook } from "./routes/conference";
@@ -331,6 +332,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- AvaReferral (invite → coins; inviter-only, server-priced reward) ---
       if (p === "/api/referral/claim" && req.method === "POST") return await referralClaim(req, env);
       if (p === "/api/referral/summary" && req.method === "GET") return await referralSummary(req, env);
+      if (p === "/api/invite/email" && req.method === "POST") return await inviteEmail(req, env);
       if (p === "/api/feature/costs" && req.method === "GET") return await featureCostsRoute(req, env);
       if (p === "/api/auth/google" && req.method === "POST") return await googleAuth(req, env);
       if (p === "/api/wallet/balance" && req.method === "GET") return await walletBalance(req, env);

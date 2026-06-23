@@ -156,6 +156,9 @@ async function sendEmail(msg: EmailMsg, env: Env): Promise<void> {
     body: JSON.stringify({
       sender: parseSender(msg.from),
       to: [{ email: msg.to }],
+      // Reply-To lets a server-sent "invite a friend" mail route replies back to
+      // the inviter, while the verified `sender` stays noreply@avatok.ai.
+      ...(msg.replyTo?.email ? { replyTo: { email: msg.replyTo.email, ...(msg.replyTo.name ? { name: msg.replyTo.name } : {}) } } : {}),
       subject: msg.subject,
       htmlContent: msg.html,
       // Phase 5: ICS attachments (base64) — Brevo "attachment" shape.
