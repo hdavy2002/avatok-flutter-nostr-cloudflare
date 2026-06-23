@@ -19,9 +19,9 @@ on:
 
 env:
   AVATOK_ENV: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
-  # APK-only for testing right now (owner: "just need the apk, no aab").
-  # Flip back to 'true' to resume Play Store .aab builds.
-  BUILD_AAB: 'false'
+  # Build BOTH artifacts (owner 2026-06-23: "create an aab and apk").
+  # APK is always built+published; 'true' also builds the Play Store .aab.
+  BUILD_AAB: 'true'
 
 permissions:
   contents: write
@@ -197,6 +197,7 @@ jobs:
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
             dist/avatok-call.apk
+            dist/avatok-call.aab
           fail_on_unmatched_files: false
           body: |
             Play Store Android App Bundle, built by CI from `app/`.
