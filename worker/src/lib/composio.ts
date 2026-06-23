@@ -20,6 +20,42 @@ const B = "https://backend.composio.dev/api/v3";
 export const GOOGLE_TOOLKITS = ["gmail", "googledocs", "googlesheets", "googledrive", "googlecalendar"];
 const RESULT_CHARS = 8000;        // trim tool results before feeding back to the model
 
+// ---- Connector catalog allowlist (Google + Microsoft only) ------------------
+// PRODUCT RULE: the Connector menu must surface ONLY Google and Microsoft apps,
+// not the full ~hundreds-strong Composio catalog. Most Composio toolkits carry
+// the brand as a name/slug prefix ("Google Calendar" → google*, "Microsoft
+// Teams" → microsoft*), so a prefix match catches the bulk. The EXTRA sets cover
+// brand apps whose slug omits the prefix (Gmail, YouTube, Outlook, OneDrive,
+// SharePoint, OneNote, …). Extend these sets if a wanted app is missing.
+const GOOGLE_BRAND_SLUGS = new Set([
+  "gmail", "youtube", "youtube_data", "youtube_data_v3",
+]);
+const MICROSOFT_BRAND_SLUGS = new Set([
+  "outlook", "microsoft_outlook",
+  "onedrive", "one_drive",
+  "onenote", "one_note", "microsoft_one_note",
+  "sharepoint", "microsoft_sharepoint",
+  "teams", "microsoft_teams",
+  "microsoft_clarity",
+  "dynamics365", "dynamics_365",
+  "azure", "power_bi", "powerbi",
+  "microsoft_to_do", "microsoft_todo", "ms_to_do",
+  "bing",
+]);
+
+// True only for Google- or Microsoft-branded toolkits — the gate for what the
+// Connector catalog is allowed to show.
+export function isAllowedConnector(slug: string, name = ""): boolean {
+  const s = (slug || "").toLowerCase().trim();
+  const n = (name || "").toLowerCase().trim();
+  if (!s) return false;
+  if (s.startsWith("google") || n.startsWith("google")) return true;       // Google *
+  if (s.startsWith("microsoft") || n.startsWith("microsoft")) return true; // Microsoft *
+  if (GOOGLE_BRAND_SLUGS.has(s) || MICROSOFT_BRAND_SLUGS.has(s)) return true;
+  if (s.includes("outlook") || n.includes("outlook")) return true;         // Outlook (any variant)
+  return false;
+}
+
 // Curated high-value action tools per toolkit (verified slugs). Keeping the set
 // tight (vs. all 23–51 tools each) means the model reliably picks the right tool
 // and the function-declaration list stays small + fast.
@@ -137,7 +173,9 @@ export async function listToolkits(
     logo: String(t.meta?.logo ?? t.logo ?? t.meta?.logo_url ?? ""),
     categories: Array.isArray(t.meta?.categories)
       ? t.meta.categories.map((c: any) => String(c?.name ?? c)) : [],
-  })).filter((t) => t.slug);
+  }))
+    // Connector menu shows ONLY Google + Microsoft apps (not the full catalog).
+    .filter((t) => t.slug && isAllowedConnector(t.slug, t.name));
 }
 
 // Disconnect (delete) the user's connected account(s) for one toolkit slug.
