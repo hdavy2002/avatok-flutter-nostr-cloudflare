@@ -1653,6 +1653,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             EmailInboxCards(emails: inbox),
           ]);
         }
+        // Generated image (e.g. "create an image of …"). The public image URL
+        // rides in the envelope (media_ref) so it renders even though the
+        // separate media_ref column is dropped during sync — that drop was why
+        // Ava's image turns showed the caption but never the picture.
+        final mediaRef = (e['media_ref'] ?? '').toString();
+        if (mediaRef.isNotEmpty) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (body.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(bottom: 8), child: _avaRich(body, fg)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.network(
+                mediaRef,
+                width: 240,
+                fit: BoxFit.cover,
+                loadingBuilder: (ctx, child, progress) => progress == null
+                    ? child
+                    : Container(
+                        width: 240, height: 200, alignment: Alignment.center,
+                        child: const CircularProgressIndicator(strokeWidth: 2)),
+                errorBuilder: (_, __, ___) => _avaRich('Image unavailable', fg),
+              ),
+            ),
+          ]);
+        }
         // GenUI/A2UI surface (generic): the agent composed a layout from our Zine
         // catalog (calendar today, any tool tomorrow). Rendered natively.
         final a2ui = e['a2ui'];

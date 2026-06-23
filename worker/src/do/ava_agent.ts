@@ -866,6 +866,11 @@ export class AvaAgentDO {
     const envelope = JSON.stringify({
       t: kind, text, source: b.source ?? "chat",
       ...(priv ? { for_uid: uid } : {}),
+      // Generated-image reference rides INSIDE the envelope too (not just the
+      // separate media_ref column) so the client can render it from the body it
+      // already parses — the column is dropped during sync, which is why Ava's
+      // "create an image" turns showed the caption but never the picture.
+      ...(b.media_ref ? { media_ref: b.media_ref } : {}),
       // Structured email cards (the in-chat inbox UI) ride alongside the text so
       // the FROZEN chat renderer can show View/Spam/Delete cards from one bubble.
       ...(Array.isArray(b.emails) && b.emails.length ? { emails: b.emails } : {}),
