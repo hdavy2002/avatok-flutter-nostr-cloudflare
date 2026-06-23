@@ -7,6 +7,8 @@
 /// passed transiently as `context` to the moderated proxy.
 library;
 
+import 'dart:convert';
+
 import '../../core/ava_prompt_budget.dart';
 
 /// One decoded turn of a conversation, as the discuss feature needs it.
@@ -17,7 +19,45 @@ class DiscussTurn {
   /// The decoded, human-readable text (media bubbles become a short caption).
   final String text;
 
-  const DiscussTurn({required this.me, required this.text});
+  /// Group threads only: the sender's label for a non-`me` turn. Null falls back
+  /// to the peer/group label.
+  final String? speaker;
+
+  const DiscussTurn({required this.me, required this.text, this.speaker});
+}
+
+/// Decode raw AvaTok message envelopes (`{"t":"text","body":…}`, media, etc.)
+/// into [DiscussTurn]s — used by the picker path that reads straight from the
+/// per-account SQLite store. Receipts, reads, edits, votes and special bubbles
+/// (calls, locations, polls, Ava replies) are skipped; media becomes a short
+/// caption so the conversation still reads naturally.
+List<DiscussTurn> turnsFromEnvelopes(List<({bool mine, String payload})> rows) {
+  const skip = {
+    'receipt', 'read', 'edit', 'vote', 'ava', 'ava_private', 'ava_status',
+    'loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'recept',
+  };
+  final out = <DiscussTurn>[];
+  for (final r in rows) {
+    String text = r.payload;
+    try {
+      final env = jsonDecode(r.payload);
+      if (env is Map) {
+        final t = env['t']?.toString();
+        if (t != null && skip.contains(t)) continue;
+        if (t == 'media') {
+          final name = (env['name'] ?? '').toString();
+          text = name.isEmpty ? '[media]' : '[media: $name]';
+        } else if (t == 'text') {
+          text = (env['body'] ?? '').toString();
+        } else if (env['body'] != null) {
+          text = env['body'].toString();
+        }
+      }
+    } catch (_) {/* legacy plain text — use as-is */}
+    if (text.trim().isEmpty) continue;
+    out.add(DiscussTurn(me: r.mine, text: text));
+  }
+  return out;
 }
 
 class ThreadContext {
@@ -46,9 +86,14 @@ class ThreadContext {
     final recent =
         cleaned.length > maxTurns ? cleaned.sublist(cleaned.length - maxTurns) : cleaned;
     final peer = peerLabel.trim().isEmpty ? 'Them' : peerLabel.trim();
-    final lines = recent.map((t) => '${t.me ? 'Me' : peer}: ${t.text.trim()}').join('\n');
+    final lines = recent.map((t) => '${_label(t, peer)}: ${t.text.trim()}').join('\n');
     return '${header(peer, recent.length, isGroup: isGroup)}\n$lines';
   }
+
+  /// Speaker label for a turn: "Me" for the user, the sender's name (groups) or
+  /// the peer label otherwise.
+  static String _label(DiscussTurn t, String peer) =>
+      t.me ? 'Me' : ((t.speaker != null && t.speaker!.trim().isNotEmpty) ? t.speaker!.trim() : peer);
 
   /// Token budget (≈ chars/4) for the whole transcript block. Cloud Gemini can
   /// take far more, but we keep prompts lean + cheap and summarise beyond this.
@@ -78,7 +123,7 @@ class ThreadContext {
     final cleaned = turns.where((t) => t.text.trim().isNotEmpty).toList();
     if (cleaned.isEmpty) return '';
     final peer = peerLabel.trim().isEmpty ? 'Them' : peerLabel.trim();
-    String fmt(DiscussTurn t) => '${t.me ? 'Me' : peer}: ${t.text.trim()}';
+    String fmt(DiscussTurn t) => '${_label(t, peer)}: ${t.text.trim()}';
 
     // Short enough → verbatim.
     final allLines = cleaned.map(fmt).join('\n');

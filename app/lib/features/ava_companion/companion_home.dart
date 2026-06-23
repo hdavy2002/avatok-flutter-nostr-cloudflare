@@ -1,9 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/ava_ai_client.dart';
+import '../../core/brain_consent.dart';
+import '../../core/db.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../avachat/discuss_seed.dart';
+import '../avachat/thread_context.dart';
 import '../identity/ladder_api.dart';
 import 'companion_session_store.dart';
 import 'companion_thread.dart';
@@ -84,6 +91,119 @@ class _CompanionHomeState extends State<CompanionHome> {
     await Navigator.push(context,
         MaterialPageRoute(builder: (_) => CompanionThreadScreen(persona: persona)));
     await _loadSessions(); // refresh after the thread closes (it may have saved)
+  }
+
+  /// "Discuss a chat" — pick one of the user's Messenger conversations (from the
+  /// local chat-list projection) and open ChatAVA pointed at it. The transcript
+  /// is read from the per-account SQLite store and assembled on-device.
+  Future<void> _discussAChat() async {
+    Analytics.capture('discuss_with_ava_picker_opened', const {});
+    List<ChatRow> rows;
+    try { rows = await Db.I.chatsOnce(); } catch (_) { rows = const []; }
+    final items = <({String convKey, String name, bool group})>[];
+    for (final r in rows) {
+      if (r.json.isEmpty) continue;
+      try {
+        final m = jsonDecode(r.json) as Map<String, dynamic>;
+        final k = (m['k'] ?? r.convKey).toString();
+        final name = (m['n'] ?? '').toString();
+        if (k.isEmpty || name.isEmpty) continue;
+        items.add((convKey: k, name: name, group: m['g'] == true));
+      } catch (_) {/* skip malformed row */}
+    }
+    if (!mounted) return;
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No conversations yet to discuss.')));
+      return;
+    }
+    final picked = await showModalBottomSheet<({String convKey, String name, bool group})>(
+      context: context,
+      backgroundColor: Zine.paper,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 12),
+          Text('Discuss a chat with Ava', style: ZineText.cardTitle(size: 16)),
+          const SizedBox(height: 4),
+          Text('Your messages stay on this device.', style: ZineText.sub(size: 12)),
+          const SizedBox(height: 8),
+          Flexible(
+            child: ListView(shrinkWrap: true, children: [
+              for (final it in items)
+                ListTile(
+                  leading: PhosphorIcon(
+                      it.group
+                          ? PhosphorIcons.usersThree(PhosphorIconsStyle.bold)
+                          : PhosphorIcons.user(PhosphorIconsStyle.bold),
+                      color: Zine.ink),
+                  title: Text(it.name, style: ZineText.value(size: 15)),
+                  onTap: () => Navigator.pop(ctx, it),
+                ),
+            ]),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await _openDiscussion(picked.convKey, picked.name, picked.group);
+  }
+
+  /// Build the transcript for [convKey] on-device and open the discussion thread.
+  Future<void> _openDiscussion(String convKey, String name, bool isGroup) async {
+    final allowed = await BrainConsent.isOn(isGroup ? 'group_chats' : 'avatok_dms');
+    if (!mounted) return;
+    if (!allowed) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Turn on AvaBrain for your messages in Settings to discuss '
+            'a chat. Your messages stay on this device.'),
+      ));
+      return;
+    }
+    List<MessageRow> msgRows;
+    try { msgRows = await Db.I.messagesFor(convKey); } catch (_) { msgRows = const []; }
+    final turns = turnsFromEnvelopes(
+        [for (final m in msgRows) (mine: m.mine, payload: m.payload)]);
+    if (!mounted) return;
+    if (turns.length > ThreadContext.kRawTailTurns * 4) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        duration: Duration(seconds: 2), content: Text('Reading your chat for Ava…')));
+    }
+    final transcript = await ThreadContext.buildSmart(
+      peerLabel: name,
+      turns: turns,
+      isGroup: isGroup,
+      summarize: (chunk) async {
+        final ans = await AvaAiClient.I.ask(
+          message: 'Summarise these chat messages in 2-3 sentences. Preserve who '
+              'said what and any decisions, plans, questions, or feelings:\n\n$chunk',
+        );
+        return ans.answer;
+      },
+    );
+    if (!mounted) return;
+    if (transcript.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Not enough messages there for Ava to weigh in.')));
+      return;
+    }
+    Analytics.capture('discuss_with_ava_opened', {
+      'surface': 'picker',
+      'is_group': isGroup,
+      'turns': turns.length,
+      'chars': transcript.length,
+      'summarized': transcript.contains('(summarised)'),
+    });
+    await Navigator.push(context, MaterialPageRoute(
+      builder: (_) => CompanionThreadScreen(
+        persona: discussPersona(name, isGroup: isGroup),
+        discussContext: transcript,
+        initialTitle: 'Chat with $name',
+      ),
+    ));
   }
 
   Future<void> _openSession(CompanionSession s) async {
@@ -372,6 +492,13 @@ class _CompanionHomeState extends State<CompanionHome> {
             Text(_showArchived ? 'Archived chats' : 'Your conversations', style: ZineText.sub(size: 12)),
           ]),
         ),
+        if (!_showArchived)
+          IconButton(
+            tooltip: 'Discuss a chat',
+            icon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                color: Zine.ink, size: 22),
+            onPressed: _discussAChat,
+          ),
         IconButton(
           tooltip: _showArchived ? 'Back to chats' : 'Archived',
           icon: PhosphorIcon(

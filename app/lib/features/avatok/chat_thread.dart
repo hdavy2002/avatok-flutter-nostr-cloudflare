@@ -2379,7 +2379,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (m.special != null) continue; // ava bubbles, receipts, calls, etc.
       final text = m.text.trim();
       if (text.isEmpty) continue;
-      turns.add(DiscussTurn(me: m.me, text: text));
+      // Groups: attribute each non-mine bubble to its sender so Ava can tell
+      // participants apart. 1:1 falls back to the peer label.
+      turns.add(DiscussTurn(me: m.me, text: text, speaker: m.me ? null : m.senderLabel));
     }
     // Long threads need a summarisation pass — let the user know we're reading.
     if (turns.length > ThreadContext.kRawTailTurns * 4) {
@@ -2413,6 +2415,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       'surface': 'thread',
       'is_group': isGroup,
       'turns': turns.length,
+      'chars': transcript.length,
+      'summarized': transcript.contains('(summarised)'),
     });
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => CompanionThreadScreen(

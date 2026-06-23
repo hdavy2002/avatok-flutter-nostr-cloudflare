@@ -604,22 +604,24 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 ]),
               ),
             ),
-          // Discuss mode: hand Ava's drafted reply back to the Messenger thread,
-          // or copy it. Only on real Ava bubbles (not the intro / blocked turns).
-          if (isAva && m.id != 'intro' && !m.blocked && widget.onUseDraft != null)
+          // Discuss mode: copy Ava's drafted reply, or hand it back to the
+          // Messenger thread (only when opened from a thread, i.e. onUseDraft set).
+          if (isAva && m.id != 'intro' && !m.blocked && widget.discussContext != null)
             Padding(
               padding: const EdgeInsets.only(top: 5, left: 2),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                GestureDetector(
-                  onTap: () => _useInChat(m),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
-                        size: 14, color: Zine.blueInk),
-                    const SizedBox(width: 5),
-                    Text('Use in chat', style: ZineText.link(size: 12)),
-                  ]),
-                ),
-                const SizedBox(width: 16),
+                if (widget.onUseDraft != null) ...[
+                  GestureDetector(
+                    onTap: () => _useInChat(m),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
+                          size: 14, color: Zine.blueInk),
+                      const SizedBox(width: 5),
+                      Text('Use in chat', style: ZineText.link(size: 12)),
+                    ]),
+                  ),
+                  const SizedBox(width: 16),
+                ],
                 GestureDetector(
                   onTap: () => _copyDraft(m),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
