@@ -141,6 +141,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/ava/    # Ava's sitewide avatar (replace ava_avatar.png to change her face)
     - assets/sounds/
     - assets/audio/    # AI ringback feature: bundled fallback ringback + busy tone
     - assets/audio/catalog/   # bundled ringtone catalog (preview + set as default)

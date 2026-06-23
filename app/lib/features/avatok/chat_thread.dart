@@ -35,6 +35,7 @@ import '../../core/ava_ondevice_rag.dart';
 import '../../core/ava_ondevice_stt.dart';
 import '../../core/ui/mic_input_sheet.dart';
 import '../../core/avatar.dart';
+import '../../core/ava_identity.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
 import '../../core/config.dart';
@@ -3483,9 +3484,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // conversation", never confused with a green message to a person.
     final toAva = m.me && m.aiLocal;
     final onRight = m.me && !isAva;
-    return Align(
-      alignment: onRight ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
+    final core = GestureDetector(
         onLongPress: () => _onBubbleLongPress(m),
         child: Column(
           crossAxisAlignment: onRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -3656,7 +3655,55 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ),
           ],
         ),
+      );
+    // My own bubbles stay flush-right with no avatar (I know they're mine).
+    if (onRight) return Align(alignment: Alignment.centerRight, child: core);
+    // Incoming bubbles (a 1:1 peer, a group member, or Ava) get a tiny avatar
+    // circle on the left so you can tell at a glance who said it.
+    return Padding(
+      padding: const EdgeInsets.only(right: 28),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _bubbleAvatar(m, isAva),
+          const SizedBox(width: 6),
+          Flexible(child: core),
+        ],
       ),
+    );
+  }
+
+  // The tiny avatar shown beside an incoming bubble. Ava uses her sitewide
+  // asset (with a lilac-sparkle fallback if the asset is missing); a 1:1 peer
+  // uses the chat's avatar; a group member uses a per-sender seed.
+  Widget _bubbleAvatar(_Msg m, bool isAva) {
+    const s = 30.0;
+    Widget inner;
+    if (isAva) {
+      inner = ClipOval(
+        child: Image.asset(
+          AvaId.avatarAsset,
+          width: s, height: s, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            width: s, height: s, color: Zine.lilac, alignment: Alignment.center,
+            child: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                size: 15, color: Zine.ink),
+          ),
+        ),
+      );
+    } else if (widget.chat.group) {
+      inner = Avatar(seed: m.senderLabel ?? 'peer', name: m.senderLabel ?? '?', size: s);
+    } else {
+      inner = Avatar(seed: widget.chat.seed, name: widget.chat.name, size: s,
+          avatarUrl: widget.chat.avatarUrl.isEmpty ? null : widget.chat.avatarUrl);
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Zine.ink, width: 1.5),
+      ),
+      child: inner,
     );
   }
 
