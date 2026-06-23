@@ -78,6 +78,13 @@ dependencies:
   # Location share + open-in-maps
   geolocator: ^13.0.1
   url_launcher: ^6.3.0
+  # In-app OAuth sheet (iOS ASWebAuthenticationSession / Android Custom Tabs)
+  # that AUTO-CLOSES the moment Google redirects to our avatokauth:// callback —
+  # used by the AvaStorage "Connect Google Drive" flow so the user authorizes
+  # Google and lands right back in the app, never bounced to the external Chrome
+  # app. A raw WebView is NOT used (Google blocks OAuth in embedded webviews).
+  # NATIVE plugin — must be validated by a CI APK build (can't compile headless).
+  flutter_web_auth_2: ^3.1.2
   # Google-only auth: NATIVE Google sign-in (no browser) → Clerk google_one_tap.
   google_sign_in: ^6.2.1
   # Native incoming-call UI (full-screen, lock-screen) + ConnectionService

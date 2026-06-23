@@ -42,7 +42,9 @@ class DriveService {
   /// Returns the Google OAuth URL to open (grants Calendar + Drive in one go).
   Future<String?> connectUrl() async {
     try {
-      final res = await ApiAuth.postJson(_url(AvaApi.driveConnect), const {},
+      // `?return=app` → the Worker redirects the OAuth callback to
+      // avatokauth://drive-connected so the in-app auth sheet auto-closes.
+      final res = await ApiAuth.postJson('${_url(AvaApi.driveConnect)}?return=app', const {},
           timeout: const Duration(seconds: 20));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       return j['url']?.toString();

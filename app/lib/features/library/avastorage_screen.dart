@@ -3,11 +3,14 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
+import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/drive_service.dart';
 import '../../core/ui/zine.dart';
@@ -400,39 +403,55 @@ class _DriveSectionState extends State<_DriveSection> {
   Future<void> _connect() async {
     setState(() => _connecting = true);
     final url = await DriveService.I.connectUrl();
-    var opened = false;
+    var connected = false;
     if (url != null) {
-      final uri = Uri.parse(url);
-      // Open Google OAuth in an IN-APP browser tab (Android Custom Tabs /
-      // iOS SFSafariViewController) so the user stays inside AvaStorage and
-      // slides right back here when done — NOT the full external browser.
-      // A raw WebView is deliberately avoided: Google blocks OAuth in embedded
-      // webviews (disallowed_useragent); a Custom Tab is a real browser, so
-      // Google sign-in works. Same pattern as AvaApps.
-      Analytics.capture('avastorage_drive_connect_open', const {'mode': 'in_app_tab'});
+      Analytics.capture('avastorage_drive_connect_open', const {'mode': 'web_auth'});
       try {
-        opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-      } catch (_) {/* fall back below */}
-      if (!opened) {
-        // Custom Tabs unavailable (rare) → external browser still completes it.
-        try {
-          opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } catch (_) {/* surfaced via snackbar below */}
+        // In-app auth sheet (iOS ASWebAuthenticationSession / Android Custom
+        // Tabs). It AUTO-CLOSES the instant the Worker redirects to
+        // avatokauth://drive-connected — the user authorizes Google and lands
+        // right back here without ever leaving the app. A raw WebView is NOT
+        // used: Google blocks OAuth in embedded webviews (disallowed_useragent).
+        await FlutterWebAuth2.authenticate(url: url, callbackUrlScheme: 'avatokauth');
+        // Returned via the deep link → the Worker has stored the token.
+        connected = await _refreshAfterAuth();
+      } on PlatformException catch (e) {
+        // CANCELED = user dismissed the sheet (no error toast needed). Any other
+        // failure (rare — auth session unavailable) → fall back to an in-app
+        // Custom Tab and poll for the connection.
+        if (e.code != 'CANCELED' && e.code != 'CANCELLED') {
+          AvaLog.I.log('drive', 'web auth failed (${e.code}); falling back to tab');
+          try {
+            if (await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView)) {
+              _pollConnected();
+            }
+          } catch (_) {/* surfaced via snackbar below */}
+        }
+      } catch (e) {
+        AvaLog.I.log('drive', 'web auth error: $e');
       }
     }
     if (mounted) {
       setState(() => _connecting = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(opened
-              ? 'Authorize Google Drive — you’ll come right back here.'
-              : 'Couldn’t open Google sign-in. Please try again.')));
+      if (url != null && !connected) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Authorize Google Drive to finish — tap Connect to retry if needed.')));
+      }
     }
-    if (opened) _pollConnected();
   }
 
-  /// After launching the OAuth tab, poll status a few times so the panel flips
-  /// to "connected" on its own as soon as the Worker stores the refresh token —
-  /// the user doesn't have to tap Refresh.
+  /// Pull fresh status + file list after the auth sheet returns and flip the
+  /// panel to "connected". Returns whether Drive is now connected.
+  Future<bool> _refreshAfterAuth() async {
+    final s = await DriveService.I.status();
+    final f = s.connected ? await DriveService.I.list() : const <DriveFile>[];
+    if (mounted) setState(() { _s = s; _files = f; });
+    if (s.connected) Analytics.capture('avastorage_drive_connected', const {});
+    return s.connected;
+  }
+
+  /// Fallback path only: after launching the OAuth tab, poll status a few times
+  /// so the panel flips to "connected" without the user tapping Refresh.
   Future<void> _pollConnected() async {
     for (final delay in const [
       Duration(seconds: 2),

@@ -56,7 +56,14 @@ export async function gcalConnect(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!env.GOOGLE_CLIENT_ID) return json({ error: "gcal not configured" }, 503);
   const exp = Date.now() + 600_000;
-  const state = `${ctx.uid}.${exp}.${await hmacHex(env, ctx.uid + "." + exp)}`;
+  // `?return=app` (AvaStorage Drive connect via flutter_web_auth_2) tags the
+  // state with `.app` so the callback redirects to avatokauth:// (the in-app
+  // auth sheet auto-closes). The HMAC still signs only uid+exp, so the extra
+  // segment doesn't affect verification. Without it (AvaCalendar web connect)
+  // the callback keeps showing the "you can close this window" page.
+  const wantApp = new URL(req.url).searchParams.get("return") === "app";
+  const sig = await hmacHex(env, ctx.uid + "." + exp);
+  const state = `${ctx.uid}.${exp}.${sig}${wantApp ? ".app" : ""}`;
   const u = new URL(GAUTH);
   u.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
   u.searchParams.set("redirect_uri", REDIRECT);
@@ -74,26 +81,38 @@ export async function gcalCallback(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const code = url.searchParams.get("code") || "";
   const state = url.searchParams.get("state") || "";
-  const [uid, expS, sig] = state.split(".");
+  const [uid, expS, sig, flow] = state.split(".");
+  const isApp = flow === "app"; // AvaStorage Drive connect → deep-link back
+  // App flow auto-closes its in-app auth sheet via this deep link; the web
+  // (calendar) flow renders an HTML page the user closes manually.
+  const back = (err?: string) =>
+    isApp
+      ? new Response(null, {
+          status: 302,
+          headers: { Location: `avatokauth://drive-connected${err ? `?error=${err}` : ""}` },
+        })
+      : null;
   if (!uid || !sig || Number(expS) < Date.now() || sig !== await hmacHex(env, uid + "." + expS)) {
-    return new Response("Invalid or expired link. Reopen from AvaCalendar settings.", { status: 400 });
+    return back("invalid_link") ??
+      new Response("Invalid or expired link. Reopen from AvaCalendar settings.", { status: 400 });
   }
   const tr = await fetch(GTOKEN, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!, redirect_uri: REDIRECT, grant_type: "authorization_code" }),
   });
-  if (!tr.ok) return new Response("Google token exchange failed.", { status: 502 });
+  if (!tr.ok) return back("token_exchange") ?? new Response("Google token exchange failed.", { status: 502 });
   const t = (await tr.json()) as { access_token: string; refresh_token?: string; expires_in: number };
-  if (!t.refresh_token) return new Response("No refresh token granted — disconnect AvaTOK in your Google account settings and retry.", { status: 400 });
+  if (!t.refresh_token) return back("no_refresh") ?? new Response("No refresh token granted — disconnect AvaTOK in your Google account settings and retry.", { status: 400 });
   await metaDb(env).prepare(
     `INSERT INTO gcal_accounts (user_id, refresh_token_enc, access_token, access_expires_at, connected_at)
      VALUES (?1,?2,?3,?4,?5)
      ON CONFLICT(user_id) DO UPDATE SET refresh_token_enc=?2, access_token=?3, access_expires_at=?4, connected_at=?5, sync_token=NULL`,
   ).bind(uid, await encToken(env, t.refresh_token), t.access_token, Date.now() + (t.expires_in - 60) * 1000, Date.now()).run();
   try { await importGcal(env, uid); } catch { /* first import is best-effort */ }
-  return new Response("<html><body style='font-family:system-ui;text-align:center;padding-top:80px'><h2>Google Calendar connected ✅</h2><p>You can close this window and return to AvaTOK.</p></body></html>",
-    { headers: { "content-type": "text/html" } });
+  return back() ??
+    new Response("<html><body style='font-family:system-ui;text-align:center;padding-top:80px'><h2>Google Calendar connected ✅</h2><p>You can close this window and return to AvaTOK.</p></body></html>",
+      { headers: { "content-type": "text/html" } });
 }
 
 /** GET /api/calendar/gcal/status · DELETE /api/calendar/gcal */
