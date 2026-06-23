@@ -6,6 +6,10 @@
 // time. It holds no in-memory state, so it idles to nothing between requests.
 import type { Env } from "../types";
 import { json, aiText, geminiRun } from "../util";
+import { runAgentLoop } from "../lib/composio";          // unified tool-calling loop (shared with Messenger @ava)
+import { runAvaImage } from "../routes/ava_image";        // in-thread image gen (posts into the 'brain' conv)
+import { brainSearchLines } from "../lib/ava_memory";     // Cloudflare AI Search retrieval (the unified store)
+import { tierOf } from "../routes/plans";                 // subscription tier (gates connected-apps tools)
 
 const DECAY_PER_DAY = 0.995;
 
@@ -149,10 +153,38 @@ export class UserBrain {
       facts: facts.map((f) => f.content).slice(0, 20),
       recent_days: summaries,
     }).slice(0, 12_000);
-    const answer = await this.reason(
-      "You are AvaChat, the user's personal AI over THEIR OWN content (messages, files, voice notes). Answer ONLY from the provided context — never invent facts. When the answer comes from a retrieved item, mention it naturally (the app shows tappable source cards). If the context doesn't contain the answer, say so plainly.",
-      `Question: ${message}\n\nContext: ${context}`,
-    );
+
+    // MASTER BRAIN (2026-06-24): ChatAVA now runs the SAME unified tool-calling
+    // agent loop as Messenger @ava (gemini-3-flash-preview) over the user's ONE
+    // Cloudflare AI Search store — so it can pull files & conversations on demand
+    // (search_memory), act on connected apps (premium), and GENERATE images, which
+    // post into the 'brain' conv this chat shares with /api/brain/history. The
+    // brain-graph context above is passed in as grounding; search_memory fetches
+    // anything deeper. Falls back to the legacy grounded reasoner if the loop errors.
+    let answer = "";
+    try {
+      const premium = (await tierOf(this.env, uid)) >= 1;
+      answer = await runAgentLoop(
+        this.env, uid, message, context,
+        (q) => brainSearchLines(this.env, uid, q, 6),
+        {
+          apps: premium,
+          onImage: async (prompt, editRef) => {
+            const r = await runAvaImage(this.env, { uid, conv: "brain", prompt, editRef });
+            if (!r.ok) return r.message ?? "I couldn't start that image right now.";
+            return "Image generation started — it will appear here in a few seconds.";
+          },
+        },
+      );
+    } catch {
+      answer = "";
+    }
+    if (!answer) {
+      answer = await this.reason(
+        "You are AvaChat, the user's personal AI over THEIR OWN content (messages, files, voice notes). Answer ONLY from the provided context — never invent facts. When the answer comes from a retrieved item, mention it naturally (the app shows tappable source cards). If the context doesn't contain the answer, say so plainly.",
+        `Question: ${message}\n\nContext: ${context}`,
+      );
+    }
     return { answer, sources };
   }
 

@@ -298,13 +298,15 @@ export async function executeTool(env: Env, userId: string, slug: string, args: 
 // ---- the Gemini ⇄ Composio function-calling loop ----------------------------
 // Shared by the /api/ava/apps/run route AND the in-chat @ava hook. The model
 // runs on the user's own Gemini key; tools execute on our Composio key.
-// SPEED: gemini-3-flash-preview, even with thinking minimised, ran the @ava turn
-// at ~3s (simple) to ~14s (with a memory-search tool hop = two sequential calls).
-// gemini-2.5-flash with thinking OFF is a verified ~1s/call, so a tool turn is ~2–3s
-// instead of ~14s. We make it primary; lite is the fast fallback. (gemini-3 can be
-// restored here later if its latency improves — it's competent, just slow today.)
-const APPS_MODEL = "gemini-2.5-flash";
-const APPS_FALLBACK_MODEL = "gemini-2.5-flash-lite";
+// MODEL STANDARDIZATION (owner decision 2026-06-24): BOTH surfaces — Messenger
+// @ava/#ava AND ChatAVA (the "master brain") — run THIS one tool-calling loop on
+// gemini-3-flash-preview, so behaviour/quality is identical everywhere. Thinking
+// is minimised (thinkingCfg → thinkingLevel:"low" for gemini-3) to keep latency
+// reasonable; gemini-3 is smarter but slower than 2.5 (~3s simple, longer with a
+// tool hop), which the owner accepted. gemini-2.5-flash stays as the FAST fallback
+// used only when a gemini-3 call errors, so a hiccup never breaks a turn.
+const APPS_MODEL = "gemini-3-flash-preview";
+const APPS_FALLBACK_MODEL = "gemini-2.5-flash";
 
 function textOf(parts: any[]): string {
   return (parts ?? [])
