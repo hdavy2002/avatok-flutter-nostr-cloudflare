@@ -104,8 +104,8 @@ const DEFAULTS: PlatformConfig = {
   generativeEnabled: true,
   imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
-  betaFreePremium: true,           // BETA: everyone premium, all services free, no coin metering
-  billingEnabled: false,           // Phase 1 subscriptions OFF until launch (preview-only)
+  betaFreePremium: false,          // metered economy LIVE (beta-free ended 2026-06-23; billing on)
+  billingEnabled: true,            // Phase 1 subscriptions LIVE (enabled 2026-06-23)
   minAppBuild: 0,
 };
 
