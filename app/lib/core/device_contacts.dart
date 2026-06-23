@@ -108,6 +108,42 @@ class DeviceContactsService {
 
   static Future<bool> requestPermission() => hasPermission();
 
+  /// Create a NEW contact in the device's native address book. Requests WRITE
+  /// permission (readonly:false) first. Returns true on success. Used when a
+  /// searched number isn't on AvaTOK and isn't in the book yet, so the user can
+  /// save them with a name/email/notes and have it synced to their phone.
+  static Future<bool> createDeviceContact({
+    required String firstName,
+    required String lastName,
+    required String phoneE164,
+    String email = '',
+    String notes = '',
+  }) async {
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
+    try {
+      final granted = await FlutterContacts.requestPermission(readonly: false);
+      if (!granted) {
+        Analytics.capture('device_contact_create', const {'ok': false, 'reason': 'perm_denied'});
+        return false;
+      }
+      final c = Contact(
+        name: Name(first: firstName.trim(), last: lastName.trim()),
+        phones: [Phone(phoneE164.trim())],
+        emails: email.trim().isNotEmpty ? [Email(email.trim())] : [],
+        notes: notes.trim().isNotEmpty ? [Note(notes.trim())] : [],
+      );
+      await c.insert();
+      Analytics.capture('device_contact_create', {
+        'ok': true, 'has_email': email.trim().isNotEmpty, 'has_notes': notes.trim().isNotEmpty,
+      });
+      return true;
+    } catch (e) {
+      Analytics.error(domain: 'contacts', code: 'create_failed',
+          action: 'create_device_contact', message: e.toString());
+      return false;
+    }
+  }
+
   /// Instant, offline-safe read from the SQLite cache (on-AvaTOK first).
   static Future<List<DeviceContact>> cached() async =>
       (await Db.I.deviceContactsOnce()).map(DeviceContact.fromRow).toList();

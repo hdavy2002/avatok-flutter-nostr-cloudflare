@@ -309,10 +309,19 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   Widget _list() {
     final items = _filtered;
     if (items.isEmpty) {
+      final q = _query.trim();
+      // A phone-like query with no match → offer to create + sync a new contact
+      // (first/last name, phone with country code, email, notes).
+      if (q.isNotEmpty && RegExp(r'^[\d+\s()-]{5,}$').hasMatch(q)) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.only(top: 4, bottom: 8),
+          child: _NewContactForm(initialPhone: q),
+        );
+      }
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(child: Text(
-            _query.trim().isEmpty
+            q.isEmpty
                 ? (_refreshing ? 'Loading your contacts…' : 'No contacts found on your phone')
                 : 'No matches',
             style: ZineText.sub(size: 13))),
@@ -362,4 +371,173 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   Widget _inviteTrailing() => _busy
       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
       : PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.inkMute, size: 22);
+}
+
+// ─── Create-a-new-contact form (shown when a searched number isn't on AvaTOK) ──
+
+class _Country {
+  final String flag;
+  final String name;
+  final String dial; // includes leading '+'
+  const _Country(this.flag, this.name, this.dial);
+}
+
+// A compact, dependency-free list of common dial codes. (Extend freely.)
+const List<_Country> _kCountries = [
+  _Country('🇺🇸', 'United States', '+1'),
+  _Country('🇮🇳', 'India', '+91'),
+  _Country('🇬🇧', 'United Kingdom', '+44'),
+  _Country('🇨🇦', 'Canada', '+1'),
+  _Country('🇦🇺', 'Australia', '+61'),
+  _Country('🇦🇪', 'UAE', '+971'),
+  _Country('🇸🇬', 'Singapore', '+65'),
+  _Country('🇩🇪', 'Germany', '+49'),
+  _Country('🇫🇷', 'France', '+33'),
+  _Country('🇪🇸', 'Spain', '+34'),
+  _Country('🇮🇹', 'Italy', '+39'),
+  _Country('🇳🇱', 'Netherlands', '+31'),
+  _Country('🇧🇷', 'Brazil', '+55'),
+  _Country('🇲🇽', 'Mexico', '+52'),
+  _Country('🇿🇦', 'South Africa', '+27'),
+  _Country('🇳🇬', 'Nigeria', '+234'),
+  _Country('🇰🇪', 'Kenya', '+254'),
+  _Country('🇵🇰', 'Pakistan', '+92'),
+  _Country('🇧🇩', 'Bangladesh', '+880'),
+  _Country('🇵🇭', 'Philippines', '+63'),
+  _Country('🇮🇩', 'Indonesia', '+62'),
+  _Country('🇯🇵', 'Japan', '+81'),
+  _Country('🇨🇳', 'China', '+86'),
+  _Country('🇸🇦', 'Saudi Arabia', '+966'),
+  _Country('🇹🇷', 'Turkey', '+90'),
+  _Country('🇷🇺', 'Russia', '+7'),
+  _Country('🇰🇷', 'South Korea', '+82'),
+  _Country('🇲🇾', 'Malaysia', '+60'),
+  _Country('🇪🇬', 'Egypt', '+20'),
+  _Country('🇳🇿', 'New Zealand', '+64'),
+];
+
+class _NewContactForm extends StatefulWidget {
+  final String initialPhone;
+  const _NewContactForm({required this.initialPhone});
+  @override
+  State<_NewContactForm> createState() => _NewContactFormState();
+}
+
+class _NewContactFormState extends State<_NewContactForm> {
+  final _first = TextEditingController();
+  final _last = TextEditingController();
+  final _phone = TextEditingController();
+  final _email = TextEditingController();
+  final _notes = TextEditingController();
+  _Country _country = _kCountries.first;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _phone.text = widget.initialPhone.replaceAll(RegExp(r'[^\d]'), '');
+  }
+
+  @override
+  void dispose() {
+    _first.dispose(); _last.dispose(); _phone.dispose(); _email.dispose(); _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickCountry() async {
+    final picked = await showModalBottomSheet<_Country>(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final c in _kCountries)
+              ListTile(
+                leading: Text(c.flag, style: const TextStyle(fontSize: 22)),
+                title: Text(c.name, style: ZineText.value(size: 14.5)),
+                trailing: Text(c.dial, style: ZineText.sub(size: 13)),
+                onTap: () => Navigator.pop(context, c),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) setState(() => _country = picked);
+  }
+
+  Future<void> _save() async {
+    final first = _first.text.trim();
+    final digits = _phone.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (first.isEmpty || digits.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A first name and phone number are required')));
+      return;
+    }
+    setState(() => _saving = true);
+    final e164 = '${_country.dial}$digits';
+    final ok = await DeviceContactsService.createDeviceContact(
+      firstName: first, lastName: _last.text, phoneE164: e164,
+      email: _email.text, notes: _notes.text,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok ? 'Saved to your phone contacts' : 'Couldn’t save — check contacts permission')));
+    if (ok) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Add as a new contact', style: ZineText.value(size: 15)),
+      const SizedBox(height: 3),
+      Text('Not on AvaTOK yet — save them to your phone.', style: ZineText.sub(size: 12)),
+      const SizedBox(height: 12),
+      Row(children: [
+        Expanded(child: ZineField(controller: _first, hint: 'First name')),
+        const SizedBox(width: 8),
+        Expanded(child: ZineField(controller: _last, hint: 'Last name')),
+      ]),
+      const SizedBox(height: 8),
+      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        GestureDetector(
+          onTap: _pickCountry,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              color: Zine.card,
+              borderRadius: BorderRadius.circular(Zine.rField),
+              border: Border.all(color: Zine.ink, width: 2),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(_country.flag, style: const TextStyle(fontSize: 18)),
+              const SizedBox(width: 6),
+              Text(_country.dial, style: ZineText.value(size: 14)),
+              const SizedBox(width: 2),
+              PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 12, color: Zine.ink),
+            ]),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: ZineField(controller: _phone, hint: 'Phone number')),
+      ]),
+      const SizedBox(height: 8),
+      ZineField(controller: _email, hint: 'Email (optional)'),
+      const SizedBox(height: 8),
+      ZineField(controller: _notes, hint: 'Notes (optional)'),
+      const SizedBox(height: 14),
+      ZineButton(
+        label: _saving ? 'Saving…' : 'Save & sync',
+        fullWidth: true,
+        fontSize: 16,
+        loading: _saving,
+        icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+        trailingIcon: false,
+        onPressed: _saving ? null : _save,
+      ),
+    ]);
+  }
 }
