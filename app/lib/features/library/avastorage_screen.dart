@@ -400,11 +400,56 @@ class _DriveSectionState extends State<_DriveSection> {
   Future<void> _connect() async {
     setState(() => _connecting = true);
     final url = await DriveService.I.connectUrl();
-    if (url != null) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    var opened = false;
+    if (url != null) {
+      final uri = Uri.parse(url);
+      // Open Google OAuth in an IN-APP browser tab (Android Custom Tabs /
+      // iOS SFSafariViewController) so the user stays inside AvaStorage and
+      // slides right back here when done — NOT the full external browser.
+      // A raw WebView is deliberately avoided: Google blocks OAuth in embedded
+      // webviews (disallowed_useragent); a Custom Tab is a real browser, so
+      // Google sign-in works. Same pattern as AvaApps.
+      Analytics.capture('avastorage_drive_connect_open', const {'mode': 'in_app_tab'});
+      try {
+        opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      } catch (_) {/* fall back below */}
+      if (!opened) {
+        // Custom Tabs unavailable (rare) → external browser still completes it.
+        try {
+          opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (_) {/* surfaced via snackbar below */}
+      }
+    }
     if (mounted) {
       setState(() => _connecting = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Authorize Google Drive in your browser, then refresh.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(opened
+              ? 'Authorize Google Drive — you’ll come right back here.'
+              : 'Couldn’t open Google sign-in. Please try again.')));
+    }
+    if (opened) _pollConnected();
+  }
+
+  /// After launching the OAuth tab, poll status a few times so the panel flips
+  /// to "connected" on its own as soon as the Worker stores the refresh token —
+  /// the user doesn't have to tap Refresh.
+  Future<void> _pollConnected() async {
+    for (final delay in const [
+      Duration(seconds: 2),
+      Duration(seconds: 3),
+      Duration(seconds: 4),
+      Duration(seconds: 6),
+    ]) {
+      await Future.delayed(delay);
+      if (!mounted) return;
+      final s = await DriveService.I.status();
+      if (!mounted) return;
+      if (s.connected) {
+        final f = await DriveService.I.list();
+        if (mounted) setState(() { _s = s; _files = f; });
+        Analytics.capture('avastorage_drive_connected', const {});
+        return;
+      }
     }
   }
 
