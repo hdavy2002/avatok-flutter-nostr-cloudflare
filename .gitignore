@@ -83,6 +83,12 @@ _ARCHIVE-*/
 
 # graphify code-graph cache (local only, regenerable)
 graphify-out/cache/
+# graphify code-graph index — large, regenerated on every rebuild; keep local only
+graphify-out/graph.json
+
+# Python bytecode (e.g. scripts/git_safe_commit.py compiled cache)
+__pycache__/
+*.pyc
 
 # vite crash leftovers
 *.timestamp-*.mjs
