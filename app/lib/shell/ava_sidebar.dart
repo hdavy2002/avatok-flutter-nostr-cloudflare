@@ -47,13 +47,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
   bool _accountOpen = false;
   String _displayName = '';
   String _handle = '';
+  String _avatarUrl = ''; // the user's own profile photo (was never read → drawer showed initials)
   bool _premium = false; // topped-up wallet → premium (shown as a green pill)
 
   @override
   void initState() {
     super.initState();
     ProfileStore().load().then((p) {
-      if (mounted) setState(() { _displayName = p.displayName; _handle = p.handle; });
+      if (mounted) setState(() { _displayName = p.displayName; _handle = p.handle; _avatarUrl = p.avatarUrl; });
     });
     // Reflect premium status in the sidebar (green PREMIUM pill once topped up).
     MoneyApi.balance().then((b) {
@@ -426,7 +427,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
               color: Zine.card,
               border: Border.all(color: Zine.ink, width: 2),
             ),
-            child: Avatar(seed: widget.seed, name: _name, size: 42),
+            child: Avatar(seed: widget.seed, name: _name, size: 42,
+                avatarUrl: _avatarUrl.isEmpty ? null : _avatarUrl),
           ),
           Positioned(
             right: -2, bottom: -2,
