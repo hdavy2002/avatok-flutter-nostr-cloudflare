@@ -41,6 +41,7 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  final _name = TextEditingController();
   final _email = TextEditingController();
   final _pass = TextEditingController();
   final _code = TextEditingController();
@@ -57,6 +58,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
+    _name.dispose();
     _email.dispose();
     _pass.dispose();
     _code.dispose();
@@ -87,6 +89,10 @@ class _SignInScreenState extends State<SignInScreen> {
         _handleStep(await widget.clerk.signIn(_email.text, _pass.text));
         return;
       case _Mode.signUp:
+        if (_name.text.trim().isEmpty) {
+          setState(() { _busy = false; _error = 'Enter your name'; });
+          return;
+        }
         if (_email.text.trim().isEmpty || _pass.text.length < 8) {
           setState(() { _busy = false; _error = 'Enter an email and a password (8+ characters)'; });
           return;
@@ -94,7 +100,12 @@ class _SignInScreenState extends State<SignInScreen> {
         _provider = 'password';
         unawaited(Analytics.capture('signup_attempt', {'provider': 'password', 'mode': 'signup'}));
         AuthSession.lastPassword = _pass.text;
-        _handleStep(await widget.clerk.signUp(_email.text, _pass.text));
+        // Clerk requires both first AND last name. Split the single name field;
+        // fall back to reusing the one token so last_name is never empty.
+        final parts = _name.text.trim().split(RegExp(r'\s+'));
+        final first = parts.first;
+        final last = parts.length > 1 ? parts.sublist(1).join(' ') : parts.first;
+        _handleStep(await widget.clerk.signUp(_email.text, _pass.text, firstName: first, lastName: last));
         return;
       case _Mode.verify:
         if (_code.text.trim().isEmpty) {
@@ -318,6 +329,21 @@ class _SignInScreenState extends State<SignInScreen> {
           obscureText: _obscure,
           error: _error != null,
           trailing: _eyeToggle(),
+          onSubmitted: (_) => _submit(),
+        ),
+        const SizedBox(height: 18),
+      ],
+      // NAME (sign up only — Clerk requires first + last name)
+      if (_mode == _Mode.signUp) ...[
+        ZineField(
+          controller: _name,
+          label: 'name',
+          labelIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+          hint: 'Jane Doe',
+          keyboardType: TextInputType.name,
+          textCapitalization: TextCapitalization.words,
+          error: _error != null && _name.text.trim().isEmpty,
           onSubmitted: (_) => _submit(),
         ),
         const SizedBox(height: 18),

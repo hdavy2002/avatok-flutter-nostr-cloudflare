@@ -316,11 +316,18 @@ class ClerkClient {
   }
 
   /// Sign up with email + password; returns a code step if verification needed.
-  Future<ClerkStep> signUp(String email, String password) async {
+  /// [firstName]/[lastName] are sent when provided — the Clerk instance requires
+  /// them at sign-up (User model → "Require first and last name").
+  Future<ClerkStep> signUp(String email, String password,
+      {String? firstName, String? lastName}) async {
     _sx('started', provider: 'password');
     await _send('/client', body: {});
-    final body = await _send('/client/sign_ups',
-        body: {'email_address': email.trim(), 'password': password});
+    final body = await _send('/client/sign_ups', body: {
+      'email_address': email.trim(),
+      'password': password,
+      if (firstName != null && firstName.trim().isNotEmpty) 'first_name': firstName.trim(),
+      if (lastName != null && lastName.trim().isNotEmpty) 'last_name': lastName.trim(),
+    });
     final err = _firstError(body);
     if (err != null) {
       _sx('failed', provider: 'password', reason: 'signup_rejected', detail: err);
