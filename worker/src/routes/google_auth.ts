@@ -8,6 +8,7 @@
 // store-review login used successfully.
 import type { Env } from "../types";
 import { json } from "../util";
+import { trackUser } from "../hooks";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
@@ -19,32 +20,65 @@ const ALLOWED_AUD = new Set<string>([
 
 // POST /api/auth/google  { id_token }  ->  { ticket }
 export async function googleAuth(req: Request, env: Env): Promise<Response> {
-  if (!env.CLERK_SECRET_KEY) return json({ error: "auth not configured" }, 503);
+  // Server-side signup telemetry. The Google→Clerk exchange is where signups
+  // silently die ("could not create account") with the real Clerk reason in
+  // `detail` — until now that detail never left this function. Every branch
+  // emits a `signup_server` event so support can see, per email, exactly which
+  // step failed and why. `uid` is filled in once known so events join the
+  // eventual person; before that they ride on the email. Best-effort.
+  const t0 = Date.now();
+  let uid: string | undefined;
+  const sx = (step: string, email: string | null, props: Record<string, unknown> = {}) =>
+    trackUser(env, uid ?? "anon_signup", email, "signup_server", "avatok", {
+      provider: "google",
+      step,
+      ms: Date.now() - t0,
+      ...props,
+    });
+
+  if (!env.CLERK_SECRET_KEY) {
+    sx("config_missing", null, { ok: false });
+    return json({ error: "auth not configured" }, 503);
+  }
   const b = (await req.json().catch(() => ({}))) as { id_token?: string };
   const idToken = String(b.id_token || "");
-  if (!idToken) return json({ error: "id_token required" }, 400);
+  if (!idToken) {
+    sx("no_id_token", null, { ok: false });
+    return json({ error: "id_token required" }, 400);
+  }
 
   // 1. Verify the Google ID token (Google checks signature + expiry for us).
   const ti = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-  if (!ti.ok) return json({ error: "invalid Google token" }, 401);
+  if (!ti.ok) {
+    sx("google_verify_failed", null, { ok: false, http_status: ti.status });
+    return json({ error: "invalid Google token" }, 401);
+  }
   const g = (await ti.json().catch(() => ({}))) as Record<string, unknown>;
   const iss = String(g.iss || "");
   if (iss !== "accounts.google.com" && iss !== "https://accounts.google.com") {
+    sx("bad_issuer", null, { ok: false, iss });
     return json({ error: "bad issuer" }, 401);
   }
-  if (!ALLOWED_AUD.has(String(g.aud))) return json({ error: "bad audience" }, 401);
+  if (!ALLOWED_AUD.has(String(g.aud))) {
+    sx("bad_audience", null, { ok: false, aud: String(g.aud) });
+    return json({ error: "bad audience" }, 401);
+  }
   const emailVerified = g.email_verified === true || g.email_verified === "true";
   const email = String(g.email || "").trim().toLowerCase();
-  if (!email || !emailVerified) return json({ error: "email not verified" }, 401);
+  if (!email || !emailVerified) {
+    sx("email_not_verified", email || null, { ok: false, email_verified: emailVerified });
+    return json({ error: "email not verified" }, 401);
+  }
 
   const headers = { authorization: `Bearer ${env.CLERK_SECRET_KEY}` };
 
   // 2. Find the Clerk user by email; create one if this is a first-time sign-in.
-  let uid: string | undefined;
   const look = await fetch(`${CLERK_API}/users?email_address=${encodeURIComponent(email)}`, { headers });
   if (look.ok) {
     const users = (await look.json().catch(() => [])) as Array<{ id?: string }>;
     uid = Array.isArray(users) ? users[0]?.id : undefined;
+  } else {
+    sx("clerk_lookup_failed", email, { ok: false, http_status: look.status });
   }
   if (!uid) {
     const create = await fetch(`${CLERK_API}/users`, {
@@ -59,12 +93,23 @@ export async function googleAuth(req: Request, env: Env): Promise<Response> {
       }),
     });
     if (!create.ok) {
+      // THE blind spot: Clerk rejected user creation. `detail` is Clerk's own
+      // reason (e.g. "form_identifier_exists", a plan/restriction error) — now
+      // captured server-side instead of only echoed to the client as a vague
+      // "could not create account".
       const detail = (await create.text().catch(() => "")).slice(0, 200);
+      sx("clerk_create_failed", email, { ok: false, http_status: create.status, detail, new_user: true });
       return json({ error: "could not create account", detail }, 502);
     }
     uid = ((await create.json().catch(() => ({}))) as { id?: string }).id;
+    sx("clerk_user_created", email, { ok: true, new_user: true });
+  } else {
+    sx("clerk_user_found", email, { ok: true, new_user: false });
   }
-  if (!uid) return json({ error: "no user" }, 502);
+  if (!uid) {
+    sx("no_uid", email, { ok: false });
+    return json({ error: "no user" }, 502);
+  }
 
   // 3. Mint a short-lived Clerk sign-in token (ticket) for the app to redeem.
   const mint = await fetch(`${CLERK_API}/sign_in_tokens`, {
@@ -73,6 +118,10 @@ export async function googleAuth(req: Request, env: Env): Promise<Response> {
     body: JSON.stringify({ user_id: uid, expires_in_seconds: 600 }),
   });
   const mj = (await mint.json().catch(() => ({}))) as { token?: string };
-  if (!mint.ok || !mj.token) return json({ error: "could not start session" }, 502);
+  if (!mint.ok || !mj.token) {
+    sx("ticket_mint_failed", email, { ok: false, http_status: mint.status });
+    return json({ error: "could not start session" }, 502);
+  }
+  sx("ticket_minted", email, { ok: true });
   return json({ ticket: mj.token });
 }

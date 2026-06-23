@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
+import '../../core/analytics.dart';
 import '../../core/feature_flags.dart';
 import '../../core/referral_service.dart';
 import '../../core/ui/zine.dart';
@@ -52,21 +53,31 @@ class _SignInScreenState extends State<SignInScreen> {
   /// their flags + backend are live. Keeps the success path (referral claim →
   /// _finish) identical across providers.
   Future<void> _run(Future<ClerkStep> Function() signIn, String label) async {
+    final provider = label.toLowerCase();
     setState(() { _busy = true; _error = null; });
+    // Captures the moment the user commits to a provider — the denominator for
+    // signup success/failure rate, paired with the granular signup_step events.
+    await Analytics.capture('signup_attempt', {'provider': provider});
     final step = await signIn();
     if (!mounted) return;
     if (step.isComplete) {
+      await Analytics.capture('signup_succeeded', {'provider': provider});
       // Redeem any pending invite reward for whoever referred this new user.
       try { await ReferralService.I.claimPendingAfterSignup(); } catch (_) {/* best-effort */}
       _finish();
     } else {
-      setState(() { _busy = false; _error = step.error ?? '$label sign-in failed'; });
+      final shown = step.error ?? '$label sign-in failed';
+      // Record EXACTLY what the user saw on screen (e.g. "could not create
+      // account") so the support-reported message maps to a queryable event.
+      await Analytics.capture('signup_failed', {'provider': provider, 'shown_error': shown});
+      setState(() { _busy = false; _error = shown; });
     }
   }
 
   /// Tapped a provider that isn't enabled yet — show a gentle "coming soon"
   /// instead of attempting a half-configured sign-in.
   void _comingSoon(String label) {
+    unawaited(Analytics.capture('signup_provider_unavailable', {'provider': label.toLowerCase()}));
     setState(() => _error = '$label sign-in is coming soon — continue with Google for now.');
   }
 

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
+import '../core/analytics.dart';
 import '../core/config.dart';
 
 /// Minimal Clerk Frontend API (FAPI) client — native mode.
@@ -160,6 +162,8 @@ class ClerkClient {
   /// Google must be enabled in Clerk, and `kGoogleServerClientId` must be the
   /// project's WEB OAuth client id (so the ID token's audience matches Clerk's).
   Future<ClerkStep> signInWithGoogle() async {
+    final sw = Stopwatch()..start();
+    _sx('started');
     try {
       final gsi = GoogleSignIn(
         serverClientId: kGoogleServerClientId,
@@ -168,11 +172,16 @@ class ClerkClient {
       // Force the picker each time instead of silently reusing the last account.
       try { await gsi.signOut(); } catch (_) {/* fine */}
       final account = await gsi.signIn();
-      if (account == null) return ClerkStep.error('Google sign-in was cancelled');
+      if (account == null) {
+        _sx('google_cancelled', reason: 'user_cancelled', ms: sw.elapsedMilliseconds);
+        return ClerkStep.error('Google sign-in was cancelled');
+      }
       final idToken = (await account.authentication).idToken;
       if (idToken == null || idToken.isEmpty) {
+        _sx('no_id_token', reason: 'google_no_id_token', ms: sw.elapsedMilliseconds);
         return ClerkStep.error('Google did not return an ID token');
       }
+      _sx('google_token_ok', ms: sw.elapsedMilliseconds);
 
       // Exchange the Google ID token for a Clerk sign-in ticket on our server
       // (it verifies the token, finds/creates the Clerk user, mints the ticket).
@@ -183,22 +192,68 @@ class ClerkClient {
       );
       if (r.statusCode != 200) {
         String msg = 'Sign-in failed (${r.statusCode})';
-        try { msg = (jsonDecode(r.body) as Map<String, dynamic>)['error']?.toString() ?? msg; } catch (_) {}
+        String? detail;
+        try {
+          final m = jsonDecode(r.body) as Map<String, dynamic>;
+          msg = m['error']?.toString() ?? msg;
+          // `detail` carries Clerk's real reason behind "could not create account".
+          detail = [m['error'], m['detail']].where((x) => x != null).join(' · ');
+        } catch (_) {}
+        _sx('exchange_failed',
+            reason: 'server_${r.statusCode}',
+            status: r.statusCode,
+            detail: (detail == null || detail.isEmpty) ? msg : detail,
+            ms: sw.elapsedMilliseconds);
         return ClerkStep.error(msg);
       }
       final ticket = (jsonDecode(r.body) as Map<String, dynamic>)['ticket']?.toString();
-      if (ticket == null || ticket.isEmpty) return ClerkStep.error('No sign-in ticket');
+      if (ticket == null || ticket.isEmpty) {
+        _sx('no_ticket', reason: 'server_no_ticket', ms: sw.elapsedMilliseconds);
+        return ClerkStep.error('No sign-in ticket');
+      }
+      _sx('ticket_received', ms: sw.elapsedMilliseconds);
 
       // Redeem the ticket → a real Clerk session (strategy=ticket).
       await _send('/client', body: {});
       final body = await _send('/client/sign_ins', body: {'strategy': 'ticket', 'ticket': ticket});
-      if (_completed(body) && await currentUser() != null) return ClerkStep.complete();
-      return (await currentUser()) != null
-          ? ClerkStep.complete()
-          : ClerkStep.error(_firstError(body) ?? 'Google sign-in did not complete');
+      final user = await currentUser();
+      if (user != null) {
+        _sx('completed', ms: sw.elapsedMilliseconds);
+        // Attach this brand-new account's identity to telemetry so EVERY
+        // subsequent event (and any future failure) carries their email + Clerk
+        // uid — closing the "we have no eyes on this user" gap at the source.
+        try {
+          if (user.id.isNotEmpty) await Analytics.aliasClerk(user.id);
+          if (user.email != null && user.email!.isNotEmpty) {
+            await Analytics.setUserKeys(email: user.email);
+          }
+        } catch (_) {/* identity stamping is best-effort */}
+        return ClerkStep.complete();
+      }
+      _sx('session_not_established',
+          reason: 'ticket_redeem_no_session',
+          detail: _firstError(body),
+          ms: sw.elapsedMilliseconds);
+      return ClerkStep.error(_firstError(body) ?? 'Google sign-in did not complete');
     } catch (e) {
+      _sx('exception', reason: 'client_exception', detail: e.toString(), ms: sw.elapsedMilliseconds);
       return ClerkStep.error('Google sign-in failed: $e');
     }
+  }
+
+  /// Fire a `signup_step` telemetry event for one stage of the Google flow.
+  /// Best-effort and never throws into the auth path (PostHog stamps email +
+  /// clerk_uid automatically once known). Lets support trace exactly where a
+  /// signup died — the client side of the server's `signup_server` events.
+  void _sx(String step, {String? reason, int? status, String? detail, int? ms}) {
+    unawaited(Analytics.capture('signup_step', {
+      'provider': 'google',
+      'step': step,
+      if (reason != null) 'reason': reason,
+      if (status != null) 'http_status': status,
+      if (detail != null && detail.isNotEmpty) 'detail': detail,
+      if (ms != null) 'duration_ms': ms,
+    }));
   }
 
   /// Facebook / LinkedIn sign-in. The on-device flow MIRRORS [signInWithGoogle]
@@ -224,11 +279,6 @@ class ClerkClient {
         ? 'This provider'
         : '${provider[0].toUpperCase()}${provider.substring(1)}';
     return ClerkStep.error('$name sign-in is being set up. Please continue with Google for now.');
-  }
-
-  bool _completed(Map<String, dynamic> body) {
-    final r = body['response'] as Map<String, dynamic>?;
-    return r?['status'] == 'complete' || _activeUser(body['client']) != null;
   }
 
   // Password / email-code / password-reset sign-in REMOVED 2026-06-18 — login is
