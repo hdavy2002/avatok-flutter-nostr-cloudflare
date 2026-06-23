@@ -1,10 +1,11 @@
 /// Ava image-generation request affordance (Phase 9 — Generative).
 ///
 /// A small composer/sheet — "Ava, make a logo about…" — that kicks off an async
-/// in-thread image generation for a given conversation. It is wrapped in
-/// [PaidFeature] (image generation is PREMIUM): tapping "Generate" runs the
-/// wallet check first (today the Phase-0 stub wallet is empty, so it routes to
-/// the top-up sheet); on a funded wallet it POSTs to `/api/ava/image`.
+/// in-thread image generation for a given conversation. Tapping "Generate" POSTs
+/// to `/api/ava/image`; gating is SERVER-side via the Phase-1 subscription
+/// allowance (Free 3/day, Plus 30, Pro 100, Max unlimited). When the daily grant
+/// is spent the worker returns a blocked response with an upgrade message, which
+/// this sheet surfaces inline — no client-side wallet check.
 ///
 /// The sheet itself shows almost nothing after kickoff: the worker immediately
 /// posts the "Ava is generating an image…" chip into the conversation and the
@@ -18,15 +19,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../../core/paid_feature.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'image_tool.dart';
-
-/// AvaCoins charged per generated image (cost preview only — the real debit is
-/// owned by the wallet phase; the Phase-0 stub returns false so this currently
-/// surfaces the top-up sheet). Tune when wallet pricing lands.
-const int kImageGenCostCoins = 20;
 
 class ImageRequestSheet extends StatefulWidget {
   /// Client-local conversation key ('1:<peerUid>' | 'g:<gid>') the image lands in.
@@ -131,7 +126,6 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
                   size: 38),
               const SizedBox(width: 12),
               Expanded(child: Text(title, style: ZineText.cardTitle(size: 18))),
-              const PaidBadge(),
             ]),
             const SizedBox(height: 6),
             if (widget.chatLabel != null)
@@ -167,31 +161,26 @@ class _ImageRequestSheetState extends State<ImageRequestSheet> {
               Text(_error!, style: ZineText.sub(size: 13, color: Zine.coral)),
             ],
             const SizedBox(height: 16),
-            // Premium gate at the point of use. PaidFeature runs [onRun] only
-            // after a successful wallet check (Phase-0 stub → top-up sheet).
-            PaidFeature(
-              actionLabel: _isEdit ? 'Edit image' : 'Generate image',
-              costCoins: kImageGenCostCoins,
-              onRun: _kickoff,
-              child: AbsorbPointer(
-                child: ZineButton(
-                  label: _sending
-                      ? 'Starting…'
-                      : (_isEdit ? 'Edit image' : 'Generate image'),
-                  variant: ZineButtonVariant.blue,
-                  fullWidth: true,
-                  fontSize: 16,
-                  loading: _sending,
-                  icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
-                  trailingIcon: false,
-                  onPressed: _sending ? null : () {},
-                ),
-              ),
+            // Gating is server-side (subscription allowance). Just kick off the
+            // request; the worker allows it (within the daily grant) or returns an
+            // upgrade message we surface via [_error].
+            ZineButton(
+              label: _sending
+                  ? 'Starting…'
+                  : (_isEdit ? 'Edit image' : 'Generate image'),
+              variant: ZineButtonVariant.blue,
+              fullWidth: true,
+              fontSize: 16,
+              loading: _sending,
+              icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: _sending ? null : _kickoff,
             ),
             const SizedBox(height: 8),
             Text(
-              'Image generation is a premium feature ($kImageGenCostCoins coins). '
-              'The image arrives in the chat when it is ready — you can keep chatting.',
+              'Your plan includes a set number of AI images per day (Free: 3). '
+              'When you run out, Ava will let you know. The image arrives in the '
+              'chat when it is ready — you can keep chatting.',
               style: ZineText.sub(size: 12),
             ),
           ],
