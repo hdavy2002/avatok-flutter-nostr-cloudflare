@@ -1,23 +1,32 @@
 // Server-owned price list for premium, discrete Ava actions (2026-06-18).
 //
-// Prices are in COINS (1 USD = 1000 coins). The CLIENT never sends a price — it
-// names the feature and the server charges THIS amount. A patched client can't
-// underpay because the amount is derived here, not from the request. Tune freely;
-// keys must match what each feature route passes to chargeFeature().
+// Prices are in COINS. CANONICAL site-wide economics: 1 USD = 100 coins
+// (1 coin = $0.01 = 1 USD cent), matching wallet.ts (COINS_PER_USD), ledger.ts,
+// cal/emails.ts, translate.ts, avavoice.ts and the client (kCoinsPerUsd=100).
+// The CLIENT never sends a price — it names the feature and the server charges
+// THIS amount. A patched client can't underpay because the amount is derived
+// here, not from the request. Tune freely; keys must match what each feature
+// route passes to chargeFeature().
+//
+// NOTE (2026-06-23 coin-unit normalization 1000→100 coins/USD): three actions
+// that priced below 1¢ in the old 1000-coins/USD scheme (ava_chat $0.002,
+// ava_memory $0.002, ava_image_free $0.005) are floored to the 1-coin (1¢)
+// minimum, since 1 coin is now the smallest billable unit. Everything else
+// converted exactly (÷10) and keeps its USD price.
 import type { Env } from "./types";
 import { json } from "./util";
 import { walletOp } from "./routes/wallet";
 import { readConfig } from "./routes/config";
 
 export const FEATURE_COSTS: Record<string, number> = {
-  ava_chat: 2,               // $0.002 — one Ava chat message (Workers-AI Gemma 4; 3x cost)
-  ava_memory: 2,             // $0.002 — one AI Search ingest or query (premium memory/file search)
-  ava_image_free: 5,         // $0.005 — one free-tier image (Workers-AI Flux-1-schnell)
-  ava_image_generate: 80,    // $0.08  — one premium image (Gemini "Nano Banana 2")
-  ava_voice_reply: 20,       // $0.02  — Ava speaks a reply
-  ava_vision_snapshot: 10,   // $0.01  — one analyzed snapshot beyond the free quota
-  ava_mcp_tool: 10,          // $0.01  — one connected-app (Composio) tool call
-  guardian_always_on: 300,   // $0.30/mo — always-on safety monitoring for a chat
+  ava_chat: 1,               // $0.01 — one Ava chat message (Workers-AI Gemma 4); floored to 1-coin min
+  ava_memory: 1,             // $0.01 — one AI Search ingest or query (premium memory/file search); 1-coin min
+  ava_image_free: 1,         // $0.01 — one free-tier image (Workers-AI Flux-1-schnell); 1-coin min
+  ava_image_generate: 8,     // $0.08 — one premium image (Gemini "Nano Banana 2")
+  ava_voice_reply: 2,        // $0.02 — Ava speaks a reply
+  ava_vision_snapshot: 1,    // $0.01 — one analyzed snapshot beyond the free quota
+  ava_mcp_tool: 1,           // $0.01 — one connected-app (Composio) tool call
+  guardian_always_on: 30,    // $0.30/mo — always-on safety monitoring for a chat
 };
 
 export function featureCost(key: string): number | null {
@@ -79,5 +88,5 @@ export async function chargeFeature(
 
 // GET /api/feature/costs — the price list, for the client to DISPLAY (not enforce).
 export async function featureCostsRoute(_req: Request, _env: Env): Promise<Response> {
-  return json({ coins_per_usd: 1000, costs: FEATURE_COSTS });
+  return json({ coins_per_usd: 100, costs: FEATURE_COSTS });
 }

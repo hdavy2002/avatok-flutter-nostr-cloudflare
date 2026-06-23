@@ -23,7 +23,8 @@ import { walletOp } from "./wallet";
 import { track, metric } from "../hooks";
 import { notifyUser } from "../notify";
 
-// Economics: 1 USD = 1000 coins (1 coin = $0.001). REWARD_COINS=10 ⇒ ~$0.01.
+// Economics (CANONICAL site-wide): 1 USD = 100 coins (1 coin = $0.01).
+// REWARD_COINS=10 ⇒ $0.10.
 const REWARD_COINS = 10;
 const REFERRER_CAP = 20;                       // max rewarded invites per inviter
 const CLAIM_WINDOW_MS = 14 * 24 * 60 * 60 * 1000; // joiner must claim within 14d of signup
