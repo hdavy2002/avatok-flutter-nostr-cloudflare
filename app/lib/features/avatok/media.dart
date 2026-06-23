@@ -6,6 +6,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
@@ -102,6 +103,11 @@ class MediaService {
     );
     if (res.statusCode != 200) {
       AvaLog.I.log('media', 'UPLOAD FAILED kind=${kind.name} ${bytes.length}B -> HTTP ${res.statusCode}');
+      // Telemetry (email rides in the envelope): a failed upload is why a sent
+      // attachment never appears for the peer — pinpointable by user + status.
+      Analytics.capture('chat_media_upload_failed', {
+        'kind': kind.name, 'status': res.statusCode, 'size': bytes.length,
+      });
       throw MediaUploadException('upload failed (${res.statusCode})');
     }
     final j = jsonDecode(res.body) as Map<String, dynamic>;
@@ -142,10 +148,16 @@ class MediaService {
       res = await http.get(Uri.parse(m.downloadUrl)).timeout(const Duration(seconds: 60));
     } catch (e) {
       AvaLog.I.log('media', 'download ERROR kind=${m.kind.name} key=${_short(m.id)}: $e');
+      Analytics.capture('chat_media_load_failed', {
+        'kind': m.kind.name, 'stage': 'download', 'err': e.toString(),
+      });
       rethrow;
     }
     if (res.statusCode != 200) {
       AvaLog.I.log('media', 'download FAILED kind=${m.kind.name} key=${_short(m.id)} -> HTTP ${res.statusCode}');
+      Analytics.capture('chat_media_load_failed', {
+        'kind': m.kind.name, 'stage': 'download', 'status': res.statusCode,
+      });
       throw MediaUploadException('download failed (${res.statusCode})');
     }
     try {
@@ -164,6 +176,9 @@ class MediaService {
       // A MAC/key mismatch means the envelope and the ciphertext disagree — the
       // recipient would see "nothing happens". Surface it instead of swallowing.
       AvaLog.I.log('media', 'DECRYPT FAILED kind=${m.kind.name} key=${_short(m.id)} ${res.bodyBytes.length}B: $e');
+      Analytics.capture('chat_media_load_failed', {
+        'kind': m.kind.name, 'stage': 'decrypt', 'err': e.toString(),
+      });
       rethrow;
     }
   }
