@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:record/record.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -1662,24 +1663,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         // Ava's image turns showed the caption but never the picture.
         final mediaRef = (e['media_ref'] ?? '').toString();
         if (mediaRef.isNotEmpty) {
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (body.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(bottom: 8), child: _avaRich(body, fg)),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.network(
-                mediaRef,
-                width: 240,
-                fit: BoxFit.cover,
-                loadingBuilder: (ctx, child, progress) => progress == null
-                    ? child
-                    : Container(
-                        width: 240, height: 200, alignment: Alignment.center,
-                        child: const CircularProgressIndicator(strokeWidth: 2)),
-                errorBuilder: (_, __, ___) => _avaRich('Image unavailable', fg),
-              ),
-            ),
-          ]);
+          return _avaImageBubble(mediaRef, body, fg);
         }
         // GenUI/A2UI surface (generic): the agent composed a layout from our Zine
         // catalog (calendar today, any tool tomorrow). Rendered natively.
@@ -1796,6 +1780,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// posts an 'ava_status' frame gets this with no extra UI work.
   Widget _avaStatusChip(_Msg m) {
     final label = (m.extra?['label'] ?? m.text).toString();
+    // Image generation gets a ChatGPT-style inline placeholder (a blank, image-
+    // shaped card with a spinner) instead of the small text pill. It auto-
+    // collapses when the finished image (a normal ava media_ref message) arrives
+    // and this transient 'ava_status' chip is dropped.
+    final isImage = (m.extra?['source'] ?? '').toString() == 'image' ||
+        label.toLowerCase().contains('generating an image');
+    if (isImage) return _imageGeneratingCard(label);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -1817,6 +1808,140 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]),
       ),
     );
+  }
+
+  /// ChatGPT-style placeholder shown WHILE Ava generates an image: a blank,
+  /// image-shaped card with a spinner and a status line. Replaced by the real
+  /// picture (a normal ava media_ref bubble) when generation finishes.
+  Widget _imageGeneratingCard(String label) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        width: 240,
+        height: 200,
+        decoration: BoxDecoration(
+          color: Zine.lilac,
+          borderRadius: BorderRadius.circular(14),
+          border: Zine.border,
+          boxShadow: Zine.shadowXs,
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.duotone),
+              size: 34, color: Zine.ink),
+          const SizedBox(height: 14),
+          const SizedBox(
+              width: 20, height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink)),
+          const SizedBox(height: 12),
+          Text(label.isEmpty ? 'Generating image…' : label,
+              style: ZineText.sub(size: 12.5, color: Zine.ink)
+                  .copyWith(fontStyle: FontStyle.italic)),
+        ]),
+      ),
+    );
+  }
+
+  /// A finished Ava image bubble: the picture, tappable to open full-screen, with
+  /// a ⋮ overflow menu (Open / Download full-res / Share) in the top-right corner.
+  Widget _avaImageBubble(String mediaRef, String body, Color fg) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (body.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(bottom: 8), child: _avaRich(body, fg)),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(children: [
+          GestureDetector(
+            onTap: () => _openImageFull(mediaRef),
+            child: Image.network(
+              mediaRef,
+              width: 240,
+              fit: BoxFit.cover,
+              loadingBuilder: (ctx, child, progress) => progress == null
+                  ? child
+                  : Container(
+                      width: 240, height: 200, alignment: Alignment.center,
+                      child: const CircularProgressIndicator(strokeWidth: 2)),
+              errorBuilder: (_, __, ___) => _avaRich('Image unavailable', fg),
+            ),
+          ),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+              child: PopupMenuButton<String>(
+                tooltip: 'Image options',
+                icon: const Icon(Icons.more_vert, size: 18, color: Colors.white),
+                padding: EdgeInsets.zero,
+                onSelected: (v) {
+                  if (v == 'open') _openImageFull(mediaRef);
+                  if (v == 'download') _downloadImage(mediaRef);
+                  if (v == 'share') _downloadImage(mediaRef, share: true);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'open', child: Text('Open')),
+                  PopupMenuItem(value: 'download', child: Text('Download full-res')),
+                  PopupMenuItem(value: 'share', child: Text('Share')),
+                ],
+              ),
+            ),
+          ),
+        ]),
+      ),
+    ]);
+  }
+
+  /// Full-screen, pinch-to-zoom view of a generated image.
+  void _openImageFull(String url) {
+    showDialog<void>(
+      context: context,
+      builder: (dctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(children: [
+          InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 4,
+            child: Center(
+              child: Image.network(url,
+                  errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('Image unavailable',
+                          style: TextStyle(color: Colors.white)))),
+            ),
+          ),
+          Positioned(
+            top: 8, right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.of(dctx).maybePop(),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Download the FULL-RESOLUTION image (the stored public URL is already the
+  /// full-res PNG; the in-chat preview is just display-sized) and hand it to the
+  /// OS share sheet so the user can save it to Photos or send it on.
+  Future<void> _downloadImage(String url, {bool share = false}) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) throw 'http ${res.statusCode}';
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/ava_image_${DateTime.now().millisecondsSinceEpoch}.png');
+      await f.writeAsBytes(res.bodyBytes, flush: true);
+      await Share.shareXFiles([XFile(f.path)], subject: 'Ava image');
+      Analytics.capture('ava_image_download', {'ok': true, 'share': share});
+    } catch (e) {
+      Analytics.capture('ava_image_download', {'ok': false, 'error': e.toString()});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Couldn't download the image")));
+      }
+    }
   }
 
   Future<void> _addSharedContact(Map e) async {
