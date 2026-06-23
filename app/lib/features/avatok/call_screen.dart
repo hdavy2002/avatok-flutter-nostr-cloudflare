@@ -27,6 +27,27 @@ import '../../push/push_service.dart';
 /// second incoming call.
 bool gInCall = false;
 
+/// Room id of the call currently on screen (null when idle). The push handler
+/// uses it to tell a DUPLICATE push for the same call apart from a genuine
+/// second caller, and — together with [gInCallSince] — to detect a STALE
+/// [gInCall] left set by a call that never tore down. That stale flag was the
+/// "phantom busy" bug: every later incoming call got auto-rejected as busy.
+String? gActiveCallId;
+
+/// Epoch-ms when the on-screen call took over. A live call can't plausibly run
+/// longer than [kMaxCallLifeMs]; past that, [gInCall] is treated as stale.
+int gInCallSince = 0;
+const int kMaxCallLifeMs = 2 * 60 * 60 * 1000; // 2 h ceiling
+
+/// Ground truth for "the user is genuinely on a call right now", checked before
+/// auto-replying busy so a leftover [gInCall] flag can never silently block
+/// every future call.
+bool callIsGenuinelyActive() =>
+    gInCall &&
+    gActiveCallId != null &&
+    gInCallSince > 0 &&
+    DateTime.now().millisecondsSinceEpoch - gInCallSince < kMaxCallLifeMs;
+
 /// AvaTok 1:1 call — the mockup CallScreen design, wired to real WebRTC P2P
 /// over the Cloudflare signaling Worker. Both peers join the same [room].
 class CallScreen extends StatefulWidget {
@@ -99,6 +120,8 @@ class _CallScreenState extends State<CallScreen> {
   void initState() {
     super.initState();
     gInCall = true;
+    gActiveCallId = widget.room;
+    gInCallSince = DateTime.now().millisecondsSinceEpoch;
     _telemetry = CallTelemetry(callId: widget.room, video: widget.video, outgoing: widget.outgoing);
     _telemetry.started(); // funnel root: started → connected → ended
     // Wi-Fi ⇆ cellular handoff: don't wait for the transport to time out — restart
@@ -145,6 +168,13 @@ class _CallScreenState extends State<CallScreen> {
           _ringTimeout?.cancel();
           // ignore: unawaited_futures
           _handoffToAva('decline');
+          return;
+        }
+        // A busy callee is exactly when a message matters most — route through
+        // the receptionist before giving the caller a dead busy tone.
+        if (e.status == 'busy') {
+          // ignore: unawaited_futures
+          _onBusy();
           return;
         }
         _endWith(e.status == 'decline' ? 'declined' : e.status);
@@ -245,6 +275,14 @@ class _CallScreenState extends State<CallScreen> {
 
   void _send(Map<String, dynamic> o) => _ws?.sink.add(jsonEncode(o));
 
+  /// Parse the ICE candidate type ("typ host|srflx|relay|prflx") from a
+  /// candidate SDP line, for STUN-vs-TURN reliance telemetry.
+  static String _candTypeOf(String? cand) {
+    if (cand == null) return '';
+    final m = RegExp(r'typ (\w+)').firstMatch(cand);
+    return m?.group(1) ?? '';
+  }
+
   Future<RTCPeerConnection> _newPC() async {
     final pc = await createPeerConnection({
       'iceServers': _ice,
@@ -253,8 +291,15 @@ class _CallScreenState extends State<CallScreen> {
       if (CallDiag.turnOnly) 'iceTransportPolicy': 'relay',
     });
     _stream!.getTracks().forEach((t) => pc.addTrack(t, _stream!));
+    _telemetry.onIceGatheringStart();
     pc.onIceCandidate = (c) {
+      _telemetry.onLocalCandidate(_candTypeOf(c.candidate));
       if (_remoteId != null) _send({'type': 'candidate', 'to': _remoteId, 'candidate': c.toMap()});
+    };
+    pc.onIceGatheringState = (s) {
+      if (s == RTCIceGatheringState.RTCIceGatheringStateComplete) {
+        _telemetry.onIceGatheringDone();
+      }
     };
     pc.onTrack = (e) {
       if (e.streams.isNotEmpty) {
@@ -328,6 +373,9 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _onSignal(dynamic raw) async {
     final d = jsonDecode(raw as String) as Map<String, dynamic>;
+    // Peer geo (when the signaling server relays it) → both ends' country on one
+    // telemetry row. Best-effort; harmless when absent.
+    if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
     switch (d['type']) {
       case 'welcome':
         final peers = (d['peers'] as List).cast<String>();
@@ -367,7 +415,8 @@ class _CallScreenState extends State<CallScreen> {
         _endWith('declined', reason: 'decline');
         break;
       case 'busy':
-        _endWith('busy');
+        // ignore: unawaited_futures
+        _onBusy();
         break;
       case 'peer-left':
       case 'bye':
@@ -406,10 +455,15 @@ class _CallScreenState extends State<CallScreen> {
   /// Caller gave up before the callee answered → push a 'cancel' so their phone
   /// stops ringing (the WS 'bye' can't reach a callee who never joined the room).
   void _notifyCalleeCanceled() {
-    if (!widget.seed.startsWith('npub1')) return;
+    // Post-Nostr-pivot the seed is a uid, not an `npub1…` — so the old
+    // `startsWith('npub1')` guard meant this cancel was NEVER sent, and the
+    // callee's phone rang until it was dismissed by hand. Send for any non-empty
+    // recipient; the server resolves the address.
+    if (widget.seed.isEmpty) return;
     ApiAuth.postJson(kCallStatusUrl, {
       'to': widget.seed, 'callId': widget.room, 'status': 'cancel',
     }).ignore();
+    Analytics.capture('call_cancel_sent', {'call_id': widget.room});
   }
 
   void _toggleCam() {
@@ -452,6 +506,29 @@ class _CallScreenState extends State<CallScreen> {
       if (started) return;
     }
     if (mounted && !_connected) _endWith('no-answer', reason: 'timeout-ringing');
+  }
+
+  /// Callee auto-replied "busy" (already on a call, or the room rejected a 3rd
+  /// peer). Before giving the caller a dead busy tone, try the AI receptionist
+  /// (audio calls, premium callee) so Ava can still take a message — a busy
+  /// callee is the case where voicemail matters most, and the old code skipped
+  /// it entirely (busy → tone → end, receptionist never reached). If Ava can't
+  /// pick up, fall back to the busy tone + end as before.
+  Future<void> _onBusy() async {
+    if (_ended || _connected) return;
+    _ringTimeout?.cancel();
+    _ringback.stop();
+    Analytics.capture('call_busy_received', {
+      'call_id': widget.room,
+      'recept_mode': _receptMode,
+      'video': widget.video,
+    });
+    if (!widget.video) {
+      final started = await _tryReceptionist(
+          activationMode: _receptMode == 'first_ring' ? 'first_ring' : 'rings');
+      if (started) return;
+    }
+    if (mounted && !_connected && !_ended) _endWith('busy', reason: 'busy');
   }
 
   /// Probe the callee's receptionist config at dial time (audio only) so we know
@@ -529,6 +606,10 @@ class _CallScreenState extends State<CallScreen> {
     try { _receptionist?.hangup(); } catch (_) {}
     _ended = true;
     gInCall = false;
+    if (gActiveCallId == widget.room) {
+      gActiveCallId = null;
+      gInCallSince = 0;
+    }
     _telemetry.ended(_connected ? 'ended' : _phase); // no-op if already reported
     // Outgoing call torn down before it connected → tell the callee to stop ringing.
     if (widget.outgoing && !_connected) _notifyCalleeCanceled();

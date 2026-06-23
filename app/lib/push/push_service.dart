@@ -11,6 +11,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/call_log_store.dart';
@@ -198,9 +199,41 @@ class PushService {
         SyncHub.I.ensureConnected();
         return;
       }
-      // Already on a call → auto-reply "busy" instead of ringing.
-      if (d['type'] == 'call' && gInCall) {
-        _signalStatus((d['callId'] ?? '').toString(), 'busy', (d['fromPub'] ?? '').toString());
+      // Incoming call. Reconcile a possibly-stale "on a call" flag BEFORE
+      // deciding to ring or auto-reply busy — a leftover gInCall used to make
+      // the device busy-reject every future call (the phantom-busy bug).
+      if (d['type'] == 'call') {
+        final incomingId = (d['callId'] ?? '').toString();
+        final kind = (d['kind'] == 'video') ? 'video' : 'audio';
+        // Duplicate/echo push for the call already on screen → ignore.
+        if (incomingId.isNotEmpty && incomingId == gActiveCallId) {
+          Analytics.capture('call_duplicate_push_ignored', {'call_id': incomingId});
+          return;
+        }
+        if (callIsGenuinelyActive()) {
+          _signalStatus(incomingId, 'busy', (d['fromPub'] ?? '').toString());
+          Analytics.capture('call_incoming_autobusy', {
+            'call_id': incomingId, 'kind': kind, 'busy_reason': 'on_another_call',
+          });
+          return;
+        }
+        if (gInCall) {
+          // Stale gInCall — a previous call left it set without tearing down.
+          // Clear it so we ring normally instead of silently rejecting busy.
+          Analytics.capture('call_stale_incall_cleared', {
+            'call_id': incomingId,
+            'age_ms': gInCallSince == 0
+                ? -1
+                : DateTime.now().millisecondsSinceEpoch - gInCallSince,
+          });
+          gInCall = false;
+          gActiveCallId = null;
+          gInCallSince = 0;
+        }
+        Analytics.capture('call_incoming_received', {
+          'call_id': incomingId, 'kind': kind, 'state': 'foreground',
+        });
+        _showIncoming(d);
         return;
       }
       _showIncoming(d);
@@ -278,6 +311,13 @@ class PushService {
       switch (event.event) {
         case Event.actionCallAccept:
           IceCache.prefetch(); // accept tapped → call screen is next; warm TURN now
+          final acc = event.body['extra'];
+          if (acc is Map) {
+            Analytics.capture('call_incoming_accepted', {
+              'call_id': (acc['callId'] ?? '').toString(),
+              'kind': acc['kind'] == 'video' ? 'video' : 'audio',
+            });
+          }
           _openCall(event.body['extra']);
           break;
         case Event.actionCallDecline:
@@ -319,10 +359,18 @@ class PushService {
       }
     } catch (_) {/* fall back to plain decline */}
     _signalStatus(callId, status, from);
+    Analytics.capture('call_incoming_declined', {
+      'call_id': callId,
+      'routed_to': status, // 'decline' | 'decline_ava'
+    });
     _logMissed(extra);
   }
 
   static void _logMissed(Map extra) {
+    Analytics.capture('call_incoming_missed', {
+      'call_id': (extra['callId'] ?? '').toString(),
+      'kind': extra['kind'] == 'video' ? 'video' : 'audio',
+    });
     CallLogStore().add(CallEntry(
       name: (extra['fromName'] ?? 'Caller').toString(),
       seed: (extra['from'] ?? 'caller').toString(),
