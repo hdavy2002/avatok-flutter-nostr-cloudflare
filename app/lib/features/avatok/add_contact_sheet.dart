@@ -50,6 +50,8 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   bool _refreshing = false;
   String _query = '';
   bool _busy = false;
+  bool _resolving = false; // looking up a typed email/phone against the AvaTOK directory
+  Contact? _resolvedHit;   // an AvaTOK account found by resolving that query
   final _openedAt = DateTime.now();
 
   @override
@@ -117,7 +119,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   /// Debounced search-usage telemetry — how people search + how often a search
   /// returns nothing (helps spot normalization/match gaps).
   void _onQuery(String v) {
-    setState(() => _query = v);
+    setState(() { _query = v; if (v.trim().isEmpty) { _resolvedHit = null; _resolving = false; } });
     _searchTimer?.cancel();
     final q = v.trim();
     if (q.isEmpty) return;
@@ -132,7 +134,29 @@ class _AddContactSheetState extends State<_AddContactSheet> {
       if (results == 0) {
         Analytics.capture('add_contact_empty', {'reason': 'no_matches', 'query_len': q.length});
       }
+      // Also look the query up against the AvaTOK directory so someone who is on
+      // AvaTOK but NOT in your phonebook is still findable + messageable by their
+      // email or phone number.
+      _maybeResolve(q);
     });
+  }
+
+  /// Resolve an email/phone query against the directory. Surfaces an "On AvaTOK"
+  /// tile when it maps to a real account (tapping adds them + opens a chat that
+  /// actually delivers). No-ops for plain name searches.
+  Future<void> _maybeResolve(String q) async {
+    final isEmail = Directory.isCompleteEmail(q);
+    final isPhone = RegExp(r'^[+\d][\d\s()-]{4,}$').hasMatch(q);
+    if (!isEmail && !isPhone) {
+      if (mounted && (_resolvedHit != null || _resolving)) setState(() { _resolvedHit = null; _resolving = false; });
+      return;
+    }
+    if (mounted) setState(() { _resolving = true; _resolvedHit = null; });
+    Contact? hit;
+    try { hit = await Directory.resolve(q); } catch (_) { hit = null; }
+    if (!mounted || _query.trim() != q) return; // stale — a newer query superseded it
+    // Don't surface yourself, or someone already shown as an on-AvaTOK match.
+    setState(() { _resolving = false; _resolvedHit = hit; });
   }
 
   @override
@@ -257,11 +281,21 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ZineField(
         controller: _phoneCtrl,
-        hint: 'Search name or phone number',
+        hint: 'Name, phone number, or email',
         leadIcon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
         onChanged: _onQuery,
       ),
       const SizedBox(height: 10),
+      if (_resolving)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 6),
+          child: Row(children: [
+            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            SizedBox(width: 10),
+            Text('Looking up on AvaTOK…'),
+          ]),
+        ),
+      if (_resolvedHit != null) _resolvedTile(_resolvedHit!),
       ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 360),
         child: !_loaded
@@ -310,9 +344,11 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     final items = _filtered;
     if (items.isEmpty) {
       final q = _query.trim();
-      // A phone-like query with no match → offer to create + sync a new contact
-      // (first/last name, phone with country code, email, notes).
-      if (q.isNotEmpty && RegExp(r'^[\d+\s()-]{5,}$').hasMatch(q)) {
+      // A phone-like query that ISN'T an AvaTOK account (not resolving / no hit)
+      // → offer to create + sync a new device contact (name, phone+country,
+      // email, notes). If they ARE on AvaTOK, the resolved tile above handles it.
+      if (q.isNotEmpty && _resolvedHit == null && !_resolving &&
+          RegExp(r'^[\d+\s()-]{5,}$').hasMatch(q)) {
         return SingleChildScrollView(
           padding: const EdgeInsets.only(top: 4, bottom: 8),
           child: _NewContactForm(initialPhone: q),
@@ -371,6 +407,30 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   Widget _inviteTrailing() => _busy
       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
       : PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.inkMute, size: 22);
+
+  // A directory hit: someone on AvaTOK found by their email/phone (even if not in
+  // your phonebook). Tapping returns them so a real, deliverable chat opens.
+  Widget _resolvedTile(Contact c) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: Zine.mint.withOpacity(0.25),
+          borderRadius: BorderRadius.circular(Zine.r),
+          border: Border.all(color: Zine.ink, width: 2),
+        ),
+        child: ListTile(
+          leading: Container(
+            decoration: BoxDecoration(
+                shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+            child: Avatar(
+                seed: c.npub, name: c.name, size: 40,
+                avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+          ),
+          title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 14.5)),
+          subtitle: Text('On AvaTOK — tap to add & message', style: ZineText.sub(size: 12.5)),
+          trailing: PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.ink, size: 22),
+          onTap: () => Navigator.pop(context, c),
+        ),
+      );
 }
 
 // ─── Create-a-new-contact form (shown when a searched number isn't on AvaTOK) ──
