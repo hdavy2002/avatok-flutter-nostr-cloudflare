@@ -478,6 +478,19 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
   return "I worked through several steps but didn't finish — try narrowing the request.";
 }
 
+// Heuristic: does this request clearly ask Ava to CREATE/EDIT an image? Used to
+// force the generate_image function call (see runAgentLoop) — with thinking off
+// + streaming, Gemini sometimes emits a text acknowledgement ("On it — creating
+// that image now ✨") INSTEAD of the tool call, so the user sees "creating now"
+// but nothing ever happens. A verb + an image noun is a strong, low-false-positive
+// signal; the handler still applies the real premium/wallet/safety gates.
+export function looksLikeImageRequest(s: string): boolean {
+  const t = (s || "").toLowerCase();
+  const verb = /\b(generate|create|make|draw|design|paint|render|sketch|illustrate|edit|turn (?:this|it) into)\b/;
+  const noun = /\b(image|images|picture|pic|pics|photo|photos|logo|poster|icon|sticker|wallpaper|drawing|illustration|portrait|art(?:work)?|avatar|meme|banner|background)\b/;
+  return verb.test(t) && noun.test(t);
+}
+
 // Unified agentic loop — replaces the old summarize→search→classify→guard→generate
 // pipeline with ONE call where Gemini decides everything via function-calling:
 // chat directly, call search_memory (the user's own notes/messages/files), or act
@@ -569,13 +582,17 @@ export async function runAgentLoop(
   // One non-streamed step (reliable function-call assembly). Tries gemini-3, then
   // a fast gemini-2.5-flash (thinking off) fallback so a g3 hiccup never breaks
   // the turn. Also the fallback when SSE streaming fails mid-loop.
-  const once = async (): Promise<{ content: any; calls: any[]; text: string }> => {
+  const once = async (forceImage = false): Promise<{ content: any; calls: any[]; text: string }> => {
     let lastErr = "";
     for (const m of [APPS_MODEL, APPS_FALLBACK_MODEL]) {
+      const body: any = reqBody(m);
+      // Force exactly the generate_image call so the tool can't be "answered" with
+      // text. mode:ANY restricted to the one function = the model MUST call it.
+      if (forceImage) body.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["generate_image"] } };
       const res = await fetch(genUrl(m), {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": geminiKey },
-        body: JSON.stringify(reqBody(m)),
+        body: JSON.stringify(body),
       });
       const out: any = await res.json().catch(() => ({}));
       if (!res.ok) { lastErr = `gemini ${res.status}: ${JSON.stringify(out?.error ?? out).slice(0, 200)}`; continue; }
@@ -587,6 +604,46 @@ export async function runAgentLoop(
   };
 
   let imageStarted = false; // one image generation per turn (avoid loops/dupes)
+
+  // IMAGE FAST-PATH. When the request clearly asks for a picture, force a single
+  // non-streamed generate_image call up front. This fixes the silent failure where
+  // the streamed/thinking-off model replied "On it — creating that image now ✨"
+  // as plain TEXT and never emitted the function call (so onImage never ran and no
+  // image/chip ever appeared). The handler returns the real user-facing line
+  // (premium upsell for free tier, "generation started…" for premium, or a safety
+  // block) — we relay THAT verbatim, never a fabricated acknowledgement.
+  if (imageDecl && opts?.onImage && looksLikeImageRequest(query)) {
+    try {
+      const forced = await once(true);
+      const call = forced.calls.find((c: any) => String(c?.functionCall?.name) === "generate_image");
+      if (call) {
+        const args = call.functionCall.args ?? {};
+        imageStarted = true;
+        const tStart = Date.now();
+        let status = "";
+        let okTool = true;
+        try {
+          status = await opts.onImage(
+            String(args?.prompt ?? query),
+            args?.edit_ref ? String(args.edit_ref) : undefined,
+          );
+        } catch (e: any) {
+          okTool = false;
+          status = "I couldn't start that image right now — please try again.";
+        }
+        try {
+          opts?.onTool?.({
+            tool: "generate_image", ok: okTool, ms: Date.now() - tStart,
+            args_keys: Object.keys(args || {}).slice(0, 12), is_app: false,
+          });
+        } catch { /* telemetry best-effort */ }
+        if (opts?.onDelta && status) { try { await opts.onDelta(status); } catch { /* stream best-effort */ } }
+        return status || "On it — creating that image now ✨";
+      }
+      // No forced call came back (rare) — fall through to the normal loop below.
+    } catch { /* on any failure, fall back to the standard agent loop */ }
+  }
+
   for (let step = 0; step < 6; step++) {
     let content: any; let calls: any[]; let text: string;
     if (opts?.onDelta) {
