@@ -21,9 +21,16 @@ import { isFail, requireUser } from "../authz";
 
 const KEY = "plan_config";
 
-/** Billing dimensions a daily counter can meter. Keep in sync with usage.ts. */
+/** Billing dimensions a daily counter can meter. Keep in sync with usage.ts.
+ *
+ * COST MODEL (owner, 2026-06-23): text→LLM is cheap per million tokens, so
+ * `ava_chat` is UNLIMITED on every tier and never shown to users as a meter
+ * (Messenger calls Ava on-demand via #ava/@ava then exits; ChatAVA compresses its
+ * own context after N turns). The genuinely expensive things — and the only ones
+ * metered/gated — are realtime voice (Gemini Live: voice_min, recept,
+ * translate_min), the LiveKit SFU (conf_min), and image gen (Nano Banana: image). */
 export type Dim =
-  | "ava_chat"        // Ava AI text-chat turns/day
+  | "ava_chat"        // UNLIMITED everywhere (kept for completeness; never capped)
   | "image"           // AI image generations/day
   | "voice_min"       // AI voice-agent minutes/day (AvaVoice/AvaVision)
   | "recept"          // AI receptionist sessions/day
@@ -57,20 +64,20 @@ export interface Plan {
 export const PLANS: Record<TierId, Plan> = {
   0: {
     id: 0, key: "free", name: "Free", priceUsd: 0,
-    caps: { ava_chat: 25, image: 5, voice_min: 10, recept: 3, translate_min: 0, conf_min: 60 },
+    caps: { ava_chat: null, image: 5, voice_min: 10, recept: 3, translate_min: 0, conf_min: 60 },
     confParticipants: 5,
     features: { memory: false, fileAnalysis: false, webSearch: false, premiumImageModel: false },
   },
   1: {
     id: 1, key: "plus", name: "Plus", priceUsd: 10,
-    caps: { ava_chat: 200, image: 30, voice_min: 60, recept: 30, translate_min: 30, conf_min: 180 },
+    caps: { ava_chat: null, image: 30, voice_min: 60, recept: 30, translate_min: 30, conf_min: 180 },
     confParticipants: 10,
     features: { memory: true, fileAnalysis: true, webSearch: true, premiumImageModel: true },
     playProductId: "avatok_plus_monthly",
   },
   2: {
     id: 2, key: "pro", name: "Pro", priceUsd: 20,
-    caps: { ava_chat: 1000, image: 100, voice_min: 180, recept: 100, translate_min: 120, conf_min: 480 },
+    caps: { ava_chat: null, image: 100, voice_min: 180, recept: 100, translate_min: 120, conf_min: 480 },
     confParticipants: 25,
     features: { memory: true, fileAnalysis: true, webSearch: true, premiumImageModel: true },
     playProductId: "avatok_pro_monthly",

@@ -139,9 +139,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     final name = (plan['name'] as String?) ?? 'Plan';
     final price = (plan['priceUsd'] as num?)?.toDouble() ?? 0;
     final isCurrent = tier == _currentTier;
-    final caps = (plan['caps'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final features = (plan['features'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final lines = _featureLines(caps, features);
+    final lines = _featureLines(plan);
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 7),
@@ -220,24 +218,41 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     );
   }
 
-  List<String> _featureLines(Map<String, dynamic> caps, Map<String, dynamic> features) {
-    String cap(String k, String unit) {
-      final v = caps[k];
-      if (v == null) return 'Unlimited $unit';
-      if (v == 0) return 'No $unit';
-      return '$v $unit / day';
+  // Plain-language feature lines. Ava text chat is unlimited on every tier and is
+  // folded into the first line (never shown as a meter — text is cheap; we only
+  // surface the costly things: AI images, AI voice/translation minutes, group
+  // video calls).
+  List<String> _featureLines(Map<String, dynamic> plan) {
+    final caps = (plan['caps'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final features = (plan['features'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final confSize = (plan['confParticipants'] as num?)?.toInt() ?? 0;
+
+    final out = <String>['Unlimited messaging, calls & Ava AI chat'];
+
+    final img = caps['image'];
+    out.add(img == null ? 'Unlimited AI images' : '$img AI images / day');
+
+    final vm = caps['voice_min'];
+    out.add(vm == null ? 'Unlimited AI voice-call minutes' : '$vm AI voice-call minutes / day');
+
+    final rc = caps['recept'];
+    out.add(rc == null ? 'Unlimited AI receptionist calls' : '$rc AI receptionist calls / day');
+
+    final tr = caps['translate_min'];
+    if (tr == null) {
+      out.add('Unlimited live-translation minutes');
+    } else if (tr > 0) {
+      out.add('$tr live-translation minutes / day');
     }
 
-    final out = <String>[
-      'Unlimited messaging & 1:1 calls',
-      cap('ava_chat', 'Ava chats'),
-      cap('image', 'images'),
-      cap('voice_min', 'AI voice minutes'),
-      cap('recept', 'receptionist sessions'),
-    ];
-    final tr = caps['translate_min'];
-    if (tr != null && tr != 0) out.add(tr == null ? 'Unlimited live-translation minutes' : '$tr live-translation minutes / day');
-    if (features['fileAnalysis'] == true) out.add('File analysis (PDF, Excel) in chat');
+    if (confSize > 0) {
+      final cm = caps['conf_min'];
+      final mins = cm == null ? 'unlimited minutes' : '$cm min/day';
+      out.add('Group video calls up to $confSize people ($mins)');
+    }
+
+    if (features['premiumImageModel'] == true) out.add('Premium image model (Nano Banana)');
+    if (features['fileAnalysis'] == true) out.add('Analyze PDFs & Excel sheets in chat');
     if (features['webSearch'] == true) out.add('Web search + memory');
     return out;
   }
