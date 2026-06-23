@@ -713,13 +713,26 @@ class _FolderViewState extends State<_FolderView> {
       );
 
   Future<void> _open(LibraryItem m) async {
-    if (!m.isPrivate && m.displayUrl.isNotEmpty) {
-      final uri = Uri.parse(m.displayUrl);
-      if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+    if (m.isPrivate || m.displayUrl.isEmpty) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Private file — open it from the original chat')));
+      return;
     }
+    // Images open in an in-app pinch-to-zoom viewer (no more bouncing out to the
+    // browser). Everything else (video / pdf / doc / audio) still hands off to the
+    // OS, which has the right native viewer for that type.
+    if (LibThumbs.isImage(m)) {
+      Analytics.capture('library_image_opened', {'id': m.id, 'mime': m.mime});
+      if (!mounted) return;
+      Navigator.of(context).push(PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (_, __, ___) => _ImageViewer(item: m),
+      ));
+      return;
+    }
+    final uri = Uri.parse(m.displayUrl);
+    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _itemMenu(LibraryItem m) async {
@@ -1007,6 +1020,137 @@ Future<int> _pickAndUpload(String kind, {required String app, String? folderId})
   await LibraryApi.uploadFile(
     bytes: bytes, mime: _mimeFromName(name, fallback: 'image/jpeg'), name: name, app: app, folderId: folderId);
   return 1;
+}
+
+/// Full-screen, pinch-to-zoom image viewer shown INSIDE the app (replacing the
+/// old "bounce out to the browser" behaviour). Double-tap toggles fit↔2×, pinch
+/// zooms freely (1×–5×), and a clear ✕ in the corner closes it. The cached
+/// thumbnail (LibThumbs) paints instantly underneath so there's never a blank
+/// black screen while the full-resolution image streams in.
+class _ImageViewer extends StatefulWidget {
+  final LibraryItem item;
+  const _ImageViewer({required this.item});
+  @override
+  State<_ImageViewer> createState() => _ImageViewerState();
+}
+
+class _ImageViewerState extends State<_ImageViewer> {
+  final TransformationController _tc = TransformationController();
+  TapDownDetails? _doubleTapPos;
+  File? _thumb;
+
+  @override
+  void initState() {
+    super.initState();
+    LibThumbs.thumb(widget.item, px: 480).then((f) {
+      if (mounted) setState(() => _thumb = f);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tc.dispose();
+    super.dispose();
+  }
+
+  void _toggleZoom() {
+    if (_tc.value != Matrix4.identity()) {
+      _tc.value = Matrix4.identity();
+    } else {
+      final p = _doubleTapPos?.localPosition;
+      final m = Matrix4.identity()..scale(2.5);
+      if (p != null) {
+        m
+          ..setEntry(0, 3, -p.dx * 1.5)
+          ..setEntry(1, 3, -p.dy * 1.5);
+      }
+      _tc.value = m;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.item;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(children: [
+        // Tap the backdrop (outside the image) to dismiss.
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            behavior: HitTestBehavior.opaque,
+          ),
+        ),
+        Positioned.fill(
+          child: GestureDetector(
+            onDoubleTapDown: (d) => _doubleTapPos = d,
+            onDoubleTap: _toggleZoom,
+            child: InteractiveViewer(
+              transformationController: _tc,
+              minScale: 1,
+              maxScale: 5,
+              child: Center(
+                child: Image.network(
+                  m.displayUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (ctx, child, progress) {
+                    if (progress == null) return child;
+                    // Show the cached thumb (blurred-up) until the full image lands.
+                    return _thumb != null
+                        ? Image.file(_thumb!, fit: BoxFit.contain)
+                        : const Center(
+                            child: CircularProgressIndicator(color: Colors.white));
+                  },
+                  errorBuilder: (_, __, ___) => _thumb != null
+                      ? Image.file(_thumb!, fit: BoxFit.contain)
+                      : const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('Image unavailable',
+                              style: TextStyle(color: Colors.white))),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Close (✕) button.
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 6,
+          right: 10,
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.55),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white24, width: 1),
+              ),
+              child: const Icon(Icons.close, color: Colors.white, size: 24),
+            ),
+          ),
+        ),
+        // Filename caption.
+        Positioned(
+          left: 0, right: 0,
+          bottom: MediaQuery.of(context).padding.bottom + 14,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: Text(m.name,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
 /// Shared little name prompt dialog — compact, centered card (not a full-height
