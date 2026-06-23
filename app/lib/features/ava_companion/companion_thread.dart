@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'package:file_picker/file_picker.dart';
@@ -61,6 +62,11 @@ class CompanionThreadScreen extends StatefulWidget {
   /// replies. Never persisted server-side (DM/group content stays on-device).
   final String? discussContext;
 
+  /// Discuss mode: when set, each Ava bubble offers "Use in chat" — tapping it
+  /// hands Ava's drafted text back to the originating Messenger thread (which
+  /// pre-fills its composer for the user to review) and closes this screen.
+  final void Function(String text)? onUseDraft;
+
   const CompanionThreadScreen({
     super.key,
     required this.persona,
@@ -68,6 +74,7 @@ class CompanionThreadScreen extends StatefulWidget {
     this.initialMessages,
     this.initialTitle,
     this.discussContext,
+    this.onUseDraft,
   });
 
   @override
@@ -597,6 +604,33 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
                 ]),
               ),
             ),
+          // Discuss mode: hand Ava's drafted reply back to the Messenger thread,
+          // or copy it. Only on real Ava bubbles (not the intro / blocked turns).
+          if (isAva && m.id != 'intro' && !m.blocked && widget.onUseDraft != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 5, left: 2),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                GestureDetector(
+                  onTap: () => _useInChat(m),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
+                        size: 14, color: Zine.blueInk),
+                    const SizedBox(width: 5),
+                    Text('Use in chat', style: ZineText.link(size: 12)),
+                  ]),
+                ),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: () => _copyDraft(m),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold),
+                        size: 14, color: Zine.blueInk),
+                    const SizedBox(width: 5),
+                    Text('Copy', style: ZineText.link(size: 12)),
+                  ]),
+                ),
+              ]),
+            ),
           // Premium upsell CTA — shown when a turn needs premium AI (attachments,
           // tools) or coins. Opens the top-up sheet ($10 unlocks everything).
           if (isAva && (m.reason == 'premium_required' || m.reason == 'insufficient_coins'))
@@ -620,6 +654,27 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         ],
       ),
     );
+  }
+
+  /// Hand a drafted reply back to the Messenger thread (pre-fills its composer)
+  /// and close this discussion screen. We never auto-send — the user reviews it.
+  void _useInChat(_CompanionMsg m) {
+    final text = m.text.trim();
+    if (text.isEmpty) return;
+    Analytics.capture('discuss_with_ava_draft_used', {'len': text.length});
+    widget.onUseDraft?.call(text);
+    Navigator.of(context).pop();
+  }
+
+  /// Copy a drafted reply to the clipboard.
+  void _copyDraft(_CompanionMsg m) {
+    final text = m.text.trim();
+    if (text.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: text));
+    Analytics.capture('discuss_with_ava_draft_copied', {'len': text.length});
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Copied — paste it into your chat.')));
   }
 
   // On-device dictation into the message box (private; the Whisper model

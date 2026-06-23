@@ -2402,8 +2402,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         persona: discussPersona(widget.chat.name, isGroup: isGroup),
         discussContext: transcript,
         initialTitle: 'Chat with ${widget.chat.name}',
+        onUseDraft: _prefillComposer,
       ),
     ));
+  }
+
+  /// Pre-fill the composer with a draft Ava handed back from "Discuss with Ava".
+  /// We never auto-send — the user reviews/edits before it goes to the peer.
+  void _prefillComposer(String text) {
+    _ctrl.text = text;
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+    _composerFocus.requestFocus();
   }
 
   /// Open the chat library — every photo, video, link and doc shared here.
