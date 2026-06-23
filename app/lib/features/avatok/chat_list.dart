@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -40,6 +41,7 @@ import 'chat_thread.dart';
 import 'contacts.dart';
 import 'handle_prompt_sheet.dart';
 import 'data.dart';
+import 'media.dart';
 import 'new_group_screen.dart';
 import 'search_screen.dart';
 
@@ -77,6 +79,11 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   // x-only hex pubkeys of contacts who currently have a live (unexpired) status,
   // so their avatar gets the green glowing ring.
   final Set<String> _statusAuthorHex = {};
+  // My own latest live status → drives the header STATUS thumbnail + glow ring.
+  bool _iHaveStatus = false;
+  Map<String, dynamic>? _myStatusMedia; // envelope of my latest image status
+  String _myStatusSig = '';             // memo key so the thumbnail future is built once
+  Future<Uint8List>? _myStatusThumb;    // decrypted bytes for the header thumbnail
   bool _showArchived = false;
   Map<String, String> _drafts = {};
   final _previewStore = ChatPreviewStore();
@@ -123,6 +130,25 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     _statusAuthorHex
       ..clear()
       ..addAll(list.map((p) => p.authorPub).where((h) => h.isNotEmpty));
+    // Find MY own live statuses (newest first). If the latest is an image, show
+    // its thumbnail on the header STATUS avatar; otherwise just glow the ring.
+    final myHex = _id?.pubHex;
+    final mine = myHex == null
+        ? const <StatusPost>[]
+        : (list.where((p) => p.authorPub == myHex && !p.expired).toList()
+          ..sort((a, b) => b.ts.compareTo(a.ts)));
+    _iHaveStatus = mine.isNotEmpty;
+    final imgs = mine.where((p) => p.kind == 'image' && p.media != null);
+    _myStatusMedia = imgs.isEmpty ? null : imgs.first.media;
+    // Only (re)build the decrypt future when the underlying media changes — this
+    // keeps the thumbnail from re-fetching (and flickering) on every setState.
+    final sig = _myStatusMedia == null ? '' : jsonEncode(_myStatusMedia);
+    if (sig != _myStatusSig) {
+      _myStatusSig = sig;
+      _myStatusThumb = _myStatusMedia == null
+          ? null
+          : MediaService.downloadAndDecrypt(ChatMedia.fromEnvelope(_myStatusMedia!));
+    }
   }
 
   /// True if [npub] (a contact's npub) currently has a live status.
@@ -801,10 +827,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         bottom: false,
         child: Column(
           children: [
-            // Appbar band (§8): paper-2 fill, ink bottom border, AvaTalk
-            // wordmark with the marker highlight on "Talk".
+            // Appbar band (§8): paper-2 fill, ink bottom border. Everything the
+            // old body strip held (search, status, filters) now lives up here so
+            // the chat list itself is uncluttered: menu · Messenger · status
+            // avatar · filter dropdown · Chat-with-Ava · search.
             Container(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+              padding: const EdgeInsets.fromLTRB(10, 10, 8, 12),
               decoration: const BoxDecoration(
                 color: Zine.paper2,
                 border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
@@ -814,50 +842,22 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   ZineBackButton(
                       onTap: () => _scaffoldKey.currentState?.openDrawer(),
                       icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: ZineMarkTitle(pre: 'Ava', mark: 'Talk', fontSize: 24, textAlign: TextAlign.left),
+                  const SizedBox(width: 6),
+                  // Title — renamed AvaTalk → Messenger (marker highlight kept).
+                  const Flexible(
+                    child: ZineMarkTitle(mark: 'Messenger', fontSize: 19, textAlign: TextAlign.left),
                   ),
-                  // Chat with Ava — companion / blank Ava chat (Phase 6).
-                  ZineBackButton(
-                      onTap: _openAvaChat,
-                      icon: PhosphorIcons.sparkle(PhosphorIconsStyle.bold)),
+                  const SizedBox(width: 6),
+                  // Status avatar — opens the status viewer; shows my latest photo
+                  // status as a thumbnail (glows when I have a live status).
+                  _headerStatusButton(),
                   const SizedBox(width: 8),
-                  ZineBackButton(
-                      onTap: _openSearch,
-                      icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)),
-                  // Add-contact removed from the header — it's a duplicate of the
-                  // "ADD" circle below and the + FAB's "New chat".
-                ],
-              ),
-            ),
-            // Tappable search pill → full search screen.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: ZinePressable(
-                onTap: _openSearch,
-                radius: BorderRadius.circular(100),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(children: [
-                  PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-                      size: 18, color: Zine.inkSoft),
-                  const SizedBox(width: 10),
-                  Text('Search by name, email or phone', style: ZineText.sub(size: 14)),
-                ]),
-              ),
-            ),
-            // filter chips
-            _filterChips(),
-            // status / active-now strip
-            SizedBox(
-              height: 92,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _statusItem(),
-                  _activeAdd(),
-                  for (final c in contactChats) _activeAvatar(context, c),
+                  // Filters collapsed into a single dropdown (active label shown).
+                  _filterMenuButton(),
+                  const SizedBox(width: 6),
+                  // Chat with Ava — companion / blank Ava chat (Phase 6).
+                  _hdrIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), _openAvaChat),
+                  _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch),
                 ],
               ),
             ),
@@ -919,50 +919,129 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _filterChips() {
-    Widget chip(String label, String value) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: GestureDetector(
-          onLongPress: value.startsWith('c:')
-              ? () async {
-                  final list = await _filterStore.remove(value.substring(2));
-                  if (mounted) setState(() { _customFilters = list; if (_filter == value) _filter = 'all'; });
-                }
-              : null,
-          child: ZineChip(
-            label: label,
-            active: _filter == value,
-            onTap: () => setState(() => _filter = value),
+  /// Compact circular header icon button (smaller than ZineBackButton so the
+  /// fuller header row — title + 4 trailing controls — fits on narrow phones).
+  Widget _hdrIcon(IconData icon, VoidCallback onTap) => ZinePressable(
+        onTap: onTap,
+        pressedColor: Zine.lime,
+        radius: BorderRadius.circular(100),
+        padding: EdgeInsets.zero,
+        child: SizedBox(
+          width: 38, height: 38,
+          child: Center(child: PhosphorIcon(icon, size: 19, color: Zine.ink)),
+        ),
+      );
+
+  /// Header STATUS avatar. Shows my latest photo-status thumbnail when I have
+  /// one (so posting a pic is reflected here), else my generated avatar. Glows
+  /// when I have any live status. Tap → status viewer.
+  Widget _headerStatusButton() {
+    const sz = 32.0;
+    Widget inner;
+    if (_myStatusThumb != null) {
+      inner = ClipOval(
+        child: SizedBox(
+          width: sz, height: sz,
+          child: FutureBuilder<Uint8List>(
+            future: _myStatusThumb,
+            builder: (_, s) => s.hasData
+                ? Image.memory(s.data!, width: sz, height: sz, fit: BoxFit.cover)
+                : Avatar(seed: _id?.npub ?? 'me', name: 'You', size: sz),
           ),
         ),
       );
+    } else {
+      inner = Avatar(seed: _id?.npub ?? 'me', name: 'You', size: sz);
     }
+    return GestureDetector(
+      onTap: _openStatuses,
+      child: _iHaveStatus ? _glowRing(inner) : _ring(inner),
+    );
+  }
 
-    return SizedBox(
-      // Taller + centered so chip labels (with descenders like "g" in Groups)
-      // are never vertically clipped.
-      height: 56,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          chip('All', 'all'),
-          chip('Favourites', 'fav'),
-          chip('Unread', 'unread'),
-          chip('Groups', 'groups'),
-          for (final f in _customFilters) chip(f.name, 'c:${f.name}'),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ZinePressable(
-              onTap: _addCustomFilter,
-              radius: BorderRadius.circular(100),
-              boxShadow: const <BoxShadow>[],
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 15, color: Zine.ink),
-            ),
+  /// Short label for the active filter, shown next to the dropdown caret.
+  String _filterLabel() {
+    switch (_filter) {
+      case 'all': return 'All';
+      case 'fav': return 'Favs';
+      case 'unread': return 'Unread';
+      case 'groups': return 'Groups';
+      default: return _filter.startsWith('c:') ? _filter.substring(2) : 'All';
+    }
+  }
+
+  PopupMenuItem<String> _fItem(String value, String label) => PopupMenuItem<String>(
+        value: value,
+        child: Row(children: [
+          SizedBox(
+            width: 24,
+            child: _filter == value
+                ? PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 16, color: Zine.blueInk)
+                : null,
           ),
-        ],
+          Text(label, style: ZineText.value(size: 14.5)),
+        ]),
+      );
+
+  /// Filters collapsed into one dropdown: a pill showing the active filter +
+  /// caret; tapping opens the full list (with a check on the active one) plus
+  /// "New filter". Long-press isn't available in a menu, so custom filters get
+  /// a trailing ✕ to delete.
+  Widget _filterMenuButton() {
+    return PopupMenuButton<String>(
+      tooltip: 'Filter chats',
+      color: Zine.paper,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        borderRadius: BorderRadius.circular(Zine.rSm),
+      ),
+      onSelected: (v) async {
+        if (v == '__add') { _addCustomFilter(); return; }
+        if (v.startsWith('del:')) {
+          final name = v.substring(4);
+          final list = await _filterStore.remove(name);
+          if (mounted) setState(() { _customFilters = list; if (_filter == 'c:$name') _filter = 'all'; });
+          return;
+        }
+        setState(() => _filter = v);
+      },
+      itemBuilder: (_) => [
+        _fItem('all', 'All'),
+        _fItem('fav', 'Favourites'),
+        _fItem('unread', 'Unread'),
+        _fItem('groups', 'Groups'),
+        for (final f in _customFilters) _fItem('c:${f.name}', f.name),
+        for (final f in _customFilters)
+          PopupMenuItem<String>(
+            value: 'del:${f.name}',
+            child: Row(children: [
+              const SizedBox(width: 24),
+              PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 14, color: Zine.coral),
+              const SizedBox(width: 8),
+              Text('Delete "${f.name}"', style: ZineText.sub(size: 13, color: Zine.coral)),
+            ]),
+          ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: '__add',
+          child: Row(children: [
+            SizedBox(width: 24, child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 15, color: Zine.ink)),
+            Text('New filter', style: ZineText.value(size: 14.5)),
+          ]),
+        ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(11, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: _filter == 'all' ? Zine.card : Zine.lime,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: Zine.ink, width: 2),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(_filterLabel(), style: ZineText.tag(size: 11, color: Zine.ink)),
+          const SizedBox(width: 3),
+          PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 12, color: Zine.ink),
+        ]),
       ),
     );
   }
@@ -995,89 +1074,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
       .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _setStatuses(l)); }));
 
-  Widget _statusItem() => Padding(
-        padding: const EdgeInsets.only(right: 14),
-        child: GestureDetector(
-          onTap: _openStatuses,
-          child: Column(children: [
-            Stack(clipBehavior: Clip.none, children: [
-              _statusCount > 0
-                  ? _glowRing(Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56))
-                  : _ring(Avatar(seed: _id?.npub ?? 'me', name: 'You', size: 56)),
-              Positioned(
-                right: -2, bottom: -2,
-                child: Container(
-                  width: 20, height: 20,
-                  decoration: BoxDecoration(
-                      color: Zine.lime, shape: BoxShape.circle,
-                      border: Border.all(color: Zine.ink, width: 2)),
-                  child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 11, color: Zine.ink),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 6),
-            Text('STATUS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
-          ]),
-        ),
-      );
-
-  Widget _activeAdd() => GestureDetector(
-        onTap: _openAddContact,
-        child: Padding(
-        padding: const EdgeInsets.only(right: 14),
-        child: Column(
-          children: [
-            Container(
-              width: 56, height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Zine.card,
-                border: Border.all(color: Zine.ink, width: 2),
-              ),
-              child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), color: Zine.ink, size: 22),
-            ),
-            const SizedBox(height: 6),
-            Text('ADD', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
-          ],
-        ),
-      ),
-      );
-
-  Widget _activeAvatar(BuildContext context, Chat c) {
-    final hasStatus = _hasStatus(c.seed);
-    final avatar = Avatar(seed: c.seed, name: c.name, size: 56,
-        avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl);
-    return Padding(
-        padding: const EdgeInsets.only(right: 14),
-        child: GestureDetector(
-          // A live status → tap views it; otherwise open the chat.
-          onTap: hasStatus ? _openStatuses : () => _openChat(c),
-          child: Column(
-            children: [
-              Stack(children: [
-                hasStatus ? _glowRing(avatar) : _ring(avatar),
-                Positioned(
-                  bottom: 2, right: 2,
-                  child: Container(
-                    width: 14, height: 14,
-                    decoration: BoxDecoration(
-                        color: Zine.mint, shape: BoxShape.circle,
-                        border: Border.all(color: Zine.ink, width: 2)),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 60,
-                child: Text(c.name.split(' ').first.toUpperCase(),
-                    maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
-                    style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
-              ),
-            ],
-          ),
-        ),
-      );
-  }
 }
 
 class _ChatRow extends StatelessWidget {
