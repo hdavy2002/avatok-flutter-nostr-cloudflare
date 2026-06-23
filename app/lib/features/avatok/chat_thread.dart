@@ -2381,11 +2381,28 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (text.isEmpty) continue;
       turns.add(DiscussTurn(me: m.me, text: text));
     }
-    final transcript = ThreadContext.buildVerbatim(
+    // Long threads need a summarisation pass — let the user know we're reading.
+    if (turns.length > ThreadContext.kRawTailTurns * 4) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        duration: Duration(seconds: 2),
+        content: Text('Reading your chat for Ava…'),
+      ));
+    }
+    // Assemble the grounding block on-device. Short threads come back verbatim;
+    // long ones are map-reduce summarised (recent tail kept raw) to stay lean.
+    final transcript = await ThreadContext.buildSmart(
       peerLabel: widget.chat.name,
       turns: turns,
       isGroup: isGroup,
+      summarize: (chunk) async {
+        final ans = await AvaAiClient.I.ask(
+          message: 'Summarise these chat messages in 2-3 sentences. Preserve who '
+              'said what and any decisions, plans, questions, or feelings:\n\n$chunk',
+        );
+        return ans.answer;
+      },
     );
+    if (!mounted) return;
     if (transcript.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Not enough messages here yet for Ava to weigh in.'),
