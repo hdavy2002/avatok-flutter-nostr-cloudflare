@@ -257,14 +257,20 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
 export async function receptionistConfigFor(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const cfg = await readConfig(env);
-  if ((cfg as any).receptionistEnabled === false) return json({ available: false, reason: "disabled" });
+  const t0 = Date.now();
   const to = String(new URL(req.url).searchParams.get("to") || "");
+  // "Should Ava answer here?" decision telemetry — one row per dial-time probe,
+  // so we can see how often callers find Ava available vs off/not_premium.
+  const checked = (available: boolean, reason: string, mode?: string) =>
+    track(env, ctx.uid, "ava_recept_config_checked", APP,
+      { to, available, reason, mode: mode ?? "", latency_ms: Date.now() - t0 });
+  const cfg = await readConfig(env);
+  if ((cfg as any).receptionistEnabled === false) { checked(false, "disabled"); return json({ available: false, reason: "disabled" }); }
   if (!to) return json({ error: "to required" }, 400);
   const s = await loadSettings(env, to);
-  if (!s || !s.enabled) return json({ available: false, reason: "off" });
+  if (!s || !s.enabled) { checked(false, "off"); return json({ available: false, reason: "off" }); }
   const { premium } = await isPremiumAI(req, env, to);
-  if (!premium) return json({ available: false, reason: "not_premium" });
+  if (!premium) { checked(false, "not_premium"); return json({ available: false, reason: "not_premium" }); }
   // v2: tell the caller HOW to hand off.
   //  - first_ring  → answer on ring 1 (owner is busy/away, Mode B)
   //  - rings       → wait for `rings` unanswered rings, then hand off (Mode A)
@@ -272,6 +278,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   // on this; we surface decline_to_ava so the incoming UI knows its options.
   const rings = Math.max(1, Math.round(Number((cfg as any).receptionistRings ?? 5)));
   const mode = s.answer_all ? "first_ring" : "rings";
+  checked(true, "available", mode);
   return json({
     available: true, mode, rings,
     decline_to_ava: !!s.decline_to_ava,
@@ -293,11 +300,22 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const to = String(b.to || "");
   if (!to) return json({ error: "to required" }, 400);
 
+  // Resolve the caller's contact once so EVERY start-path event (incl. the
+  // "why Ava didn't answer" skips) is pullable by the caller's email/phone.
+  const caller = await contactFor(env, ctx.uid).catch(() => ({ email: null, phone: null }));
+  const skip = (reason: string, extra: Record<string, unknown> = {}) =>
+    trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_skipped", APP,
+      { owner: to, reason, ...extra });
+
   const s = await loadSettings(env, to);
-  if (!s || !s.enabled) return json({ error: "receptionist_unavailable", reason: "off" }, 409);
+  if (!s || !s.enabled) { skip("off"); return json({ error: "receptionist_unavailable", reason: "off" }, 409); }
   const { premium } = await isPremiumAI(req, env, to);
-  if (!premium) return json({ error: "receptionist_unavailable", reason: "not_premium" }, 409);
-  if (!env.GEMINI_API_KEY) return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503);
+  if (!premium) {
+    skip("not_premium");
+    trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_premium_block", APP, { owner: to });
+    return json({ error: "receptionist_unavailable", reason: "not_premium" }, 409);
+  }
+  if (!env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
 
   const sid = crypto.randomUUID();
   const rtcToken = crypto.randomUUID();
@@ -337,7 +355,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
 
   // Stamp the caller's email/phone so support can pull a complainant's
   // receptionist calls by contact. trace_id = the session id (one-call trace).
-  const caller = await contactFor(env, ctx.uid).catch(() => ({ email: null, phone: null }));
+  // (caller contact was resolved once above and reused here.)
   trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_triggered", APP,
     { owner: to, has_phone: !!callerPhone, call_id: callId, activation_mode: activationMode }, sid);
   metric(env, "ava_recept_triggered", [1]);

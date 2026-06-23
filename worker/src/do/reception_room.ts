@@ -96,8 +96,17 @@ export class ReceptionRoom {
     // Single-use init blob — burn it so the WS can't be re-opened.
     this.env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {});
 
-    // Open Gemini Live (through AI Gateway when configured).
-    this.connectGemini().catch(() => this.failHard("gemini_connect_failed"));
+    // Open Gemini Live (through AI Gateway when configured). A dedicated event
+    // captures the connect failure WITH via_gateway — this is the signature of
+    // the AI-Gateway-401 case (gateway authenticated but AI_GATEWAY_TOKEN unset).
+    this.connectGemini().catch((e) => {
+      this.ev("ava_recept_gemini_connect_failed", {
+        via_gateway: !!(this.env.AI_GATEWAY_ID && this.env.CF_ACCOUNT_ID),
+        error_scrubbed: String(e).slice(0, 200),
+        ms: Date.now() - this.startedAt,
+      });
+      this.failHard("gemini_connect_failed");
+    });
 
     // 2-minute cap (authoritative, server-side).
     this.softTimer = setTimeout(() => this.onSoftCap(), init.soft_cap_ms);
@@ -275,16 +284,24 @@ export class ReceptionRoom {
     let recordingUrl: string | null = null;
     try {
       if (this.pcmBytes > 0) {
+        const recT0 = Date.now();
         const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
         const key = `receptionist/${init.owner_uid}/${phoneKey}/${init.sid}.wav`;
         await this.env.BLOBS.put(key, wav, { httpMetadata: { contentType: "audio/wav" } });
         recordingUrl = key;
+        this.ev("ava_recept_recording_stored", { bytes: wav.byteLength, ok: true, latency_ms: Date.now() - recT0 });
       }
-    } catch { /* recording is best-effort */ }
+    } catch (e) {
+      this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: String(e).slice(0, 200) });
+    }
 
+    const sumT0 = Date.now();
     const summary = await this.summarize(transcript, init).catch(() => null);
     const summaryJson = summary ? JSON.stringify(summary) : null;
+    this.ev("ava_recept_summary_generated", {
+      ok: !!summary, latency_ms: Date.now() - sumT0, urgency: summary?.urgency ?? null,
+    });
 
     // Persist session.
     try {
@@ -303,6 +320,12 @@ export class ReceptionRoom {
       caller_phone: init.caller_phone, duration_s: durationS, cutoff_reason: reason,
       has_recording: !!recordingUrl, has_transcript: !!transcript,
       in_chars: this.inText.join("").length, out_chars: this.outText.join("").length,
+    });
+    // Session lifecycle close — the funnel tail (started → first_audio → ended).
+    this.ev("ava_recept_session_ended", {
+      cutoff_reason: reason, duration_s: durationS, got_audio: this.firstAudioSent,
+      ava_audio_bytes: this.pcmBytes, in_chars: this.inText.join("").length,
+      out_chars: this.outText.join("").length, has_recording: !!recordingUrl,
     });
     metric(this.env, reason === "hard_cap" ? "ava_recept_hardcap" : "ava_recept_completed", [1, durationS]);
   }
@@ -399,7 +422,10 @@ export class ReceptionRoom {
         title: "Ava took a message", body: bodyText.replace(/^📞\s*/, ""),
         data: { type: "receptionist", conv, caller_phone: init.caller_phone },
       });
-    } catch { /* best-effort */ }
+      this.ev("ava_recept_push_sent", { ok: true });
+    } catch (e) {
+      this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: String(e).slice(0, 200) });
+    }
     // v2 telemetry: did the message reach the caller's real DM thread?
     this.ev("ava_recept_delivered_inthread", {
       in_thread: inThread, conv_kind: inThread ? "dm" : "recept_fallback",
