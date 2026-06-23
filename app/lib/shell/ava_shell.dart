@@ -26,6 +26,7 @@ import '../features/profile/profile_screen.dart';
 import '../features/inbox/inbox_screen.dart';
 import '../features/verse/verse_screen.dart';
 import '../features/payout/payout_screen.dart';
+import '../features/subscribe/subscribe_screen.dart';
 import '../features/wallet/wallet_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'coming_soon.dart';
@@ -150,6 +151,9 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'invite':
         _push(const InviteScreen());
+        return;
+      case 'subscribe':
+        _push(const SubscribeScreen());
         return;
       case 'billing':
         _push(ComingSoon(

@@ -33,6 +33,8 @@ import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, convList, convCreate } from "./routes/messaging";
 import { getConfig, putConfig } from "./routes/config";
+import { getPlans } from "./routes/plans";
+import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./routes/subscribe";
 import { referralClaim, referralSummary } from "./routes/referral";
 import { inviteEmail } from "./routes/invite";
 import { featureCostsRoute } from "./feature_pricing";
@@ -325,6 +327,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/agreements/accept" && req.method === "POST") return await agreementAccept(req, env);
 
       // --- AvaWallet (Phase 2; balance authority = WalletDO) ---
+      // --- Subscribe (Phase 1 tiers: Free/Plus/Pro/Max) — gated by billingEnabled.
+      // Stripe subscription events land on the shared /webhooks/stripe endpoint.
+      if (p === "/api/subscribe/plans" && req.method === "GET") return await getPlans(req, env);
+      if (p === "/api/subscribe/checkout" && req.method === "POST") return await subscribeCheckout(req, env);
+      if (p === "/api/subscribe/android/verify" && req.method === "POST") return await subscribeAndroidVerify(req, env);
+      if (p === "/api/subscribe/cancel" && req.method === "POST") return await subscribeCancel(req, env);
       if (p === "/api/wallet/topup/intent" && req.method === "POST") return await walletTopupIntent(req, env);
       if (p === "/api/wallet/topup" && req.method === "POST") return await walletTopup(req, env);
       if ((p === "/webhooks/stripe" || p === "/api/wallet/stripe-webhook") && req.method === "POST") return await stripeWebhook(req, env);

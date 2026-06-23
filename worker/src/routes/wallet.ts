@@ -21,6 +21,8 @@ import { withIdempotency, rateLimit, RL } from "../money";
 import { acctUser, sendReceipt } from "../ledger";
 import { payAffiliateOnTopup } from "./affiliate";
 import { readConfig } from "./config";
+import { getSub } from "./plans";
+import { subscribeWebhookEvent } from "./subscribe";
 
 // Coin economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 coins,
 // i.e. 1 coin = $0.01. So 1 coin == 1 USD cent and usdCentsForCoins is identity.
@@ -206,6 +208,12 @@ export async function stripeWebhook(req: Request, env: Env): Promise<Response> {
   if (!ok) return json({ error: "bad signature" }, 400);
   let event: any; try { event = JSON.parse(payload); } catch { return json({ error: "bad json" }, 400); }
 
+  // Phase 1 subscriptions share this signed endpoint. Let the subscribe handler
+  // claim subscription-mode checkouts + customer.subscription.* events first; it
+  // returns null for everything else (e.g. one-time top-ups) so we fall through.
+  const subHandled = await subscribeWebhookEvent(env, event);
+  if (subHandled) return subHandled;
+
   if (event.type === "checkout.session.completed") {
     const s = event.data?.object ?? {};
     const ref = (typeof s.payment_intent === "string" && s.payment_intent) || s.id;
@@ -308,6 +316,18 @@ export async function walletBalance(req: Request, env: Env): Promise<Response> {
       r.body.beta = true;
     }
   } catch { /* serve the raw snapshot if config lookup fails */ }
+  // Phase 1 subscriptions: echo the user's billing tier (0=Free..3=Max) so the
+  // whole client renders the right plan pill/badges. premium = tier >= 1 (or the
+  // beta flag above). Best-effort: a tier read failure never blocks the balance.
+  try {
+    if (r.status === 200 && r.body) {
+      const sub = await getSub(env, ctx.uid);
+      r.body.tier = sub.tier;
+      r.body.tier_status = sub.status;
+      r.body.tier_renews_at = sub.renewsAt;
+      if (sub.tier >= 1) r.body.premium = 1;
+    }
+  } catch { /* tier optional — serve the snapshot without it */ }
   return json(r.body, r.status);
 }
 

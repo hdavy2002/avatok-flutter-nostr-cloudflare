@@ -63,6 +63,12 @@ export interface PlatformConfig {
   // "BETA PHASE", no PAID badges, no upsell). Flip to false in KV to restore the
   // normal free/premium + coin-metering model — no redeploy needed.
   betaFreePremium: boolean;
+  // Phase 1 subscriptions (Free/Plus/Pro/Max — Specs/PROPOSAL-USAGE-PACKAGES-AND-GATING.md).
+  // While FALSE: the Subscribe screen renders for preview but checkout endpoints
+  // 503 and NO tier gating is enforced (today's beta = everyone unlimited). Flip
+  // TRUE to enable real checkout + per-tier daily allowance enforcement. One KV
+  // flip, no redeploy.
+  billingEnabled: boolean;
   minAppBuild: number;
 }
 
@@ -99,6 +105,7 @@ const DEFAULTS: PlatformConfig = {
   imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
   betaFreePremium: true,           // BETA: everyone premium, all services free, no coin metering
+  billingEnabled: false,           // Phase 1 subscriptions OFF until launch (preview-only)
   minAppBuild: 0,
 };
 

@@ -175,6 +175,7 @@ const String kGuestUpgradeUrl = '$kIdentityBase/upgrade';     // POST {guest_tok
 const String kIdentityLevelUrl = '$kIdentityBase/level';      // GET (Clerk auth)
 
 const String kWalletBase = '$kApiBase/wallet';    // AvaWallet (Phase 2)
+const String kSubscribeBase = '$kApiBase/subscribe'; // Subscriptions (Phase 1 tiers)
 const String kCalendarBase = '$kApiBase/calendar';// AvaCalendar (Phase 3→5)
 const String kBookingBase = '$kApiBase/booking';  // AvaBooking (Phase 5)
 const String kTimeUrl = '$kApiBase/time';         // server epoch (clock skew, Phase 5 A2)

@@ -179,10 +179,36 @@ class _AvaSidebarState extends State<AvaSidebar> {
             ),
           ),
           // Plan status — green PREMIUM ✓ pill once the wallet is topped up, else
-          // a ghost "Free plan" chip that taps through to top up.
+          // a ghost "Free plan" chip that taps through to the Subscribe screen.
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
             child: Align(alignment: Alignment.centerLeft, child: _planChip()),
+          ),
+          // Subscribe — Phase 1 plans (Free/Plus/Pro/Max). Always visible CTA.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+            child: ZinePressable(
+              onTap: () => widget.onSelect('subscribe'),
+              color: Zine.lilac,
+              radius: BorderRadius.circular(Zine.rSm),
+              boxShadow: Zine.shadowXs,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(children: [
+                ZineIconBadge(
+                    icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Zine.card),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Subscribe', style: ZineText.cardTitle(size: 15.5)),
+                    const SizedBox(height: 1),
+                    Text('Plans & upgrades',
+                        style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                  ]),
+                ),
+                PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                    size: 14, color: Zine.ink),
+              ]),
+            ),
           ),
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), children: [
@@ -258,7 +284,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => widget.onSelect('avawallet'),
+      onTap: () => widget.onSelect('subscribe'),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         decoration: BoxDecoration(
@@ -269,7 +295,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.crown(PhosphorIconsStyle.fill), size: 13, color: Zine.inkSoft),
           const SizedBox(width: 6),
-          Text('FREE PLAN · TOP UP', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+          Text('FREE PLAN · UPGRADE', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
         ]),
       ),
     );
