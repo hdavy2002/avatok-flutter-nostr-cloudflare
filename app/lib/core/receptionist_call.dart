@@ -56,6 +56,9 @@ class ReceptionistCall {
   bool _ended = false;
   bool _firstAudio = false;
   int _connectMs = 0; // when start() began — basis for first-audio latency
+  int _bytesIn = 0; // total Ava audio bytes received
+  int _segments = 0; // playable WAV segments enqueued
+  int _playErrors = 0; // playback failures
   Timer? _hardCap;
   final Completer<String> _done = Completer<String>();
 
@@ -68,15 +71,37 @@ class ReceptionistCall {
   Future<bool> start() async {
     _connectMs = DateTime.now().millisecondsSinceEpoch;
     final cfg = await ReceptionistApi.configFor(calleeUid);
-    if (cfg == null) return false; // not premium / disabled / off
+    if (cfg == null) {
+      // not premium / disabled / off — record WHY Ava didn't pick up.
+      Analytics.capture('ava_recept_skipped', {
+        'reason': 'unavailable',
+        'activation_mode': activationMode,
+        if (callId case final id?) 'call_id': id,
+      });
+      return false;
+    }
     final s = await ReceptionistApi.start(
       to: calleeUid, callId: callId, callerPhone: callerPhone, callerName: callerName,
       activationMode: activationMode);
-    if (s == null) return false;
+    if (s == null) {
+      Analytics.capture('ava_recept_skipped', {
+        'reason': 'start_failed',
+        'activation_mode': activationMode,
+        if (callId case final id?) 'call_id': id,
+      });
+      return false;
+    }
 
     _sessionId = s['session_id'] as String?;
     final rtcUrl = s['rtc_url'] as String?;
-    if (rtcUrl == null) return false;
+    if (rtcUrl == null) {
+      Analytics.capture('ava_recept_skipped', {
+        'reason': 'no_rtc_url',
+        'activation_mode': activationMode,
+        if (callId case final id?) 'call_id': id,
+      });
+      return false;
+    }
     final hardCapMs = (s['hard_cap_ms'] as num?)?.toInt() ?? 120000;
 
     try {
@@ -128,6 +153,7 @@ class ReceptionistCall {
           if (callId case final id?) 'call_id': id,
         });
       }
+      _bytesIn += data.length;
       _pcmBuf.add(data);
       if (_pcmBuf.length >= _flushBytes) _enqueueSegment();
     } else if (data is String) {
@@ -140,6 +166,7 @@ class ReceptionistCall {
   void _enqueueSegment() {
     final pcm = _pcmBuf.takeBytes();
     if (pcm.isEmpty) return;
+    _segments++;
     _playQueue.add(_wrapWav(pcm, 24000));
     if (!_playing) _drainPlay();
   }
@@ -154,6 +181,7 @@ class ReceptionistCall {
     try {
       await _player.play(BytesSource(seg, mimeType: 'audio/wav'));
     } catch (_) {
+      _playErrors++;
       _playing = false;
     }
   }
@@ -179,6 +207,11 @@ class ReceptionistCall {
       'reason': reason,
       'activation_mode': activationMode,
       'got_audio': _firstAudio,
+      'audio_bytes_in': _bytesIn,
+      'segments': _segments,
+      'play_errors': _playErrors,
+      'duration_ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
+      'ws_connected': _wsConnected,
       if (callId case final id?) 'call_id': id,
     });
     AvaLog.I.log('receptionist', 'ended: $reason');

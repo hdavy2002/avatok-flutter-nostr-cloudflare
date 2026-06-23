@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show ProcessInfo;
 import 'dart:math' as math;
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -30,6 +31,10 @@ class CallTelemetry {
   final String callId;
   final bool video;
   final bool outgoing;
+  /// Media topology: 'p2p' (direct), 'relay' (via TURN), or 'sfu' (a conference
+  /// routed through the LiveKit SFU). 1:1 calls pass 'p2p'; it's promoted to
+  /// 'relay' automatically once we see the selected pair went through a relay.
+  String transportMode;
   final int _t0 = DateTime.now().millisecondsSinceEpoch;
 
   int? _tConnected;
@@ -42,6 +47,31 @@ class CallTelemetry {
   int netChanges = 0;
   bool _reported = false;
   bool _startedEmitted = false;
+
+  // ── peer geo + ICE/STUN/TURN topology ──────────────────────────────────────
+  // The remote party's country, relayed by the signaling server at connect, so a
+  // single call_connected / call_ended row carries BOTH ends' countries (the
+  // emitter's own is added server-side by PostHog GeoIP). '' when unknown.
+  String _peerCountry = '';
+  int _iceGatherStartMs = 0;
+  int _iceGatherMs = 0; // local ICE candidate gathering time
+  int _hostCands = 0, _srflxCands = 0, _relayCands = 0, _prflxCands = 0;
+  int _candidatePairs = 0;
+  String _turnServerHash = ''; // hashed TURN url (no creds) — which relay served us
+
+  // ── bandwidth headroom (WebRTC available bitrate estimates) ─────────────────
+  final List<double> _availOutKbps = [];
+  final List<double> _availInKbps = [];
+
+  // ── video performance counters ──────────────────────────────────────────────
+  int _framesDecoded = 0, _framesDropped = 0;
+  int _nackCount = 0, _pliCount = 0;
+  final List<double> _jbufMs = []; // jitter-buffer delay (ms)
+  final List<double> _audioLevel = []; // inbound audio level 0..1
+
+  // ── device memory footprint during the call (RSS) ───────────────────────────
+  final List<double> _rssMb = [];
+  double _rssPeakMb = 0;
 
   // ── rolling quality samples ────────────────────────────────────────────────
   Timer? _sampler;
@@ -59,7 +89,61 @@ class CallTelemetry {
   // bitrate deltas
   int _lastRecvBytes = 0, _lastSendBytes = 0, _lastBytesAt = 0;
 
-  CallTelemetry({required this.callId, required this.video, required this.outgoing});
+  CallTelemetry({
+    required this.callId,
+    required this.video,
+    required this.outgoing,
+    this.transportMode = 'p2p',
+  });
+
+  /// The remote party's country (server-relayed at connect), so one row carries
+  /// both ends' geo. Best-effort; ignored when empty.
+  void setPeerCountry(String c) {
+    if (c.isNotEmpty) _peerCountry = c.toUpperCase();
+  }
+
+  /// Tally one locally-gathered ICE candidate by type so we can see STUN-
+  /// reflexive vs TURN-relay reliance per network (host=LAN, srflx=STUN,
+  /// relay=TURN, prflx=peer-reflexive). [turnUrl] (no creds) records which relay.
+  void onLocalCandidate(String candidateType, {String? turnUrl}) {
+    switch (candidateType) {
+      case 'host':
+        _hostCands++;
+        break;
+      case 'srflx':
+        _srflxCands++;
+        break;
+      case 'relay':
+        _relayCands++;
+        break;
+      case 'prflx':
+        _prflxCands++;
+        break;
+    }
+    if (turnUrl != null && turnUrl.isNotEmpty && _turnServerHash.isEmpty) {
+      _turnServerHash = turnUrl.hashCode.toString();
+    }
+  }
+
+  void onIceGatheringStart() {
+    if (_iceGatherStartMs == 0) {
+      _iceGatherStartMs = DateTime.now().millisecondsSinceEpoch;
+    }
+  }
+
+  void onIceGatheringDone() {
+    if (_iceGatherStartMs > 0 && _iceGatherMs == 0) {
+      _iceGatherMs = DateTime.now().millisecondsSinceEpoch - _iceGatherStartMs;
+    }
+  }
+
+  static double _sampleRssMb() {
+    try {
+      return ProcessInfo.currentRss / (1024 * 1024);
+    } catch (_) {
+      return 0;
+    }
+  }
 
   /// Funnel root — a call attempt began. Lets us compute answer rate and setup
   /// failure rate (started without a matching connected). Idempotent.
@@ -96,6 +180,19 @@ class CallTelemetry {
         if (_codecAudio.isNotEmpty) 'codec_audio': _codecAudio,
         if (_codecVideo.isNotEmpty) 'codec_video': _codecVideo,
         'turn_only': CallDiag.turnOnly,
+        // topology + both-ends geo
+        'transport_mode': transportMode,
+        'direction': outgoing ? 'outgoing' : 'incoming',
+        if (_peerCountry.isNotEmpty) 'peer_country': _peerCountry,
+        // ICE / STUN / TURN setup detail
+        if (_iceGatherMs > 0) 'ice_gather_ms': _iceGatherMs,
+        'host_cands': _hostCands,
+        'srflx_cands': _srflxCands,
+        'relay_cands': _relayCands,
+        if (_prflxCands > 0) 'prflx_cands': _prflxCands,
+        if (_candidatePairs > 0) 'candidate_pairs': _candidatePairs,
+        if (_turnServerHash.isNotEmpty) 'turn_server_hash': _turnServerHash,
+        if (_availOutKbps.isNotEmpty) 'avail_out_kbps': _availOutKbps.last.round(),
         'video': video,
         'outgoing': outgoing,
       });
@@ -137,11 +234,15 @@ class CallTelemetry {
             break;
         }
       }
+      _candidatePairs = pairs.length;
       final pair = selectedPairId != null ? pairs[selectedPairId] : null;
       final localId = pair?['localCandidateId'];
       final cand = localId is String ? locals[localId] : null;
       final t = cand?['candidateType'];
       if (t is String && t.isNotEmpty) _iceType = t;
+      // Promote the topology label to 'relay' when the winning path used TURN —
+      // keeps 'sfu' intact for conferences that construct with transportMode:'sfu'.
+      if (_iceType == 'relay' && transportMode == 'p2p') transportMode = 'relay';
       // relayProtocol is the transport TURN used to reach the relay (udp/tcp/tls).
       final rp = cand?['relayProtocol'] ?? cand?['protocol'];
       if (rp is String && rp.isNotEmpty) _relayProtocol = rp.toLowerCase();
@@ -172,6 +273,11 @@ class CallTelemetry {
         if (s.type == 'candidate-pair') {
           final r = v['currentRoundTripTime'];
           if (r is num && r > 0) rtt = r * 1000.0;
+          // Congestion-control bitrate estimates → live bandwidth headroom.
+          final ao = v['availableOutgoingBitrate'];
+          if (ao is num && ao > 0) _availOutKbps.add(ao / 1000.0);
+          final ai = v['availableIncomingBitrate'];
+          if (ai is num && ai > 0) _availInKbps.add(ai / 1000.0);
         } else if (s.type == 'inbound-rtp') {
           final lost = v['packetsLost'], recv = v['packetsReceived'];
           if (lost is num && recv is num && (lost + recv) > 0) {
@@ -190,10 +296,27 @@ class CallTelemetry {
             if (h is num) _frameH = h.toInt();
             final fz = v['freezeCount'];
             if (fz is num) _freezeCount = fz.toInt();
+            // decode throughput + loss-recovery signalling (NACK/PLI)
+            final fd = v['framesDecoded'];
+            if (fd is num) _framesDecoded = fd.toInt();
+            final fdr = v['framesDropped'];
+            if (fdr is num) _framesDropped = fdr.toInt();
+            final nk = v['nackCount'];
+            if (nk is num) _nackCount = nk.toInt();
+            final pli = v['pliCount'];
+            if (pli is num) _pliCount = pli.toInt();
           } else if (kind == 'audio') {
             final c = v['concealedSamples'], ts = v['totalSamplesReceived'];
             if (c is num) concealed = c.toDouble();
             if (ts is num) totalSamples = ts.toDouble();
+            final al = v['audioLevel'];
+            if (al is num) _audioLevel.add(al.toDouble());
+          }
+          // jitter-buffer delay (audio or video): cumulative seconds / emitted
+          // count → per-sample ms. High values = buffering to mask network j
+          final jbd = v['jitterBufferDelay'], jbe = v['jitterBufferEmittedCount'];
+          if (jbd is num && jbe is num && jbe > 0) {
+            _jbufMs.add(1000.0 * jbd / jbe);
           }
         } else if (s.type == 'outbound-rtp') {
           final b = v['bytesSent'];
@@ -222,6 +345,12 @@ class CallTelemetry {
       // running MOS estimate for this interval
       final mos = _estimateMos(rtt ?? 0.0, jitter ?? 0.0, _lossPct);
       if (mos > 0) _mos.add(mos);
+      // device memory footprint (RSS) during the call
+      final rss = _sampleRssMb();
+      if (rss > 0) {
+        _rssMb.add(rss);
+        if (rss > _rssPeakMb) _rssPeakMb = rss;
+      }
     } catch (_) {/* best-effort */}
   }
 
@@ -245,6 +374,15 @@ class CallTelemetry {
       if (_mos.isNotEmpty) 'mos': _round2(_mos.last),
       'ice_type': _iceType,
       'relay_used': _iceType == 'relay',
+      // live bandwidth headroom (congestion-control estimate)
+      if (_availOutKbps.isNotEmpty) 'avail_out_kbps': _availOutKbps.last.round(),
+      if (_availInKbps.isNotEmpty) 'avail_in_kbps': _availInKbps.last.round(),
+      // jitter buffer + video decode health
+      if (_jbufMs.isNotEmpty) 'jitter_buffer_ms': _jbufMs.last.round(),
+      if (video && _framesDecoded > 0) 'frames_decoded': _framesDecoded,
+      if (video && _framesDropped > 0) 'frames_dropped': _framesDropped,
+      // device memory footprint
+      if (_rssMb.isNotEmpty) 'rss_mb': _rssMb.last.round(),
     });
   }
 
@@ -305,6 +443,32 @@ class CallTelemetry {
       'samples': _rttMs.length,
       'video': video,
       'outgoing': outgoing,
+      // ── topology + both-ends geo ──────────────────────────────────────────
+      'transport_mode': transportMode,
+      'direction': outgoing ? 'outgoing' : 'incoming',
+      if (_peerCountry.isNotEmpty) 'peer_country': _peerCountry,
+      // ── ICE / STUN / TURN ─────────────────────────────────────────────────
+      if (_iceGatherMs > 0) 'ice_gather_ms': _iceGatherMs,
+      'host_cands': _hostCands,
+      'srflx_cands': _srflxCands,
+      'relay_cands': _relayCands,
+      if (_prflxCands > 0) 'prflx_cands': _prflxCands,
+      if (_candidatePairs > 0) 'candidate_pairs': _candidatePairs,
+      if (_turnServerHash.isNotEmpty) 'turn_server_hash': _turnServerHash,
+      // ── bandwidth headroom ────────────────────────────────────────────────
+      if (_availOutKbps.isNotEmpty) 'avail_out_kbps_avg': _avg(_availOutKbps)!.round(),
+      if (_availInKbps.isNotEmpty) 'avail_in_kbps_avg': _avg(_availInKbps)!.round(),
+      // ── video performance ─────────────────────────────────────────────────
+      if (video) 'frames_decoded': _framesDecoded,
+      if (video) 'frames_dropped': _framesDropped,
+      if (video) 'nack_count': _nackCount,
+      if (video) 'pli_count': _pliCount,
+      if (_jbufMs.isNotEmpty) 'jitter_buffer_ms_avg': _avg(_jbufMs)!.round(),
+      // ── audio level ───────────────────────────────────────────────────────
+      if (_audioLevel.isNotEmpty) 'audio_level_avg': _round2(_avg(_audioLevel)!),
+      // ── device memory footprint ───────────────────────────────────────────
+      if (_rssMb.isNotEmpty) 'rss_mb_avg': _avg(_rssMb)!.round(),
+      if (_rssPeakMb > 0) 'rss_mb_peak': _rssPeakMb.round(),
     });
     // A call that never connected is a setup failure unless the human declined/was busy.
     if (_tConnected == null && reason != 'declined' && reason != 'busy' && reason != 'no-answer') {
