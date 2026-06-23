@@ -66,6 +66,10 @@ dependencies:
   # Runtime is wrapped so a render failure falls back to a type tile, never blank.
   video_thumbnail: ^0.5.3
   pdfx: ^2.6.0
+  # Inline YouTube playback inside chat preview cards (features/avatok/
+  # chat_media_cards.dart → YouTubeCard). Pure-Dart wrapper over an embedded
+  # webview; NATIVE — must be validated by a CI APK build (can't compile headless).
+  youtube_player_iframe: ^5.2.0
   # NIP-44 v2 crypto (secp256k1 ECDH, ChaCha20, HMAC, HKDF) — pure Dart
   # ^4.0.0 to match bip340's transitive constraint.
   pointycastle: ^4.0.0

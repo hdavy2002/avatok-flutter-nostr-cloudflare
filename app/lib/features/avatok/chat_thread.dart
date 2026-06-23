@@ -69,6 +69,7 @@ import '../../core/live_location_service.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
 import 'contacts.dart';
+import 'chat_media_cards.dart';
 import 'data.dart';
 import 'live_location.dart';
 import 'group_info_screen.dart';
@@ -1834,12 +1835,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ts: now, localBytes: bytes, uploading: true, mediaCaption: caption);
     setState(() => _msgs.add(msg));
     _jump();
-    // Index shared docs/images into the user's own RAG store (File Search
+    // Index shared docs/images into the user's own RAG store (content extraction
     // supports text/PDF/Office/PNG/JPEG, not audio/video). Fire-and-forget.
     if (kind == MediaKind.image || kind == MediaKind.file) {
       // ignore: unawaited_futures
       RagService.I.ingestFileBytes(bytes, ct, name);
     }
+    // Also index a short DESCRIPTOR line (name + caption + kind) for EVERY
+    // attachment — so "@ava find the logo I sent" / "the video about X" resolves
+    // by name even when the bytes aren't text-extractable (video/audio) or the
+    // content lacks the words the user searches by. This is what makes Ava able
+    // to find files via Cloudflare AI Search.
+    final descr = StringBuffer('Shared a ${kind.name} named "$name"');
+    if (caption.trim().isNotEmpty) descr.write(' — note: ${caption.trim()}');
+    // ignore: unawaited_futures
+    RagService.I.ingestText(descr.toString(), name: 'chat-${widget.chat.name}-file');
+    Analytics.capture('chat_media_sent', {
+      'kind': kind.name,
+      'has_caption': caption.trim().isNotEmpty,
+      'size': bytes.length,
+      'conv_kind': _isGroup ? 'group' : 'dm',
+    });
     await _upload(msg, bytes, kind, ct, name, caption: caption);
   }
 
@@ -1894,9 +1910,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // photo it refers to — previously the caption went out as a SEPARATE text
   // message, so by the time Ava processed the request the attachment wasn't tied
   // to it and she'd ask "where's the photo / what's its S3 key?".
+  /// The composer text was carried into an attachment's caption — clear it so it
+  /// is NOT also sent as a separate text message (the "splits into two" bug).
+  void _consumeComposer(String seed) {
+    if (seed.isEmpty) return;
+    setState(() { _ctrl.clear(); _hasText = false; });
+    if (_convKey != null) DraftStore().set(_convKey!, '');
+  }
+
   Future<void> _sendImageWithCaption(Uint8List bytes, String ct, String name) async {
-    final caption = await _captionSheet(bytes);
+    // WhatsApp-style: if the user already typed something in the composer, carry
+    // it INTO the caption field (seed) instead of sending it as a separate text
+    // message. This is the fix for "my message splits into two parts" — the photo
+    // and the words now travel as ONE message, so Ava can link the instruction to
+    // the attachment.
+    final seed = _ctrl.text.trim();
+    final caption = await _captionSheet(bytes, initial: seed);
     if (caption == null) return; // user backed out
+    _consumeComposer(seed);
     final c = caption.trim();
     // ONE message: photo + caption together (awaits upload + delivery so the
     // attachment is on the InboxDO before we summon Ava below).
@@ -1922,8 +1953,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Bottom sheet: image preview + a caption field. Returns the caption (possibly
   // empty → send with no caption) or null if dismissed without sending.
-  Future<String?> _captionSheet(Uint8List bytes) {
-    final cap = TextEditingController();
+  Future<String?> _captionSheet(Uint8List bytes, {String initial = ''}) {
+    final cap = TextEditingController(text: initial);
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -1991,12 +2022,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       await _sendImageWithCaption(bytes, 'image/jpeg', take.first.name);
       return;
     }
+    // Composer text rides as the caption on the FIRST photo (one bubble), so a
+    // multi-pick never splits the user's words into a separate message.
+    final seed = _ctrl.text.trim();
+    var firstSent = true;
     var skipped = 0;
     for (final x in take) {
       final bytes = await x.readAsBytes();
       if (bytes.length > _kMediaMaxBytes) { skipped++; continue; }
-      await _sendMedia(MediaKind.image, bytes, 'image/jpeg', x.name);
+      await _sendMedia(MediaKind.image, bytes, 'image/jpeg', x.name,
+          caption: firstSent ? seed : '');
+      firstSent = false;
     }
+    _consumeComposer(seed);
     if (skipped > 0) _capNote('$skipped photo(s) skipped — over the 25 MB limit.');
   }
 
@@ -2006,7 +2044,31 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (x == null) return;
     final bytes = await x.readAsBytes();
     if (bytes.length > _kMediaMaxBytes) { _capNote('Videos must be under 25 MB. Trim the clip and try again.'); return; }
-    await _sendMedia(MediaKind.video, bytes, 'video/mp4', x.name);
+    await _sendVideoWithCaption(bytes, x.name);
+  }
+
+  // Videos get the same caption/instruction step as photos + files, so any text
+  // typed in the composer rides INSIDE the video's message (one bubble) and an
+  // `@ava` instruction stays attached to the clip it refers to.
+  Future<void> _sendVideoWithCaption(Uint8List bytes, String name) async {
+    final seed = _ctrl.text.trim();
+    final caption = await _fileCaptionSheet(name, initial: seed, label: 'Video');
+    if (caption == null) return;
+    _consumeComposer(seed);
+    final c = caption.trim();
+    await _sendMedia(MediaKind.video, bytes, 'video/mp4', name, caption: c);
+    if (c.isEmpty) return;
+    _ragAddLine('You', c);
+    if (_editing == null && onSummonAva != null) {
+      final lower = c.toLowerCase();
+      final shared = lower.contains(_avaShareWord);
+      final atAva = lower.contains(_avaWakeWord);
+      final avaModePrivate = _avaMode && !shared && !atAva;
+      if (atAva || shared || avaModePrivate) {
+        // ignore: unawaited_futures
+        onSummonAva!(avaModePrivate ? '$_avaWakeWord $c' : c);
+      }
+    }
   }
 
   Future<void> _pickFile() async {
@@ -2021,8 +2083,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // is the instruction Ava acts on with the attachment in context. Previously a
   // file went out silently with no way to add text.
   Future<void> _sendFileWithCaption(Uint8List bytes, String name) async {
-    final caption = await _fileCaptionSheet(name);
+    final seed = _ctrl.text.trim();
+    final caption = await _fileCaptionSheet(name, initial: seed);
     if (caption == null) return; // dismissed
+    _consumeComposer(seed);
     final c = caption.trim();
     // ONE message: file + caption together, awaited so the attachment is on the
     // InboxDO before we summon Ava below.
@@ -2043,8 +2107,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Compact sheet: a file chip (icon + name) + a caption/instruction field.
   // Returns the caption (possibly empty → send with no text) or null if dismissed.
-  Future<String?> _fileCaptionSheet(String name) {
-    final cap = TextEditingController();
+  Future<String?> _fileCaptionSheet(String name, {String initial = '', String label = 'File'}) {
+    final cap = TextEditingController(text: initial);
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -2063,7 +2127,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               border: Border.all(color: Zine.ink, width: 2),
             ),
             child: Row(children: [
-              PhosphorIcon(PhosphorIcons.file(PhosphorIconsStyle.bold), size: 22, color: Zine.ink),
+              PhosphorIcon(
+                  label == 'Video'
+                      ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                      : PhosphorIcons.file(PhosphorIconsStyle.bold),
+                  size: 22, color: Zine.ink),
               const SizedBox(width: 10),
               Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: ZineText.value(size: 14))),
@@ -3586,7 +3654,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                             style: ZineText.sub(size: 13.5, color: Zine.ink)),
                       ),
                   ]
-                  else Text(m.text, style: ZineText.sub(size: 13.5, color: Zine.ink)),
+                  else _textContent(m),
                   Padding(
                     padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -3738,6 +3806,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String _mediaCaptionOf(_Msg m) =>
       m.mediaCaption.isNotEmpty ? m.mediaCaption : (m.media?.caption ?? '');
 
+  // Plain-text bubble content: links are tappable, and a YouTube link renders a
+  // rich card with inline playback right inside the chat (no leaving the thread).
+  Widget _textContent(_Msg m) {
+    final style = ZineText.sub(size: 13.5, color: Zine.ink);
+    final ytId = firstYouTubeId(m.text);
+    final link = ChatLinkText(text: m.text, style: style);
+    if (ytId == null) return link;
+    final ytUrl = urlSpans(m.text)
+        .map((s) => s.url)
+        .firstWhere((u) => firstYouTubeId(u) == ytId, orElse: () => 'https://youtu.be/$ytId');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Analytics.capture('chat_youtube_card_shown', {'video_id': ytId});
+    });
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      link,
+      const SizedBox(height: 6),
+      YouTubeCard(videoId: ytId, url: ytUrl),
+    ]);
+  }
+
   Widget _mediaContent(_Msg m) {
     final kind = m.media?.kind ??
         (m.localBytes != null ? MediaKind.image : MediaKind.file); // best guess pre-upload
@@ -3784,10 +3872,57 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ]),
         );
       case MediaKind.video:
-        return GestureDetector(onTap: () => _openVideo(m),
-            child: _fileChip(m, PhosphorIcons.playCircle(PhosphorIconsStyle.fill), 'Video'));
+        // Rich card: first-frame thumbnail + tap-to-play inline; the expand
+        // glyph opens the fullscreen player.
+        return ChatVideoCard(
+          key: ValueKey('vid_${m.media?.id ?? m.id}'),
+          media: m.media,
+          localBytes: m.localBytes,
+          width: 220,
+          onFullscreen: () => _openVideo(m),
+        );
       case MediaKind.file:
-        return _fileChip(m, PhosphorIcons.file(PhosphorIconsStyle.bold), m.text.replaceFirst('📎 ', ''));
+        // Rich card: PDF first-page thumbnail, or a typed card (badge + name +
+        // size) for any other file. Tap downloads/opens it.
+        final fname = (m.media?.name.isNotEmpty == true)
+            ? m.media!.name
+            : m.text.replaceFirst('📎 ', '');
+        return ChatFileCard(
+          key: ValueKey('file_${m.media?.id ?? m.id}'),
+          media: m.media,
+          localBytes: m.localBytes,
+          name: fname,
+          mime: m.media?.contentType ?? '',
+          size: m.media?.size ?? (m.localBytes?.length ?? 0),
+          width: 240,
+          onOpen: () => _openFile(m, fname),
+        );
+    }
+  }
+
+  /// Open / download a non-media file. Decrypts (or uses cached bytes), writes a
+  /// temp copy, and hands it to the OS open-with sheet via a file:// URL.
+  Future<void> _openFile(_Msg m, String name) async {
+    Analytics.capture('chat_file_open', {
+      'kind': 'file',
+      'mime': m.media?.contentType ?? '',
+    });
+    try {
+      final bytes = m.localBytes ??
+          (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
+      if (bytes == null) return;
+      m.localBytes = bytes;
+      final dir = await getTemporaryDirectory();
+      final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+      final f = File('${dir.path}/${DateTime.now().millisecondsSinceEpoch}_$safe');
+      await f.writeAsBytes(bytes, flush: true);
+      await launchUrl(Uri.file(f.path), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      AvaLog.I.log('media', 'open file failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Couldn't open $name")));
+      }
     }
   }
 
