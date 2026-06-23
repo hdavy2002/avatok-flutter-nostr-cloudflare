@@ -15,6 +15,7 @@ import '../features/affiliate/affiliate_home.dart';
 import '../features/avavoice/avavoice_home.dart';
 import '../features/avavision/avavision_home.dart';
 import '../features/avatok/chat_list.dart';
+import '../features/avatok/invite_screen.dart';
 import '../features/ava_backup/backup_service.dart';
 import '../features/booking/avabooking_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
@@ -147,8 +148,10 @@ class _AvaShellState extends State<AvaShell> {
       case 'avaidentity':
         _push(const IdentityScreen());
         return;
-      case 'billing':
       case 'invite':
+        _push(const InviteScreen());
+        return;
+      case 'billing':
         _push(ComingSoon(
             title: dest[0].toUpperCase() + dest.substring(1),
             subtitle: 'Coming soon',

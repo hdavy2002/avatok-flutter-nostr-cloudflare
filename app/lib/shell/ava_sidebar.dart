@@ -4,7 +4,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/avatar.dart';
-import '../core/device_contacts.dart';
 import '../core/money_api.dart';
 import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
@@ -451,11 +450,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
         _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
         _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
         _acct('avastorage', 'View Storage', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
-        _acct('invite', 'Invite friends', PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
-            onTap: () {
-              if (!widget.permanent) Navigator.pop(context);
-              DeviceContactsService.shareGenericInvite();
-            }),
+        // Opens the full Invite screen (contacts + WhatsApp/SMS/Email per person).
+        // Routed via onSelect so ava_shell handles the drawer dismiss + push.
+        _acct('invite', 'Invite friends', PhosphorIcons.userPlus(PhosphorIconsStyle.bold)),
         _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
             onTap: () {
               if (!widget.permanent) Navigator.pop(context);
