@@ -2549,7 +2549,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 color: Zine.paper2,
                 border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
               ),
-              padding: const EdgeInsets.only(left: 4, right: 10),
+              padding: const EdgeInsets.only(left: 4, right: 6),
               child: _searchMode ? _searchBar() : Row(children: [
                 IconButton(
                   icon: PhosphorIcon(PhosphorIcons.caretLeft(PhosphorIconsStyle.bold), size: 22, color: Zine.ink),
@@ -2587,31 +2587,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   ),
                   ),
                 ),
-                IconButton(icon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
-                    onPressed: () => setState(() { _searchMode = true; _searchQuery = ''; })),
+                // Header actions — uniform 40px compact targets so they sit with
+                // EVEN spacing and don't leave a big gap after the last icon.
+                _headerAction(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                    () => setState(() { _searchMode = true; _searchQuery = ''; })),
                 if (!c.group) ...[
-                  IconButton(icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
-                      onPressed: () => _call('voice')),
-                  IconButton(icon: PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
-                      onPressed: () => _call('video')),
+                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice')),
+                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video')),
                 ] else if (RemoteConfig.conferenceEnabled) ...[
                   // Phase 10 RULE CHANGE: group conferences (LiveKit, ≤25).
                   // >25 members → greyed icons; tapping pops the limit notice.
-                  IconButton(
-                      icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 20,
-                          color: _confAllowed ? Zine.ink : Zine.inkMute),
-                      onPressed: () => _confAllowed ? _groupCall(false) : _confLimitNotice(false)),
-                  IconButton(
-                      icon: PhosphorIcon(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), size: 20,
-                          color: _confAllowed ? Zine.ink : Zine.inkMute),
-                      onPressed: () => _confAllowed ? _groupCall(true) : _confLimitNotice(true)),
+                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold),
+                      () => _confAllowed ? _groupCall(false) : _confLimitNotice(false),
+                      color: _confAllowed ? Zine.ink : Zine.inkMute),
+                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+                      () => _confAllowed ? _groupCall(true) : _confLimitNotice(true),
+                      color: _confAllowed ? Zine.ink : Zine.inkMute),
                   if (!_confAllowed)
-                    IconButton(
-                        icon: PhosphorIcon(PhosphorIcons.info(PhosphorIconsStyle.bold), size: 18, color: Zine.inkMute),
-                        onPressed: () => _confLimitNotice(true)),
+                    _headerAction(PhosphorIcons.info(PhosphorIconsStyle.bold),
+                        () => _confLimitNotice(true), size: 18, color: Zine.inkMute),
                 ],
-                IconButton(icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
-                    onPressed: _overflow),
+                _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow),
               ]),
             ),
             if (_pinned != null) _pinBanner(),
@@ -2659,6 +2655,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       ),
     );
   }
+
+  // Uniform header action button — fixed 40x40 hit area, zero internal padding,
+  // so the row of actions sits with even spacing and no trailing dead space.
+  Widget _headerAction(IconData icon, VoidCallback onTap,
+          {double size = 20, Color color = Zine.ink}) =>
+      IconButton(
+        icon: PhosphorIcon(icon, size: size, color: color),
+        onPressed: onTap,
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        splashRadius: 22,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      );
 
   // Lime circular send button — ink border, hard shadow (the screen's one
   // lime primary action).
@@ -2709,7 +2718,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
                 color: _avaMode ? Zine.lilac : Zine.card,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(5),
                 border: Zine.border),
             child: TextField(
               controller: _ctrl,
@@ -2784,36 +2793,41 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// text field. Each chip runs one Ava call and writes the result back into
   /// the input box. The whole row dims while a job is in flight.
   Widget _composerTools() {
+    // Centered, evenly-spaced quick tools. Each tool gets a distinct pastel
+    // fill so it's recognizable at a glance. Wrap keeps them centered and never
+    // overflows on narrow screens (falls to a second centered row if needed).
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: SizedBox(
-        height: 34,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          children: [
-            _avaModeChip(),
-            _translateChip(),
-            _toolChip(
-              tool: 'grammar',
-              icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
-              label: 'Fix grammar',
-              onTap: _runFixGrammar,
-            ),
-            _toolChip(
-              tool: 'rewrite',
-              icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
-              label: 'Rewrite',
-              onTap: _runRewrite,
-            ),
-            _toolChip(
-              tool: 'reply_ideas',
-              icon: PhosphorIcons.lightbulb(PhosphorIconsStyle.bold),
-              label: 'Reply ideas',
-              onTap: _runReplyIdeas,
-            ),
-          ],
-        ),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          _avaModeChip(),
+          _translateChip(),
+          _toolChip(
+            tool: 'grammar',
+            icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
+            label: 'Fix grammar',
+            tint: Zine.blue,
+            onTap: _runFixGrammar,
+          ),
+          _toolChip(
+            tool: 'rewrite',
+            icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
+            label: 'Rewrite',
+            tint: Zine.lime,
+            onTap: _runRewrite,
+          ),
+          _toolChip(
+            tool: 'reply_ideas',
+            icon: PhosphorIcons.lightbulb(PhosphorIconsStyle.bold),
+            label: 'Reply ideas',
+            tint: Zine.coral,
+            onTap: _runReplyIdeas,
+          ),
+        ],
       ),
     );
   }
@@ -2822,9 +2836,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// to talk privately to Ava without typing @ava; flip back to message the
   /// person. Fills lilac + sparkle-fill when ON.
   Widget _avaModeChip() {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Tooltip(
+    return Tooltip(
         message: _avaMode
             ? 'Talking to Ava (tap to message ${widget.chat.name})'
             : 'Talk privately to Ava',
@@ -2849,8 +2861,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 color: _avaMode ? Zine.blueInk : Zine.ink),
           ),
         ),
-      ),
-    );
+      );
   }
 
   /// A single icon-only chip. The label is exposed via a tooltip (long-press)
@@ -2861,12 +2872,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    Color tint = Zine.card, // distinct fill so each tool is recognizable at a glance
   }) {
     final busy = _aiTool == tool;
     final dimmed = _aiBusy && !busy;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Opacity(
+    return Opacity(
         opacity: dimmed ? 0.4 : 1,
         child: Tooltip(
           message: label,
@@ -2876,7 +2886,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               width: 34, height: 34,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: busy ? Zine.lime : Zine.card,
+                color: busy ? Zine.lime : tint,
                 shape: BoxShape.circle,
                 border: Zine.border,
                 boxShadow: Zine.shadowXs,
@@ -2890,8 +2900,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   /// Translate chip — split into two tap zones: the left runs a translation
@@ -2900,13 +2909,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Widget _translateChip() {
     final busy = _aiTool == 'translate';
     final dimmed = _aiBusy && !busy;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Opacity(
+    return Opacity(
         opacity: dimmed ? 0.4 : 1,
         child: Container(
           decoration: BoxDecoration(
-            color: busy ? Zine.lime : Zine.card,
+            color: busy ? Zine.lime : Zine.mint,
             borderRadius: BorderRadius.circular(100),
             border: Zine.border,
             boxShadow: Zine.shadowXs,
@@ -2946,8 +2953,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             ),
           ]),
         ),
-      ),
-    );
+      );
   }
 
   /// Shared runner: flips the busy flags, fires the [call], reports failures,
