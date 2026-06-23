@@ -4,30 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
+import '../../core/account_restore.dart';
 import '../../core/analytics.dart';
-import '../../core/feature_flags.dart';
 import '../../core/referral_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
-/// Entry mode — retained so the AccountGate (which opens this screen when a guest
-/// needs an account) keeps compiling. With Google-only auth there is no separate
-/// sign-up form; "sign in" and "sign up" are the same one-tap Google flow.
+/// Auth sub-modes within the screen.
+enum _Mode { signIn, signUp, verify, reset, resetCode }
+
+/// Entry mode — kept for call-site compatibility (AccountGate / RootFlow).
 enum SignInMode { signIn, signUp }
 
-/// Google-only auth (2026-06-18). One button — "Continue with Google" — backed by
-/// Clerk's native OAuth flow. No passwords, no email codes. A new user's @handle
-/// is chosen afterwards in the onboarding profile step.
+/// Email + password auth (sign in / sign up / email-code verify / password
+/// reset) PLUS one-tap "Continue with Google". Facebook & LinkedIn removed
+/// 2026-06-23. Both methods key off email; requires "Email address" enabled as
+/// a Clerk identifier (Dashboard → User & Authentication → Email, Phone,
+/// Username) — the same setting Google needs.
 class SignInScreen extends StatefulWidget {
   final ClerkClient clerk;
   final VoidCallback onSignedIn;
-
-  /// Kept for call-site compatibility (AccountGate / RootFlow). Unused under
-  /// Google-only auth — there is no in-screen sign-up form to switch to.
   final SignInMode initialMode;
   final VoidCallback? onSignUpRequested;
-
-  /// Optional context when launched from a gate, e.g. "to add a contact".
   final String? gateReason;
 
   const SignInScreen({
@@ -43,42 +41,125 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  final _email = TextEditingController();
+  final _pass = TextEditingController();
+  final _code = TextEditingController();
+  final _newPass = TextEditingController();
+  late _Mode _mode =
+      widget.initialMode == SignInMode.signUp ? _Mode.signUp : _Mode.signIn;
+  String? _pendingId;
+  String? _pendingKind;
+  String _provider = 'password'; // which method the in-flight attempt used
+  bool _obscure = true;
   bool _busy = false;
   bool _done = false;
   String? _error;
 
-  Future<void> _continueWithGoogle() => _run(() => widget.clerk.signInWithGoogle(), 'Google');
+  @override
+  void dispose() {
+    _email.dispose();
+    _pass.dispose();
+    _code.dispose();
+    _newPass.dispose();
+    super.dispose();
+  }
 
-  /// Shared runner for any social provider — Google today, Facebook/LinkedIn once
-  /// their flags + backend are live. Keeps the success path (referral claim →
-  /// _finish) identical across providers.
-  Future<void> _run(Future<ClerkStep> Function() signIn, String label) async {
-    final provider = label.toLowerCase();
+  // ── Google ──────────────────────────────────────────────────────────────────
+  Future<void> _continueWithGoogle() async {
+    _provider = 'google';
     setState(() { _busy = true; _error = null; });
-    // Captures the moment the user commits to a provider — the denominator for
-    // signup success/failure rate, paired with the granular signup_step events.
-    await Analytics.capture('signup_attempt', {'provider': provider});
-    final step = await signIn();
-    if (!mounted) return;
-    if (step.isComplete) {
-      await Analytics.capture('signup_succeeded', {'provider': provider});
-      // Redeem any pending invite reward for whoever referred this new user.
-      try { await ReferralService.I.claimPendingAfterSignup(); } catch (_) {/* best-effort */}
-      _finish();
-    } else {
-      final shown = step.error ?? '$label sign-in failed';
-      // Record EXACTLY what the user saw on screen (e.g. "could not create
-      // account") so the support-reported message maps to a queryable event.
-      await Analytics.capture('signup_failed', {'provider': provider, 'shown_error': shown});
-      setState(() { _busy = false; _error = shown; });
+    unawaited(Analytics.capture('signup_attempt', {'provider': 'google'}));
+    _handleStep(await widget.clerk.signInWithGoogle());
+  }
+
+  // ── Email + password ─────────────────────────────────────────────────────────
+  Future<void> _submit() async {
+    setState(() { _busy = true; _error = null; });
+    switch (_mode) {
+      case _Mode.signIn:
+        if (_email.text.trim().isEmpty) {
+          setState(() { _busy = false; _error = 'Enter your email'; });
+          return;
+        }
+        _provider = 'password';
+        unawaited(Analytics.capture('signup_attempt', {'provider': 'password', 'mode': 'signin'}));
+        AuthSession.lastPassword = _pass.text;
+        _handleStep(await widget.clerk.signIn(_email.text, _pass.text));
+        return;
+      case _Mode.signUp:
+        if (_email.text.trim().isEmpty || _pass.text.length < 8) {
+          setState(() { _busy = false; _error = 'Enter an email and a password (8+ characters)'; });
+          return;
+        }
+        _provider = 'password';
+        unawaited(Analytics.capture('signup_attempt', {'provider': 'password', 'mode': 'signup'}));
+        AuthSession.lastPassword = _pass.text;
+        _handleStep(await widget.clerk.signUp(_email.text, _pass.text));
+        return;
+      case _Mode.verify:
+        if (_code.text.trim().isEmpty) {
+          setState(() { _busy = false; _error = 'Enter the code we emailed you'; });
+          return;
+        }
+        final err = await widget.clerk.verifyCode(_pendingKind!, _pendingId!, _code.text);
+        if (err == null) { _succeed(); return; }
+        if (mounted) {
+          setState(() { _busy = false; _error = err; });
+          unawaited(Analytics.capture('signup_failed', {'provider': 'password', 'shown_error': err}));
+        }
+        return;
+      case _Mode.reset:
+        if (_email.text.trim().isEmpty) {
+          setState(() { _busy = false; _error = 'Enter your email to reset your password'; });
+          return;
+        }
+        final step = await widget.clerk.startPasswordReset(_email.text);
+        if (!mounted) return;
+        if (step.needsCode) {
+          setState(() { _busy = false; _pendingId = step.id; _mode = _Mode.resetCode; _error = null; });
+        } else {
+          setState(() { _busy = false; _error = step.error ?? 'Could not start password reset'; });
+        }
+        return;
+      case _Mode.resetCode:
+        if (_code.text.trim().isEmpty || _newPass.text.length < 8) {
+          setState(() { _busy = false; _error = 'Enter the code and a new password (8+ characters)'; });
+          return;
+        }
+        final rErr = await widget.clerk.resetPassword(_pendingId!, _code.text, _newPass.text);
+        if (rErr == null) { AuthSession.lastPassword = _newPass.text; _succeed(); return; }
+        if (mounted) setState(() { _busy = false; _error = rErr; });
+        return;
     }
   }
 
-  /// Tapped a provider that isn't enabled yet — show a gentle "coming soon"
-  /// instead of attempting a half-configured sign-in.
-  void _comingSoon(String label) {
-    unawaited(Analytics.capture('signup_provider_unavailable', {'provider': label.toLowerCase()}));
-    setState(() => _error = '$label sign-in is coming soon — continue with Google for now.');
+  void _handleStep(ClerkStep r) {
+    if (!mounted) return;
+    if (r.isComplete) { _succeed(); return; }
+    if (r.needsCode) {
+      setState(() {
+        _busy = false;
+        _pendingKind = r.kind;
+        _pendingId = r.id;
+        _mode = _Mode.verify;
+        _error = null;
+      });
+      return;
+    }
+    final shown = r.error ?? 'Authentication failed';
+    unawaited(Analytics.capture('signup_failed', {'provider': _provider, 'shown_error': shown}));
+    setState(() { _busy = false; _error = shown; });
+  }
+
+  void _succeed() {
+    unawaited(Analytics.capture('signup_succeeded', {'provider': _provider}));
+    unawaited(_claimReferral());
+    _finish();
+  }
+
+  Future<void> _claimReferral() async {
+    // Redeem any pending invite reward for whoever referred this new user.
+    try { await ReferralService.I.claimPendingAfterSignup(); } catch (_) {/* best-effort */}
   }
 
   void _finish() {
@@ -86,6 +167,8 @@ class _SignInScreenState extends State<SignInScreen> {
     setState(() { _busy = false; _done = true; });
     Timer(const Duration(milliseconds: 900), () { if (mounted) widget.onSignedIn(); });
   }
+
+  void _switch(_Mode m) => setState(() { _mode = m; _error = null; });
 
   @override
   Widget build(BuildContext context) {
@@ -99,9 +182,26 @@ class _SignInScreenState extends State<SignInScreen> {
       );
     }
 
-    final sub = widget.gateReason != null
-        ? 'Sign in to ${widget.gateReason}'
-        : 'Sign in or sign up in one tap — no passwords, no codes.';
+    final signUpSub = widget.gateReason != null
+        ? 'Create your account to ${widget.gateReason}'
+        : 'Join AvaTOK — it takes a minute.';
+    final (titlePre, titleMark, sub, cta, tag) = switch (_mode) {
+      _Mode.signIn => (
+          'Welcome ',
+          'back',
+          widget.gateReason != null
+              ? 'Sign in to ${widget.gateReason}'
+              : 'Log in to your AvaTOK account.',
+          'Log in',
+          'log in'
+        ),
+      _Mode.signUp => ('Create ', 'account', signUpSub, 'Create account', 'sign up'),
+      _Mode.verify => ('Verify ', 'email', 'Enter the 6-digit code we emailed you.', 'Verify', 'verify'),
+      _Mode.reset => ('Reset ', 'password', "We'll email you a reset code.", 'Send code', 'reset'),
+      _Mode.resetCode =>
+        ('New ', 'password', 'Enter the code we emailed + your new password.', 'Reset password', 'reset'),
+    };
+    final showGoogle = _mode == _Mode.signIn || _mode == _Mode.signUp;
     final canPop = Navigator.of(context).canPop();
 
     return Scaffold(
@@ -115,60 +215,57 @@ class _SignInScreenState extends State<SignInScreen> {
                     canPop ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
                 children: [
                   if (canPop) const ZineBackButton(),
-                  Text('SIGN IN', style: ZineText.kicker()),
+                  Text(tag.toUpperCase(), style: ZineText.kicker()),
                 ],
               ),
-              const Spacer(flex: 3),
-              const Center(child: ZineCrest(size: 104)),
-              const SizedBox(height: 16),
-              const ZineMarkTitle(pre: 'Welcome to ', mark: 'AvaTOK', fontSize: 36),
-              const SizedBox(height: 12),
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 290),
-                  child: Text(sub, style: ZineText.sub(), textAlign: TextAlign.center),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    const SizedBox(height: 18),
+                    const Center(child: ZineCrest(size: 96)),
+                    const SizedBox(height: 14),
+                    ZineMarkTitle(pre: titlePre, mark: titleMark, fontSize: 36),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 280),
+                        child: Text(sub, style: ZineText.sub(), textAlign: TextAlign.center),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ..._fields(),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      ZineErrorMsg(_error!),
+                    ],
+                    const SizedBox(height: 20),
+                  ]),
                 ),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 18),
-                ZineErrorMsg(_error!),
-              ],
-              const Spacer(flex: 4),
               ZineButton(
-                label: 'Continue with Google',
-                icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
+                label: cta,
+                icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
                 fullWidth: true,
                 fontSize: 20,
                 loading: _busy,
-                onPressed: _busy ? null : _continueWithGoogle,
+                onPressed: _busy ? null : _submit,
               ),
-              const SizedBox(height: 12),
-              ZineButton(
-                label: 'Continue with Facebook',
-                variant: ZineButtonVariant.blue,
-                icon: PhosphorIcons.facebookLogo(PhosphorIconsStyle.bold),
-                fullWidth: true,
-                fontSize: 18,
-                onPressed: _busy
-                    ? null
-                    : (kSocialFacebookEnabled
-                        ? () => _run(() => widget.clerk.signInWithProvider('facebook'), 'Facebook')
-                        : () => _comingSoon('Facebook')),
-              ),
-              const SizedBox(height: 12),
-              ZineButton(
-                label: 'Continue with LinkedIn',
-                variant: ZineButtonVariant.ghost,
-                icon: PhosphorIcons.linkedinLogo(PhosphorIconsStyle.bold),
-                fullWidth: true,
-                fontSize: 18,
-                onPressed: _busy
-                    ? null
-                    : (kSocialLinkedInEnabled
-                        ? () => _run(() => widget.clerk.signInWithProvider('linkedin'), 'LinkedIn')
-                        : () => _comingSoon('LinkedIn')),
-              ),
-              const SizedBox(height: 18),
+              if (showGoogle) ...[
+                const SizedBox(height: 16),
+                _orDivider(),
+                const SizedBox(height: 16),
+                ZineButton(
+                  label: 'Continue with Google',
+                  variant: ZineButtonVariant.ghost,
+                  icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
+                  fullWidth: true,
+                  fontSize: 18,
+                  onPressed: _busy ? null : _continueWithGoogle,
+                ),
+              ],
+              const SizedBox(height: 16),
+              Center(child: _footerLink()),
+              const SizedBox(height: 14),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
                     size: 14, color: Zine.blueInk),
@@ -183,5 +280,118 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
       ),
     );
+  }
+
+  Widget _orDivider() => Row(children: [
+        const Expanded(child: Divider(color: Zine.ink, thickness: Zine.bw)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text('or', style: ZineText.kicker()),
+        ),
+        const Expanded(child: Divider(color: Zine.ink, thickness: Zine.bw)),
+      ]);
+
+  List<Widget> _fields() {
+    return [
+      // CODE (email verify or password-reset)
+      if (_mode == _Mode.verify || _mode == _Mode.resetCode) ...[
+        ZineField(
+          controller: _code,
+          label: 'code',
+          labelIcon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+          hint: '123456',
+          keyboardType: TextInputType.number,
+          error: _error != null,
+          onSubmitted: (_) => _submit(),
+        ),
+        const SizedBox(height: 18),
+      ],
+      // NEW PASSWORD (reset)
+      if (_mode == _Mode.resetCode) ...[
+        ZineField(
+          controller: _newPass,
+          label: 'new password',
+          labelIcon: PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.asterisk(PhosphorIconsStyle.bold),
+          hint: '••••••••',
+          obscureText: _obscure,
+          error: _error != null,
+          trailing: _eyeToggle(),
+          onSubmitted: (_) => _submit(),
+        ),
+        const SizedBox(height: 18),
+      ],
+      // EMAIL (sign in / sign up / reset request)
+      if (_mode == _Mode.signIn || _mode == _Mode.signUp || _mode == _Mode.reset) ...[
+        ZineField(
+          controller: _email,
+          label: 'email',
+          labelIcon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.bold),
+          leadText: '@',
+          hint: 'you@example.com',
+          keyboardType: TextInputType.emailAddress,
+          error: _error != null && _email.text.trim().isEmpty,
+          onSubmitted: (_) { if (_mode == _Mode.reset) _submit(); },
+        ),
+        const SizedBox(height: 18),
+      ],
+      // PASSWORD (sign in / sign up)
+      if (_mode == _Mode.signIn || _mode == _Mode.signUp) ...[
+        ZineField(
+          controller: _pass,
+          label: 'password',
+          labelIcon: PhosphorIcons.lockKey(PhosphorIconsStyle.bold),
+          leadIcon: PhosphorIcons.asterisk(PhosphorIconsStyle.bold),
+          hint: '••••••••',
+          obscureText: _obscure,
+          error: _error != null && _mode == _Mode.signIn && _pass.text.isEmpty,
+          trailing: _eyeToggle(),
+          onSubmitted: (_) => _submit(),
+        ),
+        if (_mode == _Mode.signIn)
+          Padding(
+            padding: const EdgeInsets.only(top: 11),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: ZineLink('forgot password?', onTap: () => _switch(_Mode.reset)),
+            ),
+          ),
+      ],
+    ];
+  }
+
+  Widget _eyeToggle() => GestureDetector(
+        onTap: () => setState(() => _obscure = !_obscure),
+        behavior: HitTestBehavior.opaque,
+        child: PhosphorIcon(
+          _obscure
+              ? PhosphorIcons.eye(PhosphorIconsStyle.bold)
+              : PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold),
+          size: 20, color: Zine.inkSoft,
+        ),
+      );
+
+  Widget _footerLink() {
+    switch (_mode) {
+      case _Mode.signIn:
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('new here? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
+          ZineLink('create account',
+              underline: Zine.coral, fontSize: 14, onTap: () => _switch(_Mode.signUp)),
+        ]);
+      case _Mode.signUp:
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('have an account? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
+          ZineLink('log in', fontSize: 14, onTap: () => _switch(_Mode.signIn)),
+        ]);
+      case _Mode.verify:
+        return ZineLink('back',
+            fontSize: 14,
+            onTap: () => _switch(_pendingKind == 'signup' ? _Mode.signUp : _Mode.signIn));
+      case _Mode.reset:
+      case _Mode.resetCode:
+        return ZineLink('back to log in', fontSize: 14, onTap: () => _switch(_Mode.signIn));
+    }
   }
 }

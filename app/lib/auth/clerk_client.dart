@@ -245,9 +245,9 @@ class ClerkClient {
   /// Best-effort and never throws into the auth path (PostHog stamps email +
   /// clerk_uid automatically once known). Lets support trace exactly where a
   /// signup died — the client side of the server's `signup_server` events.
-  void _sx(String step, {String? reason, int? status, String? detail, int? ms}) {
+  void _sx(String step, {String provider = 'google', String? reason, int? status, String? detail, int? ms}) {
     unawaited(Analytics.capture('signup_step', {
-      'provider': 'google',
+      'provider': provider,
       'step': step,
       if (reason != null) 'reason': reason,
       if (status != null) 'http_status': status,
@@ -256,33 +256,161 @@ class ClerkClient {
     }));
   }
 
-  /// Facebook / LinkedIn sign-in. The on-device flow MIRRORS [signInWithGoogle]
-  /// exactly once wired:
-  ///   1. get the provider token   — Facebook: flutter_facebook_auth native SDK;
-  ///      LinkedIn: OAuth redirect (flutter_web_auth_2) → authorization code.
-  ///   2. POST {token/code} to our Worker (`/api/auth/<provider>`) which verifies
-  ///      it, finds/creates the Clerk user and mints a sign-in TICKET.
-  ///   3. redeem the ticket here (strategy=ticket) → a real Clerk session.
-  ///
-  /// Pending provider config (Meta/LinkedIn apps + Clerk dashboard + the Worker
-  /// endpoint), so this returns a clear, non-crashing message and never blocks
-  /// the build. `provider` is 'facebook' | 'linkedin'. To enable: implement steps
-  /// 1–3 below and flip kSocialFacebookEnabled / kSocialLinkedInEnabled.
-  Future<ClerkStep> signInWithProvider(String provider) async {
-    // TODO(auth): step 1 — obtain the provider token/code on device.
-    // TODO(auth): step 2 — POST it to kFacebookAuthUrl / kLinkedInAuthUrl → {ticket}.
-    // TODO(auth): step 3 —
-    //   await _send('/client', body: {});
-    //   final body = await _send('/client/sign_ins', body: {'strategy': 'ticket', 'ticket': ticket});
-    //   return (await currentUser()) != null ? ClerkStep.complete() : ClerkStep.error(...);
-    final name = provider.isEmpty
-        ? 'This provider'
-        : '${provider[0].toUpperCase()}${provider.substring(1)}';
-    return ClerkStep.error('$name sign-in is being set up. Please continue with Google for now.');
+  // ── Email + password (RESTORED 2026-06-23) ────────────────────────────────
+  // Email/password sign-in & sign-up with an email-code fallback + password
+  // reset, alongside Google (signInWithGoogle). Facebook/LinkedIn were removed.
+  // Requires "Email address" enabled as an identifier in the Clerk Dashboard
+  // (the same setting Google needs). Flow uses Clerk FAPI: /client/sign_ins and
+  // /client/sign_ups. Each terminal state emits provider='password' telemetry.
+
+  /// Sign in with email + password; falls back to an emailed code if the
+  /// account has no usable password factor.
+  Future<ClerkStep> signIn(String email, String password) async {
+    _sx('started', provider: 'password');
+    await _send('/client', body: {});
+    if (password.isNotEmpty) {
+      final body = await _send('/client/sign_ins',
+          body: {'identifier': email.trim(), 'password': password});
+      final su = body['response'] as Map<String, dynamic>?;
+      if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
+        _sx('completed', provider: 'password');
+        await _attachIdentity();
+        return ClerkStep.complete();
+      }
+      final err = _firstError(body);
+      if (err != null &&
+          err.toLowerCase().contains('password') &&
+          !err.toLowerCase().contains('strategy')) {
+        _sx('failed', provider: 'password', reason: 'wrong_password', detail: err);
+        return ClerkStep.error(err); // genuinely wrong password
+      }
+      // otherwise fall through to email-code
+    }
+    // Identifier-only sign-in → discover email_code factor → email a code.
+    final body2 = await _send('/client/sign_ins', body: {'identifier': email.trim()});
+    final step = await _prepareSignInEmailCode(body2['response'] as Map<String, dynamic>?);
+    if (step != null) {
+      _sx('needs_email_code', provider: 'password', reason: 'signin');
+      return step;
+    }
+    final err2 = _firstError(body2) ?? 'Sign-in is not available for this account';
+    _sx('failed', provider: 'password', reason: 'signin_unavailable', detail: err2);
+    return ClerkStep.error(err2);
   }
 
-  // Password / email-code / password-reset sign-in REMOVED 2026-06-18 — login is
-  // Google-only via signInWithGoogle() above. Do NOT reintroduce password auth.
+  Future<ClerkStep?> _prepareSignInEmailCode(Map<String, dynamic>? su) async {
+    if (su == null) return null;
+    final id = su['id']?.toString();
+    final factors = (su['supported_first_factors'] as List?) ?? const [];
+    Map<String, dynamic>? email;
+    for (final f in factors) {
+      if ((f as Map)['strategy'] == 'email_code') { email = f.cast<String, dynamic>(); break; }
+    }
+    if (id == null || email == null) return null;
+    await _send('/client/sign_ins/$id/prepare_first_factor', body: {
+      'strategy': 'email_code',
+      if (email['email_address_id'] != null)
+        'email_address_id': email['email_address_id'].toString(),
+    });
+    return ClerkStep.needsCode('signin', id);
+  }
+
+  /// Sign up with email + password; returns a code step if verification needed.
+  Future<ClerkStep> signUp(String email, String password) async {
+    _sx('started', provider: 'password');
+    await _send('/client', body: {});
+    final body = await _send('/client/sign_ups',
+        body: {'email_address': email.trim(), 'password': password});
+    final err = _firstError(body);
+    if (err != null) {
+      _sx('failed', provider: 'password', reason: 'signup_rejected', detail: err);
+      return ClerkStep.error(err);
+    }
+    final su = body['response'] as Map<String, dynamic>?;
+    if (su?['status'] == 'complete' || _activeUser(body['client']) != null) {
+      _sx('completed', provider: 'password');
+      await _attachIdentity();
+      return ClerkStep.complete();
+    }
+    final id = su?['id']?.toString();
+    if (id == null) {
+      _sx('failed', provider: 'password', reason: 'signup_no_id');
+      return ClerkStep.error('Sign-up could not start');
+    }
+    await _send('/client/sign_ups/$id/prepare_verification', body: {'strategy': 'email_code'});
+    _sx('needs_email_code', provider: 'password', reason: 'signup');
+    return ClerkStep.needsCode('signup', id);
+  }
+
+  /// Verify an emailed code (kind = 'signin' or 'signup'). Null on success.
+  Future<String?> verifyCode(String kind, String id, String code) async {
+    final path = kind == 'signup'
+        ? '/client/sign_ups/$id/attempt_verification'
+        : '/client/sign_ins/$id/attempt_first_factor';
+    final body = await _send(path, body: {'strategy': 'email_code', 'code': code.trim()});
+    final err = _firstError(body);
+    if (err != null) {
+      _sx('email_code_failed', provider: 'password', reason: kind, detail: err);
+      return err;
+    }
+    final r = body['response'] as Map<String, dynamic>?;
+    if (r?['status'] == 'complete' || _activeUser(body['client']) != null) {
+      _sx('completed', provider: 'password', reason: 'email_code_$kind');
+      await _attachIdentity();
+      return null;
+    }
+    return 'Verification incomplete';
+  }
+
+  /// Begin a password reset: emails a reset code to [email]. Returns a
+  /// needsCode('reset', id) step, or an error.
+  Future<ClerkStep> startPasswordReset(String email) async {
+    await _send('/client', body: {});
+    final body = await _send('/client/sign_ins', body: {'identifier': email.trim()});
+    final su = body['response'] as Map<String, dynamic>?;
+    final id = su?['id']?.toString();
+    final factors = (su?['supported_first_factors'] as List?) ?? const [];
+    Map<String, dynamic>? reset;
+    for (final f in factors) {
+      if ((f as Map)['strategy'] == 'reset_password_email_code') { reset = f.cast<String, dynamic>(); break; }
+    }
+    if (id == null || reset == null) {
+      return ClerkStep.error(_firstError(body) ?? 'Password reset is not available for this account');
+    }
+    await _send('/client/sign_ins/$id/prepare_first_factor', body: {
+      'strategy': 'reset_password_email_code',
+      if (reset['email_address_id'] != null) 'email_address_id': reset['email_address_id'].toString(),
+    });
+    return ClerkStep.needsCode('reset', id);
+  }
+
+  /// Complete a password reset with the emailed [code] + a [newPassword].
+  /// Null on success (the user is signed in), else an error message.
+  Future<String?> resetPassword(String id, String code, String newPassword) async {
+    final body = await _send('/client/sign_ins/$id/attempt_first_factor',
+        body: {'strategy': 'reset_password_email_code', 'code': code.trim(), 'password': newPassword});
+    final err = _firstError(body);
+    if (err != null) return err;
+    final r = body['response'] as Map<String, dynamic>?;
+    final status = r?['status'];
+    if (status == 'complete' || status == 'needs_second_factor' || _activeUser(body['client']) != null) {
+      _sx('completed', provider: 'password', reason: 'password_reset');
+      await _attachIdentity();
+      return null;
+    }
+    return 'Could not reset password';
+  }
+
+  /// Attach the signed-in account's email + Clerk uid to telemetry so every
+  /// subsequent event carries them. Shared by the Google and password flows.
+  Future<void> _attachIdentity() async {
+    try {
+      final u = await currentUser();
+      if (u == null) return;
+      if (u.id.isNotEmpty) await Analytics.aliasClerk(u.id);
+      if (u.email != null && u.email!.isNotEmpty) await Analytics.setUserKeys(email: u.email);
+    } catch (_) {/* identity stamping is best-effort */}
+  }
 
   Future<void> signOut() async {
     await _send('/client'); // DELETE /client → sign out all sessions
