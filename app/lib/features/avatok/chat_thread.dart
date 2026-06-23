@@ -129,6 +129,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Timer? _persistTimer;
   String? _myNpub;
   String? _myName;
+  String _myAvatarUrl = ''; // my own photo, for the avatar beside my bubbles
   int _seq = 0;
   bool _hasText = false;
   bool _recording = false;
@@ -239,7 +240,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     });
     ProfileStore().load().then((p) {
       if (!mounted) return;
-      setState(() { if (p.displayName.isNotEmpty) _myName = p.displayName; _sharePresence = p.sharePresence; });
+      setState(() { if (p.displayName.isNotEmpty) _myName = p.displayName; _sharePresence = p.sharePresence; _myAvatarUrl = p.avatarUrl; });
     });
     _starStore.load().then((s) { if (mounted) setState(() => _starred = s); });
     // Restore the remembered translate target (account-scoped — a parent and a
@@ -3656,8 +3657,33 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ],
         ),
       );
-    // My own bubbles stay flush-right with no avatar (I know they're mine).
-    if (onRight) return Align(alignment: Alignment.centerRight, child: core);
+    // My own bubbles: avatar circle on the RIGHT (my photo / initials).
+    if (onRight) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 28),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Flexible(child: core),
+            const SizedBox(width: 6),
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Zine.ink, width: 1.5),
+              ),
+              child: Avatar(
+                seed: _myNpub ?? 'me',
+                name: _myName ?? 'You',
+                size: 30,
+                avatarUrl: _myAvatarUrl.isEmpty ? null : _myAvatarUrl,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     // Incoming bubbles (a 1:1 peer, a group member, or Ava) get a tiny avatar
     // circle on the left so you can tell at a glance who said it.
     return Padding(
