@@ -1003,6 +1003,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           if (mounted) setState(() { _customFilters = list; if (_filter == 'c:$name') _filter = 'all'; });
           return;
         }
+        Analytics.capture('messenger_filter_changed', {'filter': v});
         setState(() => _filter = v);
       },
       itemBuilder: (_) => [
@@ -1070,9 +1071,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         child: avatar,
       );
 
-  void _openStatuses() => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
-      .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _setStatuses(l)); }));
+  void _openStatuses() {
+    Analytics.capture('messenger_status_opened', {'has_photo': _myStatusMedia != null});
+    Navigator.push(context,
+            MaterialPageRoute(builder: (_) => StatusScreen(identity: _id, contacts: _contacts)))
+        .then((_) => _statusStore.load().then((l) { if (mounted) setState(() => _setStatuses(l)); }));
+  }
 
 }
 
