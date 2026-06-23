@@ -3666,8 +3666,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       );
 
   Widget _bubble(_Msg m) {
-    // Ava "working…" chip (kind 'ava_status') — inline, not a bubble.
-    if (m.special == 'ava_status') return _avaStatusChip(m);
+    // Ava "working…" chip (kind 'ava_status') — inline, not a bubble. A 'phase:end'
+    // frame is the CLOSE signal (e.g. image done/failed) — it must collapse the
+    // chip, not render as a stuck "generating…" placeholder.
+    if (m.special == 'ava_status') {
+      if ((m.extra?['phase'] ?? '').toString() == 'end') return const SizedBox.shrink();
+      return _avaStatusChip(m);
+    }
     final hasMedia = m.media != null || m.localBytes != null;
     // Ava bubbles always render on the LEFT (she is a participant, not "me"),
     // in a distinct feminine lilac fill — visually separate from my lime and
