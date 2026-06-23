@@ -398,14 +398,34 @@ class _DriveSectionState extends State<_DriveSection> {
     final s = await DriveService.I.status();
     final f = s.connected ? await DriveService.I.list() : const <DriveFile>[];
     if (mounted) setState(() { _s = s; _files = f; _loading = false; });
+    // Section health: how many users land here connected vs not, and their
+    // usage — queryable per user via the email auto-stamped on every event.
+    Analytics.capture('drive_status_loaded', {
+      'connected': s.connected,
+      'avatok_bytes': s.avatokBytes,
+      'total_usage': s.totalUsage,
+      'total_limit': s.totalLimit,
+      'files': f.length,
+    });
   }
 
   Future<void> _connect() async {
     setState(() => _connecting = true);
+    // One stopwatch spans the whole flow so connect_ms measures real wall-time
+    // from tap → connected (a slow-OAuth signal we can query per user).
+    final sw = Stopwatch()..start();
+    Analytics.capture('drive_connect_started', const {});
     final url = await DriveService.I.connectUrl();
     var connected = false;
-    if (url != null) {
-      Analytics.capture('avastorage_drive_connect_open', const {'mode': 'web_auth'});
+    if (url == null) {
+      // The Worker never returned an OAuth URL (config/network). api_error from
+      // the HTTP wrapper has the status; this adds the semantic "couldn't even
+      // start" signal so the funnel shows where it broke.
+      Analytics.capture('drive_connect_url_missing', {'after_ms': sw.elapsedMilliseconds});
+      Analytics.error(
+          domain: 'storage', code: 'connect_url_null', screen: 'avastorage', action: 'connect');
+    } else {
+      Analytics.capture('drive_connect_opened', const {'mode': 'web_auth'});
       try {
         // In-app auth sheet (iOS ASWebAuthenticationSession / Android Custom
         // Tabs). It AUTO-CLOSES the instant the Worker redirects to
@@ -414,21 +434,41 @@ class _DriveSectionState extends State<_DriveSection> {
         // used: Google blocks OAuth in embedded webviews (disallowed_useragent).
         await FlutterWebAuth2.authenticate(url: url, callbackUrlScheme: 'avatokauth');
         // Returned via the deep link → the Worker has stored the token.
+        Analytics.capture('drive_connect_returned', const {'mode': 'web_auth'});
         connected = await _refreshAfterAuth();
+        // "returned but status still not connected" is the no_refresh / eventual-
+        // consistency case — split it out so we can tell a real failure from a
+        // user who just cancelled.
+        Analytics.capture(connected ? 'drive_connected' : 'drive_connect_unverified',
+            {'via': 'web_auth', 'connect_ms': sw.elapsedMilliseconds});
       } on PlatformException catch (e) {
-        // CANCELED = user dismissed the sheet (no error toast needed). Any other
+        // CANCELED = user dismissed the sheet (expected, not an error). Any other
         // failure (rare — auth session unavailable) → fall back to an in-app
         // Custom Tab and poll for the connection.
-        if (e.code != 'CANCELED' && e.code != 'CANCELLED') {
+        if (e.code == 'CANCELED' || e.code == 'CANCELLED') {
+          Analytics.capture('drive_connect_cancelled',
+              {'code': e.code, 'after_ms': sw.elapsedMilliseconds});
+        } else {
           AvaLog.I.log('drive', 'web auth failed (${e.code}); falling back to tab');
+          Analytics.error(
+              domain: 'storage', code: 'web_auth_failed', message: e.code,
+              screen: 'avastorage', action: 'connect');
           try {
-            if (await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView)) {
-              _pollConnected();
-            }
-          } catch (_) {/* surfaced via snackbar below */}
+            final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+            Analytics.capture('drive_connect_fallback_opened',
+                {'mode': 'in_app_tab', 'opened': opened});
+            if (opened) _pollConnected(sw);
+          } catch (e2) {
+            Analytics.error(
+                domain: 'storage', code: 'fallback_launch_failed', message: e2.toString(),
+                screen: 'avastorage', action: 'connect');
+          }
         }
       } catch (e) {
         AvaLog.I.log('drive', 'web auth error: $e');
+        Analytics.error(
+            domain: 'storage', code: 'web_auth_error', message: e.toString(),
+            screen: 'avastorage', action: 'connect');
       }
     }
     if (mounted) {
@@ -441,18 +481,19 @@ class _DriveSectionState extends State<_DriveSection> {
   }
 
   /// Pull fresh status + file list after the auth sheet returns and flip the
-  /// panel to "connected". Returns whether Drive is now connected.
+  /// panel to "connected". Returns whether Drive is now connected. (The
+  /// connected/unverified telemetry is emitted by the caller so the stopwatch
+  /// timing rides with it.)
   Future<bool> _refreshAfterAuth() async {
     final s = await DriveService.I.status();
     final f = s.connected ? await DriveService.I.list() : const <DriveFile>[];
     if (mounted) setState(() { _s = s; _files = f; });
-    if (s.connected) Analytics.capture('avastorage_drive_connected', const {});
     return s.connected;
   }
 
   /// Fallback path only: after launching the OAuth tab, poll status a few times
   /// so the panel flips to "connected" without the user tapping Refresh.
-  Future<void> _pollConnected() async {
+  Future<void> _pollConnected(Stopwatch sw) async {
     for (final delay in const [
       Duration(seconds: 2),
       Duration(seconds: 3),
@@ -466,10 +507,15 @@ class _DriveSectionState extends State<_DriveSection> {
       if (s.connected) {
         final f = await DriveService.I.list();
         if (mounted) setState(() { _s = s; _files = f; });
-        Analytics.capture('avastorage_drive_connected', const {});
+        Analytics.capture('drive_connected',
+            {'via': 'fallback_tab', 'connect_ms': sw.elapsedMilliseconds});
         return;
       }
     }
+    // Tab opened but the token never landed within the poll window — surfaces
+    // a stuck fallback connect for a given user.
+    Analytics.capture('drive_connect_poll_timeout',
+        {'via': 'fallback_tab', 'after_ms': sw.elapsedMilliseconds});
   }
 
   @override
@@ -519,7 +565,11 @@ class _DriveSectionState extends State<_DriveSection> {
                   ]),
                 ))),
           const SizedBox(height: 6),
-          ZineLink('Refresh', fontSize: 13, onTap: () { setState(() => _loading = true); _load(); }),
+          ZineLink('Refresh', fontSize: 13, onTap: () {
+            Analytics.capture('drive_refresh_tapped', const {});
+            setState(() => _loading = true);
+            _load();
+          }),
         ],
       ]),
     );
