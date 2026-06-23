@@ -36,7 +36,7 @@ import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { guardInput } from "../lib/ai_gate";
-import { isPremiumAI, premiumUpsell } from "../lib/premium";
+import { isPremiumAI } from "../lib/premium";
 import { chargeFeature, featureCost } from "../feature_pricing";
 import { walletOp } from "./wallet";
 import { track } from "../hooks";
@@ -233,60 +233,142 @@ async function fulfil(
 }
 
 // ---- POST /api/ava/image ----------------------------------------------------
+// Count how many Ava-generated images THIS user produced since UTC midnight
+// today. Reused as the per-user/day fair-use backstop (cfg.imageDailyCap) that
+// applies to EVERY tier — including "unlimited" packages — so a single account
+// (or a runaway loop) can never hammer the Nano Banana 2 endpoint. We derive the
+// count from the user_media rows we already write per generation (no new table):
+// rows are content-addressed `ava-image-<hash>.png`. NOTE: an identical
+// re-generation dedupes (same hash → no new row), which can only make this an
+// UNDER-estimate — fine for a safety cap.
+async function imageCountToday(env: Env, uid: string): Promise<number> {
+  const since = new Date(); since.setUTCHours(0, 0, 0, 0);
+  try {
+    const row = await mediaSession(env).prepare(
+      "SELECT COUNT(*) AS n FROM user_media WHERE uid=?1 AND file_name LIKE 'ava-image-%' AND created_at >= ?2",
+    ).bind(uid, since.getTime()).first<{ n: number }>();
+    return Number(row?.n ?? 0);
+  } catch {
+    return 0; // never block generation on a counter read failure
+  }
+}
+
+// Structured result so BOTH callers (the HTTP route and the @ava agent tool)
+// share ONE gate + pipeline. `httpStatus` is what the HTTP route returns;
+// `message` is the user-facing line the agent relays into chat on a block.
+export type AvaImageResult = {
+  ok: boolean;
+  blocked?: boolean;
+  reason?: string;
+  message?: string;
+  conv?: string;
+  status_id?: string | null;
+  async?: boolean;
+  tier?: string;
+  httpStatus: number;
+};
+
+// THE shared gate + async pipeline for in-thread image generation. Per-CALLER:
+// every check and the coin spend key on [uid] (never the conversation), so in a
+// group each member's own package/wallet is what's gated — one member exhausting
+// their quota can't draw on another's, and the "unlimited" member only ever
+// spends their own allowance. The image still posts into the shared `conv` for
+// everyone to see; the cost/quota always lands on whoever invoked it.
+export async function runAvaImage(
+  env: Env,
+  a: { uid: string; conv: string; prompt: string; editRef?: string; req?: Request; body?: any },
+): Promise<AvaImageResult> {
+  const { uid, conv } = a;
+  const prompt = String(a.prompt ?? "").trim();
+
+  // Master kill-switches.
+  const cfg = await readConfig(env);
+  if (cfg.generativeEnabled === false) {
+    return { ok: false, reason: "generative_disabled", message: "Image generation is currently turned off.", httpStatus: 503 };
+  }
+  if (cfg.aiEnabled === false) {
+    return { ok: false, reason: "ai_disabled", message: "Ava is currently turned off.", httpStatus: 503 };
+  }
+  if (!conv) return { ok: false, reason: "conv_required", message: "Missing conversation.", httpStatus: 400 };
+  if (!prompt) return { ok: false, reason: "prompt_required", message: "Tell me what to draw.", httpStatus: 400 };
+  if (prompt.length > 2000) return { ok: false, reason: "prompt_too_long", message: "That prompt is too long.", httpStatus: 400 };
+
+  // (2) MANDATORY moderation on the prompt — refuse disallowed (deepfake/abuse,
+  // incl. minors) BEFORE we generate or even post a chip. llama-guard via P2.
+  const gin = await guardInput(env, prompt);
+  if (!gin.ok) {
+    return { ok: false, blocked: true, reason: gin.reason ?? "input_unsafe",
+      message: "I can't create that image. Let's keep things safe — try a different idea.", httpStatus: 200 };
+  }
+
+  // PREMIUM GATE (per-caller): image generation is premium-only. Free users get
+  // the upsell. The package layer plugs in here via isPremiumAI / the wallet.
+  const { premium } = await isPremiumAI(a.req ?? new Request("https://ava.internal/image"), env, uid, a.body);
+  if (!premium) {
+    track(env, uid, "premium_gate_shown", "avaai", { feature: "image_generation" });
+    return { ok: false, blocked: true, reason: "premium_required",
+      message: "That's a premium feature. Top up your wallet to unlock image generation, file & photo understanding, memory, and more — all included.",
+      httpStatus: 200 };
+  }
+
+  // Premium runs on OUR Google key (the one place we touch Google), via the AI Gateway.
+  const key = env.GEMINI_API_KEY;
+  if (!key) return { ok: false, reason: "no_gemini_key", message: "Image generation is unavailable right now.", httpStatus: 503 };
+
+  // (2.5) FAIR-USE BACKSTOP (per-caller/day): applies to ALL tiers, including
+  // "unlimited" packages, so no single account (or runaway loop) can run away
+  // with Nano Banana 2 cost.
+  const cap = Number(cfg.imageDailyCap ?? 0);
+  if (cap > 0) {
+    const used = await imageCountToday(env, uid);
+    if (used >= cap) {
+      track(env, uid, "ava_image_capped", "avaai", { used, cap });
+      return { ok: false, blocked: true, reason: "daily_cap",
+        message: `You've hit today's image limit (${cap}). It resets tomorrow — thanks for keeping things fair.`,
+        httpStatus: 200 };
+    }
+  }
+
+  // Pre-authorize coins (free daily grant first, then paid) before any work.
+  const bal = await walletOp(env, uid, { op: "balance", uid });
+  const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
+  const cost = featureCost("ava_image_generate") ?? 0;
+  if (spendable < cost) {
+    return { ok: false, blocked: true, reason: "insufficient_coins",
+      message: "You're out of AvaCoins for images. Top up to keep creating.", httpStatus: 200 };
+  }
+
+  // (3) drop the working chip immediately so the thread shows "Ava is generating…".
+  const statusId = await postChip(env, uid, conv, "Ava is generating an image…");
+  track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef });
+
+  // (4–6) heavy work runs detached — return now while the image is produced and
+  // posted into the SAME conversation when ready.
+  void fulfil(env, uid, conv, prompt, key, true, statusId, a.editRef);
+
+  return { ok: true, conv, status_id: statusId ?? null, async: true, tier: "premium", httpStatus: 200 };
+}
+
+// ---- POST /api/ava/image ----------------------------------------------------
 export async function avaImage(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-
-  // Master kill-switch: generative phase off → 503.
-  const cfg = await readConfig(env);
-  if (cfg.generativeEnabled === false) {
-    return json({ error: "image generation disabled", flag: "generativeEnabled" }, 503);
-  }
-  if (cfg.aiEnabled === false) return json({ error: "ai disabled", flag: "aiEnabled" }, 503);
 
   let b: any;
   try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
 
   const conv = String(b.conv ?? "").trim();
   const prompt = String(b.prompt ?? "").trim();
-  if (!conv) return json({ error: "conv required" }, 400);
-  if (!prompt) return json({ error: "prompt required" }, 400);
-  if (prompt.length > 2000) return json({ error: "prompt too long" }, 400);
   const editRef = b.edit && b.edit.media_ref ? String(b.edit.media_ref) : undefined;
 
-  // (2) MANDATORY moderation on the prompt — refuse disallowed (deepfake/abuse,
-  // incl. minors) BEFORE we generate or even post a chip. llama-guard via P2.
-  const gin = await guardInput(env, prompt);
-  if (!gin.ok) {
-    return json({ ok: false, blocked: true, reason: gin.reason ?? "input_unsafe",
-      message: "I can't create that image. Let's keep things safe — try a different idea." }, 200);
+  const r = await runAvaImage(env, { uid: ctx.uid, conv, prompt, editRef, req, body: b });
+  // Preserve the route's historical response shapes: hard errors → {error};
+  // soft blocks / upsell / success → the structured body at 200.
+  if (!r.ok && (r.httpStatus === 400 || r.httpStatus === 503)) {
+    return json({ error: r.message, reason: r.reason }, r.httpStatus);
   }
-
-  // PREMIUM GATE: image generation is premium-only (top up). Free users get the upsell.
-  const { premium } = await isPremiumAI(req, env, ctx.uid, b);
-  if (!premium) return premiumUpsell(env, ctx.uid, "image_generation");
-
-  // Premium runs on OUR Google key (the one place we touch Google), routed via the
-  // AI Gateway, and is charged ava_image_generate coins.
-  const key = env.GEMINI_API_KEY;
-  if (!key) return json({ error: "image generation unavailable", reason: "no_gemini_key" }, 503);
-
-  // Pre-authorize coins (free daily grant first, then paid) before any work.
-  const bal = await walletOp(env, ctx.uid, { op: "balance", uid: ctx.uid });
-  const spendable = Number(bal.body?.spendable ?? bal.body?.balance ?? 0);
-  const cost = featureCost("ava_image_generate") ?? 0;
-  if (spendable < cost) {
-    return json({ ok: false, blocked: true, reason: "insufficient_coins",
-      message: "You're out of AvaCoins for images. Top up to keep creating." }, 200);
+  if (!r.ok) {
+    return json({ ok: false, blocked: !!r.blocked, reason: r.reason, message: r.message, answer: r.message }, r.httpStatus);
   }
-
-  // (3) drop the working chip immediately so the thread shows "Ava is generating…".
-  const statusId = await postChip(env, ctx.uid, conv, "Ava is generating an image…");
-  track(env, ctx.uid, "ava_image_request", "avaai", {});
-
-  // (4–6) heavy work runs detached — the HTTP call returns now while the image
-  // is produced and posted into the SAME conversation when ready.
-  void fulfil(env, ctx.uid, conv, prompt, key, true, statusId, editRef);
-
-  return json({ ok: true, conv, status_id: statusId ?? null, async: true, tier: "premium" });
+  return json({ ok: true, conv: r.conv, status_id: r.status_id ?? null, async: true, tier: r.tier }, r.httpStatus);
 }

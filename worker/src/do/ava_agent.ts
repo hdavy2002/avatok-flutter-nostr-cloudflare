@@ -34,6 +34,7 @@ import type { MessageScope } from "../lib/ava_kinds";
 import { runGated, webSearchAllowed, aiRunOpts, type AiTier } from "../lib/ai_gate"; // P2 gate
 import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
 import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composio"; // AvaApps + unified agentic loop
+import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
 import { renderData } from "../lib/genui"; // GENERIC GenUI: any Composio result → cached A2UI template + data
@@ -730,7 +731,18 @@ export class AvaAgentDO {
         answer = await runAgentLoop(
           this.env, uid, userText, ctx,
           (q) => this.brainSearch(uid, q),
-          { apps: appsCap && premium, onTool, ...(streaming ? { onDelta } : {}) },
+          {
+            apps: appsCap && premium, onTool, ...(streaming ? { onDelta } : {}),
+            // In-thread image gen (Nano Banana 2). All gating (premium + per-user
+            // daily fair-use cap + wallet) lives in runAvaImage, keyed to THIS
+            // caller — so in a group each member is gated on their own package,
+            // and the image still posts into this shared conversation.
+            onImage: async (prompt, editRef) => {
+              const r = await runAvaImage(this.env, { uid, conv, prompt, editRef });
+              if (!r.ok) return r.message ?? "I couldn't start that image right now.";
+              return "Image generation started — it will appear in this chat in a few seconds.";
+            },
+          },
         );
       } catch (e: any) {
         trackUserContact(this.env, uid, email, phone, "ava_thread_error", "avaai", {

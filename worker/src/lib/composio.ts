@@ -455,6 +455,12 @@ export async function runAgentLoop(
     // or search_memory) with timing + success/error so we can pinpoint failures,
     // latency and call volume in PostHog.
     onTool?: (ev: { tool: string; ok: boolean; ms: number; error?: string; args_keys?: string[]; result_chars?: number; count?: number; result?: unknown; is_app?: boolean }) => void;
+    // In-thread image generation (Nano Banana 2). When provided, the model is
+    // given a `generate_image` tool; the handler kicks off async generation into
+    // the SAME conversation (chip now, image when ready) and returns a short
+    // status string for the model to relay. Gating (premium + per-user daily
+    // fair-use cap + wallet) lives inside this handler, keyed to the caller.
+    onImage?: (prompt: string, editRef?: string) => Promise<string>;
   },
 ): Promise<string> {
   const geminiKey = env.GEMINI_API_KEY ?? "";
@@ -476,7 +482,21 @@ export async function runAgentLoop(
       if (toolkits.length) appDecls = await geminiTools(env, toolkits);
     } catch { /* apps optional */ }
   }
-  const tools = [{ functionDeclarations: [memDecl, ...appDecls] }];
+  const imageDecl = opts?.onImage
+    ? {
+        name: "generate_image",
+        description: "Create or edit an IMAGE when the user EXPLICITLY asks to generate, draw, make, design, or edit a picture/photo/logo/poster/icon/sticker/wallpaper, etc. (e.g. 'draw a cat', 'make me a logo', 'design a poster', 'turn this into a watercolour'). Generation is asynchronous and posts into the chat on its own — do NOT describe the image as if it's already shown; just acknowledge briefly that you're creating it. Do not call this for plain questions, descriptions, or text answers.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "A vivid, self-contained description of the image to create. Fold in the relevant context from the conversation (e.g. the brand name, style, colours) since the generator has no chat history." },
+            edit_ref: { type: "string", description: "Optional: the public URL of an existing image to edit instead of generating from scratch." },
+          },
+          required: ["prompt"],
+        },
+      }
+    : null;
+  const tools = [{ functionDeclarations: [memDecl, ...appDecls, ...(imageDecl ? [imageDecl] : [])] }];
   const sys =
     "You are Ava, the user's warm, concise personal assistant. "
     + "DEFAULT TO ANSWERING DIRECTLY IN ONE STEP. For greetings, small talk, opinions, "
@@ -490,6 +510,9 @@ export async function runAgentLoop(
       ? "Only call a Google-apps tool (Gmail, Calendar, Docs, Sheets, Drive) when the user clearly asks you to check or act on those apps; then report the outcome (subjects/links). If a tool fails, say so plainly. "
         + "If the user asks to SEND or create something but wants to review it first, compose it and show a clear preview — recipient (To), Subject, and the full body — then ask them to confirm; do NOT call the send tool yet. When they confirm in a later message, THEN call the send tool and report the result. "
         + "DRAFT vs SEND — be precise and truthful: creating a draft (GMAIL_CREATE_EMAIL_DRAFT) SAVES it to the Drafts folder; it does NOT send. NEVER tell the user a message was 'sent' unless you actually called GMAIL_SEND_EMAIL and it succeeded. After making a draft, say exactly 'Saved to your Drafts — say \"send it\" to send.' Sending and drafting are different actions; do not conflate them. "
+      : "")
+    + (imageDecl
+      ? "When the user explicitly asks you to create or edit an image (a picture, logo, poster, etc.), call generate_image with a vivid prompt that folds in the needed context from the chat. The image generates in the background and appears in this chat on its own — so reply with a brief, natural acknowledgement (e.g. 'On it — creating that logo now ✨') and NEVER claim it's already visible or paste a link. If generate_image reports it was blocked or unavailable, relay that message plainly instead. "
       : "")
     + "Do not show your reasoning.";
   const userText = context && context.trim()
@@ -525,6 +548,7 @@ export async function runAgentLoop(
     throw new Error(lastErr || "gemini unreachable");
   };
 
+  let imageStarted = false; // one image generation per turn (avoid loops/dupes)
   for (let step = 0; step < 6; step++) {
     let content: any; let calls: any[]; let text: string;
     if (opts?.onDelta) {
@@ -558,6 +582,17 @@ export async function runAgentLoop(
           const lines = await memorySearch(q);
           count = lines.length;
           result = { matches: lines.slice(0, 8) };
+        } else if (name === "generate_image" && opts?.onImage) {
+          // Async, in-thread (Nano Banana 2). The handler posts the chip + image
+          // into the conversation; we return its status string for the model to
+          // relay. One per turn — extra calls are short-circuited.
+          if (imageStarted) {
+            result = { status: "An image is already being generated for this request." };
+          } else {
+            imageStarted = true;
+            const status = await opts.onImage(String(args?.prompt ?? query), args?.edit_ref ? String(args.edit_ref) : undefined);
+            result = { status };
+          }
         } else {
           const r = await executeTool(env, userId, name, args);
           // Composio can return HTTP 200 with a tool-level failure (successful:false
@@ -580,7 +615,7 @@ export async function runAgentLoop(
           ...(count != null ? { count } : {}),
           // The trimmed tool result + whether it's a connected-app tool (vs.
           // search_memory) — lets the caller render the data as a GenUI surface.
-          result, is_app: name !== "search_memory",
+          result, is_app: name !== "search_memory" && name !== "generate_image",
         });
       } catch { /* telemetry is best-effort, never breaks the loop */ }
       contents.push({ role: "tool", parts: [{ functionResponse: { name, response: { result } } }] });

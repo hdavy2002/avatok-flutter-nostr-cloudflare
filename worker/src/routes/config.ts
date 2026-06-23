@@ -50,6 +50,7 @@ export interface PlatformConfig {
   guardianEnabled: boolean;          // Guardian safety surfaces (basic free, deep premium)
   companionEnabled: boolean;         // blank "New chat with Ava" + personas
   generativeEnabled: boolean;        // in-thread image gen (each gen is a PaidFeature)
+  imageDailyCap: number;             // per-USER/day image-gen fair-use backstop (ALL tiers, incl. unlimited)
   // AI Ringback Tones + Busy Tone (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md).
   // Master switch for /api/ringtone/* (generation/library) AND the caller-side
   // ringback playback. OFF → generation 503s and callers fall back to today's
@@ -95,6 +96,7 @@ const DEFAULTS: PlatformConfig = {
   guardianEnabled: true,
   companionEnabled: true,
   generativeEnabled: true,
+  imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
   betaFreePremium: true,           // BETA: everyone premium, all services free, no coin metering
   minAppBuild: 0,
