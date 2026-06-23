@@ -38,8 +38,14 @@ class RagService {
   Future<void> ingestText(String text, {String name = 'ava-memory'}) async {
     final t = text.trim();
     if (t.isEmpty) return;
+    // Cloudflare AI Search (2026-06-18) is the store now and needs NO BYO Gemini
+    // key — the server provisions a per-user instance and gates on premium. We
+    // therefore ingest regardless of a key (the key header is still forwarded
+    // when present, for the legacy path). Previously this returned early without
+    // a Gemini key, so a premium user's chat/files were NEVER indexed — the root
+    // cause of "@ava can't find my files." Best-effort: a non-premium user is
+    // rejected server-side and the failure is swallowed.
     final headers = await _keyHeader();
-    if (headers.isEmpty) return; // no key → AI off → nothing to index
     try {
       await ApiAuth.postJsonH(
         _url(AvaApi.ragIngest),
@@ -63,8 +69,10 @@ class RagService {
     mime = m;
     // Keep within File Search's per-document limit and a sane upload size.
     if (bytes.length > 25 * 1024 * 1024) return;
+    // Ingest regardless of a BYO key — Cloudflare AI Search is the store now and
+    // is provisioned server-side (premium-gated). The key header is forwarded
+    // when present. See [ingestText] for why the old key-gate was the bug.
     final headers = await _keyHeader();
-    if (headers.isEmpty) return;
     try {
       await ApiAuth.postJsonH(
         _url(AvaApi.ragIngest),

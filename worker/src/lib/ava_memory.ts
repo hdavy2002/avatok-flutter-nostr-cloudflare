@@ -97,11 +97,74 @@ export async function brainSearch(
   }
 }
 
+// ─── Cloudflare AI Search lane (2026-06-18, primary) ─────────────────────────
+// The user's chat text + shared files are indexed into their OWN Cloudflare AI
+// Search instance (managed RAG, per-user isolation) by `routes/ava_rag.ts`
+// (`/api/ava/rag/ingest`). This is the lane the client RagService now writes to.
+// The in-thread agent must SEARCH the SAME instance — otherwise it queries the
+// (empty) Vectorize index and "@ava can't find my files." We mirror ava_rag.ts's
+// instance id + get-or-create so both halves point at the identical store.
+
+function aiSearchInstanceId(uid: string): string {
+  return ("ava-" + uid.replace(/[^a-zA-Z0-9]/g, "-")).toLowerCase().slice(0, 50);
+}
+
+async function aiSearchInstance(env: Env, uid: string): Promise<any | null> {
+  const ns: any = (env as any).AI_SEARCH;
+  if (!ns) return null;
+  const id = aiSearchInstanceId(uid);
+  try {
+    const got = await ns.get(id);
+    if (got) return got;
+  } catch { /* not created yet */ }
+  try { return await ns.create({ id }); } catch {
+    try { return await ns.get(id); } catch { return null; }
+  }
+}
+
 /**
- * Convenience for prompt-stuffing: the same uid-scoped search, flattened to short
- * context lines (mirrors `user_brain.ts → vectorRecall`'s output). The in-thread
- * agent's `brainSearch()` stub returns `string[]`, so this is the drop-in for the
- * P3 one-line swap (see INTEGRATION-NOTES.md).
+ * Uid-scoped search over the user's Cloudflare AI Search instance, flattened to
+ * short context lines. Never throws (→ []). This is the PRIMARY retrieval lane
+ * for "@ava find my files / what did we discuss" — it covers older files/messages
+ * beyond the in-thread recent window.
+ */
+export async function aiSearchLines(
+  env: Env,
+  uid: string,
+  query: string,
+  topK = 5,
+): Promise<string[]> {
+  const q = (query || "").trim();
+  if (!uid || !q) return [];
+  try {
+    const inst = await aiSearchInstance(env, uid);
+    if (!inst) return [];
+    const r: any = await inst.search({ messages: [{ role: "user", content: q }] });
+    const out: string[] = [];
+    const data = r?.data ?? r?.results ?? r?.matches ?? r?.documents ?? [];
+    if (Array.isArray(data)) {
+      for (const d of data.slice(0, topK)) {
+        const name = String(d?.filename ?? d?.name ?? d?.title ?? "").trim();
+        const snip = String(d?.content ?? d?.snippet ?? d?.text ?? d?.summary ?? "")
+          .replace(/\s+/g, " ").trim().slice(0, 300);
+        const line = name ? `File "${name}": ${snip}` : snip;
+        if (line.trim()) out.push(line);
+      }
+    }
+    // Some AI Search variants synthesise a single answer string instead of rows.
+    if (out.length === 0 && typeof r?.response === "string" && r.response.trim()) {
+      out.push(r.response.trim().slice(0, 500));
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Convenience for prompt-stuffing: the user's own memory/files flattened to short
+ * context lines. PRIMARY = Cloudflare AI Search (the lane the client ingests to);
+ * FALLBACK = the Vectorize lane (kept so any legacy-indexed vectors still surface).
  */
 export async function brainSearchLines(
   env: Env,
@@ -109,6 +172,10 @@ export async function brainSearchLines(
   query: string,
   topK = 5,
 ): Promise<string[]> {
+  // Primary: Cloudflare AI Search (managed RAG with built-in storage).
+  const ai = await aiSearchLines(env, uid, query, topK);
+  if (ai.length) return ai;
+  // Fallback: Vectorize (uid-scoped semantic index).
   const hits = await brainSearch(env, uid, query, topK);
   return hits
     .map((h) => {
