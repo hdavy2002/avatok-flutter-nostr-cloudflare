@@ -155,15 +155,18 @@ class Directory {
           .timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
-      // Cloudflare-native: the directory now returns `uid` (Clerk id) as the
-      // addressing id. The Contact.npub field carries this uid value.
-      final npub = j['uid'] ?? j['npub'];
-      if (npub == null) return null;
       final p = j['profile'] as Map<String, dynamic>?;
+      // Cloudflare-native: the directory returns `uid` (Clerk id) as the
+      // addressing id. Accept it at the top level OR nested under `profile`
+      // (older worker shape) so a contact ALWAYS gets a routable id — a missing
+      // id here was leaving DMs stuck on "waiting to reach phone".
+      final npub = j['uid'] ?? j['npub'] ?? p?['uid'];
+      if (npub == null) return null;
+      final name = (p?['name'] ?? p?['display_name'] ?? '').toString();
       return Contact(
         npub: npub.toString(),
-        name: (p?['name'] ?? '').toString().isNotEmpty
-            ? p!['name'].toString()
+        name: name.isNotEmpty
+            ? name
             : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(npub.toString())),
         handle: (p?['handle'] ?? '').toString(),
         email: (p?['email'] ?? '').toString(),

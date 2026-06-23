@@ -53,8 +53,25 @@ export async function getResolve(req: Request, env: Env): Promise<Response> {
   if (!uid) return json({ found: false });
   const profile = await db.prepare(
     "SELECT uid, handle, display_name, bio, avatar_url FROM users WHERE uid=?1",
-  ).bind(uid).first();
-  return json({ found: true, profile: profile ?? { uid } });
+  ).bind(uid).first<{ uid: string; handle?: string; display_name?: string; bio?: string; avatar_url?: string }>();
+  // `uid` MUST be at the TOP LEVEL — the app (Directory.resolve) reads j['uid']
+  // as the addressing id. Nesting it only under `profile` made every email/
+  // handle/phone resolve return null, so the contact had no routable id and DMs
+  // to them never left "waiting to reach phone". Also expose `name` (mapped from
+  // display_name), which the client reads.
+  return json({
+    found: true,
+    uid,
+    avatar_url: profile?.avatar_url ?? "",
+    profile: {
+      uid,
+      handle: profile?.handle ?? "",
+      name: profile?.display_name ?? "",
+      display_name: profile?.display_name ?? "",
+      avatar_url: profile?.avatar_url ?? "",
+      bio: profile?.bio ?? "",
+    },
+  });
 }
 
 // GET /search?q=  (public read)
