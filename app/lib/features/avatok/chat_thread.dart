@@ -1768,6 +1768,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// in one place.
   bool _isAvaBubble(_Msg m) => AvaKind.isBubble(m.special);
 
+  // Per-sender bubble tint for GROUP chats — a stable colour picked from a small
+  // pastel palette by hashing the sender label, so each person keeps the same
+  // colour throughout the thread and you can tell who's who at a glance. Lime
+  // (me) and lilac (Ava) are intentionally excluded from this palette.
+  static const List<Color> _groupTints = [
+    Zine.mint,
+    Zine.blue,
+    Zine.coral,
+    Color(0xFFF7D070), // amber
+    Color(0xFFB7E4A0), // sage
+    Color(0xFFF3A6C9), // pink
+  ];
+  Color _groupSenderTint(String sender) {
+    var h = 0;
+    for (final c in sender.codeUnits) {
+      h = (h * 31 + c) & 0x7fffffff;
+    }
+    return _groupTints[h % _groupTints.length];
+  }
+
   /// The inline "Ava is working…" chip row (kind 'ava_status'). Not a normal
   /// bubble — a subtle lilac pill with a tiny spinner. Generic: any phase that
   /// posts an 'ava_status' frame gets this with no extra UI work.
@@ -3368,6 +3388,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // in a distinct feminine lilac fill — visually separate from my lime and
     // peers' card bubbles.
     final isAva = _isAvaBubble(m);
+    // My OWN message that I sent TO Ava (private @ava question). Colour it the
+    // same lilac as Ava's replies so a glance tells me "this is an Ava
+    // conversation", never confused with a green message to a person.
+    final toAva = m.me && m.aiLocal;
     final onRight = m.me && !isAva;
     return Align(
       alignment: onRight ? Alignment.centerRight : Alignment.centerLeft,
@@ -3392,8 +3416,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               // Chat bubble (§7.14): 2.5px ink border, radius 16 with one
               // squared corner toward the sender; me = lime, them = card.
               decoration: BoxDecoration(
-                // me = lime, Ava = lilac (feminine accent), them = card.
-                color: isAva ? Zine.lilac : (onRight ? Zine.lime : Zine.card),
+                // me = lime, Ava (or my message TO Ava) = lilac, a 1:1 peer = card,
+                // and in GROUPS each sender gets their own stable tint so you can
+                // tell at a glance who said what.
+                color: (isAva || toAva)
+                    ? Zine.lilac
+                    : onRight
+                        ? Zine.lime
+                        : (widget.chat.group && m.senderLabel != null
+                            ? _groupSenderTint(m.senderLabel!)
+                            : Zine.card),
                 border: Zine.border,
                 boxShadow: Zine.shadowXs,
                 borderRadius: BorderRadius.only(
