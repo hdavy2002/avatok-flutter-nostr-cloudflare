@@ -568,8 +568,9 @@ class _CallScreenState extends State<CallScreen> {
           if (mounted && !_connected) _onNoAnswer();
         });
       } else {
-        // Map ring count to a window (~7s/ring), capped so a misconfig can't hang.
-        final secs = (_receptRings * 7).clamp(20, 60);
+        // Map ring count to a window (~5s/ring ≈ real ring cadence), capped so a
+        // misconfig can't hang. e.g. 3 rings → ~15s before Ava takes over.
+        final secs = (_receptRings * 5).clamp(12, 45);
         _ringTimeout?.cancel();
         _ringTimeout = Timer(Duration(seconds: secs), () {
           if (mounted && !_connected) _onNoAnswer();
