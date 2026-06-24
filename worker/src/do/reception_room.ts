@@ -346,8 +346,11 @@ export class ReceptionRoom {
         (this as any)._aigId ?? null).run();
     } catch { /* ignore */ }
 
+    // A real exchange happened only if Ava spoke or the caller said something.
+    // A 0-duration hang-up must NOT dump a misleading "I've taken your message".
+    const hadConversation = this.firstAudioSent || this.inText.length > 0 || this.pcmBytes > 0;
     // Deliver: message + recording under the caller's phone number, then push.
-    try { await this.postMessage(init, summary, transcript, recordingUrl, durationS); } catch { /* best-effort */ }
+    try { await this.postMessage(init, summary, transcript, recordingUrl, durationS, hadConversation); } catch { /* best-effort */ }
 
     this.ev("ava_recept_message_posted", {
       caller_phone: init.caller_phone, duration_s: durationS, cutoff_reason: reason,
@@ -402,9 +405,12 @@ export class ReceptionRoom {
     } catch { return null; }
   }
 
-  /** Append the receptionist card to the OWNER's inbox under the caller's phone. */
+  /** Append the receptionist card to the OWNER's inbox under the caller's phone.
+   *  [hadConversation] gates the caller-side ack so we never tell a caller "I've
+   *  taken your message" when they hung up before saying anything. */
   private async postMessage(
-    init: InitBlob, summary: any, transcript: string, recordingUrl: string | null, durationS: number,
+    init: InitBlob, summary: any, transcript: string, recordingUrl: string | null,
+    durationS: number, hadConversation: boolean,
   ): Promise<void> {
     const callerLabel = init.caller_name || init.caller_phone || "Unknown caller";
     // v2: deliver into the caller's REAL DM thread (dm_<lo>__<hi>) so the owner
@@ -419,7 +425,9 @@ export class ReceptionRoom {
     const inThread = !!init.caller_uid;
     const bodyText = summary
       ? `📞 ${summary.caller_name || callerLabel} called and left a message: ${summary.reason}`
-      : `📞 ${callerLabel} called — Ava answered.`;
+      : hadConversation
+        ? `📞 ${callerLabel} called — Ava answered.`
+        : `📞 Missed call from ${callerLabel} — they hung up before leaving a message.`;
     // Body is an app envelope {t:'recept', …} so the FROZEN chat_thread renderer
     // shows a dedicated receptionist card (summary + transcript + play). Scoped
     // to:<owner> so it's the owner's private voicemail record — the caller, even
@@ -470,7 +478,7 @@ export class ReceptionRoom {
     // (Humphrey) confirming the message was taken — with the SAME push + unread
     // badge as any incoming chat. Only when the caller is a known AvaTOK user
     // (phone-only callers have no inbox). `{t:'text'}` renders as a plain bubble.
-    if (init.caller_uid) {
+    if (init.caller_uid && hadConversation) {
       const ownerLabel = (init.owner_name || "your contact").trim();
       const greet = init.caller_name ? `Hi ${init.caller_name}` : "Hi there";
       const ackText = summary

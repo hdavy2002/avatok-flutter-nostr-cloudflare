@@ -86,7 +86,7 @@ export async function contactFor(env: Env, uid: string): Promise<{ email: string
 // v2 prefix: bumped so stale "" entries cached by the old Clerk-only resolver
 // (which returned null for empty first_name) are bypassed and re-resolved from
 // the app profile table.
-const NAME_PREFIX = "ph_name2:"; // KV key namespace (uid → first name, "" = none)
+const NAME_PREFIX = "ph_name3:"; // KV key namespace (uid → first name, "" = none)
 
 /**
  * uid → the user's first/display name, KV-cached like [emailFor]. Used so the
@@ -100,30 +100,33 @@ export async function nameFor(env: Env, uid: string): Promise<string | null> {
     const cached = await env.TOKENS.get(key);
     if (cached !== null) return cached === "" ? null : cached;
   } catch { /* fall through to a live lookup */ }
+  // A usable first name: trimmed, non-empty, and NOT an email/handle-looking
+  // token (greeting "Hi hdavy2002@gmail.com" is worse than no name at all).
+  const asName = (raw: unknown): string | null => {
+    const t = (raw ?? "").toString().trim();
+    if (!t || t.includes("@")) return null; // email-like → reject
+    const first = t.split(/\s+/)[0];
+    return first && !first.includes("@") ? first : null;
+  };
   let name: string | null = null;
-  // 1) App profile (DB_META.users) — the name the user set in AvaTOK. This is
-  //    the best source; Clerk's first_name is often empty for Google sign-ups.
+  // 1) Clerk first/last name — the most reliable "real name" for a Google sign-up.
   try {
-    const r = await env.DB_META
-      .prepare("SELECT display_name, handle FROM users WHERE uid=?1")
-      .bind(uid)
-      .first<{ display_name?: string | null; handle?: string | null }>();
-    if (r) name = (r.display_name?.trim() || r.handle?.trim() || null) ?? null;
-  } catch { /* fall through to Clerk */ }
-  // 2) Clerk fallback (first_name → full name → username).
+    const u = await clerkUser(env, uid);
+    if (u) {
+      name = asName(u.first_name) ?? asName(u.last_name) ?? asName(u.username);
+    }
+  } catch { /* fall through to the app profile */ }
+  // 2) App profile (DB_META.users) display name / handle — only if not email-like.
   if (!name) {
     try {
-      const u = await clerkUser(env, uid);
-      if (u) {
-        const first = (u.first_name ?? "").toString().trim();
-        const last = (u.last_name ?? "").toString().trim();
-        const uname = (u.username ?? "").toString().trim();
-        name = first || [first, last].filter(Boolean).join(" ") || uname || null;
-      }
+      const r = await env.DB_META
+        .prepare("SELECT display_name, handle FROM users WHERE uid=?1")
+        .bind(uid)
+        .first<{ display_name?: string | null; handle?: string | null }>();
+      if (r) name = asName(r.display_name) ?? asName(r.handle);
     } catch { /* best-effort */ }
   }
-  // Greeting wants a first name ("Hi Humphrey"), so keep the first token only.
-  if (name) name = name.split(/\s+/)[0];
+  // Nothing name-like found → null; the greeting gracefully says "Hi there".
   try { await env.TOKENS.put(key, name ?? "", { expirationTtl: TTL_SECONDS }); } catch { /* best-effort */ }
   return name;
 }
