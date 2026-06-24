@@ -171,7 +171,13 @@ class _CallScreenState extends State<CallScreen> {
       // 'cancel' WE sent to stop the callee's ring, which echoes back here and
       // would otherwise end the live receptionist session ~2s in (telemetry
       // showed call_ended reason='cancel' killing Ava mid-greeting).
-      if (_receptionistActive) return;
+      if (_receptionistActive) {
+        if (e.callId == widget.room) {
+          Analytics.capture('ava_recept_signal_suppressed',
+              {'channel': 'call_status', 'status': e.status, 'call_id': widget.room});
+        }
+        return;
+      }
       if (e.callId == widget.room && mounted && !_connected) {
         // v2 Mode C: the callee hit Decline with "let Ava take calls I decline"
         // on → 'decline_ava'. Hand off to the receptionist instead of ending.
@@ -283,7 +289,12 @@ class _CallScreenState extends State<CallScreen> {
   void _onSocketLost() {
     // Once Ava has taken over, the original signaling socket is irrelevant —
     // closing/losing it must NOT end the live receptionist session.
-    if (_ended || _receptionistActive) return;
+    if (_ended) return;
+    if (_receptionistActive) {
+      Analytics.capture('ava_recept_signal_suppressed',
+          {'channel': 'socket_lost', 'call_id': widget.room});
+      return;
+    }
     _endWith('ended', reason: 'socket-lost');
   }
 
@@ -388,7 +399,13 @@ class _CallScreenState extends State<CallScreen> {
   Future<void> _onSignal(dynamic raw) async {
     // Ava owns the call now — ignore any late signaling (bye/peer-left/busy from
     // the cancelled ring) so it can't kill the live receptionist session.
-    if (_receptionistActive) return;
+    if (_receptionistActive) {
+      String? t;
+      try { t = (jsonDecode(raw as String) as Map)['type']?.toString(); } catch (_) {}
+      Analytics.capture('ava_recept_signal_suppressed',
+          {'channel': 'signaling', if (t != null) 'type': t, 'call_id': widget.room});
+      return;
+    }
     final d = jsonDecode(raw as String) as Map<String, dynamic>;
     // Peer geo (when the signaling server relays it) → both ends' country on one
     // telemetry row. Best-effort; harmless when absent.
