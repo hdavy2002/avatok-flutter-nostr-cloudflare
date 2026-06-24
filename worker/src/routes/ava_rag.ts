@@ -15,6 +15,7 @@ import { requireUser, isFail } from "../authz";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { chargeFeature } from "../feature_pricing";
 import { track } from "../hooks";
+import { mediaSession } from "../db/shard";
 
 // AI Search instance id for a user (lowercase alnum + hyphens, bounded length).
 function instanceId(uid: string): string {
@@ -73,6 +74,75 @@ export async function avaRagStore(req: Request, env: Env): Promise<Response> {
   } catch (e: any) {
     return json({ error: "store failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
+}
+
+// POST /api/ava/rag/backfill — index the user's EXISTING Messenger history into
+// their one AI Search instance, so the master brain (ChatAVA) can discuss past
+// conversations and files even if they predate live ingestion (or a tier upgrade).
+// Premium (memory is a premium feature). Idempotent-ish: re-runs re-upload by name.
+//
+// COVERAGE: (1) text-bearing messages from the user's InboxDO (server-readable in
+// the Cloudflare-native arch), grouped one document per conversation; (2) a
+// descriptor per user_media file so files are discoverable by name. Existing-file
+// CONTENT (PDF text etc.) is indexed by the client on upload; a deeper server-side
+// content backfill (fetch + extract per file) can be queued later for scale.
+export async function avaRagBackfill(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const { premium } = await isPremiumAI(req, env, ctx.uid);
+  if (!premium) return premiumUpsell(env, ctx.uid, "memory");
+
+  let inst: any;
+  try { inst = await userInstance(env, ctx.uid); }
+  catch (e: any) { return json({ error: "store failed", detail: String(e?.message ?? e).slice(0, 200) }, 502); }
+
+  let conversations = 0;
+  let files = 0;
+
+  // (1) Messages from the user's own InboxDO, grouped per conversation.
+  try {
+    const dobj = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
+    const r = await dobj.fetch("https://inbox/export?limit=1500");
+    const j: any = await r.json().catch(() => ({}));
+    const rows: any[] = Array.isArray(j?.messages) ? j.messages : [];
+    const byConv = new Map<string, string[]>();
+    // rows arrive newest→oldest; reverse to read chronologically.
+    for (const m of rows.reverse()) {
+      const kind = String(m.kind ?? "text");
+      if (kind !== "text" && kind !== "ava" && kind !== "ava_private") continue;
+      const body = String(m.body ?? "").trim();
+      if (!body || body.startsWith("{")) continue; // skip control/JSON envelopes
+      const who = m.sender === "ava" ? "Ava" : (m.sender === ctx.uid ? "Me" : "Them");
+      const conv = String(m.conv ?? "chat");
+      if (!byConv.has(conv)) byConv.set(conv, []);
+      byConv.get(conv)!.push(`${who}: ${body}`);
+    }
+    for (const [conv, lines] of byConv) {
+      if (!lines.length) continue;
+      const text = `Messenger conversation ${conv}:\n` + lines.slice(-400).join("\n");
+      try {
+        await inst.items.uploadAndPoll(`messages-${conv}.txt`.slice(0, 80), text.slice(0, 100_000));
+        conversations++;
+      } catch { /* skip one conv, keep going */ }
+    }
+  } catch { /* messages best-effort */ }
+
+  // (2) A descriptor per user_media file (discoverable by name in ChatAVA).
+  try {
+    const mdb = mediaSession(env);
+    const res = await mdb.prepare(
+      "SELECT file_name, mime_type, original_app, created_at FROM user_media WHERE uid=?1 ORDER BY created_at DESC LIMIT 200",
+    ).bind(ctx.uid).all<any>();
+    for (const f of (res.results ?? [])) {
+      const name = String(f.file_name ?? "file");
+      const when = f.created_at ? new Date(Number(f.created_at)).toISOString().slice(0, 10) : "";
+      const descr = `File "${name}" (type ${f.mime_type ?? "unknown"}, from ${f.original_app ?? "avatok"}${when ? ", added " + when : ""}).`;
+      try { await inst.items.uploadAndPoll(`file-${name}`.slice(0, 80), descr); files++; } catch { /* skip */ }
+    }
+  } catch { /* files best-effort */ }
+
+  track(env, ctx.uid, "ava_rag_backfill", "avaai", { conversations, files });
+  return json({ ok: true, indexed: { conversations, files } });
 }
 
 // POST /api/ava/rag/search — semantic search over the user's own indexed files.

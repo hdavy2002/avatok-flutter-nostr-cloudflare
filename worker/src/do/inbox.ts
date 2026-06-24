@@ -145,6 +145,18 @@ export class InboxDO {
       if (url.pathname.endsWith("/event")) return this.event(await req.json());
       // Transient "Ava is working…" chip — broadcast only, never persisted.
       if (url.pathname.endsWith("/ava_status")) return this.avaStatus(await req.json());
+      // Backfill export: recent text-bearing messages so the Ava brain can index
+      // them into the user's Cloudflare AI Search instance (server-readable — the
+      // body is plaintext in the Cloudflare-native arch). Used by /api/ava/rag/backfill.
+      if (url.pathname.endsWith("/export")) {
+        const limit = Math.min(2000, Math.max(1, Number(url.searchParams.get("limit") || 1000)));
+        const rows = this.sql.exec(
+          `SELECT id, conv, sender, kind, body, created_at FROM messages
+           WHERE body IS NOT NULL AND body != '' ORDER BY id DESC LIMIT ?`,
+          limit,
+        ).toArray();
+        return new Response(JSON.stringify({ messages: rows }), { headers: { "content-type": "application/json" } });
+      }
       // GDPR deletion cascade (Phase 9 A1): wipe ALL DO storage for this user.
       // Peers keep their own copies in their own InboxDOs (their side of the
       // conversation survives, as the spec requires).
