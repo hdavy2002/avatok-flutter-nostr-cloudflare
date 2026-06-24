@@ -5,9 +5,13 @@
 // vacation mode. Local-first: cached blocks render instantly (per-account
 // DiskCache), then a network refresh repaints.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/analytics.dart';
+import '../../core/ava_log.dart';
 import '../../core/platform_api.dart';
 import '../../core/time_sync.dart';
 import '../../core/ui/zine.dart';
@@ -514,18 +518,58 @@ class _CalendarSettingsScreenState extends State<CalendarSettingsScreen> {
     );
   }
 
+  /// Connect Google Calendar via an IN-APP auth sheet (iOS ASWebAuthenticationSession
+  /// / Android Custom Tabs) that AUTO-CLOSES on the avatokauth:// callback — the
+  /// user stays inside AvaCalendar instead of being bounced to the external
+  /// browser. gcalConnect() requests ?return=app so the Worker redirects to the
+  /// callback scheme. Same pattern as AvaStorage / Backup & sync.
   Future<void> _connectGcal() async {
+    final sw = Stopwatch()..start();
+    Analytics.capture('gcal_connect_started', const {});
     final r = await PlatformApi.gcalConnect();
     final url = r['url'] as String?;
     if (url == null) {
+      Analytics.error(
+          domain: 'calendar', code: 'connect_url_null', screen: 'avacalendar', action: 'connect');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r['error'] as String? ?? 'Google sync not configured yet')));
       }
       return;
     }
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Finish in the browser, then pull to refresh.')));
+    Analytics.capture('gcal_connect_opened', const {'mode': 'web_auth'});
+    try {
+      await FlutterWebAuth2.authenticate(url: url, callbackUrlScheme: 'avatokauth');
+      Analytics.capture('gcal_connect_returned', const {'mode': 'web_auth'});
+      await _load();
+      final connected = _gcalConnected == true;
+      Analytics.capture(connected ? 'gcal_connected' : 'gcal_connect_unverified',
+          {'via': 'web_auth', 'connect_ms': sw.elapsedMilliseconds});
+    } on PlatformException catch (e) {
+      if (e.code == 'CANCELED' || e.code == 'CANCELLED') {
+        Analytics.capture('gcal_connect_cancelled', {'code': e.code});
+      } else {
+        AvaLog.I.log('gcal', 'web auth failed (${e.code}); falling back to tab');
+        Analytics.error(
+            domain: 'calendar', code: 'web_auth_failed', message: e.code,
+            screen: 'avacalendar', action: 'connect');
+        try {
+          final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+          Analytics.capture('gcal_connect_fallback_opened', {'mode': 'in_app_tab', 'opened': opened});
+          if (opened && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Finish in Google, then pull to refresh.')));
+          }
+        } catch (e2) {
+          Analytics.error(
+              domain: 'calendar', code: 'fallback_launch_failed', message: e2.toString(),
+              screen: 'avacalendar', action: 'connect');
+        }
+      }
+    } catch (e) {
+      AvaLog.I.log('gcal', 'web auth error: $e');
+      Analytics.error(
+          domain: 'calendar', code: 'web_auth_error', message: e.toString(),
+          screen: 'avacalendar', action: 'connect');
     }
   }
 

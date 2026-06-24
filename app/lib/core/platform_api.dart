@@ -66,9 +66,12 @@ class PlatformApi {
       _json((await ApiAuth.putJson('$kCalendarBase/rules', {'rules': rules})).body);
   static Future<Map<String, dynamic>> gcalStatus() async =>
       _json((await ApiAuth.getSigned('$kCalendarBase/gcal/status')).body);
-  /// Returns {url} — open in a browser to run the Google OAuth consent flow.
+  /// Returns {url} for the Google OAuth consent flow. `?return=app` makes the
+  /// Worker redirect the callback to avatokauth:// so the in-app auth sheet
+  /// (flutter_web_auth_2) auto-closes instead of showing the "close this window"
+  /// page — keeps Calendar connect inside the app.
   static Future<Map<String, dynamic>> gcalConnect() async =>
-      _json((await ApiAuth.getSigned('$kCalendarBase/gcal/connect')).body);
+      _json((await ApiAuth.getSigned('$kCalendarBase/gcal/connect?return=app')).body);
   static Future<Map<String, dynamic>> gcalDisconnect() async =>
       _json((await ApiAuth.deleteSigned('$kCalendarBase/gcal')).body);
   static Future<List<Map<String, dynamic>>> bookings({String role = 'all', String when = 'upcoming'}) async =>
