@@ -16,6 +16,7 @@ import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_memory/local_index.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/cached_image.dart';
 import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
 import '../../core/library_api.dart';
@@ -684,27 +685,13 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               ),
             ),
           // AI-generated images (ChatAVA image gen) — tap to view full-screen.
+          // Disk-cached so they load instantly on reopen (no re-download).
           for (final url in m.images)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: GestureDetector(
-                  onTap: () => _openImageFull(url),
-                  child: Image.network(
-                    url,
-                    width: 240,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (c, ch, p) => p == null
-                        ? ch
-                        : Container(
-                            width: 240, height: 200, alignment: Alignment.center,
-                            child: const CircularProgressIndicator(strokeWidth: 2)),
-                    errorBuilder: (_, __, ___) => Container(
-                        width: 240, height: 120, alignment: Alignment.center,
-                        child: Text('Image unavailable', style: ZineText.sub(size: 12))),
-                  ),
-                ),
+              child: GestureDetector(
+                onTap: () => _openImageFull(url),
+                child: CachedImage(url, width: 240, radius: BorderRadius.circular(14)),
               ),
             ),
           if (showListen)

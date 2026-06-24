@@ -36,6 +36,7 @@ import '../../core/ava_ondevice_rag.dart';
 import '../../core/ava_ondevice_stt.dart';
 import '../../core/ui/mic_input_sheet.dart';
 import '../../core/avatar.dart';
+import '../../core/cached_image.dart';
 import '../../core/ava_identity.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
@@ -1858,17 +1859,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         child: Stack(children: [
           GestureDetector(
             onTap: () => _openImageFull(mediaRef),
-            child: Image.network(
-              mediaRef,
-              width: 240,
-              fit: BoxFit.cover,
-              loadingBuilder: (ctx, child, progress) => progress == null
-                  ? child
-                  : Container(
-                      width: 240, height: 200, alignment: Alignment.center,
-                      child: const CircularProgressIndicator(strokeWidth: 2)),
-              errorBuilder: (_, __, ___) => _avaRich('Image unavailable', fg),
-            ),
+            // Disk-cached so it loads instantly on reopen (no re-download).
+            child: CachedImage(mediaRef, width: 240),
           ),
           Positioned(
             top: 6,
