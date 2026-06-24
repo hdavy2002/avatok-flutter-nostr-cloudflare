@@ -99,6 +99,13 @@ dependencies:
   flutter_contacts: ^1.1.9+2
   # Native share sheet for the "invite a friend" message + download link.
   share_plus: ^10.1.2
+  # Copy a chat IMAGE to the system clipboard (paste into any app) — Flutter's
+  # built-in Clipboard is text-only. Used by chat_thread.dart's full-screen photo
+  # viewer + the long-press "Copy image" action. NATIVE: super_clipboard pulls a
+  # Rust-based native extension (super_native_extensions via cargokit), so the CI
+  # APK build runner MUST have the Rust toolchain installed (rustup) and Android
+  # minSdk >= 23. Must be validated by a CI APK build (can't compile headless).
+  super_clipboard: ^0.9.1
   # Local-first SQLite database (the WhatsApp model): on-device source of truth
   # for chats/messages/contacts with reactive queries (the UI watches the DB, so
   # navigation/cold-start read locally — instant — and the network only syncs new

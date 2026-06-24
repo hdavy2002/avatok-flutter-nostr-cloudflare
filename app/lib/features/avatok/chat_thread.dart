@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:record/record.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -1920,6 +1921,96 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
+  /// Full-screen, pinch-to-zoom view of a DECRYPTED chat photo (received or
+  /// sent). Tap any photo bubble to open it in-session; an X closes it and a
+  /// copy button puts the image on the clipboard so it can be pasted elsewhere.
+  void _openImageBytes(Uint8List bytes, {String? mime}) {
+    Analytics.capture('chat_image_open', {
+      'conv_kind': _isGroup ? 'group' : 'dm',
+      'size': bytes.length,
+    });
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (dctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 5,
+              child: Center(child: Image.memory(bytes)),
+            ),
+          ),
+          // X — close the viewer.
+          Positioned(
+            top: 40, right: 8,
+            child: _viewerButton(Icons.close, 'Close',
+                () => Navigator.of(dctx).maybePop()),
+          ),
+          // Copy the image to the system clipboard (paste into any app).
+          Positioned(
+            top: 40, left: 8,
+            child: _viewerButton(Icons.copy, 'Copy',
+                () => _copyImageBytes(bytes, mime: mime)),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _viewerButton(IconData icon, String tooltip, VoidCallback onTap) =>
+      DecoratedBox(
+        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+        child: IconButton(
+          tooltip: tooltip,
+          icon: Icon(icon, color: Colors.white),
+          onPressed: onTap,
+        ),
+      );
+
+  /// Put a chat image on the system clipboard so it can be pasted into another
+  /// app. Flutter's built-in Clipboard is text-only, so this uses super_clipboard
+  /// (Formats.png / Formats.jpeg). Degrades gracefully where unsupported.
+  Future<void> _copyImageBytes(Uint8List bytes, {String? mime}) async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) {
+      _capNote('Copying images isn’t supported on this device.');
+      return;
+    }
+    // Label by real format: PNG magic (‰PNG) or the declared mime, else JPEG.
+    final isPng = (mime?.toLowerCase().contains('png') ?? false) ||
+        (bytes.length > 4 && bytes[0] == 0x89 && bytes[1] == 0x50 &&
+            bytes[2] == 0x4E && bytes[3] == 0x47);
+    try {
+      final item = DataWriterItem();
+      item.add(isPng ? Formats.png(bytes) : Formats.jpeg(bytes));
+      await clipboard.write([item]);
+      HapticFeedback.selectionClick();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Image copied'), duration: Duration(seconds: 1)));
+      }
+      Analytics.capture('chat_image_copied', {
+        'mime': isPng ? 'image/png' : 'image/jpeg',
+        'size': bytes.length,
+      });
+    } catch (e) {
+      _capNote('Couldn’t copy the image.');
+      Analytics.capture('chat_image_copy_failed', {'err': e.toString()});
+    }
+  }
+
+  /// Load a message's image bytes (cached or decrypt) and copy it to clipboard.
+  Future<void> _copyImageFromMsg(_Msg m) async {
+    final bytes = m.localBytes ??
+        (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
+    if (bytes == null) { _capNote('Could not load this image.'); return; }
+    m.localBytes = bytes;
+    await _copyImageBytes(bytes, mime: m.media?.contentType);
+  }
+
   /// Download the FULL-RESOLUTION image (the stored public URL is already the
   /// full-res PNG; the in-chat preview is just display-sized) and hand it to the
   /// OS share sheet so the user can save it to Photos or send it on.
@@ -2482,6 +2573,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           if (m.text.trim().isNotEmpty && m.special != 'ava_status')
             _action(ctx, PhosphorIcons.copy(PhosphorIconsStyle.bold),
                 m.media != null ? 'Copy caption' : 'Copy text', () => _copyText(m)),
+          // Copy the actual IMAGE to the clipboard (paste into any app).
+          if (m.media?.kind == MediaKind.image)
+            _action(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Copy image',
+                () => _copyImageFromMsg(m)),
           _action(ctx, PhosphorIcons.pushPin(PhosphorIconsStyle.bold), 'Pin message', () => _pinMessage(m)),
           _action(ctx, PhosphorIcons.star(m.starred ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
               m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
@@ -2614,7 +2709,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: Avatar(seed: c.seed, name: c.name, size: 40),
                     title: Text(c.name, style: ZineText.value(size: 15)),
-                    onTap: () { Navigator.pop(ctx); _doForward(m, c); },
+                    onTap: () { Navigator.pop(ctx); _forwardWithText(m, c); },
                   ),
               ]),
             ),
@@ -2623,14 +2718,120 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
-  /// Really forward [m] to contact [c] over a one-off gift-wrap, flagged forwarded.
-  Future<void> _doForward(_Msg m, Contact c) async {
+  /// Step between picking a recipient and sending: when the message has text
+  /// associated with it (a media caption, or a plain text body), show that text
+  /// in an EDITABLE box so the user can tweak or clear it before forwarding.
+  /// Media with no caption forwards straight through (unchanged behaviour).
+  Future<void> _forwardWithText(_Msg m, Contact c) async {
+    final isMedia = m.media != null;
+    final initial = (isMedia ? _mediaCaptionOf(m) : m.text).trim();
+    // No associated text on a media item → nothing to edit, forward as-is.
+    if (isMedia && initial.isEmpty) { await _doForward(m, c); return; }
+
+    final edit = TextEditingController(text: initial);
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16, right: 16, top: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Forward to ${c.name}', style: ZineText.cardTitle(size: 18)),
+          const SizedBox(height: 4),
+          Text(isMedia ? 'Edit or remove the caption before sending'
+                       : 'Edit the message before sending',
+              style: ZineText.sub(size: 13, color: Zine.inkMute)),
+          const SizedBox(height: 12),
+          // For media, show a small preview chip so it's clear what rides along.
+          if (isMedia) ...[
+            Row(children: [
+              if (m.localBytes != null && m.media!.kind == MediaKind.image)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.memory(m.localBytes!, width: 44, height: 44, fit: BoxFit.cover),
+                )
+              else
+                PhosphorIcon(
+                    m.media!.kind == MediaKind.video
+                        ? PhosphorIcons.videoCamera(PhosphorIconsStyle.bold)
+                        : m.media!.kind == MediaKind.image
+                            ? PhosphorIcons.image(PhosphorIconsStyle.bold)
+                            : PhosphorIcons.file(PhosphorIconsStyle.bold),
+                    size: 26, color: Zine.ink),
+              const SizedBox(width: 10),
+              Expanded(child: Text(m.media!.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: ZineText.value(size: 14))),
+            ]),
+            const SizedBox(height: 12),
+          ],
+          Row(children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Zine.card,
+                  borderRadius: BorderRadius.circular(Zine.rField),
+                  border: Border.all(color: Zine.ink, width: 2),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(
+                  controller: edit,
+                  autofocus: true,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (v) => Navigator.pop(ctx, v),
+                  style: ZineText.input(size: 15),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    hintText: isMedia ? 'Add a caption…' : 'Message',
+                    hintStyle: ZineText.sub(size: 14, color: Zine.placeholder),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _sendCircle(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill),
+                () => Navigator.pop(ctx, edit.text)),
+          ]),
+        ]),
+      ),
+    ).whenComplete(edit.dispose);
+
+    if (result == null) return; // dismissed without sending
+    final text = result.trim();
+    // A plain text message edited down to nothing → don't forward an empty line.
+    if (!isMedia && text.isEmpty) return;
+    await _doForward(m, c, caption: text);
+  }
+
+  /// Really forward [m] to contact [c] over a one-off send, flagged forwarded.
+  /// [caption] (when provided) overrides the carried text/caption — empty means
+  /// forward the media with no caption.
+  Future<void> _doForward(_Msg m, Contact c, {String? caption}) async {
     final id = _meId;
     final peerHex = NostrKeys.npubToHex(c.npub);
     if (id == null || peerHex == null) return;
-    final payload = m.media != null
-        ? {...m.media!.toEnvelope(), 'forwarded': true}
-        : {'t': 'text', 'body': m.text, 'forwarded': true};
+    final Map<String, dynamic> payload;
+    if (m.media != null) {
+      payload = {...m.media!.toEnvelope(), 'forwarded': true};
+      final cap = (caption ?? _mediaCaptionOf(m)).trim();
+      if (cap.isEmpty) { payload.remove('cap'); } else { payload['cap'] = cap; }
+    } else {
+      payload = {'t': 'text', 'body': caption ?? m.text, 'forwarded': true};
+    }
+    Analytics.capture('chat_message_forwarded', {
+      'has_media': m.media != null,
+      'media_kind': m.media?.kind.name ?? 'text',
+      'edited_caption': caption != null,
+      'conv_kind': _isGroup ? 'group' : 'dm',
+    });
     try {
       // Cloudflare-native: forward = one-off send to the peer's InboxDO over HTTP.
       await ApiAuth.postJson(kMsgSendUrl, {
@@ -2935,7 +3136,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       color: _confAllowed ? Zine.ink : Zine.inkMute),
                   if (!_confAllowed)
                     _headerAction(PhosphorIcons.info(PhosphorIconsStyle.bold),
-                        () => _confLimitNotice(true), size: 18, color: Zine.inkMute),
+                        () => _confLimitNotice(true), size: 22, color: Zine.inkMute),
                 ],
                 _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow, color: Zine.lilac),
               ]),
@@ -3031,15 +3232,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         .then((_) => _loadGuardian());
   }
 
+  // Header action icons (shield / search / call / video / ⋮). Bumped to 26px
+  // with 46px tap targets (owner request 2026-06-24: the top-bar icons were too
+  // small to read/tap comfortably).
   Widget _headerAction(IconData icon, VoidCallback onTap,
-          {double size = 20, Color color = Zine.ink}) =>
+          {double size = 26, Color color = Zine.ink}) =>
       IconButton(
         icon: PhosphorIcon(icon, size: size, color: color),
         onPressed: onTap,
         visualDensity: VisualDensity.compact,
         padding: EdgeInsets.zero,
-        splashRadius: 22,
-        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        splashRadius: 26,
+        constraints: const BoxConstraints(minWidth: 46, minHeight: 46),
       );
 
   // Shield watchdog toggle: GREEN when Ava is watching this chat. Tap toggles;
@@ -4039,9 +4243,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     switch (kind) {
       case MediaKind.image:
         if (m.localBytes != null) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover),
+          // Tap → full-screen, pinch-to-zoom viewer with an X to close (and a
+          // Copy button). Long-press still opens the message action sheet.
+          return GestureDetector(
+            onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover),
+            ),
           );
         }
         if (m.media != null) {
@@ -4050,9 +4259,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             builder: (ctx, snap) {
               if (snap.hasData) {
                 m.localBytes = snap.data; // cache decrypted bytes
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover),
+                return GestureDetector(
+                  onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover),
+                  ),
                 );
               }
               if (snap.hasError) return _fileChip(m, PhosphorIcons.imageBroken(PhosphorIconsStyle.bold), 'Photo');

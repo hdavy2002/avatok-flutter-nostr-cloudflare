@@ -129,6 +129,32 @@ def patch_web_auth_callback() -> None:
     man.write_text(text)
 
 
+def patch_super_clipboard_provider() -> None:
+    """super_clipboard needs a DataProvider declared in the manifest to write
+    IMAGES (and other custom data) to the Android clipboard — used by the chat
+    photo viewer's "Copy" button + the long-press "Copy image" action. The
+    ${applicationId} placeholder keeps the authority correct for every flavour.
+    Idempotent."""
+    man = APP / "android/app/src/main/AndroidManifest.xml"
+    if not man.exists():
+        print("!! manifest not found for super_clipboard provider")
+        return
+    text = man.read_text()
+    if "com.superlist.super_native_extensions.DataProvider" in text:
+        print("manifest: super_clipboard DataProvider already present")
+        return
+    provider = (
+        '        <provider\n'
+        '            android:name="com.superlist.super_native_extensions.DataProvider"\n'
+        '            android:authorities="${applicationId}.SuperClipboardDataProvider"\n'
+        '            android:exported="true"\n'
+        '            android:grantUriPermissions="true" />\n'
+    )
+    text = text.replace("</application>", provider + "    </application>", 1)
+    man.write_text(text)
+    print("manifest: super_clipboard DataProvider added")
+
+
 def patch_launcher_icon() -> None:
     """Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/
     into the freshly-generated android res tree (flutter create ships a default
@@ -481,6 +507,7 @@ def patch_signing() -> None:
 if __name__ == "__main__":
     patch_manifest()
     patch_web_auth_callback()
+    patch_super_clipboard_provider()
     patch_launcher_icon()
     patch_agp()
     patch_sdks()
