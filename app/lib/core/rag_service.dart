@@ -85,6 +85,26 @@ class RagService {
     }
   }
 
+  // Run the server-side history backfill at most ONCE per app session: index the
+  // user's existing Messenger conversations + files into their AI Search instance
+  // so the master brain (ChatAVA) can discuss them. Premium-gated server-side
+  // (free users are no-op'd). Fire-and-forget — never blocks or throws.
+  static bool _backfilled = false;
+  Future<void> backfillOncePerSession() async {
+    if (_backfilled) return;
+    _backfilled = true;
+    try {
+      await ApiAuth.postJsonH(
+        _url(AvaApi.ragBackfill),
+        const {},
+        await _keyHeader(),
+        timeout: const Duration(seconds: 60),
+      );
+    } catch (e) {
+      AvaLog.I.log('rag', 'backfill failed: $e');
+    }
+  }
+
   String _mimeFromName(String name) {
     final n = name.toLowerCase();
     if (n.endsWith('.pdf')) return 'application/pdf';

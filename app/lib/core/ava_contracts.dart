@@ -61,6 +61,7 @@ class AvaApi {
   /// (under their Google key); @ava queries it automatically.
   static const String ragIngest = '/api/ava/rag/ingest';
   static const String ragStore = '/api/ava/rag/store';
+  static const String ragBackfill = '/api/ava/rag/backfill';
 
   /// AvaApps (PREMIUM) — operate the user's Google apps via Composio, driven by
   /// the user's own Gemini key. connect → OAuth URLs; status → connected apps;

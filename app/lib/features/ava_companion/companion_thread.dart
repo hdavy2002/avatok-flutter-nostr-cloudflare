@@ -126,6 +126,10 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     super.initState();
     AvaVoicePref.load();
     Analytics.screenViewed('avatok', 'avachat_thread');
+    // Master brain: index existing Messenger history + files into AI Search once
+    // per session so ChatAVA can discuss past conversations/files (premium-gated
+    // server-side; free users are a no-op). Fire-and-forget.
+    RagService.I.backfillOncePerSession();
     _title = (widget.initialTitle ?? '').trim();
     // Clear the "now playing" highlight when a clip finishes (subscribe once).
     _audio.onPlayerComplete.listen((_) {
