@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -125,7 +127,22 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     super.dispose();
   }
 
+  // Local mirror (per-account via DiskCache) of the last-seen settings, so the
+  // screen renders INSTANTLY on open instead of waiting on the server round-trip.
+  // Refreshed from the server right after, and re-written on every save.
+  static const String _mirrorKey = 'receptionist_settings_mirror';
+
   Future<void> _load() async {
+    // 1) Instant paint from the local mirror, if present.
+    try {
+      final raw = await DiskCache.read(_mirrorKey);
+      if (raw != null && mounted) {
+        final m = (jsonDecode(raw) as Map).cast<String, dynamic>();
+        setState(() { _applyMirror(m); _loading = false; });
+      }
+    } catch (_) {/* no/invalid mirror — fall through to the server fetch */}
+
+    // 2) Authoritative refresh from the server.
     final s = await ReceptionistApi.getSettings();
     if (!mounted) return;
     setState(() {
@@ -149,7 +166,44 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       }
       _loading = false;
     });
+    if (s != null) await _writeMirror();
     await ReceptionistPref.load();
+  }
+
+  /// Populate the form fields from a cached mirror map (best-effort, tolerant of
+  /// missing keys).
+  void _applyMirror(Map<String, dynamic> m) {
+    _enabled = m['enabled'] == true;
+    _instr.text = (m['instructions'] ?? '').toString();
+    _name.text = (m['displayName'] ?? '').toString();
+    final v = (m['voice'] ?? 'Puck').toString();
+    _voice = v.isEmpty ? 'Puck' : v;
+    _premium = m['premium'] == true;
+    _hasKb = m['hasKb'] == true;
+    _persona.text = (m['persona'] ?? '').toString();
+    _greeting.text = (m['greeting'] ?? '').toString();
+    _custom.text = (m['custom'] ?? '').toString();
+    _statusCustom.text = (m['statusCustom'] ?? '').toString();
+    final lang = (m['lang'] ?? '').toString();
+    _lang = AvaLangCatalog.isValid(lang) ? lang : '';
+    final sp = (m['statusPreset'] ?? '').toString();
+    _statusPreset = kReceptionistStatusPresets.containsKey(sp) ? sp : '';
+    _answerAll = m['answerAll'] == true;
+    _declineToAva = m['declineToAva'] == true;
+    _advancedOpen = _custom.text.isNotEmpty;
+  }
+
+  /// Persist the current field values to the local mirror.
+  Future<void> _writeMirror() async {
+    try {
+      await DiskCache.write(_mirrorKey, jsonEncode({
+        'enabled': _enabled, 'instructions': _instr.text, 'displayName': _name.text,
+        'voice': _voice, 'premium': _premium, 'hasKb': _hasKb,
+        'persona': _persona.text, 'greeting': _greeting.text, 'custom': _custom.text,
+        'statusCustom': _statusCustom.text, 'lang': _lang, 'statusPreset': _statusPreset,
+        'answerAll': _answerAll, 'declineToAva': _declineToAva,
+      }));
+    } catch (_) {/* best-effort */}
   }
 
   Future<bool> _save({required bool enabled}) async {
@@ -176,6 +230,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     if (res.ok) {
       await ReceptionistPref.set(enabled);
       await ReceptionistPref.setDeclineToAva(enabled && _declineToAva);
+      await _writeMirror(); // keep the instant-render mirror in sync with the save
       Analytics.capture('ava_recept_settings_saved', {
         'enabled': enabled, 'voice': _voice, 'answer_all': _answerAll,
         'decline_to_ava': _declineToAva, 'has_persona': _persona.text.trim().isNotEmpty,

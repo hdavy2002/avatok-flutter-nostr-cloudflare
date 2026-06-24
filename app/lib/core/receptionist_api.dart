@@ -126,16 +126,37 @@ class ReceptionistApi {
     }
   }
 
+  // Caller-side dial-time cache: an owner's receptionist availability changes
+  // rarely, so we avoid re-probing /config on every call to the same contact
+  // within a short window. TTL-only (the caller can't observe the owner's save),
+  // and the server re-checks the real daily allowance on /start — so a stale
+  // "available" can never overspend, it just gets a 402 and falls back to no-answer.
+  static final Map<String, ({Map<String, dynamic>? value, int expiry})> _cfgCache = {};
+  static const int _cfgTtlMs = 3 * 60 * 1000; // 3 min
+
+  /// Drop the cached availability for a contact (e.g. after a failed hand-off),
+  /// forcing a fresh probe on the next call.
+  static void invalidateConfig(String toUid) => _cfgCache.remove(toUid);
+
   /// Caller: "should I route this missed call to Ava?" Returns null when
-  /// unavailable (off / not premium / disabled). Public bits only.
+  /// unavailable (off / not premium / disabled). Public bits only. Cached per
+  /// contact for [_cfgTtlMs] to skip the server round-trip on repeat calls.
   static Future<Map<String, dynamic>?> configFor(String toUid) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final hit = _cfgCache[toUid];
+    if (hit != null && hit.expiry > now) return hit.value;
     try {
       final r = await ApiAuth.getSigned('$_base/config?to=$toUid');
-      if (r.statusCode != 200) return null;
+      if (r.statusCode != 200) {
+        _cfgCache[toUid] = (value: null, expiry: now + _cfgTtlMs);
+        return null;
+      }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
-      return j['available'] == true ? j : null;
+      final result = j['available'] == true ? j : null;
+      _cfgCache[toUid] = (value: result, expiry: now + _cfgTtlMs);
+      return result;
     } catch (_) {
-      return null;
+      return null; // transient error — don't poison the cache
     }
   }
 
