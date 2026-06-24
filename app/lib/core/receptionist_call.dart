@@ -72,6 +72,16 @@ class ReceptionistCall {
   bool _wsConnected = false;
   bool _ended = false;
   bool _firstAudio = false;
+  // Echo guard. `_aecOk` = the native hardware AEC confirmed attached → safe to
+  // run FULL-DUPLEX on speaker (Ava's voice is cancelled from the mic, so real
+  // barge-in works and she never hears herself). When AEC is NOT confirmed and
+  // we're on the loudspeaker, we fall back to a HALF-DUPLEX gate: while Ava is
+  // emitting audio (+ a short tail) we stop uploading the mic, so her own echo
+  // can't be transcribed and make her interrupt herself.
+  bool _aecOk = false;
+  int _lastAvaAudioAtMs = 0;
+  int _echoSuppressed = 0;
+  static const int _echoTailMs = 250;
   int _connectMs = 0; // when start() began — basis for first-audio latency
   int _bytesIn = 0; // total Ava audio bytes received
   int _segments = 0; // playable WAV segments enqueued (fallback only)
@@ -167,6 +177,8 @@ class ReceptionistCall {
       final res = await _native.start(
           micSampleRate: 16000, playSampleRate: 24000, speaker: speaker);
       _useNative = res['ok'] == true;
+      _aecOk = res['aec_enabled'] == true; // hardware echo cancellation confirmed
+
       Analytics.capture('ava_recept_native', {
         'ok': res['ok'] == true,
         'aec_available': res['aec_available'] == true,
@@ -178,10 +190,7 @@ class ReceptionistCall {
         if (callId case final id?) 'call_id': id,
       });
       if (_useNative) {
-        _nativeMicSub = _native.micStream().listen((chunk) {
-          if (_ended) return;
-          try { _ws?.sink.add(chunk); } catch (_) {/* socket gone */}
-        });
+        _nativeMicSub = _native.micStream().listen(_sendMic);
         return true;
       }
       AvaLog.I.log('receptionist', 'native engine unavailable (${res['reason']}) — falling back');
@@ -192,12 +201,22 @@ class ReceptionistCall {
     final mic = await _rec.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1,
       echoCancel: true, noiseSuppress: true, autoGain: true));
-    _micSub = mic.listen((chunk) {
-      if (_ended) return;
-      try { _ws?.sink.add(chunk); } catch (_) {/* socket gone */}
-    });
+    _micSub = mic.listen(_sendMic);
     _playSub = _player.onPlayerComplete.listen((_) => _drainPlay());
     return true;
+  }
+
+  /// Upload one mic PCM16/16k frame to the DO, applying the half-duplex echo gate
+  /// when hardware AEC isn't confirmed and we're on the loudspeaker (so Ava can't
+  /// hear and interrupt herself). With AEC, or on earpiece, this is full-duplex.
+  void _sendMic(Uint8List chunk) {
+    if (_ended || chunk.isEmpty) return;
+    if (speaker && !_aecOk &&
+        DateTime.now().millisecondsSinceEpoch - _lastAvaAudioAtMs < _echoTailMs) {
+      _echoSuppressed++;
+      return;
+    }
+    try { _ws?.sink.add(chunk); } catch (_) {/* socket gone */}
   }
 
   void _onWs(dynamic data) {
@@ -215,6 +234,7 @@ class ReceptionistCall {
         });
       }
       _bytesIn += data.length;
+      _lastAvaAudioAtMs = DateTime.now().millisecondsSinceEpoch; // echo-gate timing
       if (_useNative) {
         // Native engine plays on the AEC'd comm stream — smooth + gapless, and
         // barge-in just works (caller's clean voice → Gemini stops → DO stops feeding).
@@ -311,10 +331,13 @@ class ReceptionistCall {
       'reason': reason,
       'activation_mode': activationMode,
       'engine': _useNative ? 'native' : 'fallback',
+      'aec_ok': _aecOk,
+      'speaker': speaker,
       'got_audio': _firstAudio,
       'audio_bytes_in': _bytesIn,
       'segments': _segments,
       'play_errors': _playErrors,
+      'echo_suppressed': _echoSuppressed,
       'duration_ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
       'ws_connected': _wsConnected,
       if (callId case final id?) 'call_id': id,
