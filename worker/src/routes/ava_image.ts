@@ -98,12 +98,16 @@ async function statusBroadcast(env: Env, owner: string, conv: string, label: str
 // mechanism the spine uses (P3.postStatus, which is private to the DO): a
 // transient broadcast PLUS a persisted {t:'ava_status'} envelope so the FROZEN
 // chat_thread.dart renders the chip today. Returns the status_id to close later.
-async function postChip(env: Env, uid: string, conv: string, label: string): Promise<string | undefined> {
+async function postChip(env: Env, uid: string, conv: string, label: string, priv: boolean): Promise<string | undefined> {
   const statusId = crypto.randomUUID();
   try {
-    const targets = await membersOf(env, conv, uid);
+    // PRIVACY: a @ava (private) request must NEVER reach the other participant —
+    // target ONLY the requester's InboxDO with scope to:<uid>. #ava (public) fans
+    // out to all members.
+    const targets = priv ? [uid] : await membersOf(env, conv, uid);
+    const scope: MessageScope = priv ? `to:${uid}` : "thread";
     const envelope = JSON.stringify({ t: "ava_status", label, status_id: statusId, phase: "start", source: "image" });
-    const payload = { conv, sender: "ava", kind: "ava_status", body: envelope, created_at: Date.now(), scope: "thread" as MessageScope };
+    const payload = { conv, sender: "ava", kind: "ava_status", body: envelope, created_at: Date.now(), scope };
     await Promise.all(targets.map((m) => statusBroadcast(env, m, conv, label, statusId, "start")));
     await Promise.all(targets.map((m) => appendTo(env, m, payload)));
     return statusId;
@@ -113,12 +117,13 @@ async function postChip(env: Env, uid: string, conv: string, label: string): Pro
 }
 
 // Close the working chip (phase:'end') once the image has been posted.
-async function endChip(env: Env, uid: string, conv: string, statusId?: string): Promise<void> {
+async function endChip(env: Env, uid: string, conv: string, statusId: string | undefined, priv: boolean): Promise<void> {
   if (!statusId) return;
   try {
-    const targets = await membersOf(env, conv, uid);
+    const targets = priv ? [uid] : await membersOf(env, conv, uid);
+    const scope: MessageScope = priv ? `to:${uid}` : "thread";
     const envelope = JSON.stringify({ t: "ava_status", label: "Ava is generating an image…", status_id: statusId, phase: "end", source: "image" });
-    const payload = { conv, sender: "ava", kind: "ava_status", body: envelope, created_at: Date.now(), scope: "thread" as MessageScope };
+    const payload = { conv, sender: "ava", kind: "ava_status", body: envelope, created_at: Date.now(), scope };
     await Promise.all(targets.map((m) => statusBroadcast(env, m, conv, "", statusId, "end")));
     await Promise.all(targets.map((m) => appendTo(env, m, payload)));
   } catch { /* best-effort */ }
@@ -192,7 +197,7 @@ async function storePublicImage(env: Env, uid: string, bytes: Uint8Array): Promi
 // fast and the humans keep chatting; the image arrives in-thread when ready.
 async function fulfil(
   env: Env, uid: string, conv: string, prompt: string, key: string,
-  tier: TierId, statusId: string | undefined, editRef?: string,
+  tier: TierId, statusId: string | undefined, editRef: string | undefined, priv: boolean,
 ): Promise<void> {
   try {
     const bytes = await generateImage(env, key, prompt, uid, editRef);
@@ -206,17 +211,19 @@ async function fulfil(
     // delivery, so a failed generation never burns the user's daily grant.
     await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
     const caption = editRef ? "Here's the edited image ✨" : "Here's your image ✨";
-    await postAvaMessage(env, { ownerUid: uid, conv, text: caption, media_ref: mediaRef, source: "image" });
+    // PRIVACY: private:true posts ONLY to the requester (kind ava_private, scope
+    // to:<uid>) — a @ava image never reaches the other participant.
+    await postAvaMessage(env, { ownerUid: uid, conv, text: caption, media_ref: mediaRef, source: "image", private: priv });
   } catch (e: any) {
-    // Never leak raw Gemini errors. Post a friendly failure into the thread.
+    // Never leak raw provider errors. Post a friendly failure into the thread.
     console.error("ava image generation failed:", String(e?.message ?? e));
     await postAvaMessage(env, {
       ownerUid: uid, conv,
       text: "I couldn't create that image just now — please try again in a moment.",
-      source: "image",
+      source: "image", private: priv,
     }).catch(() => { /* best-effort */ });
   } finally {
-    await endChip(env, uid, conv, statusId);
+    await endChip(env, uid, conv, statusId, priv);
   }
 }
 
@@ -243,10 +250,14 @@ export type AvaImageResult = {
 // everyone to see; the cost/quota always lands on whoever invoked it.
 export async function runAvaImage(
   env: Env,
-  a: { uid: string; conv: string; prompt: string; editRef?: string; req?: Request; body?: any },
+  a: { uid: string; conv: string; prompt: string; editRef?: string; private?: boolean; req?: Request; body?: any },
 ): Promise<AvaImageResult> {
   const { uid, conv } = a;
   const prompt = String(a.prompt ?? "").trim();
+  // PRIVACY: @ava = private (only the requester sees the chip + image); #ava =
+  // public (fans out to all members). Defaults to PRIVATE when unspecified so a
+  // caller that forgets the flag can never accidentally leak into a shared chat.
+  const priv = a.private !== false;
 
   // Master kill-switches.
   const cfg = await readConfig(env);
@@ -294,12 +305,12 @@ export async function runAvaImage(
   if (!key) return { ok: false, reason: "no_image_key", message: "Image generation is unavailable right now.", httpStatus: 503 };
 
   // (3) drop the working chip immediately so the thread shows "Ava is generating…".
-  const statusId = await postChip(env, uid, conv, "Ava is generating an image…");
-  track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier });
+  const statusId = await postChip(env, uid, conv, "Ava is generating an image…", priv);
+  track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier, private: priv });
 
   // (4–6) heavy work runs detached — return now while the image is produced and
   // posted into the SAME conversation when ready.
-  void fulfil(env, uid, conv, prompt, key, tier, statusId, a.editRef);
+  void fulfil(env, uid, conv, prompt, key, tier, statusId, a.editRef, priv);
 
   return { ok: true, conv, status_id: statusId ?? null, async: true, tier: PLANS[tier].key, httpStatus: 200 };
 }
@@ -363,7 +374,9 @@ export async function avaImage(req: Request, env: Env): Promise<Response> {
   const prompt = String(b.prompt ?? "").trim();
   const editRef = b.edit && b.edit.media_ref ? String(b.edit.media_ref) : undefined;
 
-  const r = await runAvaImage(env, { uid: ctx.uid, conv, prompt, editRef, req, body: b });
+  // PRIVACY: honour the body's `private` flag; default to PRIVATE (only the
+  // requester) when unspecified so the sheet/tool can never leak into a shared chat.
+  const r = await runAvaImage(env, { uid: ctx.uid, conv, prompt, editRef, private: b.private !== false, req, body: b });
   // Preserve the route's historical response shapes: hard errors → {error};
   // soft blocks / upsell / success → the structured body at 200.
   if (!r.ok && (r.httpStatus === 400 || r.httpStatus === 503)) {

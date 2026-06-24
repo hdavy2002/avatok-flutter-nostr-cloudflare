@@ -731,14 +731,16 @@ export class AvaAgentDO {
           (q) => this.brainSearch(uid, q),
           {
             apps: appsCap && premium, onTool, ...(streaming ? { onDelta } : {}),
-            // In-thread image gen (Nano Banana 2). All gating (premium + per-user
-            // daily fair-use cap + wallet) lives in runAvaImage, keyed to THIS
-            // caller — so in a group each member is gated on their own package,
-            // and the image still posts into this shared conversation.
+            // In-thread image gen. All gating (premium + per-user daily allowance)
+            // lives in runAvaImage, keyed to THIS caller. PRIVACY: pass `private`
+            // so a @ava image goes ONLY to the requester (private), and a #ava image
+            // fans out to the whole conversation (public) — same scoping as text.
             onImage: async (prompt, editRef) => {
-              const r = await runAvaImage(this.env, { uid, conv, prompt, editRef });
+              const r = await runAvaImage(this.env, { uid, conv, prompt, editRef, private: priv });
               if (!r.ok) return r.message ?? "I couldn't start that image right now.";
-              return "Image generation started — it will appear in this chat in a few seconds.";
+              return priv
+                ? "Image generation started — it'll appear here privately in a few seconds."
+                : "Image generation started — it will appear in this chat in a few seconds.";
             },
           },
         );
