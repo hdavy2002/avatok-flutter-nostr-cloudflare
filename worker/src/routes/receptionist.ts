@@ -60,7 +60,7 @@ const VOICES = new Set([
   "Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr",
   "Autonoe", "Callirrhoe", "Despina", "Erinome", "Sulafat", "Achird", "Vindemiatrix",
 ]);
-const DEFAULT_VOICE = "Puck";
+const DEFAULT_VOICE = "Aoede"; // warm FEMALE default for "Ava" (owner can override in Settings)
 
 // --- v2: persona, language, availability status -----------------------------
 const MAX_GREETING = 200;

@@ -57,10 +57,14 @@ export class ReceptionRoom {
   // Interleaved, turn-by-turn dialogue (the human-readable transcript): each
   // entry is one speaker's contiguous turn, in the order it actually happened.
   private dialog: Array<{ who: "ava" | "caller"; text: string }> = [];
-  private pcmOut: Uint8Array[] = []; // 2-way recording (24k PCM16): Ava + caller, interleaved
+  // 2-way recording as tagged segments in turn order; caller segments get a
+  // PER-CALL normalization gain at finalize (not a fixed boost) so every user's
+  // mic — soft or loud — lands at a consistent level without clipping.
+  private pcmOut: Array<{ caller: boolean; pcm: Uint8Array }> = [];
   private pcmBytes = 0;  // total recording bytes (Ava + caller)
   private avaBytes = 0;  // Ava-only audio bytes (telemetry; distinct from the 2-way total)
   private callerRecBytes = 0; // caller speech actually captured into the 2-way recording
+  private callerPeak = 0; // peak |sample| of caller audio → drives adaptive normalization
   private inBytes = 0;   // caller audio bytes received (mic throughput / dead-mic)
   private turnCount = 0; // completed conversational turns
   // Goodbye backstop: end the call after a stretch of total silence (covers the
@@ -236,10 +240,12 @@ export class ReceptionRoom {
     // order ≈ turn order (Ava bursts, then caller replies), giving a clean
     // turn-by-turn recording.
     if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES && callerHasSpeech(bytes)) {
-      // Gain (~2.4x, clipped) so the caller's softer mic isn't dwarfed by Ava's
-      // loud synthesized voice in the merged recording.
-      const up = upsample16to24(bytes, 2.4);
-      this.pcmOut.push(up); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
+      // Record at native level (no fixed boost) + track the caller's peak; the
+      // actual gain is computed per-call at finalize and applied then.
+      const up = upsample16to24(bytes);
+      const pk = peakOf(up);
+      if (pk > this.callerPeak) this.callerPeak = pk;
+      this.pcmOut.push({ caller: true, pcm: up }); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
       this.bumpIdle();
     }
     this.sendGem({
@@ -308,7 +314,7 @@ export class ReceptionRoom {
           if (typeof data === "string") {
             const pcm = b64decode(data);
             if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES) {
-              this.pcmOut.push(pcm); this.pcmBytes += pcm.byteLength;
+              this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength;
             }
             this.avaBytes += pcm.byteLength;
             this.bumpIdle(); // Ava is speaking → reset the silence backstop
@@ -371,7 +377,12 @@ export class ReceptionRoom {
     try {
       if (this.pcmBytes > 0) {
         const recT0 = Date.now();
-        const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000);
+        // Adaptive per-call normalization: scale the caller's audio toward a
+        // target peak so it's audible for EVERY user regardless of their mic,
+        // capped so we never over-amplify noise. Loud callers ≈ 1x, soft ≈ up to 8x.
+        const callerGain = this.callerPeak > 0
+          ? Math.min(8, Math.max(1, 22000 / this.callerPeak)) : 1;
+        const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000, callerGain);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
         const key = `receptionist/${init.owner_uid}/${phoneKey}/${init.sid}.wav`;
         await this.env.BLOBS.put(key, wav, { httpMetadata: { contentType: "audio/wav" } });
@@ -379,6 +390,7 @@ export class ReceptionRoom {
         this.ev("ava_recept_recording_stored", {
           bytes: wav.byteLength, ok: true, latency_ms: Date.now() - recT0,
           two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes,
+          caller_gain: Math.round(callerGain * 100) / 100, caller_peak: this.callerPeak,
         });
       }
     } catch (e) {
@@ -636,8 +648,21 @@ function upsample16to24(pcm16: Uint8Array, gain = 1): Uint8Array {
   return out;
 }
 
-/** Wrap raw PCM16 mono chunks in a minimal WAV container. */
-function pcm16ToWav(chunks: Uint8Array[], dataLen: number, sampleRate: number): Uint8Array {
+/** Peak absolute PCM16 sample value of a buffer (for adaptive normalization). */
+function peakOf(pcm: Uint8Array): number {
+  const n = pcm.byteLength >> 1;
+  const v = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let pk = 0;
+  for (let i = 0; i < n; i++) { const s = Math.abs(v.getInt16(i * 2, true)); if (s > pk) pk = s; }
+  return pk;
+}
+
+/** Wrap tagged PCM16/24k mono segments in a minimal WAV, applying [callerGain]
+ *  to the caller's segments only (per-call loudness normalization, clipped). */
+function pcm16ToWav(
+  segments: Array<{ caller: boolean; pcm: Uint8Array }>,
+  dataLen: number, sampleRate: number, callerGain = 1,
+): Uint8Array {
   const out = new Uint8Array(44 + dataLen);
   const dv = new DataView(out.buffer);
   const wr = (off: number, str: string) => { for (let i = 0; i < str.length; i++) dv.setUint8(off + i, str.charCodeAt(i)); };
@@ -647,6 +672,19 @@ function pcm16ToWav(chunks: Uint8Array[], dataLen: number, sampleRate: number): 
   dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
   wr(36, "data"); dv.setUint32(40, dataLen, true);
   let off = 44;
-  for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+  for (const seg of segments) {
+    if (seg.caller && callerGain !== 1) {
+      const n = seg.pcm.byteLength >> 1;
+      const sv = new DataView(seg.pcm.buffer, seg.pcm.byteOffset, seg.pcm.byteLength);
+      for (let i = 0; i < n; i++) {
+        let v = Math.round(sv.getInt16(i * 2, true) * callerGain);
+        if (v > 32767) v = 32767; else if (v < -32768) v = -32768;
+        dv.setInt16(off + i * 2, v, true);
+      }
+      off += seg.pcm.byteLength;
+    } else {
+      out.set(seg.pcm, off); off += seg.pcm.byteLength;
+    }
+  }
   return out;
 }
