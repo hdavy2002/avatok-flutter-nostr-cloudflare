@@ -83,6 +83,7 @@ class AvaAiClient {
         reason: j['reason'] as String?,
         remaining: (j['remaining'] as num?)?.toInt(),
         tier: j['tier'] as String?,
+        images: (j['images'] as List?)?.map((e) => e.toString()).toList() ?? const [],
       );
     } catch (e) {
       return AvaAnswer(
@@ -97,10 +98,14 @@ class AvaAiClient {
   /// (`/api/ava/gemini/stream`) produces them, so the UI types the answer out
   /// LIVE (feels far faster). Throws on any failure so the caller can fall back
   /// to [ask]. Same signed-auth + optional BYO key as [ask].
+  /// [onImage] fires for each AI-generated image URL the worker streams as a
+  /// `{image:url}` SSE event (ChatAVA image generation) so the caller can render
+  /// it inline alongside the streamed text.
   Stream<String> askStream({
     required String message,
     String? context,
     List<Map<String, String>>? history,
+    void Function(String url)? onImage,
     Duration timeout = const Duration(seconds: 60),
   }) async* {
     final body = <String, dynamic>{
@@ -135,6 +140,8 @@ class AvaAiClient {
           final j = jsonDecode(payload) as Map<String, dynamic>;
           final delta = j['delta'] as String?;
           if (delta != null && delta.isNotEmpty) yield delta;
+          final img = j['image'] as String?;
+          if (img != null && img.isNotEmpty) onImage?.call(img);
         } catch (_) {/* skip a malformed SSE line */}
       }
     } finally {
@@ -154,7 +161,11 @@ class AvaAnswer {
     this.reason,
     this.remaining,
     this.tier,
+    this.images = const [],
   });
+
+  /// AI-generated image URLs produced this turn (ChatAVA image generation).
+  final List<String> images;
 
   /// Ava's reply text (a safe refusal/notice when [blocked]).
   final String answer;

@@ -87,14 +87,18 @@ class _CompanionMsg {
   final bool me; // true = user, false = Ava
   final bool blocked; // Ava turn refused by the gate
   final String? reason; // gate reason, e.g. 'premium_required' | 'insufficient_coins'
+  // AI-generated image URLs attached to this (Ava) turn — ChatAVA image gen.
+  // Mutable so the streaming path can append as `{image:url}` events arrive.
+  final List<String> images;
   // Typewriter reveal: how many chars of [text] are currently shown. Ava replies
   // animate from 0 → text.length so the answer "types out" (feels instant /
   // streamed) even though it arrives whole — the output still passes the
   // server-side llama-guard gate first. Everything else shows fully right away.
   int reveal;
   _CompanionMsg(this.id, this.text, this.me,
-      {this.blocked = false, this.reason, int? reveal})
-      : reveal = reveal ?? text.length;
+      {this.blocked = false, this.reason, List<String>? images, int? reveal})
+      : images = images ?? <String>[],
+        reveal = reveal ?? text.length;
 }
 
 class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
@@ -351,6 +355,15 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         message: t,
         context: ctxStr,
         history: priorHistory.isEmpty ? null : priorHistory,
+        onImage: (url) {
+          if (!mounted) return;
+          if (!streamed) {
+            streamed = true;
+            setState(() { _msgs.add(live); _busy = false; });
+          }
+          setState(() => live.images.add(url));
+          if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        },
       )) {
         if (!mounted) return;
         if (!streamed) {
@@ -364,7 +377,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
       streamed = false;
     }
 
-    if (streamed && live.text.trim().isNotEmpty) {
+    // Success if we streamed text OR produced an image (image-only turns have no text).
+    if (streamed && (live.text.trim().isNotEmpty || live.images.isNotEmpty)) {
       if (notes.isNotEmpty) {
         AvaQuality.roi(surface: 'companion', retrieved: hitCount, injected: notes, answer: live.text);
       }
@@ -399,6 +413,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     final avaMsg = _CompanionMsg(
       'a${DateTime.now().microsecondsSinceEpoch}', answer, false,
       blocked: ans.blocked, reason: ans.reason,
+      images: ans.images,
       reveal: ans.blocked ? answer.length : 0,
     );
     setState(() { _msgs.add(avaMsg); _busy = false; });
@@ -557,6 +572,37 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         ),
       );
 
+  /// Full-screen, pinch-to-zoom view of an AI-generated image.
+  void _openImageFull(String url) {
+    showDialog<void>(
+      context: context,
+      builder: (dctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(children: [
+          InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 4,
+            child: Center(
+              child: Image.network(url,
+                  errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('Image unavailable',
+                          style: TextStyle(color: Colors.white)))),
+            ),
+          ),
+          Positioned(
+            top: 8, right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.of(dctx).maybePop(),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _bubble(_CompanionMsg m) {
     final isAva = !m.me;
     final showListen = isAva && m.id != 'intro' && !m.blocked && AvaVoice.enabled;
@@ -571,21 +617,46 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               padding: const EdgeInsets.only(left: 4, bottom: 3),
               child: Text('AVA', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
             ),
-          Container(
-            constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.78),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: m.me ? Zine.lime : Zine.lilac,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Zine.ink, width: 2),
-              boxShadow: Zine.shadowXs,
+          if (m.text.trim().isNotEmpty)
+            Container(
+              constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.78),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: m.me ? Zine.lime : Zine.lilac,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Zine.ink, width: 2),
+                boxShadow: Zine.shadowXs,
+              ),
+              child: Text(
+                m.reveal >= m.text.length ? m.text : m.text.substring(0, m.reveal),
+                style: ZineText.value(size: 14.5, weight: FontWeight.w600),
+              ),
             ),
-            child: Text(
-              m.reveal >= m.text.length ? m.text : m.text.substring(0, m.reveal),
-              style: ZineText.value(size: 14.5, weight: FontWeight.w600),
+          // AI-generated images (ChatAVA image gen) — tap to view full-screen.
+          for (final url in m.images)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: GestureDetector(
+                  onTap: () => _openImageFull(url),
+                  child: Image.network(
+                    url,
+                    width: 240,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (c, ch, p) => p == null
+                        ? ch
+                        : Container(
+                            width: 240, height: 200, alignment: Alignment.center,
+                            child: const CircularProgressIndicator(strokeWidth: 2)),
+                    errorBuilder: (_, __, ___) => Container(
+                        width: 240, height: 120, alignment: Alignment.center,
+                        child: Text('Image unavailable', style: ZineText.sub(size: 12))),
+                  ),
+                ),
+              ),
             ),
-          ),
           if (showListen)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 2),
