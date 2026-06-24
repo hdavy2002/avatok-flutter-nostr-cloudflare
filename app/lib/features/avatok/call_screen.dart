@@ -100,6 +100,13 @@ class _CallScreenState extends State<CallScreen> {
   // the busy tone. One player per call; stopped on every end path.
   final RingbackPlayer _ringback = RingbackPlayer();
   ReceptionistCall? _receptionist; // Ava answers if the callee doesn't (audio only)
+  // True once we've committed to handing the call to Ava. The ORIGINAL signaling
+  // socket is still open at that point, and cancelling the ring makes the callee
+  // emit a 'bye' — without this guard that 'bye' (or a socket close) would tear
+  // down the live Ava session a second after it started (the "Ava never spoke,
+  // call ended in ~1s" bug). When set, signaling teardown events are ignored;
+  // the receptionist owns the call and ends it via its own done future.
+  bool _receptionistActive = false;
   // v2 activation: probed from /api/receptionist/config at dial time.
   String _receptMode = 'rings';    // rings | first_ring
   int _receptRings = 5;            // Mode A ring count (RemoteConfig-driven)
@@ -269,7 +276,9 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _onSocketLost() {
-    if (_ended) return;
+    // Once Ava has taken over, the original signaling socket is irrelevant —
+    // closing/losing it must NOT end the live receptionist session.
+    if (_ended || _receptionistActive) return;
     _endWith('ended', reason: 'socket-lost');
   }
 
@@ -372,6 +381,9 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Future<void> _onSignal(dynamic raw) async {
+    // Ava owns the call now — ignore any late signaling (bye/peer-left/busy from
+    // the cancelled ring) so it can't kill the live receptionist session.
+    if (_receptionistActive) return;
     final d = jsonDecode(raw as String) as Map<String, dynamic>;
     // Peer geo (when the signaling server relays it) → both ends' country on one
     // telemetry row. Best-effort; harmless when absent.
@@ -572,6 +584,9 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Future<bool> _tryReceptionist({String activationMode = 'rings'}) async {
+    // Commit to Ava: from here, ignore the old signaling socket so a late
+    // bye/peer-left from cancelling the ring can't tear down the live session.
+    _receptionistActive = true;
     try {
       // Free the WebRTC mic so the PCM recorder can capture (no double-grab).
       try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
