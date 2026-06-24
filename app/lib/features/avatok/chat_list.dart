@@ -839,25 +839,24 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               ),
               child: Row(
                 children: [
+                  // Left control — opens the app sidebar (this Scaffold hosts the
+                  // main nav drawer). The oversized "Messenger" title was removed
+                  // to free space; the icons now sit evenly on the right.
                   ZineBackButton(
                       onTap: () => _scaffoldKey.currentState?.openDrawer(),
                       icon: PhosphorIcons.list(PhosphorIconsStyle.bold)),
-                  const SizedBox(width: 6),
-                  // Title — renamed AvaTalk → Messenger (marker highlight kept).
-                  const Flexible(
-                    child: ZineMarkTitle(mark: 'Messenger', fontSize: 19, textAlign: TextAlign.left),
-                  ),
-                  const SizedBox(width: 6),
+                  const Spacer(),
                   // Status avatar — opens the status viewer; shows my latest photo
                   // status as a thumbnail (glows when I have a live status).
                   _headerStatusButton(),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   // Filters collapsed into a single dropdown (active label shown).
                   _filterMenuButton(),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
                   // Chat with Ava — companion / blank Ava chat (Phase 6).
-                  _hdrIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), _openAvaChat),
-                  _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch),
+                  _hdrIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), _openAvaChat, color: Zine.lilac),
+                  const SizedBox(width: 4),
+                  _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch, color: Zine.blueInk),
                 ],
               ),
             ),
@@ -921,14 +920,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// Compact circular header icon button (smaller than ZineBackButton so the
   /// fuller header row — title + 4 trailing controls — fits on narrow phones).
-  Widget _hdrIcon(IconData icon, VoidCallback onTap) => ZinePressable(
+  Widget _hdrIcon(IconData icon, VoidCallback onTap, {Color color = Zine.ink}) => ZinePressable(
         onTap: onTap,
         pressedColor: Zine.lime,
         radius: BorderRadius.circular(100),
         padding: EdgeInsets.zero,
         child: SizedBox(
           width: 38, height: 38,
-          child: Center(child: PhosphorIcon(icon, size: 19, color: Zine.ink)),
+          child: Center(child: PhosphorIcon(icon, size: 19, color: color)),
         ),
       );
 

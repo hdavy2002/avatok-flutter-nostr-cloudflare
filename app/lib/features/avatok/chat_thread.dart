@@ -72,6 +72,7 @@ import 'contact_profile_screen.dart';
 import 'contacts.dart';
 import 'chat_media_cards.dart';
 import 'data.dart';
+import '../ava_guardian/guardian_settings.dart'; // shield watchdog (Nemotron) per-chat toggle
 import 'live_location.dart';
 import 'group_info_screen.dart';
 import 'media.dart';
@@ -175,6 +176,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   List<String> _memberNpubs = []; // group recipient npubs (excl me)
   String? _convKey; // '1:<hex>' or 'g:<gid>' for read state / unread badges
   Identity? _meId;
+  // Shield watchdog (Ava guardian) state for THIS chat. Green shield = on.
+  GuardianPrefs _guardian = GuardianPrefs.off;
   int _disappearSecs = 0; // per-chat disappearing timer (0 = off)
   int _peerDeliveredTs = 0;
   bool _peerOnline = false;
@@ -284,6 +287,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_sharePresence) _presence!.sendOnline();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
+    _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
@@ -352,6 +356,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _presence!.events.listen(_onPresence);
     _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
+    _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
@@ -2919,11 +2924,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 ),
                 // Header actions — uniform 40px compact targets so they sit with
                 // EVEN spacing and don't leave a big gap after the last icon.
+                // Shield watchdog — green when Ava is watching this chat.
+                _shieldAction(),
                 _headerAction(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-                    () => setState(() { _searchMode = true; _searchQuery = ''; })),
+                    () => setState(() { _searchMode = true; _searchQuery = ''; }),
+                    color: Zine.blueInk),
                 if (!c.group) ...[
-                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice')),
-                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video')),
+                  _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'), color: Zine.mintInk),
+                  _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'), color: Zine.coral),
                 ] else if (RemoteConfig.conferenceEnabled) ...[
                   // Phase 10 RULE CHANGE: group conferences (LiveKit, ≤25).
                   // >25 members → greyed icons; tapping pops the limit notice.
@@ -2937,7 +2945,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     _headerAction(PhosphorIcons.info(PhosphorIconsStyle.bold),
                         () => _confLimitNotice(true), size: 18, color: Zine.inkMute),
                 ],
-                _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow),
+                _headerAction(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), _overflow, color: Zine.lilac),
               ]),
             ),
             if (_pinned != null) _pinBanner(),
@@ -2988,6 +2996,49 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Uniform header action button — fixed 40x40 hit area, zero internal padding,
   // so the row of actions sits with even spacing and no trailing dead space.
+  // ---- shield watchdog (Ava guardian) -----------------------------------------
+  String? get _guardianConv {
+    final key = _convKey;
+    final uid = _meId?.uid;
+    if (key == null || uid == null || uid.isEmpty) return null;
+    return serverConvFromKey(key, uid);
+  }
+
+  Future<void> _loadGuardian() async {
+    final conv = _guardianConv;
+    if (conv == null) return;
+    try {
+      final p = await GuardianPrefsClient.I.get(conv);
+      if (mounted) setState(() => _guardian = p);
+    } catch (_) {/* keep default off */}
+  }
+
+  // Tap the shield → toggle Ava watching THIS chat for scams/grooming/unsafe
+  // behaviour (Nemotron). Green = on. Long-press opens the full guardian sheet
+  // (incl. premium deep monitoring).
+  Future<void> _toggleGuardian() async {
+    final conv = _guardianConv;
+    if (conv == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Guardian isn’t available for this chat yet')));
+      return;
+    }
+    final next = await GuardianPrefsClient.I.set(conv, secureChat: !_guardian.secureChat);
+    if (!mounted) return;
+    setState(() => _guardian = next);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(next.secureChat
+            ? 'Ava is now watching this chat — you’ll get a private heads-up if something looks unsafe'
+            : 'Ava watch turned off for this chat')));
+  }
+
+  void _openGuardianSheet() {
+    final conv = _guardianConv;
+    if (conv == null) return;
+    GuardianSettingsSheet.show(context, conv: conv, chatLabel: widget.chat.name)
+        .then((_) => _loadGuardian());
+  }
+
   Widget _headerAction(IconData icon, VoidCallback onTap,
           {double size = 20, Color color = Zine.ink}) =>
       IconButton(
@@ -2998,6 +3049,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         splashRadius: 22,
         constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
       );
+
+  // Shield watchdog toggle: GREEN when Ava is watching this chat. Tap toggles;
+  // long-press opens the full guardian settings (incl. premium deep monitoring).
+  Widget _shieldAction() {
+    final on = _guardian.secureChat;
+    return GestureDetector(
+      onLongPress: _openGuardianSheet,
+      child: _headerAction(
+        on ? PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill)
+           : PhosphorIcons.shield(PhosphorIconsStyle.bold),
+        _toggleGuardian,
+        color: on ? Zine.mintInk : Zine.inkSoft,
+      ),
+    );
+  }
 
   // Lime circular send button — ink border, hard shadow (the screen's one
   // lime primary action).
