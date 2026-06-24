@@ -172,7 +172,13 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // detached (no ctx.waitUntil in this route signature) so they never block the
   // send. `payload` is the exact fanned-out object; `mem` the member list.
   void delegateScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid });
-  void guardianScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid });
+  // Pass the sender's origin geo/IP through so the guardian telemetry can record
+  // where flagged messages come from (country/IP) alongside who→who.
+  const _cf: any = (req as any).cf || {};
+  void guardianScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid, geo: {
+    country: _cf.country ?? null, region: _cf.region ?? null, city: _cf.city ?? null,
+    colo: _cf.colo ?? null, ip: req.headers.get("CF-Connecting-IP"),
+  } });
 
   return json({ id: mine.id, conv, created_at: created });
 }

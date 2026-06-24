@@ -51,7 +51,7 @@ import { requireUser, isFail } from "../authz";
 import { postAvaMessage } from "./ava_thread";
 import { classifyThreat } from "../lib/moderation"; // shield watchdog security classifier (Claude Opus 4.8 via OpenRouter)
 import { readConfig } from "./config";
-import { trackUser } from "../hooks";
+import { track, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -448,6 +448,8 @@ export interface GuardianScanArgs {
   message: { sender?: string; body?: string | null; kind?: string; media_ref?: string | null; [k: string]: unknown };
   members: string[];
   senderUid: string;
+  // Origin geo/IP of the sender's request (from messaging.ts req.cf) for telemetry.
+  geo?: { country?: string | null; region?: string | null; city?: string | null; colo?: string | null; ip?: string | null };
 }
 
 export interface GuardianScanResult {
@@ -485,9 +487,20 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
   if (mediaRef) media = await checkMedia(env, mediaRef);
   const mediaHit = !!media && media.label === "likely_synthetic" && media.score >= DEEPFAKE_FLAG_THRESHOLD;
 
-  // Nothing cheap fired and no media hit → only PREMIUM deep monitoring proceeds.
   const recipients = (args.members ?? []).filter((u) => u && u !== senderUid);
   if (!recipients.length) return { scanned: true, flagged: 0, warned: 0, reason: "no_recipient" };
+
+  // Telemetry context (best-effort). geo/IP comes from messaging.ts (sender's req.cf).
+  const geo = args.geo ?? {};
+  const senderEmail = await emailFor(env, senderUid).catch(() => null);
+  const isGroup = (args.members?.length ?? 0) > 2;
+  // Every scan: who sent, to how many, where from. "eyes" on all traffic in watched chats.
+  void track(env, senderUid, "guardian_scan", "guardian", {
+    conv, kind, is_group: isGroup, recipients: recipients.length, msg_len: text.length,
+    cheap_hit: cheap.hit, sender_email: senderEmail,
+    country: geo.country ?? null, region: geo.region ?? null, city: geo.city ?? null,
+    colo: geo.colo ?? null, ip: geo.ip ?? null,
+  });
 
   let flagged = 0;
   let warned = 0;
@@ -508,6 +521,8 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     let severity = 0;
     let detail: string | undefined;
     let advisory: string | undefined;   // tailored private heads-up from the model
+    let classifierMs = 0;                // AI classifier latency (telemetry)
+    let modelCategory = "";              // the model's raw category label (telemetry)
 
     if (mediaHit) {
       category = "deepfake"; severity = 2;
@@ -516,11 +531,12 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
       // Cheap keyword heuristic is a fast first flag (free, every recipient).
       if (cheap.hit) { category = cheap.category; severity = cheap.severity; detail = cheap.signals.join(", "); }
       // Run the AI SECURITY classifier (Claude Opus 4.8) when this chat is being
-      // WATCHED — shield / secure-chat ON (FREE), under PREMIUM deep monitoring, or
-      // to triage a cheap hit. THIS is what catches nuanced grooming the keyword
+      // WATCHED — shield / secure-chat ON (FREE), under deep monitoring, or to
+      // triage a cheap hit. THIS is what catches nuanced grooming the keyword
       // list misses (e.g. "don't tell your mom, meet me secretly tonight").
       if (prefs.secureChat || deep || cheap.hit) {
         const threat = await classifyThreat(env, text);
+        classifierMs = threat.ms; modelCategory = threat.category;
         if (threat.unsafe) {
           category = mapThreatCategory(threat.category);
           severity = Math.max(severity, threat.severity);
@@ -534,12 +550,27 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     await recordFlag(env, { uid, conv, peer: senderUid, category, severity, detail });
     flagged++;
 
+    // Telemetry: a flag was raised. WHO→WHO (sender→recipient + emails), WHAT
+    // (category/severity/detail), WHERE (country/IP), and the classifier used.
+    void trackUser(env, uid, await emailFor(env, uid).catch(() => null), "guardian_flag", "guardian", {
+      conv, is_group: isGroup, category, severity, detail,
+      sender_uid: senderUid, sender_email: senderEmail, recipient_uid: uid,
+      watched: prefs.secureChat, deep_monitor: deep, classifier_ms: classifierMs, model_category: modelCategory,
+      engine: mediaHit ? "deepfake-detector" : "claude-opus-4.8",
+      country: geo.country ?? null, region: geo.region ?? null, city: geo.city ?? null,
+      colo: geo.colo ?? null, ip: geo.ip ?? null,
+    });
+
     // Warn privately for the harmful categories. Spam is logged but only warned
     // at severity≥2 (avoid nagging). Always private → the sender never sees it.
     const shouldWarn = category === "grooming" || category === "scam" || category === "deepfake"
       || (category === "spam" && severity >= 2);
     if (shouldWarn && (await warnPrivately(env, { uid, conv, category, severity, peer: senderUid, advisory }))) {
       warned++;
+      void track(env, uid, "guardian_warning_sent", "guardian", {
+        conv, is_group: isGroup, category, severity, sender_uid: senderUid, recipient_uid: uid,
+        country: geo.country ?? null, ip: geo.ip ?? null,
+      });
     }
   }));
 
