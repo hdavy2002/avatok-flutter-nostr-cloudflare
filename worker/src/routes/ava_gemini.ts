@@ -20,6 +20,9 @@ import { runGated, intentGate, aiRunOpts } from "../lib/ai_gate";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
+import { runAgentLoop } from "../lib/composio";        // unified tool-calling loop (shared with Messenger @ava)
+import { generateAvaImageSync } from "./ava_image";    // synchronous image gen → URL (rendered inline)
+import { brainSearchLines } from "../lib/ava_memory";  // the ONE Cloudflare AI Search store per user
 
 // Ava chat text model: Gemini 3 Flash (preview) as a Workers-AI THIRD-PARTY model
 // ({author}/{model} id), called through env.AI.run so it flows via our CF AI
@@ -217,23 +220,38 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     return premiumUpsell(env, ctx.uid, "file_understanding");
   }
 
-  let system = context ? `${SYSTEM_BASE}\nStyle/persona for this chat: ${context}` : SYSTEM_BASE;
-
-  // Premium memory: weave in the user's own AI Search results so Ava "remembers"
-  // their saved notes/files mid-conversation. Free users have no memory instance.
-  if (premium) {
-    const mem = await retrieveMemory(env, ctx.uid, message);
-    if (mem) {
-      system += `\n\nRelevant notes from the user's saved memory (use only if helpful, never quote verbatim):\n"""${mem}"""`;
-      trackUser(env, ctx.uid, email, "ava_memory_used", "avaai", {});
-    }
-  }
+  // ChatAVA MASTER BRAIN: run the SAME unified tool-calling loop as Messenger @ava
+  // (gemini-3-flash-preview) over the user's ONE Cloudflare AI Search store. It can
+  // pull files/messages on demand (search_memory — ALL tiers, since it's the user's
+  // own data), read attached files (premium), act on connected apps (premium), and
+  // GENERATE images — returned inline as `images` so the ChatAVA thread renders them.
+  const ctxStr = [
+    context ? `Persona/style for this chat: ${context}` : "",
+    history.length
+      ? "Recent turns:\n" + history.map((t) => `${t.role === "user" ? "User" : "Ava"}: ${t.text}`).join("\n")
+      : "",
+  ].filter(Boolean).join("\n\n");
+  const generatedImages: string[] = [];
+  const runChat = (steer?: string): Promise<string> =>
+    runAgentLoop(
+      env, ctx.uid, steer ? `${message}\n\n[note: ${steer}]` : message, ctxStr,
+      (q) => brainSearchLines(env, ctx.uid, q, 6),
+      {
+        apps: premium,
+        images: premium ? images : undefined,
+        onImage: async (prompt, editRef) => {
+          const r = await generateAvaImageSync(env, { uid: ctx.uid, prompt, editRef });
+          if (r.ok && r.url) { generatedImages.push(r.url); return "Image created and shown to the user."; }
+          return r.message ?? "I couldn't create that image right now.";
+        },
+      },
+    );
 
   let result;
   try {
     result = await runGated(env, {
       uid: ctx.uid, tier: "ourkeys", userText: message,
-      generate: (steer?: string) => generate(env, ctx.uid, email, system, history, message, images, steer),
+      generate: runChat,
       // Premium users (key or top-up) are uncapped; free users keep the daily cap.
       skipQuota: premium,
     });
@@ -257,11 +275,15 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
 
   trackUser(env, ctx.uid, email, "ava_chat_completed", "avaai", {
     route: "chat", tier: premium ? "premium" : "free", premium, premium_via: via,
-    answer_len: (result.answer ?? "").length, images: images.length,
+    answer_len: (result.answer ?? "").length, in_images: images.length, gen_images: generatedImages.length,
     latency_ms: Date.now() - t0,
     ...(result.remaining != null ? { remaining: result.remaining } : {}),
   });
-  return json({ answer: result.answer, blocked: false, tier: premium ? "premium" : "free", premium, ...(result.remaining != null ? { remaining: result.remaining } : {}) });
+  return json({
+    answer: result.answer, blocked: false, tier: premium ? "premium" : "free", premium,
+    ...(generatedImages.length ? { images: generatedImages } : {}),
+    ...(result.remaining != null ? { remaining: result.remaining } : {}),
+  });
 }
 
 // POST /api/ava/gemini/stream — streaming companion chat (SSE). Pipes Gemini's
@@ -278,59 +300,49 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   if (!message) return json({ error: "message required" }, 400);
   const context = String(b.context ?? "").trim();
   const history = normHistory(b.history);
-  const key = (env as any).GEMINI_API_KEY;
-  if (!key) return json({ error: "unavailable" }, 502);
-  const system = context ? `${SYSTEM_BASE}\nStyle/persona for this chat: ${context}` : SYSTEM_BASE;
-  const body = {
-    systemInstruction: { parts: [{ text: system }] },
-    contents: buildGeminiContents(history, message, []),
-    // Thinking off so the first streamed token arrives in ~1s, not after ~5s of
-    // silent g3 reasoning (the whole reason streaming felt no faster).
-    generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7, ...thinkingCfg(CHAT_MODEL) },
-  };
-  let upstream: Response;
-  try {
-    upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:streamGenerateContent?alt=sse`,
-      { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body) },
-    );
-  } catch (e: any) {
-    return json({ error: `stream upstream failed: ${String(e?.message ?? e).slice(0, 120)}` }, 502);
-  }
-  if (!upstream.ok || !upstream.body) return json({ error: `stream upstream ${upstream.status}` }, 502);
+  const images = normImages(b.images);
+  if (!(env as any).GEMINI_API_KEY) return json({ error: "unavailable" }, 502);
 
-  const reader = upstream.body.getReader();
-  const dec = new TextDecoder();
+  // ChatAVA master brain over SSE: the SAME unified tool-calling loop as @ava,
+  // streamed. search_memory (AI Search) for all tiers, file understanding + apps
+  // for premium, and image gen — generated images are sent as a `{image:url}` SSE
+  // event the client renders inline. Attachments are premium → free users get the
+  // upsell (plain JSON the client also handles).
+  const { premium } = await isPremiumAI(req, env, ctx.uid, b);
+  if (images.length && !premium) return premiumUpsell(env, ctx.uid, "file_understanding");
+
+  const ctxStr = [
+    context ? `Persona/style for this chat: ${context}` : "",
+    history.length
+      ? "Recent turns:\n" + history.map((t) => `${t.role === "user" ? "User" : "Ava"}: ${t.text}`).join("\n")
+      : "",
+  ].filter(Boolean).join("\n\n");
+
   const enc = new TextEncoder();
-  let carry = "";
   const out = new ReadableStream({
-    async pull(controller) {
+    async start(controller) {
+      const send = (obj: unknown) => {
+        try { controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`)); } catch { /* closed */ }
+      };
       try {
-        const { done, value } = await reader.read();
-        if (done) { controller.enqueue(enc.encode("data: [DONE]\n\n")); controller.close(); return; }
-        carry += dec.decode(value, { stream: true });
-        const lines = carry.split("\n");
-        carry = lines.pop() ?? "";
-        for (const line of lines) {
-          const t = line.trim();
-          if (!t.startsWith("data:")) continue;
-          const payload = t.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-          try {
-            const j = JSON.parse(payload);
-            const parts = j?.candidates?.[0]?.content?.parts;
-            if (Array.isArray(parts)) {
-              const delta = parts.filter((p: any) => p?.thought !== true).map((p: any) => String(p?.text ?? "")).join("");
-              if (delta) controller.enqueue(enc.encode(`data: ${JSON.stringify({ delta })}\n\n`));
-            }
-          } catch { /* skip malformed SSE line */ }
-        }
-      } catch {
-        try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
-        controller.close();
-      }
+        await runAgentLoop(
+          env, ctx.uid, message, ctxStr,
+          (q) => brainSearchLines(env, ctx.uid, q, 6),
+          {
+            apps: premium,
+            images: premium ? images : undefined,
+            onDelta: (t) => { if (t) send({ delta: t }); },
+            onImage: async (prompt, editRef) => {
+              const r = await generateAvaImageSync(env, { uid: ctx.uid, prompt, editRef });
+              if (r.ok && r.url) { send({ image: r.url }); return "Image created and shown to the user."; }
+              return r.message ?? "I couldn't create that image right now.";
+            },
+          },
+        );
+      } catch { /* fall through to [DONE] */ }
+      try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
+      controller.close();
     },
-    cancel() { try { reader.cancel(); } catch { /* ignore */ } },
   });
   return new Response(out, {
     headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", ...CORS },

@@ -312,6 +312,53 @@ export async function runAvaImage(
   return { ok: true, conv, status_id: statusId ?? null, async: true, tier: PLANS[tier].key, httpStatus: 200 };
 }
 
+// SYNCHRONOUS image generation for request/response surfaces (ChatAVA companion).
+// Same gate as runAvaImage (kill-switches, moderation, per-tier daily allowance —
+// Free 3/day, shared with Messenger), but instead of posting into a conv it RETURNS
+// the public image URL so the caller can render it inline in its own reply. The
+// allowance unit is consumed only on a successful generation.
+export async function generateAvaImageSync(
+  env: Env,
+  a: { uid: string; prompt: string; editRef?: string },
+): Promise<{ ok: boolean; url?: string; message?: string; blocked?: boolean }> {
+  const { uid } = a;
+  const prompt = String(a.prompt ?? "").trim();
+
+  const cfg = await readConfig(env);
+  if (cfg.generativeEnabled === false) return { ok: false, message: "Image generation is currently turned off." };
+  if (cfg.aiEnabled === false) return { ok: false, message: "Ava is currently turned off." };
+  if (!prompt) return { ok: false, message: "Tell me what to draw." };
+  if (prompt.length > 2000) return { ok: false, message: "That prompt is too long." };
+
+  const gin = await guardInput(env, prompt);
+  if (!gin.ok) return { ok: false, blocked: true, message: "I can't create that image. Let's keep things safe — try a different idea." };
+
+  const tier = await tierOf(env, uid);
+  const allow = await enforceAllowance(env, uid, tier, "image", 1, { commit: false });
+  if (!allow.allowed) {
+    track(env, uid, "ava_image_capped", "avaai", { used: allow.used, cap: allow.cap, tier, surface: "chatava" });
+    const up = allow.upsell;
+    const upCap = up ? PLANS[up.tier].caps.image : null;
+    const upText = up
+      ? ` Upgrade to ${PLANS[up.tier].name} ($${up.price_usd}/mo) for ${upCap === null ? "unlimited" : upCap} images a day.`
+      : "";
+    return { ok: false, blocked: true, message: `You've used all ${allow.cap} of today's AI images on your ${PLANS[tier].name} plan — it resets tomorrow.${upText}` };
+  }
+
+  const key = env.GEMINI_API_KEY;
+  if (!key) return { ok: false, message: "Image generation is unavailable right now." };
+
+  try {
+    const bytes = await generateImage(env, key, prompt, uid, a.editRef);
+    const url = await storePublicImage(env, uid, bytes);
+    await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
+    track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier, surface: "chatava", sync: true });
+    return { ok: true, url };
+  } catch {
+    return { ok: false, message: "I couldn't create that image just now — please try again in a moment." };
+  }
+}
+
 // ---- POST /api/ava/image ----------------------------------------------------
 export async function avaImage(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
