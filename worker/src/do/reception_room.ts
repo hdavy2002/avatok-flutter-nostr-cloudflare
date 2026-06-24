@@ -31,6 +31,7 @@ interface InitBlob {
   // v2
   language_code?: string | null; activation_mode?: string | null;
   owner_name?: string | null; // owner's display name, for the caller-side ack
+  ava_name?: string | null;   // Ava's persona name, for transcript speaker labels
 }
 
 export class ReceptionRoom {
@@ -51,8 +52,11 @@ export class ReceptionRoom {
   private ownerPhone: string | null = null;
   private firstAudioSent = false;
 
-  private inText: string[] = [];   // caller transcript
-  private outText: string[] = [];  // Ava transcript
+  private inText: string[] = [];   // caller transcript fragments (char counts)
+  private outText: string[] = [];  // Ava transcript fragments (char counts)
+  // Interleaved, turn-by-turn dialogue (the human-readable transcript): each
+  // entry is one speaker's contiguous turn, in the order it actually happened.
+  private dialog: Array<{ who: "ava" | "caller"; text: string }> = [];
   private pcmOut: Uint8Array[] = []; // 2-way recording (24k PCM16): Ava + caller, interleaved
   private pcmBytes = 0;  // total recording bytes (Ava + caller)
   private avaBytes = 0;  // Ava-only audio bytes (telemetry; distinct from the 2-way total)
@@ -232,7 +236,9 @@ export class ReceptionRoom {
     // order ≈ turn order (Ava bursts, then caller replies), giving a clean
     // turn-by-turn recording.
     if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES && callerHasSpeech(bytes)) {
-      const up = upsample16to24(bytes);
+      // Gain (~2.4x, clipped) so the caller's softer mic isn't dwarfed by Ava's
+      // loud synthesized voice in the merged recording.
+      const up = upsample16to24(bytes, 2.4);
       this.pcmOut.push(up); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
       this.bumpIdle();
     }
@@ -279,9 +285,9 @@ export class ReceptionRoom {
         this.ev("ava_recept_barge_in", { route: "gemini_vad", ms: Date.now() - this.startedAt });
       }
       const inT = sc.inputTranscription?.text;
-      if (inT) this.inText.push(String(inT));
+      if (inT) { this.inText.push(String(inT)); this.pushDialog("caller", String(inT)); }
       const outT = sc.outputTranscription?.text;
-      if (outT) this.outText.push(String(outT));
+      if (outT) { this.outText.push(String(outT)); this.pushDialog("ava", String(outT)); }
       // Per-turn observability: each completed exchange, with server-truth audio
       // throughput both ways. in_bytes≈0 across turns ⇒ the caller wasn't heard.
       if (sc.turnComplete === true) {
@@ -420,11 +426,28 @@ export class ReceptionRoom {
     metric(this.env, reason === "hard_cap" ? "ava_recept_hardcap" : "ava_recept_completed", [1, durationS]);
   }
 
+  /** Append a transcript fragment to the running turn-by-turn dialogue, merging
+   *  consecutive fragments from the same speaker into one turn. */
+  private pushDialog(who: "ava" | "caller", text: string): void {
+    const t = text.trim();
+    if (!t) return;
+    const last = this.dialog[this.dialog.length - 1];
+    if (last && last.who === who) last.text = (last.text + " " + t).replace(/\s+/g, " ").trim();
+    else this.dialog.push({ who, text: t });
+  }
+
+  /** Human-readable transcript: real turn order with speaker names, e.g.
+   *  "Ava: Hi Humphrey, …\nHumphrey: Yes, tell her I'll call back…\nAva: …". */
   private buildTranscript(): string {
+    const avaName = (this.init?.ava_name || "Ava").trim() || "Ava";
+    const callerName = (this.init?.caller_name || "Caller").trim() || "Caller";
+    if (this.dialog.length > 0) {
+      return this.dialog.map((d) => `${d.who === "ava" ? avaName : callerName}: ${d.text}`).join("\n");
+    }
+    // Fallback (no interleaved data): two blocks.
     const lines: string[] = [];
-    // Interleave roughly by collection order (per-turn ordering is approximate).
-    if (this.inText.length) lines.push("Caller: " + this.inText.join(" ").trim());
-    if (this.outText.length) lines.push("Ava: " + this.outText.join(" ").trim());
+    if (this.inText.length) lines.push(callerName + ": " + this.inText.join(" ").trim());
+    if (this.outText.length) lines.push(avaName + ": " + this.outText.join(" ").trim());
     return lines.join("\n");
   }
 
@@ -590,8 +613,9 @@ function callerHasSpeech(pcm: Uint8Array): boolean {
 }
 
 /** Upsample mono PCM16 16kHz → 24kHz (linear interpolation, 3:2) so the caller's
- *  audio matches Ava's 24k stream in the merged recording. */
-function upsample16to24(pcm16: Uint8Array): Uint8Array {
+ *  audio matches Ava's 24k stream in the merged recording. [gain] amplifies the
+ *  (typically softer) caller signal, with hard clipping to avoid overflow. */
+function upsample16to24(pcm16: Uint8Array, gain = 1): Uint8Array {
   const inN = pcm16.byteLength >> 1;
   if (inN === 0) return new Uint8Array(0);
   const inView = new DataView(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
@@ -605,7 +629,9 @@ function upsample16to24(pcm16: Uint8Array): Uint8Array {
     const frac = srcPos - i0;
     const s0 = inView.getInt16(i0 * 2, true);
     const s1 = inView.getInt16(i1 * 2, true);
-    outView.setInt16(i * 2, Math.round(s0 + (s1 - s0) * frac), true);
+    let v = Math.round((s0 + (s1 - s0) * frac) * gain);
+    if (v > 32767) v = 32767; else if (v < -32768) v = -32768;
+    outView.setInt16(i * 2, v, true);
   }
   return out;
 }

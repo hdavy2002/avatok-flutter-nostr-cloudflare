@@ -454,6 +454,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     // travelling/busy. Can I take a message?" — composed server-side, locked.
     system_prompt: composeReceptionistPrompt(s, { callerName, activationMode, ownerName }),
     owner_name: ownerName,
+    ava_name: (s.persona_name || "Ava").trim() || "Ava", // transcript speaker label
+
     model: (env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT,
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
     started_at: now,
