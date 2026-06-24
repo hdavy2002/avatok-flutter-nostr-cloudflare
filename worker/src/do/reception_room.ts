@@ -55,6 +55,8 @@ export class ReceptionRoom {
   private outText: string[] = [];  // Ava transcript
   private pcmOut: Uint8Array[] = []; // Ava audio (24k PCM16) → WAV recording
   private pcmBytes = 0;
+  private inBytes = 0;   // caller audio bytes received (mic throughput / dead-mic)
+  private turnCount = 0; // completed conversational turns
   private static MAX_REC_BYTES = 12 * 1024 * 1024; // safety cap (~4 min @24k)
 
   constructor(state: DurableObjectState, env: Env) {
@@ -207,6 +209,7 @@ export class ReceptionRoom {
     if (typeof d === "string") return; // no client-supplied control honored
     const bytes = d instanceof ArrayBuffer ? new Uint8Array(d) : null;
     if (!bytes) return;
+    this.inBytes += bytes.byteLength; // server-truth mic throughput (vs client mic_bytes)
     this.sendGem({
       realtimeInput: { audio: { data: b64encode(bytes), mimeType: "audio/pcm;rate=16000" } },
     });
@@ -235,6 +238,19 @@ export class ReceptionRoom {
       if (inT) this.inText.push(String(inT));
       const outT = sc.outputTranscription?.text;
       if (outT) this.outText.push(String(outT));
+      // Per-turn observability: each completed exchange, with server-truth audio
+      // throughput both ways. in_bytes≈0 across turns ⇒ the caller wasn't heard.
+      if (sc.turnComplete === true) {
+        this.turnCount++;
+        this.ev("ava_recept_turn", {
+          turn: this.turnCount,
+          in_chars: this.inText.join("").length,
+          out_chars: this.outText.join("").length,
+          in_bytes: this.inBytes,
+          ava_bytes: this.pcmBytes,
+          ms: Date.now() - this.startedAt,
+        });
+      }
       const parts = sc.modelTurn?.parts;
       if (Array.isArray(parts)) {
         for (const p of parts) {
@@ -341,7 +357,8 @@ export class ReceptionRoom {
     // Session lifecycle close — the funnel tail (started → first_audio → ended).
     this.ev("ava_recept_session_ended", {
       cutoff_reason: reason, duration_s: durationS, got_audio: this.firstAudioSent,
-      ava_audio_bytes: this.pcmBytes, in_chars: this.inText.join("").length,
+      ava_audio_bytes: this.pcmBytes, caller_audio_bytes: this.inBytes, turns: this.turnCount,
+      in_chars: this.inText.join("").length,
       out_chars: this.outText.join("").length, has_recording: !!recordingUrl,
     });
     metric(this.env, reason === "hard_cap" ? "ava_recept_hardcap" : "ava_recept_completed", [1, durationS]);
