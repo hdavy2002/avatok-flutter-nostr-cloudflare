@@ -188,6 +188,16 @@ export class ReceptionRoom {
     this.ev("ava_recept_session_started", {
       setup_latency_ms: Date.now() - this.startedAt, has_kb: !!init.file_search_store,
     });
+    // GREET FIRST. Without this, Gemini's automatic VAD waits for the caller to
+    // speak-and-pause before the model says anything — which showed up as a ~19s
+    // dead-air gap before Ava's first word. A one-shot user turn makes her open
+    // the call immediately; the caller's streamed mic audio drives the rest.
+    this.sendGem({
+      clientContent: {
+        turns: [{ role: "user", parts: [{ text: "[The caller has just connected and is on the line. Greet them now, by name if you have it, state the status, then offer to take a message. Keep it to one or two short sentences.]" }] }],
+        turnComplete: true,
+      },
+    });
   }
 
   // caller → Gemini : binary = PCM16 16k; (control JSON tolerated but ignored)
@@ -213,6 +223,14 @@ export class ReceptionRoom {
 
     const sc = msg.serverContent;
     if (sc) {
+      // Barge-in: Gemini's VAD heard the caller speak over Ava → the model halts
+      // its own generation AND we tell the client to drop any buffered audio so
+      // Ava goes silent INSTANTLY (otherwise the client keeps playing her queue
+      // and she "talks over" the caller — the exact bug reported).
+      if (sc.interrupted === true) {
+        try { this.client?.send(JSON.stringify({ t: "flush" })); } catch { /* caller gone */ }
+        this.ev("ava_recept_barge_in", { route: "gemini_vad", ms: Date.now() - this.startedAt });
+      }
       const inT = sc.inputTranscription?.text;
       if (inT) this.inText.push(String(inT));
       const outT = sc.outputTranscription?.text;
