@@ -82,3 +82,30 @@ export async function contactFor(env: Env, uid: string): Promise<{ email: string
   const [email, phone] = await Promise.all([emailFor(env, uid), phoneFor(env, uid)]);
   return { email, phone };
 }
+
+const NAME_PREFIX = "ph_name:"; // KV key namespace (uid → first name, "" = none)
+
+/**
+ * uid → the user's first/display name, KV-cached like [emailFor]. Used so the
+ * receptionist can greet a caller BY NAME ("Hi Humphrey, …") — resolved from
+ * Clerk (first_name → username → null). A cached empty string = known absent.
+ */
+export async function nameFor(env: Env, uid: string): Promise<string | null> {
+  if (!uid) return null;
+  const key = NAME_PREFIX + uid;
+  try {
+    const cached = await env.TOKENS.get(key);
+    if (cached !== null) return cached === "" ? null : cached;
+  } catch { /* fall through to a live lookup */ }
+  let name: string | null = null;
+  try {
+    const u = await clerkUser(env, uid);
+    if (u) {
+      const first = (u.first_name ?? "").toString().trim();
+      const uname = (u.username ?? "").toString().trim();
+      name = first || uname || null;
+    }
+  } catch { /* best-effort */ }
+  try { await env.TOKENS.put(key, name ?? "", { expirationTtl: TTL_SECONDS }); } catch { /* best-effort */ }
+  return name;
+}

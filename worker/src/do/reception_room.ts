@@ -30,6 +30,7 @@ interface InitBlob {
   soft_cap_ms: number; hard_cap_ms: number; started_at: number;
   // v2
   language_code?: string | null; activation_mode?: string | null;
+  owner_name?: string | null; // owner's display name, for the caller-side ack
 }
 
 export class ReceptionRoom {
@@ -101,7 +102,7 @@ export class ReceptionRoom {
     // the AI-Gateway-401 case (gateway authenticated but AI_GATEWAY_TOKEN unset).
     this.connectGemini().catch((e) => {
       this.ev("ava_recept_gemini_connect_failed", {
-        via_gateway: !!(this.env.AI_GATEWAY_ID && this.env.CF_ACCOUNT_ID),
+        via_gateway: false,
         error_scrubbed: String(e).slice(0, 200),
         ms: Date.now() - this.startedAt,
       });
@@ -129,15 +130,11 @@ export class ReceptionRoom {
   // -------------------------------------------------------------------------
   private geminiWsUrl(): { url: string; protocols: string[] } {
     const key = this.env.GEMINI_API_KEY!;
-    if (this.env.AI_GATEWAY_ID && this.env.CF_ACCOUNT_ID) {
-      // Cloudflare AI Gateway "google" realtime WebSocket — gives us per-call
-      // usage logging (metering) + an AI Gateway request id.
-      const base = `wss://gateway.ai.cloudflare.com/v1/${this.env.CF_ACCOUNT_ID}/${this.env.AI_GATEWAY_ID}/google`;
-      const protocols = this.env.AI_GATEWAY_TOKEN
-        ? [`cf-aig-authorization.${this.env.AI_GATEWAY_TOKEN}`] : [];
-      return { url: `${base}?api_key=${encodeURIComponent(key)}`, protocols };
-    }
-    // Fallback: direct Gemini Live (no AI Gateway metering).
+    // DIRECT to Gemini Live — the AI Gateway hop is intentionally removed
+    // (owner decision 2026-06-24): it added latency AND its authenticated
+    // gateway rejected the unauthenticated WS with HTTP 401 (AI_GATEWAY_TOKEN
+    // unset), which silently broke every receptionist call. Per-call usage is
+    // now observed via our own ava_recept_* telemetry instead of gateway logs.
     return {
       url: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(key)}`,
       protocols: [],
@@ -160,10 +157,10 @@ export class ReceptionRoom {
     gem.addEventListener("close", () => this.finalize("model_closed"));
     gem.addEventListener("error", () => this.failHard("gemini_error"));
 
-    // Telemetry: upstream connected — connect latency + AI Gateway join key.
+    // Telemetry: upstream connected — connect latency. Direct path (no gateway).
     this.ev("ava_recept_gemini_connect", {
       latency_ms: Date.now() - this.startedAt,
-      via_gateway: !!(this.env.AI_GATEWAY_ID && this.env.CF_ACCOUNT_ID),
+      via_gateway: false,
       aig_id: (this as any)._aigId ?? null,
       model: init.model, voice: init.voice_name, language: init.language_code ?? "auto",
     });
@@ -343,11 +340,9 @@ export class ReceptionRoom {
       Promise<{ caller_name: string | null; reason: string; callback: string | null; urgency: string } | null> {
     if (!transcript || !this.env.GEMINI_API_KEY) return null;
     const model = "gemini-2.5-flash";
-    const sysUrl = (this.env.AI_GATEWAY_ID && this.env.CF_ACCOUNT_ID)
-      ? `https://gateway.ai.cloudflare.com/v1/${this.env.CF_ACCOUNT_ID}/${this.env.AI_GATEWAY_ID}/google-ai-studio/v1beta/models/${model}:generateContent`
-      : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    // Direct to Gemini (no AI Gateway hop) — same rationale as the live socket.
+    const sysUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     const headers: Record<string, string> = { "content-type": "application/json", "x-goog-api-key": this.env.GEMINI_API_KEY };
-    if (this.env.AI_GATEWAY_TOKEN && this.env.AI_GATEWAY_ID) headers["cf-aig-authorization"] = `Bearer ${this.env.AI_GATEWAY_TOKEN}`;
     const prompt = `From this phone-message transcript, return STRICT JSON {"caller_name":string|null,"reason":string,"callback":string|null,"urgency":"low"|"normal"|"high"}. Transcript:\n${transcript.slice(0, 4000)}`;
     const r = await fetch(sysUrl, {
       method: "POST", headers,
@@ -431,6 +426,40 @@ export class ReceptionRoom {
       in_thread: inThread, conv_kind: inThread ? "dm" : "recept_fallback",
       has_recording: !!recordingUrl,
     });
+
+    // Caller-side acknowledgment: drop a normal TEXT message into the CALLER's
+    // Messenger thread, appearing to come from the owner's assistant, so the
+    // caller (e.g. Satish) opens Messenger and sees a new message from the owner
+    // (Humphrey) confirming the message was taken — with the SAME push + unread
+    // badge as any incoming chat. Only when the caller is a known AvaTOK user
+    // (phone-only callers have no inbox). `{t:'text'}` renders as a plain bubble.
+    if (init.caller_uid) {
+      const ownerLabel = (init.owner_name || "your contact").trim();
+      const hi = init.caller_name ? ` ${init.caller_name}` : "";
+      const ackText = summary
+        ? `Hi${hi} — this is ${ownerLabel}'s assistant. I've passed your message on to ${ownerLabel}${summary.reason ? ` (“${summary.reason}”)` : ""}. They'll get back to you soon.`
+        : `Hi${hi} — this is ${ownerLabel}'s assistant. I've taken your message and ${ownerLabel} will get back to you soon.`;
+      try {
+        const ackStub = this.env.INBOX.get(this.env.INBOX.idFromName(init.caller_uid));
+        await ackStub.fetch("https://inbox/append", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            conv,                              // same deterministic dm_ thread
+            sender: init.owner_uid,            // looks like a message FROM the owner
+            kind: "text",
+            body: JSON.stringify({ t: "text", body: ackText }),
+            scope: `to:${init.caller_uid}`,    // the caller's view
+            created_at: Date.now(),
+            owner: init.caller_uid,
+          }),
+        });
+        // Same push path as a normal message → notification + unread app badge.
+        await this.env.Q_PUSH.send({ kind: "notify", to: init.caller_uid, fromName: ownerLabel });
+        this.ev("ava_recept_caller_ack_sent", { ok: true });
+      } catch (e) {
+        this.ev("ava_recept_caller_ack_sent", { ok: false, error_scrubbed: String(e).slice(0, 200) });
+      }
+    }
   }
 }
 

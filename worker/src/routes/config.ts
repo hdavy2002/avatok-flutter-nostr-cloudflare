@@ -88,8 +88,8 @@ const DEFAULTS: PlatformConfig = {
   translationGroupEnabled: true,
   avavoiceEnabled: true,
   avavisionEnabled: true,
-  receptionistEnabled: false,      // Ava Receptionist — OFF until dogfood passes
-  receptionistRings: 5,            // v2 Mode A: auto-handoff after 5 rings
+  receptionistEnabled: false,      // Ava Receptionist — OFF until dogfood passes (enable via KV)
+  receptionistRings: 4,            // v2 Mode A: auto-handoff after 4 unanswered rings
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
