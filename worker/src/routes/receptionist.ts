@@ -122,6 +122,35 @@ async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> 
   return r ? (r as SettingsRow) : null;
 }
 
+// ── Settings cache (KV) ──────────────────────────────────────────────────────
+// Settings change rarely but are read on EVERY dial-time /config probe and every
+// /start. Cache the row in KV, busted the instant the owner saves (PUT/KB), with
+// a short TTL backstop. "" caches a known-absent row so we don't re-hit D1 for a
+// user who never configured Ava. Reads stay correct: a save always re-warms it.
+const SETTINGS_CACHE_TTL = 600; // 10 min safety net; explicit bust on save
+const settingsCacheKey = (uid: string) => `recept_settings:${uid}`;
+
+async function loadSettingsCached(env: Env, uid: string): Promise<SettingsRow | null> {
+  try {
+    const raw = await env.TOKENS.get(settingsCacheKey(uid));
+    if (raw !== null) return raw === "" ? null : (JSON.parse(raw) as SettingsRow);
+  } catch { /* fall through to D1 */ }
+  const s = await loadSettings(env, uid);
+  try {
+    await env.TOKENS.put(settingsCacheKey(uid), s ? JSON.stringify(s) : "", { expirationTtl: SETTINGS_CACHE_TTL });
+  } catch { /* best-effort */ }
+  return s;
+}
+
+/** Re-warm the cache from D1 after a write (save / KB change), so the very next
+ *  call sees fresh settings without a cold D1 read. */
+async function refreshSettingsCache(env: Env, uid: string): Promise<void> {
+  try {
+    const s = await loadSettings(env, uid);
+    await env.TOKENS.put(settingsCacheKey(uid), s ? JSON.stringify(s) : "", { expirationTtl: SETTINGS_CACHE_TTL });
+  } catch { /* best-effort — a stale entry still self-evicts via TTL */ }
+}
+
 // ---------------------------------------------------------------------------
 // Hidden system prompt — composed server-side, never exposed to the client.
 // Scaffold (role + 2-min timing + safety) + the owner's free-text instructions.
@@ -284,6 +313,7 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
     persona, language, greeting, customPrompt,
     answerAll, statusPreset, statusCustom, declineToAva, now).run();
 
+  await refreshSettingsCache(env, ctx.uid); // bust-on-save: next call sees fresh settings
   track(env, ctx.uid, enabled ? "ava_recept_enabled" : "ava_recept_disabled", APP,
     { has_instructions: instr.length > 0, voice, has_persona: !!persona,
       language: language ?? "auto", answer_all: !!answerAll,
@@ -308,7 +338,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   const cfg = await readConfig(env);
   if ((cfg as any).receptionistEnabled === false) { checked(false, "disabled"); return json({ available: false, reason: "disabled" }); }
   if (!to) return json({ error: "to required" }, 400);
-  const s = await loadSettings(env, to);
+  const s = await loadSettingsCached(env, to);
   if (!s || !s.enabled) { checked(false, "off"); return json({ available: false, reason: "off" }); }
   // Subscription allowance (peek — don't consume on a dial-time probe). The OWNER
   // pays from their tier's daily recept allowance. Out of allowance → unavailable.
@@ -354,7 +384,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_skipped", APP,
       { owner: to, reason, ...extra });
 
-  const s = await loadSettings(env, to);
+  const s = await loadSettingsCached(env, to);
   if (!s || !s.enabled) { skip("off"); return json({ error: "receptionist_unavailable", reason: "off" }, 409); }
   if (!env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
   // Subscription allowance — CONSUME one recept unit from the OWNER's daily quota
@@ -534,6 +564,7 @@ export async function receptionistKbUpload(req: Request, env: Env): Promise<Resp
   const fid = crypto.randomUUID();
   try { await env.BLOBS.put(`receptionist/${ctx.uid}/kb/${fid}/${name}`, bytes); } catch { /* best-effort */ }
   const doc = await indexToStore(env, store, name, bytes);
+  await refreshSettingsCache(env, ctx.uid); // file_search_store changed → re-warm cache
   track(env, ctx.uid, "ava_recept_kb_uploaded", APP, { size: bytes.byteLength, indexed: !!doc });
   return json({ ok: true, indexed: !!doc, has_kb: true });
 }
@@ -552,5 +583,6 @@ export async function receptionistKbClear(req: Request, env: Env): Promise<Respo
   }
   await metaDb(env).prepare("UPDATE receptionist_settings SET file_search_store=NULL, updated_at=?2 WHERE owner_uid=?1")
     .bind(ctx.uid, Date.now()).run();
+  await refreshSettingsCache(env, ctx.uid); // KB detached → re-warm cache
   return json({ ok: true, has_kb: false });
 }
