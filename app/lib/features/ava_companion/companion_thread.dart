@@ -90,13 +90,17 @@ class _CompanionMsg {
   // AI-generated image URLs attached to this (Ava) turn — ChatAVA image gen.
   // Mutable so the streaming path can append as `{image:url}` events arrive.
   final List<String> images;
+  // True while an image is being generated → render a "generating…" placeholder
+  // thumbnail. Cleared when the image arrives (or generation fails).
+  bool imageGenerating;
   // Typewriter reveal: how many chars of [text] are currently shown. Ava replies
   // animate from 0 → text.length so the answer "types out" (feels instant /
   // streamed) even though it arrives whole — the output still passes the
   // server-side llama-guard gate first. Everything else shows fully right away.
   int reveal;
   _CompanionMsg(this.id, this.text, this.me,
-      {this.blocked = false, this.reason, List<String>? images, int? reveal})
+      {this.blocked = false, this.reason, List<String>? images,
+      this.imageGenerating = false, int? reveal})
       : images = images ?? <String>[],
         reveal = reveal ?? text.length;
 }
@@ -359,13 +363,25 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
         message: t,
         context: ctxStr,
         history: priorHistory.isEmpty ? null : priorHistory,
+        onImagePending: () {
+          if (!mounted) return;
+          if (!streamed) {
+            streamed = true;
+            setState(() { _msgs.add(live); _busy = false; });
+          }
+          setState(() => live.imageGenerating = true);
+          if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        },
+        onImageFailed: () {
+          if (mounted) setState(() => live.imageGenerating = false);
+        },
         onImage: (url) {
           if (!mounted) return;
           if (!streamed) {
             streamed = true;
             setState(() { _msgs.add(live); _busy = false; });
           }
-          setState(() => live.images.add(url));
+          setState(() { live.images.add(url); live.imageGenerating = false; });
           if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
         },
       )) {
@@ -380,6 +396,8 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
     } catch (_) {
       streamed = false;
     }
+    // Never leave a dangling "generating…" placeholder if the stream ended first.
+    if (mounted && live.imageGenerating) setState(() => live.imageGenerating = false);
 
     // Success if we streamed text OR produced an image (image-only turns have no text).
     if (streamed && (live.text.trim().isNotEmpty || live.images.isNotEmpty)) {
@@ -635,6 +653,34 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
               child: Text(
                 m.reveal >= m.text.length ? m.text : m.text.substring(0, m.reveal),
                 style: ZineText.value(size: 14.5, weight: FontWeight.w600),
+              ),
+            ),
+          // "Generating image…" placeholder thumbnail (ChatGPT-style) — shown while
+          // the image is being created, then replaced by the real image.
+          if (m.imageGenerating)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Container(
+                width: 240,
+                height: 200,
+                decoration: BoxDecoration(
+                  color: Zine.lilac,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Zine.ink, width: 2),
+                  boxShadow: Zine.shadowXs,
+                ),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  PhosphorIcon(PhosphorIcons.image(PhosphorIconsStyle.duotone),
+                      size: 34, color: Zine.ink),
+                  const SizedBox(height: 14),
+                  const SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink)),
+                  const SizedBox(height: 12),
+                  Text('Generating image…',
+                      style: ZineText.sub(size: 12.5, color: Zine.ink)
+                          .copyWith(fontStyle: FontStyle.italic)),
+                ]),
               ),
             ),
           // AI-generated images (ChatAVA image gen) — tap to view full-screen.

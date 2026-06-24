@@ -99,13 +99,16 @@ class AvaAiClient {
   /// LIVE (feels far faster). Throws on any failure so the caller can fall back
   /// to [ask]. Same signed-auth + optional BYO key as [ask].
   /// [onImage] fires for each AI-generated image URL the worker streams as a
-  /// `{image:url}` SSE event (ChatAVA image generation) so the caller can render
-  /// it inline alongside the streamed text.
+  /// `{image:url}` SSE event (ChatAVA image generation). [onImagePending] fires on
+  /// `{image_pending:true}` (show a "generating…" placeholder); [onImageFailed]
+  /// fires on `{image_failed:true}` (clear the placeholder).
   Stream<String> askStream({
     required String message,
     String? context,
     List<Map<String, String>>? history,
     void Function(String url)? onImage,
+    void Function()? onImagePending,
+    void Function()? onImageFailed,
     Duration timeout = const Duration(seconds: 60),
   }) async* {
     final body = <String, dynamic>{
@@ -142,6 +145,8 @@ class AvaAiClient {
           if (delta != null && delta.isNotEmpty) yield delta;
           final img = j['image'] as String?;
           if (img != null && img.isNotEmpty) onImage?.call(img);
+          if (j['image_pending'] == true) onImagePending?.call();
+          if (j['image_failed'] == true) onImageFailed?.call();
         } catch (_) {/* skip a malformed SSE line */}
       }
     } finally {
