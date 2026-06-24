@@ -99,9 +99,21 @@ persona + the form fields in §3). All AI *output* moderation is removed.
 
 Per-chat **shield icon**: tap to toggle. **Green = on** → "Ava is watching this chat and will
 alert you if someone tries to scam, groom, or harm you." When on, `ava_guardian` runs its cheap
-string heuristics on each message and escalates suspicious ones to **Nemotron**; a confident
-predator/scam verdict posts a PRIVATE warning to the at-risk user only. Off = no scanning.
-Engine: `nvidia/nemotron-3.5-content-safety:free` via OpenRouter.
+string heuristics on each message AND — because the chat is being watched — runs the AI security
+classifier on **every** incoming message (not just on a keyword hit); a confident
+predator/scam verdict posts a PRIVATE warning (the model's tailored heads-up) to the at-risk
+user only. Off = no AI scanning.
+
+**Security engine (owner decision 2026-06-24): `anthropic/claude-opus-4.8` via OpenRouter.**
+Security matters (grooming / luring / sextortion / scam detection) use the strongest reasoner,
+not the lightweight content-safety model — a content-safety label alone missed nuanced
+grooming like *"don't tell your mom, meet me secretly tonight."* Nemotron
+(`nvidia/nemotron-3.5-content-safety:free`) remains the engine for save-time FIELD validation
+(names, bios, listings, persona prompts); Opus 4.8 is reserved for the live shield watchdog.
+
+> Fix history: the first cut only ran the model under PREMIUM "deep monitoring" or to confirm
+> a cheap keyword hit, so a FREE secure-chat user got keyword matching only — the grooming
+> test message above slipped through. Secure-chat ON now always invokes `classifyThreat`.
 
 ---
 

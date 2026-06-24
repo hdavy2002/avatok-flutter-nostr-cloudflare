@@ -219,3 +219,83 @@ export async function isSafeText(env: Env, text: string, field: ModField = "mess
   const r = await moderate(env, { text, field });
   return r.safe;
 }
+
+// ── SECURITY classifier — the shield watchdog (Claude Opus 4.8 via OpenRouter) ──
+// Owner decision 2026-06-24: SECURITY matters (grooming / predator / scam / sextortion
+// detection on user-to-user chat) use the strongest reasoner — Claude Opus 4.8 — not the
+// lightweight content-safety model. Nemotron remains for save-time FIELD validation; this
+// is for the live shield watchdog where nuance (e.g. "don't tell your mom, meet me secretly")
+// matters and a content-safety label alone misses the predatory INTENT.
+export const SECURITY_MODEL = "anthropic/claude-opus-4.8";
+
+export interface ThreatResult {
+  unsafe: boolean;
+  category: string;   // grooming | sextortion | sexual | scam | threat | harassment | none
+  severity: number;   // 1 low · 2 medium · 3 high
+  reason: string;     // a short PRIVATE heads-up written TO the recipient
+  ms: number;
+  ok: boolean;        // true = classifier ran; false = errored (failed open → not unsafe)
+}
+
+/**
+ * Analyse a message the user RECEIVED and decide if the SENDER is being predatory
+ * or harmful toward them. Fails OPEN (unsafe:false, ok:false) on any error.
+ */
+export async function classifyThreat(env: Env, text: string): Promise<ThreatResult> {
+  const t = (text ?? "").trim();
+  if (!t) return { unsafe: false, category: "none", severity: 0, reason: "", ms: 0, ok: true };
+  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
+  if (!key) return { unsafe: false, category: "none", severity: 0, reason: "", ms: 0, ok: false };
+
+  const sys =
+    "You are a safety guardian for a chat app used by adults AND minors. The user RECEIVED the message " +
+    "below from someone else in a PRIVATE chat. Decide whether the SENDER is being predatory or harmful " +
+    "toward the recipient. Flag as UNSAFE: grooming or luring a minor, asking to keep secrets from " +
+    "parents/guardians, pressuring to meet alone or secretly, sexual advances or requests, sextortion or " +
+    "blackmail, threats or intimidation, and scams / financial fraud / phishing. Secrecy + a request to " +
+    "meet (e.g. \"don't tell your mom, meet me secretly\") is HIGH-severity grooming. " +
+    'Respond with ONLY JSON: {"unsafe": <true|false>, "category": "grooming|sextortion|sexual|scam|threat|harassment|none", ' +
+    '"severity": <1|2|3>, "reason": "<one short sentence addressed TO the recipient as a private heads-up>"}. ' +
+    "If the message is harmless, unsafe=false.";
+
+  const t0 = Date.now();
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${key}`,
+        "HTTP-Referer": "https://avatok.ai",
+        "X-Title": "AvaTOK Guardian",
+      },
+      body: JSON.stringify({
+        model: (env as any).OPENROUTER_SECURITY_MODEL || SECURITY_MODEL,
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: `MESSAGE:\n"""${t.slice(0, 4000)}"""` },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0,
+        max_tokens: 200,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const ms = Date.now() - t0;
+    if (!res.ok) return { unsafe: false, category: "none", severity: 0, reason: "", ms, ok: false };
+    const out: any = await res.json().catch(() => null);
+    const content: string = out?.choices?.[0]?.message?.content ?? "";
+    const m = content.match(/\{[\s\S]*\}/);
+    if (!m) return { unsafe: false, category: "none", severity: 0, reason: "", ms, ok: true };
+    const j = JSON.parse(m[0]);
+    const unsafe = j.unsafe === true;
+    return {
+      unsafe,
+      category: String(j.category ?? (unsafe ? "grooming" : "none")).toLowerCase(),
+      severity: unsafe ? Math.min(3, Math.max(1, Math.trunc(Number(j.severity) || 2))) : 0,
+      reason: unsafe ? String(j.reason ?? "") : "",
+      ms, ok: true,
+    };
+  } catch {
+    return { unsafe: false, category: "none", severity: 0, reason: "", ms: Date.now() - t0, ok: false };
+  }
+}

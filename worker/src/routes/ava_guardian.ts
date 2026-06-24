@@ -49,7 +49,7 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { postAvaMessage } from "./ava_thread";
-import { isSafeText } from "../lib/moderation"; // shield watchdog classifier (Nemotron via OpenRouter)
+import { classifyThreat } from "../lib/moderation"; // shield watchdog security classifier (Claude Opus 4.8 via OpenRouter)
 import { readConfig } from "./config";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
@@ -392,11 +392,20 @@ function warningText(category: GuardianCategory, severity: number): string {
   }
 }
 
+// Map the security model's free-form category onto our GuardianCategory union.
+// Only called when the model returned unsafe, so 'none' never reaches here; any
+// non-scam threat (grooming/sextortion/sexual/threat/harassment) maps to a warned
+// 'grooming' category so the at-risk user always gets a private heads-up.
+function mapThreatCategory(c: string): GuardianCategory {
+  if (/scam|fraud|phish/.test(c)) return "scam";
+  return "grooming";
+}
+
 async function warnPrivately(
   env: Env,
-  args: { uid: string; conv: string; category: GuardianCategory; severity: number; peer?: string | null },
+  args: { uid: string; conv: string; category: GuardianCategory; severity: number; peer?: string | null; advisory?: string },
 ): Promise<boolean> {
-  const text = warningText(args.category, args.severity);
+  const text = (args.advisory && args.advisory.trim()) ? args.advisory.trim() : warningText(args.category, args.severity);
   const res = await postAvaMessage(env, {
     ownerUid: args.uid,            // the at-risk person authors/owns it → recipient
     conv: args.conv,
@@ -495,25 +504,26 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     let category: GuardianCategory | null = null;
     let severity = 0;
     let detail: string | undefined;
+    let advisory: string | undefined;   // tailored private heads-up from the model
 
     if (mediaHit) {
       category = "deepfake"; severity = 2;
       detail = `synthetic media score ${(media!.score).toFixed(2)}`;
-    } else if (cheap.hit) {
-      // FREE basic flag — always evaluated for every recipient.
-      category = cheap.category; severity = cheap.severity;
-      detail = cheap.signals.join(", ");
-      // Escalate to the heavier classifier on a strong cheap hit (cost: one
-      // Nemotron call only when the cheap gate already fired).
-      if (cheap.severity >= 3) {
-        const safe = await isSafeText(env, text, "message");
-        if (!safe) severity = 3; // confirmed unsafe → keep high
+    } else {
+      // Cheap keyword heuristic is a fast first flag (free, every recipient).
+      if (cheap.hit) { category = cheap.category; severity = cheap.severity; detail = cheap.signals.join(", "); }
+      // Run the AI SECURITY classifier (Claude Opus 4.8) when this chat is being
+      // WATCHED — shield / secure-chat ON (FREE), under PREMIUM deep monitoring, or
+      // to triage a cheap hit. THIS is what catches nuanced grooming the keyword
+      // list misses (e.g. "don't tell your mom, meet me secretly tonight").
+      if (prefs.secureChat || deep || cheap.hit) {
+        const threat = await classifyThreat(env, text);
+        if (threat.unsafe) {
+          category = mapThreatCategory(threat.category);
+          severity = Math.max(severity, threat.severity);
+          if (threat.reason) { detail = threat.reason; advisory = threat.reason; }
+        }
       }
-    } else if (deep) {
-      // PREMIUM always-on deep monitoring: no heuristic hit, but run the model
-      // anyway for entitled/protected users (this is the paid capability).
-      const safe = await isSafeText(env, text, "message");
-      if (!safe) { category = "grooming"; severity = 2; detail = "deep-monitor classifier"; }
     }
 
     if (!category) return; // clean for this recipient → no cost beyond the scan
@@ -525,7 +535,7 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     // at severity≥2 (avoid nagging). Always private → the sender never sees it.
     const shouldWarn = category === "grooming" || category === "scam" || category === "deepfake"
       || (category === "spam" && severity >= 2);
-    if (shouldWarn && (await warnPrivately(env, { uid, conv, category, severity, peer: senderUid }))) {
+    if (shouldWarn && (await warnPrivately(env, { uid, conv, category, severity, peer: senderUid, advisory }))) {
       warned++;
     }
   }));
