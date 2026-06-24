@@ -129,7 +129,9 @@ async function endChip(env: Env, uid: string, conv: string, statusId?: string): 
 // blue") — passed as an input_reference for image-to-image. Errors emit
 // `ava_image_error` telemetry so the real provider message is visible in PostHog.
 async function generateImage(env: Env, key: string, prompt: string, uid: string, editRef?: string): Promise<Uint8Array> {
-  const body: any = { model: IMAGE_MODEL, prompt, output_format: "png" };
+  // Grok Imagine supports: resolution, aspect_ratio, n, input_references (no
+  // output_format) — send only supported fields so the endpoint doesn't reject.
+  const body: any = { model: IMAGE_MODEL, prompt, resolution: "2K" };
   if (editRef) {
     body.input_references = [{ type: "image_url", image_url: { url: editRef } }];
   }
