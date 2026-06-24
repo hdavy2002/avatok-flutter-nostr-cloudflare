@@ -10,12 +10,15 @@
 name: Deploy web (Cloudflare Pages)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'web/**'
-      - 'app/lib/core/ui/**'        # prebuild reads zine tokens from here
-      - '.github/workflows/web-deploy.yml'
+  # NOTE: auto-deploy on push DISABLED (owner 2026-06-24: "no web, just apk").
+  # Run manually from the Actions tab when a web deploy is needed. Re-enable the
+  # push: block below to resume auto-deploy on web/ or core/ui changes.
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'web/**'
+  #     - 'app/lib/core/ui/**'        # prebuild reads zine tokens from here
+  #     - '.github/workflows/web-deploy.yml'
   workflow_dispatch:                  # allow manual "Run workflow"
 
 concurrency:

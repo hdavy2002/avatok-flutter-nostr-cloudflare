@@ -19,9 +19,9 @@ on:
 
 env:
   AVATOK_ENV: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
-  # Build BOTH artifacts (owner 2026-06-23: "create an aab and apk").
+  # APK-only for testing (owner 2026-06-24: "just apk file, no aab").
   # APK is always built+published; 'true' also builds the Play Store .aab.
-  BUILD_AAB: 'true'
+  BUILD_AAB: 'false'
 
 permissions:
   contents: write
