@@ -90,6 +90,45 @@ def patch_manifest() -> None:
     man.write_text(text)
 
 
+def patch_web_auth_callback() -> None:
+    """flutter_web_auth_2 (Drive "Connect Google Drive" OAuth) needs its
+    CallbackActivity registered with an intent-filter for our custom callback
+    scheme (avatokauth://) so the in-app auth tab returns to the app and
+    auto-closes. Without this the OAuth redirect has nowhere to land. v5 also
+    strongly advises an empty taskAffinity on every exported Activity
+    (MainActivity + CallbackActivity). Idempotent."""
+    man = APP / "android/app/src/main/AndroidManifest.xml"
+    if not man.exists():
+        print("!! manifest not found for web-auth callback")
+        return
+    text = man.read_text()
+    # Empty taskAffinity on MainActivity (recommended by flutter_web_auth_2 v5).
+    if 'android:name=".MainActivity"' in text and 'android:taskAffinity=""' not in text:
+        text = text.replace(
+            'android:name=".MainActivity"',
+            'android:name=".MainActivity"\n            android:taskAffinity=""', 1)
+        print('manifest: MainActivity taskAffinity=""')
+    if "com.linusu.flutter_web_auth_2.CallbackActivity" not in text:
+        activity = (
+            '        <activity\n'
+            '            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"\n'
+            '            android:exported="true"\n'
+            '            android:taskAffinity="">\n'
+            '            <intent-filter android:label="flutter_web_auth_2">\n'
+            '                <action android:name="android.intent.action.VIEW" />\n'
+            '                <category android:name="android.intent.category.DEFAULT" />\n'
+            '                <category android:name="android.intent.category.BROWSABLE" />\n'
+            '                <data android:scheme="avatokauth" />\n'
+            '            </intent-filter>\n'
+            '        </activity>\n'
+        )
+        text = text.replace("</application>", activity + "    </application>", 1)
+        print("manifest: flutter_web_auth_2 CallbackActivity (avatokauth) added")
+    else:
+        print("manifest: web-auth CallbackActivity already present")
+    man.write_text(text)
+
+
 def patch_launcher_icon() -> None:
     """Install the AvaTOK launcher icons (legacy + adaptive) from app/android-res/
     into the freshly-generated android res tree (flutter create ships a default
@@ -441,6 +480,7 @@ def patch_signing() -> None:
 
 if __name__ == "__main__":
     patch_manifest()
+    patch_web_auth_callback()
     patch_launcher_icon()
     patch_agp()
     patch_sdks()

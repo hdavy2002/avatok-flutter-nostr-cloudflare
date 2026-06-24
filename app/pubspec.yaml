@@ -84,7 +84,12 @@ dependencies:
   # Google and lands right back in the app, never bounced to the external Chrome
   # app. A raw WebView is NOT used (Google blocks OAuth in embedded webviews).
   # NATIVE plugin — must be validated by a CI APK build (can't compile headless).
-  flutter_web_auth_2: ^3.1.2
+  # Pinned to 5.x: 3.1.2's Android code referenced the removed Flutter v1-embedding
+  # `Registrar` and failed to compile under Flutter 3.41 (CI). v4 dropped v1
+  # embedding; v5 is hardened for the modern Gradle/Kotlin toolchain this app uses.
+  # The custom-scheme (avatokauth) callback needs the plugin's CallbackActivity in
+  # the manifest — injected by tool/postcreate.py (patch_web_auth_callback).
+  flutter_web_auth_2: ^5.0.3
   # Google-only auth: NATIVE Google sign-in (no browser) → Clerk google_one_tap.
   google_sign_in: ^6.2.1
   # Native incoming-call UI (full-screen, lock-screen) + ConnectionService
