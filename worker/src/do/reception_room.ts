@@ -56,6 +56,7 @@ export class ReceptionRoom {
   private pcmOut: Uint8Array[] = []; // 2-way recording (24k PCM16): Ava + caller, interleaved
   private pcmBytes = 0;  // total recording bytes (Ava + caller)
   private avaBytes = 0;  // Ava-only audio bytes (telemetry; distinct from the 2-way total)
+  private callerRecBytes = 0; // caller speech actually captured into the 2-way recording
   private inBytes = 0;   // caller audio bytes received (mic throughput / dead-mic)
   private turnCount = 0; // completed conversational turns
   // Goodbye backstop: end the call after a stretch of total silence (covers the
@@ -232,7 +233,7 @@ export class ReceptionRoom {
     // turn-by-turn recording.
     if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES && callerHasSpeech(bytes)) {
       const up = upsample16to24(bytes);
-      this.pcmOut.push(up); this.pcmBytes += up.byteLength;
+      this.pcmOut.push(up); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
       this.bumpIdle();
     }
     this.sendGem({
@@ -369,7 +370,10 @@ export class ReceptionRoom {
         const key = `receptionist/${init.owner_uid}/${phoneKey}/${init.sid}.wav`;
         await this.env.BLOBS.put(key, wav, { httpMetadata: { contentType: "audio/wav" } });
         recordingUrl = key;
-        this.ev("ava_recept_recording_stored", { bytes: wav.byteLength, ok: true, latency_ms: Date.now() - recT0 });
+        this.ev("ava_recept_recording_stored", {
+          bytes: wav.byteLength, ok: true, latency_ms: Date.now() - recT0,
+          two_way: this.callerRecBytes > 0, ava_rec_bytes: this.avaBytes, caller_rec_bytes: this.callerRecBytes,
+        });
       }
     } catch (e) {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: String(e).slice(0, 200) });
@@ -407,7 +411,8 @@ export class ReceptionRoom {
     this.ev("ava_recept_session_ended", {
       cutoff_reason: reason, duration_s: durationS, got_audio: this.firstAudioSent,
       ava_audio_bytes: this.avaBytes, recording_bytes: this.pcmBytes,
-      caller_audio_bytes: this.inBytes, two_way_recording: this.pcmBytes > this.avaBytes,
+      caller_rec_bytes: this.callerRecBytes,
+      caller_audio_bytes: this.inBytes, two_way_recording: this.callerRecBytes > 0,
       turns: this.turnCount,
       in_chars: this.inText.join("").length,
       out_chars: this.outText.join("").length, has_recording: !!recordingUrl,
