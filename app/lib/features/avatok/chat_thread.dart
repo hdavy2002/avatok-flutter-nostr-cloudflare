@@ -3788,10 +3788,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     // SAME bubble. A hairline divider above it separates the media
                     // area from the text area so the two read as distinct zones.
                     if (_mediaCaptionOf(m).isNotEmpty) ...[
+                      // Full-bleed divider: negative horizontal margin (= the 3px
+                      // media padding) pushes it flush to the bubble's inner edge,
+                      // and a 2px ink rule clearly splits the media + text zones.
                       Container(
-                        margin: const EdgeInsets.fromLTRB(2, 7, 2, 0),
-                        height: 1,
-                        color: Zine.ink.withValues(alpha: 0.15),
+                        margin: const EdgeInsets.fromLTRB(-3, 7, -3, 0),
+                        height: 2,
+                        color: Zine.ink.withValues(alpha: 0.28),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(top: 7, left: 5, right: 5),
