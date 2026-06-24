@@ -3690,8 +3690,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           children: [
             Container(
               margin: EdgeInsets.only(bottom: m.reaction == null ? 8 : 2),
-              padding: hasMedia && (m.media?.kind == MediaKind.image)
-                  ? const EdgeInsets.all(4)
+              // Visual media (image/video/file/pdf cards) hug the bubble edge with
+              // a slim border. Resolve the kind via localBytes too, so a still-
+              // uploading attachment (m.media == null) doesn't fall back to the
+              // wide text padding — that was the broad white border on sent media.
+              // Voice notes stay on the normal padding (they're an inline row).
+              padding: (m.special == null &&
+                      hasMedia &&
+                      (m.media?.kind ??
+                              (m.localBytes != null ? MediaKind.image : MediaKind.file)) !=
+                          MediaKind.audio)
+                  ? const EdgeInsets.all(3)
                   : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               // Ava email-card and GenUI/A2UI bubbles need more room (the design
               // uses ~92%); everything else stays at the standard 76%.
@@ -3775,14 +3784,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   if (m.special != null) _specialContent(m)
                   else if (hasMedia) ...[
                     _mediaContent(m),
-                    // WhatsApp-style caption: the photo's own text, in the SAME
-                    // bubble (no longer a separate message).
-                    if (_mediaCaptionOf(m).isNotEmpty)
+                    // WhatsApp-style caption: the attachment's own text, in the
+                    // SAME bubble. A hairline divider above it separates the media
+                    // area from the text area so the two read as distinct zones.
+                    if (_mediaCaptionOf(m).isNotEmpty) ...[
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(2, 7, 2, 0),
+                        height: 1,
+                        color: Zine.ink.withValues(alpha: 0.15),
+                      ),
                       Padding(
-                        padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
+                        padding: const EdgeInsets.only(top: 7, left: 5, right: 5),
                         child: Text(_mediaCaptionOf(m),
                             style: ZineText.sub(size: 13.5, color: Zine.ink)),
                       ),
+                    ],
                   ]
                   else _textContent(m),
                   Padding(
