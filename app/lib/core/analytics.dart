@@ -27,7 +27,7 @@ import 'feature_flags.dart';
 class Analytics {
   static const _apiKey = 'phc_hmYMsHQEYjQU4bYXNdqA4VZVsfHEIkBQdQL0Kv7FIc5';
   static const _host = 'https://eu.i.posthog.com'; // EU ingestion — must match project region
-  static const appVersion = '0.1.16+17'; // keep in sync with pubspec version
+  static const appVersion = '0.1.17+18'; // keep in sync with pubspec version
   // Git commit SHA stamped at build time (CI: --dart-define=GIT_SHA=<sha>);
   // 'dev' for local/unstamped builds. Sent on every event as `release` so PostHog
   // ties errors/metrics to the exact commit — CI also posts a matching annotation.
