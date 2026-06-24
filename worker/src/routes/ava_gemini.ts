@@ -333,8 +333,12 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
             images: premium ? images : undefined,
             onDelta: (t) => { if (t) send({ delta: t }); },
             onImage: async (prompt, editRef) => {
+              // Tell the client to show a "generating image…" placeholder thumbnail
+              // immediately, then swap in the real image (or clear on failure).
+              send({ image_pending: true });
               const r = await generateAvaImageSync(env, { uid: ctx.uid, prompt, editRef });
               if (r.ok && r.url) { send({ image: r.url }); return "Image created and shown to the user."; }
+              send({ image_failed: true });
               return r.message ?? "I couldn't create that image right now.";
             },
           },

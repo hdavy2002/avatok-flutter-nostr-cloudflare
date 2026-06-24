@@ -47,9 +47,10 @@ import type { MessageScope } from "../lib/ava_kinds";
 // Image generation is metered by the Phase-1 SUBSCRIPTION ALLOWANCE (plans.ts):
 // every tier — including Free — gets a daily image grant (Free 3, Plus 30,
 // Pro 100, Max unlimited), enforced server-side via enforceAllowance("image").
-// It runs on OUR Google key via the AI Gateway; when the daily grant is spent the
-// caller gets an upgrade prompt (no coins involved in Phase 1).
-const IMAGE_MODEL = "gemini-3.1-flash-image-preview"; // Nano Banana 2
+// PROVIDER: OpenRouter's dedicated Image API (POST /api/v1/images) on xAI Grok —
+// the Google Gemini image model hit a hard 429 quota on our free key (owner
+// decision 2026-06-24: switch to OpenRouter). Returns base64 PNG bytes.
+const IMAGE_MODEL = "x-ai/grok-imagine-image-quality";
 
 function inboxOf(env: Env, uid: string) {
   return env.INBOX.get(env.INBOX.idFromName(uid));
@@ -123,54 +124,43 @@ async function endChip(env: Env, uid: string, conv: string, statusId?: string): 
   } catch { /* best-effort */ }
 }
 
-// One Gemini generateContent call → PNG bytes. `editRef` (optional) supplies an
-// existing public image URL to edit ("make it blue") — fetched + sent inline.
+// One OpenRouter Image API call → PNG bytes. `key` is the OPENROUTER_API_KEY.
+// `editRef` (optional) supplies an existing public image URL to edit ("make it
+// blue") — passed as an input_reference for image-to-image. Errors emit
+// `ava_image_error` telemetry so the real provider message is visible in PostHog.
 async function generateImage(env: Env, key: string, prompt: string, uid: string, editRef?: string): Promise<Uint8Array> {
-  const parts: any[] = [{ text: prompt }];
-  // Edit support: pull the source image bytes and pass them inline so the model
-  // edits rather than generates from scratch. Cheap + reuses the public bucket.
+  const body: any = { model: IMAGE_MODEL, prompt, output_format: "png" };
   if (editRef) {
-    try {
-      const src = await fetch(editRef);
-      if (src.ok) {
-        const buf = new Uint8Array(await src.arrayBuffer());
-        const mime = src.headers.get("content-type") || "image/png";
-        let bin = "";
-        for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-        parts.push({ inlineData: { mimeType: mime, data: btoa(bin) } });
-      }
-    } catch { /* fall back to text-only generation */ }
+    body.input_references = [{ type: "image_url", image_url: { url: editRef } }];
   }
-  // Call Google DIRECTLY (the same proven path as affiliate_assets.ts). Image gen
-  // previously routed through the Cloudflare AI Gateway, which failed in prod while
-  // the direct-calling affiliate generator worked — turns errored with "I couldn't
-  // create that image". Direct is reliable; we drop per-user gateway metering (not
-  // needed under the Phase-1 subscription allowance). Errors emit `ava_image_error`
-  // telemetry so the real Gemini message is visible in PostHog, not just logs.
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { responseModalities: ["IMAGE"] },
-      }),
+  const r = await fetch("https://openrouter.ai/api/v1/images", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${key}`,
+      "HTTP-Referer": "https://avatok.ai",
+      "X-Title": "AvaTOK",
     },
-  );
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
+  });
   const j = (await r.json().catch(() => ({}))) as any;
   if (!r.ok) {
-    const msg = String(j?.error?.message ?? "unknown").slice(0, 300);
-    track(env, uid, "ava_image_error", "avaai", { stage: "generate", status: r.status, model: IMAGE_MODEL, error: msg });
-    throw new Error(`gemini ${r.status}: ${msg}`);
+    const msg = String(j?.error?.message ?? j?.error ?? "unknown").slice(0, 300);
+    track(env, uid, "ava_image_error", "avaai", { stage: "generate", status: r.status, model: IMAGE_MODEL, provider: "openrouter", error: msg });
+    throw new Error(`openrouter ${r.status}: ${msg}`);
   }
-  const ps = j?.candidates?.[0]?.content?.parts ?? [];
-  const inline = ps.find((p: any) => p?.inlineData?.data)?.inlineData;
-  if (!inline?.data) {
-    track(env, uid, "ava_image_error", "avaai", { stage: "no_image", model: IMAGE_MODEL });
-    throw new Error("gemini returned no image");
+  // Response: { data: [{ b64_json }] }. Some providers may return a data URL.
+  const item = Array.isArray(j?.data) ? j.data[0] : null;
+  let b64 = String(item?.b64_json ?? "");
+  if (!b64 && typeof item?.url === "string" && item.url.startsWith("data:")) {
+    b64 = item.url.slice(item.url.indexOf(",") + 1);
   }
-  const bin = atob(String(inline.data));
+  if (!b64) {
+    track(env, uid, "ava_image_error", "avaai", { stage: "no_image", model: IMAGE_MODEL, provider: "openrouter" });
+    throw new Error("openrouter returned no image");
+  }
+  const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
@@ -297,9 +287,9 @@ export async function runAvaImage(
     };
   }
 
-  // Image gen runs on OUR Google key (the one place we touch Google), via the AI Gateway.
-  const key = env.GEMINI_API_KEY;
-  if (!key) return { ok: false, reason: "no_gemini_key", message: "Image generation is unavailable right now.", httpStatus: 503 };
+  // Image gen runs on OpenRouter (xAI Grok) via our OPENROUTER_API_KEY.
+  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
+  if (!key) return { ok: false, reason: "no_image_key", message: "Image generation is unavailable right now.", httpStatus: 503 };
 
   // (3) drop the working chip immediately so the thread shows "Ava is generating…".
   const statusId = await postChip(env, uid, conv, "Ava is generating an image…");
@@ -345,7 +335,7 @@ export async function generateAvaImageSync(
     return { ok: false, blocked: true, message: `You've used all ${allow.cap} of today's AI images on your ${PLANS[tier].name} plan — it resets tomorrow.${upText}` };
   }
 
-  const key = env.GEMINI_API_KEY;
+  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return { ok: false, message: "Image generation is unavailable right now." };
 
   try {
