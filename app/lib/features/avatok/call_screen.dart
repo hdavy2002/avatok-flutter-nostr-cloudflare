@@ -707,6 +707,9 @@ class _CallScreenState extends State<CallScreen> {
     final showVideo = _video && _camOn;
     final light = !showVideo; // audio call → zine paper screen
     final failed = _phase == 'declined' || _phase == 'busy' || _phase == 'no-answer';
+    // Reserve the phone's bottom system inset (gesture pill / 3-button nav) so
+    // the call controls always sit ABOVE the device navigation, on every screen.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     final stack = Stack(
       children: [
         if (showVideo) ...[
@@ -796,7 +799,9 @@ class _CallScreenState extends State<CallScreen> {
           left: 0, right: 0, bottom: 0,
           child: Container(
             color: light ? null : Zine.ink.withValues(alpha: 0.45),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
+            // 20px breathing room + the system nav inset (min 16 when there's
+            // no inset, e.g. older 3-button bars that don't report one).
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 20 + (bottomInset > 0 ? bottomInset : 16)),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: () {}),
               const SizedBox(width: 14),

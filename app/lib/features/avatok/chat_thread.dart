@@ -2002,13 +2002,30 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
-  /// Load a message's image bytes (cached or decrypt) and copy it to clipboard.
+  /// Load a message's image bytes and copy it to the clipboard. Handles both a
+  /// real chat photo (cached or decrypt) and an Ava-generated image (fetched
+  /// from its public `media_ref` URL).
   Future<void> _copyImageFromMsg(_Msg m) async {
-    final bytes = m.localBytes ??
-        (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
+    Uint8List? bytes = m.localBytes;
+    String? mime = m.media?.contentType;
+    if (bytes == null && m.media != null) {
+      bytes = await MediaService.downloadAndDecrypt(m.media!);
+    }
+    if (bytes == null) {
+      final url = _imageRefOf(m);
+      if (url.isNotEmpty) {
+        try {
+          final res = await http.get(Uri.parse(url));
+          if (res.statusCode == 200) {
+            bytes = res.bodyBytes;
+            mime = res.headers['content-type'] ?? mime;
+          }
+        } catch (_) {}
+      }
+    }
     if (bytes == null) { _capNote('Could not load this image.'); return; }
-    m.localBytes = bytes;
-    await _copyImageBytes(bytes, mime: m.media?.contentType);
+    if (m.media != null) m.localBytes = bytes; // cache real chat media only
+    await _copyImageBytes(bytes, mime: mime);
   }
 
   /// Download the FULL-RESOLUTION image (the stored public URL is already the
@@ -2551,43 +2568,73 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  /// The image URL carried by an Ava-generated image bubble (envelope
+  /// `media_ref`), or '' if this message isn't one. Lets "Copy image" / viewer
+  /// work on Ava images too, which have no `m.media`.
+  String _imageRefOf(_Msg m) => (m.extra?['media_ref'] ?? '').toString();
+
+  /// True when the message shows an image — a real chat photo OR an Ava image.
+  bool _msgHasImage(_Msg m) =>
+      m.media?.kind == MediaKind.image || _imageRefOf(m).isNotEmpty;
+
   // ---- bubble long-press actions ----
   void _onBubbleLongPress(_Msg m) {
     HapticFeedback.mediumImpact();
+    final hasImage = _msgHasImage(m);
     showModalBottomSheet(
       context: context,
       backgroundColor: Zine.paper,
+      // Tall menus must be able to grow + scroll; the default sheet clips its
+      // child. isScrollControlled lets it size up, the ListView scrolls, and
+      // SafeArea keeps the last items clear of the phone's nav bar.
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-            for (final e in ['❤️', '👍', '😂', '😮', '😢', '👏'])
-              GestureDetector(
-                onTap: () { Navigator.pop(ctx); _react(m, e); },
-                child: Text(e, style: const TextStyle(fontSize: 28)),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            // Fixed header: quick reactions.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                for (final e in ['❤️', '👍', '😂', '😮', '😢', '👏'])
+                  GestureDetector(
+                    onTap: () { Navigator.pop(ctx); _react(m, e); },
+                    child: Text(e, style: const TextStyle(fontSize: 28)),
+                  ),
+              ]),
+            ),
+            const Divider(height: 24),
+            // Scrollable action list — grows with the number of items and
+            // scrolls when it can't fit, so nothing hides off-screen.
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: 8),
+                children: [
+                  _action(ctx, PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), 'Reply', () => setState(() => _replyTo = m)),
+                  if (m.text.trim().isNotEmpty && m.special != 'ava_status')
+                    _action(ctx, PhosphorIcons.copy(PhosphorIconsStyle.bold),
+                        m.media != null ? 'Copy caption' : 'Copy text', () => _copyText(m)),
+                  // Copy the actual IMAGE to the clipboard (paste into any app).
+                  if (hasImage)
+                    _action(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Copy image',
+                        () => _copyImageFromMsg(m)),
+                  _action(ctx, PhosphorIcons.pushPin(PhosphorIconsStyle.bold), 'Pin message', () => _pinMessage(m)),
+                  _action(ctx, PhosphorIcons.star(m.starred ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
+                      m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
+                  if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
+                    _action(ctx, PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', () => _startEdit(m)),
+                  _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
+                  if (m.media != null)
+                    _action(ctx, PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), 'Save to my AvaTOK Drive', () => _saveMediaToDrive(m)),
+                  _action(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), 'Delete for me', () => _deleteForMe(m)),
+                  _action(ctx, PhosphorIcons.trashSimple(PhosphorIconsStyle.bold), 'Delete for everyone', () => _deleteForEveryone(m), danger: true),
+                ],
               ),
+            ),
           ]),
-          const Divider(height: 24),
-          _action(ctx, PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), 'Reply', () => setState(() => _replyTo = m)),
-          if (m.text.trim().isNotEmpty && m.special != 'ava_status')
-            _action(ctx, PhosphorIcons.copy(PhosphorIconsStyle.bold),
-                m.media != null ? 'Copy caption' : 'Copy text', () => _copyText(m)),
-          // Copy the actual IMAGE to the clipboard (paste into any app).
-          if (m.media?.kind == MediaKind.image)
-            _action(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Copy image',
-                () => _copyImageFromMsg(m)),
-          _action(ctx, PhosphorIcons.pushPin(PhosphorIconsStyle.bold), 'Pin message', () => _pinMessage(m)),
-          _action(ctx, PhosphorIcons.star(m.starred ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
-              m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
-          if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
-            _action(ctx, PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', () => _startEdit(m)),
-          _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
-          if (m.media != null)
-            _action(ctx, PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), 'Save to my AvaTOK Drive', () => _saveMediaToDrive(m)),
-          _action(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), 'Delete for me', () => _deleteForMe(m)),
-          _action(ctx, PhosphorIcons.trashSimple(PhosphorIconsStyle.bold), 'Delete for everyone', () => _deleteForEveryone(m), danger: true),
-        ]),
+        ),
       ),
     );
   }
