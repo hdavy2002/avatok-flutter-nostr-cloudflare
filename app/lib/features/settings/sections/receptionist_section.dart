@@ -98,7 +98,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   final _greeting = TextEditingController();       // v2: exact opening line
   final _custom = TextEditingController();         // v2: advanced behaviour prompt
   final _statusCustom = TextEditingController();   // v2: custom availability text
-  String _voice = 'Puck';
+  String _voice = 'Aoede';
   String _lang = '';                               // v2: '' = auto-detect
   String _statusPreset = '';                       // v2
   bool _answerAll = false;                          // v2: Mode B
@@ -151,7 +151,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         _enabled = s.enabled;
         _instr.text = s.instructions;
         _name.text = s.displayName;
-        _voice = s.voiceName.isEmpty ? 'Puck' : s.voiceName;
+        _voice = s.voiceName.isEmpty ? 'Aoede' : s.voiceName;
         _premium = s.premium;
         _hasKb = s.hasKb;
         // v2
@@ -177,8 +177,8 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     _enabled = m['enabled'] == true;
     _instr.text = (m['instructions'] ?? '').toString();
     _name.text = (m['displayName'] ?? '').toString();
-    final v = (m['voice'] ?? 'Puck').toString();
-    _voice = v.isEmpty ? 'Puck' : v;
+    final v = (m['voice'] ?? 'Aoede').toString();
+    _voice = v.isEmpty ? 'Aoede' : v;
     _premium = m['premium'] == true;
     _hasKb = m['hasKb'] == true;
     _persona.text = (m['persona'] ?? '').toString();
@@ -477,7 +477,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                         for (final VoiceOption v in kFallbackVoices)
                           DropdownMenuItem(value: v.name, child: Text(v.label, style: ZineText.sub(size: 12.5))),
                       ],
-                      onChanged: (v) => setState(() => _voice = v ?? 'Puck'),
+                      onChanged: (v) => setState(() => _voice = v ?? 'Aoede'),
                     ),
                   ),
                 ]),
@@ -551,5 +551,5 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
 
   // Guard against a saved voice that isn't in the picker list.
   String _voiceValue() =>
-      kFallbackVoices.any((v) => v.name == _voice) ? _voice : 'Puck';
+      kFallbackVoices.any((v) => v.name == _voice) ? _voice : 'Aoede';
 }
