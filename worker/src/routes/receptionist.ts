@@ -400,7 +400,9 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const sid = crypto.randomUUID();
   const rtcToken = crypto.randomUUID();
   const now = Date.now();
-  const callerPhone = b.caller_phone ? normalizePhone(String(b.caller_phone)) : null;
+  // Caller's number for the owner's voicemail label — client value, else the
+  // caller's own number resolved server-side (so the card isn't "Unknown caller").
+  const callerPhone = (b.caller_phone ? normalizePhone(String(b.caller_phone)) : null) || caller.phone || null;
   // Caller name for Ava's "Hi <name>…" greeting: prefer a client-sent name, else
   // resolve the caller's own name SERVER-SIDE from Clerk (so no app change needed).
   const callerName = (b.caller_name == null ? null : String(b.caller_name).slice(0, 80))

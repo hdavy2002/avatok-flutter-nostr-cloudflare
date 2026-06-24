@@ -130,13 +130,15 @@ export class ReceptionRoom {
   // -------------------------------------------------------------------------
   private geminiWsUrl(): { url: string; protocols: string[] } {
     const key = this.env.GEMINI_API_KEY!;
-    // DIRECT to Gemini Live — the AI Gateway hop is intentionally removed
-    // (owner decision 2026-06-24): it added latency AND its authenticated
-    // gateway rejected the unauthenticated WS with HTTP 401 (AI_GATEWAY_TOKEN
-    // unset), which silently broke every receptionist call. Per-call usage is
-    // now observed via our own ava_recept_* telemetry instead of gateway logs.
+    // DIRECT to Gemini Live — no AI Gateway hop (owner decision 2026-06-24).
+    // CRITICAL: a Cloudflare Worker opens an OUTBOUND WebSocket via fetch() with
+    // an `Upgrade: websocket` header, and the runtime ONLY accepts the http(s)
+    // scheme — a `wss://` URL throws "Fetch API cannot load: wss://…" and the
+    // connection never opens (this is exactly why Ava produced no audio). So we
+    // use `https://`; Cloudflare performs the WS handshake and returns
+    // resp.webSocket. Per-call usage is observed via our ava_recept_* telemetry.
     return {
-      url: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(key)}`,
+      url: `https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(key)}`,
       protocols: [],
     };
   }
@@ -435,10 +437,10 @@ export class ReceptionRoom {
     // (phone-only callers have no inbox). `{t:'text'}` renders as a plain bubble.
     if (init.caller_uid) {
       const ownerLabel = (init.owner_name || "your contact").trim();
-      const hi = init.caller_name ? ` ${init.caller_name}` : "";
+      const greet = init.caller_name ? `Hi ${init.caller_name}` : "Hi there";
       const ackText = summary
-        ? `Hi${hi} — this is ${ownerLabel}'s assistant. I've passed your message on to ${ownerLabel}${summary.reason ? ` (“${summary.reason}”)` : ""}. They'll get back to you soon.`
-        : `Hi${hi} — this is ${ownerLabel}'s assistant. I've taken your message and ${ownerLabel} will get back to you soon.`;
+        ? `${greet} — this is ${ownerLabel}'s assistant. I've passed your message on to ${ownerLabel}${summary.reason ? ` (“${summary.reason}”)` : ""}. They'll get back to you soon.`
+        : `${greet} — this is ${ownerLabel}'s assistant. I've taken your message and ${ownerLabel} will get back to you soon.`;
       try {
         const ackStub = this.env.INBOX.get(this.env.INBOX.idFromName(init.caller_uid));
         await ackStub.fetch("https://inbox/append", {
