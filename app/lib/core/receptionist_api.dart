@@ -132,7 +132,11 @@ class ReceptionistApi {
   // and the server re-checks the real daily allowance on /start — so a stale
   // "available" can never overspend, it just gets a 402 and falls back to no-answer.
   static final Map<String, ({Map<String, dynamic>? value, int expiry})> _cfgCache = {};
-  static const int _cfgTtlMs = 3 * 60 * 1000; // 3 min
+  static const int _cfgTtlMs = 3 * 60 * 1000; // 3 min — cache "available" results
+  // "unavailable" is cached only briefly: a temporary off-state (daily allowance
+  // just topped up, a transient blip) must clear within seconds, not block calls
+  // for minutes. (This is what made a topped-up cap still say "No answer".)
+  static const int _cfgNegTtlMs = 20 * 1000; // 20 s
 
   /// Drop the cached availability for a contact (e.g. after a failed hand-off),
   /// forcing a fresh probe on the next call.
@@ -148,12 +152,14 @@ class ReceptionistApi {
     try {
       final r = await ApiAuth.getSigned('$_base/config?to=$toUid');
       if (r.statusCode != 200) {
-        _cfgCache[toUid] = (value: null, expiry: now + _cfgTtlMs);
+        _cfgCache[toUid] = (value: null, expiry: now + _cfgNegTtlMs);
         return null;
       }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
-      final result = j['available'] == true ? j : null;
-      _cfgCache[toUid] = (value: result, expiry: now + _cfgTtlMs);
+      final available = j['available'] == true;
+      final result = available ? j : null;
+      // Long cache for "available", short for "unavailable".
+      _cfgCache[toUid] = (value: result, expiry: now + (available ? _cfgTtlMs : _cfgNegTtlMs));
       return result;
     } catch (_) {
       return null; // transient error — don't poison the cache
