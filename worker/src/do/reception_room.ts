@@ -478,7 +478,7 @@ export class ReceptionRoom {
     // (Humphrey) confirming the message was taken — with the SAME push + unread
     // badge as any incoming chat. Only when the caller is a known AvaTOK user
     // (phone-only callers have no inbox). `{t:'text'}` renders as a plain bubble.
-    if (init.caller_uid && hadConversation) {
+    if (init.caller_uid && init.caller_uid !== init.owner_uid && hadConversation) {
       const ownerLabel = (init.owner_name || "your contact").trim();
       const greet = init.caller_name ? `Hi ${init.caller_name}` : "Hi there";
       const ackText = summary

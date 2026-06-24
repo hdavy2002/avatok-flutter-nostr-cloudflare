@@ -158,9 +158,9 @@ async function refreshSettingsCache(env: Env, uid: string): Promise<void> {
 // ---------------------------------------------------------------------------
 export function composeReceptionistPrompt(
   s: SettingsRow,
-  ctx?: { callerName?: string | null; activationMode?: string | null },
+  ctx?: { callerName?: string | null; activationMode?: string | null; ownerName?: string | null },
 ): string {
-  const who = (s.display_name || "the person you're assisting").trim();
+  const who = ((ctx?.ownerName || s.display_name || "the person you're assisting")).trim();
   const me = (s.persona_name || "Ava").trim();          // v2: Ava's own name
   const instr = (s.instructions_text || "Take a message and let them know I'm unavailable right now.").trim();
   const greeting = (s.greeting_text || "").trim();       // v2: exact opening line
@@ -421,6 +421,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // resolve the caller's own name SERVER-SIDE from Clerk (so no app change needed).
   const callerName = (b.caller_name == null ? null : String(b.caller_name).slice(0, 80))
     || await nameFor(env, ctx.uid).catch(() => null);
+  // Owner's name for the greeting ("<owner> is travelling…") and the caller's ack
+  // ("this is <owner>'s assistant"): the settings display_name, else resolved from
+  // the owner's profile/Clerk — so it's never the awkward fallback "your contact".
+  const ownerName = (s.display_name || "").trim() || (await nameFor(env, to).catch(() => null)) || null;
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   // v2: how the call was handed off. Standard 2-button incoming UI, so the
   // triggers are: rings (no answer), first_ring (answer-all), decline (callee
@@ -447,8 +451,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     file_search_store: s.file_search_store || null,
     // Caller-aware + status-aware system prompt: "Hi <caller>, <owner> is
     // travelling/busy. Can I take a message?" — composed server-side, locked.
-    system_prompt: composeReceptionistPrompt(s, { callerName, activationMode }),
-    owner_name: (s.display_name || "").trim() || null,
+    system_prompt: composeReceptionistPrompt(s, { callerName, activationMode, ownerName }),
+    owner_name: ownerName,
     model: (env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT,
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
     started_at: now,
