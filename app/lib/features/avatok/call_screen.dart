@@ -167,6 +167,11 @@ class _CallScreenState extends State<CallScreen> {
     }
     // Server-relayed call status (declined / busy / decline-to-Ava) for this call.
     _statusSub = callStatusBus.stream.listen((e) {
+      // Once Ava has taken over, ignore call-status pushes — including the
+      // 'cancel' WE sent to stop the callee's ring, which echoes back here and
+      // would otherwise end the live receptionist session ~2s in (telemetry
+      // showed call_ended reason='cancel' killing Ava mid-greeting).
+      if (_receptionistActive) return;
       if (e.callId == widget.room && mounted && !_connected) {
         // v2 Mode C: the callee hit Decline with "let Ava take calls I decline"
         // on → 'decline_ava'. Hand off to the receptionist instead of ending.
