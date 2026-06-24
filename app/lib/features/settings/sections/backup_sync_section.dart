@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/analytics.dart';
+import '../../../core/ava_log.dart';
 import '../../../core/drive_service.dart';
 import '../../../core/paid_feature.dart';
 import '../../../core/ui/zine.dart';
@@ -79,26 +83,72 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
       _driveConnected = st.connected;
       _folderReady = folderReady;
     });
+    // Section health (was a telemetry blind spot): how many users land here
+    // connected, and whether the backup folder is ready — queryable per email.
+    Analytics.capture('backup_drive_status', {
+      'connected': st.connected,
+      'folder_ready': folderReady,
+    });
   }
 
-  /// Open Google's consent screen to connect Drive (reuses the gcal/drive.file
-  /// OAuth). After the user authorizes and returns, they tap "I've connected".
+  /// Connect Drive via an IN-APP auth sheet (iOS ASWebAuthenticationSession /
+  /// Android Custom Tabs) that AUTO-CLOSES on the avatokauth:// callback — the
+  /// user authorizes Google and lands right back here, never bounced to the
+  /// external Chrome app. connectUrl() already requests ?return=app so the
+  /// Worker redirects to the callback scheme. Same pattern as AvaStorage.
   Future<void> _connectDrive() async {
     if (_connecting) return;
     setState(() => _connecting = true);
-    try {
-      final url = await DriveService.I.connectUrl();
-      if (url != null && url.isNotEmpty) {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        _snack('Authorize Google Drive, then come back and tap "I\'ve connected".');
-      } else {
-        _snack("Couldn't start Google Drive — try again in a moment.");
+    final sw = Stopwatch()..start();
+    Analytics.capture('backup_drive_connect_started', const {});
+    final url = await DriveService.I.connectUrl();
+    if (url == null || url.isEmpty) {
+      Analytics.capture('backup_drive_connect_url_missing', {'after_ms': sw.elapsedMilliseconds});
+      Analytics.error(
+          domain: 'storage', code: 'connect_url_null', screen: 'backup_sync', action: 'connect');
+      _snack("Couldn't start Google Drive — try again in a moment.");
+    } else {
+      Analytics.capture('backup_drive_connect_opened', const {'mode': 'web_auth'});
+      try {
+        await FlutterWebAuth2.authenticate(url: url, callbackUrlScheme: 'avatokauth');
+        Analytics.capture('backup_drive_connect_returned', const {'mode': 'web_auth'});
+        await _refreshDrive();
+        final connected = _driveConnected == true;
+        Analytics.capture(connected ? 'backup_drive_connected' : 'backup_drive_connect_unverified',
+            {'via': 'web_auth', 'connect_ms': sw.elapsedMilliseconds});
+        if (connected) _snack('Google Drive connected.');
+      } on PlatformException catch (e) {
+        if (e.code == 'CANCELED' || e.code == 'CANCELLED') {
+          Analytics.capture('backup_drive_connect_cancelled',
+              {'code': e.code, 'after_ms': sw.elapsedMilliseconds});
+        } else {
+          AvaLog.I.log('drive', 'backup web auth failed (${e.code}); falling back to tab');
+          Analytics.error(
+              domain: 'storage', code: 'web_auth_failed', message: e.code,
+              screen: 'backup_sync', action: 'connect');
+          try {
+            final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+            Analytics.capture('backup_drive_connect_fallback_opened',
+                {'mode': 'in_app_tab', 'opened': opened});
+            _snack(opened
+                ? 'Authorize Google Drive, then tap "I\'ve connected".'
+                : 'Could not open Google Drive.');
+          } catch (e2) {
+            Analytics.error(
+                domain: 'storage', code: 'fallback_launch_failed', message: e2.toString(),
+                screen: 'backup_sync', action: 'connect');
+            _snack('Could not open Google Drive.');
+          }
+        }
+      } catch (e) {
+        AvaLog.I.log('drive', 'backup web auth error: $e');
+        Analytics.error(
+            domain: 'storage', code: 'web_auth_error', message: e.toString(),
+            screen: 'backup_sync', action: 'connect');
+        _snack('Could not open Google Drive.');
       }
-    } catch (_) {
-      _snack('Could not open Google Drive.');
-    } finally {
-      if (mounted) setState(() => _connecting = false);
     }
+    if (mounted) setState(() => _connecting = false);
   }
 
   void _snack(String msg) {
@@ -106,11 +156,15 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _run(Future<BackupResult> Function() op, String okMsg) async {
+  Future<void> _run(Future<BackupResult> Function() op, String okMsg, {String name = ''}) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
       final r = await op();
+      // Result of each backup/restore/sync op so a failing lane is queryable
+      // per user (e.g. premium_required / no_token / network).
+      Analytics.capture('backup_op_result',
+          {'op': name, 'ok': r.ok, if (r.reason != null) 'reason': r.reason!});
       if (r.ok) {
         _snack(okMsg);
       } else {
@@ -223,7 +277,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
           trailingIcon: false,
           loading: _busy,
-          onPressed: _busy ? null : () => _run(BackupService.I.backupToDrive, 'Backed up to Drive.'),
+          onPressed: _busy ? null : () => _run(BackupService.I.backupToDrive, 'Backed up to Drive.', name: 'drive_backup'),
         ),
       ),
       const SizedBox(width: 10),
@@ -237,7 +291,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           trailingIcon: false,
           onPressed: _busy
               ? null
-              : () => _run(BackupService.I.restoreFromDrive, 'Restored from Drive. Reopen the app.'),
+              : () => _run(BackupService.I.restoreFromDrive, 'Restored from Drive. Reopen the app.', name: 'drive_restore'),
         ),
       ),
     ]);
@@ -269,7 +323,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           Expanded(
             child: PaidFeature(
               actionLabel: 'Sync across devices',
-              onRun: () => _run(BackupService.I.syncToR2, 'Synced to your other devices.'),
+              onRun: () => _run(BackupService.I.syncToR2, 'Synced to your other devices.', name: 'r2_sync'),
               child: _pillLabel('Sync now', PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue),
             ),
           ),
@@ -280,7 +334,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           Expanded(
             child: PaidFeature(
               actionLabel: 'Restore from sync',
-              onRun: () => _run(BackupService.I.restoreFromR2, 'Restored from sync. Reopen the app.'),
+              onRun: () => _run(BackupService.I.restoreFromR2, 'Restored from sync. Reopen the app.', name: 'r2_restore'),
               child: _pillLabel('Restore', PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold), Zine.card),
             ),
           ),
