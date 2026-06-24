@@ -371,6 +371,40 @@ async function recordFlag(
   } catch { /* best-effort; a failed log must never block the warning */ }
 }
 
+// After how many flagged (sev≥2) messages from the SAME sender in a chat Ava
+// auto-blocks them from messaging the at-risk user. The child was warned on each.
+const BLOCK_THRESHOLD = 3;
+
+/** Count recent (30d) sev≥2 flags raised for `uid` against sender `peer` in `conv`. */
+async function recentFlagCount(env: Env, uid: string, conv: string, peer: string): Promise<number> {
+  try {
+    const since = Date.now() - 30 * 86_400_000;
+    const r = await env.DB_META
+      .prepare("SELECT COUNT(*) AS n FROM ava_guardian_flags WHERE uid=?1 AND conv=?2 AND peer=?3 AND severity>=2 AND created_at>=?4")
+      .bind(uid, conv, peer, since).first<{ n: number }>();
+    return Number(r?.n ?? 0);
+  } catch { return 0; }
+}
+
+/** Block `sender` from messaging `recipient` (recipient blocks sender → messaging
+ *  gate `blockersOf` rejects all future sends). Same `blocks` table social.ts uses. */
+async function blockSender(env: Env, recipient: string, sender: string): Promise<void> {
+  try {
+    await env.DB_META
+      .prepare("INSERT OR IGNORE INTO blocks (uid, blocked_npub, created_at) VALUES (?1,?2,?3)")
+      .bind(recipient, sender, Date.now()).run();
+  } catch { /* best-effort */ }
+}
+
+/** Alert the at-risk user's linked parent/guardian (push) on a serious flag. */
+async function notifyParentAlert(env: Env, childUid: string, preview: string): Promise<void> {
+  try {
+    const parent = await parentOf(env, childUid);
+    if (!parent) return;
+    await env.Q_PUSH.send({ kind: "notify", to: parent, fromName: "Ava Guardian", preview, ts: Date.now() });
+  } catch { /* best-effort */ }
+}
+
 function warningText(category: GuardianCategory, severity: number): string {
   switch (category) {
     case "grooming":
@@ -406,7 +440,10 @@ function mapThreatCategory(c: string): GuardianCategory {
 
 async function warnPrivately(
   env: Env,
-  args: { uid: string; conv: string; category: GuardianCategory; severity: number; peer?: string | null; advisory?: string },
+  args: {
+    uid: string; conv: string; category: GuardianCategory; severity: number; peer?: string | null;
+    advisory?: string; flaggedClientId?: string; flaggedCreatedAt?: number;
+  },
 ): Promise<boolean> {
   const text = (args.advisory && args.advisory.trim()) ? args.advisory.trim() : warningText(args.category, args.severity);
   const res = await postAvaMessage(env, {
@@ -415,7 +452,13 @@ async function warnPrivately(
     text,
     private: true,                 // ava_private to this uid ONLY — never the other party
     source: "guardian",
-    meta: { guardian: true, category: args.category, severity: args.severity },
+    meta: {
+      guardian: true, category: args.category, severity: args.severity,
+      red_flag: true,              // client paints this warning + the flagged message red
+      flagged_client_id: args.flaggedClientId || null,
+      flagged_created_at: args.flaggedCreatedAt || null,
+      peer: args.peer ?? null,
+    },
   });
   return res.ok;
 }
@@ -464,6 +507,10 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
   const senderUid = args.senderUid || String(args.message?.sender ?? "");
   const kind = String(args.message?.kind ?? "text");
   const mediaRef = args.message?.media_ref ? String(args.message.media_ref) : "";
+  // The offending message's client id + timestamp → the warning carries these so
+  // the client can paint THAT message red (an obvious red flag for the child).
+  const flaggedClientId = String(args.message?.client_id ?? "");
+  const flaggedCreatedAt = Number(args.message?.created_at ?? 0);
 
   if (!conv || !senderUid) return { scanned: false, flagged: 0, warned: 0, reason: "no_conv" };
   if (kind === "ava" || kind === "ava_private" || kind === "ava_status") {
@@ -563,14 +610,39 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
 
     // Warn privately for the harmful categories. Spam is logged but only warned
     // at severity≥2 (avoid nagging). Always private → the sender never sees it.
+    // The warning carries the offending message's id so the client paints it red.
     const shouldWarn = category === "grooming" || category === "scam" || category === "deepfake"
       || (category === "spam" && severity >= 2);
-    if (shouldWarn && (await warnPrivately(env, { uid, conv, category, severity, peer: senderUid, advisory }))) {
+    if (shouldWarn && (await warnPrivately(env, {
+      uid, conv, category, severity, peer: senderUid, advisory, flaggedClientId, flaggedCreatedAt,
+    }))) {
       warned++;
       void track(env, uid, "guardian_warning_sent", "guardian", {
         conv, is_group: isGroup, category, severity, sender_uid: senderUid, recipient_uid: uid,
         country: geo.country ?? null, ip: geo.ip ?? null,
       });
+    }
+
+    // ESCALATION — repeated predatory messages from the SAME sender → auto-block
+    // them from messaging this user (the child was warned each time), and alert a
+    // linked parent. Only for the serious predatory/scam categories.
+    if (category === "grooming" || category === "scam") {
+      const count = await recentFlagCount(env, uid, conv, senderUid);
+      if (count >= BLOCK_THRESHOLD) {
+        await blockSender(env, uid, senderUid);
+        void track(env, uid, "guardian_sender_blocked", "guardian", {
+          conv, is_group: isGroup, sender_uid: senderUid, recipient_uid: uid, flags: count, category,
+          country: geo.country ?? null, ip: geo.ip ?? null,
+        });
+        await warnPrivately(env, {
+          uid, conv, category, severity,
+          advisory: "🛡️ For your safety, Ava has blocked this person from messaging you. If this is someone you know, please talk to a parent or trusted adult.",
+        });
+        void notifyParentAlert(env, uid, "Ava blocked someone who was sending unsafe messages to your child.");
+      } else if (severity >= 2) {
+        // Serious single flag → alert the linked parent immediately too.
+        void notifyParentAlert(env, uid, `Ava flagged a ${category} message sent to your child.`);
+      }
     }
   }));
 

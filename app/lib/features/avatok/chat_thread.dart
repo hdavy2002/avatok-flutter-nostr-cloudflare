@@ -180,6 +180,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Identity? _meId;
   // Shield watchdog (Ava guardian) state for THIS chat. Green shield = on.
   GuardianPrefs _guardian = GuardianPrefs.off;
+  // created_at (ms) of incoming messages Ava flagged as unsafe → painted RED so
+  // they're an obvious red flag to the child. Populated from guardian warnings.
+  final Set<int> _flaggedTs = <int>{};
   int _disappearSecs = 0; // per-chat disappearing timer (0 = off)
   int _peerDeliveredTs = 0;
   bool _peerOnline = false;
@@ -497,6 +500,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
           starred: _starred.contains(m.rumorId),
           senderLabel: m.mine ? null : _shortPub(m.senderPub)));
+      _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     // Full-thread RAG: index a member's LIVE group text into my own store.
@@ -599,6 +603,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           forwarded: forwarded, expireAt: exp, special: special, extra: extra,
           sent: m.mine, // my own messages reaching here are already on the relay
           starred: _starred.contains(m.rumorId)));
+      _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     // Full-thread RAG: index a peer's LIVE text into my own store (not seeded
@@ -3974,6 +3979,63 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]),
       );
 
+  // When a guardian warning arrives, remember WHICH message it flagged (by the
+  // shared created_at ms) so that incoming message gets painted red.
+  void _noteGuardianFlag(String? special, Map<String, dynamic>? extra) {
+    if (special != 'ava_private' || extra == null) return;
+    final meta = extra['meta'];
+    if (meta is Map && (meta['guardian'] == true || meta['red_flag'] == true)) {
+      final ts = meta['flagged_created_at'];
+      if (ts is num && ts > 0) _flaggedTs.add(ts.toInt());
+    }
+  }
+
+  // A guardian SAFETY ALERT (private warning Ava posts to the at-risk user).
+  bool _isGuardianWarn(_Msg m) {
+    if (m.special != 'ava_private') return false;
+    final meta = m.extra?['meta'];
+    return (meta is Map && (meta['guardian'] == true || meta['red_flag'] == true)) ||
+        m.extra?['source'] == 'guardian';
+  }
+
+  // RED bubble: white text, shield icon — used for the safety alert AND for an
+  // incoming message Ava flagged. Deliberately self-contained so it never touches
+  // the normal media/special bubble path.
+  Widget _redFlagBubble(_Msg m, String label) {
+    return GestureDetector(
+      onLongPress: () => _onBubbleLongPress(m),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
+          decoration: BoxDecoration(
+            color: const Color(0xFFD32F2F), // strong red — unmistakable danger
+            border: Border.all(color: Zine.ink, width: 2),
+            boxShadow: Zine.shadowXs,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16), topRight: Radius.circular(16),
+              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 14, color: Colors.white),
+              const SizedBox(width: 5),
+              Text(label, style: const TextStyle(color: Colors.white, fontSize: 9.5,
+                  fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+            ]),
+            const SizedBox(height: 4),
+            Text(m.text, style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.3,
+                fontWeight: FontWeight.w500)),
+            const SizedBox(height: 3),
+            Text(m.time, style: const TextStyle(color: Colors.white70, fontSize: 10)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _bubble(_Msg m) {
     // Ava "working…" chip (kind 'ava_status') — inline, not a bubble. A 'phase:end'
     // frame is the CLOSE signal (e.g. image done/failed) — it must collapse the
@@ -3981,6 +4043,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (m.special == 'ava_status') {
       if ((m.extra?['phase'] ?? '').toString() == 'end') return const SizedBox.shrink();
       return _avaStatusChip(m);
+    }
+    // RED FLAGS — Ava's safety alert, and any incoming message Ava flagged as
+    // unsafe. Both render red/white so the danger is obvious to the child.
+    if (_isGuardianWarn(m)) return _redFlagBubble(m, 'AVA · SAFETY ALERT');
+    if (!m.me && m.special == null && m.media == null && m.localBytes == null && _flaggedTs.contains(m.ts)) {
+      return _redFlagBubble(m, '⚠ FLAGGED BY AVA — DO NOT TRUST');
     }
     final hasMedia = m.media != null || m.localBytes != null;
     // Ava bubbles always render on the LEFT (she is a participant, not "me"),
