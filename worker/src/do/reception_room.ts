@@ -53,10 +53,15 @@ export class ReceptionRoom {
 
   private inText: string[] = [];   // caller transcript
   private outText: string[] = [];  // Ava transcript
-  private pcmOut: Uint8Array[] = []; // Ava audio (24k PCM16) → WAV recording
-  private pcmBytes = 0;
+  private pcmOut: Uint8Array[] = []; // 2-way recording (24k PCM16): Ava + caller, interleaved
+  private pcmBytes = 0;  // total recording bytes (Ava + caller)
+  private avaBytes = 0;  // Ava-only audio bytes (telemetry; distinct from the 2-way total)
   private inBytes = 0;   // caller audio bytes received (mic throughput / dead-mic)
   private turnCount = 0; // completed conversational turns
+  // Goodbye backstop: end the call after a stretch of total silence (covers the
+  // case where Ava says "have a great day" but the model doesn't hang up).
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private static IDLE_MS = 10_000;
   private static MAX_REC_BYTES = 12 * 1024 * 1024; // safety cap (~4 min @24k)
 
   constructor(state: DurableObjectState, env: Env) {
@@ -183,9 +188,18 @@ export class ReceptionRoom {
       inputAudioTranscription: {},
       outputAudioTranscription: {},
     };
+    // Tools: an end_call function so Ava can hang up after her goodbye, plus the
+    // owner's knowledge base (File Search) when configured.
+    const tools: any[] = [{
+      functionDeclarations: [{
+        name: "end_call",
+        description: "End the phone call. Invoke this right AFTER you have said goodbye and the caller has nothing more to add.",
+      }],
+    }];
     if (init.file_search_store) {
-      setup.tools = [{ fileSearch: { fileSearchStoreNames: [init.file_search_store] } }];
+      tools.push({ fileSearch: { fileSearchStoreNames: [init.file_search_store] } });
     }
+    setup.tools = tools;
     this.sendGem({ setup });
     this.ev("ava_recept_session_started", {
       setup_latency_ms: Date.now() - this.startedAt, has_kb: !!init.file_search_store,
@@ -200,6 +214,7 @@ export class ReceptionRoom {
         turnComplete: true,
       },
     });
+    this.bumpIdle(); // arm the silence backstop
   }
 
   // caller → Gemini : binary = PCM16 16k; (control JSON tolerated but ignored)
@@ -210,9 +225,26 @@ export class ReceptionRoom {
     const bytes = d instanceof ArrayBuffer ? new Uint8Array(d) : null;
     if (!bytes) return;
     this.inBytes += bytes.byteLength; // server-truth mic throughput (vs client mic_bytes)
+    // 2-WAY RECORDING: capture the CALLER's side too, so the voicemail isn't just
+    // Ava. Only frames with real speech energy (skip silence/echo gaps so Ava's
+    // turns aren't fragmented), upsampled 16k→24k to match Ava's stream. Arrival
+    // order ≈ turn order (Ava bursts, then caller replies), giving a clean
+    // turn-by-turn recording.
+    if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES && callerHasSpeech(bytes)) {
+      const up = upsample16to24(bytes);
+      this.pcmOut.push(up); this.pcmBytes += up.byteLength;
+      this.bumpIdle();
+    }
     this.sendGem({
       realtimeInput: { audio: { data: b64encode(bytes), mimeType: "audio/pcm;rate=16000" } },
     });
+  }
+
+  /** Reset the silence backstop on any real audio activity (either side). */
+  private bumpIdle(): void {
+    if (this.finalized) return;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => this.finalize("inactivity"), ReceptionRoom.IDLE_MS);
   }
 
   // Gemini → caller : audio out (binary) + transcript accumulation
@@ -223,6 +255,17 @@ export class ReceptionRoom {
       msg = typeof ev.data === "string" ? JSON.parse(ev.data)
         : JSON.parse(new TextDecoder().decode(ev.data as ArrayBuffer));
     } catch { return; }
+
+    // Ava decided the call is done (she invoked the end_call tool after her
+    // goodbye) → hang up immediately instead of leaving the line open.
+    if (msg.toolCall) {
+      const calls = msg.toolCall.functionCalls;
+      if (Array.isArray(calls) && calls.some((c: any) => c?.name === "end_call")) {
+        this.ev("ava_recept_ended_by_agent", { ms: Date.now() - this.startedAt });
+        this.finalize("ava_ended");
+        return;
+      }
+    }
 
     const sc = msg.serverContent;
     if (sc) {
@@ -260,6 +303,8 @@ export class ReceptionRoom {
             if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES) {
               this.pcmOut.push(pcm); this.pcmBytes += pcm.byteLength;
             }
+            this.avaBytes += pcm.byteLength;
+            this.bumpIdle(); // Ava is speaking → reset the silence backstop
             // Telemetry: time-to-first-audio (perceived latency — the headline UX
             // metric: trigger → Ava's first audible word).
             if (!this.firstAudioSent) {
@@ -304,6 +349,7 @@ export class ReceptionRoom {
     this.finalized = true;
     if (this.softTimer) clearTimeout(this.softTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
+    if (this.idleTimer) clearTimeout(this.idleTimer);
     try { this.gem?.close(); } catch { /* ignore */ }
     try { this.client?.send(JSON.stringify({ t: "ended", reason })); this.client?.close(1000, reason); } catch { /* ignore */ }
 
@@ -360,7 +406,9 @@ export class ReceptionRoom {
     // Session lifecycle close — the funnel tail (started → first_audio → ended).
     this.ev("ava_recept_session_ended", {
       cutoff_reason: reason, duration_s: durationS, got_audio: this.firstAudioSent,
-      ava_audio_bytes: this.pcmBytes, caller_audio_bytes: this.inBytes, turns: this.turnCount,
+      ava_audio_bytes: this.avaBytes, recording_bytes: this.pcmBytes,
+      caller_audio_bytes: this.inBytes, two_way_recording: this.pcmBytes > this.avaBytes,
+      turns: this.turnCount,
       in_chars: this.inText.join("").length,
       out_chars: this.outText.join("").length, has_recording: !!recordingUrl,
     });
@@ -522,6 +570,38 @@ function b64decode(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** True when a caller PCM16 frame carries real speech (RMS above a silence
+ *  floor) — gates out silence/echo so the 2-way recording isn't fragmented. */
+function callerHasSpeech(pcm: Uint8Array): boolean {
+  const n = pcm.byteLength >> 1;
+  if (n === 0) return false;
+  const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let sumSq = 0;
+  for (let i = 0; i < n; i++) { const s = view.getInt16(i * 2, true); sumSq += s * s; }
+  return Math.sqrt(sumSq / n) > 600; // ~speech threshold for PCM16
+}
+
+/** Upsample mono PCM16 16kHz → 24kHz (linear interpolation, 3:2) so the caller's
+ *  audio matches Ava's 24k stream in the merged recording. */
+function upsample16to24(pcm16: Uint8Array): Uint8Array {
+  const inN = pcm16.byteLength >> 1;
+  if (inN === 0) return new Uint8Array(0);
+  const inView = new DataView(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
+  const outN = Math.floor((inN * 3) / 2);
+  const out = new Uint8Array(outN * 2);
+  const outView = new DataView(out.buffer);
+  for (let i = 0; i < outN; i++) {
+    const srcPos = (i * 2) / 3;
+    const i0 = Math.floor(srcPos);
+    const i1 = Math.min(i0 + 1, inN - 1);
+    const frac = srcPos - i0;
+    const s0 = inView.getInt16(i0 * 2, true);
+    const s1 = inView.getInt16(i1 * 2, true);
+    outView.setInt16(i * 2, Math.round(s0 + (s1 - s0) * frac), true);
+  }
   return out;
 }
 
