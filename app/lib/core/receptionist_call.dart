@@ -115,7 +115,13 @@ class ReceptionistCall {
         return false;
       }
       final mic = await _rec.startStream(const RecordConfig(
-        encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1));
+        encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1,
+        // ECHO CANCELLATION IS ESSENTIAL on speakerphone: without it Ava's own
+        // output feeds back into the mic, so Gemini hears a garbled mix and barely
+        // registers the caller (telemetry showed in_chars≈6) — meaning her VAD
+        // never detects the caller speaking and barge-in never fires. Mirrors the
+        // other live-voice features (live_voice_controller / translation_engine).
+        echoCancel: true, noiseSuppress: true, autoGain: true));
       _micSub = mic.listen((chunk) {
         if (_ended) return;
         try { _ws?.sink.add(chunk); } catch (_) {/* socket gone */}
@@ -157,6 +163,9 @@ class ReceptionistCall {
       _pcmBuf.add(data);
       if (_pcmBuf.length >= _flushBytes) _enqueueSegment();
     } else if (data is String) {
+      // Barge-in: the server's VAD heard the caller speak over Ava → drop her
+      // queued audio so she goes silent immediately and the caller is heard.
+      if (data.contains('"flush"')) _flushPlayback();
       if (data.contains('softcap')) onStatus?.call('wrapup');
       if (data.contains('"ended"')) _finish('ended_remote');
       if (data.contains('"error"')) _finish('error');
@@ -184,6 +193,15 @@ class ReceptionistCall {
       _playErrors++;
       _playing = false;
     }
+  }
+
+  /// Barge-in flush: clear everything queued/buffered and stop the current
+  /// segment so Ava goes silent the instant the caller starts talking.
+  void _flushPlayback() {
+    _playQueue.clear();
+    _pcmBuf.clear();
+    _playing = false;
+    try { _player.stop(); } catch (_) {}
   }
 
   Future<void> hangup() => _finish('caller_hangup');
