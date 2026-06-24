@@ -7,7 +7,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
-import '../../core/paid_feature.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
@@ -17,11 +16,11 @@ import '../../core/ui/zine_widgets.dart';
 /// a stranger):
 ///
 ///   • "Secure-chat mode"        — FREE. Turns on Guardian monitoring for this
-///     chat: the cheap scam/spam/grooming scan runs on incoming messages and a
-///     PRIVATE warning (only you can see it) appears if something looks unsafe.
-///   • "Always-on deep monitoring" — PREMIUM. Runs the heavier safety classifier
-///     on every message in this chat even without a cheap-scan hit. Enabling is
-///     wrapped in [PaidFeature]; disabling and secure-chat are ungated.
+///     chat: the AI security classifier (Claude Opus 4.8) runs on every incoming
+///     message and a PRIVATE warning (only you can see it) appears if the sender
+///     looks predatory / scammy / unsafe.
+///   • "Always-on deep monitoring" — FREE on all plans (no paywall). Same deep
+///     check; kept as an explicit opt-in row.
 ///
 /// Storage: the server is the source of truth (`POST /api/ava/guardian/scan` with
 /// a `{prefs}` / `{get_prefs}` body — the route IS wired by Phase 0). If a call
@@ -199,8 +198,7 @@ class _ToggleRow extends StatelessWidget {
   }
 }
 
-/// Premium deep-monitoring row — ON is the paid gate (wrapped in [PaidFeature]);
-/// OFF is free. Mirrors the delegate/voice premium-toggle pattern.
+/// Deep-monitoring row — FREE on all plans (no paywall). A plain toggle.
 class _DeepRow extends StatelessWidget {
   final bool value;
   final Future<void> Function() onEnable;
@@ -219,31 +217,21 @@ class _DeepRow extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Flexible(child: Text('Always-on deep monitoring', style: ZineText.value(size: 14.5))),
-              const SizedBox(width: 8),
-              const PaidBadge(),
-            ]),
+            Flexible(child: Text('Always-on deep monitoring', style: ZineText.value(size: 14.5))),
             const SizedBox(height: 2),
             Text(
               value
                   ? 'Ava runs the deeper safety check on every message here, not just '
                       'when something obvious is spotted.'
-                  : 'Premium. Run the deeper safety check on every message in this chat '
+                  : 'Run the deeper safety check on every message in this chat '
                       'for the strongest protection.',
               style: ZineText.sub(size: 12),
             ),
           ]),
         ),
         const SizedBox(width: 10),
-        if (value)
-          ZineToggle(value: true, onChanged: (_) => onDisable())
-        else
-          PaidFeature(
-            actionLabel: 'Enable deep monitoring',
-            onRun: onEnable,
-            child: const IgnorePointer(child: ZineToggle(value: false, onChanged: null)),
-          ),
+        // Free on all plans — no paywall (owner decision 2026-06-24).
+        ZineToggle(value: value, onChanged: (v) => v ? onEnable() : onDisable()),
       ]),
     );
   }

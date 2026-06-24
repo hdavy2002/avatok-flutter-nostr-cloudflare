@@ -61,7 +61,10 @@ import { emailFor } from "../lib/identity";
 // scam/spam flag and a child's parent-paid monitoring are FREE. Signature stable.
 // ─────────────────────────────────────────────────────────────────────────────
 async function isEntitled(_env: Env, _uid: string): Promise<boolean> {
-  return false; // TODO(wallet phase): real balance/subscription check.
+  // Owner decision 2026-06-24: the guardian / shield watchdog is FREE on ALL plans
+  // — no premium gating. (Deep monitoring is redundant now anyway: secure-chat ON
+  // already runs the AI security classifier on every message.)
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -700,10 +703,7 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
   if (b && b.prefs && typeof b.prefs === "object") {
     const conv = String(b.prefs.conv ?? "").trim();
     if (!conv) return json({ error: "conv required" }, 400);
-    // Enabling DEEP monitoring is the PREMIUM gate; secure-chat (basic) is free.
-    if (b.prefs.deepMonitor === true && !(await isEntitled(env, ctx.uid))) {
-      return json({ error: "premium required for always-on deep monitoring", reason: "paid_guardian" }, 402);
-    }
+    // No premium gate — the guardian/shield is free on all plans (owner decision 2026-06-24).
     const next = await setGuardianPrefs(env, ctx.uid, conv, {
       secureChat: typeof b.prefs.secureChat === "boolean" ? b.prefs.secureChat : undefined,
       deepMonitor: typeof b.prefs.deepMonitor === "boolean" ? b.prefs.deepMonitor : undefined,
