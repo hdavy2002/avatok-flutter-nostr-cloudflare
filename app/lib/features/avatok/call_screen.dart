@@ -449,7 +449,11 @@ class _CallScreenState extends State<CallScreen> {
 
   void _toggleSpeaker() {
     setState(() => _speaker = !_speaker);
-    Helper.setSpeakerphoneOn(_speaker); // earpiece ⇆ loudspeaker
+    Helper.setSpeakerphoneOn(_speaker); // earpiece ⇆ loudspeaker (WebRTC path)
+    // Route the receptionist's native audio engine too, so the speaker button
+    // works while the caller is talking to Ava.
+    // ignore: unawaited_futures
+    _receptionist?.setSpeaker(_speaker);
   }
 
   /// Caller gave up before the callee answered → push a 'cancel' so their phone
@@ -577,7 +581,8 @@ class _CallScreenState extends State<CallScreen> {
       _notifyCalleeCanceled();
 
       final call = ReceptionistCall(
-          calleeUid: widget.seed, callId: widget.room, activationMode: activationMode);
+          calleeUid: widget.seed, callId: widget.room, activationMode: activationMode,
+          speaker: _speaker);
       call.onStatus = (s) {
         if (!mounted) return;
         setState(() {
