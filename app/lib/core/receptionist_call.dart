@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io' show ProcessInfo;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -86,6 +87,15 @@ class ReceptionistCall {
   int _bytesIn = 0; // total Ava audio bytes received
   int _segments = 0; // playable WAV segments enqueued (fallback only)
   int _playErrors = 0; // playback failures (fallback only)
+  // ── live mic/speaker observability (heartbeat + dead-mic detector) ──────────
+  int _micCaptured = 0; // mic frames produced by the engine (before the echo gate)
+  int _micSent = 0;     // mic frames actually uploaded to the DO
+  int _micBytes = 0;    // mic bytes uploaded
+  int _lastMicAtMs = 0; // last captured mic frame — drives the dead-mic detector
+  int _avaChunks = 0;   // Ava audio chunks received from the DO
+  int _beats = 0;       // heartbeat counter
+  bool _micStallFired = false;
+  Timer? _hb;           // periodic in-call telemetry heartbeat
   Timer? _hardCap;
   final Completer<String> _done = Completer<String>();
 
@@ -145,6 +155,10 @@ class ReceptionistCall {
 
       _wsConnected = true;
       _hardCap = Timer(Duration(milliseconds: hardCapMs + 2000), () => _finish('hard_cap'));
+      // Live mic/speaker/network/memory visibility every 15s while the call runs,
+      // so a stuck mic, dead playback, echo storm or leak is visible WITHOUT a
+      // repro (the call may end before call_ended ever fires).
+      _hb = Timer.periodic(const Duration(seconds: 15), (_) => _heartbeat());
       onStatus?.call('connected');
       Analytics.capture('ava_recept_call_started', {
         'callee_hash': calleeUid.hashCode.toString(),
@@ -211,11 +225,15 @@ class ReceptionistCall {
   /// hear and interrupt herself). With AEC, or on earpiece, this is full-duplex.
   void _sendMic(Uint8List chunk) {
     if (_ended || chunk.isEmpty) return;
-    if (speaker && !_aecOk &&
-        DateTime.now().millisecondsSinceEpoch - _lastAvaAudioAtMs < _echoTailMs) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _micCaptured++;
+    _lastMicAtMs = now; // a frame arrived → mic is alive
+    if (speaker && !_aecOk && now - _lastAvaAudioAtMs < _echoTailMs) {
       _echoSuppressed++;
       return;
     }
+    _micSent++;
+    _micBytes += chunk.length;
     try { _ws?.sink.add(chunk); } catch (_) {/* socket gone */}
   }
 
@@ -234,6 +252,7 @@ class ReceptionistCall {
         });
       }
       _bytesIn += data.length;
+      _avaChunks++;
       _lastAvaAudioAtMs = DateTime.now().millisecondsSinceEpoch; // echo-gate timing
       if (_useNative) {
         // Native engine plays on the AEC'd comm stream — smooth + gapless, and
@@ -294,12 +313,62 @@ class ReceptionistCall {
     if (_useNative) await _native.setSpeaker(on);
   }
 
+  /// In-call heartbeat: one rich snapshot of mic + speaker + engine + memory so a
+  /// user's live call is diagnosable by email/phone in PostHog. Fires a one-shot
+  /// `ava_recept_mic_stall` if the engine is up but no mic frame arrived for >3s
+  /// (the dead-mic signature behind "Ava heard nothing").
+  void _heartbeat() {
+    if (_ended) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final micGap = _lastMicAtMs > 0 ? now - _lastMicAtMs : -1;
+    final avaGap = _lastAvaAudioAtMs > 0 ? now - _lastAvaAudioAtMs : -1;
+    if (!_micStallFired && _micCaptured > 0 && micGap > 3000) {
+      _micStallFired = true;
+      Analytics.capture('ava_recept_mic_stall', {
+        'gap_ms': micGap, 'engine': _useNative ? 'native' : 'fallback',
+        'mic_captured': _micCaptured, 'speaker': speaker,
+        if (callId case final id?) 'call_id': id,
+      });
+    }
+    Analytics.capture('ava_recept_progress', {
+      'beat': ++_beats,
+      'elapsed_s': ((now - _connectMs) / 1000).round(),
+      'engine': _useNative ? 'native' : 'fallback',
+      'aec_ok': _aecOk,
+      'speaker': speaker,
+      'got_audio': _firstAudio,
+      // mic health
+      'mic_captured': _micCaptured,
+      'mic_sent': _micSent,
+      'mic_bytes': _micBytes,
+      'mic_gap_ms': micGap,           // high/growing = stalled or dead mic
+      'echo_suppressed': _echoSuppressed,
+      // speaker / playback health
+      'ava_chunks': _avaChunks,
+      'ava_bytes': _bytesIn,
+      'ava_gap_ms': avaGap,           // high = Ava went quiet (waiting/ended)
+      'play_errors': _playErrors,
+      // device
+      'rss_mb': _rssMb(),
+      if (callId case final id?) 'call_id': id,
+    });
+  }
+
+  static int _rssMb() {
+    try {
+      return (ProcessInfo.currentRss / (1024 * 1024)).round();
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<void> hangup() => _finish('caller_hangup');
 
   Future<void> _finish(String reason) async {
     if (_ended) return;
     _ended = true;
     _hardCap?.cancel();
+    _hb?.cancel();
     // Stop audio engines.
     Map<String, dynamic>? nativeCounters;
     if (_useNative) {
@@ -335,9 +404,16 @@ class ReceptionistCall {
       'speaker': speaker,
       'got_audio': _firstAudio,
       'audio_bytes_in': _bytesIn,
+      'ava_chunks': _avaChunks,
       'segments': _segments,
       'play_errors': _playErrors,
       'echo_suppressed': _echoSuppressed,
+      // final mic health — mic_captured:0 = dead mic / no input the whole call
+      'mic_captured': _micCaptured,
+      'mic_sent': _micSent,
+      'mic_bytes': _micBytes,
+      'beats': _beats,
+      'rss_mb': _rssMb(),
       'duration_ms': DateTime.now().millisecondsSinceEpoch - _connectMs,
       'ws_connected': _wsConnected,
       if (callId case final id?) 'call_id': id,
