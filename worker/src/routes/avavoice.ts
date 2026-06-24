@@ -41,6 +41,7 @@ import { track, metric } from "../hooks";
 import { readConfig } from "./config";
 import { recordView, trackImpressions, geoOf } from "./insights";
 import { settleAffiliate } from "./affiliate";
+import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 
 const APP = "avavoice";
 // Gemini Live models (owner-confirmed 2026-06-11). Vision agents use the 3.1
@@ -342,6 +343,12 @@ export async function avavoiceCreateAgent(req: Request, env: Env): Promise<Respo
   if (limited) return limited;
   const v = validateFields(await req.json().catch(() => ({})));
   if (v.error) return json({ error: v.error }, 400);
+  const blocked = await guardWrite(req, env, ctx.uid, APP, [
+    { text: v.f.name, field: "listing_title" },
+    { text: v.f.role, field: "prompt" },
+    { text: v.f.system_profile, field: "persona" },
+  ]);
+  if (blocked) return blocked;
   const id = crypto.randomUUID();
   const now = Date.now();
   await metaDb(env).prepare(
@@ -377,6 +384,12 @@ export async function avavoiceUpdateAgent(req: Request, env: Env, id: string): P
   if (!a || a.creator_id !== ctx.uid || a.status === "deleted") return json({ error: "not found" }, 404);
   const v = validateFields(await req.json().catch(() => ({})));
   if (v.error) return json({ error: v.error }, 400);
+  const blocked = await guardWrite(req, env, ctx.uid, APP, [
+    { text: v.f.name, field: "listing_title" },
+    { text: v.f.role, field: "prompt" },
+    { text: v.f.system_profile, field: "persona" },
+  ]);
+  if (blocked) return blocked;
   await metaDb(env).prepare(
     `UPDATE avavoice_agents SET name=?2, role=?3, system_profile=?4, voice_name=?5, images=?6, rate_per_hour=?7, payer_mode=?8, session_limit_min=?9, vision_enabled=?10, updated_at=?11 WHERE id=?1`,
   ).bind(id, v.f.name, v.f.role, v.f.system_profile, v.f.voice_name, v.f.images, v.f.rate_per_hour,

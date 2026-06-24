@@ -29,6 +29,7 @@ import { contactFor, nameFor } from "../lib/identity";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { enforceAllowance, planLimitBody } from "../lib/usage";
 import { capFor, readPlans, tierOf } from "./plans";
+import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 
 // Receptionist gating is SUBSCRIPTION-DRIVEN (not a hard premium wall): it reads
 // the OWNER's tier's daily `recept` allowance from plans.ts, which merges the KV
@@ -295,6 +296,19 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   let statusPreset: string | null = b.status_preset == null ? null : String(b.status_preset).trim();
   if (statusPreset && !(statusPreset in STATUS_PRESETS)) statusPreset = null;
   const statusCustom = b.status_custom == null ? null : String(b.status_custom).slice(0, MAX_STATUS_CUSTOM).trim() || null;
+
+  // Save-time content validation (Nemotron). Reject before persisting so an
+  // unsafe persona/instruction/greeting never reaches a live call.
+  const blocked = await guardWrite(req, env, ctx.uid, "receptionist", [
+    { text: instr, field: "prompt" },
+    { text: customPrompt, field: "prompt" },
+    { text: greeting, field: "greeting" },
+    { text: statusCustom, field: "status" },
+    { text: display, field: "name" },
+    { text: persona, field: "persona_name" },
+  ]);
+  if (blocked) return blocked;
+
   const now = Date.now();
 
   await metaDb(env).prepare(

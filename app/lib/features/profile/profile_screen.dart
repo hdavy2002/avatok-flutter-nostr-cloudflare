@@ -9,6 +9,7 @@ import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/config.dart';
+import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -76,6 +77,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final id = _id;
     if (id == null || _saving) return;
     final handle = _handle.text.trim().toLowerCase().replaceAll('@', '');
+    // AI content validation — block the save with a clear reason when the name,
+    // handle, or bio is inappropriate. The Worker re-checks on /api/profile too.
+    for (final c in <List<String>>[
+      [_name.text.trim(), ModField.name],
+      [handle, ModField.handle],
+      [_bio.text.trim(), ModField.bio],
+    ]) {
+      if (c[0].isEmpty) continue;
+      final r = await ModerationService.check(c[0], c[1]);
+      if (!r.allow) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(r.reason.isEmpty ? 'Please revise that field.' : r.reason)));
+        return;
+      }
+    }
     setState(() => _saving = true);
     final existing = await _store.load();
     await _store.save(existing.copyWith(

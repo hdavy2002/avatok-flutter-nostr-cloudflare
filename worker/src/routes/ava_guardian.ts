@@ -49,8 +49,10 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { postAvaMessage } from "./ava_thread";
-import { isSafe } from "../lib/ai_gate";
+import { isSafeText } from "../lib/moderation"; // shield watchdog classifier (Nemotron via OpenRouter)
 import { readConfig } from "./config";
+import { trackUser } from "../hooks";
+import { emailFor } from "../lib/identity";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entitlement — the premium authority. STUB (mirrors routes/ava_tools.ts +
@@ -502,15 +504,15 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
       category = cheap.category; severity = cheap.severity;
       detail = cheap.signals.join(", ");
       // Escalate to the heavier classifier on a strong cheap hit (cost: one
-      // llama-guard call only when the cheap gate already fired).
+      // Nemotron call only when the cheap gate already fired).
       if (cheap.severity >= 3) {
-        const safe = await isSafe(env, text);
+        const safe = await isSafeText(env, text, "message");
         if (!safe) severity = 3; // confirmed unsafe → keep high
       }
     } else if (deep) {
       // PREMIUM always-on deep monitoring: no heuristic hit, but run the model
       // anyway for entitled/protected users (this is the paid capability).
-      const safe = await isSafe(env, text);
+      const safe = await isSafeText(env, text, "message");
       if (!safe) { category = "grooming"; severity = 2; detail = "deep-monitor classifier"; }
     }
 
@@ -695,6 +697,12 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
     const next = await setGuardianPrefs(env, ctx.uid, conv, {
       secureChat: typeof b.prefs.secureChat === "boolean" ? b.prefs.secureChat : undefined,
       deepMonitor: typeof b.prefs.deepMonitor === "boolean" ? b.prefs.deepMonitor : undefined,
+    });
+    // Telemetry: shield toggle, stamped with email + origin country for analytics.
+    const cf: any = (req as any).cf || {};
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid), "guardian_shield_toggled", "guardian", {
+      secure_chat: next.secureChat, deep_monitor: next.deepMonitor, is_group: conv.startsWith("g"),
+      country: cf.country ?? null, region: cf.region ?? null, city: cf.city ?? null, colo: cf.colo ?? null,
     });
     return json({ ok: true, prefs: { conv, secureChat: next.secureChat, deepMonitor: next.deepMonitor, updatedAt: next.updatedAt } });
   }

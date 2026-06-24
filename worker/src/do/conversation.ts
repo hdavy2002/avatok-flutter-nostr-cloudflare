@@ -40,13 +40,12 @@ export class ConversationDO {
     ).bind(uid, app).first<Persona>();
   }
 
-  // llama-guard: returns true if safe.
-  private async safe(text: string): Promise<boolean> {
-    try {
-      const out: any = await this.env.AI.run(GUARD, { messages: [{ role: "user", content: text }] });
-      const verdict = (aiText(out) || JSON.stringify(out)).toLowerCase();
-      return !verdict.includes("unsafe");
-    } catch { return true; } // fail-open on classifier error (text already low-risk agent content)
+  // Moderation REMOVED (owner decision 2026-06-24, Specs §2A): agent-to-agent
+  // conversation turns are no longer content-checked. Kept as a no-op so the call
+  // sites are unchanged. Inbound agent text is STILL wrapped as untrusted data
+  // (prompt-injection defense in sys()/userPrompt) — that protection is unrelated.
+  private async safe(_text: string): Promise<boolean> {
+    return true;
   }
 
   private async gen(systemPrompt: string, userPrompt: string): Promise<string> {

@@ -96,6 +96,7 @@ import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, 
 import { avaChatHistorySave, avaChatHistoryGet, avaChatHistoryMeta } from "./routes/ava_chat_history"; // AvaChat history (D1)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
+import { moderateText } from "./routes/moderate";        // save-time content validation (Nemotron)
 import { avaImage } from "./routes/ava_image";          // P9
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
 import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
@@ -247,6 +248,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/chat/history" && req.method === "POST") return await avaChatHistorySave(req, env);
       if (p === "/api/ava/chat/history" && req.method === "GET") return await avaChatHistoryGet(req, env);
       if (p === "/api/ava/guardian/scan" && req.method === "POST") return await avaGuardianScan(req, env); // P8
+      if (p === "/api/moderate" && req.method === "POST") return await moderateText(req, env);         // save-time content validation (Nemotron)
       if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env);            // P9
       if (p === "/api/ava/delegate") return await delegateHandler(req, env); // P7 (GET reads prefs, POST writes)
       // Backup & sync (P10): GET pull, PUT push, GET status.

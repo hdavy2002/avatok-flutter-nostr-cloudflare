@@ -174,6 +174,11 @@ export interface Env {
   AI_GATEWAY_TOKEN?: string;   // cf-aig-authorization (authed gateway) — secret
   CF_ACCOUNT_ID?: string;      // for the gateway.ai.cloudflare.com base URL
 
+  // OpenRouter — content-safety moderation (nvidia/nemotron-3.5-content-safety:free)
+  // and the GenUI planner. Secret; set in secrets/secret-values.env.
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_MOD_MODEL?: string;   // override the moderation model id (optional)
+
   // InboxDO retention (cost control). Days to keep messages in the per-user inbox
   // DO before pruning (the device keeps history locally + in Drive/R2 backup, so
   // the DO is a relay + offline buffer, not a permanent archive). UNSET/0 =

@@ -45,20 +45,16 @@ export function aiRunOpts(env: Env, uid?: string): any {
 // ---- (a) moderation ---------------------------------------------------------
 
 /**
- * llama-guard a single piece of text. Returns true when SAFE.
- * Fails OPEN on classifier error (matches conversation.ts / ava_agent.ts): a
- * guard outage must not silently brick chat. A confident "unsafe" fails closed.
+ * Content moderation for the Ava AI paths is REMOVED (owner decision 2026-06-24,
+ * Specs §2A). ChatAva (/api/ava/gemini), @ava replies, agent-to-agent, the offline
+ * auto-reply, and image prompts are no longer content-checked. This is a no-op so
+ * the wrappers below (guardInput/guardOutput/runGated) keep their shape and the
+ * kill-switch / intent gate / daily quota all still work. The surfaces that DO
+ * moderate are the shield watchdog (ava_guardian) and save-time field validation
+ * (/api/moderate) — both via lib/moderation.ts (Nemotron over OpenRouter).
  */
-export async function isSafe(env: Env, text: string): Promise<boolean> {
-  const t = (text ?? "").trim();
-  if (!t) return true;
-  try {
-    const out: any = await env.AI.run(GUARD, { messages: [{ role: "user", content: t }] }, aiRunOpts(env));
-    const verdict = (aiText(out) || JSON.stringify(out)).toLowerCase();
-    return !verdict.includes("unsafe");
-  } catch {
-    return true; // fail open on classifier error
-  }
+export async function isSafe(_env: Env, _text: string): Promise<boolean> {
+  return true;
 }
 
 /** Guard the user's INPUT. `{ ok:false, reason }` when the input is unsafe. */

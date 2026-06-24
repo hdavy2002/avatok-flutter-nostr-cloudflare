@@ -38,6 +38,7 @@ import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track, brainFact } from "../hooks";
 import { recordView, trackImpressions, geoOf } from "./insights";
+import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { notifyUser } from "../notify";
 import { emailBookingConfirmed } from "../cal/emails";
 
@@ -224,6 +225,11 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID();
   const now = Date.now();
   const f = normFields(b);
+  const blocked = await guardWrite(req, env, ctx.uid, APP, [
+    { text: f.title as string | undefined, field: "listing_title" },
+    { text: f.description as string | undefined, field: "listing_desc" },
+  ]);
+  if (blocked) return blocked;
   await metaDb(env).prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
        country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at)
@@ -246,6 +252,11 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   const f = normFields((await req.json().catch(() => ({}))) as any);
   const keys = (EDITABLE as readonly string[]).filter((k) => k in f);
   if (!keys.length) return json({ error: "nothing to update" }, 400);
+  const blocked = await guardWrite(req, env, ctx.uid, APP, [
+    { text: f.title as string | undefined, field: "listing_title" },
+    { text: f.description as string | undefined, field: "listing_desc" },
+  ]);
+  if (blocked) return blocked;
   // A published live event's time can't silently move (the slot is claimed) — reject.
   if (row.status !== "draft" && row.kind === "live_event" && ("starts_at" in f || "duration_min" in f)) {
     return json({ error: "cannot move a published event — cancel and re-create" }, 409);

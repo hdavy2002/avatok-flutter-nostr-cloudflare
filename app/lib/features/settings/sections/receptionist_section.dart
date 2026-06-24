@@ -9,6 +9,7 @@ import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/avavoice_api.dart' show kFallbackVoices, VoiceOption;
 import '../../../core/disk_cache.dart';
+import '../../../core/moderation_service.dart';
 import '../../../core/paid_feature.dart';
 import '../../../core/receptionist_api.dart';
 import '../../../core/ui/zine.dart';
@@ -206,7 +207,31 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     } catch (_) {/* best-effort */}
   }
 
+  // AI content validation — block the save (with a clear reason) when any of the
+  // user-authored fields is unsafe. Server re-checks too; this surfaces the reason.
+  Future<String?> _moderateBeforeSave() async {
+    final checks = <List<String>>[
+      [_instr.text.trim(), ModField.prompt],
+      [_custom.text.trim(), ModField.prompt],
+      [_greeting.text.trim(), ModField.greeting],
+      [_statusCustom.text.trim(), ModField.status],
+      [_name.text.trim(), ModField.name],
+      [_persona.text.trim(), ModField.personaName],
+    ];
+    for (final c in checks) {
+      if (c[0].isEmpty) continue;
+      final r = await ModerationService.check(c[0], c[1]);
+      if (!r.allow) return r.reason.isEmpty ? 'Please revise your text to be appropriate.' : r.reason;
+    }
+    return null;
+  }
+
   Future<bool> _save({required bool enabled}) async {
+    // Validate content first when turning ON / saving real content.
+    if (enabled) {
+      final problem = await _moderateBeforeSave();
+      if (problem != null) { _toast(problem); return false; }
+    }
     setState(() => _saving = true);
     final res = await ReceptionistApi.saveSettings(
       enabled: enabled,

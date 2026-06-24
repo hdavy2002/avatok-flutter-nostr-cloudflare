@@ -12,6 +12,7 @@ import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk } from "../auth";
 import { brainFact } from "../hooks";
+import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
@@ -135,6 +136,14 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
     const taken = await db.prepare("SELECT uid FROM users WHERE handle=?1 AND uid<>?2").bind(handle, ctx.uid).first<{ uid: string }>();
     if (taken) return json({ error: "handle_taken" }, 409);
   }
+  // Save-time content validation (Nemotron): block an abusive name/handle/bio
+  // before it's persisted and shown in the directory.
+  const blocked = await guardWrite(req, env, ctx.uid, "profile", [
+    { text: name, field: "name" },
+    { text: handle, field: "handle" },
+    { text: bio, field: "bio" },
+  ]);
+  if (blocked) return blocked;
   try {
     await db.prepare(
       `INSERT INTO users (uid, handle, display_name, avatar_url, email_hash, phone_hash, birth_year, bio, created_at, updated_at)

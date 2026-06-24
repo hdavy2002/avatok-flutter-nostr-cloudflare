@@ -9,18 +9,17 @@
 //   POST /api/agent/approve             approve / dismiss / undo an inbox item { id, action }
 //   POST /api/agent/task                enqueue an agent task (generic) { app, kind, ... }
 import type { Env } from "../types";
-import { json, aiText } from "../util";
+import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
 import { track } from "../hooks";
+import { isSafeText } from "../lib/moderation";
 
-const GUARD = "@cf/meta/llama-guard-3-8b";
-
+// Persona text is moderated on save with Nemotron (nvidia/nemotron-3.5-content-safety
+// via OpenRouter) — replaces the retired @cf/meta/llama-guard-3-8b. Fails OPEN on a
+// classifier outage; a confident "unsafe" marks the persona inactive.
 async function personaSafe(env: Env, text: string): Promise<boolean> {
-  try {
-    const out: any = await env.AI.run(GUARD, { messages: [{ role: "user", content: text }] });
-    return !(aiText(out) || JSON.stringify(out)).toLowerCase().includes("unsafe");
-  } catch { return true; }
+  return isSafeText(env, text, "persona");
 }
 
 // GET /api/agent/personas

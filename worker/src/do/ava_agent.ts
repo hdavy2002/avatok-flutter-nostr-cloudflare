@@ -281,15 +281,13 @@ export class AvaAgentDO {
     return row.summary;
   }
 
-  // ---- safety (llama-guard) ---------------------------------------------------
-  // TODO(P2): once /api/ava/gemini + ai_gate ship, route generation THROUGH the
-  // gate (which owns moderation + the daily cap) instead of calling Gemma here.
-  // Until then we call Gemma directly and run llama-guard inline (per the brief).
-  private async safe(text: string): Promise<boolean> {
-    try {
-      const out: any = await this.env.AI.run(GUARD, { messages: [{ role: "user", content: text }] });
-      return !(aiText(out) || JSON.stringify(out)).toLowerCase().includes("unsafe");
-    } catch { return true; } // fail-open on classifier error
+  // ---- safety ----------------------------------------------------------------
+  // Output moderation REMOVED (owner decision 2026-06-24, Specs §2A): @ava replies
+  // are no longer content-checked. This method was already uncalled (dead) — kept
+  // as an explicit no-op to document the decision. Inbound thread/tool text is
+  // still wrapped as UNTRUSTED data (prompt-injection defense), which is unrelated.
+  private async safe(_text: string): Promise<boolean> {
+    return true;
   }
 
   // ---- retrieval (P4 — Phase 11 swap) -----------------------------------------
