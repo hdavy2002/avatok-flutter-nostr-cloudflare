@@ -210,6 +210,13 @@ export interface Env {
   APP_STORE_ID?: string;
   PLAY_PACKAGE_ID?: string;
 
+  // Google Play Billing — server-side purchase-token verification (routes/
+  // subscribe.ts → play.ts). PLAY_SERVICE_ACCOUNT_JSON is the full service-account
+  // key JSON (secret). Unset → /api/subscribe/android/verify fails CLOSED (503,
+  // reason:"play_unconfigured") so a forged token can never grant a tier. The
+  // package the token is checked against is PLAY_PACKAGE_ID (above).
+  PLAY_SERVICE_ACCOUNT_JSON?: string;
+
   // R2 S3 API creds for presigned digital-download URLs (Phase 5). Unset → the
   // OLX download route streams bytes through the Worker as a fallback.
   R2_ACCOUNT_ID?: string;

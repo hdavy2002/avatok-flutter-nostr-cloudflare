@@ -24,6 +24,7 @@ import { track } from "../hooks";
 import {
   PLANS, isTierId, readPlans, setSub, getSub, type TierId,
 } from "./plans";
+import { verifyPlaySubscription } from "../play";
 
 function webBase(env: Env): string {
   return (env as any).PUBLIC_WEB_URL || "https://avatok.ai";
@@ -115,17 +116,24 @@ export async function subscribeAndroidVerify(req: Request, env: Env): Promise<Re
   const tier = (Object.values(PLANS).find((p) => p.playProductId === productId)?.id) as TierId | undefined;
   if (tier === undefined) return json({ error: "unknown product" }, 400);
 
-  // TODO(play-billing): verify with the Google Play Developer API —
-  //   GET androidpublisher/v3/applications/{pkg}/purchases/subscriptionsv2/tokens/{purchaseToken}
-  //   authed with a service-account JWT (env.PLAY_SERVICE_ACCOUNT_JSON). Confirm
-  //   state=ACTIVE, the productId matches, and read expiryTime → renewsAt. Until
-  //   that secret exists we fail closed so a forged token can't grant a tier.
+  // Fail CLOSED until the service account is wired (forged token can't grant a tier).
   if (!(env as any).PLAY_SERVICE_ACCOUNT_JSON) {
     return json({ ok: false, error: "play verification not configured", reason: "play_unconfigured" }, 503);
   }
 
-  // (Verification result would set renewsAt from the token's expiryTime.)
-  const renewsAt = Date.now() + 31 * 24 * 60 * 60 * 1000;
+  // Verify the token against the Google Play Developer API (purchases.subscriptionsv2).
+  const v = await verifyPlaySubscription(env, purchaseToken);
+  if (!v.ok) {
+    track(env, ctx.uid, "subscribe_verify_failed", "subscribe", { tier, source: "play", reason: v.reason });
+    return json({ ok: false, error: "play verification failed", reason: v.reason }, 502);
+  }
+  // The token must be paid/active AND map to the product the client claimed.
+  if (!v.entitled || (v.productId && v.productId !== productId)) {
+    track(env, ctx.uid, "subscribe_verify_rejected", "subscribe", { tier, state: v.state, product: v.productId });
+    return json({ ok: false, error: "purchase not active", reason: v.state || "not_entitled" }, 402);
+  }
+
+  const renewsAt = v.expiryMs ?? Date.now() + 31 * 24 * 60 * 60 * 1000;
   await setSub(env, ctx.uid, { tier, status: "active", source: "play", renewsAt, ref: purchaseToken });
   track(env, ctx.uid, "subscribe_activated", "subscribe", { tier, source: "play" });
   return json({ ok: true, tier, status: "active", renews_at: renewsAt });
