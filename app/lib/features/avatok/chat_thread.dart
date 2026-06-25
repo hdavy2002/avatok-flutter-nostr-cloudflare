@@ -1086,10 +1086,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // 1:1 = P2P (CallRoom DO) via _call(). Groups = LiveKit conference via
   // _groupCall() — RULE CHANGE 2026-06-10 (Phase 10): group conferences are
   // allowed, ≤25 participants. The CallRoom DO 2-peer cap stays untouched.
+  bool _dialing = false; // debounce: blocks a second call_started while dialing
+
   Future<void> _call(String kind) async {
     // This path is 1:1 P2P ONLY — group threads route through _groupCall()
     // (LiveKit) and must NEVER reach the CallRoom DO.
     if (widget.chat.group || widget.chat.gid != null) return;
+    // Debounce double-taps / re-entrancy: a single video-button tap was firing
+    // TWO POST /api/call + two CallScreens ~1s apart, and the colliding second
+    // call busied out the first right after it connected — so the connected
+    // call tore down and video never rendered ("audio worked, no video came
+    // through"). One dial in flight, and none while already on a call.
+    if (_dialing || gLiveCallScreens > 0) {
+      Analytics.capture('call_dial_suppressed', {
+        'reason': _dialing ? 'already_dialing' : 'already_in_call',
+        'kind': kind,
+      });
+      return;
+    }
+    _dialing = true;
     IceCache.prefetch(); // warm TURN creds in parallel with the FCM ring
     final video = kind == 'video';
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
@@ -1120,7 +1135,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } else {
       AvaLog.I.log('call', 'NOT ringing — contact seed is not an npub ($to)');
     }
-    if (!mounted) return;
+    if (!mounted) { _dialing = false; return; }
+    // From here the CallScreen mounts (gLiveCallScreens > 0 guards re-entry),
+    // so the in-flight debounce flag can be released.
+    _dialing = false;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -4841,12 +4859,47 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   bool _playing = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Prefetch the voicemail into the per-account cache as soon as the card
+    // renders, so tapping Play replays LOCAL bytes instantly instead of waiting
+    // on a fresh owner-authed download — the "playing the message took too long"
+    // complaint. Best-effort; _togglePlay still fetches on demand if this misses.
+    // ignore: unawaited_futures
+    _prefetch();
+  }
+
+  @override
   void dispose() {
     _player.dispose();
     super.dispose();
   }
 
   Map<String, dynamic> get _e => widget.extra;
+
+  bool get _hasRecording =>
+      _e['has_recording'] == true ||
+      (_e['recording_url'] ?? '').toString().isNotEmpty;
+
+  Future<void> _prefetch() async {
+    final sid = widget.sessionId;
+    if (sid.isEmpty || !_hasRecording) return;
+    final cacheKey = 'recept_$sid';
+    try {
+      final cached = await MediaService.cachedBlob(cacheKey);
+      if (cached != null && cached.isNotEmpty) return; // already on-device
+      final t0 = DateTime.now().millisecondsSinceEpoch;
+      final url = 'https://$kSignalingHost/api/receptionist/recording?sid=$sid';
+      final r = await ApiAuth.getBytes(url);
+      if (r.statusCode != 200 || r.bodyBytes.isEmpty) return;
+      await MediaService.writeBlob(cacheKey, r.bodyBytes); // best-effort
+      Analytics.capture('ava_recept_recording_prefetched', {
+        'session_id': sid,
+        'bytes': r.bodyBytes.length,
+        'fetch_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+    } catch (_) {/* on-demand fetch in _togglePlay is the fallback */}
+  }
 
   String get _caller {
     final summary = _e['summary'];
@@ -4878,16 +4931,23 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     }
     if (widget.sessionId.isEmpty) return;
     setState(() => _loadingAudio = true);
+    final t0 = DateTime.now().millisecondsSinceEpoch;
     try {
       // Cache-first: a voicemail recording never changes, so once fetched we
       // keep the bytes in the per-account media cache and replay locally instead
       // of re-downloading on every tap / chat reopen.
       final cacheKey = 'recept_${widget.sessionId}';
       Uint8List? bytes = await MediaService.cachedBlob(cacheKey);
-      if (bytes == null || bytes.isEmpty) {
+      final fromCache = bytes != null && bytes.isNotEmpty;
+      if (!fromCache) {
         final url = 'https://$kSignalingHost/api/receptionist/recording?sid=${widget.sessionId}';
         final r = await ApiAuth.getBytes(url);
         if (r.statusCode != 200 || r.bodyBytes.isEmpty) {
+          Analytics.capture('ava_recept_playback', {
+            'session_id': widget.sessionId, 'ok': false, 'cached': false,
+            'status': r.statusCode,
+            'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
+          });
           if (mounted) setState(() => _loadingAudio = false);
           return;
         }
@@ -4898,8 +4958,19 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         if (mounted) setState(() => _playing = false);
       });
       await _player.play(BytesSource(bytes, mimeType: 'audio/wav'));
+      // Playback latency, split by cache vs network — the signal behind "the
+      // message took too long to play". cached=true should be near-instant.
+      Analytics.capture('ava_recept_playback', {
+        'session_id': widget.sessionId, 'ok': true, 'cached': fromCache,
+        'bytes': bytes.length,
+        'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
       if (mounted) setState(() { _loadingAudio = false; _playing = true; });
     } catch (_) {
+      Analytics.capture('ava_recept_playback', {
+        'session_id': widget.sessionId, 'ok': false, 'cached': false,
+        'load_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
       if (mounted) setState(() => _loadingAudio = false);
     }
   }
