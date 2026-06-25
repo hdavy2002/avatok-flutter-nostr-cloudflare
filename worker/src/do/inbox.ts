@@ -351,7 +351,28 @@ export class InboxDO {
     }
     if (m.type === "hello" || m.type === "sync") {
       try { ws.send(JSON.stringify(this.syncPayload(Number(m.cursor || 0)))); } catch { /* */ }
+      return;
     }
+    // ONLINE message search — across ALL of THIS user's conversations, server-side.
+    // Per-user isolated by construction (this is the user's own InboxDO), so it
+    // fills the gaps a single device is missing (other devices' history). No new
+    // HTTP route — rides the socket the user already has open.
+    if (m.type === "search" && typeof m.q === "string") {
+      try { ws.send(JSON.stringify(this.searchPayload(m.q, m.reqId))); } catch { /* */ }
+    }
+  }
+
+  private searchPayload(q: string, reqId: unknown): { type: "searchResults"; reqId: unknown; results: unknown[] } {
+    const query = String(q || "").trim();
+    if (query.length < 2) return { type: "searchResults", reqId, results: [] };
+    const like = "%" + query.replace(/[%_]/g, "") + "%";
+    const rows = this.sql.exec(
+      `SELECT conv, sender, body, client_id, created_at, hidden FROM messages
+        WHERE body LIKE ? AND (kind IS NULL OR kind != 'deleted')
+        ORDER BY id DESC LIMIT 60`,
+      like,
+    ).toArray();
+    return { type: "searchResults", reqId, results: rows };
   }
   webSocketClose(ws: WebSocket, code: number): void {
     try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* */ }

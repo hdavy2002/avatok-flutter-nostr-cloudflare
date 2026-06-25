@@ -6,8 +6,10 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
+import '../../core/config.dart';
 import '../../core/db.dart';
 import '../../core/device_contacts.dart';
+import '../../sync/sync_hub.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -80,23 +82,51 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() { _directory = res; _searchingDir = false; });
   }
 
-  // GLOBAL message search — across ALL my conversations, on-device.
+  // GLOBAL message search — LOCAL first (instant), then ONLINE (fills what this
+  // device is missing from your other devices). Both isolated to your own data.
   Future<void> _runMessages() async {
     final q = _q;
     if (q.length < 2) { setState(() => _msgHits = []); return; }
-    final rows = await Db.I.searchMessages(q);
-    if (!mounted) return;
-    final hits = <({Chat chat, String snippet, int ts, bool mine})>[];
     final ql = q.toLowerCase();
-    for (final r in rows) {
-      final text = _extractText(r.payload);
-      if (text == null || !text.toLowerCase().contains(ql)) continue;
-      final chat = _chatForConv(r.convKey);
-      if (chat == null) continue;
-      hits.add((chat: chat, snippet: text, ts: r.createdAt, mine: r.mine));
-      if (hits.length >= 40) break;
+    final hits = <({Chat chat, String snippet, int ts, bool mine})>[];
+    final seen = <String>{};
+    void addHit(String convKey, String? text, int ts, bool mine) {
+      if (text == null || !text.toLowerCase().contains(ql)) return;
+      final chat = _chatForConv(convKey);
+      if (chat == null) return;
+      if (!seen.add('$convKey|$ts|$text')) return; // dedup local vs online
+      hits.add((chat: chat, snippet: text, ts: ts, mine: mine));
     }
-    setState(() => _msgHits = hits);
+
+    // 1) LOCAL — instant.
+    final localRows = await Db.I.searchMessages(q);
+    for (final r in localRows) { addHit(r.convKey, _extractText(r.payload), r.createdAt, r.mine); }
+    if (mounted) {
+      setState(() => _msgHits = (List.of(hits)..sort((a, b) => b.ts.compareTo(a.ts))).take(50).toList());
+    }
+
+    // 2) ONLINE — best-effort top-up from the server (your other devices' history).
+    final myUid = widget.identity?.uid ?? '';
+    final online = await SyncHub.I.searchOnline(q);
+    for (final r in online) {
+      final convKey = _serverConvToKey((r['conv'] ?? '').toString(), myUid);
+      if (convKey == null) continue;
+      final rawTs = (r['created_at'] as num?)?.toInt() ?? 0;
+      final ts = rawTs > 2000000000 ? rawTs ~/ 1000 : rawTs;
+      addHit(convKey, _extractText((r['body'] ?? '').toString()), ts, (r['sender'] ?? '').toString() == myUid);
+    }
+    if (!mounted) return;
+    setState(() => _msgHits = (hits..sort((a, b) => b.ts.compareTo(a.ts))).take(50).toList());
+  }
+
+  // Map a server conversation id ('dm_a__b' / group) to the local convKey.
+  String? _serverConvToKey(String conv, String myUid) {
+    if (conv.startsWith('dm_')) {
+      final peer = dmPeer(conv, myUid);
+      return peer == null ? null : '1:$peer';
+    }
+    if (conv.startsWith('g')) return 'g:${conv.replaceFirst(RegExp(r'^g[_:]'), '')}';
+    return null;
   }
 
   // Pull the human-readable line out of a stored message envelope; null for

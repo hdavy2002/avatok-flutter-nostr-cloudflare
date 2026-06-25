@@ -174,6 +174,26 @@ class SyncHub {
     try { _ch?.sink.add(jsonEncode(o)); } catch (_) {}
   }
 
+  // Pending online-search requests, keyed by reqId, completed by the 'searchResults'
+  // frame. Used by global message search to fill what the local device is missing.
+  final Map<String, Completer<List<Map<String, dynamic>>>> _searchReqs = {};
+
+  /// ONLINE message search across ALL my conversations (server-side, per-user).
+  /// Returns [] if the socket is down or it times out (the caller has already
+  /// shown instant LOCAL results, so this is a best-effort top-up).
+  Future<List<Map<String, dynamic>>> searchOnline(String q) {
+    final query = q.trim();
+    if (query.length < 2 || _ch == null) return Future.value(const []);
+    final reqId = 's${DateTime.now().microsecondsSinceEpoch}';
+    final c = Completer<List<Map<String, dynamic>>>();
+    _searchReqs[reqId] = c;
+    _send({'type': 'search', 'q': query, 'reqId': reqId});
+    return c.future.timeout(const Duration(seconds: 4), onTimeout: () {
+      _searchReqs.remove(reqId);
+      return const [];
+    });
+  }
+
   /// Resolve [host] with a few quick retries (~5s worst case). Absorbs the
   /// transient mobile DNS failures (errno 7) that otherwise kill the socket.
   Future<bool> _dnsReady(String host) async {
@@ -239,6 +259,17 @@ class SyncHub {
         break;
       case 'hide':
         _ingestHide(m);
+        break;
+      case 'searchResults':
+        {
+          final reqId = (m['reqId'] ?? '').toString();
+          final c = _searchReqs.remove(reqId);
+          if (c != null && !c.isCompleted) {
+            c.complete(((m['results'] as List?) ?? const [])
+                .map((e) => (e as Map).cast<String, dynamic>())
+                .toList());
+          }
+        }
         break;
       case 'storage':
         // AvaStorage live summary (Phase 4): transient system event — fan to any
