@@ -472,6 +472,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
+      if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
       if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
@@ -482,6 +483,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
       } else if (env is Map && env['t'] == 'gtext') {
         text = (env['body'] ?? '').toString();
+      } else if (env is Map && env['t'] == 'deleted') {
+        text = 'This message was deleted'; // server tombstone on re-sync
       } else {
         return; // ginfo/gkick etc. — not chat content
       }
@@ -575,6 +578,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['t'] == 'read') return; // read high-water (badge clears via the chat list) — never a bubble
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
+      if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
       if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
@@ -587,6 +591,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (!m.mine) MediaService.recordReceived(media); // mirror into the recipient's AvaLibrary
       } else if (env is Map && env['t'] == 'text') {
         text = env['body'].toString();
+      } else if (env is Map && env['t'] == 'deleted') {
+        text = 'This message was deleted'; // server tombstone on re-sync
       }
       if (env is Map) {
         if (env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
@@ -2186,6 +2192,81 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  // ---- clipboard image paste into the composer ----
+  /// Read an image off the system clipboard (PNG/JPEG via super_clipboard) and,
+  /// if one is present, send it as a photo attachment (with the WhatsApp-style
+  /// caption sheet). Returns true when an image was found and handled, so the
+  /// caller can skip the normal text-paste fallback. Flutter's built-in
+  /// `Clipboard` is text-only — this is what makes "copy an image elsewhere,
+  /// paste it into the chat box" actually work.
+  Future<bool> _tryPasteImage() async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) return false;
+    try {
+      final reader = await clipboard.read();
+      final fmt = reader.canProvide(Formats.png)
+          ? Formats.png
+          : (reader.canProvide(Formats.jpeg) ? Formats.jpeg : null);
+      if (fmt == null) return false;
+      final done = Completer<Uint8List?>();
+      reader.getFile(fmt, (file) async {
+        try {
+          done.complete(await file.readAll());
+        } catch (_) {
+          if (!done.isCompleted) done.complete(null);
+        }
+      }, onError: (_) {
+        if (!done.isCompleted) done.complete(null);
+      });
+      final bytes = await done.future;
+      if (bytes == null || bytes.isEmpty) return false;
+      if (bytes.length > _kMediaMaxBytes) {
+        _capNote('That image is over 25 MB — please copy a smaller one.');
+        return true; // we DID find an image; just too big to fall back to text
+      }
+      final isPng = fmt == Formats.png;
+      final mime = isPng ? 'image/png' : 'image/jpeg';
+      final ext = isPng ? 'png' : 'jpg';
+      Analytics.capture('chat_image_pasted', {'mime': mime, 'size': bytes.length});
+      await _sendImageWithCaption(
+          bytes, mime, 'pasted_${DateTime.now().millisecondsSinceEpoch}.$ext');
+      return true;
+    } catch (e) {
+      AvaLog.I.log('media', 'paste image failed: $e');
+      Analytics.capture('chat_image_paste_failed', {'err': e.toString()});
+      return false;
+    }
+  }
+
+  /// Composer paste entry point used by both the toolbar "Paste" button and the
+  /// hardware Cmd/Ctrl+V shortcut. Tries an image first; on miss, falls back to
+  /// the normal text paste (insert at the cursor / replace the selection).
+  Future<void> _onComposerPaste() async {
+    final handledImage = await _tryPasteImage();
+    if (handledImage) return;
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+    final base = _ctrl.text;
+    final sel = _ctrl.selection;
+    final start = sel.start < 0 ? base.length : sel.start;
+    final end = sel.end < 0 ? base.length : sel.end;
+    final newText = base.replaceRange(start, end, text);
+    _ctrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: start + text.length),
+    );
+    _onInputChanged(newText);
+  }
+
+  /// "Paste image" tile in the + attach sheet. A guaranteed manual path for
+  /// sending a copied image — some platforms hide the toolbar "Paste" button
+  /// when only an image (no text) is on the clipboard, so this always works.
+  Future<void> _pasteImageFromAttach() async {
+    final handled = await _tryPasteImage();
+    if (!handled && mounted) _capNote('No image found on the clipboard.');
+  }
+
   // Bottom sheet: image preview + a caption field. Returns the caption (possibly
   // empty → send with no caption) or null if dismissed without sending.
   Future<String?> _captionSheet(Uint8List bytes, {String initial = ''}) {
@@ -2621,6 +2702,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   if (m.text.trim().isNotEmpty && m.special != 'ava_status')
                     _action(ctx, PhosphorIcons.copy(PhosphorIconsStyle.bold),
                         m.media != null ? 'Copy caption' : 'Copy text', () => _copyText(m)),
+                  // Copy a detected link. When the bubble holds exactly one URL
+                  // we copy it straight; with several we pop a small chooser.
+                  if (urlSpans(m.text).isNotEmpty)
+                    _action(ctx, PhosphorIcons.link(PhosphorIconsStyle.bold),
+                        urlSpans(m.text).length > 1 ? 'Copy link…' : 'Copy link',
+                        () => _copyLink(m)),
                   // Copy the actual IMAGE to the clipboard (paste into any app).
                   if (hasImage)
                     _action(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Copy image',
@@ -2664,6 +2751,49 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
     }
+  }
+
+  /// Copy a URL detected inside a bubble to the clipboard. One link → copied
+  /// straight; multiple links → a small chooser so the user picks which one.
+  Future<void> _copyLink(_Msg m) async {
+    final urls = urlSpans(m.text).map((s) => s.url).toList();
+    if (urls.isEmpty) return;
+    String url = urls.first;
+    if (urls.length > 1) {
+      final picked = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: Zine.paper,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        builder: (ctx) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Copy which link?', style: ZineText.value(size: 15)),
+              ),
+            ),
+            for (final u in urls)
+              ListTile(
+                leading: Icon(PhosphorIcons.link(PhosphorIconsStyle.bold), color: Zine.ink),
+                title: Text(u, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.sub(size: 13.5, color: Zine.ink)),
+                onTap: () => Navigator.pop(ctx, u),
+              ),
+          ]),
+        ),
+      );
+      if (picked == null) return;
+      url = picked;
+    }
+    await Clipboard.setData(ClipboardData(text: url));
+    HapticFeedback.selectionClick();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Link copied'), duration: Duration(seconds: 1)));
+    }
+    Analytics.capture('chat_link_copied', {'count': urls.length});
   }
 
   Future<void> _toggleStar(_Msg m) async {
@@ -2732,10 +2862,44 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   void _deleteForMe(_Msg m) => setState(() => _msgs.removeWhere((x) => x.id == m.id));
-  void _deleteForEveryone(_Msg m) => setState(() {
-        m.text = 'You deleted this message';
-        m.media = null; m.localBytes = null; m.reaction = null;
+  // DELETE FOR EVERYONE — really propagate now. Send a {t:'del'} (1:1) / {t:'gdel'}
+  // (group) control to the peer(s) so it deletes on THEIR side too, and the server
+  // tombstones the stored copy so it never re-syncs. Mirrors the existing 'edit'.
+  void _deleteForEveryone(_Msg m) {
+    final target = m.evId;
+    if (_realMode && target != null && target.isNotEmpty) {
+      try {
+        if (_group != null && _gdm != null) {
+          _gdm!.send(jsonEncode({'t': 'gdel', 'gid': _group!.id, 'target': target}));
+        } else if (_dm != null) {
+          _dm!.send(jsonEncode({'t': 'del', 'target': target}));
+        }
+      } catch (_) {/* best-effort; local delete still applies */}
+    }
+    setState(() {
+      m.text = 'You deleted this message';
+      m.media = null; m.localBytes = null; m.reaction = null;
+      m.special = null; m.extra = null; m.mediaCaption = '';
+    });
+    _schedulePersist();
+    Analytics.capture('message_deleted', {
+      'scope': 'everyone', 'group': _group != null, 'had_evid': target != null,
+    });
+  }
+
+  // Apply a delete-for-everyone the PEER sent: redact the targeted message locally.
+  void _applyDelete(String target) {
+    final i = _msgs.indexWhere((x) => x.evId == target);
+    if (i >= 0 && mounted) {
+      setState(() {
+        _msgs[i].text = 'This message was deleted';
+        _msgs[i].media = null; _msgs[i].localBytes = null;
+        _msgs[i].reaction = null; _msgs[i].special = null; _msgs[i].extra = null;
+        _msgs[i].mediaCaption = '';
       });
+      _schedulePersist();
+    }
+  }
 
   Future<void> _forward(_Msg m) async {
     final contacts = await ContactsStore().load();
@@ -3077,6 +3241,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           padding: const EdgeInsets.all(16),
           child: Wrap(spacing: 18, runSpacing: 18, children: [
             _attachItem(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photos', Zine.accents[0], _pickPhotos),
+            _attachItem(ctx, PhosphorIcons.clipboard(PhosphorIconsStyle.bold), 'Paste image', Zine.accents[3], _pasteImageFromAttach),
             _attachItem(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), 'Camera', Zine.accents[1], () => _pickImage(ImageSource.camera)),
             _attachItem(ctx, PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), 'Library', Zine.accents[4], _addFromLibrary),
             _attachItem(ctx, PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), 'Video', Zine.accents[2], () => _pickVideo(ImageSource.camera)),
@@ -3364,7 +3529,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 color: _avaMode ? Zine.lilac : Zine.card,
                 borderRadius: BorderRadius.circular(5),
                 border: Zine.border),
-            child: TextField(
+            // Wrap the field so BOTH a hardware Cmd/Ctrl+V and the long-press
+            // toolbar "Paste" route through _onComposerPaste — which pastes an
+            // image from the clipboard (super_clipboard) when one is present and
+            // otherwise pastes text as usual. Without this the box silently
+            // ignores copied images (Flutter's clipboard is text-only).
+            child: Actions(
+              actions: {
+                PasteTextIntent: CallbackAction<PasteTextIntent>(
+                  onInvoke: (intent) {
+                    _onComposerPaste();
+                    return null;
+                  },
+                ),
+              },
+              child: TextField(
               controller: _ctrl,
               focusNode: _composerFocus,
               onChanged: _onInputChanged,
@@ -3378,12 +3557,33 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               textInputAction: TextInputAction.send,
               style: ZineText.input(size: 15.5),
               cursorColor: Zine.blueInk,
+              contextMenuBuilder: (ctx, editableState) {
+                // Rebuild the default selection toolbar but re-point its "Paste"
+                // button at our image-aware handler, so pasting a copied image
+                // works from the toolbar too.
+                final items = editableState.contextMenuButtonItems
+                    .map((b) => b.type == ContextMenuButtonType.paste
+                        ? ContextMenuButtonItem(
+                            type: ContextMenuButtonType.paste,
+                            onPressed: () {
+                              editableState.hideToolbar();
+                              _onComposerPaste();
+                            },
+                          )
+                        : b)
+                    .toList();
+                return AdaptiveTextSelectionToolbar.buttonItems(
+                  anchors: editableState.contextMenuAnchors,
+                  buttonItems: items,
+                );
+              },
               decoration: InputDecoration(
                   hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
                   hintStyle: ZineText.input(size: 15.5).copyWith(
                       color: Zine.placeholder, fontWeight: FontWeight.w600),
                   border: InputBorder.none, isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12)),
+              ),
             ),
           ),
         ),
@@ -3867,7 +4067,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final j = jsonDecode(t);
       if (j is Map) {
-        const ctrl = {'read', 'delivered', 'typing', 'ack', 'receipt', 'seen'};
+        const ctrl = {'read', 'delivered', 'typing', 'ack', 'receipt', 'seen', 'del', 'gdel'};
         return ctrl.contains(j['t']) || ctrl.contains(j['type']);
       }
     } catch (_) { /* not JSON → real text */ }
@@ -4527,16 +4727,25 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     if (widget.sessionId.isEmpty) return;
     setState(() => _loadingAudio = true);
     try {
-      final url = 'https://$kSignalingHost/api/receptionist/recording?sid=${widget.sessionId}';
-      final r = await ApiAuth.getBytes(url);
-      if (r.statusCode != 200 || r.bodyBytes.isEmpty) {
-        if (mounted) setState(() => _loadingAudio = false);
-        return;
+      // Cache-first: a voicemail recording never changes, so once fetched we
+      // keep the bytes in the per-account media cache and replay locally instead
+      // of re-downloading on every tap / chat reopen.
+      final cacheKey = 'recept_${widget.sessionId}';
+      Uint8List? bytes = await MediaService.cachedBlob(cacheKey);
+      if (bytes == null || bytes.isEmpty) {
+        final url = 'https://$kSignalingHost/api/receptionist/recording?sid=${widget.sessionId}';
+        final r = await ApiAuth.getBytes(url);
+        if (r.statusCode != 200 || r.bodyBytes.isEmpty) {
+          if (mounted) setState(() => _loadingAudio = false);
+          return;
+        }
+        bytes = r.bodyBytes;
+        await MediaService.writeBlob(cacheKey, bytes); // best-effort
       }
       _player.onPlayerComplete.listen((_) {
         if (mounted) setState(() => _playing = false);
       });
-      await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/wav'));
+      await _player.play(BytesSource(bytes, mimeType: 'audio/wav'));
       if (mounted) setState(() { _loadingAudio = false; _playing = true; });
     } catch (_) {
       if (mounted) setState(() => _loadingAudio = false);

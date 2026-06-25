@@ -231,6 +231,17 @@ class MediaService {
       await f.writeAsBytes(bytes, flush: true);
     } catch (_) {/* best-effort */}
   }
+
+  // ---- public plaintext-blob cache (reuses the per-account media dir) ----
+  // For owner-authed media that is NOT an encrypted DM attachment — e.g. an Ava
+  // Receptionist voicemail recording. The server already gates access, so we
+  // cache the plaintext bytes locally, keyed by a caller-supplied id, so a
+  // replay/reopen loads on-device instead of re-downloading. Scoped per account
+  // like all other media (parent + child share a phone).
+  static Future<Uint8List?> cachedBlob(String key) => _cacheRead(key);
+
+  static Future<void> writeBlob(String key, Uint8List bytes) =>
+      _cacheWrite(key, bytes);
 }
 
 class MediaUploadException implements Exception {
