@@ -109,6 +109,7 @@ class _Msg {
   bool edited;
   bool starred;
   bool forwarded;
+  bool hidden; // soft-deleted on MY device: shown as "deleted" + Undo; data retained
   int? expireAt; // epoch secs after which the message disappears
   String? special; // 'loc' | 'card' | 'poll' | 'sticker'
   Map<String, dynamic>? extra;
@@ -117,7 +118,7 @@ class _Msg {
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
-       this.starred = false, this.forwarded = false, this.expireAt, this.special, this.extra,
+       this.starred = false, this.forwarded = false, this.hidden = false, this.expireAt, this.special, this.extra,
        this.aiLocal = false});
 }
 
@@ -472,7 +473,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
-      if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { _applyDelete(env['target'].toString()); return; }
+      if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
+      if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
       if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
@@ -578,7 +580,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['t'] == 'read') return; // read high-water (badge clears via the chat list) — never a bubble
       if (env is Map && env['gid'] != null) return; // group message — not this 1:1
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
-      if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { _applyDelete(env['target'].toString()); return; }
+      if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
+      if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
       if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
@@ -687,6 +690,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         senderLabel: j['senderLabel'] as String?,
         reaction: j['reaction'] as String?,
         starred: j['starred'] == true,
+        hidden: j['hidden'] == true,
       ));
     }
     if (loaded.isEmpty || !mounted) return;
@@ -722,6 +726,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (m.senderLabel != null) 'senderLabel': m.senderLabel,
         if (m.reaction != null) 'reaction': m.reaction,
         if (m.starred) 'starred': true,
+        if (m.hidden) 'hidden': true, // soft-delete survives reopen; data retained for Undo
       });
     }
     await _msgStore.save(key, out);
@@ -729,9 +734,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // for both messages I sent and ones I received while this thread was open.
     if (_msgs.isNotEmpty) {
       final last = _msgs.reduce((a, b) => b.ts >= a.ts ? b : a);
-      final preview = last.text.isNotEmpty
-          ? last.text
-          : (last.media != null ? _caption(last.media!.kind, last.media!.name) : '');
+      final preview = last.hidden
+          ? 'You deleted this message' // never leak hidden content into the list
+          : (last.text.isNotEmpty
+              ? last.text
+              : (last.media != null ? _caption(last.media!.kind, last.media!.name) : ''));
       final ts = last.ts == 0 ? DateTime.now().millisecondsSinceEpoch ~/ 1000 : last.ts;
       if (preview.isNotEmpty) await ChatPreviewStore().record(key, preview, ts, last.me);
     }
@@ -2861,10 +2868,37 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (mounted) _capNote(ok ? 'Saved to your AvaTOK Drive ✓' : "Couldn't save — connect Drive in AvaStorage.");
   }
 
-  void _deleteForMe(_Msg m) => setState(() => _msgs.removeWhere((x) => x.id == m.id));
-  // DELETE FOR EVERYONE — really propagate now. Send a {t:'del'} (1:1) / {t:'gdel'}
-  // (group) control to the peer(s) so it deletes on THEIR side too, and the server
-  // tombstones the stored copy so it never re-syncs. Mirrors the existing 'edit'.
+  // DELETE FOR ME — soft-hide on MY device only. The content is RETAINED (not
+  // erased) so I can Undo to recover it later (copy something I lost, then re-hide).
+  void _deleteForMe(_Msg m) {
+    setState(() => m.hidden = true);
+    _schedulePersist();
+    _syncHidden(m, true); // mirror the hide to my other devices
+    Analytics.capture('message_deleted', {'scope': 'me', 'group': _group != null});
+  }
+
+  // Sync MY soft-delete/Undo to my OTHER devices via the InboxDO (owner-only state).
+  void _syncHidden(_Msg m, bool hidden) {
+    final conv = _guardianConv; // server conv id for this thread
+    final target = m.evId;
+    if (conv == null || target == null || target.isEmpty) return;
+    ApiAuth.postJson(kMsgHideUrl, {'conv': conv, 'target': target, 'hidden': hidden})
+        .then((_) {}, onError: (_) {});
+  }
+
+  // Apply a hide/Undo that arrived from one of my OTHER devices.
+  void _applyHide(String target, bool hidden) {
+    final i = _msgs.indexWhere((x) => x.evId == target);
+    if (i >= 0 && mounted) {
+      setState(() => _msgs[i].hidden = hidden);
+      _schedulePersist();
+    }
+  }
+
+  // DELETE FOR EVERYONE — soft-hide MY copy (retained, so I can Undo and recover my
+  // own data), AND tell the peer(s) to delete on THEIR side. KEY DIFFERENCE from
+  // WhatsApp: my own copy isn't destroyed. The recipient's copy IS hard-removed
+  // (server tombstone + _applyDelete) — only I, the owner, can Undo to see it again.
   void _deleteForEveryone(_Msg m) {
     final target = m.evId;
     if (_realMode && target != null && target.isNotEmpty) {
@@ -2874,20 +2908,28 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         } else if (_dm != null) {
           _dm!.send(jsonEncode({'t': 'del', 'target': target}));
         }
-      } catch (_) {/* best-effort; local delete still applies */}
+      } catch (_) {/* best-effort; local hide still applies */}
     }
-    setState(() {
-      m.text = 'You deleted this message';
-      m.media = null; m.localBytes = null; m.reaction = null;
-      m.special = null; m.extra = null; m.mediaCaption = '';
-    });
+    setState(() => m.hidden = true); // retained — Undo brings it back for ME only
     _schedulePersist();
+    _syncHidden(m, true); // mirror the hide to my other devices
     Analytics.capture('message_deleted', {
       'scope': 'everyone', 'group': _group != null, 'had_evid': target != null,
     });
   }
 
-  // Apply a delete-for-everyone the PEER sent: redact the targeted message locally.
+  // Undo MY own soft-delete — restore the message in my view only (never re-sent to
+  // anyone). Owner-only recovery: a peer's hard-deleted copy has no Undo.
+  void _undoDelete(_Msg m) {
+    setState(() => m.hidden = false);
+    _schedulePersist();
+    _syncHidden(m, false); // mirror the Undo to my other devices
+    Analytics.capture('message_delete_undo', {'group': _group != null});
+  }
+
+  // Apply a delete-for-everyone the PEER sent: HARD-remove the targeted message
+  // from my view (no Undo — I'm not its owner). The server also tombstones my
+  // stored copy so it never re-syncs.
   void _applyDelete(String target) {
     final i = _msgs.indexWhere((x) => x.evId == target);
     if (i >= 0 && mounted) {
@@ -2895,7 +2937,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _msgs[i].text = 'This message was deleted';
         _msgs[i].media = null; _msgs[i].localBytes = null;
         _msgs[i].reaction = null; _msgs[i].special = null; _msgs[i].extra = null;
-        _msgs[i].mediaCaption = '';
+        _msgs[i].mediaCaption = ''; _msgs[i].hidden = false;
       });
       _schedulePersist();
     }
@@ -4201,6 +4243,40 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // RED bubble: white text, shield icon — used for the safety alert AND for an
   // incoming message Ava flagged. Deliberately self-contained so it never touches
   // the normal media/special bubble path.
+  // Soft-deleted (by me) pill: "You deleted this message" + an Undo that restores
+  // it in MY view only. The content lives on in `m` until I tap Undo (recover) or
+  // leave it hidden. onRight for my own messages, left for received ones I hid.
+  Widget _hiddenBubble(_Msg m) {
+    return Align(
+      alignment: m.me ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Zine.paper2,
+          border: Border.all(color: Zine.ink.withValues(alpha: 0.35), width: 1.5),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), size: 14, color: Zine.inkSoft),
+          const SizedBox(width: 6),
+          Text('You deleted this message',
+              style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+          const SizedBox(width: 12),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _undoDelete(m),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.arrowCounterClockwise(PhosphorIconsStyle.bold), size: 13, color: Zine.blueInk),
+              const SizedBox(width: 3),
+              Text('UNDO', style: ZineText.tag(size: 11, color: Zine.blueInk)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _redFlagBubble(_Msg m, String label) {
     return GestureDetector(
       onLongPress: () => _onBubbleLongPress(m),
@@ -4244,6 +4320,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if ((m.extra?['phase'] ?? '').toString() == 'end') return const SizedBox.shrink();
       return _avaStatusChip(m);
     }
+    // SOFT-DELETED (by me) — a slim "deleted" pill with an Undo so I can recover my
+    // own data. The real content stays in `m` (hidden, not erased) until I confirm.
+    if (m.hidden) return _hiddenBubble(m);
     // RED FLAGS — Ava's safety alert, and any incoming message Ava flagged as
     // unsafe. Both render red/white so the danger is obvious to the child.
     if (_isGuardianWarn(m)) return _redFlagBubble(m, 'AVA · SAFETY ALERT');

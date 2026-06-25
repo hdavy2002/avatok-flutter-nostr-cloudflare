@@ -226,6 +226,23 @@ export async function readMsg(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// ---- POST /api/msg/hide -----------------------------------------------------
+// Owner soft-hides / un-hides one of their OWN messages (delete-for-me, the owner
+// side of delete-for-everyone, or Undo). Writes to MY OWN InboxDO only (never the
+// peer's) so the hide/Undo syncs across all of MY devices via /sync + live frame.
+export async function hideMsg(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  if (!b.conv || !b.target) return json({ error: "conv and target required" }, 400);
+  const stub = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
+  await stub.fetch("https://inbox/hide", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ conv: String(b.conv), target: String(b.target), hidden: b.hidden === true }),
+  });
+  return json({ ok: true });
+}
+
 // ---- conversations ----------------------------------------------------------
 export async function convList(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);

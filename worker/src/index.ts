@@ -31,7 +31,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
-import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, convList, convCreate } from "./routes/messaging";
+import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, convList, convCreate } from "./routes/messaging";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
 import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./routes/subscribe";
@@ -210,6 +210,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/sync" && req.method === "GET") return await syncMsg(req, env);
       if (p === "/api/msg/receipt" && req.method === "POST") return await receiptMsg(req, env);
       if (p === "/api/msg/read" && req.method === "POST") return await readMsg(req, env);
+      if (p === "/api/msg/hide" && req.method === "POST") return await hideMsg(req, env);
       if (p === "/api/conversations" && req.method === "GET") return await convList(req, env);
       if (p === "/api/conversations" && req.method === "POST") return await convCreate(req, env);
 

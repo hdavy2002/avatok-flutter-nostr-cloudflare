@@ -226,6 +226,9 @@ class SyncHub {
       case 'read':
         _ingestRead(m);
         break;
+      case 'hide':
+        _ingestHide(m);
+        break;
       case 'storage':
         // AvaStorage live summary (Phase 4): transient system event — fan to any
         // open AvaStorage screen. Same multiplexed socket, no extra connection.
@@ -282,6 +285,20 @@ class SyncHub {
       }
     }
     _incoming.add(HubEvent(convKey, sender, myUid, mine, rumorId, body, createdSec));
+  }
+
+  // A SOFT-DELETE/Undo from one of MY OTHER devices. Re-emit it as a {t:'hide'}
+  // event into the open thread so it hides/un-hides the same message live here.
+  void _ingestHide(Map<String, dynamic> r) {
+    final conv = (r['conv'] ?? '').toString();
+    final target = (r['target'] ?? '').toString();
+    if (conv.isEmpty || target.isEmpty) return;
+    final hidden = r['hidden'] == true;
+    final myUid = _myUid ?? '';
+    final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? conv}' : 'g:$conv';
+    _incoming.add(HubEvent(convKey, myUid, myUid, true, 'hide_${target}_$hidden',
+        jsonEncode({'t': 'hide', 'target': target, 'hidden': hidden}),
+        DateTime.now().millisecondsSinceEpoch ~/ 1000));
   }
 
   void _ingestReceipt(Map<String, dynamic> r) {

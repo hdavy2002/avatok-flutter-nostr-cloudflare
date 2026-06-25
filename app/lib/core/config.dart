@@ -112,6 +112,8 @@ const String kMsgSendUrl = 'https://$kSignalingHost/api/msg/send';
 const String kMsgSyncUrl = 'https://$kSignalingHost/api/msg/sync';
 const String kMsgReceiptUrl = 'https://$kSignalingHost/api/msg/receipt';
 const String kMsgReadUrl = 'https://$kSignalingHost/api/msg/read';
+// Owner soft-delete/Undo sync across my own devices (writes to my own InboxDO).
+const String kMsgHideUrl = 'https://$kSignalingHost/api/msg/hide';
 const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
 
 /// Deterministic 1:1 conversation id — MUST match server authz.dmConvId.

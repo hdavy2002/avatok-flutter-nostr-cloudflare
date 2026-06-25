@@ -87,6 +87,11 @@ export class InboxDO {
     // client-supplied and unit-ambiguous (seconds vs ms across legacy rows), so we
     // never prune on it directly. stored_at is always server-ms.
     try { this.sql.exec(`ALTER TABLE messages ADD COLUMN stored_at INTEGER`); } catch { /* already present */ }
+    // Owner's per-message SOFT-DELETE flag (1 = hidden on this user's devices, with
+    // Undo; the body is retained). This is the OWNER's private state — it lives in
+    // their own InboxDO so all of their devices (iPhone/Mac/PC) sync the same hide/
+    // Undo via /sync + the live 'hide' broadcast. Never set on a peer's inbox.
+    try { this.sql.exec(`ALTER TABLE messages ADD COLUMN hidden INTEGER`); } catch { /* already present */ }
     // Retention: turn the per-user inbox into a RELAY + offline buffer instead of a
     // permanent archive (the device keeps history locally + in Drive/R2 backup).
     // Controlled by INBOX_RETENTION_DAYS — UNSET/0 = disabled (keep forever, current
@@ -141,6 +146,7 @@ export class InboxDO {
         });
       }
       if (url.pathname.endsWith("/receipt")) return this.receipt(await req.json());
+      if (url.pathname.endsWith("/hide")) return this.hide(await req.json());
       if (url.pathname.endsWith("/read")) return this.markRead(await req.json());
       if (url.pathname.endsWith("/event")) return this.event(await req.json());
       // Transient "Ava is working…" chip — broadcast only, never persisted.
@@ -197,6 +203,28 @@ export class InboxDO {
   }): Response {
     const created = b.created_at || Date.now();
     const audience = scopeAudience(b.scope); // null = thread-scoped (default)
+
+    // DELETE-FOR-EVERYONE (server tombstone). A {t:'del'|'gdel', target:<client_id>}
+    // control redacts the targeted message so its body never re-syncs to the device.
+    // IMPORTANT: only redact a RECIPIENT's inbox (owner !== sender). The OWNER's own
+    // copy is left intact so they can Undo/recover their own data later — only the
+    // owner can bring it back. We STILL store + broadcast the control below so an
+    // open recipient applies the deletion live. Best-effort; never blocks the append.
+    if (b.owner !== b.sender && b.body && (b.body.includes('"t":"del"') || b.body.includes('"t":"gdel"'))) {
+      try {
+        const ctrl = JSON.parse(b.body);
+        const target = ctrl && (ctrl.t === "del" || ctrl.t === "gdel") ? String(ctrl.target ?? "") : "";
+        if (target) {
+          this.sql.exec(
+            `UPDATE messages SET kind='deleted', body='{"t":"deleted"}', media_ref=NULL, edited_at=? WHERE conv=? AND client_id=?`,
+            Date.now(), b.conv, target,
+          );
+          try { void this.env.Q_ANALYTICS.send({ event: "message_tombstoned", uid: b.owner, ts: Date.now(),
+            props: { conv: b.conv, target, by: b.sender, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: b.owner } }); } catch { /* best-effort */ }
+        }
+      } catch { /* not a control envelope — fall through */ }
+    }
+
     const row = this.sql.exec(
       `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
@@ -234,7 +262,7 @@ export class InboxDO {
 
   private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[] } {
     const messages = this.sql.exec(
-      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience
+      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden
        FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`,
       cursor, SYNC_LIMIT,
     ).toArray();
@@ -259,6 +287,20 @@ export class InboxDO {
     );
     this.sql.exec(`UPDATE conv_meta SET unread=0 WHERE conv=?1`, b.conv);
     const live = this.broadcast(JSON.stringify({ type: "read", conv: b.conv, read_ts: ts }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // Owner soft-hides / un-hides one of their own messages (delete-for-me, the
+  // owner side of delete-for-everyone, or Undo). Persisted on the owner's own
+  // message row and broadcast to their OTHER open sockets so a second device
+  // (Mac/PC) reflects the hide/Undo live. Matched on the shared client_id.
+  private hide(b: { conv: string; target?: string; hidden?: boolean }): Response {
+    const target = String(b.target ?? "");
+    const conv = String(b.conv ?? "");
+    if (!target || !conv) return new Response(JSON.stringify({ ok: false, error: "conv + target required" }), { headers: { "content-type": "application/json" } });
+    const hidden = b.hidden ? 1 : 0;
+    this.sql.exec(`UPDATE messages SET hidden=?1 WHERE conv=?2 AND client_id=?3`, hidden, conv, target);
+    const live = this.broadcast(JSON.stringify({ type: "hide", conv, target, hidden: !!b.hidden }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
 
