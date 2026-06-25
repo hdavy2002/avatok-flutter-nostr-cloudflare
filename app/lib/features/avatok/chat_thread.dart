@@ -2336,6 +2336,38 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  /// Keyboard / system-clipboard rich-content insertion (Android commitContent).
+  /// This is the path Samsung's "super paste" panel and Gboard's image/GIF paste
+  /// use — distinct from the toolbar Paste button. The inserted image arrives as
+  /// bytes (or a content URI the engine resolves for us), so route it straight to
+  /// the photo-with-caption flow, mirroring _tryPasteImage. Falls back to a
+  /// clipboard read if the payload is empty.
+  Future<void> _onContentInserted(KeyboardInsertedContent content) async {
+    try {
+      final data = content.data;
+      if (data == null || data.isEmpty) {
+        await _tryPasteImage(); // empty payload → try reading the clipboard instead
+        return;
+      }
+      final bytes = Uint8List.fromList(data);
+      if (bytes.length > _kMediaMaxBytes) {
+        _capNote('That image is over 25 MB — please use a smaller one.');
+        return;
+      }
+      final mime = content.mimeType.isNotEmpty ? content.mimeType : 'image/png';
+      final ext = mime.contains('gif')
+          ? 'gif'
+          : (mime.contains('png') ? 'png' : (mime.contains('webp') ? 'webp' : 'jpg'));
+      Analytics.capture('chat_image_inserted', {'mime': mime, 'size': bytes.length});
+      await _sendImageWithCaption(
+          bytes, mime, 'pasted_${DateTime.now().millisecondsSinceEpoch}.$ext');
+    } catch (e) {
+      AvaLog.I.log('media', 'content insert failed: $e');
+      Analytics.capture('chat_image_insert_failed', {'err': e.toString()});
+      if (mounted) _capNote("Couldn't paste that image — try the + → Paste image.");
+    }
+  }
+
   /// Composer paste entry point used by both the toolbar "Paste" button and the
   /// hardware Cmd/Ctrl+V shortcut. Tries an image first; on miss, falls back to
   /// the normal text paste (insert at the cursor / replace the selection).
@@ -2963,9 +2995,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // erased) so I can Undo to recover it later (copy something I lost, then re-hide).
   void _deleteForMe(_Msg m) {
     setState(() => m.hidden = true);
+    _persistHidden(m.evId, true); // durable on THIS device — survives app updates
     _schedulePersist();
     _syncHidden(m, true); // mirror the hide to my other devices
     Analytics.capture('message_deleted', {'scope': 'me', 'group': _group != null});
+  }
+
+  // Persist a soft-delete/Undo to the durable, per-account [HiddenStore] AND the
+  // in-memory map, so it's re-applied on the next cold open even if the capped
+  // per-conversation message cache was cleared by an app update / OEM wipe. This
+  // is the local-first source of truth; the server mirror (_syncHidden) is purely
+  // for cross-device. Without this, a delete only lived in the cache + a best-
+  // effort server POST, so a re-sync after an update brought the message back.
+  void _persistHidden(String? evId, bool hidden) {
+    if (evId == null || evId.isEmpty) return;
+    _hiddenIds[evId] = hidden;
+    HiddenStore().set(evId, hidden);
   }
 
   // Sync MY soft-delete/Undo to my OTHER devices via the InboxDO (owner-only state).
@@ -2979,6 +3024,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Apply a hide/Undo that arrived from one of my OTHER devices.
   void _applyHide(String target, bool hidden) {
+    _persistHidden(target, hidden); // keep this device's durable state current
     final i = _msgs.indexWhere((x) => x.evId == target);
     if (i >= 0 && mounted) {
       setState(() => _msgs[i].hidden = hidden);
@@ -3002,6 +3048,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       } catch (_) {/* best-effort; local hide still applies */}
     }
     setState(() => m.hidden = true); // retained — Undo brings it back for ME only
+    _persistHidden(m.evId, true); // durable on THIS device — survives app updates
     _schedulePersist();
     _syncHidden(m, true); // mirror the hide to my other devices
     Analytics.capture('message_deleted', {
@@ -3013,6 +3060,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // anyone). Owner-only recovery: a peer's hard-deleted copy has no Undo.
   void _undoDelete(_Msg m) {
     setState(() => m.hidden = false);
+    _persistHidden(m.evId, false); // clear the durable hide on THIS device too
     _schedulePersist();
     _syncHidden(m, false); // mirror the Undo to my other devices
     Analytics.capture('message_delete_undo', {'group': _group != null});
@@ -3681,6 +3729,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               focusNode: _composerFocus,
               onChanged: _onInputChanged,
               onSubmitted: (_) => _send(),
+              // Accept images inserted by the keyboard / system clipboard (Samsung
+              // "super paste", Gboard image paste, GIF insert). These arrive via
+              // Android's InputConnection.commitContent — NOT PasteTextIntent — so
+              // without this config the image is silently dropped (the input box
+              // stays empty and the system falls back to a blank editor view).
+              contentInsertionConfiguration: ContentInsertionConfiguration(
+                allowedMimeTypes: const [
+                  'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp',
+                ],
+                onContentInserted: _onContentInserted,
+              ),
               // Auto-grow upward as the user types (1 line → max 5, then it
               // scrolls internally so the text always stays in view). Enter
               // still sends — the keyboard action button is wired to send.
