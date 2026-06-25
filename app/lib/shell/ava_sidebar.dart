@@ -185,32 +185,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
             child: Align(alignment: Alignment.centerLeft, child: _planChip()),
           ),
-          // Subscribe — Phase 1 plans (Free/Plus/Pro/Max). Always visible CTA.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
-            child: ZinePressable(
-              onTap: () => widget.onSelect('subscribe'),
-              color: Zine.lilac,
-              radius: BorderRadius.circular(Zine.rSm),
-              boxShadow: Zine.shadowXs,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(children: [
-                ZineIconBadge(
-                    icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Zine.card),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Subscribe', style: ZineText.cardTitle(size: 15.5)),
-                    const SizedBox(height: 1),
-                    Text('Plans & upgrades',
-                        style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
-                  ]),
-                ),
-                PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
-                    size: 14, color: Zine.ink),
-              ]),
-            ),
-          ),
+          // (Subscribe moved into the list below the Contacts item — see ListView.)
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), children: [
               // Featured tiles — shown in BOTH focus and non-focus modes so the
@@ -227,6 +202,35 @@ class _AvaSidebarState extends State<AvaSidebar> {
                   PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint),
               _special('library', 'Library', 'Saved media & files',
                   PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
+              // Contacts — moved out of ACCOUNT to sit below Library; own colour.
+              _special('invite', 'Contacts', 'Find & manage people',
+                  PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.coral),
+              // Subscribe — moved to sit just below Contacts (was a top CTA).
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: ZinePressable(
+                  onTap: () => widget.onSelect('subscribe'),
+                  color: Zine.lilac,
+                  radius: BorderRadius.circular(Zine.rSm),
+                  boxShadow: Zine.shadowXs,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    ZineIconBadge(
+                        icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), color: Zine.card),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Subscribe', style: ZineText.cardTitle(size: 15.5)),
+                        const SizedBox(height: 1),
+                        Text('Plans & upgrades',
+                            style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+                      ]),
+                    ),
+                    PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                        size: 14, color: Zine.ink),
+                  ]),
+                ),
+              ),
               // Role-based management tools (Parent / Enterprise).
               ..._managementSection(),
               // APPS section — hidden when empty (in the default non-focus menu all
@@ -478,10 +482,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
         _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
         _acct('avastorage', 'View Storage', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
-        // "Contacts" — the place to see/manage everyone (invite still lives inside).
-        // Renamed from "Invite friends" (owner request). Routed via onSelect so
-        // ava_shell handles the drawer dismiss + push.
-        _acct('invite', 'Contacts', PhosphorIcons.addressBook(PhosphorIconsStyle.bold)),
+        // (Contacts moved OUT of ACCOUNT to a featured tile below Library.)
         _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
             onTap: () {
               if (!widget.permanent) Navigator.pop(context);
