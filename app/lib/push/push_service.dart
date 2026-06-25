@@ -353,9 +353,14 @@ class PushService {
     try {
       final isAudio = extra['kind'] != 'video';
       if (isAudio) {
+        // Owner decision 2026-06-25: when Ava is enabled, an explicit Decline
+        // should ALSO hand the caller to the receptionist to take a message.
+        // This was gated behind a separate decline_to_ava sub-toggle that was
+        // off by default, so Reject → dead end instead of "Ava takes a message".
+        // Enabling Ava is now sufficient (the caller still falls back to a plain
+        // decline if Ava can't actually pick up).
         final enabled = (await DiskCache.read('receptionist_enabled')) == '1';
-        final declineToAva = (await DiskCache.read('receptionist_decline_to_ava')) == '1';
-        if (enabled && declineToAva) status = 'decline_ava';
+        if (enabled) status = 'decline_ava';
       }
     } catch (_) {/* fall back to plain decline */}
     _signalStatus(callId, status, from);
