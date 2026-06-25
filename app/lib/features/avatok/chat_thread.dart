@@ -189,6 +189,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // Cross-device soft-delete flags (rumorId → hidden), seeded from the InboxDO on
   // /sync so a fresh device shows my deleted messages hidden on a cold open.
   final Map<String, bool> _hiddenIds = {};
+  // HARD-delete tombstones (delete-for-everyone RECEIVED from a peer), seeded from
+  // the durable [DeletedStore] so a message a peer deleted stays deleted across
+  // cold opens — even if my thread was closed when the delete arrived.
+  final Set<String> _deletedIds = {};
   int _disappearSecs = 0; // per-chat disappearing timer (0 = off)
   int _peerDeliveredTs = 0;
   bool _peerOnline = false;
@@ -256,6 +260,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _hiddenIds.addAll(m);
         for (final msg in _msgs) {
           if (msg.evId != null && m[msg.evId] == true) msg.hidden = true;
+        }
+      });
+    });
+    // Re-apply peer hard-deletes (delete-for-everyone) on a cold open, then tombstone
+    // anything already on screen that a peer deleted while this thread was closed.
+    DeletedStore().load().then((s) {
+      if (!mounted || s.isEmpty) return;
+      setState(() {
+        _deletedIds.addAll(s);
+        for (final msg in _msgs) {
+          if (msg.evId != null && s.contains(msg.evId)) _tombstone(msg);
         }
       });
     });
@@ -512,6 +527,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final env2 = jsonDecode(m.payload) as Map;
     final exp = (env2['exp'] as num?)?.toInt();
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return; // already gone
+    // A peer deleted this for everyone (recorded durably) — render the tombstone,
+    // never the original body, even though the cached/replayed envelope still has it.
+    if (_deletedIds.contains(m.rumorId)) {
+      text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
+    }
     setState(() {
       // Durable Ava answer landed — drop any live streaming preview for this turn.
       if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
@@ -619,6 +639,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       }
     } catch (_) {/* legacy/plain text */}
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return;
+    // A peer deleted this for everyone (recorded durably) — render the tombstone,
+    // never the original body, even though the cached/replayed envelope still has it.
+    if (_deletedIds.contains(m.rumorId)) {
+      text = 'This message was deleted'; media = null; special = null; extra = null; replyMeta = null;
+    }
     setState(() {
       // Durable Ava answer landed — drop any live streaming preview for this turn.
       if (special == 'ava' || special == 'ava_private') _clearAvaStreamPreview(extra);
@@ -691,7 +716,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       ChatMedia? media;
       final mj = j['media'];
       if (mj is Map) { try { media = ChatMedia.fromEnvelope(mj.cast<String, dynamic>()); } catch (_) {} }
-      loaded.add(_Msg(
+      final msg = _Msg(
         _seq++, j['me'] == true, (j['text'] ?? '').toString(),
         _fmtTime(ts == 0 ? DateTime.now().millisecondsSinceEpoch ~/ 1000 : ts),
         ts: ts, evId: ev, media: media,
@@ -706,7 +731,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         reaction: j['reaction'] as String?,
         starred: j['starred'] == true,
         hidden: j['hidden'] == true || _hiddenIds[ev] == true,
-      ));
+      );
+      // A peer hard-deleted this for everyone (durable tombstone) — collapse the
+      // stale cached body/media to the deleted pill before showing it.
+      if (ev != null && _deletedIds.contains(ev)) _tombstone(msg);
+      loaded.add(msg);
     }
     if (loaded.isEmpty || !mounted) return;
     setState(() {
@@ -3069,15 +3098,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // Apply a delete-for-everyone the PEER sent: HARD-remove the targeted message
   // from my view (no Undo — I'm not its owner). The server also tombstones my
   // stored copy so it never re-syncs.
+  // Convert a message in place into the delete-for-everyone tombstone.
+  void _tombstone(_Msg m) {
+    m.text = 'This message was deleted';
+    m.media = null; m.localBytes = null;
+    m.reaction = null; m.special = null; m.extra = null;
+    m.mediaCaption = ''; m.hidden = false;
+  }
+
   void _applyDelete(String target) {
+    if (target.isEmpty) return;
+    _deletedIds.add(target);
+    DeletedStore().add(target); // durable — re-applies even after the cache is rebuilt
     final i = _msgs.indexWhere((x) => x.evId == target);
+    Analytics.capture('message_delete_applied', {
+      'group': _group != null, 'on_screen': i >= 0,
+    });
     if (i >= 0 && mounted) {
-      setState(() {
-        _msgs[i].text = 'This message was deleted';
-        _msgs[i].media = null; _msgs[i].localBytes = null;
-        _msgs[i].reaction = null; _msgs[i].special = null; _msgs[i].extra = null;
-        _msgs[i].mediaCaption = ''; _msgs[i].hidden = false;
-      });
+      setState(() => _tombstone(_msgs[i]));
       _schedulePersist();
     }
   }

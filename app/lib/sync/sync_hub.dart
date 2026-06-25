@@ -8,7 +8,7 @@ import 'package:web_socket_channel/io.dart';
 
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
-import '../core/chat_state.dart' show ReadStateStore, HiddenStore;
+import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore;
 import '../core/config.dart';
 import '../core/db.dart';
 import '../core/disk_cache.dart';
@@ -312,7 +312,17 @@ class SyncHub {
     var isReceipt = false;
     try {
       final env = jsonDecode(body);
-      if (env is Map && env['t'] == 'receipt') isReceipt = true;
+      if (env is Map) {
+        if (env['t'] == 'receipt') isReceipt = true;
+        // Delete-for-everyone from a peer: record the tombstone DURABLY the instant
+        // it's ingested — independent of whether the target chat is open — so it
+        // survives and re-applies on the next cold open. (My own delete echoes back
+        // as mine → nothing to tombstone on my side; the owner keeps it via Undo.)
+        if (!mine && (env['t'] == 'del' || env['t'] == 'gdel')) {
+          final target = (env['target'] ?? '').toString();
+          if (target.isNotEmpty) DeletedStore().add(target);
+        }
+      }
     } catch (_) {}
 
     if (!isReceipt) {

@@ -83,6 +83,34 @@ class HiddenStore {
   }
 }
 
+/// Per-message HARD-DELETE flag for a delete-for-everyone RECEIVED from a peer.
+/// Key: the message rumorId (= shared client_id); presence = tombstoned on this
+/// device. Recorded by [SyncHub] the moment a {t:'del'|'gdel'} control is ingested
+/// — even when no chat thread is open — so the deletion is DURABLE here and gets
+/// re-applied on every cold open. This is the recipient-side parity to the owner's
+/// [HiddenStore]: without it, a delete-for-everyone only redrew an OPEN thread, so
+/// if the recipient's thread was closed when it arrived (or their local cache
+/// already held the original), the message stayed visible after reopening.
+class DeletedStore {
+  static const _key = 'avatok_deleted_msgs';
+
+  Future<Set<String>> load() async {
+    final raw = await DiskCache.read(_key);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return (jsonDecode(raw) as List).map((e) => e.toString()).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> add(String rumorId) async {
+    if (rumorId.isEmpty) return;
+    final s = await load();
+    if (s.add(rumorId)) await DiskCache.write(_key, jsonEncode(s.toList()));
+  }
+}
+
 /// Per-conversation last-message preview: a short snippet of the most recent
 /// line, its timestamp, and whether I sent it. Drives the chat-list subtitle and
 /// recency ordering. Key: '1:<peerHex>' for DMs, 'g:<gid>' for groups.
