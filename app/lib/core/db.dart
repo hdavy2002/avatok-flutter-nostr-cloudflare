@@ -288,6 +288,20 @@ class AppDb extends _$AppDb {
             ..orderBy([(t) => OrderingTerm(expression: t.createdAt)]))
           .get();
 
+  /// GLOBAL message search across ALL of my conversations (on-device, private,
+  /// works for free users too). Matches the stored payload (text/caption); the
+  /// caller extracts the human text + skips control/hidden/deleted envelopes.
+  /// Newest first. Powers "search across all messenger chats".
+  Future<List<MessageRow>> searchMessages(String query, {int limit = 60}) {
+    final q = query.trim().replaceAll('%', '').replaceAll('_', '');
+    if (q.length < 2) return Future.value(const <MessageRow>[]);
+    return (select(messages)
+          ..where((t) => t.payload.like('%$q%'))
+          ..orderBy([(t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)])
+          ..limit(limit))
+        .get();
+  }
+
   /// Reactive history for a conversation (full reactive UI binds to this next).
   Stream<List<MessageRow>> watchMessages(String convKey) =>
       (select(messages)

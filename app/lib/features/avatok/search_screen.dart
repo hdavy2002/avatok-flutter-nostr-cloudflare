@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
+import '../../core/db.dart';
 import '../../core/device_contacts.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
@@ -41,6 +43,8 @@ class _SearchScreenState extends State<SearchScreen> {
   List<DeviceContact> _device = [];
   List<Contact> _directory = [];
   bool _searchingDir = false;
+  // Global message search hits across ALL my conversations (on-device).
+  List<({Chat chat, String snippet, int ts, bool mine})> _msgHits = [];
 
   @override
   void initState() {
@@ -64,7 +68,7 @@ class _SearchScreenState extends State<SearchScreen> {
   void _onChanged(String v) {
     setState(() => _q = v.trim());
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 320), _runDirectory);
+    _debounce = Timer(const Duration(milliseconds: 320), () { _runDirectory(); _runMessages(); });
   }
 
   Future<void> _runDirectory() async {
@@ -74,6 +78,66 @@ class _SearchScreenState extends State<SearchScreen> {
     final res = await Directory.search(q);
     if (!mounted) return;
     setState(() { _directory = res; _searchingDir = false; });
+  }
+
+  // GLOBAL message search — across ALL my conversations, on-device.
+  Future<void> _runMessages() async {
+    final q = _q;
+    if (q.length < 2) { setState(() => _msgHits = []); return; }
+    final rows = await Db.I.searchMessages(q);
+    if (!mounted) return;
+    final hits = <({Chat chat, String snippet, int ts, bool mine})>[];
+    final ql = q.toLowerCase();
+    for (final r in rows) {
+      final text = _extractText(r.payload);
+      if (text == null || !text.toLowerCase().contains(ql)) continue;
+      final chat = _chatForConv(r.convKey);
+      if (chat == null) continue;
+      hits.add((chat: chat, snippet: text, ts: r.createdAt, mine: r.mine));
+      if (hits.length >= 40) break;
+    }
+    setState(() => _msgHits = hits);
+  }
+
+  // Pull the human-readable line out of a stored message envelope; null for
+  // control/edit/delete/hidden envelopes (never a search result).
+  String? _extractText(String payload) {
+    const skip = {'receipt', 'read', 'delivered', 'typing', 'ack', 'seen',
+      'edit', 'gedit', 'del', 'gdel', 'hide', 'deleted', 'vote'};
+    try {
+      final e = jsonDecode(payload);
+      if (e is Map) {
+        if (skip.contains(e['t'])) return null;
+        final b = (e['body'] ?? e['caption'] ?? '').toString().trim();
+        return b.isEmpty ? null : b;
+      }
+    } catch (_) { /* not JSON → raw text */ }
+    final t = payload.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  // Map a stored convKey back to an openable Chat (group or 1:1 peer).
+  Chat? _chatForConv(String convKey) {
+    if (convKey.startsWith('g:')) {
+      final gid = convKey.substring(2);
+      for (final g in widget.groups) {
+        if (g.id == gid) {
+          return Chat(name: g.name, seed: 'group-${g.id}', last: '', time: '',
+              group: true, members: g.members.length, gid: g.id);
+        }
+      }
+      return null;
+    }
+    if (convKey.startsWith('1:')) {
+      final hex = convKey.substring(2);
+      for (final c in widget.contacts) {
+        if ((NostrKeys.npubToHex(c.npub) ?? c.npub) == hex) {
+          return Chat(name: c.name.isEmpty ? 'Contact' : c.name, seed: c.seed, last: '', time: '');
+        }
+      }
+      return Chat(name: 'Chat', seed: hex, last: '', time: '');
+    }
+    return null;
   }
 
   String _hexKey(String npub) => '1:${NostrKeys.npubToHex(npub) ?? npub}';
@@ -185,6 +249,20 @@ class _SearchScreenState extends State<SearchScreen> {
                       onTap: () => _openGroup(g),
                     ),
                 ],
+                if (showChats && _msgHits.isNotEmpty) ...[
+                  _section('Messages'),
+                  for (final h in _msgHits)
+                    ListTile(
+                      leading: _ring(Avatar(seed: h.chat.seed, name: h.chat.name, size: 46)),
+                      title: Text(h.chat.name, style: ZineText.value(size: 15)),
+                      subtitle: Text('${h.mine ? "You: " : ""}${h.snippet}',
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+                      trailing: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold),
+                          size: 16, color: Zine.inkSoft),
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: h.chat))),
+                    ),
+                ],
                 if (showContacts && onAvatok.isNotEmpty) ...[
                   _section('On AvaTok'),
                   for (final d in onAvatok) _deviceOnAvatokRow(d),
@@ -202,7 +280,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
                 if (_q.isNotEmpty &&
                     contactHits.isEmpty && groupHits.isEmpty && onAvatok.isEmpty &&
-                    _directory.isEmpty && invitable.isEmpty && !_searchingDir)
+                    _directory.isEmpty && invitable.isEmpty && _msgHits.isEmpty && !_searchingDir)
                   Padding(padding: const EdgeInsets.all(28),
                       child: Center(child: ZineEmptyState(
                           icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),

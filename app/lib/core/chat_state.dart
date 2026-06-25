@@ -47,6 +47,42 @@ class ReadStateStore {
   }
 }
 
+/// Per-message SOFT-DELETE flag, synced across MY devices via the InboxDO.
+/// Key: the message rumorId (= shared client_id); value true = hidden (with Undo).
+/// Populated from the server `hidden` column on /sync + the live 'hide' frame, so
+/// a BRAND-NEW device shows my deleted messages as hidden even on a cold open —
+/// no local-DB migration required.
+class HiddenStore {
+  static const _key = 'avatok_hidden_msgs';
+
+  Future<Map<String, bool>> load() async {
+    final raw = await DiskCache.read(_key);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return (jsonDecode(raw) as Map).map((k, v) => MapEntry(k.toString(), v == true));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> set(String rumorId, bool hidden) async {
+    if (rumorId.isEmpty) return;
+    final m = await load();
+    if ((m[rumorId] ?? false) == hidden) return;
+    m[rumorId] = hidden;
+    await DiskCache.write(_key, jsonEncode(m));
+  }
+
+  /// One load+write for many ids (use when seeding hidden flags from a full sync).
+  Future<void> mergeBulk(Map<String, bool> updates) async {
+    if (updates.isEmpty) return;
+    final m = await load();
+    var changed = false;
+    updates.forEach((k, v) { if ((m[k] ?? false) != v) { m[k] = v; changed = true; } });
+    if (changed) await DiskCache.write(_key, jsonEncode(m));
+  }
+}
+
 /// Per-conversation last-message preview: a short snippet of the most recent
 /// line, its timestamp, and whether I sent it. Drives the chat-list subtitle and
 /// recency ordering. Key: '1:<peerHex>' for DMs, 'g:<gid>' for groups.

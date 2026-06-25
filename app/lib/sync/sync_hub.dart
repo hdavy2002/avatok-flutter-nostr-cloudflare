@@ -8,7 +8,7 @@ import 'package:web_socket_channel/io.dart';
 
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
-import '../core/chat_state.dart' show ReadStateStore;
+import '../core/chat_state.dart' show ReadStateStore, HiddenStore;
 import '../core/config.dart';
 import '../core/db.dart';
 import '../core/disk_cache.dart';
@@ -210,6 +210,17 @@ class SyncHub {
           }
           if (bulk.isNotEmpty) ReadStateStore().mergeBulk(bulk);
         }
+        {
+          // Seed soft-delete flags from the server `hidden` column in ONE write so
+          // a fresh device shows my deleted messages as hidden on a cold open.
+          final hideBulk = <String, bool>{};
+          for (final row in (m['messages'] as List? ?? const [])) {
+            final r = (row as Map);
+            final cid = (r['client_id'] ?? '').toString();
+            if (cid.isNotEmpty) hideBulk[cid] = ((r['hidden'] as num?)?.toInt() ?? 0) == 1;
+          }
+          if (hideBulk.isNotEmpty) HiddenStore().mergeBulk(hideBulk);
+        }
         for (final row in (m['messages'] as List? ?? const [])) {
           _ingestMsg((row as Map).cast<String, dynamic>());
         }
@@ -294,6 +305,7 @@ class SyncHub {
     final target = (r['target'] ?? '').toString();
     if (conv.isEmpty || target.isEmpty) return;
     final hidden = r['hidden'] == true;
+    HiddenStore().set(target, hidden); // durable across cold opens on this device
     final myUid = _myUid ?? '';
     final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? conv}' : 'g:$conv';
     _incoming.add(HubEvent(convKey, myUid, myUid, true, 'hide_${target}_$hidden',

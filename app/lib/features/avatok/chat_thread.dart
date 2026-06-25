@@ -67,6 +67,8 @@ import '../genui/a2ui_renderer.dart';
 import '../../core/apps_service.dart';
 import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
+import '../conference/mesh_api.dart';
+import '../conference/mesh_call_screen.dart';
 import '../../core/analytics.dart';
 import '../../core/live_location_service.dart';
 import 'call_screen.dart';
@@ -184,6 +186,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // created_at (ms) of incoming messages Ava flagged as unsafe → painted RED so
   // they're an obvious red flag to the child. Populated from guardian warnings.
   final Set<int> _flaggedTs = <int>{};
+  // Cross-device soft-delete flags (rumorId → hidden), seeded from the InboxDO on
+  // /sync so a fresh device shows my deleted messages hidden on a cold open.
+  final Map<String, bool> _hiddenIds = {};
   int _disappearSecs = 0; // per-chat disappearing timer (0 = off)
   int _peerDeliveredTs = 0;
   bool _peerOnline = false;
@@ -243,6 +248,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     super.initState();
     _audio.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _playingAudioId = null);
+    });
+    // Load cross-device soft-delete flags, then re-apply to anything already shown.
+    HiddenStore().load().then((m) {
+      if (!mounted || m.isEmpty) return;
+      setState(() {
+        _hiddenIds.addAll(m);
+        for (final msg in _msgs) {
+          if (msg.evId != null && m[msg.evId] == true) msg.hidden = true;
+        }
+      });
     });
     _idStore.load().then((id) {
       if (!mounted || id == null) return;
@@ -503,7 +518,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _msgs.add(_Msg(_seq++, m.mine, text, _fmtTime(m.createdAt),
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
-          starred: _starred.contains(m.rumorId),
+          starred: _starred.contains(m.rumorId), hidden: _hiddenIds[m.rumorId] == true,
           senderLabel: m.mine ? null : _shortPub(m.senderPub)));
       _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
@@ -611,7 +626,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: forwarded, expireAt: exp, special: special, extra: extra,
           sent: m.mine, // my own messages reaching here are already on the relay
-          starred: _starred.contains(m.rumorId)));
+          starred: _starred.contains(m.rumorId), hidden: _hiddenIds[m.rumorId] == true));
       _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
@@ -690,7 +705,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         senderLabel: j['senderLabel'] as String?,
         reaction: j['reaction'] as String?,
         starred: j['starred'] == true,
-        hidden: j['hidden'] == true,
+        hidden: j['hidden'] == true || _hiddenIds[ev] == true,
       ));
     }
     if (loaded.isEmpty || !mounted) return;
@@ -1139,7 +1154,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       return;
     }
     final s = await ConferenceApi.status(gid);
-    if (mounted) setState(() { _confLive = s.live; _confCount = s.count; });
+    if (s.live) {
+      if (mounted) setState(() { _confLive = true; _confCount = s.count; });
+      return;
+    }
+    // No SFU call live → check for a free-tier P2P mesh call so its banner shows.
+    final m = await MeshApi.status(gid);
+    if (mounted) setState(() { _confLive = m.live; _confCount = m.count; });
   }
 
   Future<void> _groupCall(bool video) async {
@@ -1186,6 +1207,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           builder: (_) => ConferenceScreen.connect(
               ticket: ticket, gid: gid, title: widget.chat.name, starter: !live)));
       _refreshConfStatus();
+    } on MeshRequiredException catch (_) {
+      // Free plan → group calls are P2P mesh (≤5). Route to the mesh screen.
+      await _meshCall(video);
     } on ConferenceException catch (e) {
       if (!mounted) return;
       if (e.status == 403 && e.message.contains('25')) { _confLimitNotice(video); return; }
@@ -1196,6 +1220,36 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not start the call')));
       }
     }
+  }
+
+  /// FREE-tier group call: P2P mesh (≤5) via MeshCallScreen. Reached when the SFU
+  /// endpoint refuses a token with `mode:"mesh"` (the caller is on the Free plan).
+  Future<void> _meshCall(bool video) async {
+    final gid = widget.chat.gid;
+    if (gid == null) return;
+    // One call at a time (the SFU minimize-holder also blocks here).
+    if (OngoingConference.active != null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You are already in a call — leave it first')));
+      return;
+    }
+    final s = await MeshApi.status(gid);
+    if (s.live && s.count >= MeshApi.maxMesh) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('This free call is full (max 5) — upgrade for larger calls')));
+      }
+      return;
+    }
+    final starting = !s.live;
+    if (starting) {
+      _sendSpecial('gcall', {'state': 'start', 'kind': video ? 'video' : 'audio', 'gid': gid, 'mesh': true},
+          video ? '📹 Video call started — tap 📞 to join' : '🎙️ Audio call started — tap 📞 to join');
+    }
+    if (!mounted) return;
+    await Navigator.push(context, MaterialPageRoute(
+        builder: (_) => MeshCallScreen(gid: gid, title: widget.chat.name, video: video, starter: starting)));
+    _refreshConfStatus();
   }
 
   /// Exact copy required by PHASE-10 acceptance criteria.

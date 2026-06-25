@@ -244,12 +244,16 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
 export async function search(req: Request, env: Env): Promise<Response> {
   const q = (new URL(req.url).searchParams.get("q") || "").trim().toLowerCase();
   if (q.length < 2) return json({ results: [] });
-  const like = q.replace(/[%_]/g, "") + "%";
+  const safe = q.replace(/[%_]/g, "");
+  const pre = safe + "%";          // prefix match for handle / display name
+  const sub = "%" + safe + "%";    // substring match for bio ("find that designer")
+  // People search now also matches BIO, so "designer", "photographer", etc. surface
+  // the right AvaTOK person even when it isn't in their name or handle.
   const rs = await metaSession(env).prepare(
-    `SELECT uid, handle, display_name, avatar_url FROM users
-      WHERE handle LIKE ?1 OR lower(display_name) LIKE ?1 LIMIT 20`,
-  ).bind(like).all();
-  return json({ results: (rs.results ?? []).map((r: any) => ({ uid: r.uid, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url })) });
+    `SELECT uid, handle, display_name, avatar_url, bio FROM users
+      WHERE handle LIKE ?1 OR lower(display_name) LIKE ?1 OR lower(bio) LIKE ?2 LIMIT 20`,
+  ).bind(pre, sub).all();
+  return json({ results: (rs.results ?? []).map((r: any) => ({ uid: r.uid, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url, bio: r.bio ?? null })) });
 }
 
 // ---- contacts: /api/contacts/sync /api/contacts/match (auth) /list ----
