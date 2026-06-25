@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/config.dart';
@@ -80,6 +81,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final res = await Directory.search(q);
     if (!mounted) return;
     setState(() { _directory = res; _searchingDir = false; });
+    Analytics.capture('people_search', {'q_len': q.length, 'results': res.length});
   }
 
   // GLOBAL message search — LOCAL first (instant), then ONLINE (fills what this
@@ -117,6 +119,9 @@ class _SearchScreenState extends State<SearchScreen> {
     }
     if (!mounted) return;
     setState(() => _msgHits = (hits..sort((a, b) => b.ts.compareTo(a.ts))).take(50).toList());
+    Analytics.capture('message_search', {
+      'q_len': q.length, 'local': localRows.length, 'online': online.length, 'shown': _msgHits.length,
+    });
   }
 
   // Map a server conversation id ('dm_a__b' / group) to the local convKey.

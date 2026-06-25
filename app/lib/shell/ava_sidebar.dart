@@ -478,9 +478,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
         _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
         _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
         _acct('avastorage', 'View Storage', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
-        // Opens the full Invite screen (contacts + WhatsApp/SMS/Email per person).
-        // Routed via onSelect so ava_shell handles the drawer dismiss + push.
-        _acct('invite', 'Invite friends', PhosphorIcons.userPlus(PhosphorIconsStyle.bold)),
+        // "Contacts" — the place to see/manage everyone (invite still lives inside).
+        // Renamed from "Invite friends" (owner request). Routed via onSelect so
+        // ava_shell handles the drawer dismiss + push.
+        _acct('invite', 'Contacts', PhosphorIcons.addressBook(PhosphorIconsStyle.bold)),
         _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
             onTap: () {
               if (!widget.permanent) Navigator.pop(context);
