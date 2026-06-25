@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/subscribe_api.dart';
+import '../../core/play_billing.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
@@ -33,6 +34,14 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   @override
   void initState() {
     super.initState();
+    // Android: listen for native Play Billing results. On success the server has
+    // already flipped the tier, so we just refresh the screen.
+    if (!kIsWeb) {
+      PlayBilling.instance.start(
+        onNotice: _notice,
+        onEntitled: (_) { if (mounted) _load(); },
+      );
+    }
     _load();
   }
 
@@ -67,9 +76,10 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         final uri = Uri.parse(r['checkout_url'] as String);
         if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else if (platform == 'android' && r['play_product_id'] is String) {
-        // TODO(play-billing): launch native Play Billing for r['play_product_id'],
-        // then call SubscribeApi.verifyAndroid(productId, purchaseToken).
-        _notice('Google Play checkout is being wired up — almost there!');
+        // Launch native Play Billing; the purchase result arrives async on the
+        // PlayBilling stream, which verifies server-side then refreshes via _load.
+        final launched = await PlayBilling.instance.buy(r['play_product_id'] as String);
+        if (!launched) _notice('Couldn’t open Google Play checkout. Please try again.');
       } else if (r['error'] != null) {
         _notice(r['error'].toString());
       }

@@ -78,6 +78,10 @@ dependencies:
   # Location share + open-in-maps
   geolocator: ^13.0.1
   url_launcher: ^6.3.0
+  # Native Google Play Billing (Android in-app subscriptions). Wraps
+  # com.android.billingclient; the client buys avatok_*_monthly then the Worker
+  # verifies the token server-side (core/play_billing.dart → /subscribe/android/verify).
+  in_app_purchase: ^3.2.0
   # In-app OAuth sheet (iOS ASWebAuthenticationSession / Android Custom Tabs)
   # that AUTO-CLOSES the moment Google redirects to our avatokauth:// callback —
   # used by the AvaStorage "Connect Google Drive" flow so the user authorizes
