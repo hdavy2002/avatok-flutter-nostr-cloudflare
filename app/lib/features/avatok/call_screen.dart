@@ -39,14 +39,20 @@ String? gActiveCallId;
 int gInCallSince = 0;
 const int kMaxCallLifeMs = 2 * 60 * 60 * 1000; // 2 h ceiling
 
+/// Number of [CallScreen]s currently mounted on this device — the GROUND TRUTH
+/// for "on a call right now". Incremented in [initState], decremented in
+/// [_end]. The old check trusted [gInCall] for a 2 h window, so a flag leaked
+/// true by an overlapping/never-torn-down call phantom-busied every later call
+/// for up to two hours ("USER IS BUSY, cut out in 2 s" even though the callee
+/// was free). A live-screen count can't leak past the process: a hard kill
+/// resets it to 0, and every teardown path runs [_end].
+int gLiveCallScreens = 0;
+
 /// Ground truth for "the user is genuinely on a call right now", checked before
 /// auto-replying busy so a leftover [gInCall] flag can never silently block
-/// every future call.
-bool callIsGenuinelyActive() =>
-    gInCall &&
-    gActiveCallId != null &&
-    gInCallSince > 0 &&
-    DateTime.now().millisecondsSinceEpoch - gInCallSince < kMaxCallLifeMs;
+/// every future call. Backed by [gLiveCallScreens] (a real mounted-screen
+/// count), NOT a time-windowed flag.
+bool callIsGenuinelyActive() => gLiveCallScreens > 0;
 
 /// AvaTok 1:1 call — the mockup CallScreen design, wired to real WebRTC P2P
 /// over the Cloudflare signaling Worker. Both peers join the same [room].
@@ -126,6 +132,7 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void initState() {
     super.initState();
+    gLiveCallScreens++;
     gInCall = true;
     gActiveCallId = widget.room;
     gInCallSince = DateTime.now().millisecondsSinceEpoch;
@@ -193,6 +200,16 @@ class _CallScreenState extends State<CallScreen> {
         if (e.status == 'busy') {
           // ignore: unawaited_futures
           _onBusy();
+          return;
+        }
+        // Belt-and-suspenders for decline_ava: a PLAIN decline on an audio call
+        // also attempts Ava. If the callee has no receptionist, _tryReceptionist
+        // returns false and we fall back to a normal "declined" — so a rejected
+        // call never dead-ends when the callee actually has Ava enabled.
+        if (e.status == 'decline' && !widget.video && !_ended) {
+          _ringTimeout?.cancel();
+          // ignore: unawaited_futures
+          _handoffToAva('decline');
           return;
         }
         _endWith(e.status == 'decline' ? 'declined' : e.status);
@@ -446,7 +463,18 @@ class _CallScreenState extends State<CallScreen> {
         }
         break;
       case 'decline':
-        _endWith('declined', reason: 'decline');
+        // Audio decline → try Ava first (she takes a message); fall back to a
+        // plain "declined" if the callee has no receptionist. Mirrors the
+        // call-status path so the WS and FCM signals behave identically.
+        // Guard against a double handoff when BOTH the WS and FCM decline land.
+        if (_receptionistActive) break;
+        if (!widget.video && !_connected && !_ended) {
+          _ringTimeout?.cancel();
+          // ignore: unawaited_futures
+          _handoffToAva('decline');
+        } else {
+          _endWith('declined', reason: 'decline');
+        }
         break;
       case 'busy':
         // ignore: unawaited_futures
@@ -648,7 +676,11 @@ class _CallScreenState extends State<CallScreen> {
     if (_ended) return; // idempotent — hangup AND dispose both call this
     try { _receptionist?.hangup(); } catch (_) {}
     _ended = true;
-    gInCall = false;
+    // Decrement the live-screen count (never below 0) and derive [gInCall] from
+    // it, so overlapping calls tearing down in any order leave an accurate
+    // "on a call" state instead of a leaked flag that phantom-busies later calls.
+    if (gLiveCallScreens > 0) gLiveCallScreens--;
+    gInCall = gLiveCallScreens > 0;
     if (gActiveCallId == widget.room) {
       gActiveCallId = null;
       gInCallSince = 0;
