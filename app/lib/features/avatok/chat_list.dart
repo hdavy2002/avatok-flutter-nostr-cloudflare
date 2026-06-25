@@ -34,6 +34,7 @@ import '../../push/push_service.dart';
 import '../../shell/ava_sidebar.dart';
 import '../ava_companion/companion_home.dart';
 import '../communities/communities_tab.dart';
+import 'groups_tab.dart';
 import '../status/status_screen.dart';
 import 'add_contact_sheet.dart';
 import 'calls_screen.dart';
@@ -64,7 +65,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   List<Group> _groups = [];
   NostrClient? _inbox;
   StreamSubscription? _inboxSub; // our listener on the shared client (cancel on dispose, don't kill the socket)
-  int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Communities, 3 = Calls
+  int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Groups, 3 = Communities, 4 = Calls
 
   // Unread badges + chat flags + status.
   final _readStore = ReadStateStore();
@@ -655,7 +656,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.usersFour(PhosphorIconsStyle.bold), color: Zine.lilac),
           title: Text('New community', style: ZineText.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); setState(() => _tab = 2); }),
+          onTap: () { Navigator.pop(ctx); setState(() => _tab = 3); }),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: Zine.mint),
           title: Text('Invite friends to AvaTok', style: ZineText.value(size: 15)),
@@ -814,6 +815,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             NavigationDestination(
                 icon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.bold)),
                 selectedIcon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.fill)),
+                label: 'Groups'),
+            NavigationDestination(
+                icon: PhosphorIcon(PhosphorIcons.usersFour(PhosphorIconsStyle.bold)),
+                selectedIcon: PhosphorIcon(PhosphorIcons.usersFour(PhosphorIconsStyle.fill)),
                 label: 'Communities'),
             NavigationDestination(
                 icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold)),
@@ -912,6 +917,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         ),
       ),
         StatusScreen(identity: _id, contacts: _contacts),
+        GroupsTab(identity: _id, contacts: _contacts),
         CommunitiesTab(identity: _id, contacts: _contacts),
         const CallsScreen(),
       ]),
