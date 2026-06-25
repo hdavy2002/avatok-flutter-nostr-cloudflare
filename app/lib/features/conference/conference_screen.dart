@@ -98,6 +98,7 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
   OngoingConference? _conf;
   lk.EventsListener<lk.RoomEvent>? _events;
   ConferenceTelemetry? _tel;
+  Timer? _beatTimer; // per-minute conf_min metering (paid plans)
   String? _error;
   bool _mic = true, _cam = true, _speaker = true;
   bool _leaving = false;
@@ -160,11 +161,33 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
       ..on<lk.ParticipantDisconnectedEvent>((_) => _tel?.participantChanged(conf.room, 'leave'))
       ..on<lk.RoomDisconnectedEvent>((_) {
         // Room ended remotely ("end for all", network) → fully tear down.
+        _beatTimer?.cancel();
         _tel?.left(conf.room, reason: 'room_disconnected');
         if (identical(OngoingConference.active, conf)) OngoingConference.active = null;
         if (mounted && !_leaving) Navigator.of(context).pop();
       });
+    _startBeat();
     if (mounted) setState(() {});
+  }
+
+  /// Meter conf_min once a minute (paid plans). When the daily cap is exhausted
+  /// the server returns 402; we leave the call and prompt an upgrade.
+  void _startBeat() {
+    _beatTimer?.cancel();
+    _beatTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
+      final conf = _conf;
+      if (conf == null || _leaving) return;
+      final ok = await ConferenceApi.beat(conf.gid, minutes: 1);
+      if (!ok && mounted && !_leaving) {
+        _beatTimer?.cancel();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("You've used your plan's group-call minutes for today — upgrade for more")));
+        _tel?.left(conf.room, reason: 'plan_limit');
+        _leaving = true;
+        await conf.leave();
+        if (mounted) Navigator.pop(context);
+      }
+    });
   }
 
   void _onRoomChanged() { if (mounted) setState(() {}); }
@@ -179,6 +202,7 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
         _conf!.room.connectionState == lk.ConnectionState.disconnected) {
       _tel?.left(_conf!.room, reason: 'dispose');
     }
+    _beatTimer?.cancel();
     _conf?.room.removeListener(_onRoomChanged);
     _events?.dispose();
     super.dispose();
@@ -245,6 +269,7 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
       _tel?.left(conf.room, reason: 'leave');
     }
     _leaving = true;
+    _beatTimer?.cancel();
     await conf.leave();
     if (mounted) Navigator.pop(context);
   }

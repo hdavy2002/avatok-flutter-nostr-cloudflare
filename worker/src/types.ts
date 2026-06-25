@@ -45,8 +45,10 @@ export interface Env {
   // Browser Rendering — link previews / OG images
   BROWSER: Fetcher;
 
-  // Durable Object — group call rooms
+  // Durable Object — 1:1 call signaling rooms
   CALL_ROOMS: DurableObjectNamespace;
+  // Durable Object — free-tier P2P mesh group-call signaling rooms (≤5)
+  MESH_ROOMS: DurableObjectNamespace;
   // Durable Object — per-user AvaBrain reasoning
   USER_BRAIN: DurableObjectNamespace;
   // Durable Object — per-user atomic coin balance (Phase 2)

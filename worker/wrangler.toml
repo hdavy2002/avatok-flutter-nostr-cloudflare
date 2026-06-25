@@ -230,6 +230,11 @@ binding = "BROWSER"
 name = "CALL_ROOMS"
 class_name = "CallRoom"
 
+# Free-tier P2P mesh group-call signaling (≤5). Keyed by group id; hibernates idle.
+[[durable_objects.bindings]]
+name = "MESH_ROOMS"
+class_name = "MeshRoom"
+
 # Per-user reasoning DO (AvaBrain). Keyed by npub; idles to nothing between asks.
 [[durable_objects.bindings]]
 name = "USER_BRAIN"
@@ -315,6 +320,11 @@ new_sqlite_classes = ["AvaAgentDO", "BackupDO"]
 [[migrations]]
 tag = "v7"
 new_sqlite_classes = ["ReceptionRoom"]
+
+# Free-tier P2P mesh group-call signaling room (≤5).
+[[migrations]]
+tag = "v8"
+new_sqlite_classes = ["MeshRoom"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -481,6 +491,10 @@ name = "CALL_ROOMS"
 class_name = "CallRoom"
 
 [[env.staging.durable_objects.bindings]]
+name = "MESH_ROOMS"
+class_name = "MeshRoom"
+
+[[env.staging.durable_objects.bindings]]
 name = "USER_BRAIN"
 class_name = "UserBrain"
 
@@ -545,3 +559,7 @@ new_sqlite_classes = ["AvaAgentDO", "BackupDO"]
 [[env.staging.migrations]]
 tag = "v7"
 new_sqlite_classes = ["ReceptionRoom"]
+
+[[env.staging.migrations]]
+tag = "v8"
+new_sqlite_classes = ["MeshRoom"]

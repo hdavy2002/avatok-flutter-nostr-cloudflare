@@ -31,6 +31,14 @@ class ConferenceException implements Exception {
   String toString() => message;
 }
 
+/// Thrown when the server refuses an SFU token because the caller is on the FREE
+/// plan — free group calls are P2P mesh (≤[maxMesh]). The client routes to
+/// MeshCallScreen instead of ConferenceScreen.
+class MeshRequiredException implements Exception {
+  final int maxMesh;
+  const MeshRequiredException(this.maxMesh);
+}
+
 class ConferenceApi {
   static ConferenceTicket _ticket(String body) {
     final j = jsonDecode(body) as Map<String, dynamic>;
@@ -44,9 +52,29 @@ class ConferenceApi {
     String msg = 'Conference error (HTTP $code)';
     try {
       final j = jsonDecode(body);
-      if (j is Map && j['error'] != null) msg = j['error'].toString();
-    } catch (_) {}
+      if (j is Map) {
+        // Free plan → P2P mesh. Signal the caller to route to MeshCallScreen.
+        if (j['mode'] == 'mesh') throw MeshRequiredException((j['maxMesh'] as num?)?.toInt() ?? 5);
+        if (j['error'] != null) msg = j['error'].toString();
+      }
+    } catch (e) {
+      if (e is MeshRequiredException) rethrow;
+    }
     throw ConferenceException(msg, code);
+  }
+
+  /// Per-minute SFU metering beat (paid plans). Returns true if the call may
+  /// continue; false when the plan's conf_min daily cap is exhausted (the caller
+  /// should leave and show an upgrade prompt). Never drops a call on a transient
+  /// error — only a hard 402 returns false.
+  static Future<bool> beat(String gid, {int minutes = 1}) async {
+    try {
+      final res = await ApiAuth.postJson('$kConferenceBase/$gid/beat', {'minutes': minutes},
+          timeout: const Duration(seconds: 10));
+      return res.statusCode != 402;
+    } catch (_) {
+      return true;
+    }
   }
 
   /// Start (or rejoin) the group's conference. Server enforces membership and

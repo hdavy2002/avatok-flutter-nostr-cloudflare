@@ -39,7 +39,7 @@ import { referralClaim, referralSummary } from "./routes/referral";
 import { inviteEmail } from "./routes/invite";
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
-import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook } from "./routes/conference";
+import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook, conferenceBeat } from "./routes/conference";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import {
   avavoiceVoices, avavoiceMarketplace, avavoiceMine, avavoiceCreateAgent, avavoiceGetAgent,
@@ -103,6 +103,7 @@ import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
 import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
 
 export { CallRoom } from "./do/call_room";
+export { MeshRoom } from "./do/mesh_room";
 export { InboxDO } from "./do/inbox";
 export { UserBrain } from "./do/user_brain";
 export { WalletDO } from "./do/wallet";
@@ -180,15 +181,26 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       return env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(room[1]), hint ? { locationHint: hint } : undefined).fetch(req);
     }
 
+    // FREE-tier P2P mesh group-call signaling → MeshRoom DO (≤5). Keyed by group
+    // id so all members of one group meet on the same mesh instance. WS = join
+    // the mesh; plain GET = presence probe for the "ongoing call" banner. Paid
+    // tiers use the LiveKit SFU (/api/conference/*) instead.
+    const mesh = p.match(/^\/(?:api\/)?mesh\/([A-Za-z0-9_:.-]{1,64})$/);
+    if (mesh) {
+      const hint = continentHint(req);
+      return env.MESH_ROOMS.get(env.MESH_ROOMS.idFromName(mesh[1]), hint ? { locationHint: hint } : undefined).fetch(req);
+    }
+
     // AvaTalk group conferencing (Phase 10 — LiveKit, ≤25; RULE CHANGE 2026-06-10).
     // 1:1 calls stay on the CallRoom DO above — these routes never touch it.
     if (p === "/api/conference/webhook" && req.method === "POST") return await conferenceWebhook(req, env);
-    const conf = p.match(/^\/api\/conference\/([A-Za-z0-9_:.-]{1,64})\/(start|join|status|end)$/);
+    const conf = p.match(/^\/api\/conference\/([A-Za-z0-9_:.-]{1,64})\/(start|join|status|end|beat)$/);
     if (conf) {
       if (conf[2] === "start" && req.method === "POST") return await conferenceStart(req, env, conf[1]);
       if (conf[2] === "join" && req.method === "POST") return await conferenceJoin(req, env, conf[1]);
       if (conf[2] === "status" && req.method === "GET") return await conferenceStatus(req, env, conf[1]);
       if (conf[2] === "end" && req.method === "POST") return await conferenceEnd(req, env, conf[1]);
+      if (conf[2] === "beat" && req.method === "POST") return await conferenceBeat(req, env, conf[1]);
     }
 
     // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).

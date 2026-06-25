@@ -25,7 +25,14 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { isFail, requireUser } from "../authz";
+import { PLANS, tierOf } from "./plans";
+import { enforceAllowance, planLimitBody } from "../lib/usage";
+import { readConfig } from "./config";
 
+// Absolute backstop — no tier may ever exceed this on the SFU. Per-call caps are
+// the STARTER's plan `confParticipants` (Plus 10 / Pro 25 / Max 25). Free (tier 0)
+// does NOT use the SFU at all — those group calls run P2P-mesh (≤5) client-side,
+// so issue() rejects tier 0 with `mode:"mesh"` and the client routes accordingly.
 const MAX_PARTICIPANTS = 25;
 const TOKEN_TTL_S = 6 * 3600; // long enough for any realistic call
 
@@ -103,13 +110,21 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: u.error }, u.status);
 
-  // Membership + 25-cap (hard product rule). Legacy local groups have no D1
-  // rows — fall back to authenticated access (see header comment).
+  // Plan gate. Free (tier 0) gets P2P-mesh group calls (≤5), NOT the SFU — tell
+  // the client to route to mesh. Paid tiers get the SFU capped by their plan.
+  const tier = await tierOf(env, u.uid);
+  if (tier === 0) {
+    return json({ error: "Free plan group calls are peer-to-peer", mode: "mesh", maxMesh: 5 }, 403);
+  }
+  const cap = Math.min(PLANS[tier].confParticipants, MAX_PARTICIPANTS); // 10 / 25 / 25
+
+  // Membership + per-plan size cap (hard product rule). Legacy local groups have
+  // no D1 rows — fall back to authenticated access (see header comment).
   const mem = await groupMembers(env, groupId);
   if (mem.length > 0) {
     if (!mem.includes(u.uid)) return json({ error: "not a member" }, 403);
-    if (mem.length > MAX_PARTICIPANTS) {
-      return json({ error: `group has more than ${MAX_PARTICIPANTS} members — conferences disabled` }, 403);
+    if (mem.length > cap) {
+      return json({ error: `your plan allows up to ${cap} on a group call — upgrade for more`, cap, tier }, 403);
     }
   }
 
@@ -118,12 +133,12 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   try { const b = (await req.json()) as { kind?: string }; if (b?.kind === "audio") kind = "audio"; } catch { /* optional body */ }
 
   if (create) {
-    // Idempotent: CreateRoom on an existing name returns the room. The
-    // max_participants=25 here is THE backstop — a racing 26th joiner is
-    // refused by LiveKit itself even if two workers issued tokens.
+    // Idempotent: CreateRoom on an existing name returns the room. The per-plan
+    // `cap` here is THE backstop — a racing (cap+1)th joiner is refused by
+    // LiveKit itself even if two workers issued tokens.
     const r = await lkApi(env, "CreateRoom", {
-      name: room, max_participants: MAX_PARTICIPANTS, empty_timeout: 120, departure_timeout: 30,
-      metadata: JSON.stringify({ groupId, kind, started_by: u.uid }),
+      name: room, max_participants: cap, empty_timeout: 120, departure_timeout: 30,
+      metadata: JSON.stringify({ groupId, kind, started_by: u.uid, starter_tier: tier }),
     });
     if (!r.ok) return json({ error: "could not create conference room", detail: await r.text() }, 502);
   } else {
@@ -132,7 +147,7 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
     const r = await lkApi(env, "ListParticipants", { room });
     if (!r.ok) return json({ error: "no live conference for this group" }, 404);
     const list = (await r.json()) as { participants?: unknown[] };
-    if ((list.participants?.length ?? 0) >= MAX_PARTICIPANTS) return json({ error: "conference is full (25)" }, 409);
+    if ((list.participants?.length ?? 0) >= cap) return json({ error: `conference is full (${cap})` }, 409);
   }
 
   const token = await lkToken(env, {
@@ -143,7 +158,7 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   });
 
   const url = env.LIVEKIT_URL!.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-  return json({ url, token, room, kind, max: MAX_PARTICIPANTS });
+  return json({ url, token, room, kind, max: cap, tier });
 }
 
 export async function conferenceStart(req: Request, env: Env, groupId: string): Promise<Response> {
@@ -175,6 +190,32 @@ export async function conferenceEnd(req: Request, env: Env, groupId: string): Pr
   const del = await lkApi(env, "DeleteRoom", { room });
   if (!del.ok) return json({ error: "could not end conference" }, 502);
   return json({ ok: true });
+}
+
+// ---- POST /api/conference/:groupId/beat ----------------------------------------
+// Per-plan conf_min DAILY metering for SFU (paid) calls. The client posts one
+// beat per elapsed minute; when the starter/joiner's tier conf_min cap is
+// exhausted the beat returns 402 and the client leaves with an upgrade prompt.
+// Free tier never reaches here — its calls run P2P-mesh, which is unmetered
+// (P2P media costs us nothing). Gated by `billingEnabled` (no-op while off).
+export async function conferenceBeat(req: Request, env: Env, _groupId: string): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return json({ error: u.error }, u.status);
+
+  let billing = true;
+  try { billing = !!(await readConfig(env)).billingEnabled; } catch { billing = false; }
+  if (!billing) return json({ ok: true, metered: false });
+
+  const tier = await tierOf(env, u.uid);
+  let minutes = 1;
+  try {
+    const b = (await req.json()) as { minutes?: number };
+    if (Number.isFinite(b?.minutes)) minutes = Math.max(1, Math.min(10, Math.trunc(b!.minutes!)));
+  } catch { /* default 1 */ }
+
+  const r = await enforceAllowance(env, u.uid, tier, "conf_min", minutes, { commit: true });
+  if (!r.allowed) return json(planLimitBody(r), 402);
+  return json({ ok: true, metered: true, remaining: r.remaining, cap: r.cap });
 }
 
 // ---- GET /api/conference/:groupId/status ---------------------------------------

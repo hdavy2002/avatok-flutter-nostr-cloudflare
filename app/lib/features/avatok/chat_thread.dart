@@ -1132,6 +1132,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // ---- group conferencing (Phase 10 — LiveKit, ≤25 participants) ----
   Timer? _confTimer;
   bool _confLive = false;
+  bool _confIsMesh = false; // the live call's transport: true=P2P mesh, false=SFU
   int _confCount = 0;
 
   int get _groupMemberCount => _group?.members.length ?? widget.chat.members;
@@ -1148,19 +1149,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final gid = widget.chat.gid;
     if (gid == null || !RemoteConfig.conferenceEnabled) return;
     if (_confOngoingHere) {
-      // We're connected — count comes straight from the live room, no HTTP.
+      // We're connected to the SFU room — count comes straight from it, no HTTP.
       final n = OngoingConference.active!.participantCount;
-      if (mounted) setState(() { _confLive = true; _confCount = n; });
+      if (mounted) setState(() { _confLive = true; _confCount = n; _confIsMesh = false; });
       return;
     }
     final s = await ConferenceApi.status(gid);
     if (s.live) {
-      if (mounted) setState(() { _confLive = true; _confCount = s.count; });
+      if (mounted) setState(() { _confLive = true; _confCount = s.count; _confIsMesh = false; });
       return;
     }
     // No SFU call live → check for a free-tier P2P mesh call so its banner shows.
     final m = await MeshApi.status(gid);
-    if (mounted) setState(() { _confLive = m.live; _confCount = m.count; });
+    if (mounted) setState(() { _confLive = m.live; _confCount = m.count; _confIsMesh = m.live; });
   }
 
   Future<void> _groupCall(bool video) async {
@@ -1191,8 +1192,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       return;
     }
 
+    // ONE live call per group. Joiners follow whatever transport is already
+    // running, so a free P2P-mesh call and a paid SFU call can never run in
+    // parallel for the same group — only the STARTER picks the transport.
+    await _refreshConfStatus();
+    if (_confLive && _confIsMesh) {
+      await _meshCall(video); // a mesh call is live → everyone joins the mesh
+      return;
+    }
+
     try {
-      final live = _confLive;
+      final live = _confLive; // an SFU call is live (mesh case handled above)
       final ticket = live
           ? await ConferenceApi.join(gid)
           : await ConferenceApi.start(gid, video: video);
@@ -1208,8 +1218,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ticket: ticket, gid: gid, title: widget.chat.name, starter: !live)));
       _refreshConfStatus();
     } on MeshRequiredException catch (_) {
-      // Free plan → group calls are P2P mesh (≤5). Route to the mesh screen.
-      await _meshCall(video);
+      // Server refused this user an SFU seat (free / no Tokens).
+      if (_confLive) {
+        // An SFU call is already live → do NOT fork a separate mesh call.
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('This call needs Tokens to join — top up your wallet or wait for your daily free Tokens')));
+        }
+      } else {
+        // Nobody is in a call → start a FREE P2P mesh call (≤5).
+        await _meshCall(video);
+      }
     } on ConferenceException catch (e) {
       if (!mounted) return;
       if (e.status == 403 && e.message.contains('25')) { _confLimitNotice(video); return; }
