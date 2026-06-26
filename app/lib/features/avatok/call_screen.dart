@@ -135,6 +135,15 @@ class _CallScreenState extends State<CallScreen> {
   // dead network eventually gives up. (Root cause of the ~1-min 'socket-lost'.)
   int _wsReconnects = 0;
   Timer? _wsReconnectTimer;
+  // Auto forced-relay fallback (symmetric-NAT / phone-hotspot rescue). On
+  // UDP-restricted networks the host/srflx candidate pairs never connect and ICE
+  // only falls back to TURN slowly, so the caller gives up before connect (djee's
+  // hotspot: connects took 5–12s, or never landed). If we aren't connected within
+  // a few seconds, rebuild the PeerConnection TURN-only so the call goes straight
+  // through the relay (which Cloudflare TURN serves over UDP/TCP/TLS-443, so it
+  // works even on UDP-blocked tethers). Offerer-driven (no glare); fires once.
+  Timer? _relayFallbackTimer;
+  bool _relayForced = false;
 
   @override
   void initState() {
@@ -308,6 +317,36 @@ class _CallScreenState extends State<CallScreen> {
     // can never reach us — never ignore it. (_end() closes the socket itself,
     // so _onSocketLost checks _ended to stay a no-op on normal teardown.)
     _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+    // Symmetric-NAT / phone-hotspot rescue: if we haven't connected on direct or
+    // STUN paths within a few seconds, force a TURN-only path so the call lands
+    // via the relay instead of timing out (djee's hotspot never connected).
+    _relayFallbackTimer = Timer(const Duration(seconds: 7), () {
+      if (mounted && !_connected && !_ended) _forceRelayRestart();
+    });
+  }
+
+  /// Rebuild the PeerConnection TURN-only and re-offer, so a call that couldn't
+  /// connect on direct/STUN paths (symmetric NAT, UDP-blocked tether) routes
+  /// straight through the relay. Offerer-driven to avoid glare; fires at most
+  /// once per call. The answerer simply answers the new relay offer on its
+  /// existing connection — only one side needs to be relay-only for the pair to
+  /// traverse the restrictive NAT.
+  Future<void> _forceRelayRestart() async {
+    if (_ended || _connected || _relayForced) return;
+    if (!_weOffered || _remoteId == null) return; // only the offerer drives it
+    _relayForced = true;
+    _telemetry.onIceRestart();
+    Analytics.capture('call_relay_fallback', {'call_id': widget.room, 'video': widget.video});
+    try {
+      try { await _pc?.close(); } catch (_) {}
+      _pc = null;
+      _remoteSet = false;
+      _pendingCandidates.clear();
+      final pc = await _newPC(forceRelay: true);
+      final offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+    } catch (_) {/* the ring/fail timers still bound the attempt */}
   }
 
   void _onSocketLost() {
@@ -365,12 +404,16 @@ class _CallScreenState extends State<CallScreen> {
     return m?.group(1) ?? '';
   }
 
-  Future<RTCPeerConnection> _newPC() async {
+  Future<RTCPeerConnection> _newPC({bool forceRelay = false}) async {
     final pc = await createPeerConnection({
       'iceServers': _ice,
-      // TURN-only diagnostics mode (Settings → Diagnostics): forces every call
-      // through the relay to validate the worst-case path on demand.
-      if (CallDiag.turnOnly) 'iceTransportPolicy': 'relay',
+      // Pre-gather a small candidate pool so the (slower) TURN-relay candidates
+      // are ready sooner — shaves setup time on restrictive networks.
+      'iceCandidatePoolSize': 2,
+      // TURN-only when the diagnostics toggle is on, OR when the auto relay
+      // fallback kicks in for a symmetric-NAT / hotspot call that wouldn't
+      // connect on direct paths.
+      if (CallDiag.turnOnly || forceRelay) 'iceTransportPolicy': 'relay',
     });
     _stream!.getTracks().forEach((t) => pc.addTrack(t, _stream!));
     _telemetry.onIceGatheringStart();
@@ -388,6 +431,7 @@ class _CallScreenState extends State<CallScreen> {
         _remote.srcObject = e.streams[0];
         _ringTimeout?.cancel();
         _failTimer?.cancel();
+        _relayFallbackTimer?.cancel(); // connected — no relay fallback needed
         _ringback.stop(); // call answered — silence the ringback
         _telemetry.connected(pc);
         if (mounted) setState(() { _connected = true; _phase = 'connected'; });
@@ -768,6 +812,7 @@ class _CallScreenState extends State<CallScreen> {
     _ringTimeout?.cancel();
     _failTimer?.cancel();
     _wsReconnectTimer?.cancel();
+    _relayFallbackTimer?.cancel();
     _netSub?.cancel();
     // End-path hygiene (A4.4): clear the CallKit/ongoing-call notification +
     // ringtone on EVERY end path, not just the explicit decline. Without this a
