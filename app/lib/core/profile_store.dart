@@ -19,6 +19,27 @@ class Profile {
   bool get isEmpty => displayName.isEmpty && handle.isEmpty;
   String get atHandle => handle.isEmpty ? '' : '@$handle';
 
+  /// First + last name parts (split on whitespace, empties removed).
+  List<String> get nameParts =>
+      displayName.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
+
+  /// All MANDATORY fields present & valid: a profile photo, a first AND last
+  /// name, a valid email, and a valid phone. Drives the mandatory profile gate
+  /// (new users can't finish onboarding, existing users are diverted on next
+  /// open) — see ProfileSetupScreen / AvaShell.
+  bool get isComplete =>
+      avatarUrl.trim().isNotEmpty &&
+      nameParts.length >= 2 &&
+      isValidEmail(email) &&
+      isValidPhone(phone);
+
+  static bool isValidEmail(String e) =>
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(e.trim());
+
+  /// E.164-ish: optional leading '+', then 8–15 digits (spaces/dashes/parens ok).
+  static bool isValidPhone(String p) =>
+      RegExp(r'^\+?\d{8,15}$').hasMatch(p.trim().replaceAll(RegExp(r'[\s\-()]'), ''));
+
   Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence}) => Profile(
         displayName: displayName ?? this.displayName,
         handle: handle ?? this.handle,

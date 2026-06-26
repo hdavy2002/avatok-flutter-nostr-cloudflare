@@ -5,6 +5,7 @@ import '../auth/clerk_client.dart';
 import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
+import '../core/profile_store.dart';
 import '../core/ui/zine.dart';
 import '../identity/identity.dart';
 import '../features/avaapps/avaapps_screen.dart';
@@ -23,6 +24,7 @@ import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
 import '../features/identity/identity_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/profile/profile_setup_screen.dart';
 import '../features/inbox/inbox_screen.dart';
 import '../features/verse/verse_screen.dart';
 import '../features/payout/payout_screen.dart';
@@ -46,6 +48,7 @@ class _AvaShellState extends State<AvaShell> {
   final _idStore = IdentityStore();
 
   Identity? _id;
+  bool? _profileComplete; // null = checking, false = show gate, true = enter app
 
   @override
   void initState() {
@@ -58,7 +61,11 @@ class _AvaShellState extends State<AvaShell> {
     // Warm the per-account focus-mode value so any sidebar drawer paints the
     // correct menu without a default-then-correct flicker.
     await FocusMode.load();
-    if (mounted) setState(() => _id = id);
+    // Mandatory-profile gate (pic5): every entry into the shell — new users after
+    // onboarding AND existing users on next open — must have a complete profile
+    // (photo, first+last name, valid email, valid phone) before using the app.
+    final complete = (await ProfileStore().load()).isComplete;
+    if (mounted) setState(() { _id = id; _profileComplete = complete; });
     // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
     // (premium) or the user's own Google Drive (free). Makes the device + backup
     // the durable copy so the InboxDO can shed old history.
@@ -184,6 +191,22 @@ class _AvaShellState extends State<AvaShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Mandatory-profile gate (pic5): block the entire app until the profile is
+    // complete. A brief loader while we read the local profile; then either the
+    // non-skippable setup screen or the real shell.
+    if (_profileComplete == null) {
+      return const Scaffold(
+        backgroundColor: Zine.paper,
+        body: Center(child: CircularProgressIndicator(color: Zine.blueInk)),
+      );
+    }
+    if (_profileComplete == false) {
+      return ProfileSetupScreen(
+        identity: _id,
+        onSignOut: widget.onSignOut,
+        onDone: () => setState(() => _profileComplete = true),
+      );
+    }
     // Messaging-first landing (owner decision 2026-06-18, free release): the app
     // opens directly on AvaTOK (ChatListScreen), where users see their chats &
     // contacts. ChatListScreen carries its own sidebar drawer + bottom nav, so
