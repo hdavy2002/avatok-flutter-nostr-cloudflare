@@ -266,7 +266,11 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     } else if (res.blocked) {
       _toast('That’s a premium feature — top up to enable Ava.');
     } else {
-      _toast('Couldn’t save. Try again.');
+      // The API already auto-retried transient failures 3× before reporting back,
+      // so a failure here is a genuine problem worth a telemetry breadcrumb.
+      Analytics.capture('ava_recept_save_failed', {'enabled': enabled, 'voice': _voice});
+      AvaLog.I.log('receptionist', 'settings save FAILED (enabled=$enabled)');
+      _toast('Couldn’t save — check your connection and try again.');
     }
     return res.ok;
   }

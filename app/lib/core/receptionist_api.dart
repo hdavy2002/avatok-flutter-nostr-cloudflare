@@ -87,6 +87,13 @@ class ReceptionistApi {
   }
 
   /// Owner: update config. Enabling is premium-gated server-side.
+  ///
+  /// Auto-retries transient failures (a thrown network error, a 0/5xx status, or
+  /// a signed-auth clock-skew 401) up to 3 attempts with a short backoff. This is
+  /// what fixed the "Save instructions took 3 tries" report: a single dropped
+  /// request or a not-yet-warm auth token used to surface as a hard "couldn't
+  /// save" toast, so the user kept tapping Save manually. A 200 response — even a
+  /// premium `blocked:true` — is authoritative and never retried.
   static Future<ReceptionistSaveResult> saveSettings({
     required bool enabled,
     required String instructions,
@@ -102,28 +109,43 @@ class ReceptionistApi {
     String? statusCustom,
     bool? declineToAva,
   }) async {
-    try {
-      final r = await ApiAuth.putJson('$_base/settings', {
-        'enabled': enabled,
-        'instructions_text': instructions,
-        'voice_name': voiceName,
-        'display_name': displayName,
-        if (personaName != null) 'persona_name': personaName,
-        if (languageCode != null) 'language_code': languageCode,
-        if (greetingText != null) 'greeting_text': greetingText,
-        if (customPrompt != null) 'custom_prompt': customPrompt,
-        if (answerAll != null) 'answer_all': answerAll,
-        if (statusPreset != null) 'status_preset': statusPreset,
-        if (statusCustom != null) 'status_custom': statusCustom,
-        if (declineToAva != null) 'decline_to_ava': declineToAva,
-      });
-      if (r.statusCode != 200) return const ReceptionistSaveResult(false, false);
-      final j = jsonDecode(r.body) as Map<String, dynamic>;
-      if (j['blocked'] == true) return const ReceptionistSaveResult(false, true);
-      return ReceptionistSaveResult(j['ok'] == true, false);
-    } catch (_) {
-      return const ReceptionistSaveResult(false, false);
+    final body = <String, dynamic>{
+      'enabled': enabled,
+      'instructions_text': instructions,
+      'voice_name': voiceName,
+      'display_name': displayName,
+      if (personaName != null) 'persona_name': personaName,
+      if (languageCode != null) 'language_code': languageCode,
+      if (greetingText != null) 'greeting_text': greetingText,
+      if (customPrompt != null) 'custom_prompt': customPrompt,
+      if (answerAll != null) 'answer_all': answerAll,
+      if (statusPreset != null) 'status_preset': statusPreset,
+      if (statusCustom != null) 'status_custom': statusCustom,
+      if (declineToAva != null) 'decline_to_ava': declineToAva,
+    };
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final r = await ApiAuth.putJson('$_base/settings', body);
+        // 2xx is authoritative — parse and return (no retry, even when blocked).
+        if (r.statusCode == 200) {
+          final j = jsonDecode(r.body) as Map<String, dynamic>;
+          if (j['blocked'] == true) return const ReceptionistSaveResult(false, true);
+          return ReceptionistSaveResult(j['ok'] == true, false);
+        }
+        // 4xx (other than a transient 401) is a real client error — don't retry.
+        final transient = r.statusCode == 0 || r.statusCode == 401 || r.statusCode >= 500;
+        if (!transient || attempt == maxAttempts) {
+          return const ReceptionistSaveResult(false, false);
+        }
+      } catch (_) {
+        // Network/timeout — retry unless we're out of attempts.
+        if (attempt == maxAttempts) return const ReceptionistSaveResult(false, false);
+      }
+      // Linear backoff: 250ms, 500ms before the next attempt.
+      await Future.delayed(Duration(milliseconds: 250 * attempt));
     }
+    return const ReceptionistSaveResult(false, false);
   }
 
   // Caller-side dial-time cache: an owner's receptionist availability changes
