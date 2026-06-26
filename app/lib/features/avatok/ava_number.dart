@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/account_storage.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
@@ -90,6 +93,36 @@ class AddCard {
 }
 
 class AvaNumber {
+  // ---- per-account stale-while-revalidate cache -----------------------------
+  // Settings sub-pages (Your number, Privacy, Contact info) used to hit the
+  // network on EVERY visit and show a spinner. These small JSON blobs are cached
+  // per account so a revisit renders INSTANTLY from disk, then a background fetch
+  // refreshes the cache for next time. Account-scoped (scopedKey) because one
+  // phone is shared by a parent + child accounts (rulebook §per-account scoping).
+  static const _ss = FlutterSecureStorage();
+  static const _meCacheKey = 'avanum_me_v1';
+  static const _privCacheKey = 'avanum_privacy_v1';
+
+  static Future<Map<String, dynamic>?> _readCache(String base) async {
+    try {
+      final s = await readScoped(_ss, base);
+      if (s == null || s.isEmpty) return null;
+      return jsonDecode(s) as Map<String, dynamic>;
+    } catch (_) { return null; }
+  }
+
+  static Future<void> _writeCache(String base, Map<String, dynamic> j) async {
+    try { await _ss.write(key: scopedKey(base), value: jsonEncode(j)); } catch (_) { /* best-effort */ }
+  }
+
+  static Future<Map<String, dynamic>?> _fetchJson(String url) async {
+    try {
+      final r = await ApiAuth.getSigned(url);
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) { return null; }
+  }
+
   /// Supported countries for the picker (public).
   static Future<List<NumberCountry>> countries() async {
     try {
@@ -135,11 +168,19 @@ class AvaNumber {
   }
 
   static Future<MyNumber> me() async {
-    try {
-      final r = await ApiAuth.getSigned('$kNumberBase/me');
-      if (r.statusCode != 200) return const MyNumber(entitled: false, tier: 0, featureOn: true);
-      return MyNumber.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
-    } catch (_) { return const MyNumber(entitled: false, tier: 0, featureOn: true); }
+    // Cache-first: a warm cache returns instantly and refreshes in the
+    // background; a cold cache awaits the network (first load only).
+    final cached = await _readCache(_meCacheKey);
+    if (cached != null) {
+      unawaited(_fetchJson('$kNumberBase/me').then((fresh) {
+        if (fresh != null) _writeCache(_meCacheKey, fresh);
+      }));
+      return MyNumber.fromJson(cached);
+    }
+    final fresh = await _fetchJson('$kNumberBase/me');
+    if (fresh == null) return const MyNumber(entitled: false, tier: 0, featureOn: true);
+    await _writeCache(_meCacheKey, fresh);
+    return MyNumber.fromJson(fresh);
   }
 
   static Future<bool> release() async {
@@ -157,11 +198,17 @@ class AvaNumber {
   }
 
   static Future<Discoverability> getPrivacy() async {
-    try {
-      final r = await ApiAuth.getSigned('$kNumberBase/privacy');
-      if (r.statusCode != 200) return const Discoverability(phoneDiscoverable: false, emailDiscoverable: true, whoCanAdd: 'everyone');
-      return Discoverability.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
-    } catch (_) { return const Discoverability(phoneDiscoverable: false, emailDiscoverable: true, whoCanAdd: 'everyone'); }
+    final cached = await _readCache(_privCacheKey);
+    if (cached != null) {
+      unawaited(_fetchJson('$kNumberBase/privacy').then((fresh) {
+        if (fresh != null) _writeCache(_privCacheKey, fresh);
+      }));
+      return Discoverability.fromJson(cached);
+    }
+    final fresh = await _fetchJson('$kNumberBase/privacy');
+    if (fresh == null) return const Discoverability(phoneDiscoverable: false, emailDiscoverable: true, whoCanAdd: 'everyone');
+    await _writeCache(_privCacheKey, fresh);
+    return Discoverability.fromJson(fresh);
   }
 
   static Future<bool> setPrivacy({bool? phoneDiscoverable, bool? emailDiscoverable, String? whoCanAdd}) async {
@@ -172,7 +219,16 @@ class AvaNumber {
         if (whoCanAdd != null) 'who_can_add': whoCanAdd,
       };
       final r = await ApiAuth.postJson('$kNumberBase/privacy', body);
-      if (r.statusCode == 200) Analytics.capture('discoverability_changed', {'who_can_add': whoCanAdd ?? ''});
+      if (r.statusCode == 200) {
+        Analytics.capture('discoverability_changed', {'who_can_add': whoCanAdd ?? ''});
+        // Write-through so the cached settings page reflects the change instantly
+        // on the next open (no stale toggle until the background refresh lands).
+        final cur = (await _readCache(_privCacheKey)) ?? <String, dynamic>{};
+        if (phoneDiscoverable != null) cur['phone_discoverable'] = phoneDiscoverable;
+        if (emailDiscoverable != null) cur['email_discoverable'] = emailDiscoverable;
+        if (whoCanAdd != null) cur['who_can_add'] = whoCanAdd;
+        await _writeCache(_privCacheKey, cur);
+      }
       return r.statusCode == 200;
     } catch (_) { return false; }
   }
