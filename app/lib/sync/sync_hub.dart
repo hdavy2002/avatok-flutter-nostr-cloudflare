@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 
+import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore;
@@ -244,7 +245,7 @@ class SyncHub {
           if (hideBulk.isNotEmpty) HiddenStore().mergeBulk(hideBulk);
         }
         for (final row in (m['messages'] as List? ?? const [])) {
-          _ingestMsg((row as Map).cast<String, dynamic>());
+          _ingestMsg((row as Map).cast<String, dynamic>(), fromSync: true);
         }
         for (final r in (m['receipts'] as List? ?? const [])) {
           _ingestReceipt((r as Map).cast<String, dynamic>());
@@ -293,7 +294,7 @@ class SyncHub {
     }
   }
 
-  void _ingestMsg(Map<String, dynamic> r) {
+  void _ingestMsg(Map<String, dynamic> r, {bool fromSync = false}) {
     final id = (r['id'] as num?)?.toInt() ?? 0;
     if (id > _cursor) { _cursor = id; _scheduleCursorPersist(); }
     final conv = (r['conv'] ?? '').toString();
@@ -322,7 +323,18 @@ class SyncHub {
         // as mine → nothing to tombstone on my side; the owner keeps it via Undo.)
         if (!mine && (env['t'] == 'del' || env['t'] == 'gdel')) {
           final target = (env['target'] ?? '').toString();
-          if (target.isNotEmpty) DeletedStore().add(target);
+          final isGroup = env['t'] == 'gdel';
+          if (target.isNotEmpty) {
+            DeletedStore().add(target).then((added) {
+              if (added) {
+                Analytics.capture('chat_delete_applied', {
+                  'delete_id': target,
+                  'source': fromSync ? 'sync_seed' : 'live_socket',
+                  'group': isGroup,
+                });
+              }
+            });
+          }
         }
       }
     } catch (_) {}
@@ -352,9 +364,16 @@ class SyncHub {
   /// on THIS device and, if its thread is open, redact it live. Called from the
   /// foreground FCM 'del' handler and when draining the background queue. Safe to
   /// call repeatedly (DeletedStore + the thread tombstone are idempotent).
-  Future<void> applyRemoteDelete(String target, {String conv = ''}) async {
+  Future<void> applyRemoteDelete(String target, {String conv = '', String source = 'push_fg'}) async {
     if (target.isEmpty) return;
-    await DeletedStore().add(target); // durable: survives reopen / cache rebuild
+    final added = await DeletedStore().add(target); // durable: survives reopen / cache rebuild
+    if (added) {
+      Analytics.capture('chat_delete_applied', {
+        'delete_id': target,
+        'source': source, // push_fg (foreground FCM) | push_drained (queued in bg)
+        'conv_kind': conv.startsWith('dm_') ? 'dm' : (conv.isEmpty ? 'unknown' : 'group'),
+      });
+    }
     if (conv.isEmpty) return;
     final myUid = _myUid ?? '';
     final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? conv}' : 'g:$conv';
@@ -379,8 +398,12 @@ class SyncHub {
       final s = e.toString();
       final i = s.indexOf('\t');
       await applyRemoteDelete(i >= 0 ? s.substring(i + 1) : s,
-          conv: i >= 0 ? s.substring(0, i) : '');
+          conv: i >= 0 ? s.substring(0, i) : '', source: 'push_drained');
     }
+    // Realtime-on-resume signal: how many background-pushed deletes the app just
+    // flushed. A high count or a steady stream here means deletes are landing via
+    // the queue (app was asleep) rather than the live socket — useful for triage.
+    Analytics.capture('chat_delete_drained', {'count': list.length});
     await DiskCache.deleteGlobal(pendingDeletesKey);
   }
 

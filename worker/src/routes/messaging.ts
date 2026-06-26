@@ -101,7 +101,15 @@ async function pushOffline(env: Env, toUid: string, _fromUid: string, _conv: str
 async function pushDelete(env: Env, toUid: string, conv: string, target: string): Promise<void> {
   try {
     await env.Q_PUSH.send({ kind: "del", to: toUid, conv, target });
-  } catch { /* best-effort; never block the send */ }
+  } catch (e) {
+    // The offline path failed to enqueue → the recipient can ONLY get this delete
+    // on their next sync. Record it so a stuck delete is attributable, not silent.
+    try {
+      void env.Q_ANALYTICS.send({ event: "chat_delete_push_failed", uid: toUid, ts: Date.now(),
+        props: { delete_id: target, conv, account_id: toUid, app_name: "avatok",
+          service_name: "avatok-api", worker: true, err: String(e).slice(0, 200) } });
+    } catch { /* best-effort */ }
+  }
 }
 
 // ---- POST /api/msg/send -----------------------------------------------------
@@ -156,13 +164,30 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
 
   if (recipients.length <= FANOUT_SYNC_MAX) {
     // Small fan-out: deliver in PARALLEL (was sequential awaits).
+    let delLive = 0, delPush = 0; // delete-for-everyone delivery-path counters
     await Promise.all(recipients.map(async (m) => {
       const r = await appendTo(env, m, payload);
-      if (!r.live) {
-        if (delTarget) await pushDelete(env, m, conv, delTarget);
-        else await pushOffline(env, m, ctx.uid, conv, text || "[media]");
+      if (delTarget) {
+        // Realtime telemetry: per recipient, did the redaction go out over the
+        // live DO socket (instant) or fall back to a high-priority FCM push
+        // (recipient asleep)? This is the signal for "why was a delete slow".
+        if (r.live) delLive++; else { delPush++; await pushDelete(env, m, conv, delTarget); }
+        try {
+          void env.Q_ANALYTICS.send({ event: "chat_delete_delivery", uid: ctx.uid, ts: Date.now(),
+            props: { delete_id: delTarget, conv, to: m, path: r.live ? "live" : "push",
+              app_name: "avatok", service_name: "avatok-api", worker: true } });
+        } catch { /* best-effort */ }
+      } else if (!r.live) {
+        await pushOffline(env, m, ctx.uid, conv, text || "[media]");
       }
     }));
+    if (delTarget) {
+      try {
+        void env.Q_ANALYTICS.send({ event: "chat_delete_fanout", uid: ctx.uid, ts: Date.now(),
+          props: { delete_id: delTarget, conv, recipients: recipients.length,
+            live: delLive, push: delPush, app_name: "avatok", service_name: "avatok-api", worker: true } });
+      } catch { /* best-effort */ }
+    }
   } else {
     // Large fan-out: hand to Queues — consumers append to each InboxDO + FCM
     // offline. The router NEVER loops >FANOUT_SYNC_MAX synchronous DO calls.

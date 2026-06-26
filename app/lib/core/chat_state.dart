@@ -104,10 +104,14 @@ class DeletedStore {
     }
   }
 
-  Future<void> add(String rumorId) async {
-    if (rumorId.isEmpty) return;
+  /// Record a tombstone. Returns true only when it was NEWLY added (not already
+  /// present) so callers can emit "delete applied" telemetry exactly once.
+  Future<bool> add(String rumorId) async {
+    if (rumorId.isEmpty) return false;
     final s = await load();
-    if (s.add(rumorId)) await DiskCache.write(_key, jsonEncode(s.toList()));
+    if (!s.add(rumorId)) return false;
+    await DiskCache.write(_key, jsonEncode(s.toList()));
+    return true;
   }
 }
 

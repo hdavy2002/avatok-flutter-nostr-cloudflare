@@ -2348,6 +2348,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final bytes = await done.future;
       if (bytes == null || bytes.isEmpty) return false;
       if (bytes.length > _kMediaMaxBytes) {
+        Analytics.capture('chat_image_paste_toobig', {'size': bytes.length, 'src': 'clipboard'});
         _capNote('That image is over 25 MB — please copy a smaller one.');
         return true; // we DID find an image; just too big to fall back to text
       }
@@ -2375,11 +2376,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final data = content.data;
       if (data == null || data.isEmpty) {
-        await _tryPasteImage(); // empty payload → try reading the clipboard instead
+        // The Samsung "super paste" / blank-editor failure mode: the keyboard
+        // announced an image but handed us nothing. Record it, then fall back to
+        // reading the clipboard so the paste can still succeed.
+        Analytics.capture('chat_image_insert_empty', {'mime': content.mimeType});
+        await _tryPasteImage();
         return;
       }
       final bytes = Uint8List.fromList(data);
       if (bytes.length > _kMediaMaxBytes) {
+        Analytics.capture('chat_image_paste_toobig', {'size': bytes.length, 'src': 'insert'});
         _capNote('That image is over 25 MB — please use a smaller one.');
         return;
       }
@@ -2423,7 +2429,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// when only an image (no text) is on the clipboard, so this always works.
   Future<void> _pasteImageFromAttach() async {
     final handled = await _tryPasteImage();
-    if (!handled && mounted) _capNote('No image found on the clipboard.');
+    if (!handled) {
+      Analytics.capture('chat_image_paste_none', {'from': 'attach_sheet'});
+      if (mounted) _capNote('No image found on the clipboard.');
+    }
   }
 
   // Bottom sheet: image preview + a caption field. Returns the caption (possibly
@@ -3027,7 +3036,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _persistHidden(m.evId, true); // durable on THIS device — survives app updates
     _schedulePersist();
     _syncHidden(m, true); // mirror the hide to my other devices
-    Analytics.capture('message_deleted', {'scope': 'me', 'group': _group != null});
+    Analytics.capture('message_deleted', {
+      'scope': 'me', 'group': _group != null,
+      if (m.evId != null) 'delete_id': m.evId!,
+    });
   }
 
   // Persist a soft-delete/Undo to the durable, per-account [HiddenStore] AND the
@@ -3067,14 +3079,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // (server tombstone + _applyDelete) — only I, the owner, can Undo to see it again.
   void _deleteForEveryone(_Msg m) {
     final target = m.evId;
+    var channel = 'none';
     if (_realMode && target != null && target.isNotEmpty) {
       try {
         if (_group != null && _gdm != null) {
           _gdm!.send(jsonEncode({'t': 'gdel', 'gid': _group!.id, 'target': target}));
+          channel = 'gdm';
         } else if (_dm != null) {
           _dm!.send(jsonEncode({'t': 'del', 'target': target}));
+          channel = 'dm';
         }
-      } catch (_) {/* best-effort; local hide still applies */}
+      } catch (e) {/* best-effort; local hide still applies */
+        Analytics.capture('chat_delete_send_failed', {
+          if (target != null) 'delete_id': target, 'group': _group != null, 'err': e.toString(),
+        });
+      }
     }
     setState(() => m.hidden = true); // retained — Undo brings it back for ME only
     _persistHidden(m.evId, true); // durable on THIS device — survives app updates
@@ -3082,6 +3101,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _syncHidden(m, true); // mirror the hide to my other devices
     Analytics.capture('message_deleted', {
       'scope': 'everyone', 'group': _group != null, 'had_evid': target != null,
+      if (target != null) 'delete_id': target,
+    });
+    // Sender-side lifecycle anchor: join this delete_id to the worker's
+    // chat_delete_delivery/fanout and the recipient's chat_delete_applied to see,
+    // per delete, whether it went out live vs push and whether it ever landed.
+    Analytics.capture('chat_delete_sent', {
+      if (target != null) 'delete_id': target,
+      'group': _group != null, 'channel': channel, 'realmode': _realMode,
     });
   }
 

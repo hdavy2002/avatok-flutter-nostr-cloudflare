@@ -230,8 +230,12 @@ class PushService {
       if (d['type'] == 'del') {
         // Delete-for-everyone arriving while the app is foregrounded — apply the
         // redaction in realtime (durable tombstone + live thread update).
+        final target = (d['target'] ?? '').toString();
+        Analytics.capture('chat_delete_push', {
+          'delete_id': target, 'state': 'foreground',
+        });
         SyncHub.I.applyRemoteDelete(
-            (d['target'] ?? '').toString(), conv: (d['conv'] ?? '').toString());
+            target, conv: (d['conv'] ?? '').toString(), source: 'push_fg');
         return;
       }
       // Incoming call. Reconcile a possibly-stale "on a call" flag BEFORE

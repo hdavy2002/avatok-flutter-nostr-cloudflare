@@ -220,7 +220,7 @@ export class InboxDO {
             Date.now(), b.conv, target,
           );
           try { void this.env.Q_ANALYTICS.send({ event: "message_tombstoned", uid: b.owner, ts: Date.now(),
-            props: { conv: b.conv, target, by: b.sender, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: b.owner } }); } catch { /* best-effort */ }
+            props: { conv: b.conv, target, delete_id: target, by: b.sender, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: b.owner } }); } catch { /* best-effort */ }
         }
       } catch { /* not a control envelope — fall through */ }
     }
