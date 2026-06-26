@@ -30,7 +30,7 @@ export interface StorageSummary {
 }
 
 function freeQuotaBytes(env: Env): number {
-  return Number(env.STORAGE_FREE_GB || "5") * GB;
+  return Number(env.STORAGE_FREE_GB || "10") * GB;
 }
 
 async function walletCoins(env: Env, uid: string): Promise<number> {

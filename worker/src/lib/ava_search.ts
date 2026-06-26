@@ -112,14 +112,16 @@ export async function ingestUsage(env: Env, uid: string): Promise<{ items: numbe
   } catch { return { items: 0, bytes: 0 }; }
 }
 
-/** Free-tier ingest cap (env-tunable): default 100 items / 25 MB total. Premium
- *  is uncapped (callers skip the check). */
+/** Free-tier ingest cap (env-tunable): default 10 GB total / 10,000 items.
+ *  Premium is uncapped (callers skip the check). The byte cap is the headline
+ *  limit ("free users upload up to 10 GB, then upgrade"); the item cap is a high
+ *  safety ceiling so bytes is normally the binding constraint. */
 export function freeQuota(env: Env): { maxItems: number; maxBytes: number } {
   const mi = Number((env as any).AI_SEARCH_FREE_MAX_ITEMS);
   const mb = Number((env as any).AI_SEARCH_FREE_MAX_BYTES);
   return {
-    maxItems: Number.isFinite(mi) && mi > 0 ? Math.floor(mi) : 100,
-    maxBytes: Number.isFinite(mb) && mb > 0 ? Math.floor(mb) : 25 * 1024 * 1024,
+    maxItems: Number.isFinite(mi) && mi > 0 ? Math.floor(mi) : 10000,
+    maxBytes: Number.isFinite(mb) && mb > 0 ? Math.floor(mb) : 10 * 1024 * 1024 * 1024,
   };
 }
 

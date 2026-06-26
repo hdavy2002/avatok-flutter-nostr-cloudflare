@@ -4,7 +4,7 @@
 //   POST /api/ava/rag/search   { query }
 //
 // FREE + PREMIUM. AI Search (memory & file search) is available to ALL users:
-//   • FREE  — ingest is CAPPED (freeQuota: default 100 items / 25 MB total),
+//   • FREE  — ingest is CAPPED (freeQuota: default 10 GB / 10,000 items),
 //             search is unrestricted, and there is NO AvaCoin charge.
 //   • PREMIUM (topped-up wallet) — uncapped ingest, metered per op via chargeFeature.
 // Per-user ISOLATION + scale: users are pooled into a FIXED set of sharded AI
