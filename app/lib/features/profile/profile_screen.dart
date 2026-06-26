@@ -83,7 +83,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final first = parts.isNotEmpty ? parts.first : '';
     final last = parts.length > 1 ? parts.sublist(1).join(' ') : '';
     final number = me.hasNumber ? (me.display ?? '') : prof.phone;
-    final res = await AvaNumber.shareCard(firstName: first, lastName: last, email: '', number: number);
+    // Personal email — from the stored profile, else from the known account email.
+    final email = prof.email.isNotEmpty ? prof.email : (Analytics.currentEmail ?? '');
+    if (prof.email.isEmpty && email.isNotEmpty) _store.setEmail(email);
+    final res = await AvaNumber.shareCard(firstName: first, lastName: last, email: email, number: number);
     if (!mounted) return;
     setState(() { _myNum = me; _shareLink = res?.link ?? ''; });
   }
@@ -121,12 +124,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     setState(() => _saving = true);
     final existing = await _store.load();
+    // Personal email — keep it stored so the QR card + email discovery stay complete.
+    final email = existing.email.isNotEmpty ? existing.email : (Analytics.currentEmail ?? '');
     await _store.save(existing.copyWith(
-        displayName: fullName, bio: _bio.text.trim(), sharePresence: _sharePresence));
-    // Opt-in discovery: publish to the directory so others can find me by name.
-    if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty) {
+        displayName: fullName, email: email, bio: _bio.text.trim(), sharePresence: _sharePresence));
+    // Opt-in discovery: publish to the directory so others can find me by name/email.
+    if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty || email.isNotEmpty) {
       await Directory.registerProfile(npub: id.npub, name: fullName, firstName: first, lastName: last,
-          avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim());
+          email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim());
     }
     if (!mounted) return;
     setState(() { _saving = false; _listed = true; });

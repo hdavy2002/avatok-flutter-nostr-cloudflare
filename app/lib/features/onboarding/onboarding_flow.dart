@@ -163,14 +163,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final first = _nameCtrl.text.trim();
     final last = _lastCtrl.text.trim();
     final name = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
-    // Persist locally first (merge with any phone captured earlier).
+    // Personal email (from the verified sign-in) — stored so the QR contact card
+    // and email discovery are complete from day one.
+    final email = Analytics.currentEmail ?? '';
+    // Persist locally first (merge with any phone/email captured earlier).
     final existing = await _profileStore.load();
-    await _profileStore.save(existing.copyWith(displayName: name));
+    await _profileStore.save(existing.copyWith(displayName: name, email: email));
     // Merge any L0 guest reservation so it re-keys to this Clerk account.
     await GuestSession.upgradeIfAny();
-    // Publish to the directory so the name is immediately searchable.
+    // Publish to the directory so the name + email are immediately searchable.
     final r = await Directory.registerProfile(
-      npub: id.npub, name: name, firstName: first, lastName: last,
+      npub: id.npub, name: name, firstName: first, lastName: last, email: email,
       accountKind: _selectedKind?.wire,
     );
     if (!mounted) return;
