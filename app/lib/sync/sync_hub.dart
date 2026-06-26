@@ -53,10 +53,23 @@ class SyncHub {
   bool _wantConnected = false;
   bool _connecting = false;
   int _retry = 0;
+  // ms of the last frame received from the server (incl. pong). Drives the
+  // zombie-socket watchdog: on a mobile network switch a WebSocket can go
+  // half-open (TCP dead, no close event), silently stalling live delivery — the
+  // "his message took 5 min to arrive even after I reopened the app" bug. If we
+  // hear nothing for a while we assume the socket is dead and reconnect.
+  int _lastRecvAt = 0;
   int _cursor = 0; // highest InboxDO message id ingested (persisted per account)
   static const String _kCursorKey = 'ava_inbox_cursor';
   String? _cursorUid;       // account the in-memory _cursor was loaded for
   Timer? _cursorPersistTimer;
+  // Transport observability — so PostHog shows, PER DEVICE, whether the realtime
+  // socket is actually up and receiving frames (this is how we tell a "connected
+  // Mac that isn't getting live deletes" from a phone that is). Per-account
+  // platform/email already ride every event via Analytics._base.
+  int _reconnects = 0;            // cumulative reconnect attempts this session
+  int _connectedAt = 0;          // ms epoch of the current connection (0 = down)
+  final Map<String, int> _frameCounts = {}; // frames received this connection, by type
 
   final Map<String, List<DmMessage>> _byConv = {};
   final Set<String> _seen = {}; // dedup by client_id (or server id)
@@ -107,6 +120,27 @@ class SyncHub {
     _open();
   }
 
+  /// App returned to the foreground. Catch up in SECONDS instead of waiting for
+  /// the OS to eventually tear down a half-open socket: if the socket is gone,
+  /// reconnect now; if it looks up, probe it with a ping and reconnect if no
+  /// reply lands within 4s. This is what fixes "I reopened the app and the
+  /// message still wasn't there" — [ensureConnected] alone is fooled by a zombie
+  /// `_ch` that is non-null but dead.
+  void onAppResumed() {
+    if (!_wantConnected) return;
+    if (_ch == null) { ensureConnected(); return; }
+    final probedAt = DateTime.now().millisecondsSinceEpoch;
+    _send({'type': 'ping'});
+    Timer(const Duration(seconds: 4), () {
+      if (!_wantConnected || _ch == null) return;
+      if (_lastRecvAt < probedAt) {
+        AvaLog.I.log('hub', 'no reply 4s after resume — reconnecting socket');
+        Analytics.capture('inbox_resume_reconnect', const {});
+        _onClosed('resume_probe'); // schedules an immediate-ish reconnect + cursor catch-up
+      }
+    });
+  }
+
   Future<void> _open() async {
     if (_connecting || _ch != null || !_wantConnected) return;
     _connecting = true;
@@ -136,16 +170,21 @@ class SyncHub {
             : IOWebSocketChannel.connect(Uri.parse(url), pingInterval: const Duration(seconds: 25));
       } catch (e) {
         AvaLog.I.log('hub', 'InboxDO connect threw: $e');
-        _onClosed();
+        Analytics.capture('hub_connect_failed', {'stage': 'connect_threw', 'err': e.toString()});
+        _onClosed('connect_threw');
         return;
       }
       _sub = _ch!.stream.listen(
         _onFrame,
-        onError: (e) { AvaLog.I.log('hub', 'InboxDO socket error: $e'); _onClosed(); },
-        onDone: () { AvaLog.I.log('hub', 'InboxDO socket closed'); _onClosed(); },
+        onError: (e) { AvaLog.I.log('hub', 'InboxDO socket error: $e'); _onClosed('error', err: e.toString()); },
+        onDone: () { AvaLog.I.log('hub', 'InboxDO socket closed'); _onClosed('done'); },
         cancelOnError: true,
       );
       _retry = 0;
+      _connectedAt = DateTime.now().millisecondsSinceEpoch;
+      _lastRecvAt = _connectedAt; // fresh connection counts as just-heard-from
+      _frameCounts.clear();
+      Analytics.capture('hub_connected', {'cursor': _cursor, 'reconnects': _reconnects});
       // Resume from the PERSISTED cursor (once per account) so we don't
       // re-download the entire backlog on every launch — the server returns
       // only messages with id > cursor. SQLite already holds the rest.
@@ -156,25 +195,58 @@ class SyncHub {
       }
       _send({'type': 'hello', 'cursor': _cursor}); // request backlog since cursor
       _pingTimer?.cancel();
-      _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) => _send({'type': 'ping'}));
+      _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+        // Zombie-socket watchdog: if we've received NOTHING (not even a pong)
+        // for ~60s, the socket is half-open — tear it down and reconnect so the
+        // 'hello' cursor sync pulls whatever we missed, instead of silently
+        // stalling live delivery for minutes (the 5-min-message bug).
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (_lastRecvAt > 0 && now - _lastRecvAt > 60000) {
+          AvaLog.I.log('hub', 'no frames for ${now - _lastRecvAt}ms — dead socket, reconnecting');
+          Analytics.capture('inbox_zombie_reconnect', {'idle_ms': now - _lastRecvAt});
+          _onClosed('zombie');
+          return;
+        }
+        _send({'type': 'ping'});
+      });
       AvaLog.I.log('hub', 'InboxDO connected; synced from cursor=$_cursor');
     } finally {
       _connecting = false;
     }
   }
 
-  void _onClosed() {
+  void _onClosed([String reason = 'closed', {String? err}]) {
     _sub?.cancel(); _sub = null;
     _pingTimer?.cancel(); _pingTimer = null;
     try { _ch?.sink.close(); } catch (_) {}
     _ch = null;
+    // Per-device socket-down signal with this connection's uptime + a rollup of how
+    // many live frames it actually received (msg/hide/del/sync/…). A device that
+    // shows long uptime but zero hide/del frames is the realtime-not-delivering case.
+    if (_connectedAt > 0) {
+      final upMs = DateTime.now().millisecondsSinceEpoch - _connectedAt;
+      _connectedAt = 0;
+      Analytics.capture('hub_disconnected', {
+        'reason': reason,
+        if (err != null) 'err': err,
+        'uptime_ms': upMs,
+        'frames_total': _frameCounts.values.fold<int>(0, (a, b) => a + b),
+        'frames_msg': _frameCounts['msg'] ?? 0,
+        'frames_hide': _frameCounts['hide'] ?? 0,
+        'frames_del': _frameCounts['del'] ?? 0,
+        'frames_sync': _frameCounts['sync'] ?? 0,
+        'frames_receipt': _frameCounts['receipt'] ?? 0,
+      });
+    }
     if (_wantConnected) _scheduleReconnect();
   }
 
   void _scheduleReconnect() {
     if (_reconnectTimer?.isActive ?? false) return;
     _retry++;
+    _reconnects++;
     final secs = (1 << (_retry > 5 ? 5 : _retry)).clamp(2, 30);
+    Analytics.capture('hub_reconnect', {'attempt': _retry, 'backoff_s': secs, 'total': _reconnects});
     _reconnectTimer = Timer(Duration(seconds: secs), _open);
   }
 
@@ -219,6 +291,11 @@ class SyncHub {
   void _onFrame(dynamic raw) {
     Map<String, dynamic> m;
     try { m = (jsonDecode(raw as String) as Map).cast<String, dynamic>(); } catch (_) { return; }
+    _lastRecvAt = DateTime.now().millisecondsSinceEpoch; // liveness: a frame arrived
+    // Cheap per-connection frame tally (rolled up into hub_disconnected) — lets us
+    // confirm a given device is actually RECEIVING live frames over the socket.
+    final ft = (m['type'] ?? '').toString();
+    if (ft.isNotEmpty && ft != 'pong') _frameCounts[ft] = (_frameCounts[ft] ?? 0) + 1;
     switch (m['type']) {
       case 'pong':
         break;

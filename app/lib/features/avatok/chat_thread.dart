@@ -530,7 +530,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Safety net: any control envelope (del/gdel/receipt/…) that reached here
     // unhandled must NEVER render as a raw `{"t":...}` bubble. The explicit
     // handlers above already returned for the ones we act on; this catches the rest.
-    if (_isControlEnvelope(m.payload)) return;
+    if (_isControlEnvelope(m.payload)) {
+      Analytics.capture('chat_control_filtered', {'where': 'group_live'});
+      return;
+    }
     // A peer deleted this for everyone (recorded durably) — render the tombstone,
     // never the original body, even though the cached/replayed envelope still has it.
     if (_deletedIds.contains(m.rumorId)) {
@@ -646,7 +649,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Safety net: a control envelope (del/gdel/receipt/…) must NEVER render as a raw
     // `{"t":...}` bubble. Explicit handlers above already returned for handled ones;
     // this stops any unhandled/older-format control from leaking into the chat.
-    if (_isControlEnvelope(m.payload)) return;
+    if (_isControlEnvelope(m.payload)) {
+      Analytics.capture('chat_control_filtered', {'where': 'dm_live'});
+      return;
+    }
     // A peer deleted this for everyone (recorded durably) — render the tombstone,
     // never the original body, even though the cached/replayed envelope still has it.
     if (_deletedIds.contains(m.rumorId)) {
@@ -718,7 +724,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       }
       // Drop any control envelope an older build wrongly cached as a text bubble
       // (e.g. a leaked `{"t":"del",...}`), so it never reappears on reopen.
-      if (_isControlEnvelope((j['text'] ?? '').toString())) continue;
+      if (_isControlEnvelope((j['text'] ?? '').toString())) {
+        Analytics.capture('chat_control_filtered', {'where': 'cache'});
+        continue;
+      }
       final ts = (j['ts'] as num?)?.toInt() ?? 0;
       // Media messages ARE cached now (the envelope/refs — never the bytes; the
       // decrypted bytes live in MediaService's on-disk cache). So on reopen the
@@ -3069,9 +3078,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _syncHidden(_Msg m, bool hidden) {
     final conv = _guardianConv; // server conv id for this thread
     final target = m.evId;
-    if (conv == null || target == null || target.isEmpty) return;
-    ApiAuth.postJson(kMsgHideUrl, {'conv': conv, 'target': target, 'hidden': hidden})
-        .then((_) {}, onError: (_) {});
+    if (conv == null || target == null || target.isEmpty) {
+      // The hide can't be mirrored to my other devices (no server conv / evId) —
+      // this is the silent gap behind "my Mac still shows it". Make it visible.
+      Analytics.capture('chat_hide_send_skipped', {
+        'hidden': hidden, 'has_conv': conv != null, 'has_evid': target != null && target.isNotEmpty,
+      });
+      return;
+    }
+    // Sender-side anchor for the multi-device funnel: this hide/undo went to the
+    // server (which broadcasts live + FCM-wakes my other devices). Join `target`
+    // to chat_hide_fanout (worker) and chat_hide_applied (each device).
+    ApiAuth.postJson(kMsgHideUrl, {'conv': conv, 'target': target, 'hidden': hidden}).then(
+      (res) => Analytics.capture('chat_hide_sent', {
+        'target': target, 'hidden': hidden, 'ok': res.statusCode == 200, 'status': res.statusCode,
+      }),
+      onError: (e) => Analytics.capture('chat_hide_sent', {
+        'target': target, 'hidden': hidden, 'ok': false, 'err': e.toString(),
+      }),
+    );
   }
 
   // Apply a hide/Undo that arrived from one of my OTHER devices.

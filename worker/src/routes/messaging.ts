@@ -286,17 +286,28 @@ export async function hideMsg(req: Request, env: Env): Promise<Response> {
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   if (!b.conv || !b.target) return json({ error: "conv and target required" }, 400);
   const stub = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
-  await stub.fetch("https://inbox/hide", {
+  const hideRes = await stub.fetch("https://inbox/hide", {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ conv: String(b.conv), target: String(b.target), hidden: b.hidden === true }),
   });
+  const live = await hideRes.json().then((r: any) => r?.live === true).catch(() => false);
   // Multi-device parity with the call log: the DO already broadcast a live 'hide'
   // frame to my OPEN sockets; ALSO enqueue a SILENT high-priority FCM wake so my
   // ASLEEP/killed devices hide/un-hide in realtime instead of on their next sync
   // (one InboxDO serves all my devices, so the same uid reaches every token).
+  let pushed = false;
   try {
     await env.Q_PUSH.send({ kind: "hide", to: ctx.uid, conv: String(b.conv), target: String(b.target), hidden: b.hidden === true });
+    pushed = true;
   } catch { /* best-effort; live frame + next /sync still converge */ }
+  // Multi-device fanout signal: did the live frame reach an open socket, and did we
+  // enqueue the wake? Join `target` to chat_hide_sent (sender) + chat_hide_applied
+  // (each device) to see, per hide/undo, where it landed and where it stalled.
+  try {
+    void env.Q_ANALYTICS.send({ event: "chat_hide_fanout", uid: ctx.uid, ts: Date.now(),
+      props: { target: String(b.target), conv: String(b.conv), hidden: b.hidden === true,
+        live, pushed, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid } });
+  } catch { /* best-effort */ }
   return json({ ok: true });
 }
 
