@@ -69,6 +69,10 @@ export interface PlatformConfig {
   // TRUE to enable real checkout + per-tier daily allowance enforcement. One KV
   // flip, no redeploy.
   billingEnabled: boolean;
+  // AvaTOK Number (Specs/AVATOK-NUMBER-FEATURE-SPEC.md) — purchasable in-network
+  // virtual number that represents a user and hides their real phone. Master
+  // switch for /api/number/* and the directory's number search key.
+  numberFeatureEnabled: boolean;
   minAppBuild: number;
 }
 
@@ -106,6 +110,7 @@ const DEFAULTS: PlatformConfig = {
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
   betaFreePremium: false,          // metered economy LIVE (beta-free ended 2026-06-23; billing on)
   billingEnabled: true,            // Phase 1 subscriptions LIVE (enabled 2026-06-23)
+  numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
   minAppBuild: 0,
 };
 

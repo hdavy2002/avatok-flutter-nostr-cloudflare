@@ -34,6 +34,7 @@ import { listNotifications, unreadCount, markRead } from "./routes/notifications
 import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, convList, convCreate, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
+import * as num from "./routes/number";
 import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./routes/subscribe";
 import { referralClaim, referralSummary } from "./routes/referral";
 import { inviteEmail } from "./routes/invite";
@@ -286,6 +287,14 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/resolve" && req.method === "GET") return await cached(req, ctx, () => api.resolve(req, env), 60);
       if (p === "/api/search" && req.method === "GET") return await cached(req, ctx, () => api.search(req, env), 60);
       if (p === "/api/handle/check" && req.method === "GET") return await cached(req, ctx, () => api.handleCheck(req, env), 10);
+
+      // --- AvaTOK Number (virtual in-network number; Specs/AVATOK-NUMBER-FEATURE-SPEC.md) ---
+      if (p === "/api/number/countries" && req.method === "GET") return num.countries();
+      if (p === "/api/number/available" && req.method === "GET") return await num.available(req, env);
+      if (p === "/api/number/reserve" && req.method === "POST") return await num.reserve(req, env);
+      if (p === "/api/number/assign" && req.method === "POST") return await num.assign(req, env);
+      if (p === "/api/number/me" && req.method === "GET") return await num.me(req, env);
+      if (p === "/api/number/release" && req.method === "POST") return await num.release(req, env);
 
       // --- push / calls ---
       if (p === "/api/register" && req.method === "POST") return await api.register(req, env);
