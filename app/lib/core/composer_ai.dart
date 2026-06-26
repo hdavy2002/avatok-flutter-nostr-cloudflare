@@ -78,6 +78,7 @@ class ComposerAi {
   static Future<AvaAnswer> translate(String text, String language) =>
       AvaAiClient.I.ask(
         timeout: kTimeout,
+        source: 'composer_translate',
         message: 'Translate the message below into $language.\n'
             'Reply with ONLY the translation — no quotes, no notes, no '
             'transliteration, no original text. Preserve emoji, @mentions, '
@@ -88,6 +89,7 @@ class ComposerAi {
   /// tone and emoji. Reply is only the corrected message.
   static Future<AvaAnswer> fixGrammar(String text) => AvaAiClient.I.ask(
         timeout: kTimeout,
+        source: 'composer_grammar',
         message: 'Correct the spelling, grammar and punctuation of the message '
             'below. Keep the SAME language, meaning, tone and emoji. Do not add '
             'or remove ideas, and do not translate. Reply with ONLY the '
@@ -98,6 +100,7 @@ class ComposerAi {
   static Future<AvaAnswer> rewrite(String text, String style) =>
       AvaAiClient.I.ask(
         timeout: kTimeout,
+        source: 'composer_rewrite',
         message: 'Rewrite the message below to be $style. Keep the same '
             'language and core meaning; do not translate. Reply with ONLY the '
             'rewritten message.\n\n---\n$text',
@@ -107,6 +110,7 @@ class ComposerAi {
   /// split the answer into individual suggestions.
   static Future<AvaAnswer> replyIdeas(String incoming) => AvaAiClient.I.ask(
         timeout: kTimeout,
+        source: 'composer_reply_ideas',
         message: 'Someone sent me this message:\n"$incoming"\n\n'
             'Suggest 3 short, natural replies I could send back. Reply in the '
             'same language as the message. Put each reply on its own line, with '

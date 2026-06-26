@@ -49,6 +49,7 @@ interface AvaGeminiBody {
   context?: unknown;
   history?: unknown;
   images?: unknown;   // [{ mime, data(base64) }] — premium (file/image understanding)
+  source?: unknown;   // calling surface, e.g. "composer_translate" — for latency slicing
 }
 
 interface Turn { role: "user" | "assistant"; text: string; }
@@ -195,20 +196,34 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
   const context = String(b.context ?? "").trim();
   const history = normHistory(b.history);
   const images = normImages(b.images);
+  // Calling surface (composer_translate / composer_rewrite / composer_reply_ideas /
+  // composer_grammar / chat / …) so latency can be sliced by WHICH feature is slow.
+  const source = String(b.source ?? "chat").slice(0, 40);
   const t0 = Date.now();
 
   // Resolve the email (for telemetry) in parallel with the premium check so it
   // never adds latency to the turn. emailFor is KV-cached → ~free after the first.
+  const tSetup0 = Date.now();
   const [email, premiumRes] = await Promise.all([
     emailFor(env, ctx.uid),
     isPremiumAI(req, env, ctx.uid, b),
   ]);
+  const setupMs = Date.now() - tSetup0; // auth-adjacent setup (email + premium check)
   // Premium status (BYO key OR topped-up). Used to gate attachments + uncap chat.
   const { premium, via } = premiumRes;
 
+  // Per-turn latency breakdown so we can answer "why was translate slow?":
+  //   setup_ms  = email + premium resolve
+  //   gen_ms    = the model + gate (filled in after runGated)
+  //   tool_calls/steps = how many agentic round-trips the master-brain loop took
+  //     (a composer translate should be ZERO tool calls — non-zero here means the
+  //      agent is doing unnecessary memory/app work and adding round-trips).
+  let toolCalls = 0;
+  const toolNames: string[] = [];
+
   trackUser(env, ctx.uid, email, "ava_chat_request", "avaai", {
-    msg_len: message.length, history_len: history.length, images: images.length,
-    has_context: !!context, premium, premium_via: via,
+    source, msg_len: message.length, history_len: history.length, images: images.length,
+    has_context: !!context, premium, premium_via: via, setup_ms: setupMs,
   });
 
   // Attachments = file/image understanding = a premium AI tool. Free users get the upsell.
@@ -241,9 +256,14 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
           if (r.ok && r.url) { generatedImages.push(r.url); return "Image created and shown to the user."; }
           return r.message ?? "I couldn't create that image right now.";
         },
+        onTool: (t: any) => {
+          toolCalls++;
+          try { if (t?.tool && toolNames.length < 8) toolNames.push(String(t.tool)); } catch { /* best-effort */ }
+        },
       },
     );
 
+  const tGen0 = Date.now();
   let result;
   try {
     result = await runGated(env, {
@@ -254,30 +274,36 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     });
   } catch (e: any) {
     trackUser(env, ctx.uid, email, "ai_error", "avaai", {
-      route: "chat", detail: String(e?.message ?? e).slice(0, 200),
-      premium, premium_via: via, latency_ms: Date.now() - t0, images: images.length,
+      source, route: "chat", detail: String(e?.message ?? e).slice(0, 200),
+      premium, premium_via: via, latency_ms: Date.now() - t0, setup_ms: setupMs,
+      gen_ms: Date.now() - tGen0, tool_calls: toolCalls, images: images.length,
     });
     return json({ error: "ai upstream failed", detail: String(e?.message ?? e).slice(0, 300) }, 502);
   }
+  const genMs = Date.now() - tGen0; // model + gate (incl. any agentic tool round-trips)
+  const totalMs = Date.now() - t0;
+  const timings = { total_ms: totalMs, setup_ms: setupMs, gen_ms: genMs, tool_calls: toolCalls };
 
   if (result.blocked) {
     if (result.reason === "daily_cap") trackUser(env, ctx.uid, email, "free_chat_cap_hit", "avaai", {});
     trackUser(env, ctx.uid, email, "ava_chat_blocked", "avaai", {
-      route: "chat", reason: result.reason, premium, latency_ms: Date.now() - t0,
+      source, route: "chat", reason: result.reason, premium, latency_ms: totalMs,
+      setup_ms: setupMs, gen_ms: genMs, tool_calls: toolCalls,
       ...(result.remaining != null ? { remaining: result.remaining } : {}),
     });
-    return json({ answer: result.answer, blocked: true, reason: result.reason, ...(result.remaining != null ? { remaining: result.remaining } : {}) },
+    return json({ answer: result.answer, blocked: true, reason: result.reason, timings, ...(result.remaining != null ? { remaining: result.remaining } : {}) },
       result.reason === "ai_disabled" ? 503 : 200);
   }
 
   trackUser(env, ctx.uid, email, "ava_chat_completed", "avaai", {
-    route: "chat", tier: premium ? "premium" : "free", premium, premium_via: via,
+    source, route: "chat", tier: premium ? "premium" : "free", premium, premium_via: via,
     answer_len: (result.answer ?? "").length, in_images: images.length, gen_images: generatedImages.length,
-    latency_ms: Date.now() - t0,
+    latency_ms: totalMs, setup_ms: setupMs, gen_ms: genMs,
+    tool_calls: toolCalls, tools: toolNames.join(",") || "none",
     ...(result.remaining != null ? { remaining: result.remaining } : {}),
   });
   return json({
-    answer: result.answer, blocked: false, tier: premium ? "premium" : "free", premium,
+    answer: result.answer, blocked: false, tier: premium ? "premium" : "free", premium, timings,
     ...(generatedImages.length ? { images: generatedImages } : {}),
     ...(result.remaining != null ? { remaining: result.remaining } : {}),
   });

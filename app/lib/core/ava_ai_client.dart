@@ -45,6 +45,7 @@ class AvaAiClient {
     required String message,
     String? context,
     String? mode,
+    String? source,
     List<Map<String, String>>? history,
     Duration timeout = const Duration(seconds: 30),
   }) async {
@@ -52,8 +53,12 @@ class AvaAiClient {
       'message': message,
       if (context != null && context.isNotEmpty) 'context': context,
       if (mode != null && mode.isNotEmpty) 'mode': mode,
+      if (source != null && source.isNotEmpty) 'source': source,
       if (history != null && history.isNotEmpty) 'history': history,
     };
+    // Client-measured round-trip so we can compare it to the server's own
+    // breakdown (timings.*) and tell network latency apart from model latency.
+    final reqStart = DateTime.now().millisecondsSinceEpoch;
 
     // Send the BYO key per-request when connected. Header (not body) keeps it
     // out of any body-logging path; the Worker reads `X-Ava-Gemini-Key` first.
@@ -75,8 +80,11 @@ class AvaAiClient {
           answer: 'Ava is unavailable right now (${res.statusCode}). Please try again.',
           blocked: true,
           reason: 'http_${res.statusCode}',
+          clientMs: DateTime.now().millisecondsSinceEpoch - reqStart,
         );
       }
+      final clientMs = DateTime.now().millisecondsSinceEpoch - reqStart;
+      final tm = (j['timings'] as Map?)?.cast<String, dynamic>();
       return AvaAnswer(
         answer: (j['answer'] as String?) ?? '',
         blocked: j['blocked'] == true,
@@ -84,12 +92,18 @@ class AvaAiClient {
         remaining: (j['remaining'] as num?)?.toInt(),
         tier: j['tier'] as String?,
         images: (j['images'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        clientMs: clientMs,
+        serverMs: (tm?['total_ms'] as num?)?.toInt(),
+        genMs: (tm?['gen_ms'] as num?)?.toInt(),
+        setupMs: (tm?['setup_ms'] as num?)?.toInt(),
+        toolCalls: (tm?['tool_calls'] as num?)?.toInt(),
       );
     } catch (e) {
       return AvaAnswer(
         answer: 'Ava could not be reached. Check your connection and try again.',
         blocked: true,
         reason: 'network',
+        clientMs: DateTime.now().millisecondsSinceEpoch - reqStart,
       );
     }
   }
@@ -167,7 +181,29 @@ class AvaAnswer {
     this.remaining,
     this.tier,
     this.images = const [],
+    this.clientMs,
+    this.serverMs,
+    this.genMs,
+    this.setupMs,
+    this.toolCalls,
   });
+
+  /// Client-measured total round-trip in ms (request send → response parsed).
+  final int? clientMs;
+
+  /// Server-reported total handler time in ms (`timings.total_ms`).
+  final int? serverMs;
+
+  /// Server-reported model+gate time in ms (`timings.gen_ms`) — the big one when
+  /// the model itself is slow.
+  final int? genMs;
+
+  /// Server-reported setup time in ms (email + premium resolve).
+  final int? setupMs;
+
+  /// How many agentic tool round-trips the turn took. >0 on a composer tool
+  /// (translate/rewrite/…) is a red flag — those should be a single shot.
+  final int? toolCalls;
 
   /// AI-generated image URLs produced this turn (ChatAVA image generation).
   final List<String> images;
