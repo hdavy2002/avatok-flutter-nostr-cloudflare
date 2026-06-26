@@ -459,7 +459,10 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
     const out: any = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`gemini ${res.status}: ${JSON.stringify(out?.error ?? out).slice(0, 200)}`);
     const content = out?.candidates?.[0]?.content;
-    if (!content?.parts) return "I couldn't generate a response just now.";
+    if (!content?.parts) {
+      if (looksLikeImageRequest(query)) return IMAGE_FALLBACK_MSG;
+      return "I couldn't generate a response just now.";
+    }
     contents.push(content);
 
     const calls = content.parts.filter((p: any) => p?.functionCall);
@@ -486,6 +489,14 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
 // that image now ✨") INSTEAD of the tool call, so the user sees "creating now"
 // but nothing ever happens. A verb + an image noun is a strong, low-false-positive
 // signal; the handler still applies the real premium/wallet/safety gates.
+// Shown when an image request reaches a dead end (model emitted no tool call and
+// no text). Never a bare "I couldn't generate a response" — it points the user at
+// the image button and, crucially, names the upgrade path so a plan-limited user
+// knows they can get more images rather than thinking the feature is broken.
+const IMAGE_FALLBACK_MSG =
+  "I couldn't create that image just now. Tap the ✨ image button to try again — " +
+  "and if you've used up today's free AI images, you can upgrade your plan for more.";
+
 export function looksLikeImageRequest(s: string): boolean {
   const t = (s || "").toLowerCase();
   const verb = /\b(generate|create|make|draw|design|paint|render|sketch|illustrate|edit|turn (?:this|it) into)\b/;
@@ -671,7 +682,11 @@ export async function runAgentLoop(
     } else {
       const r = await once(); content = r.content; calls = r.calls; text = r.text;
     }
-    if (!content?.parts?.length && calls.length === 0) return text || "I couldn't generate a response just now.";
+    if (!content?.parts?.length && calls.length === 0) {
+      if (text) return text;
+      if (looksLikeImageRequest(query)) return IMAGE_FALLBACK_MSG;
+      return "I couldn't generate a response just now.";
+    }
     contents.push(content);
 
     if (calls.length === 0) return text || "Done.";
