@@ -32,6 +32,7 @@ import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
 import 'push/push_service.dart';
 import 'shell/ava_shell.dart';
+import 'sync/sync_hub.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -204,6 +205,11 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // InboxDO WS) don't 401-storm the thread into a blank screen.
     if (state == AppLifecycleState.resumed && ApiAuth.identity != null) {
       unawaited(_clerk.warmSession());
+      // Force the realtime InboxDO socket to prove it's alive (or reconnect) the
+      // moment we're foregrounded, so a chat catches up in seconds instead of
+      // waiting for a half-open socket to time out — the "reopened the app and
+      // the message still wasn't there" report.
+      SyncHub.I.onAppResumed();
     }
   }
 
