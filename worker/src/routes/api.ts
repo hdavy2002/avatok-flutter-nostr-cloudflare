@@ -11,6 +11,7 @@ import { json, sha256Hex, normalizePhone, chunk } from "../util";
 import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk } from "../auth";
+import { nameFor } from "../lib/identity";
 import { brainFact } from "../hooks";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 
@@ -43,7 +44,16 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
   const n = await tokenCount(env.DB_META, b.to);
   if (n === 0) return json({ error: "callee has no registered devices" }, 404);
-  await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: b.fromName ?? "AvaTOK", callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
+  // Resolve the caller's real name SERVER-SIDE (Clerk first name → app
+  // display_name/handle) instead of trusting the client. The client was sending
+  // the raw uid, so the callee's incoming-call screen showed "user_xxx…" / an
+  // npub instead of the person's name. Fall back to the client value, then the
+  // app name. nameFor is KV-cached, so this adds no per-call DB round-trip.
+  const resolvedName =
+    (await nameFor(env, ctx.uid).catch(() => null)) ||
+    (b.fromName ?? "").trim() ||
+    "AvaTOK";
+  await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
   // AI Ringback (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md): hand the CALLER
   // the callee's CURRENT default ringtone so it plays locally during the ring
   // phase. Resolved at dial time so changing the default takes effect next call.
