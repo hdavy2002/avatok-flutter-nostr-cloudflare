@@ -182,6 +182,32 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
 }
 
 class PushService {
+  // ── Incoming-call de-dup ────────────────────────────────────────────────────
+  // FCM can deliver the SAME call push more than once (a retry, or our notify +
+  // relay copies), and each copy fired `call_incoming_received` + a CallKit ring.
+  // Worse, two accepts opened TWO CallScreens into the same room: the room caps
+  // at 2 peers, so the first leg connected P2P while the SECOND was rejected
+  // 'busy' and escalated to the AI receptionist — that's why a live call had Ava
+  // talking to the caller at the same time (issues 2 & 3). Keyed by callId with a
+  // short TTL so a genuine later call (new id) still rings.
+  static final Map<String, int> _recentIncoming = {};
+  static bool _seenIncoming(String callId) {
+    if (callId.isEmpty) return false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _recentIncoming.removeWhere((_, t) => now - t > 60000);
+    if (_recentIncoming.containsKey(callId)) return true;
+    _recentIncoming[callId] = now;
+    return false;
+  }
+
+  // Exactly ONE CallScreen per callId. `actionCallAccept` and the cold-start
+  // `_recoverAcceptedCall` recovery can both route into the same accepted call,
+  // and a duplicate accept event lands twice — each used to push its own
+  // CallScreen. Guarded by the on-screen id ([gActiveCallId]) AND a short
+  // recently-opened window so the race before initState runs is also covered.
+  static String? _openedCallId;
+  static int _openedAt = 0;
+
   static Future<void> init() async {
     // Desktop (macOS) test build: no APNs and no native incoming-call UI
     // (flutter_callkit_incoming is mobile-only). Skip push/CallKit wiring so the
@@ -247,6 +273,15 @@ class PushService {
         // Duplicate/echo push for the call already on screen → ignore.
         if (incomingId.isNotEmpty && incomingId == gActiveCallId) {
           Analytics.capture('call_duplicate_push_ignored', {'call_id': incomingId});
+          return;
+        }
+        // Duplicate push that arrives BEFORE any CallScreen mounts (so the
+        // gActiveCallId guard above can't catch it) → drop it. This is what
+        // stopped the second CallKit ring + the second accept that opened a
+        // parallel call leg and dragged in the receptionist.
+        if (_seenIncoming(incomingId)) {
+          Analytics.capture('call_duplicate_push_ignored',
+              {'call_id': incomingId, 'reason': 'dedup_window'});
           return;
         }
         if (callIsGenuinelyActive()) {
@@ -453,6 +488,20 @@ class PushService {
   static void _openCall(dynamic extra) {
     try {
       final e = (extra as Map);
+      final room = (e['callId'] ?? '').toString();
+      if (room.isEmpty) return;
+      // One CallScreen per callId. If one is already on screen, or we opened this
+      // same call moments ago (duplicate accept / cold-start recovery race),
+      // don't push a second one — a second leg joins the room, gets 'busy', and
+      // hands the caller to Ava mid-call (issues 2 & 3).
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (gActiveCallId == room ||
+          (room == _openedCallId && now - _openedAt < 60000)) {
+        Analytics.capture('call_duplicate_open_ignored', {'call_id': room});
+        return;
+      }
+      _openedCallId = room;
+      _openedAt = now;
       navigatorKey.currentState?.push(MaterialPageRoute(
         builder: (_) => CallScreen(
           room: (e['callId'] ?? '').toString(),
