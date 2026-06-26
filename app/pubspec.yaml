@@ -56,6 +56,10 @@ dependencies:
   # Encrypted chat media (pure-Dart AES-GCM) + pickers/record/playback
   cryptography: ^2.7.0
   image_picker: ^1.1.2
+  # Native on-device speech-to-text (phone's built-in recognizer) for instant
+  # voice-to-text — no app-bundled model, no download, OS loads/unloads it. Cloud
+  # Whisper stays as the fallback for devices without on-device recognition.
+  speech_to_text: ^7.3.0
   # On-device, offline TEXT translation for the composer Translate tool (pic4):
   # ~tens of ms vs a multi-second Gemini round-trip. Language models download on
   # demand (deferred — never at install), with the Gemini path as fallback.
