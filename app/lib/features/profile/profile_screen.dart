@@ -14,7 +14,11 @@ import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../avatok/contacts.dart';
+import '../avatok/ava_number.dart';
 import 'avatar_crop_screen.dart';
 import 'phone_verify_card.dart';
 
@@ -40,6 +44,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _sharePresence = true;
   String _avatarUrl = '';
   bool _photoBusy = false;
+  // AvaTOK Number — the stable QR share link + my current number.
+  MyNumber? _myNum;
+  String _shareLink = '';
 
   @override
   void initState() {
@@ -61,6 +68,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _avatarUrl = p.avatarUrl;
       });
     });
+    _initShare();
+  }
+
+  /// Build (or refresh) the stable QR share card so others can scan to add me.
+  /// Paid users share their AvaTOK number; free users share their real number.
+  Future<void> _initShare() async {
+    final me = await AvaNumber.me();
+    final prof = await _store.load();
+    final parts = _name.text.trim().isEmpty ? prof.displayName.split(RegExp(r'\s+')) : _name.text.trim().split(RegExp(r'\s+'));
+    final first = parts.isNotEmpty ? parts.first : '';
+    final last = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    final number = me.hasNumber ? (me.display ?? '') : prof.phone;
+    final res = await AvaNumber.shareCard(firstName: first, lastName: last, email: '', number: number);
+    if (!mounted) return;
+    setState(() { _myNum = me; _shareLink = res?.link ?? ''; });
   }
 
   @override
@@ -510,24 +532,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 6),
         if (id != null) ZineCard(
           radius: Zine.rSm,
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           boxShadow: Zine.shadowXs,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.fingerprint(PhosphorIconsStyle.bold), color: Zine.blue, size: 28),
+              ZineIconBadge(icon: PhosphorIcons.qrCode(PhosphorIconsStyle.bold), color: Zine.blue, size: 28),
               const SizedBox(width: 9),
-              Expanded(child: Text('YOUR AVATOK ID (NPUB)', style: ZineText.kicker())),
+              Expanded(child: Text('ADD ME ON AVATOK', style: ZineText.kicker())),
             ]),
-            const SizedBox(height: 9),
+            const SizedBox(height: 12),
+            if (_shareLink.isNotEmpty)
+              Center(child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Zine.card, borderRadius: BorderRadius.circular(14), border: Zine.border),
+                child: QrImageView(data: _shareLink, size: 150, backgroundColor: Zine.card),
+              ))
+            else
+              const Center(child: Padding(padding: EdgeInsets.all(28), child: CircularProgressIndicator())),
+            const SizedBox(height: 10),
+            Center(child: Text(
+              _myNum?.hasNumber == true ? (_myNum!.display ?? '') : 'Scan to add me on AvaTOK',
+              style: ZineText.value(size: 15, color: Zine.blueInk))),
+            if (_myNum != null && !_myNum!.hasNumber)
+              Padding(padding: const EdgeInsets.only(top: 4), child: Center(child:
+                Text('Free plan — your QR shares your real number', style: ZineText.sub(size: 11.5)))),
+            const SizedBox(height: 14),
             Row(children: [
-              Expanded(child: SelectableText(id.npub, style: ZineText.tag(size: 11, color: Zine.inkSoft))),
-              ZineBackButton(
-                icon: PhosphorIcons.copy(PhosphorIconsStyle.bold),
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: id.npub));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
-                },
-              ),
+              Expanded(child: ZineButton(
+                label: 'Share', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
+                fullWidth: true, fontSize: 15,
+                onPressed: _shareLink.isEmpty ? null : () => Share.share(_shareLink, subject: 'Add me on AvaTOK'))),
+              const SizedBox(width: 10),
+              Expanded(child: ZineButton(
+                label: 'Copy', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
+                fullWidth: true, fontSize: 15,
+                onPressed: _shareLink.isEmpty ? null : () {
+                  Clipboard.setData(ClipboardData(text: _shareLink));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
+                })),
             ]),
           ]),
         ),
