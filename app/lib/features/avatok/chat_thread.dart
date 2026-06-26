@@ -24,6 +24,7 @@ import '../../core/account_storage.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/composer_ai.dart';
+import '../translation/ondevice_translate.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/brain_consent.dart';
 import '../../core/feature_flags.dart';
@@ -299,6 +300,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     readScoped(_aiPrefs, _kTransLangKey).then((code) {
       if (mounted && code != null && code.isNotEmpty) {
         setState(() => _transLangCode = code);
+        // Deferred: warm the on-device model for the remembered language in the
+        // background so the first Translate tap is already instant (pic4).
+        OnDeviceTranslate.I.prefetch(code);
       }
     }).catchError((_) {});
     // Restore the per-conversation "hide deleted messages" choice.
@@ -4386,9 +4390,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<void> _runTranslate() async {
     final text = _ctrl.text.trim();
     if (text.isEmpty) { _toolHint('Type a message first, then tap Translate'); return; }
+    if (_aiBusy) return;
+    // INSTANT PATH (pic4): on-device ML Kit translation (~tens of ms, offline,
+    // free). Falls through to the server (Gemini) path when the language pair
+    // isn't supported on-device or the model isn't downloaded yet (the download
+    // runs deferred in the background, so the next tap is instant).
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    setState(() { _aiBusy = true; _aiTool = 'translate'; });
+    final local = await OnDeviceTranslate.I.translate(text, _transLang.code);
+    if (!mounted) return;
+    setState(() { _aiBusy = false; _aiTool = null; });
+    if (local != null) {
+      Analytics.capture('composer_ai_ok', <String, Object>{
+        'tool': 'translate', 'engine': 'ondevice', 'lang': _transLang.code,
+        'total_ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
+      _replaceComposer(local);
+      return;
+    }
     final out = await _runAiTool('translate',
         () => ComposerAi.translate(text, _transLang.code),
-        props: {'lang': _transLang.code});
+        props: {'lang': _transLang.code, 'engine': 'server'});
     if (out != null) _replaceComposer(out);
   }
 

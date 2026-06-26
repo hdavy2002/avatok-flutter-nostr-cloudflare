@@ -56,6 +56,11 @@ dependencies:
   # Encrypted chat media (pure-Dart AES-GCM) + pickers/record/playback
   cryptography: ^2.7.0
   image_picker: ^1.1.2
+  # On-device, offline TEXT translation for the composer Translate tool (pic4):
+  # ~tens of ms vs a multi-second Gemini round-trip. Language models download on
+  # demand (deferred — never at install), with the Gemini path as fallback.
+  google_mlkit_translation: ^0.13.0
+  google_mlkit_language_id: ^0.13.0
   # L2 liveness selfie-clip capture (Trust Ladder — challenge frames + clip)
   camera: ^0.11.0+2
   file_picker: ^8.1.6
