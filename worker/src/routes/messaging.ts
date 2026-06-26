@@ -290,6 +290,74 @@ export async function hideMsg(req: Request, env: Env): Promise<Response> {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ conv: String(b.conv), target: String(b.target), hidden: b.hidden === true }),
   });
+  // Multi-device parity with the call log: the DO already broadcast a live 'hide'
+  // frame to my OPEN sockets; ALSO enqueue a SILENT high-priority FCM wake so my
+  // ASLEEP/killed devices hide/un-hide in realtime instead of on their next sync
+  // (one InboxDO serves all my devices, so the same uid reaches every token).
+  try {
+    await env.Q_PUSH.send({ kind: "hide", to: ctx.uid, conv: String(b.conv), target: String(b.target), hidden: b.hidden === true });
+  } catch { /* best-effort; live frame + next /sync still converge */ }
+  return json({ ok: true });
+}
+
+// ---- call log (owner multi-device sync) -------------------------------------
+// The call history lives in the caller's OWN InboxDO (same model as /read + /hide:
+// the owner's private, multi-device state). A change on any device fans out live
+// to the owner's other OPEN sockets via the DO broadcast; for asleep/killed
+// devices we ALSO enqueue a SILENT high-priority FCM wake (a single InboxDO serves
+// all of the user's devices, so its `live` flag can't tell us which devices are
+// asleep — so deletes/clears always wake). The full snapshot on the next /sync is
+// the durable backstop.
+async function callOp(env: Env, uid: string, op: string, body: Record<string, unknown>): Promise<{ live: boolean }> {
+  const stub = env.INBOX.get(env.INBOX.idFromName(uid));
+  const res = await stub.fetch(`https://inbox/call/${op}`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  try { return (await res.json()) as { live: boolean }; } catch { return { live: false }; }
+}
+
+// Wake the owner's OTHER (possibly sleeping) devices so a delete/clear applies in
+// realtime instead of only on their next manual open. Silent data push; the app's
+// FCM handler queues it and applies on foreground (no banner).
+async function wakeOwnDevices(env: Env, uid: string, data: { kind: "call_del"; entry_id: string } | { kind: "call_clear" }): Promise<void> {
+  try { await env.Q_PUSH.send({ ...data, to: uid }); } catch { /* best-effort; /sync still reconciles */ }
+}
+
+// ---- POST /api/call-log/append  { entry_id, name, seed, video, dir, ts } -----
+export async function callLogAppend(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  if (!b.entry_id) return json({ error: "entry_id required" }, 400);
+  await callOp(env, ctx.uid, "append", {
+    entry_id: String(b.entry_id), name: b.name == null ? "" : String(b.name),
+    seed: b.seed == null ? "" : String(b.seed), video: b.video === true,
+    dir: String(b.dir ?? "outgoing"), ts: Number(b.ts) || 0,
+  });
+  // A new entry is not urgent for asleep devices (it shows on their next open/sync),
+  // so no FCM wake here — only deletes/clears wake, per the product requirement.
+  return json({ ok: true });
+}
+
+// ---- POST /api/call-log/delete  { entry_id } --------------------------------
+export async function callLogDelete(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  if (!b.entry_id) return json({ error: "entry_id required" }, 400);
+  const entryId = String(b.entry_id);
+  await callOp(env, ctx.uid, "delete", { entry_id: entryId });
+  await wakeOwnDevices(env, ctx.uid, { kind: "call_del", entry_id: entryId });
+  return json({ ok: true });
+}
+
+// ---- POST /api/call-log/clear  {} -------------------------------------------
+export async function callLogClear(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  await callOp(env, ctx.uid, "clear", {});
+  await wakeOwnDevices(env, ctx.uid, { kind: "call_clear" });
   return json({ ok: true });
 }
 

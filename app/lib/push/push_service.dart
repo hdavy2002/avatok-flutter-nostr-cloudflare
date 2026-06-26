@@ -75,6 +75,13 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   } else if (d['type'] == 'del') {
     // Delete-for-everyone — silent. Park it for the app to apply on next foreground.
     await _queuePendingDelete(d);
+  } else if (d['type'] == 'hide') {
+    // Delete-for-me / Undo on another of MY devices — silent. Park it.
+    await _queuePendingHide(d);
+  } else if (d['type'] == 'call_del' || d['type'] == 'call_clear') {
+    // Call-log delete/clear from another of MY devices — silent wake. The isolate
+    // has no AccountScope, so park it for SyncHub.drainPendingCallOps on foreground.
+    await _queuePendingCallOp(d);
   } else if (d['type'] == 'call-status') {
     // Caller cancelled / call ended before we answered → stop ringing.
     final callId = (d['callId'] ?? '').toString();
@@ -109,6 +116,63 @@ Future<void> _queuePendingDelete(Map<String, dynamic> d) async {
       await DiskCache.writeGlobal(SyncHub.pendingDeletesKey, jsonEncode(list));
     }
   } catch (_) {/* best-effort; the next full sync still applies it */}
+}
+
+/// Park a delete-for-me / Undo that arrived (silently) from another of MY devices
+/// while this one was backgrounded/killed. Same rationale as [_queuePendingDelete]:
+/// the background isolate has no AccountScope, so it appends to the GLOBAL queue
+/// that [SyncHub.drainPendingHides] flushes into the scoped HiddenStore on the next
+/// foreground. Entry format mirrors the drain: 'conv\ttarget\t0|1' (1 = hide).
+Future<void> _queuePendingHide(Map<String, dynamic> d) async {
+  final target = (d['target'] ?? '').toString();
+  if (target.isEmpty) return;
+  final hidden = (d['hidden'] ?? '0').toString() == '1' ? '1' : '0';
+  final entry = '${(d['conv'] ?? '').toString()}\t$target\t$hidden';
+  try {
+    final raw = await DiskCache.readGlobal(SyncHub.pendingHidesKey);
+    List<dynamic> list;
+    try {
+      list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+    } catch (_) {
+      list = <dynamic>[];
+    }
+    // Drop any prior op for the SAME target so the latest hide/undo wins (no stale
+    // flip-flop), then append this one.
+    list.removeWhere((e) {
+      final p = e.toString().split('\t');
+      return p.length >= 2 && p[1] == target;
+    });
+    list.add(entry);
+    await DiskCache.writeGlobal(SyncHub.pendingHidesKey, jsonEncode(list));
+  } catch (_) {/* best-effort; the next full sync still applies it */}
+}
+
+/// Park a call-log delete/clear that arrived (silently) while the app was asleep.
+/// Like [_queuePendingDelete], the background isolate can't touch the per-account
+/// CallLogStore, so it appends to the GLOBAL queue that
+/// [SyncHub.drainPendingCallOps] flushes the instant the app is alive. A 'clear'
+/// supersedes any queued per-entry deletes. Entry format: 'del\t<entry_id>' | 'clear'.
+Future<void> _queuePendingCallOp(Map<String, dynamic> d) async {
+  final isClear = d['type'] == 'call_clear';
+  final entryId = (d['entry_id'] ?? '').toString();
+  if (!isClear && entryId.isEmpty) return;
+  final entry = isClear ? 'clear' : 'del\t$entryId';
+  try {
+    final raw = await DiskCache.readGlobal(SyncHub.pendingCallOpsKey);
+    List<dynamic> list;
+    try {
+      list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+    } catch (_) {
+      list = <dynamic>[];
+    }
+    // A clear wipes everything → collapse the queue to just 'clear'.
+    if (isClear) {
+      list = <dynamic>['clear'];
+    } else if (!list.contains(entry) && !list.contains('clear')) {
+      list.add(entry);
+    }
+    await DiskCache.writeGlobal(SyncHub.pendingCallOpsKey, jsonEncode(list));
+  } catch (_) {/* best-effort; the next full sync still reconciles */}
 }
 
 /// A call-status that means the call is over and any incoming ring should stop.
@@ -262,6 +326,34 @@ class PushService {
         });
         SyncHub.I.applyRemoteDelete(
             target, conv: (d['conv'] ?? '').toString(), source: 'push_fg');
+        return;
+      }
+      if (d['type'] == 'hide') {
+        // Delete-for-me / Undo from another of MY devices, app foregrounded → apply
+        // the hide/un-hide in realtime (durable HiddenStore + live thread update).
+        final target = (d['target'] ?? '').toString();
+        final hidden = (d['hidden'] ?? '0').toString() == '1';
+        Analytics.capture('chat_hide_push', {
+          'target': target, 'hidden': hidden, 'state': 'foreground',
+        });
+        SyncHub.I.applyRemoteHide(
+            target, hidden, conv: (d['conv'] ?? '').toString(), source: 'push_fg');
+        return;
+      }
+      if (d['type'] == 'call_del' || d['type'] == 'call_clear') {
+        // Call-log delete/clear from another of MY devices, app foregrounded →
+        // apply now (AccountScope is loaded). Also nudge the socket so the next
+        // /sync snapshot reconciles anything missed.
+        final clear = d['type'] == 'call_clear';
+        Analytics.capture('call_log_op_push', {
+          'op': clear ? 'clear' : 'del', 'state': 'foreground',
+        });
+        if (clear) {
+          CallLogStore().applyRemoteClear();
+        } else {
+          CallLogStore().applyRemoteDelete((d['entry_id'] ?? '').toString());
+        }
+        SyncHub.I.ensureConnected();
         return;
       }
       // Incoming call. Reconcile a possibly-stale "on a call" flag BEFORE

@@ -65,12 +65,15 @@ class HiddenStore {
     }
   }
 
-  Future<void> set(String rumorId, bool hidden) async {
-    if (rumorId.isEmpty) return;
+  /// Set the hide flag. Returns true only when the value actually CHANGED, so a
+  /// caller can apply/emit/log exactly once (an idempotent re-delivery is a no-op).
+  Future<bool> set(String rumorId, bool hidden) async {
+    if (rumorId.isEmpty) return false;
     final m = await load();
-    if ((m[rumorId] ?? false) == hidden) return;
+    if ((m[rumorId] ?? false) == hidden) return false;
     m[rumorId] = hidden;
     await DiskCache.write(_key, jsonEncode(m));
+    return true;
   }
 
   /// One load+write for many ids (use when seeding hidden flags from a full sync).

@@ -74,6 +74,23 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     // `target` (the message client_id) + `conv` in its FCM handler.
     return { highPriority: true, data: { type: "del", conv: msg.conv ?? "", target: msg.target ?? "" } };
   }
+  if (msg.kind === "hide") {
+    // Delete-for-me / Undo on another of MY devices: silent HIGH-priority wake so
+    // every asleep device hides/un-hides the same message in realtime. hidden=1 →
+    // hide, 0 → undo. The app reads conv/target/hidden in its FCM handler.
+    return { highPriority: true, data: { type: "hide", conv: msg.conv ?? "", target: msg.target ?? "", hidden: msg.hidden ? "1" : "0" } };
+  }
+  if (msg.kind === "call_del") {
+    // One call-log entry deleted on another of MY devices. Silent + HIGH priority
+    // so an asleep device wakes and removes the entry in realtime (the app reads
+    // `entry_id`), instead of only on its next manual open.
+    return { highPriority: true, data: { type: "call_del", entry_id: msg.entry_id ?? "" } };
+  }
+  if (msg.kind === "call_clear") {
+    // Whole call history cleared on another device → silent HIGH-priority wake so
+    // every asleep device empties its log in realtime.
+    return { highPriority: true, data: { type: "call_clear" } };
+  }
   // relay-event (from the relay's onEventSaved hook). "from" is reserved by FCM.
   const type = msg.event_kind === 25050 ? "call" : "message";
   // Both calls (25050) and DM gift-wraps (1059) are high priority so they punch

@@ -9,6 +9,7 @@ import 'package:web_socket_channel/io.dart';
 import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
+import '../core/call_log_store.dart';
 import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore;
 import '../core/config.dart';
 import '../core/db.dart';
@@ -85,6 +86,8 @@ class SyncHub {
       _started = true;
       _wantConnected = true;
       unawaited(drainPendingDeletes()); // apply deletes queued while backgrounded
+      unawaited(drainPendingHides());   // apply hide/undo queued while backgrounded
+      unawaited(drainPendingCallOps()); // apply call-log deletes/clears queued while asleep
       _open();
       AvaLog.I.log('hub', 'InboxDO sync started for uid=${_myUid}');
     } else {
@@ -96,6 +99,8 @@ class SyncHub {
   void ensureConnected() {
     if (!_wantConnected) return;
     unawaited(drainPendingDeletes()); // a foreground wake also flushes queued deletes
+    unawaited(drainPendingHides());   // …and queued hide/undo ops
+    unawaited(drainPendingCallOps()); // …and queued call-log deletes/clears
     if (_ch != null) return;
     _retry = 0;
     _reconnectTimer?.cancel();
@@ -250,6 +255,14 @@ class SyncHub {
         for (final r in (m['receipts'] as List? ?? const [])) {
           _ingestReceipt((r as Map).cast<String, dynamic>());
         }
+        // Authoritative call-log snapshot — reconcile the on-device history with
+        // every other device on the account (adds, per-row deletes, clears).
+        {
+          final calls = (m['calls'] as List? ?? const [])
+              .map((e) => (e as Map).cast<String, dynamic>())
+              .toList();
+          if (calls.isNotEmpty) unawaited(CallLogStore().applyServerSnapshot(calls));
+        }
         break;
       case 'msg':
         _ingestMsg(m);
@@ -267,6 +280,18 @@ class SyncHub {
         // Delete-for-everyone control frame (never a stored message → can't render
         // as raw text). Redact durably + live on this device.
         _ingestDel(m);
+        break;
+      case 'call':
+        // A new call-log entry recorded on another of MY devices → mirror it here.
+        unawaited(CallLogStore().applyRemoteAdd(CallEntry.fromServer(m)));
+        break;
+      case 'call_del':
+        // One call-log entry deleted on another of MY devices.
+        unawaited(CallLogStore().applyRemoteDelete((m['entry_id'] ?? '').toString()));
+        break;
+      case 'call_clear':
+        // Whole call history cleared on another of MY devices.
+        unawaited(CallLogStore().applyRemoteClear());
         break;
       case 'searchResults':
         {
@@ -365,6 +390,35 @@ class SyncHub {
   // the app is alive and the account scope is known. Entry format: 'conv\ttarget'.
   static const pendingDeletesKey = 'avatok_pending_deletes';
 
+  // Global (device-level) queue of call-log ops that arrived via a silent FCM wake
+  // while the app was asleep. The background isolate has no AccountScope, so it
+  // parks them here; [drainPendingCallOps] applies them to the scoped CallLogStore
+  // the instant the app is alive. Entry format: 'del\t<entry_id>' or 'clear'.
+  static const pendingCallOpsKey = 'avatok_pending_call_ops';
+
+  /// Drain call-log deletes/clears queued by the background FCM isolate into the
+  /// account-scoped CallLogStore. Idempotent; clears the queue when done. Called on
+  /// start + every reconnect, so a delete/clear received while asleep lands on the
+  /// next foreground. A 'clear' supersedes everything, so it short-circuits.
+  Future<void> drainPendingCallOps() async {
+    final raw = await DiskCache.readGlobal(pendingCallOpsKey);
+    if (raw == null || raw.isEmpty) return;
+    List<dynamic> list;
+    try { list = jsonDecode(raw) as List; } catch (_) { list = const []; }
+    if (list.isEmpty) { await DiskCache.deleteGlobal(pendingCallOpsKey); return; }
+    final store = CallLogStore();
+    if (list.any((e) => e.toString() == 'clear')) {
+      await store.applyRemoteClear();
+    } else {
+      for (final e in list) {
+        final s = e.toString();
+        if (s.startsWith('del\t')) await store.applyRemoteDelete(s.substring(4));
+      }
+    }
+    Analytics.capture('call_log_ops_drained', {'count': list.length});
+    await DiskCache.deleteGlobal(pendingCallOpsKey);
+  }
+
   /// Apply a delete-for-everyone in (near) realtime: durably tombstone the target
   /// on THIS device and, if its thread is open, redact it live. Called from the
   /// foreground FCM 'del' handler and when draining the background queue. Safe to
@@ -421,19 +475,57 @@ class SyncHub {
     applyRemoteDelete(target, conv: conv, source: 'live_socket');
   }
 
-  // A SOFT-DELETE/Undo from one of MY OTHER devices. Re-emit it as a {t:'hide'}
-  // event into the open thread so it hides/un-hides the same message live here.
+  // A SOFT-DELETE/Undo (delete-for-me, the owner side of delete-for-everyone, or
+  // Undo) from one of MY OTHER devices, delivered LIVE over the InboxDO socket.
   void _ingestHide(Map<String, dynamic> r) {
     final conv = (r['conv'] ?? '').toString();
     final target = (r['target'] ?? '').toString();
-    if (conv.isEmpty || target.isEmpty) return;
-    final hidden = r['hidden'] == true;
-    HiddenStore().set(target, hidden); // durable across cold opens on this device
+    if (target.isEmpty) return;
+    applyRemoteHide(target, r['hidden'] == true, conv: conv, source: 'live_socket');
+  }
+
+  // Global (device-level) queue of message hide/undo ops that arrived via a silent
+  // FCM 'hide' wake while the app was asleep (the background isolate has no
+  // AccountScope). [drainPendingHides] flushes them into the scoped HiddenStore on
+  // the next foreground. Entry format: 'conv\ttarget\t0|1' (1 = hidden, 0 = undo).
+  static const pendingHidesKey = 'avatok_pending_hides';
+
+  /// Apply a hide/undo to THIS device in (near) realtime: durably set the flag and,
+  /// if the thread is open, hide/un-hide live. Used by the live 'hide' frame, the
+  /// foreground FCM 'hide' handler, and the background-queue drain. Idempotent — a
+  /// repeat delivery that doesn't change the flag is a no-op (HiddenStore.set=false).
+  Future<void> applyRemoteHide(String target, bool hidden, {String conv = '', String source = 'push_fg'}) async {
+    if (target.isEmpty) return;
+    final changed = await HiddenStore().set(target, hidden); // durable across cold opens
+    if (changed) {
+      Analytics.capture('chat_hide_applied', {'target': target, 'hidden': hidden, 'source': source});
+    }
+    if (conv.isEmpty) return;
     final myUid = _myUid ?? '';
     final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? conv}' : 'g:$conv';
+    // Re-emit as a {t:'hide'} event so an OPEN thread applies it live via _applyHide.
     _incoming.add(HubEvent(convKey, myUid, myUid, true, 'hide_${target}_$hidden',
         jsonEncode({'t': 'hide', 'target': target, 'hidden': hidden}),
         DateTime.now().millisecondsSinceEpoch ~/ 1000));
+  }
+
+  /// Drain hide/undo ops queued by the background FCM isolate into the scoped
+  /// HiddenStore. Idempotent; clears the queue when done. Called on app start +
+  /// every reconnect, so a hide/undo from another device lands on the next
+  /// foreground rather than waiting for the periodic re-sync.
+  Future<void> drainPendingHides() async {
+    final raw = await DiskCache.readGlobal(pendingHidesKey);
+    if (raw == null || raw.isEmpty) return;
+    List<dynamic> list;
+    try { list = jsonDecode(raw) as List; } catch (_) { list = const []; }
+    if (list.isEmpty) { await DiskCache.deleteGlobal(pendingHidesKey); return; }
+    for (final e in list) {
+      final parts = e.toString().split('\t');
+      if (parts.length < 3) continue;
+      await applyRemoteHide(parts[1], parts[2] == '1', conv: parts[0], source: 'push_drained');
+    }
+    Analytics.capture('chat_hide_drained', {'count': list.length});
+    await DiskCache.deleteGlobal(pendingHidesKey);
   }
 
   void _ingestReceipt(Map<String, dynamic> r) {
