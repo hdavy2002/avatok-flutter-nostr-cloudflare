@@ -42,11 +42,16 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
+        <!-- No empty taskAffinity here on purpose: an empty affinity put
+             MainActivity in a DIFFERENT task from the flutter_callkit_incoming
+             call activity (which uses the default package affinity), so after a
+             call ended the user saw TWO app cards in Recents and had to swipe
+             both away. The default (package) affinity keeps the call UI and the
+             app in ONE task → one Recents card. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
