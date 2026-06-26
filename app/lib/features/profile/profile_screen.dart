@@ -102,8 +102,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _save() async {
-    final id = _id;
-    if (id == null || _saving) return;
+    if (_saving) return;
+    // Flip to the loading state on the VERY FIRST tap so the button responds
+    // immediately (the moderation checks below are async).
+    setState(() => _saving = true);
+    // Identity is loaded asynchronously in initState (when opened from the
+    // sidebar none is passed). The old code silently `return`ed while it was
+    // still null, which is why Save needed several taps before it "took". Resolve
+    // it here on demand instead.
+    var id = _id;
+    if (id == null) {
+      id = await IdentityStore().load();
+      if (id != null && mounted) setState(() => _id = id);
+    }
+    if (id == null) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Still getting your account ready — try once more in a second.')));
+      }
+      return;
+    }
     final first = _name.text.trim();
     final last = _last.text.trim();
     final fullName = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
@@ -117,12 +136,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final r = await ModerationService.check(c[0], c[1]);
       if (!r.allow) {
         if (!mounted) return;
+        setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(r.reason.isEmpty ? 'Please revise that field.' : r.reason)));
         return;
       }
     }
-    setState(() => _saving = true);
     final existing = await _store.load();
     // Personal email — keep it stored so the QR card + email discovery stay complete.
     final email = existing.email.isNotEmpty ? existing.email : (Analytics.currentEmail ?? '');
