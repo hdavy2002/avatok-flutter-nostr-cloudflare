@@ -32,7 +32,7 @@ final _kTypes = <String, ({String label, IconData icon, bool inflow})>{
 };
 
 // Coin economics — CANONICAL, MUST match the server (worker/src/routes/wallet.ts
-// COINS_PER_USD) and AvaPayout. 1 USD = 100 AvaCoins (1 coin = $0.01). Balances/
+// COINS_PER_USD) and AvaPayout. 1 USD = 100 Tokens (1 coin = $0.01). Balances/
 // ledger amounts are in coins; USD is derived for display only.
 const int kCoinsPerUsd = 100;
 
@@ -47,7 +47,7 @@ String? _appliedPublishableKey;
 
 /// Format USD from real cents — used ONLY in a top-up's detail row ("Amount
 /// paid … USD"). USD must never appear anywhere else on the wallet; the wallet's
-/// native unit is AvaCoins.
+/// native unit is Tokens.
 String _usdFromCents(int cents) => '\$${(cents.abs() / 100).toStringAsFixed(2)}';
 
 /// Compact coin count, e.g. 10000 → "10,000".
@@ -325,15 +325,15 @@ class _WalletScreenState extends State<WalletScreen> {
     if (credited) {
       final added = _balance - before;
       Analytics.capture('wallet_topup_succeeded', {'cents': cents, 'coins': added});
-      _snack('Added ${_coins(added)} AvaCoins to your wallet');
+      _snack('Added ${_coins(added)} Tokens to your wallet');
     } else {
       // Payment captured but the webhook is still settling — reassure, don't alarm.
       Analytics.capture('wallet_topup_pending_credit', {'cents': cents, 'coins': coins});
-      _snack('Payment received — your AvaCoins will appear here shortly.');
+      _snack('Payment received — your Tokens will appear here shortly.');
     }
   }
 
-  /// Amount sheet: USD entry with a live AvaCoin preview. Returns USD cents, or
+  /// Amount sheet: USD entry with a live Token preview. Returns USD cents, or
   /// null if cancelled. Min $10 / max $500 (mirrors the server's top-up bounds).
   Future<int?> _askAmountCents() async {
     final ctrl = TextEditingController();
@@ -352,7 +352,7 @@ class _WalletScreenState extends State<WalletScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Top up wallet', style: ZineText.cardTitle(size: 21)),
               const SizedBox(height: 4),
-              Text('Pay securely in-app. \$1 = ${_coins(kCoinsPerUsd)} AvaCoins.', style: ZineText.sub(size: 14)),
+              Text('Pay securely in-app. \$1 = ${_coins(kCoinsPerUsd)} Tokens.', style: ZineText.sub(size: 14)),
               const SizedBox(height: 16),
               ZineField(
                 controller: ctrl,
@@ -364,7 +364,7 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                valid ? '= ${_coins(previewCoins)} AvaCoins' : 'Enter \$10 – \$500',
+                valid ? '= ${_coins(previewCoins)} Tokens' : 'Enter \$10 – \$500',
                 style: ZineText.value(size: 14, weight: FontWeight.w900,
                     color: valid ? Zine.mintInk : Zine.inkMute),
               ),
@@ -485,14 +485,14 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 12),
             _kv('Date', _fullDate(createdMs)),
             if (isTopup && usdCents != null) _kv('Amount paid', '${_usdFromCents(usdCents)} USD'),
-            _kv(isTopup ? 'AvaCoins credited' : 'AvaCoins', _coins(amount)),
+            _kv(isTopup ? 'Tokens credited' : 'Tokens', _coins(amount)),
             if (paidWith != null) _kv('Paid with', paidWith)
             else if (isTopup) _kv('Paid with', 'Card'),
             _kv('From', '${entry['debit'] ?? '—'}'),
             _kv('To', '${entry['credit'] ?? '—'}'),
-            if (gross != null) _kv('Gross', '${_coins(gross)} AvaCoins'),
-            if (fee > 0) _kv('Platform fee', '− ${_coins(fee)} AvaCoins'),
-            if (net != null) _kv('Net', '${_coins(net)} AvaCoins'),
+            if (gross != null) _kv('Gross', '${_coins(gross)} Tokens'),
+            if (fee > 0) _kv('Platform fee', '− ${_coins(fee)} Tokens'),
+            if (net != null) _kv('Net', '${_coins(net)} Tokens'),
             if (meta['reason'] != null) _kv('Reason', '${meta['reason']}'),
             if (entry['ref'] != null) _kv('Reference', '${entry['ref']}'),
             const SizedBox(height: 16),
@@ -619,7 +619,7 @@ class _WalletScreenState extends State<WalletScreen> {
               tag: 'avacoins',
             ),
             const SizedBox(height: 14),
-            // Hero is the AvaCoin count — coins are the wallet's native unit.
+            // Hero is the Token count — coins are the wallet's native unit.
             // USD never shows on the wallet face; it only appears inside a
             // top-up's detail row ("Amount paid … USD").
             FittedBox(
@@ -629,7 +629,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'AvaCoins${_held > 0 ? '  ·  ${_coins(_held)} pending (7-day hold)' : ''}',
+              'Tokens${_held > 0 ? '  ·  ${_coins(_held)} pending (7-day hold)' : ''}',
               style: ZineText.value(size: 14, weight: FontWeight.w900),
             ),
             const SizedBox(height: 16),

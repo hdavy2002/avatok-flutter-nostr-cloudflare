@@ -73,7 +73,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       setState(() {
         _state = 'error';
         _error = switch (r['status']) {
-          402 => 'Not enough AvaCoins to start this call.',
+          402 => 'Not enough Tokens to start this call.',
           409 => '${a.name} is busy on all lines — please try again shortly.',
           _ => r['detail']?.toString() ?? r['error']?.toString() ?? 'Could not connect.',
         };

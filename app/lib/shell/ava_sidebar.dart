@@ -115,7 +115,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   }
 
   /// Premium/paid-gated app entries — show a PAID badge in the APPS list. These
-  /// are the AI/generative surfaces that spend AvaCoins at the point of use;
+  /// are the AI/generative surfaces that spend Tokens at the point of use;
   /// AvaTOK core + account items stay free (no badge). Kept deliberately light.
   static const Set<String> _paidAppIds = {
     'avachat',   // personal AI (generative)

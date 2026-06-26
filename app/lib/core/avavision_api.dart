@@ -525,7 +525,7 @@ class AvaVisionApi {
   }
 
   // ── booking + instant calls (money: escrow held, settled per minute) ────
-  /// Book a slot. 402 → insufficient AvaCoins (response carries `needed`).
+  /// Book a slot. 402 → insufficient Tokens (response carries `needed`).
   static Future<Map<String, dynamic>> book(String agentId,
           {required int scheduledAt, required int minutes, required String language}) =>
       _money('$_base/bookings', {
@@ -545,7 +545,7 @@ class AvaVisionApi {
   static Future<Map<String, dynamic>> cancelBooking(String id) =>
       _money('$_base/bookings/$id/cancel', const {});
 
-  /// Instant call. 409 → AGENT_BUSY; 402 → insufficient AvaCoins.
+  /// Instant call. 409 → AGENT_BUSY; 402 → insufficient Tokens.
   static Future<Map<String, dynamic>> callNow(String agentId, {required String language}) =>
       _money('$_base/calls/now', {'agent_id': agentId, 'language': language});
 

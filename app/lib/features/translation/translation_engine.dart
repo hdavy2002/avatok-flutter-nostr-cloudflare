@@ -7,8 +7,8 @@
 // minted by the Worker — the API key never reaches the device) → translated
 // 24 kHz PCM16 → local playback.
 //
-// Billing rides the Worker heartbeat: 5 AvaCoins/min ($3/hour). A 402 from
-// start/beat pauses the engine and surfaces the matching AvaCoins pop-up.
+// Billing rides the Worker heartbeat: 5 Tokens/min ($3/hour). A 402 from
+// start/beat pauses the engine and surfaces the matching Tokens pop-up.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -139,7 +139,7 @@ class TranslationEngine {
       final r = await TranslationApi.beat(id);
       final status = (r['status'] as num?)?.toInt() ?? 0;
       if (status == 402) {
-        // AvaCoins exhausted mid-call → pause audio, surface pop-up #2.
+        // Tokens exhausted mid-call → pause audio, surface pop-up #2.
         await _stopMic();
         state.value = TranslationState.fundsExhausted;
         return;

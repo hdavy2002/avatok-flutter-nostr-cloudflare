@@ -29,8 +29,8 @@ const kAppRegistry = <AppEntry>[
   // AvaChat — direct AI chat with Ava (memory-aware, talks to your brain). Visible
   // sidebar item (owner decision 2026-06-18). Routes to CompanionHome.
   AppEntry('avachat', 'AvaChat', 'Chat with Ava — your AI', Icons.auto_awesome, Color(0xFFA06AF0)),
-  // AvaWallet visible — users need it to top up AvaCoins (owner decision 2026-06-18).
-  AppEntry('avawallet', 'Wallet', 'AvaCoins & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
+  // AvaWallet visible — users need it to top up Tokens (owner decision 2026-06-18).
+  AppEntry('avawallet', 'Wallet', 'Tokens & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
   // ---- hidden from the sidebar menu (owner decision 2026-06-17) ----
   AppEntry('explore', 'AvaExplore', 'Marketplace', Icons.storefront, Color(0xFFFF6036), tier: AppTier.hidden),
   AppEntry('verse', 'AvaVerse', 'Your dashboard', Icons.dashboard, Color(0xFF6C5CE7), tier: AppTier.hidden),
@@ -78,7 +78,7 @@ class AppRegistry {
   /// set instead of `standard`, hiding non-AvaTOK apps. Fully reversible — no
   /// registry mutation. Order follows the registry's declaration order. P1
   /// consumes it. AvaLibrary, AvaStorage and AvaWallet are shown in the menu —
-  /// the wallet is needed for AvaCoin top-ups (owner decision 2026-06-18).
+  /// the wallet is needed for Token top-ups (owner decision 2026-06-18).
   static const Set<String> _focusIds = {
     'avatok',
     'avachat',

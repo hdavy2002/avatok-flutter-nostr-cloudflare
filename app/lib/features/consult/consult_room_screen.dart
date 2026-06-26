@@ -502,7 +502,7 @@ class _ConsultRoomScreenState extends State<ConsultRoomScreen> {
           ),
         ),
         // Live voice translation — transparent "Translate" menu (both sides;
-        // the listener pays: $3/h in AvaCoins, never shared with the creator).
+        // the listener pays: $3/h in Tokens, never shared with the creator).
         TranslateOverlay(context: 'consult', refId: widget.bookingId),
         // bottom controls — bordered circle buttons (hang up = coral)
         Positioned(

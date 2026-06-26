@@ -28,7 +28,7 @@ const int kMinTopUpUsd = 10;
 /// the wallet as empty so premium taps route to the top-up sheet (fail-safe: we
 /// never silently "spend" against an unwired wallet).
 abstract class AvaWalletHook {
-  /// Whether the account can spend [coins] AvaCoins right now.
+  /// Whether the account can spend [coins] Tokens right now.
   Future<bool> canSpend(int coins);
 
   /// Deduct [coins] for [reason]; returns true on success. TODO(wallet phase):
@@ -36,7 +36,7 @@ abstract class AvaWalletHook {
   Future<bool> spend(int coins, {required String reason});
 
   /// Open the real top-up sheet ($5 min). Returns true if the user topped up.
-  /// TODO(wallet phase): present the live Stripe/AvaCoins top-up flow.
+  /// TODO(wallet phase): present the live Stripe/Tokens top-up flow.
   Future<bool> openTopUp(BuildContext context, {int? suggestedUsd});
 
   /// The active hook. Defaults to an empty-wallet stub.
@@ -70,7 +70,7 @@ class _StubWallet implements AvaWalletHook {
               Expanded(child: Text('Top up to use this', style: ZineText.cardTitle(size: 18))),
             ]),
             const SizedBox(height: 12),
-            Text('Premium Ava features run on AvaCoins. Add coins to your wallet '
+            Text('Premium Ava features run on Tokens. Add coins to your wallet '
                 '(minimum \$$kMinTopUpUsd) to unlock image and voice generation, '
                 'MCP tools, and always-on Guardian.',
                 style: ZineText.sub(size: 13.5)),

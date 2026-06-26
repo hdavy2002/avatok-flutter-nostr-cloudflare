@@ -8,7 +8,7 @@ import 'ava_ai_client.dart';
 ///   • server-side moderation gate (llama-guard in/out),
 ///   • the free-tier daily-turn cap (or unlimited with a connected BYO key),
 ///   • optional per-request BYO Gemini key over TLS.
-/// No new Worker route and no AvaCoins billing — this is the cheap text path,
+/// No new Worker route and no Tokens billing — this is the cheap text path,
 /// distinct from the metered Gemini-Live VOICE translation in
 /// `features/translation/` + `worker/src/routes/translate.ts`.
 class ComposerAi {

@@ -102,7 +102,7 @@ class _BookingSheetState extends State<_BookingSheet> {
         Analytics.capture('avavoice_topup_prompted', {'agent': a.id, 'where': 'booking'});
         final needed = (r['needed'] as num?)?.toInt();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Not enough AvaCoins'
+          content: Text('Not enough Tokens'
               '${needed != null ? ' — you need ${fmtCoins(needed)}' : ''}.'),
           action: SnackBarAction(label: 'Top up', onPressed: () => Navigator.push(
               context, MaterialPageRoute(builder: (_) => const WalletScreen()))),

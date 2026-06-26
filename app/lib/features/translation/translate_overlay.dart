@@ -4,8 +4,8 @@
 //   TranslateOverlay(context: 'consult', refId: bookingId)
 //
 // Tap "Translate" → language dropdown → incoming voice plays in the chosen
-// language. Billing: $3/hour in AvaCoins (5/min). The two owner-specified
-// pop-ups (no AvaCoins to start / AvaCoins utilized mid-call) both offer an
+// language. Billing: $3/hour in Tokens (5/min). The two owner-specified
+// pop-ups (no Tokens to start / Tokens utilized mid-call) both offer an
 // in-call wallet top-up so translation can continue.
 //
 // Zine: AI = lilac. The pill is an ink-bordered card pill (lilac when active);
@@ -56,7 +56,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     if (s == TranslationState.fundsExhausted) {
       // Pop-up #2 — coins ran out mid-call.
       _fundsDialog(
-        'You have utilized your AvaCoins for your voice translation. '
+        'You have utilized your Tokens for your voice translation. '
         'Please top up your wallet to add some more coins.',
         resume: true,
       );
@@ -87,7 +87,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     if (err == 'insufficient_avacoins') {
       // Pop-up #1 — nothing in the wallet to start with.
       _fundsDialog(
-        "You don't have AvaCoins in your wallet to listen to live translation. "
+        "You don't have Tokens in your wallet to listen to live translation. "
         'Top up your wallet to start hearing the call in ${translationLangLabel(lang)}.',
         retryLang: lang,
       );
@@ -104,7 +104,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
     if (mounted) setState(() => _busy = false);
   }
 
-  // ── AvaCoins pop-ups + in-call top-up ─────────────────────────────────────
+  // ── Tokens pop-ups + in-call top-up ─────────────────────────────────────
 
   Future<void> _fundsDialog(String message, {String? retryLang, bool resume = false}) async {
     if (!mounted) return;
@@ -118,7 +118,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
         title: Row(children: [
           ZineIconBadge(icon: PhosphorIcons.coins(PhosphorIconsStyle.bold), color: Zine.mint),
           const SizedBox(width: 10),
-          Expanded(child: Text('AvaCoins needed', style: ZineText.cardTitle(size: 17))),
+          Expanded(child: Text('Tokens needed', style: ZineText.cardTitle(size: 17))),
         ]),
         content: Text(message, style: ZineText.sub(size: 14.5)),
         actions: [
@@ -133,7 +133,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
               if (!mounted || !done) return;
               if (resume) {
                 final ok = await _engine.resume();
-                if (!ok && mounted) _snack('Top-up not confirmed yet — tap Translate again once your AvaCoins arrive.');
+                if (!ok && mounted) _snack('Top-up not confirmed yet — tap Translate again once your Tokens arrive.');
               } else if (retryLang != null) {
                 await _start(retryLang);
               }
@@ -157,7 +157,7 @@ class _TranslateOverlayState extends State<TranslateOverlay> {
         ),
         padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(sCtx).viewPadding.bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Top up AvaCoins', style: ZineText.cardTitle()),
+          Text('Top up Tokens', style: ZineText.cardTitle()),
           const SizedBox(height: 6),
           const ZineSticker('\$3 PER HOUR · 5 AVACOINS / MIN', kind: ZineStickerKind.hint),
           const SizedBox(height: 14),
@@ -303,7 +303,7 @@ class _LanguageSheetState extends State<_LanguageSheet> {
           Expanded(child: Text('Select language', style: ZineText.cardTitle())),
         ]),
         const SizedBox(height: 6),
-        Text('Incoming voice translated live · \$3 per hour in AvaCoins',
+        Text('Incoming voice translated live · \$3 per hour in Tokens',
             style: ZineText.sub(size: 13)),
         const SizedBox(height: 10),
         ZineField(

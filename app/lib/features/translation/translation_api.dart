@@ -4,7 +4,7 @@ import '../../core/api_auth.dart';
 import '../../core/config.dart';
 
 /// Worker endpoints for live voice translation (routes/translate.ts).
-/// Billing language: ALWAYS "AvaCoins" — never "credits".
+/// Billing language: ALWAYS "Tokens" — never "credits".
 class TranslationApi {
   static const String _base = 'https://$kSignalingHost/api/translate';
 
@@ -12,7 +12,7 @@ class TranslationApi {
     try { return (jsonDecode(b) as Map).cast<String, dynamic>(); } catch (_) { return {}; }
   }
 
-  /// 5 AvaCoins/min = $3/hour.
+  /// 5 Tokens/min = $3/hour.
   static const int ratePerMin = 5;
 
   static int quoteCoins(int minutes) => minutes * ratePerMin;
@@ -30,7 +30,7 @@ class TranslationApi {
     return {..._j(r.body), 'status': r.statusCode};
   }
 
-  /// Heartbeat — bills the elapsed slices. 402 → pop-up #2 (AvaCoins utilized).
+  /// Heartbeat — bills the elapsed slices. 402 → pop-up #2 (Tokens utilized).
   static Future<Map<String, dynamic>> beat(String sessionId) async {
     final r = await ApiAuth.postJson('$_base/$sessionId/beat', const {});
     return {..._j(r.body), 'status': r.statusCode};

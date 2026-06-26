@@ -143,7 +143,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
       setState(() {
         _state = 'error';
         _error = switch (r['status']) {
-          402 => 'Not enough AvaCoins to start this session.',
+          402 => 'Not enough Tokens to start this session.',
           409 => '${a.name} is busy on all lines — please try again shortly.',
           _ => r['detail']?.toString() ?? r['error']?.toString() ?? 'Could not connect.',
         };
@@ -247,7 +247,7 @@ class _VisionSessionScreenState extends State<VisionSessionScreen>
     if (status != 200) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(r['detail']?.toString() ??
-              (status == 402 ? 'Not enough AvaCoins for a deep analysis.' : 'Analysis failed — try again.'))));
+              (status == 402 ? 'Not enough Tokens for a deep analysis.' : 'Analysis failed — try again.'))));
       return;
     }
     setState(() => _snapUsed += 1);

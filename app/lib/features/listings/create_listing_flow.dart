@@ -671,7 +671,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
                 const SizedBox(height: 6),
                 Text(
                   'Attendees can hear you live in their own language. They pay \$3/hour '
-                  'in AvaCoins on top of your price — your earnings are not affected.',
+                  'in Tokens on top of your price — your earnings are not affected.',
                   style: ZineText.sub(size: 12.5, color: Zine.ink),
                 ),
               ]),

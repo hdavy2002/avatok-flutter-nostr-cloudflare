@@ -46,7 +46,7 @@ String _fmt(num b) {
 /// per-category bar + ledger (bytes AND counts), a last-6-months trend, and
 /// LIVE updates — the server pushes a fresh summary over the single InboxDO
 /// socket after any upload/delete in any app, and the graphs animate.
-/// Over quota: 20 AvaCoins/GB/month from the AvaWallet; empty wallet =
+/// Over quota: 20 Tokens/GB/month from the AvaWallet; empty wallet =
 /// read-only (files are NEVER deleted).
 class AvaStorageScreen extends StatefulWidget {
   const AvaStorageScreen({super.key});
@@ -131,11 +131,11 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
                 if (state == 'read_only') _readOnlyCard()
                 else if (state == 'over_quota_paying') _warnCard(
                   sticker: 'Over quota',
-                  text: 'Over the free quota — ${gbOver * coinsPerGb} AvaCoins/month ($coinsPerGb coins/GB × $gbOver GB) are charged from your wallet.',
+                  text: 'Over the free quota — ${gbOver * coinsPerGb} Tokens/month ($coinsPerGb coins/GB × $gbOver GB) are charged from your wallet.',
                 )
                 else if (frac >= 0.8) _warnCard(
                   sticker: 'Heads up',
-                  text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $coinsPerGb AvaCoins/GB per month.',
+                  text: 'You\'ve used ${(frac * 100).toStringAsFixed(0)}% of your free ${_fmt(quota)}. Past it, storage costs $coinsPerGb Tokens/GB per month.',
                 ),
                 const SizedBox(height: 24),
                 Text('BY TYPE', style: ZineText.kicker()),
@@ -241,7 +241,7 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
             ]),
             const SizedBox(height: 8),
             Text(
-              'Over your free quota with an empty AvaWallet. Your files are safe and read-only — top up AvaCoins to add more.',
+              'Over your free quota with an empty AvaWallet. Your files are safe and read-only — top up Tokens to add more.',
               style: ZineText.sub(size: 14, color: Colors.white),
             ),
             const SizedBox(height: 14),

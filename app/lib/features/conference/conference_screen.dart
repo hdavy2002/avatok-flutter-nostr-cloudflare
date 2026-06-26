@@ -371,7 +371,7 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
                         style: ZineText.cardTitle(size: 18)),
                     Text('${ps.length} IN CALL · MAX 25', style: ZineText.kicker(size: 10.5)),
                   ])),
-                  // Live voice translation ($3/h in AvaCoins) — group conferences.
+                  // Live voice translation ($3/h in Tokens) — group conferences.
                   if (RemoteConfig.translationGroupEnabled)
                     TranslateOverlay(context: 'conference', refId: conf.gid, inline: true),
                   const SizedBox(width: 8),

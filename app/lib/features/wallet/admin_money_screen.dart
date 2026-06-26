@@ -113,7 +113,7 @@ class _AdminMoneyScreenState extends State<AdminMoneyScreen> {
 
   void _snack(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
 
-  // 1 USD = 100 AvaCoins (canonical, site-wide: matches wallet/top-up + payout).
+  // 1 USD = 100 Tokens (canonical, site-wide: matches wallet/top-up + payout).
   String _usd(num c) => '\$${(c.abs() / 100).toStringAsFixed(2)}';
 
   @override

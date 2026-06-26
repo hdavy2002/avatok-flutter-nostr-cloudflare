@@ -245,7 +245,7 @@ class _LiveViewerScreenState extends State<LiveViewerScreen> {
         FlyLayer(msgs: _fly),
         ReactionLayer(bursts: _bursts),
         // Live voice translation — hear the creator in your language ($3/h in
-        // AvaCoins; 100% platform — the creator's earnings are untouched).
+        // Tokens; 100% platform — the creator's earnings are untouched).
         TranslateOverlay(context: 'live', refId: widget.listingId, top: 100),
         // chat bottom-left
         Positioned(

@@ -108,7 +108,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
       case 402:
         final needed = (r['needed'] as num?)?.toInt();
         Analytics.capture('avavision_topup_prompted', {'agent': a.id, 'where': 'call_now'});
-        _snack('Not enough AvaCoins in your wallet${needed != null ? ' — you need ${fmtCoins(needed)}' : ''}.', topUp: true);
+        _snack('Not enough Tokens in your wallet${needed != null ? ' — you need ${fmtCoins(needed)}' : ''}.', topUp: true);
       case 409:
         _snack('${a.name} is busy on all lines right now — try again in a moment.');
         _refreshAvailability();

@@ -376,7 +376,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
     return widget.listing.durationMin ?? 60;
   }
 
-  /// $3/h = 5 AvaCoins/min for the booked duration.
+  /// $3/h = 5 Tokens/min for the booked duration.
   int get _translationCoins => _translate && _translateLang != null ? TranslationApi.quoteCoins(_durationMin) : 0;
   int get _totalCoins => widget.listing.effectivePrice + _translationCoins;
 
@@ -429,7 +429,7 @@ class _CheckoutSheetState extends State<CheckoutSheet> {
         setState(() => _error = 'Complete the top-up in your browser, then tap Confirm again — your slot is kept.');
         Analytics.capture('checkout_topup_opened', {'shortfall': shortfall});
       } else {
-        setState(() => _error = 'Not enough AvaCoins (need ${fmtCoins(needed)}, have ${fmtCoins(bal)}) — top-up is currently unavailable.');
+        setState(() => _error = 'Not enough Tokens (need ${fmtCoins(needed)}, have ${fmtCoins(bal)}) — top-up is currently unavailable.');
       }
       _loadBalance();
       return;
