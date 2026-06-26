@@ -76,7 +76,16 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/j/"/>
             </intent-filter>
-            <!-- Custom-scheme deeplink fallback (avatok://booking/<id>). -->
+            <!-- App Link — https://avatok.ai/add?t=<token> opens the app to the
+                 "add contact" card (AvaTOK Number QR share). Same host as /j/, so
+                 the existing /.well-known/assetlinks.json verifies it too. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="avatok.ai" android:pathPrefix="/add"/>
+            </intent-filter>
+            <!-- Custom-scheme deeplink fallback (avatok://booking/<id>, avatok://add?t=). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>

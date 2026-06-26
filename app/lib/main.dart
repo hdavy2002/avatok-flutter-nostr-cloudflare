@@ -14,6 +14,7 @@ import 'core/app_registry.dart';
 import 'core/apps.dart';
 import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
+import 'core/deep_links.dart';
 import 'core/disk_cache.dart';
 import 'core/guest_session.dart';
 import 'core/onboarding_store.dart';
@@ -177,6 +178,8 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     AccountGate.clerk = _clerk;
     AccountGate.onUpgraded = _promoteGuestToMember;
     _boot();
+    // Route incoming "add me on AvaTOK" QR links to the add-contact card.
+    DeepLinks.init(navigatorKey);
   }
 
   @override

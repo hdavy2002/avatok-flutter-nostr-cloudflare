@@ -79,8 +79,11 @@ dependencies:
   # NIP-44 v2 crypto (secp256k1 ECDH, ChaCha20, HMAC, HKDF) — pure Dart
   # ^4.0.0 to match bip340's transitive constraint.
   pointycastle: ^4.0.0
-  # Safety-number / contact QR code
+  # Contact QR code (profile share)
   qr_flutter: ^4.1.0
+  # Incoming deep links — avatok://add?t= and https://avatok.ai/add?t= open the
+  # app straight to the "add contact" card (Specs/AVATOK-NUMBER-FEATURE-SPEC.md).
+  app_links: ^6.3.2
   # Location share + open-in-maps
   geolocator: ^13.0.1
   url_launcher: ^6.3.0
