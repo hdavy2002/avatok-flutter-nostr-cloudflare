@@ -9,6 +9,7 @@ import '../../core/avatar.dart';
 import '../../core/device_contacts.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import 'add_by_link_sheet.dart';
 import 'contacts.dart';
 
 /// Bottom sheet to add a contact — WhatsApp-style, phone-number only.
@@ -183,6 +184,13 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     }).take(80).toList();
   }
 
+  /// Open the QR-link add flow; if it returns an AvaTOK contact, close this sheet
+  /// with that contact so the caller opens a real, deliverable chat.
+  Future<void> _addByLink() async {
+    final c = await showAddByLinkSheet(context);
+    if (c != null && mounted) Navigator.pop(context, c);
+  }
+
   Future<void> _onTap(DeviceContact d) async {
     if (_busy) return;
     if (d.onAvatok) {
@@ -241,12 +249,17 @@ class _AddContactSheetState extends State<_AddContactSheet> {
               Text('Add contact', style: ZineText.cardTitle(size: 22)),
               const Spacer(),
               if (_refreshing)
-                const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
+                const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+              // Add by a scanned/shared QR link.
+              GestureDetector(
+                onTap: _busy ? null : _addByLink,
+                child: PhosphorIcon(PhosphorIcons.qrCode(PhosphorIconsStyle.bold), size: 24, color: Zine.ink),
+              ),
             ]),
             const SizedBox(height: 4),
-            Text('People from your phone who are on AvaTOK appear first.',
+            Text('Search by AvaTOK number, phone, or email — or scan a QR link.',
                 style: ZineText.sub(size: 12.5)),
             const SizedBox(height: 14),
             _body(),
@@ -281,8 +294,8 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ZineField(
         controller: _phoneCtrl,
-        hint: 'Name, phone number, or email',
-        leadIcon: PhosphorIcons.phone(PhosphorIconsStyle.bold),
+        hint: 'AvaTOK number, phone, or email',
+        leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
         onChanged: _onQuery,
       ),
       const SizedBox(height: 10),
