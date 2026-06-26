@@ -35,7 +35,7 @@
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
-import { guardInput } from "../lib/ai_gate";
+import { guardInput, friendlyAiError } from "../lib/ai_gate";
 import { track } from "../hooks";
 import { readConfig } from "./config";
 import { tierOf, PLANS, type TierId } from "./plans";
@@ -215,11 +215,20 @@ async function fulfil(
     // to:<uid>) — a @ava image never reaches the other participant.
     await postAvaMessage(env, { ownerUid: uid, conv, text: caption, media_ref: mediaRef, source: "image", private: priv });
   } catch (e: any) {
-    // Never leak raw provider errors. Post a friendly failure into the thread.
+    // Never leak raw provider errors. Post a friendly failure into the thread —
+    // and when the provider key is quota-exhausted, say so truthfully (it's an
+    // outage on our side, not the user's plan) instead of a vague "try again".
     console.error("ava image generation failed:", String(e?.message ?? e));
+    const cls = friendlyAiError(e);
+    track(env, uid, "ava_image_error", "avaai", {
+      stage: "fulfil", reason: cls.kind, tier, edit: !!editRef,
+      error: String(e?.message ?? e).slice(0, 200),
+    });
     await postAvaMessage(env, {
       ownerUid: uid, conv,
-      text: "I couldn't create that image just now — please try again in a moment.",
+      text: cls.kind === "quota"
+        ? "I couldn't make that image — Ava's image service is at capacity right now. Please try again in a few minutes."
+        : "I couldn't create that image just now — please try again in a moment.",
       source: "image", private: priv,
     }).catch(() => { /* best-effort */ });
   } finally {
@@ -357,8 +366,18 @@ export async function generateAvaImageSync(
     await enforceAllowance(env, uid, tier, "image", 1, { commit: true }).catch(() => {});
     track(env, uid, "ava_image_request", "avaai", { edit: !!a.editRef, tier, surface: "chatava", sync: true });
     return { ok: true, url };
-  } catch {
-    return { ok: false, message: "I couldn't create that image just now — please try again in a moment." };
+  } catch (e: any) {
+    const cls = friendlyAiError(e);
+    track(env, uid, "ava_image_error", "avaai", {
+      stage: "sync", reason: cls.kind, tier, surface: "chatava",
+      error: String(e?.message ?? e).slice(0, 200),
+    });
+    return {
+      ok: false,
+      message: cls.kind === "quota"
+        ? "Ava's image service is at capacity right now — please try again in a few minutes."
+        : "I couldn't create that image just now — please try again in a moment.",
+    };
   }
 }
 

@@ -28,6 +28,42 @@ import * as quota from "./ai_quota";
 const GUARD = "@cf/meta/llama-guard-3-8b";
 
 /**
+ * Classify a raw provider/model error (a thrown Error, a string, or a Gemini
+ * error envelope) into a TRUTHFUL, user-facing message — so a failure surfaces
+ * the real reason instead of a bare "I couldn't generate a response".
+ *
+ *   - "quota"  → the AI provider key hit its usage/rate limit (HTTP 429 /
+ *     RESOURCE_EXHAUSTED / "exceeded your current quota"). This is an outage on
+ *     OUR side, NOT the user's subscription, so we must NOT tell them their plan
+ *     expired — we say "at capacity, try again shortly".
+ *   - "safety" → the model refused on content-policy grounds. Reads as a refusal.
+ *   - "other"  → message is null; the caller keeps its own generic fallback.
+ *
+ * NOTE: the per-tier daily IMAGE/CHAT allowance ("you've used all N today —
+ * upgrade") is enforced separately via enforceAllowance/ai_quota and is the
+ * correct place for plan-limit wording. This helper is only for hard provider
+ * errors that would otherwise be swallowed.
+ */
+export function friendlyAiError(raw: unknown): { kind: "quota" | "safety" | "other"; message: string | null } {
+  const s = String((raw as any)?.message ?? raw ?? "").toLowerCase();
+  if (/\b429\b|quota|resource_exhausted|rate.?limit|too many requests|exceeded your current|billing details/.test(s)) {
+    return {
+      kind: "quota",
+      message:
+        "Ava's AI is at capacity right now — it has hit its current usage limit. " +
+        "This usually clears within a few minutes, so please try again shortly.",
+    };
+  }
+  if (/safety|blocked|prohibited|recitation|harm_category|content policy|policy_violation/.test(s)) {
+    return {
+      kind: "safety",
+      message: "I can't help with that particular request. Try rephrasing it or a different idea.",
+    };
+  }
+  return { kind: "other", message: null };
+}
+
+/**
  * Options for every `env.AI.run(...)` call. When AI_GATEWAY_ID is configured we
  * route Workers-AI inference through the Cloudflare AI Gateway for per-request
  * cost logging, caching, and a hard spend cap. Passing `uid` tags the request

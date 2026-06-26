@@ -21,6 +21,7 @@ import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { runAgentLoop } from "../lib/composio";        // unified tool-calling loop (shared with Messenger @ava)
+import { friendlyAiError } from "../lib/ai_gate";       // truthful provider-error wording (quota/safety)
 import { generateAvaImageSync } from "./ava_image";    // synchronous image gen → URL (rendered inline)
 import { brainSearchLines } from "../lib/ava_memory";  // the ONE Cloudflare AI Search store per user
 import { searchForUser } from "../lib/ava_search";     // sharded tenancy boundary (folder-filtered per user)
@@ -273,11 +274,18 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
       skipQuota: premium,
     });
   } catch (e: any) {
+    const cls = friendlyAiError(e);
     trackUser(env, ctx.uid, email, "ai_error", "avaai", {
-      source, route: "chat", detail: String(e?.message ?? e).slice(0, 200),
+      source, route: "chat", reason: cls.kind, detail: String(e?.message ?? e).slice(0, 200),
       premium, premium_via: via, latency_ms: Date.now() - t0, setup_ms: setupMs,
       gen_ms: Date.now() - tGen0, tool_calls: toolCalls, images: images.length,
     });
+    // Surface a truthful reason (quota/safety) as a normal answer the UI shows,
+    // instead of a bare 502 the client renders as "couldn't generate a response".
+    if (cls.message) {
+      return json({ answer: cls.message, blocked: true, reason: cls.kind,
+        timings: { total_ms: Date.now() - t0, setup_ms: setupMs, gen_ms: Date.now() - tGen0, tool_calls: toolCalls } }, 200);
+    }
     return json({ error: "ai upstream failed", detail: String(e?.message ?? e).slice(0, 300) }, 502);
   }
   const genMs = Date.now() - tGen0; // model + gate (incl. any agentic tool round-trips)
@@ -347,6 +355,7 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
       const send = (obj: unknown) => {
         try { controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`)); } catch { /* closed */ }
       };
+      let streamedAny = false;
       try {
         await runAgentLoop(
           env, ctx.uid, message, ctxStr,
@@ -354,7 +363,7 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
           {
             apps: premium,
             images: premium ? images : undefined,
-            onDelta: (t) => { if (t) send({ delta: t }); },
+            onDelta: (t) => { if (t) { streamedAny = true; send({ delta: t }); } },
             onImage: async (prompt, editRef) => {
               // Tell the client to show a "generating image…" placeholder thumbnail
               // immediately, then swap in the real image (or clear on failure).
@@ -366,7 +375,14 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
             },
           },
         );
-      } catch { /* fall through to [DONE] */ }
+      } catch (e) {
+        // On a hard failure before any token streamed, send a truthful reason
+        // (quota/safety) so the chat bubble isn't a bare "couldn't generate".
+        if (!streamedAny) {
+          const cls = friendlyAiError(e);
+          if (cls.message) { try { send({ delta: cls.message }); } catch { /* closed */ } }
+        }
+      }
       try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
       controller.close();
     },
