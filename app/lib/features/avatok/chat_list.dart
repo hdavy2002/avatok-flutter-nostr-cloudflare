@@ -33,7 +33,6 @@ import '../../sync/presence.dart';
 import '../../push/push_service.dart';
 import '../../shell/ava_sidebar.dart';
 import '../ava_companion/companion_home.dart';
-import '../communities/communities_tab.dart';
 import 'groups_tab.dart';
 import '../status/status_screen.dart';
 import 'add_contact_sheet.dart';
@@ -65,7 +64,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   List<Group> _groups = [];
   NostrClient? _inbox;
   StreamSubscription? _inboxSub; // our listener on the shared client (cancel on dispose, don't kill the socket)
-  int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Groups, 3 = Communities, 4 = Calls
+  int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Groups, 3 = Calls
 
   // Unread badges + chat flags + status.
   final _readStore = ReadStateStore();
@@ -629,7 +628,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanionHome()));
   }
 
-  /// New-chat menu (the green FAB): chat with Ava, message, group, community, or invite.
+  /// New-chat menu (the green FAB): chat with Ava, message, group, or invite.
   void _openNewChatMenu() {
     showModalBottomSheet(
       context: context,
@@ -653,10 +652,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           leading: ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: Zine.lime),
           title: Text('New group', style: ZineText.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _openNewGroup(); }),
-        ListTile(
-          leading: ZineIconBadge(icon: PhosphorIcons.usersFour(PhosphorIconsStyle.bold), color: Zine.lilac),
-          title: Text('New community', style: ZineText.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); setState(() => _tab = 3); }),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: Zine.mint),
           title: Text('Invite friends to AvaTok', style: ZineText.value(size: 15)),
@@ -817,10 +812,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 selectedIcon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.fill)),
                 label: 'Groups'),
             NavigationDestination(
-                icon: PhosphorIcon(PhosphorIcons.usersFour(PhosphorIconsStyle.bold)),
-                selectedIcon: PhosphorIcon(PhosphorIcons.usersFour(PhosphorIconsStyle.fill)),
-                label: 'Communities'),
-            NavigationDestination(
                 icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold)),
                 selectedIcon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.fill)),
                 label: 'Calls'),
@@ -918,7 +909,6 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       ),
         StatusScreen(identity: _id, contacts: _contacts),
         GroupsTab(identity: _id, contacts: _contacts),
-        CommunitiesTab(identity: _id, contacts: _contacts),
         const CallsScreen(),
       ]),
     );
