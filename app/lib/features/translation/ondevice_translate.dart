@@ -54,6 +54,19 @@ class OnDeviceTranslate {
 
   static TranslateLanguage? _target(String name) => _byName[name];
 
+  /// Resolve a BCP-47 code (e.g. "en", "zh", "pt-BR") from language
+  /// identification to a [TranslateLanguage] by matching its bcpCode, or null.
+  static TranslateLanguage? _fromBcp(String code) {
+    final c = code.trim().toLowerCase();
+    if (c.isEmpty) return null;
+    final base = c.split(RegExp(r'[-_]')).first;
+    for (final l in TranslateLanguage.values) {
+      final b = l.bcpCode.toLowerCase();
+      if (b == c || b == base) return l;
+    }
+    return null;
+  }
+
   /// True when the model is present. If absent, kicks off a deferred background
   /// download (Wi-Fi only) and returns false so the current request falls back.
   Future<bool> _ensure(TranslateLanguage lang) async {
@@ -77,7 +90,7 @@ class OnDeviceTranslate {
       if (target == null) return null;
       final srcCode = await _langId.identifyLanguage(text);
       if (srcCode.isEmpty || srcCode == 'und') return null;
-      final source = TranslateLanguage.fromRawValue(srcCode);
+      final source = _fromBcp(srcCode);
       if (source == null) return null;
       if (source == target) return text; // already in the target language
       final haveSrc = await _ensure(source);

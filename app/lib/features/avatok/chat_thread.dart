@@ -50,6 +50,7 @@ import '../../core/library_api.dart';
 import '../../core/rag_service.dart';
 import '../library/library_picker.dart';
 import '../../core/ui/zine.dart';
+import '../../core/ui/zine_widgets.dart';
 import '../../core/group_store.dart';
 import '../../core/message_store.dart';
 import '../../identity/identity.dart';
