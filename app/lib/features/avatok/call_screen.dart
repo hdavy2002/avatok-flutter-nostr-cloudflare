@@ -207,6 +207,15 @@ class _CallScreenState extends State<CallScreen> {
         }
         return;
       }
+      // A terminal status from the peer (they hung up / cancelled, or the server
+      // relayed 'ended') must tear THIS side down even when already CONNECTED.
+      // This is the durable backstop for a lost WS 'bye' that used to leave the
+      // other party live and still talking after a hangup.
+      if (e.callId == widget.room && mounted && !_ended &&
+          (e.status == 'ended' || e.status == 'cancel' || e.status == 'bye')) {
+        _endWith('ended', reason: 'remote-ended-push');
+        return;
+      }
       if (e.callId == widget.room && mounted && !_connected) {
         // v2 Mode C: the callee hit Decline with "let Ava take calls I decline"
         // on → 'decline_ava'. Hand off to the receptionist instead of ending.
@@ -682,6 +691,16 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _hangup() async {
     if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
+    // Durable hangup: the WS 'bye' can be lost (a dead/half-open socket, or the
+    // peer on a flaky network), which used to leave the OTHER side LIVE and still
+    // talking after we hung up. Also push an 'ended' status through the server so
+    // the peer tears down for sure — it lands even when the signaling socket is
+    // gone. Best-effort; never blocks closing our own screen.
+    if (widget.seed.isNotEmpty) {
+      ApiAuth.postJson(kCallStatusUrl, {
+        'to': widget.seed, 'callId': widget.room, 'status': 'ended',
+      }).ignore();
+    }
     _telemetry.ended('local-hangup'); // before _end()'s generic fallback fires
     await _end();
     if (mounted) Navigator.pop(context);
