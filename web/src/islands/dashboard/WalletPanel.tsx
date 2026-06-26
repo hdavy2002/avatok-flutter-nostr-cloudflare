@@ -1,4 +1,4 @@
-/* WalletPanel — AvaCoins balance + ledger (app: Wallet).
+/* WalletPanel — Tokens balance + ledger (app: Wallet).
  *   • GET /api/wallet/balance       → { balance }
  *   • GET /api/wallet/transactions  → { transactions: Tx[] }
  *   • POST /api/wallet/topup        → Stripe checkout url (we redirect)
@@ -93,7 +93,7 @@ function Inner() {
             <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink">Balance</span>
             <div className="font-mono font-bold text-[26px] text-ink">
               {balance != null ? `${balance.toLocaleString()}` : '—'}{' '}
-              <span className="text-[14px]">AvaCoins</span>
+              <span className="text-[14px]">Tokens</span>
             </div>
           </div>
           <Button variant="lime" label="Top up" loading={busy} onClick={topUp} />

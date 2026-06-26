@@ -11,7 +11,7 @@ export interface CalendarSlot {
   description?: string | null;
   start_at: number;
   end_at: number;
-  /** Price in AvaCoins (1 coin = 1 cent). 0 = free. */
+  /** Price in Tokens (1 coin = 1 cent). 0 = free. */
   price_coins: number;
   capacity: number;
   booked_count: number;

@@ -68,7 +68,7 @@ export function TicketCard({ booking, past }: TicketCardProps) {
           )}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {booking.status && <Pill kind={statusKind}>{booking.status}</Pill>}
-            {booking.price ? <Pill kind="plain">{booking.price.toLocaleString()} AvaCoins</Pill> : null}
+            {booking.price ? <Pill kind="plain">{booking.price.toLocaleString()} Tokens</Pill> : null}
           </div>
         </div>
         {viewer && (

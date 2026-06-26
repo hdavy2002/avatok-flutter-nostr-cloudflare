@@ -39,7 +39,7 @@ function fmtDuration(start: number, end: number): string {
   return mins >= 60 ? `${(mins / 60).toFixed(mins % 60 ? 1 : 0)}h` : `${mins} min`;
 }
 function coinLabel(coins: number): string {
-  return coins > 0 ? `${coins.toLocaleString()} AvaCoins` : 'Free';
+  return coins > 0 ? `${coins.toLocaleString()} Tokens` : 'Free';
 }
 
 export interface SlotPickerProps {

@@ -340,7 +340,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
         const sid = sessionRef.current;
         if (!sid) return;
         const r = await sessionHeartbeat(sid, jwt);
-        if (r.status === 402) return void endSession('insufficient_avacoins', 'Your AvaCoins ran out — the session ended.');
+        if (r.status === 402) return void endSession('insufficient_avacoins', 'Your Tokens ran out — the session ended.');
         if (r.body?.ended === true) return void endSession('server');
       }, Math.max(15, t.beatEverySec) * 1000);
 
@@ -363,7 +363,7 @@ function SessionRoomInner({ agentId, seed }: Props) {
       setPhase('error');
       setError(
         status === 402
-          ? 'Not enough AvaCoins to start this session. Top up your wallet and try again.'
+          ? 'Not enough Tokens to start this session. Top up your wallet and try again.'
           : status === 409
             ? err === 'too early'
               ? 'This session has not started yet.'

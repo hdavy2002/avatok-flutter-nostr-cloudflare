@@ -8,7 +8,7 @@
  *   • book     → POST /api/calendar/book { slot_id }     (consult/event/live)
  *                POST /api/avavoice/bookings { ... }      (agent)
  *
- * We do NOT build a payment system. AvaCoins are the booking currency; if the
+ * We do NOT build a payment system. Tokens are the booking currency; if the
  * wallet can't cover a priced booking we send the user to Stripe top-up first.
  */
 import { useEffect, useState } from 'react';
@@ -112,7 +112,7 @@ export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
               : required) ?? null;
           const gap = needed != null && balance != null ? Math.max(needed - balance, needed) : needed;
           setShortfall(gap ?? null);
-          setError('Not enough AvaCoins to cover this booking. Add coins to continue.');
+          setError('Not enough Tokens to cover this booking. Add coins to continue.');
         } else if (e.status === 409) {
           setError('That time was just taken (or you’ve already booked it). Pick another slot.');
         } else if (e.status === 425) {
@@ -132,7 +132,7 @@ export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
   const priceLine =
     required != null
       ? required > 0
-        ? `${required.toLocaleString()} AvaCoins (${usd(required)})`
+        ? `${required.toLocaleString()} Tokens (${usd(required)})`
         : 'Free'
       : 'Pay-as-you-go (escrow held)';
 
@@ -153,7 +153,7 @@ export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
           <div className="flex items-center justify-between">
             <span className="font-display font-semibold text-[16px] text-ink">Wallet</span>
             <span className="font-mono font-bold text-[15px] text-mintInk">
-              {loadingBal ? <Spinner size={16} /> : balance != null ? `${balance.toLocaleString()} AvaCoins` : '—'}
+              {loadingBal ? <Spinner size={16} /> : balance != null ? `${balance.toLocaleString()} Tokens` : '—'}
             </span>
           </div>
         </div>
@@ -170,7 +170,7 @@ export function PayStep({ selection, token, onBooked, onBack }: PayStepProps) {
           variant="lime"
           fullWidth
           loading={busy}
-          label={`Add ${shortfall.toLocaleString()} AvaCoins (${usd(shortfall)})`}
+          label={`Add ${shortfall.toLocaleString()} Tokens (${usd(shortfall)})`}
           onClick={() => void startTopup(shortfall)}
         />
       ) : (

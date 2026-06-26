@@ -90,7 +90,7 @@ function Form() {
 
       <Field label="Title" placeholder="e.g. Friday night live cook-along" value={title} onChange={(e) => setTitle(e.target.value)} />
       <Field label="One-liner" placeholder="What fans get" value={description} onChange={(e) => setDescription(e.target.value)} />
-      <Field label="Price (AvaCoins)" inputMode="numeric" placeholder="0 = free" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9]/g, ''))} />
+      <Field label="Price (Tokens)" inputMode="numeric" placeholder="0 = free" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9]/g, ''))} />
 
       {error && <p className="font-body font-bold text-[14px] text-coral">⚠ {error}</p>}
 

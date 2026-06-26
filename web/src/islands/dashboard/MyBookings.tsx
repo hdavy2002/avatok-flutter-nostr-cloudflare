@@ -112,7 +112,7 @@ function DashboardInner() {
         <div className="flex items-center justify-between">
           <span className="font-mono font-bold uppercase text-[12px] tracking-[0.08em] text-ink">Wallet</span>
           <span className="font-mono font-bold text-[18px] text-ink">
-            {balance != null ? `${balance.toLocaleString()} AvaCoins` : '—'}
+            {balance != null ? `${balance.toLocaleString()} Tokens` : '—'}
           </span>
         </div>
       </Card>

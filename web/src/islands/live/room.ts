@@ -143,7 +143,7 @@ export function useLiveRoom(roomUrl: string | null): RoomState & {
           next.donationsTotal = prev.donationsTotal + amount;
           next.lastDonation = { id: nextId(), name, amount, net: Number(e.net ?? amount) };
           next.messages = pushMsg(prev.messages, {
-            id: nextId(), from: name, kind: 'system', text: `donated ${amount} AvaCoins ✨`,
+            id: nextId(), from: name, kind: 'system', text: `donated ${amount} Tokens ✨`,
           });
           break;
         }

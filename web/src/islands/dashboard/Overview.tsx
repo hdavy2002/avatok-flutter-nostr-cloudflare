@@ -132,7 +132,7 @@ function Inner() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Wallet" value={usd(balance)} sub="AvaCoins balance" tone="bg-lime" href="/dashboard/wallet" />
+        <Stat label="Wallet" value={usd(balance)} sub="Tokens balance" tone="bg-lime" href="/dashboard/wallet" />
         <Stat label="Available" value={usd(earn?.released_total)} sub="to withdraw" tone="bg-mint" href="/dashboard/payout" />
         <Stat label="Clearing" value={usd(earn?.held)} sub="7-day hold" tone="bg-card" />
         <Stat label="Listings" value={String(rows.length)} sub={`${published.length} live · ${drafts.length} draft`} tone="bg-blue" href="/dashboard/listings" />

@@ -14,7 +14,7 @@
 //      close WS, tear down audio, show the "call ended" card.
 //
 // The Worker enforces billing / concurrency / hard caps — we just react to its
-// 402 (insufficient AvaCoins), 409 (AGENT_BUSY / too early), and 503 (disabled).
+// 402 (insufficient Tokens), 409 (AGENT_BUSY / too early), and 503 (disabled).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ClerkIsland, useAuthToken } from '../../lib/clerk';
@@ -255,7 +255,7 @@ function AgentCallInner({ agentId, seed }: Props) {
         const sid = sessionRef.current;
         if (!sid) return;
         const r = await sessionHeartbeat(sid, jwt);
-        if (r.status === 402) return void endCall('insufficient_avacoins', 'Your AvaCoins ran out — the call ended.');
+        if (r.status === 402) return void endCall('insufficient_avacoins', 'Your Tokens ran out — the call ended.');
         if (r.body?.ended === true) return void endCall('server');
       }, Math.max(15, t.beatEverySec) * 1000);
 
@@ -271,7 +271,7 @@ function AgentCallInner({ agentId, seed }: Props) {
       setPhase('error');
       setError(
         status === 402
-          ? 'Not enough AvaCoins to start this call. Top up your wallet and try again.'
+          ? 'Not enough Tokens to start this call. Top up your wallet and try again.'
           : status === 409
             ? err === 'too early'
               ? 'This session has not started yet.'

@@ -85,7 +85,7 @@ export function Confirmation({ listing, selection, result }: ConfirmationProps) 
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Pill kind="plain">Booking {bookingId.slice(0, 8)}</Pill>
             {result.paid ? <Pill kind="ok">Paid</Pill> : null}
-            {result.escrow_coins ? <Pill kind="ok">{result.escrow_coins} AvaCoins held</Pill> : null}
+            {result.escrow_coins ? <Pill kind="ok">{result.escrow_coins} Tokens held</Pill> : null}
           </div>
           <p className="mt-1 font-body font-bold text-[14px] text-ink/70">
             We emailed your confirmation and reminders.

@@ -310,7 +310,7 @@ function Inner({ listingId, title, poster, creatorHandle }: LiveViewerProps) {
             <p className="truncate font-display font-semibold text-[16px] text-ink">{title ?? state.join?.title ?? 'Live'}</p>
             {room.donationsCount > 0 && (
               <p className="font-mono text-[11px] uppercase tracking-[0.04em] text-mintInk">
-                {room.donationsTotal} AvaCoins · {room.donationsCount} gifts
+                {room.donationsTotal} Tokens · {room.donationsCount} gifts
               </p>
             )}
           </div>
@@ -451,7 +451,7 @@ function DonationBanner({ name, amount, onDone }: { name: string; amount: number
       className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full border-zine border-ink bg-mint px-4 py-2 font-display font-semibold text-[15px] text-mintInk shadow-zine"
       style={{ animation: 'zine-drop 0.4s ease-out' }}
     >
-      ✨ {name} donated {amount} AvaCoins
+      ✨ {name} donated {amount} Tokens
       <style>{'@keyframes zine-drop{0%{transform:translate(-50%,-16px);opacity:0}100%{transform:translate(-50%,0);opacity:1}}'}</style>
     </div>
   );
