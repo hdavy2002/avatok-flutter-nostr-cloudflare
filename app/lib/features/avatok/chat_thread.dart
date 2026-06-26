@@ -4048,7 +4048,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       child: Wrap(
         alignment: WrapAlignment.spaceEvenly,
         crossAxisAlignment: WrapCrossAlignment.center,
-        runSpacing: 8,
+        // `spacing` is the GUARANTEED minimum horizontal gap between chips —
+        // spaceEvenly alone only distributes leftover space, so when the wide
+        // translate chip nearly filled the run the chips ended up bunched. A
+        // fixed 16px gap (plus the even distribution on top) keeps them spread.
+        spacing: 16,
+        runSpacing: 10,
         children: [
           _avaModeChip(),
           _translateChip(),
@@ -4092,7 +4097,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             _composerFocus.requestFocus();
           },
           child: Container(
-            width: 42, height: 42,
+            width: 48, height: 48,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _avaMode ? Zine.lilac : Zine.card,
@@ -4103,7 +4108,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: PhosphorIcon(
                 PhosphorIcons.sparkle(
                     _avaMode ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
-                size: 19,
+                size: 23,
                 color: _avaMode ? Zine.blueInk : Zine.ink),
           ),
         ),
@@ -4129,7 +4134,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: GestureDetector(
             onTap: _aiBusy ? null : onTap,
             child: Container(
-              width: 42, height: 42,
+              width: 48, height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: busy ? Zine.lime : tint,
@@ -4142,7 +4147,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       width: 16, height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
                     )
-                  : PhosphorIcon(icon, size: 19, color: Zine.ink),
+                  : PhosphorIcon(icon, size: 23, color: Zine.ink),
             ),
           ),
         ),
@@ -4170,14 +4175,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: GestureDetector(
                 onTap: _aiBusy ? null : _runTranslate,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(13, 11, 10, 11),
+                  padding: const EdgeInsets.fromLTRB(15, 13, 12, 13),
                   child: busy
                       ? const SizedBox(
                           width: 16, height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
                         )
                       : PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                          size: 19, color: Zine.ink),
+                          size: 23, color: Zine.ink),
                 ),
               ),
             ),
