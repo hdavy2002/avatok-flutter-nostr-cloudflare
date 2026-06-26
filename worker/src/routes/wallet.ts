@@ -24,12 +24,16 @@ import { readConfig } from "./config";
 import { getSub } from "./plans";
 import { subscribeWebhookEvent } from "./subscribe";
 
-// Coin economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 coins,
-// i.e. 1 coin = $0.01. So 1 coin == 1 USD cent and usdCentsForCoins is identity.
-// AvaPayout (routes/payout.ts) already converts coins→USD at this same rate.
-const COINS_PER_USD = 100;
-const usdCentsForCoins = (coins: number) => Math.round((coins * 100) / COINS_PER_USD); // coins → USD cents (== coins)
-const MIN_TOPUP = 1_000, MAX_TOPUP = 50_000; // in COINS: $10 (premium unlock min) .. $500
+// Token economics — CANONICAL, site-wide (incl. AvaPayout): 1 USD = 100 tokens,
+// i.e. 1 token = $0.01. So 1 token == 1 USD cent and usdCentsForTokens is identity.
+// AvaPayout (routes/payout.ts) already converts tokens→USD at this same rate.
+// NOTE: this is a RENAME of the old "coins" unit at the SAME value (100/USD), so
+// stored balances are unchanged. Internal D1 columns (amount_coins), Stripe
+// `metadata[coins]`, and analytics prop keys keep their legacy names to protect
+// live balances / in-flight payments / dashboards; the user-facing term is "Tokens".
+const TOKENS_PER_USD = 100;
+const usdCentsForTokens = (tokens: number) => Math.round((tokens * 100) / TOKENS_PER_USD); // tokens → USD cents (== tokens)
+const MIN_TOPUP = 1_000, MAX_TOPUP = 50_000; // in TOKENS: $10 (premium unlock min) .. $500
 
 function walletStub(env: Env, uid: string) {
   return env.WALLET_DO.get(env.WALLET_DO.idFromName(uid));
@@ -91,7 +95,7 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   const b = (await req.json().catch(() => ({}))) as any;
   // 1 coin = 1 cent, so amountUsdCents IS the coin amount.
   const amount = Math.trunc(Number(b.amountUsdCents ?? b.amount));
-  if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} coins` }, 400);
+  if (!(amount >= MIN_TOPUP && amount <= MAX_TOPUP)) return json({ error: `amount must be ${MIN_TOPUP}..${MAX_TOPUP} tokens` }, 400);
 
   if (!topupEnabled(env)) {
     // Infra is built; real money-in is held pending legal (§10.1). Honest 503.
@@ -99,7 +103,7 @@ async function topupCore(req: Request, env: Env, uid: string): Promise<Response>
   }
 
   const id = crypto.randomUUID();
-  const cents = usdCentsForCoins(amount);
+  const cents = usdCentsForTokens(amount);
   // Stripe Checkout Session (server-side; client redirects to session.url).
   const form = new URLSearchParams();
   form.set("mode", "payment");
@@ -161,9 +165,9 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
   const b = (await req.json().catch(() => ({}))) as any;
   const cents = Math.trunc(Number(b.usd_cents ?? b.amountUsdCents));
   if (!(cents > 0)) return json({ error: "usd_cents required (USD amount in cents)" }, 400);
-  const coins = Math.round((cents * COINS_PER_USD) / 100); // server-decided conversion
+  const coins = Math.round((cents * TOKENS_PER_USD) / 100); // server-decided conversion (var kept; unit = tokens)
   if (!(coins >= MIN_TOPUP && coins <= MAX_TOPUP)) {
-    return json({ error: `amount must be $${MIN_TOPUP / COINS_PER_USD}..$${MAX_TOPUP / COINS_PER_USD}` }, 400);
+    return json({ error: `amount must be $${MIN_TOPUP / TOKENS_PER_USD}..$${MAX_TOPUP / TOKENS_PER_USD}` }, 400);
   }
   if (!topupEnabled(env)) {
     return json({ error: "top-up unavailable", reason: "pending_legal_approval", flag: "WALLET_TOPUP_ENABLED" }, 503);
@@ -174,7 +178,7 @@ export async function walletTopupIntent(req: Request, env: Env): Promise<Respons
   form.set("amount", String(cents));
   form.set("currency", "usd");
   form.set("automatic_payment_methods[enabled]", "true"); // card + wallets, Stripe-managed
-  form.set("description", `${coins} AvaCoins top-up`);
+  form.set("description", `${coins} Tokens top-up`);
   form.set("metadata[uid]", ctx.uid);
   form.set("metadata[topup_id]", id);
   form.set("metadata[coins]", String(coins));
@@ -263,7 +267,7 @@ async function creditTopup(
   // Ledger meta drives the in-app receipt + log-detail sheet: the real USD charged,
   // and HOW it was paid (card brand/last4, Apple/Google Pay, …) so a user can see
   // "$10 paid with Visa ···4242 → 10,000 AvaCoins".
-  const meta: any = { title: `Top-up ${coins} AvaCoins`, cents: usdCentsForCoins(coins), source: "topup" };
+  const meta: any = { title: `Top-up ${coins} Tokens`, cents: usdCentsForTokens(coins), source: "topup" };
   meta.method = p.method ?? "card";
   if (p.brand) meta.card_brand = p.brand;
   if (p.last4) meta.card_last4 = p.last4;
@@ -278,9 +282,9 @@ async function creditTopup(
   // (idempotent per top-up; no-op if there's no affiliate). Never blocks the credit.
   try { await payAffiliateOnTopup(env, uid, coins, topupId); } catch { /* best-effort */ }
   // A4: top-up receipt (best-effort, never blocks the credit).
-  try { await sendReceipt(env, uid, "topup", { orderId: topupId, title: `${coins} AvaCoins`, lines: [{ label: `${coins} AvaCoins`, amount: coins }], total: coins }); } catch { /* best-effort */ }
+  try { await sendReceipt(env, uid, "topup", { orderId: topupId, title: `${coins} Tokens`, lines: [{ label: `${coins} Tokens`, amount: coins }], total: coins }); } catch { /* best-effort */ }
   brainFact(env, uid, "wallet_topup", "avawallet", { coins });
-  try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} AvaCoins`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
+  try { await notifyUser(env, uid, { type: "wallet", title: `Added ${coins} Tokens`, data: { deeplink: "/wallet", amount: coins } }); } catch { /* best-effort */ }
   track(env, uid, "wallet_topup_completed", "avawallet", { coins });
   return json({ received: true, credited: coins });
 }

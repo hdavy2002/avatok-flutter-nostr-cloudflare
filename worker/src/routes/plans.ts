@@ -44,6 +44,11 @@ export interface Plan {
   key: "free" | "plus" | "pro" | "max";
   name: string;
   priceUsd: number;            // monthly, USD. 0 = free.
+  // Monthly TOKEN allowance for this class (Token economy, see TOKEN-ECONOMY.md).
+  // Resets every month, NO carry-over; on exhaustion the user upgrades or tops up.
+  // null === unlimited (Max). NUMBERS ARE PLACEHOLDERS — owner to finalize
+  // (guideline: paid allowance ≈ priceUsd × 100, i.e. $10 → 1,000 tokens).
+  tokensPerMonth: number | null;
   // Daily caps. null === unlimited. Human messaging + 1:1 P2P calls are NOT
   // listed because they are unlimited on every tier (no AI cost to us).
   caps: Record<Dim, number | null>;
@@ -64,12 +69,14 @@ export interface Plan {
 export const PLANS: Record<TierId, Plan> = {
   0: {
     id: 0, key: "free", name: "Free", priceUsd: 0,
+    tokensPerMonth: 200, // PLACEHOLDER (TBD): small monthly allowance for extras; basic chat stays free
     caps: { ava_chat: null, image: 3, voice_min: 10, recept: 3, translate_min: 0, conf_min: 60 },
     confParticipants: 5,
     features: { memory: false, fileAnalysis: false, webSearch: false, premiumImageModel: false },
   },
   1: {
     id: 1, key: "plus", name: "Plus", priceUsd: 10,
+    tokensPerMonth: 1000, // PLACEHOLDER (TBD): $10 × 100
     caps: { ava_chat: null, image: 30, voice_min: 60, recept: 30, translate_min: 30, conf_min: 180 },
     confParticipants: 10,
     features: { memory: true, fileAnalysis: true, webSearch: true, premiumImageModel: true },
@@ -77,6 +84,7 @@ export const PLANS: Record<TierId, Plan> = {
   },
   2: {
     id: 2, key: "pro", name: "Pro", priceUsd: 20,
+    tokensPerMonth: 2000, // PLACEHOLDER (TBD): $20 × 100
     caps: { ava_chat: null, image: 100, voice_min: 180, recept: 100, translate_min: 120, conf_min: 480 },
     confParticipants: 25,
     features: { memory: true, fileAnalysis: true, webSearch: true, premiumImageModel: true },
@@ -84,6 +92,7 @@ export const PLANS: Record<TierId, Plan> = {
   },
   3: {
     id: 3, key: "max", name: "Max", priceUsd: 50,
+    tokensPerMonth: null, // PLACEHOLDER (TBD): Max = unlimited tokens (everything unlimited)
     caps: { ava_chat: null, image: null, voice_min: null, recept: null, translate_min: null, conf_min: null },
     confParticipants: 25,
     features: { memory: true, fileAnalysis: true, webSearch: true, premiumImageModel: true },

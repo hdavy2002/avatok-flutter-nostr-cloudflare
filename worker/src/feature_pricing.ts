@@ -1,18 +1,17 @@
 // Server-owned price list for premium, discrete Ava actions (2026-06-18).
 //
-// Prices are in COINS. CANONICAL site-wide economics: 1 USD = 100 coins
-// (1 coin = $0.01 = 1 USD cent), matching wallet.ts (COINS_PER_USD), ledger.ts,
-// cal/emails.ts, translate.ts, avavoice.ts and the client (kCoinsPerUsd=100).
+// Prices are in TOKENS. CANONICAL site-wide economics: 1 USD = 100 tokens
+// (1 token = $0.01 = 1 USD cent), matching wallet.ts (TOKENS_PER_USD), ledger.ts,
+// cal/emails.ts, translate.ts, avavoice.ts and the client (kTokensPerUsd=100).
 // The CLIENT never sends a price — it names the feature and the server charges
 // THIS amount. A patched client can't underpay because the amount is derived
 // here, not from the request. Tune freely; keys must match what each feature
 // route passes to chargeFeature().
 //
-// NOTE (2026-06-23 coin-unit normalization 1000→100 coins/USD): three actions
-// that priced below 1¢ in the old 1000-coins/USD scheme (ava_chat $0.002,
-// ava_memory $0.002, ava_image_free $0.005) are floored to the 1-coin (1¢)
-// minimum, since 1 coin is now the smallest billable unit. Everything else
-// converted exactly (÷10) and keeps its USD price.
+// 2026-06-26: the unit was renamed AvaCoins/coins → "Tokens" at the SAME value
+// (100/USD), so these numeric prices and all stored balances are unchanged — only
+// the label changed. Per-service token costs are owner-tunable; see TOKEN-ECONOMY.md.
+// 1 token is the smallest billable unit, so sub-1¢ actions floor to 1 token.
 import type { Env } from "./types";
 import { json } from "./util";
 import { walletOp } from "./routes/wallet";
