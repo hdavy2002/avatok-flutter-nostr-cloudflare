@@ -213,6 +213,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String? _aiTool;
   final FlutterSecureStorage _aiPrefs = const FlutterSecureStorage();
   static const _kTransLangKey = 'composer_translate_lang';
+  // Per-account "hide deleted messages" preference: when on, both the slim
+  // "You deleted this message" pills and peer "This message was deleted"
+  // tombstones are collapsed out of the thread so it stays clean. Keyed per
+  // conversation so the choice is remembered for THIS chat.
+  static const _kHideDeletedKey = 'chat_hide_deleted';
+  bool _hideDeleted = false;
   // Remembered translate target (account-scoped). Defaults to Spanish until the
   // saved value loads / the user picks another.
   String _transLangCode = 'Spanish';
@@ -290,6 +296,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (mounted && code != null && code.isNotEmpty) {
         setState(() => _transLangCode = code);
       }
+    }).catchError((_) {});
+    // Restore the per-conversation "hide deleted messages" choice.
+    readScoped(_aiPrefs, '${_kHideDeletedKey}_${widget.chat.seed}').then((v) {
+      if (mounted && v == '1') setState(() => _hideDeleted = true);
     }).catchError((_) {});
     _pruneTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -2207,6 +2217,60 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  /// Export a chat media message (image / video / file / voice note) to the OS
+  /// share sheet so it can be sent to WhatsApp, Files, etc. Decrypts/loads the
+  /// bytes on-device, writes a temp file with a sensible name + extension, and
+  /// hands it to share_plus. This is what was missing for voice recordings —
+  /// Forward only sent in-app; there was no way OUT to another app.
+  Future<void> _shareMedia(_Msg m) async {
+    try {
+      Uint8List? bytes = m.localBytes;
+      if (bytes == null && m.media != null) {
+        bytes = await MediaService.downloadAndDecrypt(m.media!);
+      }
+      if (bytes == null) { _capNote('Could not load this attachment to share.'); return; }
+      final ct = m.media?.contentType ?? '';
+      final kind = m.media?.kind ??
+          (m.localBytes != null ? MediaKind.image : MediaKind.file);
+      final ext = _extFor(ct, kind);
+      final base = (m.media?.name ?? '').trim();
+      final safe = base.isNotEmpty && base.contains('.')
+          ? base
+          : 'avatok_${DateTime.now().millisecondsSinceEpoch}$ext';
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/$safe');
+      await f.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles([XFile(f.path, mimeType: ct.isEmpty ? null : ct)]);
+      Analytics.capture('chat_media_shared_out', {'kind': kind.name, 'ok': true});
+    } catch (e) {
+      Analytics.capture('chat_media_shared_out', {'ok': false, 'error': e.toString()});
+      if (mounted) _capNote('Couldn’t share this attachment.');
+    }
+  }
+
+  /// Pick a file extension from a content type, falling back to the media kind.
+  static String _extFor(String contentType, MediaKind kind) {
+    final ct = contentType.toLowerCase();
+    if (ct.contains('png')) return '.png';
+    if (ct.contains('jpeg') || ct.contains('jpg')) return '.jpg';
+    if (ct.contains('gif')) return '.gif';
+    if (ct.contains('webp')) return '.webp';
+    if (ct.contains('mp4') && kind == MediaKind.audio) return '.m4a';
+    if (ct.contains('mp4')) return '.mp4';
+    if (ct.contains('quicktime') || ct.contains('mov')) return '.mov';
+    if (ct.contains('wav')) return '.wav';
+    if (ct.contains('mpeg') && kind == MediaKind.audio) return '.mp3';
+    if (ct.contains('mp3')) return '.mp3';
+    if (ct.contains('ogg') || ct.contains('opus')) return '.ogg';
+    if (ct.contains('pdf')) return '.pdf';
+    switch (kind) {
+      case MediaKind.image: return '.jpg';
+      case MediaKind.video: return '.mp4';
+      case MediaKind.audio: return '.m4a';
+      case MediaKind.file: return '';
+    }
+  }
+
   Future<void> _addSharedContact(Map e) async {
     final npub = (e['npub'] ?? '').toString();
     if (!npub.startsWith('user_')) return;
@@ -2906,6 +2970,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
                     _action(ctx, PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', () => _startEdit(m)),
                   _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
+                  // Share OUT to another app (WhatsApp, Files, etc.) via the OS
+                  // share sheet — works for any media, including voice notes.
+                  if (m.media != null || m.localBytes != null)
+                    _action(ctx, PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), 'Share to other apps', () => _shareMedia(m)),
                   if (m.media != null)
                     _action(ctx, PhosphorIcons.googleDriveLogo(PhosphorIconsStyle.bold), 'Save to my AvaTOK Drive', () => _saveMediaToDrive(m)),
                   _action(ctx, PhosphorIcons.trash(PhosphorIconsStyle.bold), 'Delete for me', () => _deleteForMe(m)),
@@ -3357,6 +3425,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               () { Navigator.pop(ctx); setState(() { _searchMode = true; _searchQuery = ''; }); }),
           _action(ctx, PhosphorIcons.images(PhosphorIconsStyle.bold), 'Media, links & docs',
               () { Navigator.pop(ctx); _openMediaLibrary(); }),
+          _action(
+              ctx,
+              _hideDeleted
+                  ? PhosphorIcons.eye(PhosphorIconsStyle.bold)
+                  : PhosphorIcons.eyeSlash(PhosphorIconsStyle.bold),
+              _hideDeleted ? 'Show deleted messages' : 'Hide deleted messages',
+              () { Navigator.pop(ctx); _toggleHideDeleted(); }),
           if (_convKey != null)
             _action(ctx, PhosphorIcons.timer(PhosphorIconsStyle.bold),
                 _disappearSecs == 0 ? 'Disappearing messages' : 'Disappearing: ${_disappearLabel(_disappearSecs)}',
@@ -3380,6 +3455,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]),
       ),
     );
+  }
+
+  /// Toggle (and remember, per-conversation) whether deleted-message pills and
+  /// tombstones are hidden from the thread.
+  Future<void> _toggleHideDeleted() async {
+    final next = !_hideDeleted;
+    setState(() => _hideDeleted = next);
+    try {
+      await _aiPrefs.write(
+          key: scopedKey('${_kHideDeletedKey}_${widget.chat.seed}'),
+          value: next ? '1' : '0');
+    } catch (_) {/* preference best-effort */}
+    Analytics.capture('chat_hide_deleted_toggled', {'on': next});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(next ? 'Deleted messages hidden' : 'Deleted messages shown'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
   }
 
   /// "Discuss with Ava" — open ChatAVA (the Companion thread) pointed at THIS
@@ -3665,9 +3759,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       if (visible[i].special != 'ava_status' || i == lastIdx) visible[i],
                   ];
                 }
-                if (_searchMode && _searchQuery.isNotEmpty) {
-                  final q = _searchQuery.toLowerCase();
-                  visible = visible.where((m) => m.text.toLowerCase().contains(q)).toList();
+                // "Hide deleted messages" — drop my soft-deleted pills and peer
+                // "This message was deleted" tombstones so they don't clutter.
+                if (_hideDeleted) {
+                  visible = visible
+                      .where((m) => !m.hidden && m.text != 'This message was deleted')
+                      .toList();
+                }
+                if (_searchMode && _searchQuery.trim().isNotEmpty) {
+                  final q = _foldSearch(_searchQuery);
+                  visible = visible.where((m) => _foldSearch(m.text).contains(q)).toList();
+                  // No literal hit → offer Ava (on-device semantic find over this
+                  // thread). DM/group content stays on the phone, so this can't be
+                  // a server-side Cloudflare AI Search; "Discuss with Ava" reads
+                  // the visible bubbles locally and answers by MEANING.
+                  if (visible.isEmpty) return _searchEmptyState(_searchQuery.trim());
                 }
                 return ListView.builder(
                   controller: _scroll,
@@ -4099,24 +4205,47 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       {Map<String, Object> props = const <String, Object>{}}) async {
     if (_aiBusy) return null;
     setState(() { _aiBusy = true; _aiTool = tool; });
+    final t0 = DateTime.now().millisecondsSinceEpoch;
     Analytics.capture('composer_ai_used', <String, Object>{
       'tool': tool, 'is_group': _isGroup, ...props,
     });
     try {
-      final a = await call();
+      // One silent auto-retry on a TRANSIENT failure (a dropped request or a 5xx)
+      // so a single network blip doesn't make the user re-tap the chip. A real
+      // block (moderation / daily cap) or a populated answer is returned as-is.
+      var a = await call();
+      final transient1 = a.blocked &&
+          (a.reason == 'network' || (a.reason?.startsWith('http_5') ?? false));
+      if (transient1) {
+        await Future.delayed(const Duration(milliseconds: 350));
+        if (!mounted) return null;
+        a = await call();
+      }
       if (!mounted) return null;
       if (a.blocked) {
-        _toolHint(a.hitDailyCap
-            ? 'Daily free AI limit reached — connect your own key in Settings for unlimited.'
-            : 'Ava couldn’t help with that right now.');
+        // Distinct copy per cause so the user knows whether to wait, top up, or
+        // check their connection — not one catch-all "couldn't help".
+        final String msg;
+        if (a.hitDailyCap) {
+          msg = 'Daily free AI limit reached — connect your own key in Settings for unlimited.';
+        } else if (a.reason == 'network') {
+          msg = 'Couldn’t reach Ava — check your connection and try again.';
+        } else if (a.reason?.startsWith('http_5') ?? false) {
+          msg = 'Ava is busy right now — give it a moment and try again.';
+        } else {
+          msg = 'Ava couldn’t help with that right now.';
+        }
+        _toolHint(msg);
         Analytics.capture('composer_ai_blocked',
             <String, Object>{'tool': tool, 'reason': a.reason ?? 'unknown'});
         return null;
       }
       final out = a.answer.trim();
       if (out.isEmpty) { _toolHint('Ava returned nothing — try again.'); return null; }
-      Analytics.capture('composer_ai_ok',
-          <String, Object>{'tool': tool, 'tier': a.tier ?? 'unknown'});
+      Analytics.capture('composer_ai_ok', <String, Object>{
+        'tool': tool, 'tier': a.tier ?? 'unknown',
+        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+      });
       return out;
     } catch (e) {
       if (mounted) _toolHint('Something went wrong. Check your connection.');
@@ -4366,6 +4495,63 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } catch (_) { /* not JSON → real text */ }
     return false;
   }
+
+  /// Normalise text for in-thread search: lower-case and strip the most common
+  /// accents so "cafe" matches "café" and case never matters. Keeps it simple —
+  /// no full Unicode NFD dependency.
+  static String _foldSearch(String s) {
+    var t = s.toLowerCase();
+    const from = 'áàâäãåéèêëíìîïóòôöõúùûüñçý';
+    const to = 'aaaaaaeeeeiiiiooooouuuuncy';
+    final b = StringBuffer();
+    for (final ch in t.split('')) {
+      final i = from.indexOf(ch);
+      b.write(i >= 0 ? to[i] : ch);
+    }
+    return b.toString().trim();
+  }
+
+  /// Empty state shown when an in-thread search finds no literal match. Keeps the
+  /// user IN the thread (the complaint was being kicked out) and offers Ava as a
+  /// meaning-based fallback over the on-device transcript.
+  Widget _searchEmptyState(String query) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+                size: 30, color: Zine.inkMute),
+            const SizedBox(height: 10),
+            Text('No messages match “$query”.',
+                textAlign: TextAlign.center, style: ZineText.value(size: 14)),
+            const SizedBox(height: 4),
+            Text('Ava can search this chat by meaning, not just exact words.',
+                textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: () {
+                setState(() { _searchMode = false; _searchQuery = ''; });
+                _discussWithAva();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: Zine.lilac,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Zine.border,
+                  boxShadow: Zine.shadowXs,
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                      size: 15, color: Zine.blueInk),
+                  const SizedBox(width: 6),
+                  Text('Ask Ava to find it',
+                      style: ZineText.value(size: 13, color: Zine.blueInk)),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      );
 
   Widget _searchBar() => Row(children: [
         IconButton(icon: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), color: Zine.ink),
@@ -5037,6 +5223,51 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
 
   Map<String, dynamic> get _e => widget.extra;
 
+  bool _sharing = false;
+
+  /// Export the voicemail recording to the OS share sheet (WhatsApp, Files, …).
+  /// Cache-first, mirroring playback, so a previously-played recording shares
+  /// instantly. This is the "no option to share a voice recording" fix.
+  Future<void> _shareRecording() async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final cacheKey = 'recept_${widget.sessionId}';
+      Uint8List? bytes = await MediaService.cachedBlob(cacheKey);
+      if (bytes == null || bytes.isEmpty) {
+        final url = 'https://$kSignalingHost/api/receptionist/recording?sid=${widget.sessionId}';
+        final r = await ApiAuth.getBytes(url);
+        if (r.statusCode == 200 && r.bodyBytes.isNotEmpty) {
+          bytes = r.bodyBytes;
+          await MediaService.writeBlob(cacheKey, bytes);
+        }
+      }
+      if (bytes == null || bytes.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Couldn’t load the recording to share.')));
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final caller = (_e['caller'] ?? _e['caller_name'] ?? 'voicemail').toString()
+          .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      final f = File('${dir.path}/ava_${caller}_${widget.sessionId}.wav');
+      await f.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles([XFile(f.path, mimeType: 'audio/wav')],
+          subject: 'Voicemail from ${_e['caller'] ?? 'a caller'}');
+      Analytics.capture('ava_recept_share', {'session_id': widget.sessionId, 'ok': true});
+    } catch (e) {
+      Analytics.capture('ava_recept_share', {'session_id': widget.sessionId, 'ok': false});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Couldn’t share the recording.')));
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
   bool get _hasRecording =>
       _e['has_recording'] == true ||
       (_e['recording_url'] ?? '').toString().isNotEmpty;
@@ -5174,6 +5405,27 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         if (hasRec && dur.isNotEmpty) ...[
           const SizedBox(width: 8),
           Text('⏱ $dur', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+        ],
+        if (hasRec) ...[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: _sharing ? null : _shareRecording,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Zine.card,
+                borderRadius: BorderRadius.circular(100),
+                border: Border.all(color: Zine.ink, width: 2),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                _sharing
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.ios_share, size: 15, color: Zine.ink),
+                const SizedBox(width: 4),
+                Text('Share', style: ZineText.tag(size: 11)),
+              ]),
+            ),
+          ),
         ],
       ]),
       if (transcript.isNotEmpty) ...[

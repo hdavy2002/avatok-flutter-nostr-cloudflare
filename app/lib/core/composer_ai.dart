@@ -14,6 +14,13 @@ import 'ava_ai_client.dart';
 class ComposerAi {
   ComposerAi._();
 
+  /// Composer tools are short, interactive edits — the user is staring at a
+  /// spinner waiting to send. A tighter timeout than open Ava chat (30s) means a
+  /// stuck request surfaces a "try again" in ~22s instead of leaving the chip
+  /// spinning indefinitely. The runner in chat_thread auto-retries once on a
+  /// transient network blip before showing the user anything.
+  static const Duration kTimeout = Duration(seconds: 22);
+
   /// Languages offered in the Translate sheet. `code` is the human name we hand
   /// to the model (Gemini translates by name reliably); `label` is the native
   /// name shown in the UI. Curated common set — covers the bulk of AvaVerse
@@ -70,6 +77,7 @@ class ComposerAi {
   /// the translation, ready to drop straight back into the input box.
   static Future<AvaAnswer> translate(String text, String language) =>
       AvaAiClient.I.ask(
+        timeout: kTimeout,
         message: 'Translate the message below into $language.\n'
             'Reply with ONLY the translation — no quotes, no notes, no '
             'transliteration, no original text. Preserve emoji, @mentions, '
@@ -79,6 +87,7 @@ class ComposerAi {
   /// Fix spelling/grammar/punctuation while keeping the SAME language, meaning,
   /// tone and emoji. Reply is only the corrected message.
   static Future<AvaAnswer> fixGrammar(String text) => AvaAiClient.I.ask(
+        timeout: kTimeout,
         message: 'Correct the spelling, grammar and punctuation of the message '
             'below. Keep the SAME language, meaning, tone and emoji. Do not add '
             'or remove ideas, and do not translate. Reply with ONLY the '
@@ -88,6 +97,7 @@ class ComposerAi {
   /// Rewrite [text] in the given [style] (a phrase from [tones]).
   static Future<AvaAnswer> rewrite(String text, String style) =>
       AvaAiClient.I.ask(
+        timeout: kTimeout,
         message: 'Rewrite the message below to be $style. Keep the same '
             'language and core meaning; do not translate. Reply with ONLY the '
             'rewritten message.\n\n---\n$text',
@@ -96,6 +106,7 @@ class ComposerAi {
   /// Suggest 3 short replies to an [incoming] message. Use [parseIdeas] to
   /// split the answer into individual suggestions.
   static Future<AvaAnswer> replyIdeas(String incoming) => AvaAiClient.I.ask(
+        timeout: kTimeout,
         message: 'Someone sent me this message:\n"$incoming"\n\n'
             'Suggest 3 short, natural replies I could send back. Reply in the '
             'same language as the message. Put each reply on its own line, with '
