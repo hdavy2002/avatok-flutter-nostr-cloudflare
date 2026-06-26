@@ -527,6 +527,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final env2 = jsonDecode(m.payload) as Map;
     final exp = (env2['exp'] as num?)?.toInt();
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return; // already gone
+    // Safety net: any control envelope (del/gdel/receipt/…) that reached here
+    // unhandled must NEVER render as a raw `{"t":...}` bubble. The explicit
+    // handlers above already returned for the ones we act on; this catches the rest.
+    if (_isControlEnvelope(m.payload)) return;
     // A peer deleted this for everyone (recorded durably) — render the tombstone,
     // never the original body, even though the cached/replayed envelope still has it.
     if (_deletedIds.contains(m.rumorId)) {
@@ -639,6 +643,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       }
     } catch (_) {/* legacy/plain text */}
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return;
+    // Safety net: a control envelope (del/gdel/receipt/…) must NEVER render as a raw
+    // `{"t":...}` bubble. Explicit handlers above already returned for handled ones;
+    // this stops any unhandled/older-format control from leaking into the chat.
+    if (_isControlEnvelope(m.payload)) return;
     // A peer deleted this for everyone (recorded durably) — render the tombstone,
     // never the original body, even though the cached/replayed envelope still has it.
     if (_deletedIds.contains(m.rumorId)) {
@@ -708,6 +716,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (_seenEv.contains(ev)) continue;
         _seenEv.add(ev);
       }
+      // Drop any control envelope an older build wrongly cached as a text bubble
+      // (e.g. a leaked `{"t":"del",...}`), so it never reappears on reopen.
+      if (_isControlEnvelope((j['text'] ?? '').toString())) continue;
       final ts = (j['ts'] as num?)?.toInt() ?? 0;
       // Media messages ARE cached now (the envelope/refs — never the bytes; the
       // decrypted bytes live in MediaService's on-disk cache). So on reopen the

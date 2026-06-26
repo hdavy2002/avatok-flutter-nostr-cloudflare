@@ -263,6 +263,11 @@ class SyncHub {
       case 'hide':
         _ingestHide(m);
         break;
+      case 'del':
+        // Delete-for-everyone control frame (never a stored message → can't render
+        // as raw text). Redact durably + live on this device.
+        _ingestDel(m);
+        break;
       case 'searchResults':
         {
           final reqId = (m['reqId'] ?? '').toString();
@@ -405,6 +410,15 @@ class SyncHub {
     // the queue (app was asleep) rather than the live socket — useful for triage.
     Analytics.capture('chat_delete_drained', {'count': list.length});
     await DiskCache.deleteGlobal(pendingDeletesKey);
+  }
+
+  // A DELETE-FOR-EVERYONE control frame from a peer (server broadcasts this instead
+  // of storing a renderable del message). Apply the redaction durably + live.
+  void _ingestDel(Map<String, dynamic> r) {
+    final conv = (r['conv'] ?? '').toString();
+    final target = (r['target'] ?? '').toString();
+    if (target.isEmpty) return;
+    applyRemoteDelete(target, conv: conv, source: 'live_socket');
   }
 
   // A SOFT-DELETE/Undo from one of MY OTHER devices. Re-emit it as a {t:'hide'}

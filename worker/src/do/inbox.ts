@@ -204,25 +204,34 @@ export class InboxDO {
     const created = b.created_at || Date.now();
     const audience = scopeAudience(b.scope); // null = thread-scoped (default)
 
-    // DELETE-FOR-EVERYONE (server tombstone). A {t:'del'|'gdel', target:<client_id>}
-    // control redacts the targeted message so its body never re-syncs to the device.
-    // IMPORTANT: only redact a RECIPIENT's inbox (owner !== sender). The OWNER's own
-    // copy is left intact so they can Undo/recover their own data later — only the
-    // owner can bring it back. We STILL store + broadcast the control below so an
-    // open recipient applies the deletion live. Best-effort; never blocks the append.
-    if (b.owner !== b.sender && b.body && (b.body.includes('"t":"del"') || b.body.includes('"t":"gdel"'))) {
+    // DELETE-FOR-EVERYONE. A {t:'del'|'gdel', target:<client_id>} control is NEVER
+    // stored as a message row — a stored control renders as raw `{"t":"del",...}`
+    // text on any client that doesn't special-case it (e.g. an older build), which
+    // is exactly the leak we saw. Instead, mirror hide(): redact the recipient's
+    // targeted copy so it never re-syncs, and broadcast a {type:'del'} CONTROL frame
+    // so a live recipient redacts now (offline recipients are reached by the
+    // high-priority FCM 'del' push from the send route). The OWNER's own copy is
+    // left intact (soft-hide + Undo is handled client-side / via the hide channel),
+    // and we do NOT bump their unread. Returns WITHOUT inserting a message row.
+    if (b.body && (b.body.includes('"t":"del"') || b.body.includes('"t":"gdel"'))) {
+      let target = "";
       try {
         const ctrl = JSON.parse(b.body);
-        const target = ctrl && (ctrl.t === "del" || ctrl.t === "gdel") ? String(ctrl.target ?? "") : "";
-        if (target) {
+        if (ctrl && (ctrl.t === "del" || ctrl.t === "gdel")) target = String(ctrl.target ?? "");
+      } catch { /* not actually a control envelope — fall through to normal store */ }
+      if (target) {
+        let live = false;
+        if (b.owner !== b.sender) {
           this.sql.exec(
             `UPDATE messages SET kind='deleted', body='{"t":"deleted"}', media_ref=NULL, edited_at=? WHERE conv=? AND client_id=?`,
             Date.now(), b.conv, target,
           );
+          live = this.broadcast(JSON.stringify({ type: "del", conv: b.conv, target }));
           try { void this.env.Q_ANALYTICS.send({ event: "message_tombstoned", uid: b.owner, ts: Date.now(),
             props: { conv: b.conv, target, delete_id: target, by: b.sender, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: b.owner } }); } catch { /* best-effort */ }
         }
-      } catch { /* not a control envelope — fall through */ }
+        return new Response(JSON.stringify({ id: 0, live }), { headers: { "content-type": "application/json" } });
+      }
     }
 
     const row = this.sql.exec(
