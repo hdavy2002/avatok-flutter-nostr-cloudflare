@@ -72,6 +72,9 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   final d = message.data;
   if (d['type'] == 'message') {
     await _showMessageNotif(d);
+  } else if (d['type'] == 'del') {
+    // Delete-for-everyone — silent. Park it for the app to apply on next foreground.
+    await _queuePendingDelete(d);
   } else if (d['type'] == 'call-status') {
     // Caller cancelled / call ended before we answered → stop ringing.
     final callId = (d['callId'] ?? '').toString();
@@ -81,6 +84,31 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   } else {
     await _showIncoming(d);
   }
+}
+
+/// Park a delete-for-everyone that arrived while the app was backgrounded/killed.
+/// The background isolate has no AccountScope loaded, so it can't write the
+/// per-account DeletedStore directly — instead it appends to the GLOBAL
+/// (device-level) queue, which [SyncHub.drainPendingDeletes] flushes into the
+/// scoped store the instant the app is alive. Silent by design: a redaction must
+/// never raise a banner. Entry format mirrors the drain: 'conv\ttarget'.
+Future<void> _queuePendingDelete(Map<String, dynamic> d) async {
+  final target = (d['target'] ?? '').toString();
+  if (target.isEmpty) return;
+  final entry = '${(d['conv'] ?? '').toString()}\t$target';
+  try {
+    final raw = await DiskCache.readGlobal(SyncHub.pendingDeletesKey);
+    List<dynamic> list;
+    try {
+      list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+    } catch (_) {
+      list = <dynamic>[];
+    }
+    if (!list.contains(entry)) {
+      list.add(entry);
+      await DiskCache.writeGlobal(SyncHub.pendingDeletesKey, jsonEncode(list));
+    }
+  } catch (_) {/* best-effort; the next full sync still applies it */}
 }
 
 /// A call-status that means the call is over and any incoming ring should stop.
@@ -197,6 +225,13 @@ class PushService {
         // socket was dropped (mobile DNS), this FCM wake forces a reconnect + sync
         // so the message lands immediately instead of waiting for a manual refresh.
         SyncHub.I.ensureConnected();
+        return;
+      }
+      if (d['type'] == 'del') {
+        // Delete-for-everyone arriving while the app is foregrounded — apply the
+        // redaction in realtime (durable tombstone + live thread update).
+        SyncHub.I.applyRemoteDelete(
+            (d['target'] ?? '').toString(), conv: (d['conv'] ?? '').toString());
         return;
       }
       // Incoming call. Reconcile a possibly-stale "on a call" flag BEFORE

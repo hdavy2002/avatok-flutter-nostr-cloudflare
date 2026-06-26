@@ -96,10 +96,12 @@ export interface WalletTxMsg {
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
-  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout";
+  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del";
   to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
+  // kind === "del" (delete-for-everyone → silent realtime redaction on the device):
+  conv?: string; target?: string;
   title?: string | null; body?: string | null; data?: Record<string, unknown> | null;
   event_kind?: number; event_id?: string; ts?: number;
   // kind === "fanout" (large-group delivery; router never loops >25 sync DO calls):

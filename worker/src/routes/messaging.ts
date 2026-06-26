@@ -92,6 +92,18 @@ async function pushOffline(env: Env, toUid: string, _fromUid: string, _conv: str
   } catch { /* best-effort; never block the send */ }
 }
 
+// Delete-for-everyone to an OFFLINE recipient: a SILENT, high-priority DATA push
+// carrying the redaction so the device applies it in (near) realtime — wakes the
+// app + reconnects the InboxDO socket, and the background isolate queues the
+// tombstone — instead of waiting for the next manual sync (the "deleted after 2h
+// or never" bug). Online recipients already get it instantly over the DO socket
+// broadcast in inbox.append(), so this path is offline-only.
+async function pushDelete(env: Env, toUid: string, conv: string, target: string): Promise<void> {
+  try {
+    await env.Q_PUSH.send({ kind: "del", to: toUid, conv, target });
+  } catch { /* best-effort; never block the send */ }
+}
+
 // ---- POST /api/msg/send -----------------------------------------------------
 export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -123,6 +135,16 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const created = Date.now();
   const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created };
 
+  // Is this a delete-for-everyone control? Offline recipients then get a silent,
+  // high-priority 'del' push (apply in realtime) instead of a "New message" banner.
+  let delTarget = "";
+  if (text && (text.includes('"t":"del"') || text.includes('"t":"gdel"'))) {
+    try {
+      const c = JSON.parse(text);
+      if (c && (c.t === "del" || c.t === "gdel")) delTarget = String(c.target ?? "");
+    } catch { /* not a control envelope */ }
+  }
+
   // Blocks: ONE chunked query for all members (was a D1 round-trip per member).
   const others = mem.filter((m) => m !== ctx.uid);
   const blockers = await blockersOf(env, ctx.uid, others);
@@ -136,7 +158,10 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     // Small fan-out: deliver in PARALLEL (was sequential awaits).
     await Promise.all(recipients.map(async (m) => {
       const r = await appendTo(env, m, payload);
-      if (!r.live) await pushOffline(env, m, ctx.uid, conv, text || "[media]");
+      if (!r.live) {
+        if (delTarget) await pushDelete(env, m, conv, delTarget);
+        else await pushOffline(env, m, ctx.uid, conv, text || "[media]");
+      }
     }));
   } else {
     // Large fan-out: hand to Queues — consumers append to each InboxDO + FCM

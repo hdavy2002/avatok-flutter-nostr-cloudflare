@@ -83,6 +83,7 @@ class SyncHub {
     if (!_started && (_myUid?.isNotEmpty ?? false)) {
       _started = true;
       _wantConnected = true;
+      unawaited(drainPendingDeletes()); // apply deletes queued while backgrounded
       _open();
       AvaLog.I.log('hub', 'InboxDO sync started for uid=${_myUid}');
     } else {
@@ -93,6 +94,7 @@ class SyncHub {
 
   void ensureConnected() {
     if (!_wantConnected) return;
+    unawaited(drainPendingDeletes()); // a foreground wake also flushes queued deletes
     if (_ch != null) return;
     _retry = 0;
     _reconnectTimer?.cancel();
@@ -337,6 +339,49 @@ class SyncHub {
       }
     }
     _incoming.add(HubEvent(convKey, sender, myUid, mine, rumorId, body, createdSec));
+  }
+
+  // Global (device-level, NOT account-scoped) queue of delete-for-everyone
+  // redactions that arrived via a high-priority FCM 'del' push while the app was
+  // backgrounded/killed. The background isolate has no AccountScope, so it parks
+  // them here (DiskCache.*Global); [drainPendingDeletes] applies them the instant
+  // the app is alive and the account scope is known. Entry format: 'conv\ttarget'.
+  static const pendingDeletesKey = 'avatok_pending_deletes';
+
+  /// Apply a delete-for-everyone in (near) realtime: durably tombstone the target
+  /// on THIS device and, if its thread is open, redact it live. Called from the
+  /// foreground FCM 'del' handler and when draining the background queue. Safe to
+  /// call repeatedly (DeletedStore + the thread tombstone are idempotent).
+  Future<void> applyRemoteDelete(String target, {String conv = ''}) async {
+    if (target.isEmpty) return;
+    await DeletedStore().add(target); // durable: survives reopen / cache rebuild
+    if (conv.isEmpty) return;
+    final myUid = _myUid ?? '';
+    final convKey = conv.startsWith('dm_') ? '1:${dmPeer(conv, myUid) ?? conv}' : 'g:$conv';
+    // Re-emit as a {t:'del'} control so an OPEN thread tombstones it live via its
+    // existing _applyDelete path (mine=false → applies, like a peer's live delete).
+    _incoming.add(HubEvent(convKey, myUid, myUid, false, 'del_$target',
+        jsonEncode({'t': 'del', 'target': target}),
+        DateTime.now().millisecondsSinceEpoch ~/ 1000));
+  }
+
+  /// Drain redactions queued by the background FCM isolate into the account-scoped
+  /// DeletedStore. Idempotent; clears the queue when done. Called on app start +
+  /// every reconnect, so a delete received while backgrounded lands immediately on
+  /// the next foreground — no manual sync needed.
+  Future<void> drainPendingDeletes() async {
+    final raw = await DiskCache.readGlobal(pendingDeletesKey);
+    if (raw == null || raw.isEmpty) return;
+    List<dynamic> list;
+    try { list = jsonDecode(raw) as List; } catch (_) { list = const []; }
+    if (list.isEmpty) { await DiskCache.deleteGlobal(pendingDeletesKey); return; }
+    for (final e in list) {
+      final s = e.toString();
+      final i = s.indexOf('\t');
+      await applyRemoteDelete(i >= 0 ? s.substring(i + 1) : s,
+          conv: i >= 0 ? s.substring(0, i) : '');
+    }
+    await DiskCache.deleteGlobal(pendingDeletesKey);
   }
 
   // A SOFT-DELETE/Undo from one of MY OTHER devices. Re-emit it as a {t:'hide'}

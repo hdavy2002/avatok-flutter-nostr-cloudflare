@@ -68,6 +68,12 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     // wake the device immediately, exactly like calls.
     return { highPriority: true, data: { type: "message", fromName: msg.fromName ?? "AvaTOK" } };
   }
+  if (msg.kind === "del") {
+    // Delete-for-everyone: silent (no banner) but HIGH priority so it punches
+    // through Doze and the device redacts the message in realtime. The app reads
+    // `target` (the message client_id) + `conv` in its FCM handler.
+    return { highPriority: true, data: { type: "del", conv: msg.conv ?? "", target: msg.target ?? "" } };
+  }
   // relay-event (from the relay's onEventSaved hook). "from" is reserved by FCM.
   const type = msg.event_kind === 25050 ? "call" : "message";
   // Both calls (25050) and DM gift-wraps (1059) are high priority so they punch
