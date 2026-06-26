@@ -4139,27 +4139,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         children: [
           _avaModeChip(),
           _translateChip(),
-          _toolChip(
-            tool: 'grammar',
-            icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
-            label: 'Fix grammar',
-            tint: Zine.blue,
-            onTap: _runFixGrammar,
-          ),
-          _toolChip(
-            tool: 'rewrite',
-            icon: PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
-            label: 'Rewrite',
-            tint: Zine.lime,
-            onTap: _runRewrite,
-          ),
-          _toolChip(
-            tool: 'reply_ideas',
-            icon: PhosphorIcons.lightbulb(PhosphorIconsStyle.bold),
-            label: 'Reply ideas',
-            tint: Zine.coral,
-            onTap: _runReplyIdeas,
-          ),
+          // The three separate writing chips (Fix grammar / Rewrite / Reply
+          // ideas) are consolidated into ONE "Help me write better" control that
+          // opens a menu — keeps the row to three clean controls.
+          _writeHelpChip(),
         ],
       ),
     );
@@ -4197,43 +4180,97 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       );
   }
 
-  /// A single icon-only chip. The label is exposed via a tooltip (long-press)
-  /// so the row stays compact and scannable. Shows a spinner in place of its
-  /// icon while it's the active job; the rest of the row is greyed meanwhile.
-  Widget _toolChip({
-    required String tool,
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    Color tint = Zine.card, // distinct fill so each tool is recognizable at a glance
-  }) {
-    final busy = _aiTool == tool;
+  /// Consolidated "Help me write better" control — replaces the separate Fix
+  /// grammar / Rewrite / Reply ideas chips. Tapping opens a menu of writing
+  /// actions, so the composer row stays clean (Ava · Translate · Write help).
+  Widget _writeHelpChip() {
+    const writeTools = {'grammar', 'rewrite', 'reply_ideas'};
+    final busy = _aiTool != null && writeTools.contains(_aiTool);
     final dimmed = _aiBusy && !busy;
     return Opacity(
-        opacity: dimmed ? 0.4 : 1,
-        child: Tooltip(
-          message: label,
-          child: GestureDetector(
-            onTap: _aiBusy ? null : onTap,
-            child: Container(
-              width: 48, height: 48,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: busy ? Zine.lime : tint,
-                shape: BoxShape.circle,
-                border: Zine.border,
-                boxShadow: Zine.shadowXs,
-              ),
-              child: busy
-                  ? const SizedBox(
-                      width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
-                    )
-                  : PhosphorIcon(icon, size: 23, color: Zine.ink),
-            ),
+      opacity: dimmed ? 0.4 : 1,
+      child: GestureDetector(
+        onTap: _aiBusy ? null : _openWriteHelp,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: busy ? Zine.lime : Zine.card,
+            borderRadius: BorderRadius.circular(100),
+            border: Zine.border,
+            boxShadow: Zine.shadowXs,
           ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            busy
+                ? const SizedBox(width: 18, height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
+                : PhosphorIcon(PhosphorIcons.magicWand(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+            const SizedBox(width: 8),
+            Text('Help me write better', style: ZineText.tag(size: 12.5, color: Zine.ink)),
+          ]),
         ),
-      );
+      ),
+    );
+  }
+
+  /// Menu for [_writeHelpChip]: Fix grammar, the rewrite tones (flattened so a
+  /// tone is one tap), and Reply ideas.
+  Future<void> _openWriteHelp() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Zine.paper,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(Zine.r)),
+          border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('HELP ME WRITE BETTER', style: ZineText.kicker()),
+          const SizedBox(height: 12),
+          _writeHelpRow(ctx, PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), Zine.blue,
+              'Fix grammar', 'Spelling & grammar, same meaning', 'grammar'),
+          _writeHelpRow(ctx, PhosphorIcons.smiley(PhosphorIconsStyle.bold), Zine.lime,
+              'Friendlier', 'Warmer, friendlier tone', 'friendly'),
+          _writeHelpRow(ctx, PhosphorIcons.briefcase(PhosphorIconsStyle.bold), Zine.mint,
+              'More formal', 'Formal and professional', 'formal'),
+          _writeHelpRow(ctx, PhosphorIcons.scissors(PhosphorIconsStyle.bold), Zine.lilac,
+              'Shorter & clearer', 'Trim it down, keep the point', 'short'),
+          _writeHelpRow(ctx, PhosphorIcons.lightbulb(PhosphorIconsStyle.bold), Zine.coral,
+              'Reply ideas', 'Suggest replies to the last message', 'reply_ideas'),
+        ])),
+      ),
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case 'grammar': _runFixGrammar(); break;
+      case 'reply_ideas': _runReplyIdeas(); break;
+      case 'friendly': _runRewriteStyle('Friendlier', 'warmer and friendlier'); break;
+      case 'formal': _runRewriteStyle('More formal', 'more formal and professional'); break;
+      case 'short': _runRewriteStyle('Shorter & clearer', 'shorter, clearer and more concise'); break;
+    }
+  }
+
+  Widget _writeHelpRow(BuildContext ctx, IconData icon, Color accent, String title, String subtitle, String action) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ZinePressable(
+        onTap: () => Navigator.pop(ctx, action),
+        radius: BorderRadius.circular(Zine.rSm),
+        boxShadow: Zine.shadowXs,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(children: [
+          ZineIconBadge(icon: icon, color: accent, size: 32),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: ZineText.value(size: 15)),
+            const SizedBox(height: 2),
+            Text(subtitle, style: ZineText.sub(size: 12)),
+          ])),
+          PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+        ]),
+      ),
+    );
   }
 
   /// Translate chip — split into two tap zones: the left runs a translation
@@ -4421,13 +4458,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (out != null) _replaceComposer(out);
   }
 
-  Future<void> _runRewrite() async {
+  /// Rewrite the draft in a fixed [style] (called from the write-help menu).
+  Future<void> _runRewriteStyle(String label, String style) async {
     final text = _ctrl.text.trim();
-    if (text.isEmpty) { _toolHint('Type a draft first, then tap Rewrite'); return; }
-    final tone = await _pickRewriteTone();
-    if (tone == null) return;
+    if (text.isEmpty) { _toolHint('Type a draft first, then pick a style'); return; }
     final out = await _runAiTool('rewrite',
-        () => ComposerAi.rewrite(text, tone.style), props: {'tone': tone.label});
+        () => ComposerAi.rewrite(text, style), props: {'tone': label});
     if (out != null) _replaceComposer(out);
   }
 
@@ -4503,34 +4539,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } catch (_) {/* preference best-effort */}
     // Translate straight away with the new choice — one tap less.
     await _runTranslate();
-  }
-
-  Future<ComposerTone?> _pickRewriteTone() {
-    return showModalBottomSheet<ComposerTone>(
-      context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            child: Row(children: [
-              PhosphorIcon(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold),
-                  size: 20, color: Zine.ink),
-              const SizedBox(width: 10),
-              Text('Rewrite as…', style: ZineText.cardTitle(size: 18)),
-            ]),
-          ),
-          for (final t in ComposerAi.tones)
-            ListTile(
-              title: Text(t.label, style: ZineText.value(size: 16)),
-              onTap: () => Navigator.pop(ctx, t),
-            ),
-          const SizedBox(height: 8),
-        ]),
-      ),
-    );
   }
 
   void _showReplyIdeas(List<String> ideas) {
