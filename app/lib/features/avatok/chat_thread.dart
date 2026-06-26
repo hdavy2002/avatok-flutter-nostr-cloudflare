@@ -198,6 +198,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _peerOnline = false;
   bool _sharePresence = true;
   Timer? _onlineClear;
+  Timer? _onlineHeartbeat;           // re-announce "online" every 20s while open
+  int _peerLastSeen = 0;             // unix seconds; 0 = unknown
+  int _lastSeenPersistTs = 0;        // throttle last-seen disk writes
+  String? _presenceMe;               // the label we announce as (ignore our echo)
   Map<String, String>? _pinned; // {id, text}
   bool _searchMode = false;
   String _searchQuery = '';
@@ -327,10 +331,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _dm!.messages.listen(_onDm);
     _dm!.sendStatus.listen(_onSendStatus);
     _dm!.start();
+    _presenceMe = id.shortNpub;
     _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, peerHex), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
     _presence!.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     if (_sharePresence) _presence!.sendOnline();
+    _startPresenceHeartbeat();
+    _loadLastSeen();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
     _loadGuardian();
@@ -398,8 +405,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _gdm = AvaGroupDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, group: g);
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
+    _presenceMe = id.shortNpub;
     _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortNpub)..connect();
     _presence!.events.listen(_onPresence);
+    _startPresenceHeartbeat();
     _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
     _loadGuardian();
@@ -428,6 +437,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _onPresence(Map<String, dynamic> e) {
     if (!mounted) return;
+    // Ignore frames the room echoes back to us — otherwise our OWN online/typing
+    // frames would mark the PEER online/typing (a cause of the false "online" in
+    // pic2). Compare against the exact label we announce as (_presenceMe), not
+    // _myName (which later becomes the display name).
+    if (_presenceMe != null && e['who']?.toString() == _presenceMe) return;
+    // Peer explicitly left/backgrounded → flip to "last seen" immediately rather
+    // than waiting out the 35s online window.
+    if (e['type'] == 'offline') {
+      final ts = (e['ts'] as num?)?.toInt() ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+      _onlineClear?.cancel();
+      if (_convKey != null) LastSeenStore().set(_convKey!, '$ts');
+      setState(() { _peerOnline = false; _peerTyping = false; _peerLastSeen = ts; });
+      return;
+    }
     _markPeerOnline();
     if (e['type'] == 'typing') {
       setState(() { _peerTyping = e['on'] == true; _typingWho = e['who']?.toString(); });
@@ -489,9 +512,49 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   void _markPeerOnline() {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    _peerLastSeen = now;
+    // Persist last-seen (throttled) so reopening the thread can show it before
+    // any live frame arrives.
+    if (_convKey != null && now - _lastSeenPersistTs >= 15) {
+      _lastSeenPersistTs = now;
+      LastSeenStore().set(_convKey!, '$now');
+    }
     if (!_peerOnline) setState(() => _peerOnline = true);
     _onlineClear?.cancel();
     _onlineClear = Timer(const Duration(seconds: 35), () { if (mounted) setState(() => _peerOnline = false); });
+  }
+
+  /// Keep "online" truthful: re-announce every 20s while the thread is open so a
+  /// peer who's actually here never lapses out of the 35s window, and a peer who
+  /// left stops showing "online" within ~35s. Rides the existing Cloudflare room
+  /// WS — no per-user DO wake, and nothing is sent once the thread is closed.
+  void _startPresenceHeartbeat() {
+    _onlineHeartbeat?.cancel();
+    _onlineHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted && _sharePresence) _presence?.sendOnline();
+    });
+  }
+
+  Future<void> _loadLastSeen() async {
+    final key = _convKey;
+    if (key == null) return;
+    final v = (await LastSeenStore().load())[key];
+    final ts = int.tryParse(v ?? '') ?? 0;
+    if (ts > 0 && mounted && _peerLastSeen == 0) setState(() => _peerLastSeen = ts);
+  }
+
+  /// Human "last seen <time>" label from the tracked unix-seconds timestamp.
+  String _relLastSeen() {
+    if (_peerLastSeen <= 0) return 'tap for contact info';
+    final dt = DateTime.fromMillisecondsSinceEpoch(_peerLastSeen * 1000);
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'last seen just now';
+    if (diff.inMinutes < 60) return 'last seen ${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return 'last seen ${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'last seen yesterday';
+    if (diff.inDays < 7) return 'last seen ${diff.inDays}d ago';
+    return 'last seen ${dt.day}/${dt.month}/${dt.year}';
   }
 
   void _onTyping() {
@@ -846,6 +909,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     for (final s in _live.values) {
       s.dispose();
     }
+    if (_sharePresence) {
+      try { _presence?.sendOffline(DateTime.now().millisecondsSinceEpoch ~/ 1000); } catch (_) { /* best-effort */ }
+    }
+    _onlineHeartbeat?.cancel();
     _presence?.dispose();
     _typingClear?.cancel();
     _myTypingOff?.cancel();
@@ -3709,7 +3776,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                           (_peerTyping
                               ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'typing…')
                               : (c.group ? '${c.members} members · tap to manage'
-                                  : (_peerOnline ? 'online' : 'tap for contact info'))).toUpperCase(),
+                                  : (_peerOnline ? 'online' : _relLastSeen()))).toUpperCase(),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ZineText.tag(size: 9,
                               color: (_peerTyping || _peerOnline)

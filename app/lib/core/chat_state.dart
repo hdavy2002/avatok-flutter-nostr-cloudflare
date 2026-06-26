@@ -273,6 +273,13 @@ class WallpaperStore extends _KvMapStore {
   WallpaperStore() : super('avatok_wallpaper');
 }
 
+/// Last time a peer was seen online (unix seconds, as string) per conversation —
+/// lets a 1:1 header show "last seen <time>" the moment a thread opens, before
+/// any live presence frame arrives.
+class LastSeenStore extends _KvMapStore {
+  LastSeenStore() : super('avatok_lastseen');
+}
+
 /// Starred (bookmarked) message ids.
 class StarStore {
   static const _key = 'avatok_stars';

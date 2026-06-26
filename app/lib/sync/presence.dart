@@ -46,6 +46,11 @@ class PresenceChannel {
   void sendDelivered(int ts) => _send({'type': 'delivered', 'ts': ts, 'who': me});
   void sendOnline() => _send({'type': 'online', 'who': me});
 
+  /// Announce we're leaving/backgrounding, carrying our last-seen timestamp so
+  /// peers flip to "last seen <time>" immediately instead of waiting out the
+  /// online window.
+  void sendOffline(int ts) => _send({'type': 'offline', 'ts': ts, 'who': me});
+
   /// High-frequency live-location tick (WhatsApp-style). Rides the ephemeral
   /// presence room — deliberately NOT the durable message log — so a moving
   /// sender doesn't append hundreds of GPS rows into the InboxDO per share.
