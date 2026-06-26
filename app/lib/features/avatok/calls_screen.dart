@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -21,11 +23,21 @@ class _CallsScreenState extends State<CallsScreen> {
   List<CallEntry> _calls = [];
   Map<String, String> _avatars = {}; // npub → photo URL (from contacts)
   bool _loaded = false;
+  StreamSubscription<void>? _changeSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Repaint live when the log changes on THIS device or syncs from another one
+    // (live socket frame, FCM wake, or /sync snapshot) — all flow through here.
+    _changeSub = CallLogStore.changes.listen((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _changeSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

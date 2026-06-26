@@ -186,6 +186,13 @@ const String kOlxBase = '$kApiBase/olx';          // AvaOLX (Phase 5)
 const String kAgreementsBase = '$kApiBase/agreements'; // A1 compliance (Phase 3)
 const String kAgentBase = '$kApiBase/agent';      // AvaBrain agentic layer (Phase 7-8)
 
+/// Call-log multi-device sync (owner's own InboxDO). append on a new call; delete
+/// one entry; clear the whole history — each fans out live to the owner's other
+/// devices and wakes asleep ones (delete/clear) via FCM. (Clerk JWT)
+const String kCallLogAppendUrl = '$kApiBase/call-log/append';
+const String kCallLogDeleteUrl = '$kApiBase/call-log/delete';
+const String kCallLogClearUrl = '$kApiBase/call-log/clear';
+
 /// Right-to-erasure: server-side cascade delete of all the user's media + data. (NIP-98 + Clerk)
 const String kAccountDeleteUrl = 'https://$kSignalingHost/api/account/delete';
 

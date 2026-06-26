@@ -331,8 +331,21 @@ async function callOp(env: Env, uid: string, op: string, body: Record<string, un
 // Wake the owner's OTHER (possibly sleeping) devices so a delete/clear applies in
 // realtime instead of only on their next manual open. Silent data push; the app's
 // FCM handler queues it and applies on foreground (no banner).
-async function wakeOwnDevices(env: Env, uid: string, data: { kind: "call_del"; entry_id: string } | { kind: "call_clear" }): Promise<void> {
-  try { await env.Q_PUSH.send({ ...data, to: uid }); } catch { /* best-effort; /sync still reconciles */ }
+async function wakeOwnDevices(env: Env, uid: string, data: { kind: "call_del"; entry_id: string } | { kind: "call_clear" }): Promise<boolean> {
+  try { await env.Q_PUSH.send({ ...data, to: uid }); return true; } catch { return false; /* /sync still reconciles */ }
+}
+
+// Rich telemetry so we have eyes on the multi-device call-log fan-out: did the
+// change reach the user's other devices LIVE (a socket was open) and/or via an FCM
+// WAKE (asleep devices)? `account_id`/`uid` make it pullable per user, alongside
+// the standard worker tags used across the codebase.
+function trackCallLog(env: Env, uid: string, op: "append" | "delete" | "clear", props: Record<string, unknown>): void {
+  try {
+    void env.Q_ANALYTICS?.send({
+      event: "call_log_sync", uid, ts: Date.now(),
+      props: { op, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true, ...props },
+    });
+  } catch { /* telemetry is best-effort, never blocks the op */ }
 }
 
 // ---- POST /api/call-log/append  { entry_id, name, seed, video, dir, ts } -----
@@ -341,13 +354,14 @@ export async function callLogAppend(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   if (!b.entry_id) return json({ error: "entry_id required" }, 400);
-  await callOp(env, ctx.uid, "append", {
+  const r = await callOp(env, ctx.uid, "append", {
     entry_id: String(b.entry_id), name: b.name == null ? "" : String(b.name),
     seed: b.seed == null ? "" : String(b.seed), video: b.video === true,
     dir: String(b.dir ?? "outgoing"), ts: Number(b.ts) || 0,
   });
   // A new entry is not urgent for asleep devices (it shows on their next open/sync),
   // so no FCM wake here — only deletes/clears wake, per the product requirement.
+  trackCallLog(env, ctx.uid, "append", { live: r.live, woke_devices: false, video: b.video === true, dir: String(b.dir ?? "outgoing") });
   return json({ ok: true });
 }
 
@@ -358,8 +372,9 @@ export async function callLogDelete(req: Request, env: Env): Promise<Response> {
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   if (!b.entry_id) return json({ error: "entry_id required" }, 400);
   const entryId = String(b.entry_id);
-  await callOp(env, ctx.uid, "delete", { entry_id: entryId });
-  await wakeOwnDevices(env, ctx.uid, { kind: "call_del", entry_id: entryId });
+  const r = await callOp(env, ctx.uid, "delete", { entry_id: entryId });
+  const woke = await wakeOwnDevices(env, ctx.uid, { kind: "call_del", entry_id: entryId });
+  trackCallLog(env, ctx.uid, "delete", { live: r.live, woke_devices: woke, entry_id: entryId });
   return json({ ok: true });
 }
 
@@ -367,8 +382,9 @@ export async function callLogDelete(req: Request, env: Env): Promise<Response> {
 export async function callLogClear(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  await callOp(env, ctx.uid, "clear", {});
-  await wakeOwnDevices(env, ctx.uid, { kind: "call_clear" });
+  const r = await callOp(env, ctx.uid, "clear", {});
+  const woke = await wakeOwnDevices(env, ctx.uid, { kind: "call_clear" });
+  trackCallLog(env, ctx.uid, "clear", { live: r.live, woke_devices: woke });
   return json({ ok: true });
 }
 

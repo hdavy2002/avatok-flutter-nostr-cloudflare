@@ -74,7 +74,25 @@ export class InboxDO {
          conv TEXT PRIMARY KEY,
          read_ts INTEGER NOT NULL DEFAULT 0,
          updated_at INTEGER
-       );`,
+       );
+       -- Per-user CALL LOG (Cloudflare-native, multi-device). The call history is
+       -- the OWNER's own state — it lives in their InboxDO so every device on the
+       -- account (Mac/iPhone/Android) shares ONE history and a delete/clear on any
+       -- device syncs to the rest (live frame to open sockets + FCM wake for asleep
+       -- devices + full snapshot on the next /sync). entry_id is a client UUID =
+       -- the cross-device identity for per-row delete. deleted=1 is a tombstone so a
+       -- late echo can't resurrect a removed row; tombstones are pruned opportunistically.
+       CREATE TABLE IF NOT EXISTS call_log (
+         entry_id TEXT PRIMARY KEY,
+         name TEXT,
+         seed TEXT,
+         video INTEGER NOT NULL DEFAULT 0,
+         dir TEXT NOT NULL DEFAULT 'outgoing',
+         ts INTEGER NOT NULL DEFAULT 0,
+         deleted INTEGER NOT NULL DEFAULT 0,
+         updated_at INTEGER
+       );
+       CREATE INDEX IF NOT EXISTS idx_call_ts ON call_log(ts);`,
     );
     // Additive migration for the Ava visibility scope. Guarded: on a fresh DO
     // the column is created by the (extended) CREATE above's absence — SQLite has
@@ -139,6 +157,11 @@ export class InboxDO {
     if (req.headers.get("Upgrade") === "websocket") return this.accept();
     const url = new URL(req.url);
     try {
+      // Call-log ops MUST be matched before "/append" — "/call/append" also ends
+      // with "/append" and would otherwise hit the message-append path.
+      if (url.pathname.endsWith("/call/append")) return this.callAppend(await req.json());
+      if (url.pathname.endsWith("/call/delete")) return this.callDelete(await req.json());
+      if (url.pathname.endsWith("/call/clear")) return this.callClear();
       if (url.pathname.endsWith("/append")) return this.append(await req.json());
       if (url.pathname.endsWith("/sync")) {
         return new Response(JSON.stringify(this.syncPayload(Number(url.searchParams.get("cursor") || 0))), {
@@ -173,6 +196,7 @@ export class InboxDO {
         this.sql.exec("DELETE FROM receipts");
         this.sql.exec("DELETE FROM conv_meta");
         this.sql.exec("DELETE FROM read_state");
+        try { this.sql.exec("DELETE FROM call_log"); } catch { /* table may predate this migration */ }
         return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
       }
     } catch (e: any) {
@@ -269,7 +293,7 @@ export class InboxDO {
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
 
-  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[] } {
+  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[] } {
     const messages = this.sql.exec(
       `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden
        FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`,
@@ -280,7 +304,16 @@ export class InboxDO {
     // OWNER read high-water per conv — lets a fresh client restore its unread
     // state instead of recounting the whole re-synced backlog as new.
     const reads = this.sql.exec(`SELECT conv, read_ts FROM read_state`).toArray();
-    return { type: "sync", messages, receipts, convs, reads };
+    // Authoritative call-log snapshot (live rows + tombstones). The client merges:
+    // adds live rows it's missing, removes any it holds that are tombstoned here.
+    // Small + capped, so a full snapshot every sync is cheap (no separate cursor).
+    let calls: unknown[] = [];
+    try {
+      calls = this.sql.exec(
+        `SELECT entry_id, name, seed, video, dir, ts, deleted FROM call_log ORDER BY ts DESC LIMIT 200`,
+      ).toArray();
+    } catch { /* table may predate this migration on an old DO */ }
+    return { type: "sync", messages, receipts, convs, reads, calls };
   }
 
   // Owner marks a conversation read up to `read_ts` (unix seconds). Monotonic —
@@ -310,6 +343,69 @@ export class InboxDO {
     const hidden = b.hidden ? 1 : 0;
     this.sql.exec(`UPDATE messages SET hidden=?1 WHERE conv=?2 AND client_id=?3`, hidden, conv, target);
     const live = this.broadcast(JSON.stringify({ type: "hide", conv, target, hidden: !!b.hidden }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // ---- call log (owner multi-device) -----------------------------------------
+  // Tombstones older than this are pruned opportunistically on the next write, so
+  // the table can't grow without bound after repeated deletes/clears.
+  private static readonly CALL_TOMBSTONE_TTL_MS = 30 * DAY_MS;
+
+  private pruneCallTombstones(): void {
+    try {
+      this.sql.exec(
+        `DELETE FROM call_log WHERE deleted=1 AND updated_at IS NOT NULL AND updated_at < ?1`,
+        Date.now() - InboxDO.CALL_TOMBSTONE_TTL_MS,
+      );
+    } catch { /* best-effort */ }
+  }
+
+  // A new call entry, recorded by whichever device placed/received the call. INSERT
+  // OR REPLACE keeps it idempotent on the shared entry_id (the same row re-synced
+  // or re-pushed never duplicates), and un-tombstones nothing because a deleted id
+  // is never re-appended. Broadcasts {type:'call'} to the owner's OTHER open sockets.
+  private callAppend(b: { entry_id?: string; name?: string; seed?: string; video?: boolean; dir?: string; ts?: number }): Response {
+    const id = String(b.entry_id ?? "").trim();
+    if (!id) return new Response(JSON.stringify({ ok: false, error: "entry_id required" }), { headers: { "content-type": "application/json" } });
+    // If this id was already deleted on another device, honor the tombstone — don't
+    // resurrect it (the owner removed it deliberately). Idempotent re-append is a no-op.
+    const existing = this.sql.exec(`SELECT deleted FROM call_log WHERE entry_id=?1`, id).toArray();
+    if (existing.length && Number((existing[0] as any).deleted) === 1) {
+      return new Response(JSON.stringify({ ok: true, tombstoned: true, live: false }), { headers: { "content-type": "application/json" } });
+    }
+    this.sql.exec(
+      `INSERT INTO call_log (entry_id, name, seed, video, dir, ts, deleted, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)
+       ON CONFLICT(entry_id) DO UPDATE SET name=?2, seed=?3, video=?4, dir=?5, ts=?6, updated_at=?7`,
+      id, b.name ?? "", b.seed ?? "", b.video ? 1 : 0, String(b.dir ?? "outgoing"), Math.floor(Number(b.ts) || 0), Date.now(),
+    );
+    const live = this.broadcast(JSON.stringify({
+      type: "call", entry_id: id, name: b.name ?? "", seed: b.seed ?? "",
+      video: !!b.video, dir: String(b.dir ?? "outgoing"), ts: Math.floor(Number(b.ts) || 0),
+    }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // Owner deletes one call entry on any device → tombstone + broadcast {type:'call_del'}.
+  private callDelete(b: { entry_id?: string }): Response {
+    const id = String(b.entry_id ?? "").trim();
+    if (!id) return new Response(JSON.stringify({ ok: false, error: "entry_id required" }), { headers: { "content-type": "application/json" } });
+    this.sql.exec(
+      `INSERT INTO call_log (entry_id, video, dir, ts, deleted, updated_at)
+         VALUES (?1, 0, 'outgoing', 0, 1, ?2)
+       ON CONFLICT(entry_id) DO UPDATE SET deleted=1, updated_at=?2`,
+      id, Date.now(),
+    );
+    this.pruneCallTombstones();
+    const live = this.broadcast(JSON.stringify({ type: "call_del", entry_id: id }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // Owner clears the WHOLE history on any device. Drop every row (the snapshot the
+  // other devices pull on /sync is then empty) and broadcast {type:'call_clear'}.
+  private callClear(): Response {
+    this.sql.exec(`DELETE FROM call_log`);
+    const live = this.broadcast(JSON.stringify({ type: "call_clear" }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
 
