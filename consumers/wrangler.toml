@@ -70,6 +70,13 @@ binding = "AI"
 binding = "VECTOR_INDEX"
 index_name = "avatok-semantic"
 
+# AI Search — sharded per-user memory/file index. The account-deletion cascade
+# deletes a user's docs from their shard(s) by item id (tracked in DB_META
+# ava_search_items). See Specs/PROPOSAL-AI-SEARCH-SHARDING.md.
+[[ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "default"
+
 # Analytics Engine — operational metrics (AI scan cost/latency, push success, cron).
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
@@ -266,6 +273,10 @@ binding = "AI"
 [[env.staging.vectorize]]
 binding = "VECTOR_INDEX"
 index_name = "avatok-semantic"
+
+[[env.staging.ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "default"
 
 [[env.staging.analytics_engine_datasets]]
 binding = "ANALYTICS"

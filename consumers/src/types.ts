@@ -17,6 +17,7 @@ export interface Env {
   INBOX?: DurableObjectNamespace; // cross-script → avatok-api InboxDO (large-group fanout)
   WALLET_DO?: DurableObjectNamespace; // cross-script → avatok-api WalletDO (nightly recon reads, Phase 2)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
+  AI_SEARCH?: any;                    // sharded per-user AI Search (delete cascade per item id)
   ANALYTICS?: AnalyticsEngineDataset; // operational metrics (writeDataPoint)
   FCM_PROJECT: string;
   BRAIN_EXTRACT_MODEL?: string;

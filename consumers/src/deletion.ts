@@ -3,8 +3,8 @@
 // BEFORE deleting the rows that reference them, then wipe 15 stores:
 //
 //   DB_BRAIN → DB_WALLET → DB_RELAY → DB_MEDIA → R2 blobs → R2 verification
-//   → R2 agent-audio → DB_MODERATION → DB_META → Vectorize → KV → DOs → Clerk
-//   → PostHog → Stripe
+//   → R2 agent-audio → DB_MODERATION → DB_META → Vectorize → AI Search → KV
+//   → DOs → Clerk → PostHog → Stripe
 //
 // Stores not yet provisioned (wallet, agent-audio, stripe) are guarded and skipped
 // cleanly, so the cascade is correct now and stays correct as later phases add them.
@@ -202,6 +202,37 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   // 10. Vectorize.
   if (env.VECTOR_INDEX && vectorIds.length) {
     try { for (let i = 0; i < vectorIds.length; i += 1000) await env.VECTOR_INDEX.deleteByIds(vectorIds.slice(i, i + 1000)); done.push(`vectorize:${vectorIds.length}`); } catch { /* best-effort */ }
+  }
+
+  // 10b. AI Search shard docs — delete per item id (CF has no delete-by-folder).
+  //      ava_search_items records each doc's shard, so we group by shard and
+  //      delete by id without recomputing the hash. ava_search_shard_stats is
+  //      decremented for capacity telemetry. See PROPOSAL-AI-SEARCH-SHARDING.md.
+  if (env.AI_SEARCH) {
+    try {
+      const rows = await env.DB_META
+        .prepare("SELECT shard, item_id FROM ava_search_items WHERE uid=?1")
+        .bind(uid).all<{ shard: string; item_id: string }>();
+      const byShard = new Map<string, string[]>();
+      for (const r of (rows.results ?? []) as any[]) {
+        if (!byShard.has(r.shard)) byShard.set(r.shard, []);
+        byShard.get(r.shard)!.push(r.item_id);
+      }
+      let aiDeleted = 0;
+      for (const [shard, ids] of byShard) {
+        let inst: any = null;
+        try { inst = await (env.AI_SEARCH as any).get(shard); } catch { inst = null; }
+        if (!inst) continue;
+        for (const id of ids) { try { await inst.items.delete(id); aiDeleted++; } catch { /* keep going */ } }
+        try {
+          await env.DB_META
+            .prepare("UPDATE ava_search_shard_stats SET item_count=MAX(0,item_count-?2), updated_at=?3 WHERE shard=?1")
+            .bind(shard, ids.length, Date.now()).run();
+        } catch { /* best-effort */ }
+      }
+      try { await env.DB_META.prepare("DELETE FROM ava_search_items WHERE uid=?1").bind(uid).run(); } catch { /* best-effort */ }
+      done.push(`ai_search:${aiDeleted}`);
+    } catch { /* best-effort */ }
   }
 
   // 11. KV — verified cache + any per-user ephemeral keys.
