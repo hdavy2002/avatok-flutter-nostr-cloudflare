@@ -159,20 +159,25 @@ jobs:
 
       # Release APK — installable directly on a device for testing (an .aab
       # can't be sideloaded). Same release signing config as the bundle above.
-      # UNIVERSAL APK (was arm64-only): carries native libs (WebRTC/LiveKit) for
-      # ALL ABIs (arm64-v8a, armeabi-v7a, x86_64) so it installs on EVERY device,
-      # not just 64-bit ARM. arm64-only builds failed to install on 32-bit
-      # (armeabi-v7a) and x86 devices with "There was a problem parsing the
-      # package" (INSTALL_FAILED_NO_MATCHING_ABIS). Tradeoff is a bigger file
-      # (~200 MB) but a sideload that works everywhere. The .aab above stays
-      # per-ABI — Play still ships every device the right split.
-      # R8 code + resource shrinking is now ENABLED (no --no-shrink) so the test
-      # APK matches the Play artifact's shrinking and we measure the real shipped
-      # size. If the CI runner OOMs on R8, bump org.gradle.jvmargs in
-      # android/gradle.properties rather than re-adding --no-shrink.
-      - name: Build release APK (for testing)
+      # SPLIT-PER-ABI (was a universal fat APK): a universal APK packs native libs
+      # (WebRTC/LiveKit/onnxruntime/sherpa) for ALL THREE ABIs into one file, so
+      # ~2/3 of its ~200 MB is native code no single device can ever use. We now
+      # emit one APK PER ABI instead. Each per-ABI APK is ~80 MB (one copy of the
+      # native libs) instead of ~212 MB. We publish BOTH:
+      #   • avatok-call-arm64.apk   → arm64-v8a — virtually every modern phone
+      #   • avatok-call-armv7.apk   → armeabi-v7a — old/cheap 32-bit phones
+      # x86_64 is built by --split-per-abi but DELIBERATELY NOT published: it's
+      # emulator-only (~75 MB) and no real phone needs it. This keeps the
+      # "installs everywhere a real device exists" guarantee that the universal
+      # build was added for (INSTALL_FAILED_NO_MATCHING_ABIS on 32-bit) while
+      # cutting the download ~60%. The .aab above is unaffected — Play already
+      # ships each device the right per-ABI split.
+      # R8 code + resource shrinking stays ENABLED (no --no-shrink) so the test
+      # APKs match the Play artifact's shrinking. If the CI runner OOMs on R8,
+      # bump org.gradle.jvmargs in android/gradle.properties.
+      - name: Build release APKs (for testing, split per ABI)
         working-directory: app
-        run: flutter build apk --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
+        run: flutter build apk --release --split-per-abi --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
@@ -180,18 +185,24 @@ jobs:
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
 
-      - name: Stage .apk with a stable name
+      - name: Stage .apks with stable names
         run: |
           mkdir -p dist
           ls -la app/build/app/outputs/flutter-apk/
-          cp app/build/app/outputs/flutter-apk/app-release.apk dist/avatok-call.apk
-          echo "size:"; ls -lh dist/
+          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call-arm64.apk
+          cp app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/avatok-call-armv7.apk
+          # Back-compat alias: keep the old filename pointing at the arm64 build so
+          # any existing install link / QR keeps working (arm64 = ~all real phones).
+          cp dist/avatok-call-arm64.apk dist/avatok-call.apk
+          echo "sizes:"; ls -lh dist/
 
-      - name: Upload .apk artifact (testing)
+      - name: Upload .apk artifacts (testing)
         uses: actions/upload-artifact@v4
         with:
           name: avatok-call-apk
-          path: dist/avatok-call.apk
+          path: |
+            dist/avatok-call-arm64.apk
+            dist/avatok-call-armv7.apk
 
       - name: Publish to Release (stable link)
         uses: softprops/action-gh-release@v2
@@ -199,6 +210,8 @@ jobs:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
+            dist/avatok-call-arm64.apk
+            dist/avatok-call-armv7.apk
             dist/avatok-call.apk
             dist/avatok-call.aab
           fail_on_unmatched_files: false
@@ -206,7 +219,12 @@ jobs:
             Play Store Android App Bundle, built by CI from `app/`.
             Download `avatok-call.aab` and upload it in Play Console → pick a
             track (Internal testing / Production) → Create new release.
-            Download `avatok-call.apk` to sideload directly on a device for testing.
+
+            To sideload on a device for testing, grab the APK for its CPU:
+            • `avatok-call-arm64.apk`  — almost every modern phone (64-bit ARM)
+            • `avatok-call-armv7.apk`  — older / low-end 32-bit phones
+            `avatok-call.apk` is an alias of the arm64 build (back-compat). Each
+            per-ABI APK is ~80 MB vs the old ~212 MB universal build.
 
             Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
             (+ store/alias/key password) secrets are set; otherwise signed with
