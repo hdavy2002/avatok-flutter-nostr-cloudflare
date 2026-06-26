@@ -112,26 +112,19 @@ export function normalizeHandle(h: string): string {
   return (h || "").trim().toLowerCase().replace(/^@/, "");
 }
 
-// GET /api/handle/check?q=<handle>&uid=<caller?> — public. A handle owned by the
-// caller's own uid reads as available ("mine"); owned by anyone else → taken.
-export async function handleCheck(req: Request, env: Env): Promise<Response> {
-  const url = new URL(req.url);
-  const handle = normalizeHandle(url.searchParams.get("q") || "");
-  const uid = (url.searchParams.get("uid") || "").trim();
-  if (!HANDLE_RE.test(handle)) {
-    return json({ handle, valid: false, available: false, reason: "3–20 characters: letters, numbers or _, starting with a letter." });
-  }
-  const r = await metaSession(env).prepare("SELECT uid FROM users WHERE handle=?1").bind(handle).first<{ uid: string }>();
-  if (!r) return json({ handle, valid: true, available: true });
-  if (uid && r.uid === uid) return json({ handle, valid: true, available: true, mine: true });
-  return json({ handle, valid: true, available: false });
+// GET /api/handle/check — DEPRECATED. Handles are retired site-wide
+// (Specs/AVATOK-NUMBER-FEATURE-SPEC.md). The network identity is the AvaTOK number;
+// search is by number / phone (if public) / email. Kept so old clients get a clear
+// signal instead of a 404.
+export async function handleCheck(_req: Request, _env: Env): Promise<Response> {
+  return json({ deprecated: true, valid: false, available: false, reason: "Handles are retired. Use your AvaTOK number, phone, or email." }, 410);
 }
 
 export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as {
-    handle?: string; name?: string; email?: string; phone?: string;
+    name?: string; first_name?: string; last_name?: string; email?: string; phone?: string;
     account_kind?: string; avatar_url?: string; birth_year?: number; bio?: string;
   };
   // Optional self-description — AvaBrain learns from it. Capped + trimmed; an
@@ -144,49 +137,39 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
     if (!(y >= 1900 && y <= new Date().getFullYear() - 13)) return json({ error: "invalid_birth_year" }, 400);
     birthYear = y;
   }
-  const handle = normalizeHandle(b.handle || "") || null;
-  const name = (b.name || "").trim() || null;
+  // Handles are retired site-wide — names power the directory + contact card.
+  const firstName = b.first_name === undefined ? null : (String(b.first_name).trim().slice(0, 60) || null);
+  const lastName = b.last_name === undefined ? null : (String(b.last_name).trim().slice(0, 60) || null);
+  const assembled = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const name = ((b.name || "").trim() || assembled) || null;
   const avatarUrl = typeof b.avatar_url === "string" ? b.avatar_url.trim() : null;
   const email = (b.email || "").trim().toLowerCase();
   const emailHash = email ? await sha256Hex(email) : null;
   const phoneHash = b.phone ? await sha256Hex(normalizePhone(b.phone)) : null;
   const now = Date.now();
   const db = metaSession(env);
-  if (handle !== null) {
-    if (!HANDLE_RE.test(handle)) {
-      return json({ error: "invalid_handle", reason: "3–20 characters: letters, numbers or _, starting with a letter." }, 400);
-    }
-    // Owned by a DIFFERENT account → taken. (No keypair reclaim — uid IS the account.)
-    const taken = await db.prepare("SELECT uid FROM users WHERE handle=?1 AND uid<>?2").bind(handle, ctx.uid).first<{ uid: string }>();
-    if (taken) return json({ error: "handle_taken" }, 409);
-  }
-  // Save-time content validation (Nemotron): block an abusive name/handle/bio
-  // before it's persisted and shown in the directory.
+  // Save-time content validation (Nemotron): block an abusive name/bio before it's
+  // persisted and shown in the directory.
   const blocked = await guardWrite(req, env, ctx.uid, "profile", [
     { text: name, field: "name" },
-    { text: handle, field: "handle" },
+    { text: firstName, field: "first_name" },
+    { text: lastName, field: "last_name" },
     { text: bio, field: "bio" },
   ]);
   if (blocked) return blocked;
-  try {
-    await db.prepare(
-      `INSERT INTO users (uid, handle, display_name, avatar_url, email_hash, phone_hash, birth_year, bio, created_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?9,?8,?8)
-       ON CONFLICT(uid) DO UPDATE SET
-         handle=COALESCE(?2,handle), display_name=COALESCE(?3,display_name),
-         avatar_url=COALESCE(?4,avatar_url), email_hash=COALESCE(?5,email_hash),
-         phone_hash=COALESCE(?6,phone_hash), birth_year=COALESCE(?7,birth_year),
-         bio=COALESCE(?9,bio), updated_at=?8`,
-    ).bind(ctx.uid, handle, name, avatarUrl, emailHash, phoneHash, birthYear, now, bio).run();
-  } catch (e) {
-    if (String((e as Error)?.message || "").includes("UNIQUE")) return json({ error: "handle_taken" }, 409);
-    throw e;
-  }
+  await db.prepare(
+    `INSERT INTO users (uid, display_name, first_name, last_name, avatar_url, email_hash, phone_hash, birth_year, bio, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?10,?9,?9)
+     ON CONFLICT(uid) DO UPDATE SET
+       display_name=COALESCE(?2,display_name), first_name=COALESCE(?3,first_name), last_name=COALESCE(?4,last_name),
+       avatar_url=COALESCE(?5,avatar_url), email_hash=COALESCE(?6,email_hash),
+       phone_hash=COALESCE(?7,phone_hash), birth_year=COALESCE(?8,birth_year),
+       bio=COALESCE(?10,bio), updated_at=?9`,
+  ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio).run();
   // Feed a non-empty self-description to AvaBrain so Ava can personalise. Scoped
-  // 'private' (personal context, not a public directory fact); the brain consumer
-  // still honours the user's AvaBrain consent toggle before storing it.
+  // 'private'; the brain consumer still honours the user's AvaBrain consent toggle.
   if (bio) brainFact(env, ctx.uid, "profile_bio", "profile", { bio }, "private");
-  return json({ ok: true, profile: { uid: ctx.uid, handle, name, email: b.email || "", phone: b.phone || "" } });
+  return json({ ok: true, profile: { uid: ctx.uid, name, first_name: firstName, last_name: lastName, email: b.email || "", phone: b.phone || "" } });
 }
 
 // GET /api/me — restore endpoint. Authenticated by the Clerk JWT. Looks the
@@ -197,13 +180,16 @@ export async function me(req: Request, env: Env): Promise<Response> {
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
   const uid = clerk.clerkUserId;
   const prof = await metaSession(env).prepare(
-    "SELECT handle, display_name, avatar_url, birth_year, bio FROM users WHERE uid=?1",
-  ).bind(uid).first<{ handle: string | null; display_name: string | null; avatar_url: string | null; birth_year: number | null; bio: string | null }>();
+    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token FROM users WHERE uid=?1",
+  ).bind(uid).first<any>();
   if (!prof) return json({ found: false, clerk_enabled: true, uid });
   return json({
     found: true, clerk_enabled: true, uid,
-    handle: prof.handle ?? null, display_name: prof.display_name ?? null, avatar_url: prof.avatar_url ?? null,
-    birth_year: prof.birth_year ?? null, bio: prof.bio ?? null,
+    display_name: prof.display_name ?? null, first_name: prof.first_name ?? null, last_name: prof.last_name ?? null,
+    avatar_url: prof.avatar_url ?? null, birth_year: prof.birth_year ?? null, bio: prof.bio ?? null,
+    avatok_number: prof.avatok_number ?? null, avatok_number_display: prof.avatok_number_display ?? null,
+    phone_discoverable: !!prof.phone_discoverable, email_discoverable: prof.email_discoverable !== 0,
+    who_can_add: prof.who_can_add ?? "everyone", share_token: prof.share_token ?? null,
   });
 }
 
@@ -238,46 +224,49 @@ export async function vaultGet(req: Request, env: Env): Promise<Response> {
 }
 
 function profOut(r: any) {
-  return r ? { uid: r.uid, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url } : null;
+  return r ? { uid: r.uid, name: r.display_name, first_name: r.first_name ?? null, last_name: r.last_name ?? null, avatar_url: r.avatar_url, number: r.avatok_number_display ?? null } : null;
 }
 
-// Resolve a query (uid / @handle / email / phone) → the target's uid + profile.
+// Resolve a query → uid + profile. Handles are retired; the network keys are the
+// AvaTOK number (exact), the real phone (exact, only if the owner made it public),
+// and email (exact, only if the owner allows email discovery).
 export async function resolve(req: Request, env: Env): Promise<Response> {
   const q = (new URL(req.url).searchParams.get("q") || "").trim();
   if (!q) return json({ error: "q required" }, 400);
   const db = metaSession(env);
-  const fetchProf = (uid: string) => db.prepare("SELECT uid,handle,display_name,avatar_url FROM users WHERE uid=?1").bind(uid).first();
+  const fetchProf = (uid: string) => db.prepare("SELECT uid,display_name,first_name,last_name,avatar_url,avatok_number_display FROM users WHERE uid=?1").bind(uid).first();
 
   if (q.startsWith("user_")) return json({ uid: q, profile: profOut(await fetchProf(q)) });
   if (q.includes("@") && q.includes(".")) {
-    const r = await db.prepare("SELECT uid FROM users WHERE email_hash=?1 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(q.toLowerCase())).first<{ uid: string }>();
+    const r = await db.prepare("SELECT uid FROM users WHERE email_hash=?1 AND email_discoverable<>0 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(q.toLowerCase())).first<{ uid: string }>();
     if (!r) return json({ uid: null }, 404);
     return json({ uid: r.uid, profile: profOut(await fetchProf(r.uid)) });
   }
-  if (/[0-9]/.test(q) && q.replace(/[^0-9]/g, "").length >= 6) {
-    const r = await db.prepare("SELECT uid FROM users WHERE phone_hash=?1 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(normalizePhone(q))).first<{ uid: string }>();
-    if (r) return json({ uid: r.uid, profile: profOut(await fetchProf(r.uid)) });
+  const digits = q.replace(/[^0-9]/g, "");
+  if (digits.length >= 6) {
+    // 1) exact AvaTOK number (canonical E.164 digits)
+    const byNum = await db.prepare("SELECT uid FROM users WHERE avatok_number=?1 LIMIT 1").bind(digits).first<{ uid: string }>();
+    if (byNum) return json({ uid: byNum.uid, profile: profOut(await fetchProf(byNum.uid)) });
+    // 2) real phone, only if the owner made it discoverable
+    const byPhone = await db.prepare("SELECT uid FROM users WHERE phone_hash=?1 AND phone_discoverable<>0 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(normalizePhone(q))).first<{ uid: string }>();
+    if (byPhone) return json({ uid: byPhone.uid, profile: profOut(await fetchProf(byPhone.uid)) });
   }
-  const handle = q.toLowerCase().replace(/^@/, "");
-  const r = await db.prepare("SELECT uid FROM users WHERE handle=?1").bind(handle).first<{ uid: string }>();
-  if (!r) return json({ uid: null }, 404);
-  return json({ uid: r.uid, profile: profOut(await fetchProf(r.uid)) });
+  return json({ uid: null }, 404);
 }
 
-// Directory search by handle / display name (prefix LIKE; index-backed on handle).
+// People discovery by name / bio (prefix + substring LIKE). No handle. Users who
+// set "who can add me = nobody" are excluded from discovery.
 export async function search(req: Request, env: Env): Promise<Response> {
   const q = (new URL(req.url).searchParams.get("q") || "").trim().toLowerCase();
   if (q.length < 2) return json({ results: [] });
   const safe = q.replace(/[%_]/g, "");
-  const pre = safe + "%";          // prefix match for handle / display name
-  const sub = "%" + safe + "%";    // substring match for bio ("find that designer")
-  // People search now also matches BIO, so "designer", "photographer", etc. surface
-  // the right AvaTOK person even when it isn't in their name or handle.
+  const pre = safe + "%";
+  const sub = "%" + safe + "%";
   const rs = await metaSession(env).prepare(
-    `SELECT uid, handle, display_name, avatar_url, bio FROM users
-      WHERE handle LIKE ?1 OR lower(display_name) LIKE ?1 OR lower(bio) LIKE ?2 LIMIT 20`,
+    `SELECT uid, display_name, first_name, last_name, avatar_url, bio, avatok_number_display FROM users
+      WHERE who_can_add<>'nobody' AND (lower(display_name) LIKE ?1 OR lower(first_name) LIKE ?1 OR lower(last_name) LIKE ?1 OR lower(bio) LIKE ?2) LIMIT 20`,
   ).bind(pre, sub).all();
-  return json({ results: (rs.results ?? []).map((r: any) => ({ uid: r.uid, handle: r.handle, name: r.display_name, avatar_url: r.avatar_url, bio: r.bio ?? null })) });
+  return json({ results: (rs.results ?? []).map((r: any) => ({ uid: r.uid, name: r.display_name, first_name: r.first_name ?? null, last_name: r.last_name ?? null, avatar_url: r.avatar_url, number: r.avatok_number_display ?? null, bio: r.bio ?? null })) });
 }
 
 // ---- contacts: /api/contacts/sync /api/contacts/match (auth) /list ----

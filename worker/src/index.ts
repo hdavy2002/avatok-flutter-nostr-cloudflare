@@ -295,6 +295,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/number/assign" && req.method === "POST") return await num.assign(req, env);
       if (p === "/api/number/me" && req.method === "GET") return await num.me(req, env);
       if (p === "/api/number/release" && req.method === "POST") return await num.release(req, env);
+      if (p === "/api/number/share-card" && req.method === "POST") return await num.shareCardPut(req, env);
+      if (p === "/api/number/privacy" && req.method === "GET") return await num.privacyGet(req, env);
+      if (p === "/api/number/privacy" && req.method === "POST") return await num.privacySet(req, env);
+      if (p === "/api/add" && req.method === "GET") return await cached(req, ctx, () => num.addResolve(req, env), 30);
 
       // --- push / calls ---
       if (p === "/api/register" && req.method === "POST") return await api.register(req, env);

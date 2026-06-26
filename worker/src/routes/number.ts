@@ -154,6 +154,82 @@ export async function me(req: Request, env: Env): Promise<Response> {
   return json({ entitled: paid(tier), tier, number: r?.avatok_number ?? null, display: r?.avatok_number_display ?? null, feature: await featureOn(env) });
 }
 
+// POST /api/number/share-card — auth. The client (which holds the raw phone/email)
+// posts the card the user CHOSE to share when they open their QR / tap Share. We
+// persist it keyed by a stable, NON-EXPIRING share_token so the QR resolves
+// server-side. Paid users share their AvaTOK number; free users their real number.
+export async function shareCardPut(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const tier = await tierOf(env, ctx.uid);
+  const card = {
+    firstName: String(b.firstName || "").trim().slice(0, 60),
+    lastName: String(b.lastName || "").trim().slice(0, 60),
+    email: String(b.email || "").trim().slice(0, 160),
+    number: String(b.number || "").trim().slice(0, 40),
+    plan: paid(tier) ? "paid" : "free",
+  };
+  const token = crypto.randomUUID().replace(/-/g, "");
+  await env.DB_META.prepare(
+    `UPDATE users SET share_card=?2,
+       first_name=COALESCE(NULLIF(?3,''),first_name), last_name=COALESCE(NULLIF(?4,''),last_name),
+       share_token=COALESCE(share_token,?5), updated_at=?6 WHERE uid=?1`,
+  ).bind(ctx.uid, JSON.stringify(card), card.firstName, card.lastName, token, Date.now()).run();
+  const row = await metaSession(env).prepare("SELECT share_token FROM users WHERE uid=?1").bind(ctx.uid).first<{ share_token: string }>();
+  const t = row?.share_token ?? token;
+  analytics(env, "qr_shown", ctx.uid, { plan: card.plan });
+  return json({ ok: true, token: t, link: `https://avatok.ai/add?t=${t}` });
+}
+
+// GET /api/add?t=<token> — PUBLIC. Resolves a QR share token to the sharer's
+// contact card. Tokens are random + non-enumerable; respects who_can_add.
+export async function addResolve(req: Request, env: Env): Promise<Response> {
+  if (!(await featureOn(env))) return json({ error: "number_feature_off" }, 503);
+  const t = (new URL(req.url).searchParams.get("t") || "").replace(/[^a-f0-9]/gi, "").slice(0, 64);
+  if (!t) return json({ error: "bad_token" }, 400);
+  const r = await metaSession(env).prepare(
+    "SELECT uid, display_name, avatar_url, share_card, who_can_add FROM users WHERE share_token=?1",
+  ).bind(t).first<any>();
+  if (!r) return json({ error: "not_found" }, 404);
+  if (r.who_can_add === "nobody") return json({ error: "adds_disabled" }, 403);
+  let card: any = {};
+  try { card = r.share_card ? JSON.parse(r.share_card) : {}; } catch { /* malformed → empty */ }
+  const name = (r.display_name && String(r.display_name).trim()) || `${card.firstName || ""} ${card.lastName || ""}`.trim();
+  return json({ uid: r.uid, name, avatar_url: r.avatar_url ?? null, card });
+}
+
+// GET /api/number/privacy — auth. Current discoverability settings.
+export async function privacyGet(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const r = await metaSession(env).prepare("SELECT phone_discoverable, email_discoverable, who_can_add FROM users WHERE uid=?1").bind(ctx.uid).first<any>();
+  return json({
+    phone_discoverable: !!(r?.phone_discoverable),
+    email_discoverable: r ? r.email_discoverable !== 0 : true,
+    who_can_add: r?.who_can_add ?? "everyone",
+  });
+}
+
+// POST /api/number/privacy {phone_discoverable?, email_discoverable?, who_can_add?} — auth.
+export async function privacySet(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const who = ["everyone", "number_only", "nobody"].includes(b.who_can_add) ? b.who_can_add : null;
+  await env.DB_META.prepare(
+    `UPDATE users SET phone_discoverable=COALESCE(?2,phone_discoverable),
+       email_discoverable=COALESCE(?3,email_discoverable), who_can_add=COALESCE(?4,who_can_add), updated_at=?5 WHERE uid=?1`,
+  ).bind(
+    ctx.uid,
+    typeof b.phone_discoverable === "boolean" ? (b.phone_discoverable ? 1 : 0) : null,
+    typeof b.email_discoverable === "boolean" ? (b.email_discoverable ? 1 : 0) : null,
+    who, Date.now(),
+  ).run();
+  analytics(env, "discoverability_changed", ctx.uid, { who_can_add: who, phone: b.phone_discoverable, email: b.email_discoverable });
+  return json({ ok: true });
+}
+
 // POST /api/number/release — voluntarily give up the current number.
 export async function release(req: Request, env: Env): Promise<Response> {
   if (!(await featureOn(env))) return json({ error: "number_feature_off" }, 503);
