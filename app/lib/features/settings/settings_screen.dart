@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../auth/clerk_client.dart';
+import '../avatok/number_settings_screen.dart';
+import '../avatok/privacy_screen.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_ai_store.dart';
 import '../../core/brain_consent.dart';
@@ -260,6 +262,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // AvaBrain routes to its full control room; Backup / Danger zone and every
         // pluggable registry section open as detail pages too (owner 2026-06-19).
         const SizedBox(height: 4),
+        _tile(PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue, 'Your number',
+            'Get a number that represents you, keep your real one private', () => _push(const NumberSettingsScreen())),
+        _tile(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.mint, 'Privacy & discoverability',
+            'Choose how people can find and add you', () => _push(const PrivacyScreen())),
         _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
             'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         // Pluggable sections (Phase 0 contract): feature phases register a
