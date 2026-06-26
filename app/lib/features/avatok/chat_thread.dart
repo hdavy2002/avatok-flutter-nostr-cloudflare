@@ -4039,12 +4039,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Centered, evenly-spaced quick tools. Each tool gets a distinct pastel
     // fill so it's recognizable at a glance. Wrap keeps them centered and never
     // overflows on narrow screens (falls to a second centered row if needed).
+    // Spread the quick-tools evenly across the FULL width of the composer with
+    // bigger, better-separated touch targets — they used to be tiny and bunched
+    // in the centre with empty space either side. spaceEvenly gives equal gutters
+    // left, right and between, so the row breathes and each chip is easy to hit.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
       child: Wrap(
-        alignment: WrapAlignment.center,
+        alignment: WrapAlignment.spaceEvenly,
         crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 12,
         runSpacing: 8,
         children: [
           _avaModeChip(),
@@ -4089,7 +4092,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             _composerFocus.requestFocus();
           },
           child: Container(
-            width: 34, height: 34,
+            width: 42, height: 42,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _avaMode ? Zine.lilac : Zine.card,
@@ -4100,7 +4103,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: PhosphorIcon(
                 PhosphorIcons.sparkle(
                     _avaMode ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
-                size: 16,
+                size: 19,
                 color: _avaMode ? Zine.blueInk : Zine.ink),
           ),
         ),
@@ -4126,7 +4129,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           child: GestureDetector(
             onTap: _aiBusy ? null : onTap,
             child: Container(
-              width: 34, height: 34,
+              width: 42, height: 42,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: busy ? Zine.lime : tint,
@@ -4136,10 +4139,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ),
               child: busy
                   ? const SizedBox(
-                      width: 14, height: 14,
+                      width: 16, height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
                     )
-                  : PhosphorIcon(icon, size: 16, color: Zine.ink),
+                  : PhosphorIcon(icon, size: 19, color: Zine.ink),
             ),
           ),
         ),
@@ -4167,21 +4170,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               child: GestureDetector(
                 onTap: _aiBusy ? null : _runTranslate,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(11, 8, 9, 8),
+                  padding: const EdgeInsets.fromLTRB(13, 11, 10, 11),
                   child: busy
                       ? const SizedBox(
-                          width: 14, height: 14,
+                          width: 16, height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink),
                         )
                       : PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
-                          size: 16, color: Zine.ink),
+                          size: 19, color: Zine.ink),
                 ),
               ),
             ),
             GestureDetector(
               onTap: _aiBusy ? null : _pickTransLang,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(8, 6, 11, 6),
+                padding: const EdgeInsets.fromLTRB(9, 9, 12, 9),
                 decoration: const BoxDecoration(
                   border: Border(left: BorderSide(color: Zine.ink, width: Zine.bw)),
                 ),
@@ -4206,9 +4209,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_aiBusy) return null;
     setState(() { _aiBusy = true; _aiTool = tool; });
     final t0 = DateTime.now().millisecondsSinceEpoch;
+    var retried = false;
     Analytics.capture('composer_ai_used', <String, Object>{
       'tool': tool, 'is_group': _isGroup, ...props,
     });
+    // Rich latency breakdown so we can answer "why was translate/suggest slow?":
+    // client_ms (round-trip the user felt), server_ms/gen_ms/setup_ms (where the
+    // server spent it), tool_calls (agentic round-trips — should be 0 for these),
+    // whether we retried, and the network type. Attached to ok AND failure events.
+    Map<String, Object> timing(AvaAnswer a) => <String, Object>{
+          'total_ms': DateTime.now().millisecondsSinceEpoch - t0,
+          'retried': retried,
+          if (a.clientMs != null) 'client_ms': a.clientMs!,
+          if (a.serverMs != null) 'server_ms': a.serverMs!,
+          if (a.genMs != null) 'gen_ms': a.genMs!,
+          if (a.setupMs != null) 'setup_ms': a.setupMs!,
+          if (a.toolCalls != null) 'tool_calls': a.toolCalls!,
+        };
     try {
       // One silent auto-retry on a TRANSIENT failure (a dropped request or a 5xx)
       // so a single network blip doesn't make the user re-tap the chip. A real
@@ -4217,6 +4234,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final transient1 = a.blocked &&
           (a.reason == 'network' || (a.reason?.startsWith('http_5') ?? false));
       if (transient1) {
+        retried = true;
         await Future.delayed(const Duration(milliseconds: 350));
         if (!mounted) return null;
         a = await call();
@@ -4236,20 +4254,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           msg = 'Ava couldn’t help with that right now.';
         }
         _toolHint(msg);
-        Analytics.capture('composer_ai_blocked',
-            <String, Object>{'tool': tool, 'reason': a.reason ?? 'unknown'});
+        Analytics.capture('composer_ai_blocked', <String, Object>{
+          'tool': tool, 'reason': a.reason ?? 'unknown', ...timing(a),
+        });
         return null;
       }
       final out = a.answer.trim();
-      if (out.isEmpty) { _toolHint('Ava returned nothing — try again.'); return null; }
+      if (out.isEmpty) {
+        _toolHint('Ava returned nothing — try again.');
+        Analytics.capture('composer_ai_empty', <String, Object>{'tool': tool, ...timing(a)});
+        return null;
+      }
       Analytics.capture('composer_ai_ok', <String, Object>{
-        'tool': tool, 'tier': a.tier ?? 'unknown',
-        'ms': DateTime.now().millisecondsSinceEpoch - t0,
+        'tool': tool, 'tier': a.tier ?? 'unknown', ...timing(a),
       });
       return out;
     } catch (e) {
       if (mounted) _toolHint('Something went wrong. Check your connection.');
-      Analytics.capture('composer_ai_error', {'tool': tool});
+      Analytics.capture('composer_ai_error', {
+        'tool': tool, 'total_ms': DateTime.now().millisecondsSinceEpoch - t0, 'retried': retried,
+      });
       return null;
     } finally {
       if (mounted) setState(() { _aiBusy = false; _aiTool = null; });
