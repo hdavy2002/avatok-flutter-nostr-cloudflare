@@ -49,11 +49,25 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // the raw uid, so the callee's incoming-call screen showed "user_xxx…" / an
   // npub instead of the person's name. Fall back to the client value, then the
   // app name. nameFor is KV-cached, so this adds no per-call DB round-trip.
-  const resolvedName =
-    (await nameFor(env, ctx.uid).catch(() => null)) ||
-    (b.fromName ?? "").trim() ||
-    "AvaTOK";
+  const resolved = await nameFor(env, ctx.uid).catch(() => null);
+  const clientName = (b.fromName ?? "").trim();
+  const resolvedName = resolved || clientName || "AvaTOK";
+  const nameSource = resolved ? "resolved" : (clientName ? "client" : "fallback");
   await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
+  // Observability: which path produced the caller name (resolved server-side vs
+  // the legacy client value vs the generic fallback), plus the call attempt — so
+  // the "incoming call shows uid/npub" fix is measurable and call volume/route is
+  // visible. Best-effort; telemetry must never block placing a call.
+  try {
+    void env.Q_ANALYTICS.send({
+      event: "call_push_sent", uid: ctx.uid, ts: Date.now(),
+      props: {
+        to: b.to, call_id: b.callId, call_type: b.kind ?? "audio",
+        name_source: nameSource, devices: n,
+        app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+      },
+    });
+  } catch { /* best-effort */ }
   // AI Ringback (Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md): hand the CALLER
   // the callee's CURRENT default ringtone so it plays locally during the ring
   // phase. Resolved at dial time so changing the default takes effect next call.
