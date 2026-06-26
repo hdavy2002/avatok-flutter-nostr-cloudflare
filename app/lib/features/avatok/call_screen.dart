@@ -6,6 +6,7 @@ import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../core/analytics.dart';
@@ -152,6 +153,11 @@ class _CallScreenState extends State<CallScreen> {
     gInCall = true;
     gActiveCallId = widget.room;
     gInCallSince = DateTime.now().millisecondsSinceEpoch;
+    // Keep the device awake for the whole call. Without this, the screen turning
+    // off (or auto-sleep) suspended the isolate and tore the call down after
+    // ~1 min — the "screen took over and the call cut" report (issue 6). Released
+    // on every teardown path in [_end]. Best-effort: never let it block a call.
+    try { WakelockPlus.enable(); } catch (_) {}
     _telemetry = CallTelemetry(callId: widget.room, video: widget.video, outgoing: widget.outgoing);
     _telemetry.started(); // funnel root: started → connected → ended
     // Wi-Fi ⇆ cellular handoff: don't wait for the transport to time out — restart
@@ -795,6 +801,7 @@ class _CallScreenState extends State<CallScreen> {
   Future<void> _end() async {
     if (_ended) return; // idempotent — hangup AND dispose both call this
     try { _receptionist?.hangup(); } catch (_) {}
+    try { WakelockPlus.disable(); } catch (_) {} // release the call wakelock
     _ended = true;
     // Decrement the live-screen count (never below 0) and derive [gInCall] from
     // it, so overlapping calls tearing down in any order leave an accurate

@@ -19,6 +19,12 @@ dependencies:
   livekit_client: ^2.3.0
   # Wi-Fi ⇆ cellular handoff detection → proactive ICE restart mid-call.
   connectivity_plus: ^6.1.0
+  # Keep the screen/CPU awake for the duration of a call so the OS can't put the
+  # device to sleep and suspend the call isolate mid-conversation (the dropped-
+  # after-~1-min / "screen took over and the call cut" bug — WhatsApp keeps the
+  # call screen alive the same way). Enabled on the CallScreen, released on every
+  # teardown path. NATIVE plugin — must be validated by a CI APK build.
+  wakelock_plus: ^1.2.8
   web_socket_channel: ^3.0.1
   # Bumped 11.3.1 → 12.0.1: the `cactus` on-device-AI plugin requires
   # permission_handler ^12.0.1. The APIs this app uses (Permission.microphone/
