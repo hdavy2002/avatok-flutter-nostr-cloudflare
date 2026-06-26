@@ -81,8 +81,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       .map((a) => a.key)
       .toSet();
 
-  // ---- profile step (handle + display name) ----
-  final _handleCtrl = TextEditingController();
+  // ---- profile step (first + last name; handles retired) ----
+  final _lastCtrl = TextEditingController();
+  final _handleCtrl = TextEditingController(); // DEPRECATED — handles retired
   final _nameCtrl = TextEditingController();
   Timer? _handleDebounce;
   // null = not yet checked; true/false = available or not. _handleMsg explains a false.
@@ -100,6 +101,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   @override
   void dispose() {
     _handleDebounce?.cancel();
+    _lastCtrl.dispose();
     _handleCtrl.dispose();
     _nameCtrl.dispose();
     super.dispose();
@@ -151,36 +153,31 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   bool get _profileReady =>
-      _nameCtrl.text.trim().isNotEmpty && _handleAvail == true && !_checkingHandle && !_savingProfile;
+      _nameCtrl.text.trim().isNotEmpty && !_savingProfile;
 
   Future<void> _saveProfileAndNext() async {
     final id = _id;
     if (id == null || !_profileReady) return;
     setState(() => _savingProfile = true);
-    final handle = _handleCtrl.text.trim().toLowerCase().replaceAll('@', '');
-    final name = _nameCtrl.text.trim();
+    // Handles are retired — collect first + last name. Display name = both joined.
+    final first = _nameCtrl.text.trim();
+    final last = _lastCtrl.text.trim();
+    final name = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
     // Persist locally first (merge with any phone captured earlier).
     final existing = await _profileStore.load();
-    await _profileStore.save(existing.copyWith(displayName: name, handle: handle));
-    // Merge the L0 guest reservation FIRST — it re-keys the reserved handle to
-    // this Clerk account, so the directory registration below won't see it as
-    // taken by the (now retired) guest row.
+    await _profileStore.save(existing.copyWith(displayName: name));
+    // Merge any L0 guest reservation so it re-keys to this Clerk account.
     await GuestSession.upgradeIfAny();
-    // Publish to the directory so the handle + name are immediately searchable.
-    // (No key backup anymore — the Clerk sign-in IS the account credential.)
+    // Publish to the directory so the name is immediately searchable.
     final r = await Directory.registerProfile(
-      npub: id.npub, handle: handle, name: name,
+      npub: id.npub, name: name, firstName: first, lastName: last,
       accountKind: _selectedKind?.wire,
     );
     if (!mounted) return;
     setState(() => _savingProfile = false);
     if (r.ok) { _next(); return; }
-    if (r.status == 409) {
-      setState(() { _handleAvail = false; _handleMsg = 'That handle was just taken — pick another'; });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save your handle — check your connection and try again')));
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save your profile — check your connection and try again')));
   }
 
   void _next() {
@@ -391,40 +388,33 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ZineIconBadge(
-                    icon: PhosphorIcons.at(PhosphorIconsStyle.bold),
+                    icon: PhosphorIcons.user(PhosphorIconsStyle.bold),
                     color: Zine.lime, size: 44),
                 const SizedBox(height: 16),
                 ZineMarkTitle(
-                    pre: 'Claim your ', mark: 'handle',
+                    pre: 'Your ', mark: 'name',
                     fontSize: 30, textAlign: TextAlign.left),
                 const SizedBox(height: 8),
-                Text('Your @handle is how people find and tag you. Names repeat — a handle is uniquely yours.',
+                Text('This is how you’ll appear to people you message. You can set a private AvaTOK number later in Settings.',
                     style: ZineText.sub(size: 14.5)),
                 const SizedBox(height: 24),
                 _field(
                   controller: _nameCtrl,
-                  label: 'display name',
-                  hint: 'e.g. Jordan Rivers',
+                  label: 'first name',
+                  hint: 'e.g. Jordan',
                   leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
                   onChanged: (_) => setState(() {}),
                   textCapitalization: TextCapitalization.words,
                 ),
                 const SizedBox(height: 18),
                 _field(
-                  controller: _handleCtrl,
-                  label: 'handle',
-                  hint: 'yourname',
-                  leadText: '@',
-                  onChanged: _onHandleChanged,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
-                    LengthLimitingTextInputFormatter(20),
-                  ],
-                  trailing: _handleTrailing(),
-                  error: _handleAvail == false,
+                  controller: _lastCtrl,
+                  label: 'last name',
+                  hint: 'e.g. Rivers',
+                  leadIcon: PhosphorIcons.user(PhosphorIconsStyle.bold),
+                  onChanged: (_) => setState(() {}),
+                  textCapitalization: TextCapitalization.words,
                 ),
-                const SizedBox(height: 12),
-                _handleStatus(),
               ],
             ),
           ),

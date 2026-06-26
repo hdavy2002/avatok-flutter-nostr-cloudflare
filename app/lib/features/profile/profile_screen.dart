@@ -34,8 +34,9 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _store = ProfileStore();
   final _picker = ImagePicker();
-  final _name = TextEditingController();
-  final _handle = TextEditingController();
+  final _name = TextEditingController();  // first name
+  final _last = TextEditingController();   // last name
+  final _handle = TextEditingController(); // DEPRECATED — handles retired
   final _birthYear = TextEditingController();
   final _bio = TextEditingController();
   Identity? _id; // resolved from the passed identity OR the local store
@@ -60,8 +61,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _store.load().then((p) {
       if (!mounted) return;
       setState(() {
-        _name.text = p.displayName;
-        _handle.text = p.handle;
+        final parts = p.displayName.trim().split(RegExp(r'\s+'));
+        _name.text = parts.isNotEmpty ? parts.first : '';
+        _last.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
         _bio.text = p.bio;
         _listed = !p.isEmpty;
         _sharePresence = p.sharePresence;
@@ -86,7 +88,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
-  void dispose() { _name.dispose(); _handle.dispose(); _birthYear.dispose(); _bio.dispose(); super.dispose(); }
+  void dispose() { _name.dispose(); _last.dispose(); _handle.dispose(); _birthYear.dispose(); _bio.dispose(); super.dispose(); }
 
   int? get _birthYearValue {
     final y = int.tryParse(_birthYear.text.trim());
@@ -98,12 +100,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _save() async {
     final id = _id;
     if (id == null || _saving) return;
-    final handle = _handle.text.trim().toLowerCase().replaceAll('@', '');
-    // AI content validation — block the save with a clear reason when the name,
-    // handle, or bio is inappropriate. The Worker re-checks on /api/profile too.
+    final first = _name.text.trim();
+    final last = _last.text.trim();
+    final fullName = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
+    // AI content validation — block the save with a clear reason when a name or
+    // bio is inappropriate. The Worker re-checks on /api/profile too.
     for (final c in <List<String>>[
-      [_name.text.trim(), ModField.name],
-      [handle, ModField.handle],
+      [fullName, ModField.name],
       [_bio.text.trim(), ModField.bio],
     ]) {
       if (c[0].isEmpty) continue;
@@ -118,13 +121,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _saving = true);
     final existing = await _store.load();
     await _store.save(existing.copyWith(
-        displayName: _name.text.trim(), handle: handle, bio: _bio.text.trim(),
-        sharePresence: _sharePresence));
-    // Opt-in discovery: publish to the directory so others can find me. Bio rides
-    // along so AvaBrain can learn from it (server-side, consent-gated).
-    if (_name.text.trim().isNotEmpty || handle.isNotEmpty || _bio.text.trim().isNotEmpty) {
-      await Directory.registerProfile(npub: id.npub, handle: handle, name: _name.text.trim(), avatarUrl: _avatarUrl,
-          birthYear: _birthYearValue, bio: _bio.text.trim());
+        displayName: fullName, bio: _bio.text.trim(), sharePresence: _sharePresence));
+    // Opt-in discovery: publish to the directory so others can find me by name.
+    if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty) {
+      await Directory.registerProfile(npub: id.npub, name: fullName, firstName: first, lastName: last,
+          avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim());
     }
     if (!mounted) return;
     setState(() { _saving = false; _listed = true; });
@@ -199,7 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  String get _cleanHandle => _handle.text.trim().toLowerCase().replaceAll('@', '');
+  String get _fullName => [_name.text.trim(), _last.text.trim()].where((s) => s.isNotEmpty).join(' ').trim();
 
   Future<void> _uploadAvatar(Uint8List bytes) async {
     final id = _id;
@@ -216,7 +217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await AvatarCache.putBytes(url, 192, bytes); // instant display (avatar requests ~192px)
     final p = await _store.load();
     await _store.save(p.copyWith(avatarUrl: url));
-    await Directory.registerProfile(npub: id.npub, handle: _cleanHandle, name: _name.text.trim(), avatarUrl: url);
+    await Directory.registerProfile(npub: id.npub, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: url);
     if (!mounted) return;
     setState(() { _avatarUrl = url; _photoBusy = false; });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo updated')));
@@ -228,7 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _photoBusy = true);
     final p = await _store.load();
     await _store.save(p.copyWith(avatarUrl: ''));
-    await Directory.registerProfile(npub: id.npub, handle: _cleanHandle, name: _name.text.trim(), avatarUrl: '');
+    await Directory.registerProfile(npub: id.npub, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: '');
     if (!mounted) return;
     setState(() { _avatarUrl = ''; _photoBusy = false; });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo removed')));
@@ -452,31 +453,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Center(child: Text(_name.text.isEmpty ? 'You' : _name.text,
+        Center(child: Text(_fullName.isEmpty ? 'You' : _fullName,
             style: ZineText.cardTitle(size: 22))),
-        if (_cleanHandle.isNotEmpty) ...[
-          const SizedBox(height: 3),
-          Center(child: Text('@$_cleanHandle', style: ZineText.link(size: 13))),
-        ],
         const SizedBox(height: 22),
         ZineField(
           controller: _name,
-          label: 'Display name',
-          hint: 'Your name',
+          label: 'First name',
+          hint: 'Your first name',
           textCapitalization: TextCapitalization.words,
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 16),
         ZineField(
-          controller: _handle,
-          label: 'Handle',
-          leadText: '@',
-          hint: 'yourhandle',
+          controller: _last,
+          label: 'Last name',
+          hint: 'Your last name',
+          textCapitalization: TextCapitalization.words,
           onChanged: (_) => setState(() {}),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]'))],
         ),
         const SizedBox(height: 7),
-        Text('Others can add you by @handle. Leave blank to stay unlisted.',
+        Text('People find you by your AvaTOK number, phone, or email — set your number in Settings → Your number.',
             style: ZineText.sub(size: 12.5)),
         const SizedBox(height: 16),
         ZineField(
