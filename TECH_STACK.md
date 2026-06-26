@@ -44,7 +44,7 @@ Four Workers (account `fd3dbf43f8e6d8bf65bd36b02eb0abb0`):
 | **avatok-api** | Control plane. Hardened `/api/*` (NIP-98): profile/resolve/search, register/call/notify, contacts, communities, media upload, library, backup, account-delete, notifications, **AvaBrain** routes, ICE, Stream webhook. Hosts the `CallRoom` and `UserBrain` Durable Objects. |
 | **avatok-relay** | Nostr relay. WebSocket **Hibernation** DO (`RelayRoom`), events → D1, NIP-42 private-kind gate, real-time fan-out to recipients' inbox DOs, `onEventSaved` → push + brain queues. |
 | **avatok-consumers** | Async workers: consumes 5 queues (moderation, push, email, analytics, brain-events) + 6-hourly cron cleanup. |
-| **avatok-calls** | Mints RealtimeKit SFU tokens (AvaConsult group calls) + Cloudflare Stream Live inputs (AvaLive). |
+| **avatok-calls** | *Legacy/unwired.* Mints **RealtimeKit** participant tokens + Cloudflare Stream Live inputs (AvaLive). Group-call duties have moved: AvaConsult/AvaVision now use the Cloudflare Realtime **SFU/Calls** proxy in avatok-api (`routes/consult.ts`); AvaTalk groups use **LiveKit** (`routes/conference.ts`). |
 
 **Durable Objects:**
 - `CallRoom` (avatok-api) — group-call signaling, hibernation.
@@ -101,10 +101,20 @@ A privacy-scoped knowledge graph + semantic memory per user. Public Nostr conten
 
 ## 8. Real-time, calling & media
 
+> **"Cloudflare Realtime" is three separate billable products — don't conflate them:**
+> **(1) Realtime TURN** = per-GB relay for P2P calls (only billed when a direct path fails).
+> **(2) Realtime SFU / "Calls"** = the per-GB media hub that mixes/forwards everyone's audio/video.
+> **(3) RealtimeKit** = Cloudflare's ready-made video-call SDK+UI (ex-Dyte) — a different product again.
+> None of these carry chat presence ("online"/"ongoing call" banners) — presence runs on plain Durable
+> Object WebSockets (`CallRoom`/`MeshRoom`/LiveKit status), not on any Realtime media product.
+
 | Capability | Tech |
 |---|---|
-| 1:1 calls (AvaTok) | WebRTC **P2P**, NIP-100 signaling, Cloudflare STUN + **Realtime TURN** (`rtc.live.cloudflare.com`) — free media path |
-| Group calls (AvaConsult) | **RealtimeKit SFU** (separate app/binary — clashes with flutter_webrtc) |
+| 1:1 calls (AvaTok) | WebRTC **P2P**; `CallRoom` DO does signaling only; media goes direct + **Realtime TURN** relay fallback (`rtc.live.cloudflare.com/v1/turn`, per-GB only when relayed). **This is the path with real production traffic.** |
+| Free-tier group calls (≤5) | **P2P mesh** via `MeshRoom` DO, same Cloudflare STUN/TURN. Media never touches our servers. |
+| Group calls (AvaTalk, ≤25, paid) | **LiveKit SFU** — *not Cloudflare* — `worker/src/routes/conference.ts`. Free tier falls back to the P2P mesh above. |
+| Group sessions (AvaConsult / AvaVision, paid) | **Cloudflare Realtime SFU / "Calls"** (the per-GB media hub) via thin authed proxy `worker/src/routes/consult.ts` → `rtc.live.cloudflare.com/v1/apps/{CALLS_APP_ID}`. App provisioned (`shiny-thunder-2e45`) but ~no production traffic yet. |
+| ~~RealtimeKit~~ (legacy/unwired) | Separate `calls/` worker + standalone `avaconsult/` app using the `realtimekit_ui` SDK. **Superseded** by the two SFU paths above; kept only as dead code (org key never wired). |
 | Live broadcast (AvaLive) | **Cloudflare Stream Live** (WHIP ingest → HLS/WHEP), webhook → moderation |
 | Mobile wake | **FCM** (Android, `fcm.googleapis.com` via service-account JWT) + **APNs** (iOS, `api.push.apple.com`, gated) |
 | Photos/audio/small media | **Blossom-on-R2**, two upload paths: `/upload/public` (scanned) vs `/upload/private` (client AES-GCM ciphertext, unscanned) |
@@ -136,7 +146,8 @@ NCII hash-matching (StopNCII) planned alongside the CSAM source.
 | **APNs** | iOS push | gated (key pending) |
 | **Brevo** (Sendinblue) | Transactional email (replaced Resend) | key pending |
 | **PostHog** | Product analytics + `investigate()` reads | key pending |
-| **RealtimeKit** | Group-call SFU (AvaConsult) | app exists; org key pending |
+| **LiveKit** | Group-call SFU for AvaTalk groups (≤25) — `routes/conference.ts` | in use (paid tiers) |
+| **RealtimeKit** | ~~Group-call SFU (AvaConsult)~~ — **superseded** by Cloudflare Realtime SFU/Calls (`routes/consult.ts`) + LiveKit | legacy; app exists, org key never wired |
 | **GitHub Actions / Codemagic** | CI builds | in use |
 
 Vendor count is deliberately small; Cloudflare carries the rest.
