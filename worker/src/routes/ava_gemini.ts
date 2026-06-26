@@ -23,6 +23,7 @@ import { emailFor } from "../lib/identity";
 import { runAgentLoop } from "../lib/composio";        // unified tool-calling loop (shared with Messenger @ava)
 import { generateAvaImageSync } from "./ava_image";    // synchronous image gen → URL (rendered inline)
 import { brainSearchLines } from "../lib/ava_memory";  // the ONE Cloudflare AI Search store per user
+import { searchForUser } from "../lib/ava_search";     // sharded tenancy boundary (folder-filtered per user)
 
 // Ava chat text model: Gemini 3 Flash (preview) as a Workers-AI THIRD-PARTY model
 // ({author}/{model} id), called through env.AI.run so it flows via our CF AI
@@ -125,13 +126,9 @@ function buildMessages(system: string, history: Turn[], message: string, images:
 // strict isolation.
 async function retrieveMemory(env: Env, uid: string, query: string): Promise<string> {
   try {
-    const ns: any = (env as any).AI_SEARCH;
-    if (!ns) return "";
-    const id = ("ava-" + uid.replace(/[^a-zA-Z0-9]/g, "-")).toLowerCase().slice(0, 50);
-    let inst: any = null;
-    try { inst = await ns.get(id); } catch { return ""; } // no memory instance yet
-    if (!inst) return "";
-    const r: any = await inst.search({ messages: [{ role: "user", content: query }] });
+    // Folder-filtered search over the user's shard (lib/ava_search.ts). Strict
+    // isolation: a query can only ever return this user's own docs.
+    const r: any = await searchForUser(env, uid, query);
     const rows: any[] = r?.data ?? r?.results ?? r?.chunks ?? [];
     if (!Array.isArray(rows) || !rows.length) return "";
     const text = rows
