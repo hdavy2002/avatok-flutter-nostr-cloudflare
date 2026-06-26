@@ -606,13 +606,28 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Future<void> _restartWithVideo() async {
-    // Simplest path: add a camera track if none.
-    final v = await navigator.mediaDevices.getUserMedia({'video': {'facingMode': 'user'}, 'audio': false});
-    final track = v.getVideoTracks().first;
-    await _stream?.addTrack(track);
-    _local.srcObject = _stream;
-    _pc?.addTrack(track, _stream!);
-    setState(() {});
+    if (_ended) return;
+    try {
+      // Add a camera track to the existing audio call.
+      final v = await navigator.mediaDevices
+          .getUserMedia({'video': {'facingMode': 'user'}, 'audio': false});
+      final track = v.getVideoTracks().first;
+      await _stream?.addTrack(track);
+      _local.srcObject = _stream;
+      if (_stream != null) await _pc?.addTrack(track, _stream!);
+      // Adding a track REQUIRES renegotiation. Without a fresh offer the peer
+      // never learns about the new video m-line — the camera button "did
+      // nothing" and the far side stayed audio-only (issue 5). Send a new offer
+      // over the still-open signaling socket; the peer answers on its existing
+      // PeerConnection and the video starts flowing.
+      if (!_ended && _pc != null && _remoteId != null) {
+        final offer = await _pc!.createOffer();
+        await _pc!.setLocalDescription(offer);
+        _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+        Analytics.capture('call_video_upgraded', {'call_id': widget.room});
+      }
+    } catch (_) {/* upgrade is best-effort — the audio call keeps going */}
+    if (mounted) setState(() {});
   }
 
   Future<void> _hangup() async {
