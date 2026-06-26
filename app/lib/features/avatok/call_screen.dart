@@ -128,6 +128,13 @@ class _CallScreenState extends State<CallScreen> {
   int _iceRestarts = 0;             // cap restart attempts per call
   Timer? _failTimer;                // grace window before giving up on 'failed'
   StreamSubscription? _netSub;      // Wi-Fi ⇆ cellular handoff → ICE restart
+  // Signaling-socket survival: once the call is P2P-connected the media flows
+  // directly, so a dropped room socket (screen off, app backgrounded, mobile
+  // DNS) must NOT end the call — we reconnect it in the background and let the
+  // RTC media watchdog decide if the call is truly dead. Capped so a genuinely
+  // dead network eventually gives up. (Root cause of the ~1-min 'socket-lost'.)
+  int _wsReconnects = 0;
+  Timer? _wsReconnectTimer;
 
   @override
   void initState() {
@@ -312,7 +319,40 @@ class _CallScreenState extends State<CallScreen> {
           {'channel': 'socket_lost', 'call_id': widget.room});
       return;
     }
+    // A CONNECTED call runs P2P; the signaling socket is only needed for
+    // renegotiation/bye. Losing it (screen off, backgrounded, mobile DNS) must
+    // NOT end a live call — reconnect the room in the background. The media
+    // watchdog (onConnectionState) is the only thing allowed to end a connected
+    // call, and only when the actual media stops.
+    if (_connected) {
+      Analytics.capture('call_ws_reconnect',
+          {'call_id': widget.room, 'attempt': _wsReconnects + 1});
+      _reconnectSignaling();
+      return;
+    }
+    // Not connected yet → the handshake can't complete without signaling; end.
     _endWith('ended', reason: 'socket-lost');
+  }
+
+  /// Re-open the room signaling socket after it dropped mid-call. Media is P2P
+  /// and keeps flowing; this just restores the channel so renegotiation / ICE
+  /// restarts / a clean 'bye' can still happen. Backed off and capped.
+  void _reconnectSignaling() {
+    if (_ended || !_connected) return;
+    if (_wsReconnects >= 5) return; // give up — net is genuinely gone
+    _wsReconnects++;
+    _wsReconnectTimer?.cancel();
+    _wsReconnectTimer = Timer(Duration(milliseconds: 600 * _wsReconnects), () {
+      if (_ended || !_connected) return;
+      try { _ws?.sink.close(); } catch (_) {}
+      final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
+      try {
+        _ws = WebSocketChannel.connect(Uri.parse(url));
+        _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+      } catch (_) {
+        _onSocketLost(); // schedule the next backoff attempt
+      }
+    });
   }
 
   void _send(Map<String, dynamic> o) => _ws?.sink.add(jsonEncode(o));
@@ -433,10 +473,20 @@ class _CallScreenState extends State<CallScreen> {
         if (peers.isNotEmpty) {
           _remoteId = peers.first;
           _weOffered = true; // we drive renegotiation/ICE restarts for this call
-          final pc = await _newPC();
-          final offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+          if (_connected && _pc != null) {
+            // We RE-joined the room after a signaling-socket drop (issue 1). The
+            // P2P media is still live — do NOT build a new PeerConnection (that
+            // would tear the call down). Just refresh ICE on the existing one so
+            // the restored channel re-establishes connectivity if needed.
+            _wsReconnects = 0;
+            Analytics.capture('call_ws_reconnected', {'call_id': widget.room});
+            await _tryIceRestart('ws-reconnect');
+          } else {
+            final pc = await _newPC();
+            final offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
+          }
         }
         break;
       case 'offer':
@@ -482,10 +532,21 @@ class _CallScreenState extends State<CallScreen> {
         break;
       case 'peer-left':
       case 'bye':
-        _remote.srcObject = null;
+        final isBye = d['type'] == 'bye';
         if (_connected) {
-          _endWith('ended', reason: d['type'] == 'bye' ? 'remote-bye' : 'peer-left');
-        } else if (d['type'] == 'bye') {
+          if (isBye) {
+            // Explicit hangup by the peer → end the call.
+            _remote.srcObject = null;
+            _endWith('ended', reason: 'remote-bye');
+          } else {
+            // 'peer-left' = the peer's SIGNALING socket dropped (screen off,
+            // backgrounded, mobile DNS) — NOT a hangup. Their P2P media is
+            // usually still flowing, so keep the call (and the remote video)
+            // alive; the RTC media watchdog ends it only if media truly stops.
+            // This is the peer-side half of surviving a signaling blip (issue 1).
+            Analytics.capture('call_peer_left_grace', {'call_id': widget.room});
+          }
+        } else if (isBye) {
           // Hangup-before-connect (the zombie-call race): the remote ended the
           // call while we were still ringing/connecting — end OUR side too
           // instead of sitting in "Connecting…" forever.
@@ -691,6 +752,7 @@ class _CallScreenState extends State<CallScreen> {
     _timer?.cancel();
     _ringTimeout?.cancel();
     _failTimer?.cancel();
+    _wsReconnectTimer?.cancel();
     _netSub?.cancel();
     // End-path hygiene (A4.4): clear the CallKit/ongoing-call notification +
     // ringtone on EVERY end path, not just the explicit decline. Without this a
