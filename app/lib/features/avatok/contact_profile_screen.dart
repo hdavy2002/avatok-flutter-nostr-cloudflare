@@ -29,6 +29,20 @@ class ContactProfileScreen extends StatefulWidget {
 class _ContactProfileScreenState extends State<ContactProfileScreen> {
   List<Group> _shared = [];
   String _number = '';
+  late String _name = widget.name;
+
+  /// A name that is really just the raw routing id (e.g. "user_3FcSU…tojL") is
+  /// no name at all — show a friendly label resolved from the saved contact or
+  /// the directory instead of a wall of base-62. Empty / equal-to-id also count.
+  static bool _looksLikeRawId(String name, String npub) {
+    final n = name.trim();
+    if (n.isEmpty) return true;
+    if (n == npub) return true;
+    if (n.startsWith('user_')) return true;
+    // Shortened form the UI renders, e.g. "user_3FcSU…tojL".
+    if (n.contains('…') && n.startsWith('user')) return true;
+    return false;
+  }
 
   @override
   void initState() {
@@ -39,10 +53,41 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         if (mounted) setState(() => _shared = groups.where((g) => g.members.contains(peerHex)).toList());
       });
     }
+    // If we were handed a raw id instead of a real name, recover one. Prefer the
+    // user's OWN saved contact name (e.g. "JDee"), then the directory profile.
+    if (_looksLikeRawId(widget.name, widget.npub)) {
+      _recoverName();
+    }
     // Resolve the contact's AvaTOK number for display (best-effort).
     Directory.resolve(widget.npub).then((c) {
-      if (mounted && c != null && c.number.isNotEmpty) setState(() => _number = c.number);
+      if (!mounted || c == null) return;
+      setState(() {
+        if (c.number.isNotEmpty) _number = c.number;
+        // Directory name is a fallback when no saved contact matched.
+        if (_looksLikeRawId(_name, widget.npub) &&
+            c.name.isNotEmpty && !_looksLikeRawId(c.name, widget.npub)) {
+          _name = c.name;
+        }
+      });
     });
+  }
+
+  Future<void> _recoverName() async {
+    try {
+      final contacts = await ContactsStore().load();
+      final match = contacts.where((c) => c.npub == widget.npub).toList();
+      if (match.isNotEmpty && !_looksLikeRawId(match.first.name, widget.npub)) {
+        if (mounted) setState(() => _name = match.first.name);
+      }
+    } catch (_) {/* best-effort — directory resolve still runs as a fallback */}
+  }
+
+  /// The big title: a real name when we have one, otherwise the AvaTOK number,
+  /// and only as a last resort a neutral "AvaTOK user" — never a raw user_… id.
+  String get _displayName {
+    if (!_looksLikeRawId(_name, widget.npub)) return _name;
+    if (_number.isNotEmpty) return _number;
+    return 'AvaTOK user';
   }
 
   String get _identityLabel => _number.isNotEmpty ? _number : _short(widget.npub);
@@ -57,11 +102,11 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         Center(
           child: Container(
             decoration: BoxDecoration(shape: BoxShape.circle, border: Zine.border, boxShadow: Zine.shadowSm),
-            child: Avatar(seed: widget.npub, name: widget.name, size: 96),
+            child: Avatar(seed: widget.npub, name: _displayName, size: 96),
           ),
         ),
         const SizedBox(height: 14),
-        Center(child: Text(widget.name, style: ZineText.cardTitle(size: 23))),
+        Center(child: Text(_displayName, style: ZineText.cardTitle(size: 23))),
         const SizedBox(height: 20),
         _box(_number.isNotEmpty ? 'AvaTOK number' : 'Contact ID', PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue,
             child: Row(children: [
