@@ -606,7 +606,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       return (icon: PhosphorIcons.checks(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Delivered'); // 2 grey ticks
     }
     if (m.sent) {
-      return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Waiting to reach phone'); // 1 tick
+      // 1 tick = left this device / accepted. We deliberately DON'T claim
+      // "waiting to reach phone" here — that contradicted the peer showing as
+      // online (pic2). Truthful escalation: Sent → Delivered → Read.
+      return (icon: PhosphorIcons.check(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Sent'); // 1 tick
     }
     return (icon: PhosphorIcons.clock(PhosphorIconsStyle.bold), color: Zine.inkSoft, label: 'Sending…');
   }
@@ -1093,7 +1096,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       }));
       _seenEv.add(id);
       setState(() {
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta, expireAt: expire));
+        // Optimistic "Sent" the instant it leaves the device — the message is
+        // already persisted locally + dispatched, so we show the 1-tick state now
+        // (feels instant) and only downgrade to "Not sent" if the POST errors
+        // (_onSendStatus). Delivered/Read still arrive later via receipts.
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, sent: true, evId: id, replyTo: replyMeta, expireAt: expire));
         _ctrl.clear(); _hasText = false; _replyTo = null;
       });
       _jump();
@@ -1109,7 +1116,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       }));
       _seenEv.add(id);
       setState(() {
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, evId: id, replyTo: replyMeta, expireAt: expire));
+        // Optimistic "Sent" the instant it leaves the device — the message is
+        // already persisted locally + dispatched, so we show the 1-tick state now
+        // (feels instant) and only downgrade to "Not sent" if the POST errors
+        // (_onSendStatus). Delivered/Read still arrive later via receipts.
+        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, sent: true, evId: id, replyTo: replyMeta, expireAt: expire));
         _ctrl.clear(); _hasText = false; _replyTo = null;
       });
       _jump();
@@ -4965,7 +4976,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                               // Resend a failed text message; track the new wrap.
                               final newId = _dm!.send(jsonEncode({'t': 'text', 'body': m.text,
                                   if (m.replyTo != null) 'replyTo': m.replyTo, if (m.expireAt != null) 'exp': m.expireAt}));
-                              setState(() { m.evId = newId; m.failed = false; m.sent = false; _seenEv.add(newId); });
+                              setState(() { m.evId = newId; m.failed = false; m.sent = true; _seenEv.add(newId); });
                             }
                           },
                           child: row,
