@@ -41,6 +41,7 @@ import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook, conferenceBeat } from "./routes/conference";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
+import { sttTranscribe } from "./routes/stt";
 import {
   avavoiceVoices, avavoiceMarketplace, avavoiceMine, avavoiceCreateAgent, avavoiceGetAgent,
   avavoiceUpdateAgent, avavoicePublish, avavoiceDeleteAgent, avavoiceUploadFile, avavoiceDeleteFile,
@@ -598,6 +599,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
           if (req.method === "DELETE") return await avavisionDeleteAgent(req, env, ag[1]);
         }
       }
+
+      // --- Speech-to-text (OpenAI Whisper via OpenRouter; replaced on-device sherpa) ---
+      if (p === "/api/stt/transcribe" && req.method === "POST") return await sttTranscribe(req, env);
 
       // --- Live voice translation (Gemini 3.5 Live Translate; $3/h AvaCoins) ---
       if (p === "/api/translate/quote" && req.method === "GET") return translateQuote(req);

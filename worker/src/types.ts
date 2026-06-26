@@ -181,6 +181,7 @@ export interface Env {
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MOD_MODEL?: string;        // override the field-moderation model id (Nemotron)
   OPENROUTER_SECURITY_MODEL?: string;   // override the shield/guardian model id (Claude Opus 4.8)
+  OPENROUTER_STT_MODEL?: string;        // override the speech-to-text model id (default openai/whisper-large-v3)
 
   // InboxDO retention (cost control). Days to keep messages in the per-user inbox
   // DO before pruning (the device keeps history locally + in Drive/R2 backup, so
