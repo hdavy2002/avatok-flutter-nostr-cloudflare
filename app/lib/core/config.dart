@@ -61,7 +61,10 @@ const String kMeUrl = 'https://$kSignalingHost/api/me'; // GET — restore my ac
 const String kVaultUrl = 'https://$kSignalingHost/api/vault'; // GET/POST — encrypted cross-device blobs (contacts)
 const String kResolveUrl = 'https://$kSignalingHost/api/resolve'; // GET ?q= (public)
 const String kSearchUrl = 'https://$kSignalingHost/api/search';   // GET ?q= (public)
-const String kHandleCheckUrl = 'https://$kSignalingHost/api/handle/check'; // GET ?q= (public)
+const String kHandleCheckUrl = 'https://$kSignalingHost/api/handle/check'; // GET ?q= (DEPRECATED — handles retired)
+// AvaTOK Number (Specs/AVATOK-NUMBER-FEATURE-SPEC.md) — virtual in-network number.
+const String kNumberBase = 'https://$kSignalingHost/api/number';
+const String kAddResolveUrl = 'https://$kSignalingHost/api/add'; // GET ?t=<share token> (public)
 
 /// Invite link base — share to bring a contact in pre-connected.
 const String kInviteBase = 'https://avatok.ai/i/';

@@ -10,23 +10,25 @@ import '../../core/config.dart';
 import '../../core/disk_cache.dart';
 import '../../core/vault.dart';
 
-/// A saved AvaTok contact (resolved to a Nostr npub).
+/// A saved AvaTok contact. `npub` holds the routing id (Clerk uid). Handles are
+/// retired — the network identity shown is the AvaTOK number (or real phone).
 @immutable
 class Contact {
   final String npub;
   final String name;
-  final String handle; // without leading '@', may be empty
+  final String handle; // DEPRECATED (handles retired); kept for cache back-compat
   final String email;
   final String avatarUrl; // canonical blossom URL of their photo ('' = initials)
   final String phone; // E.164 (WhatsApp-style phone contacts) — '' if unknown
-  const Contact({required this.npub, required this.name, this.handle = '', this.email = '', this.avatarUrl = '', this.phone = ''});
+  final String number; // AvaTOK number display, e.g. '+233 24 555 0148' — '' if none
+  const Contact({required this.npub, required this.name, this.handle = '', this.email = '', this.avatarUrl = '', this.phone = '', this.number = ''});
 
   String get seed => npub; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
-  /// Human-friendly subtitle — prefer phone (WhatsApp-style), then @handle/email.
-  String get subtitle => phone.isNotEmpty ? phone : (atHandle.isNotEmpty ? atHandle : email);
+  /// Human-friendly subtitle — AvaTOK number first, then phone, then email.
+  String get subtitle => number.isNotEmpty ? number : (phone.isNotEmpty ? phone : email);
 
-  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl, 'phone': phone};
+  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl, 'phone': phone, 'number': number};
   factory Contact.fromJson(Map<String, dynamic> j) => Contact(
         npub: (j['npub'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
@@ -34,6 +36,7 @@ class Contact {
         email: (j['email'] ?? '').toString(),
         avatarUrl: (j['avatarUrl'] ?? '').toString(),
         phone: (j['phone'] ?? '').toString(),
+        number: (j['number'] ?? '').toString(),
       );
 }
 
@@ -184,15 +187,20 @@ class Directory {
         return null;
       }
       Analytics.capture('contact_resolve', {'kind': kind, 'found': true});
-      final name = (p?['name'] ?? p?['display_name'] ?? '').toString();
+      final first = (p?['first_name'] ?? '').toString();
+      final last = (p?['last_name'] ?? '').toString();
+      final assembled = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
+      final name = (p?['name'] ?? p?['display_name'] ?? '').toString().isNotEmpty
+          ? (p?['name'] ?? p?['display_name']).toString()
+          : assembled;
       return Contact(
         npub: npub.toString(),
         name: name.isNotEmpty
             ? name
             : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(npub.toString())),
-        handle: (p?['handle'] ?? '').toString(),
         email: (p?['email'] ?? '').toString(),
         avatarUrl: (p?['avatar_url'] ?? j['avatar_url'] ?? '').toString(),
+        number: (p?['number'] ?? '').toString(),
       );
     } catch (e) {
       // Even with no directory hit, a raw npub is still addable.
@@ -237,15 +245,20 @@ class Directory {
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final list = (j['results'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       return list
-          .map((p) => Contact(
-                npub: (p['uid'] ?? p['npub'] ?? '').toString(),
-                name: (p['name'] ?? '').toString().isNotEmpty
-                    ? p['name'].toString()
-                    : ((p['email'] ?? '').toString().isNotEmpty ? p['email'].toString() : _short((p['uid'] ?? p['npub'] ?? '').toString())),
-                handle: (p['handle'] ?? '').toString(),
-                email: (p['email'] ?? '').toString(),
-                avatarUrl: (p['avatar_url'] ?? '').toString(),
-              ))
+          .map((p) {
+            final first = (p['first_name'] ?? '').toString();
+            final last = (p['last_name'] ?? '').toString();
+            final assembled = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
+            final nm = (p['name'] ?? '').toString().isNotEmpty ? p['name'].toString() : assembled;
+            final id = (p['uid'] ?? p['npub'] ?? '').toString();
+            return Contact(
+              npub: id,
+              name: nm.isNotEmpty ? nm : ((p['email'] ?? '').toString().isNotEmpty ? p['email'].toString() : _short(id)),
+              email: (p['email'] ?? '').toString(),
+              avatarUrl: (p['avatar_url'] ?? '').toString(),
+              number: (p['number'] ?? '').toString(),
+            );
+          })
           .where((c) => c.npub.isNotEmpty)
           .toList();
     } catch (_) {
@@ -304,16 +317,16 @@ class Directory {
   /// taken) so callers like onboarding can react; other callers can ignore it.
   static Future<({bool ok, int status})> registerProfile(
       {required String npub, String handle = '', String name = '', String email = '', String phone = '',
+       String firstName = '', String lastName = '',
        String? encryptedNsecBackup, String? backupMethod, String? accountKind, String? avatarUrl,
        int? birthYear, String? bio}) async {
     try {
-      // npub is derived server-side from the NIP-98 signature; no longer in body.
-      // encrypted_nsec_backup (optional) links this key to the Clerk account so
-      // the user can restore it after reinstalling / on another device.
-      // account_kind persists the Single/Parent/Enterprise choice server-side
-      // so it restores cross-device too.
+      // Handles are retired — names power the directory + contact card. `handle` is
+      // accepted but no longer sent. account_kind persists the Single/Parent choice.
       final res = await ApiAuth.postJson(kProfileUrl, {
-        'handle': handle, 'name': name, 'email': email, 'phone': phone,
+        'name': name, 'email': email, 'phone': phone,
+        if (firstName.isNotEmpty) 'first_name': firstName,
+        if (lastName.isNotEmpty) 'last_name': lastName,
         if (encryptedNsecBackup != null) 'encrypted_nsec_backup': encryptedNsecBackup,
         if (backupMethod != null) 'backup_method': backupMethod,
         if (accountKind != null) 'account_kind': accountKind,
