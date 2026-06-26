@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
@@ -557,12 +558,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Expanded(child: ZineButton(
                 label: 'Share', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
-                onPressed: _shareLink.isEmpty ? null : () => Share.share(_shareLink, subject: 'Add me on AvaTOK'))),
+                onPressed: _shareLink.isEmpty ? null : () {
+                  Analytics.capture('qr_shared', {'method': 'share', 'plan': _myNum?.hasNumber == true ? 'paid' : 'free'});
+                  Share.share(_shareLink, subject: 'Add me on AvaTOK');
+                })),
               const SizedBox(width: 10),
               Expanded(child: ZineButton(
                 label: 'Copy', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () {
+                  Analytics.capture('qr_shared', {'method': 'copy', 'plan': _myNum?.hasNumber == true ? 'paid' : 'free'});
                   Clipboard.setData(ClipboardData(text: _shareLink));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
                 })),
