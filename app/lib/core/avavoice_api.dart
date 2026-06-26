@@ -30,25 +30,31 @@ int creatorNetPerHour(int ratePerHourCoins) => ratePerHourCoins ~/ 2;
 
 class VoiceOption {
   final String name; // Gemini prebuilt voice name, e.g. "Puck"
-  final String label; // display label, e.g. "Puck — upbeat"
+  final String label; // display label, e.g. "Puck — male · upbeat"
   final String? previewUrl; // short sample clip (CDN)
-  const VoiceOption(this.name, this.label, [this.previewUrl]);
+  final String gender; // 'male' | 'female' | '' (unknown) — surfaced in the label
+  const VoiceOption(this.name, this.label, {this.previewUrl, this.gender = ''});
   VoiceOption.fromJson(Map<String, dynamic> j)
       : name = (j['name'] ?? '').toString(),
         label = (j['label'] ?? j['name'] ?? '').toString(),
-        previewUrl = j['preview_url']?.toString();
+        previewUrl = j['preview_url']?.toString(),
+        gender = (j['gender'] ?? '').toString();
 }
 
 /// Client-side fallback so the studio works before/without the catalog fetch.
+///
+/// Labels carry the voice GENDER ("male"/"female") so a user picking Ava's voice
+/// can tell them apart at a glance — the Gemini prebuilt names (Puck, Charon, …)
+/// give no hint on their own. Genders follow Google's published voice catalogue.
 const List<VoiceOption> kFallbackVoices = [
-  VoiceOption('Puck', 'Puck — upbeat (default)'),
-  VoiceOption('Charon', 'Charon — informative'),
-  VoiceOption('Kore', 'Kore — firm'),
-  VoiceOption('Fenrir', 'Fenrir — excitable'),
-  VoiceOption('Aoede', 'Aoede — breezy'),
-  VoiceOption('Leda', 'Leda — youthful'),
-  VoiceOption('Orus', 'Orus — firm'),
-  VoiceOption('Zephyr', 'Zephyr — bright'),
+  VoiceOption('Puck', 'Puck — male · upbeat (default)', gender: 'male'),
+  VoiceOption('Charon', 'Charon — male · informative', gender: 'male'),
+  VoiceOption('Kore', 'Kore — female · firm', gender: 'female'),
+  VoiceOption('Fenrir', 'Fenrir — male · excitable', gender: 'male'),
+  VoiceOption('Aoede', 'Aoede — female · breezy', gender: 'female'),
+  VoiceOption('Leda', 'Leda — female · youthful', gender: 'female'),
+  VoiceOption('Orus', 'Orus — male · firm', gender: 'male'),
+  VoiceOption('Zephyr', 'Zephyr — female · bright', gender: 'female'),
 ];
 
 /// Dial-time output languages (Gemini Live, 24+; spec Q8: offer all).
