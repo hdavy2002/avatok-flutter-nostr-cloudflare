@@ -74,14 +74,14 @@ function folderFilter(uid: string): { folder: string } {
 
 // ─── D1: per-user item tracking + per-shard load counter (best-effort) ───────
 
-async function recordItem(env: Env, uid: string, itemId: string, name: string): Promise<void> {
+async function recordItem(env: Env, uid: string, itemId: string, name: string, bytes: number): Promise<void> {
   try {
     const db = metaSession(env);
     const now = Date.now();
     const sid = shardId(env, uid);
     const ins = await db
-      .prepare("INSERT OR IGNORE INTO ava_search_items (uid, shard, item_id, name, created_at) VALUES (?1,?2,?3,?4,?5)")
-      .bind(uid, sid, itemId, name, now)
+      .prepare("INSERT OR IGNORE INTO ava_search_items (uid, shard, item_id, name, bytes, created_at) VALUES (?1,?2,?3,?4,?5,?6)")
+      .bind(uid, sid, itemId, name, bytes, now)
       .run();
     const isNew = Number((ins as any)?.meta?.changes ?? 0) > 0;
     if (isNew) {
@@ -94,11 +94,33 @@ async function recordItem(env: Env, uid: string, itemId: string, name: string): 
         .run();
     } else {
       await db
-        .prepare("UPDATE ava_search_items SET name = ?3, created_at = ?4 WHERE uid = ?1 AND item_id = ?2")
-        .bind(uid, itemId, name, now)
+        .prepare("UPDATE ava_search_items SET name = ?3, bytes = ?4, created_at = ?5 WHERE uid = ?1 AND item_id = ?2")
+        .bind(uid, itemId, name, bytes, now)
         .run();
     }
   } catch { /* tracking is best-effort; never break ingest */ }
+}
+
+/** Per-user ingest usage (for free-tier quota): item count + total bytes. */
+export async function ingestUsage(env: Env, uid: string): Promise<{ items: number; bytes: number }> {
+  try {
+    const r = await metaSession(env)
+      .prepare("SELECT COUNT(*) AS items, COALESCE(SUM(bytes),0) AS bytes FROM ava_search_items WHERE uid = ?1")
+      .bind(uid)
+      .first<{ items: number; bytes: number }>();
+    return { items: Number(r?.items ?? 0), bytes: Number(r?.bytes ?? 0) };
+  } catch { return { items: 0, bytes: 0 }; }
+}
+
+/** Free-tier ingest cap (env-tunable): default 100 items / 25 MB total. Premium
+ *  is uncapped (callers skip the check). */
+export function freeQuota(env: Env): { maxItems: number; maxBytes: number } {
+  const mi = Number((env as any).AI_SEARCH_FREE_MAX_ITEMS);
+  const mb = Number((env as any).AI_SEARCH_FREE_MAX_BYTES);
+  return {
+    maxItems: Number.isFinite(mi) && mi > 0 ? Math.floor(mi) : 100,
+    maxBytes: Number.isFinite(mb) && mb > 0 ? Math.floor(mb) : 25 * 1024 * 1024,
+  };
 }
 
 async function shardItemCount(env: Env, uid: string): Promise<number | undefined> {
@@ -122,6 +144,7 @@ export async function ingestForUser(
   name: string,
   content: unknown,
   ctx?: SearchCtx,
+  extra?: Record<string, unknown>,
 ): Promise<any> {
   const key = `${safeUid(uid)}/${name}`.slice(0, 120);
   const bytes =
@@ -133,12 +156,13 @@ export async function ingestForUser(
     shardOrd: shardOrd(env, uid),
     bytes,
     probeShardItems: () => shardItemCount(env, uid),
+    ...(extra ? { extra } : {}),
   };
   return instrument(env, uid, "ingest", meta, async () => {
     const inst = await shard(env, uid);
     const item = await inst.items.uploadAndPoll(key, content);
     const itemId = String(item?.id ?? item?.item_id ?? key);
-    await recordItem(env, uid, itemId, key);
+    await recordItem(env, uid, itemId, key, bytes);
     return item;
   }, ctx);
 }
@@ -149,11 +173,13 @@ export async function searchForUser(
   uid: string,
   query: string,
   ctx?: SearchCtx,
+  extra?: Record<string, unknown>,
 ): Promise<any> {
   const meta: SearchOpMeta = {
     shard: shardId(env, uid),
     shardOrd: shardOrd(env, uid),
     probeShardItems: () => shardItemCount(env, uid),
+    ...(extra ? { extra } : {}),
   };
   return instrument(env, uid, "search", meta, async () => {
     const inst = await shard(env, uid);
