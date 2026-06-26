@@ -61,6 +61,23 @@ class CallLogStore {
     final list = await load();
     list.insert(0, e);
     final capped = list.take(100).toList();
-    await _s.write(key: scopedKey(_key), value: jsonEncode(capped.map((x) => x.toJson()).toList()));
+    await _save(capped);
+  }
+
+  /// Delete every call-log entry for the current account.
+  Future<void> clear() async {
+    await _s.delete(key: scopedKey(_key));
+  }
+
+  /// Delete a single entry by its position in the most-recent-first list.
+  Future<void> removeAt(int index) async {
+    final list = await load();
+    if (index < 0 || index >= list.length) return;
+    list.removeAt(index);
+    await _save(list);
+  }
+
+  Future<void> _save(List<CallEntry> list) async {
+    await _s.write(key: scopedKey(_key), value: jsonEncode(list.map((x) => x.toJson()).toList()));
   }
 }

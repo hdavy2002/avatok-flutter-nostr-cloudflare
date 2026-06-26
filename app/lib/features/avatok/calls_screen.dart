@@ -50,13 +50,30 @@ class _CallsScreenState extends State<CallsScreen> {
         // Appbar band (§8): paper-2 fill, ink bottom border, Nunito title.
         Container(
           height: 60,
-          alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: const BoxDecoration(
             color: Zine.paper2,
             border: Border(bottom: BorderSide(color: Zine.ink, width: Zine.bw)),
           ),
-          child: const ZineMarkTitle(pre: '', mark: 'Calls', fontSize: 24, textAlign: TextAlign.left),
+          child: Row(children: [
+            const Expanded(
+              child: ZineMarkTitle(pre: '', mark: 'Calls', fontSize: 24, textAlign: TextAlign.left),
+            ),
+            if (_calls.isNotEmpty)
+              ZinePressable(
+                onTap: _confirmClearAll,
+                color: Zine.card,
+                pressedColor: Zine.coral,
+                radius: BorderRadius.circular(100),
+                boxShadow: Zine.shadowXs,
+                child: SizedBox(
+                  width: 40, height: 40,
+                  child: Center(child: PhosphorIcon(
+                      PhosphorIcons.trash(PhosphorIconsStyle.bold),
+                      size: 19, color: Zine.ink)),
+                ),
+              ),
+          ]),
         ),
         Expanded(
           child: !_loaded
@@ -75,7 +92,7 @@ class _CallsScreenState extends State<CallsScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                         itemCount: _calls.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _row(_calls[i]),
+                        itemBuilder: (_, i) => _row(_calls[i], i),
                       ),
                     ),
         ),
@@ -85,14 +102,17 @@ class _CallsScreenState extends State<CallsScreen> {
 
   // Call-history row — zine card: ink border, bordered avatar, mono timestamp,
   // coral for missed, mint for incoming, call-back circle button.
-  Widget _row(CallEntry c) {
+  Widget _row(CallEntry c, int index) {
     final missed = c.dir == CallDir.missed;
     final dirColor = switch (c.dir) {
       CallDir.missed => Zine.coral,
       CallDir.incoming => Zine.mintInk,
       CallDir.outgoing => Zine.inkSoft,
     };
-    return Container(
+    return GestureDetector(
+      onLongPress: () => _confirmDelete(c, index),
+      onSecondaryTap: () => _confirmDelete(c, index), // desktop right-click
+      child: Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: Zine.card,
@@ -141,7 +161,56 @@ class _CallsScreenState extends State<CallsScreen> {
           ),
         ),
       ]),
+      ),
     );
+  }
+
+  // Confirm + delete a single call-log entry (long-press / right-click).
+  Future<void> _confirmDelete(CallEntry c, int index) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.paper,
+        title: const Text('Delete call'),
+        content: Text('Remove the call with ${c.name} from your history?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Zine.coral),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _store.removeAt(index);
+      await _load();
+    }
+  }
+
+  // Confirm + clear the entire call log.
+  Future<void> _confirmClearAll() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.paper,
+        title: const Text('Clear call logs'),
+        content: const Text('Delete your entire call history? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Zine.coral),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear all'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _store.clear();
+      await _load();
+    }
   }
 
   PhosphorIconData _dirIcon(CallDir d) => switch (d) {
