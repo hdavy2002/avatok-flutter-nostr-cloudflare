@@ -176,7 +176,7 @@ class SyncHub {
       }
       _sub = _ch!.stream.listen(
         _onFrame,
-        onError: (e) { AvaLog.I.log('hub', 'InboxDO socket error: $e'); _onClosed('error', err: e.toString()); },
+        onError: (e) { AvaLog.I.log('hub', 'InboxDO socket error: $e'); _onClosed('error', e.toString()); },
         onDone: () { AvaLog.I.log('hub', 'InboxDO socket closed'); _onClosed('done'); },
         cancelOnError: true,
       );
@@ -215,7 +215,7 @@ class SyncHub {
     }
   }
 
-  void _onClosed([String reason = 'closed', {String? err}]) {
+  void _onClosed([String reason = 'closed', String? err]) {
     _sub?.cancel(); _sub = null;
     _pingTimer?.cancel(); _pingTimer = null;
     try { _ch?.sink.close(); } catch (_) {}
