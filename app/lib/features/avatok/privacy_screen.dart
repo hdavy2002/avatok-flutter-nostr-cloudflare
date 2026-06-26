@@ -53,7 +53,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
     final p = _p;
     return Scaffold(
       backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Privacy & discoverability', markWord: 'Privacy'),
+      appBar: const ZineAppBar(title: 'Privacy', markWord: 'Privacy'),
       body: p == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(padding: const EdgeInsets.all(20), children: [
