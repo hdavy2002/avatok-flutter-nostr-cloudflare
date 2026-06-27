@@ -192,7 +192,24 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
   if (d.containsKey('event_id')) return; // relay-event → wake only
   final who = (d['fromName'] ?? 'AvaTOK').toString();
   final count = await _bumpBadge();
-  final body = count > 1 ? '$count new messages' : 'New message';
+  // Server-readable arch (owner request 2026-06-27, WhatsApp-style shade): when
+  // the push carries a short message PREVIEW, render an EXPANDABLE banner so the
+  // user can pull down the shade and read the message without opening AvaTOK.
+  // When no preview is present (e.g. legacy/content-less pushes) we fall back to
+  // the privacy-safe sender-only banner.
+  final preview = (d['preview'] ?? d['body'] ?? '').toString().trim();
+  final hasPreview = preview.isNotEmpty;
+  final body = hasPreview
+      ? preview
+      : (count > 1 ? '$count new messages' : 'New message');
+  // BigTextStyle = the tap-to-expand long-text layout in the Android shade.
+  final styleInfo = hasPreview
+      ? BigTextStyleInformation(
+          preview,
+          contentTitle: who,
+          summaryText: count > 1 ? '$count new messages' : null,
+        )
+      : null;
   await _local.show(
     8000, // fixed id → the message notification updates in place (one banner)
     who,
@@ -205,6 +222,7 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
         number: count, // launchers read this for the icon badge count
         ticker: 'Message from $who',
         category: AndroidNotificationCategory.message,
+        styleInformation: styleInfo,
       ),
     ),
     payload: 'chat',
