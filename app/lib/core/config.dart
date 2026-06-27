@@ -62,7 +62,8 @@ const String kConferenceBase = 'https://$kSignalingHost/api/conference';
 
 /// AvaTok public directory (NIP-05-style) — find people by @handle / name / npub.
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)
-const String kMeUrl = 'https://$kSignalingHost/api/me'; // GET — restore my account by Clerk session
+// NOTE: kMeUrl is declared once above (account-recovery section) — duplicate here
+// removed to fix a concurrent-edit "already declared" compile error.
 
 const String kVaultUrl = 'https://$kSignalingHost/api/vault'; // GET/POST — encrypted cross-device blobs (contacts)
 const String kResolveUrl = 'https://$kSignalingHost/api/resolve'; // GET ?q= (public)
