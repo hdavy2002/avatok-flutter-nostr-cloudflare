@@ -14,7 +14,14 @@ import 'ava_number.dart';
 /// so no two users share one. Only PAID users can regenerate/change it — a free
 /// user's number is locked after their one free generation (owner request 2026-06-27).
 class NumberSettingsScreen extends StatefulWidget {
-  const NumberSettingsScreen({super.key});
+  /// Mandatory "choose your number" GATE (onboarding + existing users with no
+  /// number). When true: the screen can't be dismissed (no back / system-back
+  /// blocked), assigning a number calls [onAssigned], and a "Sign out instead"
+  /// escape is shown so a user is never fully trapped (owner decision 2026-06-27).
+  final bool gate;
+  final VoidCallback? onAssigned;
+  final VoidCallback? onSignOut;
+  const NumberSettingsScreen({super.key, this.gate = false, this.onAssigned, this.onSignOut});
   @override
   State<NumberSettingsScreen> createState() => _NumberSettingsScreenState();
 }
@@ -125,6 +132,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       if (!mounted) return;
       setState(() { _me = me; _picking = false; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Your number is now ${res.display}')));
+      if (widget.gate) widget.onAssigned?.call(); // leave the mandatory gate
     } else {
       final msg = res.error == 'number_taken'
           ? 'Just taken — pick another'
@@ -160,12 +168,31 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Zine.paper,
-      appBar: const ZineAppBar(title: 'Your number', markWord: 'number'),
-      body: _me == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(padding: const EdgeInsets.all(20), children: _content()),
+    return PopScope(
+      canPop: !widget.gate, // mandatory gate can't be backed out of
+      child: Scaffold(
+        backgroundColor: Zine.paper,
+        appBar: ZineAppBar(
+            title: widget.gate ? 'Choose your number' : 'Your number',
+            markWord: 'number', showBack: !widget.gate),
+        body: _me == null
+            ? const Center(child: CircularProgressIndicator())
+            : widget.gate
+                ? Column(children: [
+                    Expanded(child: ListView(padding: const EdgeInsets.all(20), children: _content())),
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TextButton(
+                          onPressed: widget.onSignOut,
+                          child: Text('Sign out instead',
+                              style: ZineText.link(size: 13, color: Zine.inkSoft)),
+                        ),
+                      ),
+                    ),
+                  ])
+                : ListView(padding: const EdgeInsets.all(20), children: _content()),
+      ),
     );
   }
 
@@ -175,6 +202,19 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       return [_infoCard('Not available', 'AvaTOK numbers aren’t available right now. Check back soon.')];
     }
     final widgets = <Widget>[];
+    if (widget.gate) {
+      widgets.add(ZineCard(
+        color: Zine.lime,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('PICK YOUR AVATOK NUMBER', style: ZineText.kicker()),
+          const SizedBox(height: 8),
+          Text('Choose a number to finish setting up. It represents you on AvaTOK — '
+              'people call and message you on it — and keeps your real phone private. '
+              'Pick any available number below.', style: ZineText.value(size: 14)),
+        ]),
+      ));
+      widgets.add(const SizedBox(height: 14));
+    }
     if (me.hasNumber && !_picking) {
       widgets.add(
         ZineCard(

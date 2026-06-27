@@ -55,6 +55,10 @@ class _AvaShellState extends State<AvaShell> {
 
   Identity? _id;
   bool? _profileComplete; // null = checking, false = show gate, true = enter app
+  // Compulsory AvaTOK number (owner decision 2026-06-27): a complete profile with
+  // NO number must choose one before entering the app — applies to new users at
+  // onboarding AND existing users without a number on next open.
+  bool _needsNumber = false;
 
   @override
   void initState() {
@@ -79,13 +83,17 @@ class _AvaShellState extends State<AvaShell> {
     if (!complete) {
       try { complete = await store.restoreFromServer(); } catch (_) {/* offline → setup screen */}
     }
-    if (mounted) setState(() { _id = id; _profileComplete = complete; });
-    // Onboarding nudge: once the profile is complete, offer the free AvaTOK
-    // number ONCE so the user picks a number that represents them and keeps
-    // their real phone private (owner request 2026-06-27, soft/skippable).
-    if (complete && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeOfferNumber());
+    // Compulsory AvaTOK number: a complete profile with NO number must choose one
+    // before using the app. Fail-open when offline so a network error never traps
+    // a user — they're gated on the next online open instead.
+    var needsNumber = false;
+    if (complete) {
+      try {
+        final me = await AvaNumber.me();
+        needsNumber = me.featureOn && !me.hasNumber;
+      } catch (_) { needsNumber = false; }
     }
+    if (mounted) setState(() { _id = id; _profileComplete = complete; _needsNumber = needsNumber; });
     // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
     // (premium) or the user's own Google Drive (free). Makes the device + backup
     // the durable copy so the InboxDO can shed old history.
@@ -275,7 +283,19 @@ class _AvaShellState extends State<AvaShell> {
       return ProfileSetupScreen(
         identity: _id,
         onSignOut: widget.onSignOut,
-        onDone: () => setState(() => _profileComplete = true),
+        // Re-run the gate after the profile is saved so the compulsory number
+        // check runs next (show the loader meanwhile, no flash to the chat list).
+        onDone: () { setState(() { _profileComplete = null; _needsNumber = false; }); _load(); },
+      );
+    }
+    // Compulsory AvaTOK number gate: a complete profile with no number must pick
+    // one before entering the app (owner decision 2026-06-27). Same gate for new
+    // users at onboarding and existing users who never registered a number.
+    if (_needsNumber) {
+      return NumberSettingsScreen(
+        gate: true,
+        onSignOut: widget.onSignOut,
+        onAssigned: () => setState(() => _needsNumber = false),
       );
     }
     // Messaging-first landing (owner decision 2026-06-18, free release): the app
