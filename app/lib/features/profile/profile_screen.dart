@@ -84,7 +84,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final parts = _name.text.trim().isEmpty ? prof.displayName.split(RegExp(r'\s+')) : _name.text.trim().split(RegExp(r'\s+'));
     final first = parts.isNotEmpty ? parts.first : '';
     final last = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-    final number = me.hasNumber ? (me.display ?? '') : prof.phone;
+    // Privacy (owner request 2026-06-27): NEVER put the user's real/private phone
+    // on the share card — only the virtual AvaTOK number is shareable. If they
+    // don't have one yet, the card carries no number (photo, name + email only).
+    final number = me.hasNumber ? (me.display ?? '') : '';
     // Personal email — from the stored profile, else from the known account email.
     final email = prof.email.isNotEmpty ? prof.email : (Analytics.currentEmail ?? '');
     if (prof.email.isEmpty && email.isNotEmpty) _store.setEmail(email);
@@ -603,7 +606,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: ZineText.value(size: 15, color: Zine.blueInk))),
             if (_myNum != null && !_myNum!.hasNumber)
               Padding(padding: const EdgeInsets.only(top: 4), child: Center(child:
-                Text('Free plan — your QR shares your real number', style: ZineText.sub(size: 11.5)))),
+                Text('Generate your AvaTOK number in Settings → Your number to share it. '
+                    'Your real number is always kept private.',
+                    textAlign: TextAlign.center, style: ZineText.sub(size: 11.5)))),
             const SizedBox(height: 14),
             Row(children: [
               Expanded(child: ZineButton(
