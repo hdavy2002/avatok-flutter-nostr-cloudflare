@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -169,18 +170,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final existing = await _store.load();
     // Personal email — keep it stored so the QR card + email discovery stay complete.
     final email = existing.email.isNotEmpty ? existing.email : (Analytics.currentEmail ?? '');
+    // LOCAL-FIRST (owner report 2026-06-27 — "saving takes forever"): persist to the
+    // on-device store and release the UI immediately; publish to the directory in
+    // the BACKGROUND so a slow/offline network never blocks Save.
     await _store.save(existing.copyWith(
         displayName: fullName, email: email, bio: _bio.text.trim(),
         sharePresence: _sharePresence, birthYear: by));
-    // Opt-in discovery: publish to the directory so others can find me by name/email.
-    if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty || email.isNotEmpty) {
-      await Directory.registerProfile(npub: id.npub, name: fullName, firstName: first, lastName: last,
-          email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim());
+    if (mounted) setState(() { _saving = false; _listed = true; });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile saved')));
     }
-    if (!mounted) return;
-    setState(() { _saving = false; _listed = true; });
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile saved — people can now find you')));
+    // Background directory publish — fire-and-forget, retried on the next save.
+    if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty || email.isNotEmpty) {
+      unawaited(Directory.registerProfile(npub: id.npub, name: fullName, firstName: first, lastName: last,
+          email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim()));
+    }
   }
 
   // ---- profile photo ----
