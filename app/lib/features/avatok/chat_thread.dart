@@ -350,7 +350,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _dm!.sendStatus.listen(_onSendStatus);
     _dm!.start();
     _presenceMe = id.shortNpub;
-    _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, peerHex), id.shortNpub)..connect();
+    _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, peerHex), id.shortNpub,
+        convKey: '1:$peerHex', peerUid: peerHex)..connect();
     _presence!.events.listen(_onPresence);
     _presence!.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     if (_sharePresence) _presence!.sendOnline();
@@ -424,7 +425,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
     _presenceMe = id.shortNpub;
-    _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortNpub)..connect();
+    _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortNpub,
+        convKey: 'g:${g.id}')..connect();
     _presence!.events.listen(_onPresence);
     _startPresenceHeartbeat();
     _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();

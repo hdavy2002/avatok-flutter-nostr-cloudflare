@@ -523,7 +523,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           // Send a delivered receipt for recent 1:1 messages (not history replays).
           final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           if (env['gid'] == null && u.createdAt > nowSec - 300) {
-            final pres = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, u.senderPub), 'inbox')..connect();
+            final pres = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, u.senderPub), 'inbox',
+                convKey: '1:${u.senderPub}', peerUid: u.senderPub)..connect();
             pres.sendDelivered(u.createdAt);
             Future.delayed(const Duration(milliseconds: 900), pres.dispose);
           }

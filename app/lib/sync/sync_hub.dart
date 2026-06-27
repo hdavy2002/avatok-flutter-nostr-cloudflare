@@ -17,6 +17,8 @@ import '../core/disk_cache.dart';
 import '../identity/identity.dart';
 import 'dm.dart' show DmMessage;
 import 'legacy_stubs.dart';
+import 'transport/ava_transport.dart';
+import 'transport/ably_transport.dart';
 
 /// A delivered message, server-routed plaintext (Cloudflare-native; Nostr gone).
 /// Consumers (chat list, threads, group threads) filter by [convKey].
@@ -45,6 +47,18 @@ class SyncHub {
 
   final NostrClient _stub = NostrClient(kInboxWsUrl); // returned to callers (compat)
   bool _started = false;
+
+  // ── Ably transport (Ably migration) ────────────────────────────────────────
+  // On iOS/Android with the 'ably' provider, live RECEIVE + presence/typing/
+  // receipts flow over Ably instead of the InboxDO WebSocket. When [_ably] is
+  // non-null the legacy socket is NEVER opened; AblyTransport's streams are
+  // bridged into [_incoming] so every existing consumer (chat list, dm.dart,
+  // group_dm.dart) works unchanged. PresenceChannel reads [ably] directly for
+  // typing/online. Desktop/macOS/web always stay on the InboxDO path.
+  AblyTransport? _ably;
+  bool get ablyActive => _ably != null;
+  AblyTransport? get ably => _ably;
+  final List<StreamSubscription> _ablyBridge = [];
 
   WebSocketChannel? _ch;
   StreamSubscription? _sub;
@@ -101,15 +115,41 @@ class SyncHub {
       unawaited(drainPendingDeletes()); // apply deletes queued while backgrounded
       unawaited(drainPendingHides());   // apply hide/undo queued while backgrounded
       unawaited(drainPendingCallOps()); // apply call-log deletes/clears queued while asleep
-      _open();
-      AvaLog.I.log('hub', 'InboxDO sync started for uid=${_myUid}');
+      if (useAblyTransport()) {
+        _startAbly(); // iOS/Android 'ably' provider — no InboxDO socket
+      } else {
+        _open();
+      }
+      AvaLog.I.log('hub', 'sync started for uid=${_myUid} (ably=${useAblyTransport()})');
     } else {
       ensureConnected();
     }
     return _stub;
   }
 
+  /// Start the Ably transport and bridge its streams into [_incoming] so every
+  /// existing consumer keeps working. Idempotent.
+  void _startAbly() {
+    final uid = _myUid;
+    if (uid == null || uid.isEmpty || _ably != null) return;
+    final t = AblyTransport(uid);
+    _ably = t;
+    // Durable messages → HubEvent (AblyTransport already persisted to drift).
+    _ablyBridge.add(t.messages.listen((m) {
+      _incoming.add(HubEvent(m.convKey, m.senderUid, uid, m.mine, m.rumorId, m.payload, m.createdAt));
+    }));
+    // Delivered/read receipts → the same receipt HubEvent shape threads expect.
+    _ablyBridge.add(t.receipts.listen((r) {
+      final payload = jsonEncode({'t': 'receipt', 'status': r.status, 'ts': r.ts});
+      _incoming.add(HubEvent(r.convKey, '', uid, false, 'rcpt_${r.convKey}_${r.ts}', payload, r.ts));
+    }));
+    unawaited(t.start());
+    Analytics.capture('ably_transport_started', const {});
+    AvaLog.I.log('hub', 'Ably transport active for uid=$uid (InboxDO socket skipped)');
+  }
+
   void ensureConnected() {
+    if (ablyActive) { _ably?.onResumed(); return; } // Ably self-manages its connection
     if (!_wantConnected) return;
     unawaited(drainPendingDeletes()); // a foreground wake also flushes queued deletes
     unawaited(drainPendingHides());   // …and queued hide/undo ops
@@ -127,6 +167,7 @@ class SyncHub {
   /// message still wasn't there" — [ensureConnected] alone is fooled by a zombie
   /// `_ch` that is non-null but dead.
   void onAppResumed() {
+    if (ablyActive) { _ably?.onResumed(); return; } // Ably reconnects itself
     if (!_wantConnected) return;
     if (_ch == null) { ensureConnected(); return; }
     final probedAt = DateTime.now().millisecondsSinceEpoch;
