@@ -199,7 +199,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
               _special('avachat', 'ChatAVA', 'Chat privately with Ava',
                   PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
               _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
-                  PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint),
+                  PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint, paid: true),
               _special('library', 'Library', 'Saved media & files',
                   PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
               // Contacts — moved out of ACCOUNT to sit below Library; own colour.
@@ -306,7 +306,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     );
   }
 
-  Widget _special(String key, String name, String sub, IconData icon, Color color) {
+  Widget _special(String key, String name, String sub, IconData icon, Color color, {bool paid = false}) {
     final active = widget.current == key;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -326,6 +326,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
               Text(sub, style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
             ]),
           ),
+          // Premium marker — hidden once the user is on a paid plan / topped up.
+          if (paid && !_premium) const PaidBadge(),
         ]),
       ),
     );
