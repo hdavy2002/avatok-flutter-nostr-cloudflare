@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/ice_cache.dart';
+import '../../core/device_contacts.dart';
 import '../avatok/add_by_link_sheet.dart';
 import '../avatok/call_screen.dart';
 import '../avatok/chat_thread.dart';
@@ -103,6 +105,11 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           title: Text('Message', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _message(c); }),
         ListTile(
+          leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: PhoneTheme.accent),
+          title: Text('Share number', style: PhoneTheme.value(size: 15)),
+          subtitle: Text('WhatsApp, email & more', style: PhoneTheme.sub(size: 11.5)),
+          onTap: () { Navigator.pop(ctx); _shareNumber(c); }),
+        ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
           title: Text('Remove contact', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
           onTap: () async { Navigator.pop(ctx); final l = await _store.remove(c.npub); if (mounted) setState(() => _all = l); }),
@@ -123,6 +130,23 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(
       chat: Chat(name: c.name.isNotEmpty ? c.name : c.number, seed: c.npub,
           avatarUrl: c.avatarUrl, last: '', time: ''))));
+  }
+
+  /// Share a contact's AvaTOK number via the OS share sheet (WhatsApp, email,
+  /// any social) — long-press / "Share number" action.
+  void _shareNumber(Contact c) {
+    final name = c.name.isNotEmpty ? c.name : 'This contact';
+    Analytics.capture('avaphone_contact_share', const {});
+    Share.share('$name on AvaTOK — ${c.number}. Find them on AvaTOK by this number.',
+        subject: 'AvaTOK number');
+  }
+
+  /// Invite friends: pull the phone address book ONLY to share an invite via
+  /// WhatsApp/email (the OS share sheet). Nothing is imported into AvaTOK
+  /// contacts and no numbers are uploaded.
+  Future<void> _invite() async {
+    Analytics.capture('avaphone_invite_friends', const {});
+    try { await DeviceContactsService.shareGenericInvite(); } catch (_) {}
   }
 
   @override
@@ -149,6 +173,12 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
             child: Row(children: [
               Text('Contacts', style: PhoneTheme.title(size: 24)),
               const Spacer(),
+              IconButton(
+                onPressed: _invite,
+                tooltip: 'Invite friends',
+                icon: PhosphorIcon(PhosphorIcons.paperPlaneTilt(PhosphorIconsStyle.bold),
+                    size: 20, color: PhoneTheme.accent)),
+              const SizedBox(width: 2),
               PhoneTheme.chip('On AvaTOK', color: PhoneTheme.teal,
                   icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill)),
             ]),
