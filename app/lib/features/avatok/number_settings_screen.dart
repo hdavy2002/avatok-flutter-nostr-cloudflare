@@ -60,7 +60,11 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     setState(() {
       _me = me;
       _countries = countries;
-      _country = countries.isNotEmpty ? countries.first : null;
+      // Default to United States (owner request 2026-06-27); fall back to the
+      // first available country if the US plan isn't in the list.
+      _country = countries.isEmpty
+          ? null
+          : countries.firstWhere((c) => c.iso2 == 'US', orElse: () => countries.first);
       _picking = !me.hasNumber; // jump straight to picking when no number yet
     });
     if (!me.canGenerate) Analytics.capture('assign_blocked_free_tier', const {'where': 'settings'});
