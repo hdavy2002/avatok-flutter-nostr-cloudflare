@@ -67,7 +67,7 @@ class MinorTerms {
             Expanded(
               child: SingleChildScrollView(
                 controller: scroll,
-                child: Text(_termsBody, style: ZineText.sub(size: 13, height: 1.45)),
+                child: Text(_termsBody, style: ZineText.sub(size: 13)),
               ),
             ),
             const SizedBox(height: 12),
