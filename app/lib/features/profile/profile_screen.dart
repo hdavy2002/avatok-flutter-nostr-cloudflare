@@ -22,7 +22,6 @@ import 'package:share_plus/share_plus.dart';
 import '../avatok/contacts.dart';
 import '../avatok/ava_number.dart';
 import 'avatar_crop_screen.dart';
-import 'phone_verify_card.dart';
 
 /// Set your public display name + @handle. Saving publishes you to the AvaTok
 /// directory (opt-in discovery) and makes your @handle resolvable.
@@ -569,11 +568,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
         ),
         const SizedBox(height: 16),
-        // Soft nudge for users who skipped phone at onboarding (non-dismissible
-        // here — the profile editor is the natural place to add it). Shows a
-        // verified row once done.
-        const PhoneNudgeCard(source: 'profile', collapsible: false),
-        const SizedBox(height: 6),
+        // Phone-number nudge removed (owner decision 2026-06-27): the public card
+        // no longer asks for a phone number — identity is the AvaTOK number + email.
         Text('ACCOUNT & SECURITY', style: ZineText.kicker()),
         const SizedBox(height: 10),
         _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.blue,

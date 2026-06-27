@@ -220,11 +220,11 @@ class _SignInScreenState extends State<SignInScreen> {
         : 'Join AvaTOK — it takes a minute.';
     final (titlePre, titleMark, sub, cta, tag) = switch (_mode) {
       _Mode.signIn => (
-          'Welcome ',
-          'back',
+          'Sign in ',
+          'or up',
           widget.gateReason != null
               ? 'Sign in to ${widget.gateReason}'
-              : 'Log in to your AvaTOK account.',
+              : 'Log in to your AvaTOK account — or create one below.',
           'Log in',
           'log in'
         ),
