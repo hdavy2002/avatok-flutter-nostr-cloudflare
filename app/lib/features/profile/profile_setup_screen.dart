@@ -27,11 +27,15 @@ class ProfileSetupScreen extends StatefulWidget {
   final Identity? identity;
   final VoidCallback onDone;
   final VoidCallback onSignOut;
+  /// The email the user signed in with (from Clerk) — shown locked, and used to
+  /// satisfy the required-email validation so "Save & continue" enables.
+  final String? email;
   const ProfileSetupScreen({
     super.key,
     required this.identity,
     required this.onDone,
     required this.onSignOut,
+    this.email,
   });
 
   @override
@@ -69,7 +73,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         _last.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
         // Email is the account you signed in with — prefilled and LOCKED here
         // (owner decision 2026-06-27); change it later in Settings if needed.
-        _email.text = (Analytics.currentEmail ?? '').isNotEmpty ? Analytics.currentEmail! : p.email;
+        // Prefer the email passed from the auth layer, then telemetry, then any
+        // saved profile email.
+        _email.text = (widget.email ?? '').isNotEmpty
+            ? widget.email!
+            : ((Analytics.currentEmail ?? '').isNotEmpty ? Analytics.currentEmail! : p.email);
         _birthYear.text = p.birthYear?.toString() ?? '';
         _bio.text = p.bio;
         _avatarUrl = p.avatarUrl;

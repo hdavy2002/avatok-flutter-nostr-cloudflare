@@ -60,6 +60,7 @@ class _AvaShellState extends State<AvaShell> {
   // NO number must choose one before entering the app — applies to new users at
   // onboarding AND existing users without a number on next open.
   bool _needsNumber = false;
+  String? _authEmail; // email the user signed in with (Clerk) → shown locked in profile
 
   @override
   void initState() {
@@ -69,6 +70,9 @@ class _AvaShellState extends State<AvaShell> {
 
   Future<void> _load() async {
     final id = await _idStore.load();
+    // The signed-in email (from Clerk) — used to prefill + lock the profile's
+    // email field and satisfy its required-email validation.
+    try { _authEmail = (await widget.clerk.currentUser())?.email; } catch (_) {/* offline */}
     // Warm the per-account focus-mode value so any sidebar drawer paints the
     // correct menu without a default-then-correct flicker.
     await FocusMode.load();
@@ -297,6 +301,7 @@ class _AvaShellState extends State<AvaShell> {
     if (_profileComplete == false) {
       return ProfileSetupScreen(
         identity: _id,
+        email: _authEmail,
         onSignOut: widget.onSignOut,
         // Re-run the gate after the profile is saved (show the loader meanwhile,
         // no flash to the chat list).

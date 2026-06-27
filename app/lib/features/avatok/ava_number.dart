@@ -186,6 +186,14 @@ class AvaNumber {
           'number': (j['number'] ?? '').toString(),
           'display': (j['display'] ?? '').toString(),
         });
+        // Write-through the `me` cache so the very next screen (the profile, which
+        // reads AvaNumber.me() cache-first) shows the number we just assigned
+        // instead of the stale pre-assignment value.
+        final cur = (await _readCache(_meCacheKey)) ?? <String, dynamic>{};
+        cur['number'] = (j['number'] ?? '').toString();
+        cur['display'] = (j['display'] ?? '').toString();
+        cur['feature'] = true;
+        await _writeCache(_meCacheKey, cur);
         return (ok: true, number: (j['number'] ?? '').toString(), display: (j['display'] ?? '').toString(), error: null);
       }
       final err = (j['error'] ?? 'http_${r.statusCode}').toString();
