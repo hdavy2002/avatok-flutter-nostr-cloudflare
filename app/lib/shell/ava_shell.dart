@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../auth/clerk_client.dart';
 import '../core/account_storage.dart';
 import '../core/admin_tools.dart';
+import '../core/analytics.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
 import '../core/profile_store.dart';
@@ -94,6 +95,8 @@ class _AvaShellState extends State<AvaShell> {
       } catch (_) { needsNumber = false; }
     }
     if (mounted) setState(() { _id = id; _profileComplete = complete; _needsNumber = needsNumber; });
+    // Funnel signal: did the user hit the compulsory number gate?
+    if (needsNumber) Analytics.capture('number_gate_shown', const {});
     // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
     // (premium) or the user's own Google Drive (free). Makes the device + backup
     // the durable copy so the InboxDO can shed old history.
@@ -109,6 +112,8 @@ class _AvaShellState extends State<AvaShell> {
   }
 
   void _openDest(String dest) {
+    // Where users go after signing in / which features they use most.
+    Analytics.capture('feature_opened', {'dest': dest});
     switch (dest) {
       case 'explore':
         return; // marketplace de-emphasised for the free messaging release

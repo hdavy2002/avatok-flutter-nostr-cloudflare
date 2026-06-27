@@ -85,6 +85,7 @@ class _SignInScreenState extends State<SignInScreen> {
     }
     setState(() { _busy = true; _error = null; });
     _provider = 'email_code';
+    unawaited(Analytics.capture('email_otp_requested', {'mode': 'signin'}));
     unawaited(Analytics.capture('signup_attempt', {'provider': 'email_code', 'mode': 'signin'}));
     _handleStep(await widget.clerk.signIn(_email.text, ''));
   }
@@ -128,9 +129,14 @@ class _SignInScreenState extends State<SignInScreen> {
           return;
         }
         final err = await widget.clerk.verifyCode(_pendingKind!, _pendingId!, _code.text);
-        if (err == null) { _succeed(); return; }
+        if (err == null) {
+          unawaited(Analytics.capture('email_otp_verify_succeeded', {'kind': _pendingKind ?? ''}));
+          _succeed();
+          return;
+        }
         if (mounted) {
           setState(() { _busy = false; _error = err; });
+          unawaited(Analytics.capture('email_otp_verify_failed', {'kind': _pendingKind ?? '', 'shown_error': err}));
           unawaited(Analytics.capture('signup_failed', {'provider': 'password', 'shown_error': err}));
         }
         return;
@@ -163,6 +169,7 @@ class _SignInScreenState extends State<SignInScreen> {
     if (!mounted) return;
     if (r.isComplete) { _succeed(); return; }
     if (r.needsCode) {
+      unawaited(Analytics.capture('email_otp_sent', {'kind': r.kind ?? '', 'provider': _provider}));
       setState(() {
         _busy = false;
         _pendingKind = r.kind;

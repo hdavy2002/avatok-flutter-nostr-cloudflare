@@ -97,6 +97,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     );
     if (chosen != null) {
       setState(() => _country = chosen);
+      Analytics.capture('number_country_selected', {'country': chosen.iso2, 'name': chosen.name});
       _loadAvailable();
     }
   }
@@ -124,16 +125,45 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     );
     if (ok != true) return;
     setState(() => _busy = true);
+    final prev = _me; // current number/plan BEFORE this assign (for change tracking)
     final res = await AvaNumber.assign(_country!.iso2, n.nsn);
     if (!mounted) return;
     setState(() => _busy = false);
     if (res.ok) {
       final me = await AvaNumber.me();
+      final paid = prev?.entitled ?? me.entitled;
+      final newDisplay = res.display ?? n.display;
+      // Rich telemetry: who got which number, country, free/paid, and — for a
+      // paid CHANGE — their previous number. `$set` writes person properties so a
+      // user becomes findable in PostHog by their AvaTOK number.
+      Analytics.capture('number_assigned', {
+        'country': _country!.iso2,
+        'number': newDisplay,
+        'nsn': n.nsn,
+        'plan': paid ? 'paid' : 'free',
+        'is_change': prev?.hasNumber == true,
+        if (prev?.hasNumber == true && (prev?.display ?? '').isNotEmpty)
+          'previous_number': prev!.display!,
+        'via': widget.gate ? 'onboarding_gate' : 'settings',
+        if (Analytics.currentEmail != null) 'account_email': Analytics.currentEmail!,
+        r'$set': <String, Object>{
+          'avatok_number': newDisplay,
+          'number_country': _country!.iso2,
+          'number_plan': paid ? 'paid' : 'free',
+        },
+      });
       if (!mounted) return;
       setState(() { _me = me; _picking = false; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Your number is now ${res.display}')));
-      if (widget.gate) widget.onAssigned?.call(); // leave the mandatory gate
+      if (widget.gate) {
+        Analytics.capture('number_gate_completed', {'country': _country!.iso2, 'plan': paid ? 'paid' : 'free'});
+        widget.onAssigned?.call(); // leave the mandatory gate
+      }
     } else {
+      Analytics.error(
+        domain: 'number', code: res.error ?? 'assign_failed', action: 'assign',
+        extra: {'country': _country!.iso2, 'via': widget.gate ? 'onboarding_gate' : 'settings'},
+      );
       final msg = res.error == 'number_taken'
           ? 'Just taken — pick another'
           : res.error == 'upgrade_required'
