@@ -29,6 +29,7 @@ class ContactProfileScreen extends StatefulWidget {
 class _ContactProfileScreenState extends State<ContactProfileScreen> {
   List<Group> _shared = [];
   String _number = '';
+  String _email = '';
   late String _name = widget.name;
 
   /// A name that is really just the raw routing id (e.g. "user_3FcSU…tojL") is
@@ -59,10 +60,16 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
       _recoverName();
     }
     // Resolve the contact's AvaTOK number for display (best-effort).
+    // Seed email from the saved contact immediately (directory resolve refines it).
+    ContactsStore().load().then((cs) {
+      final m = cs.where((c) => c.npub == widget.npub).toList();
+      if (mounted && m.isNotEmpty && m.first.email.isNotEmpty) setState(() => _email = m.first.email);
+    });
     Directory.resolve(widget.npub).then((c) {
       if (!mounted || c == null) return;
       setState(() {
         if (c.number.isNotEmpty) _number = c.number;
+        if (c.email.isNotEmpty) _email = c.email;
         // Directory name is a fallback when no saved contact matched.
         if (_looksLikeRawId(_name, widget.npub) &&
             c.name.isNotEmpty && !_looksLikeRawId(c.name, widget.npub)) {
@@ -118,6 +125,19 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
               }),
         ])),
+        if (_email.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _box('Email', PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.lilac,
+              child: Row(children: [
+            Expanded(child: SelectableText(_email, style: ZineText.value(size: 15))),
+            IconButton(
+                icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _email));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+                }),
+          ])),
+        ],
         const SizedBox(height: 18),
         Text('SHARED GROUPS', style: ZineText.kicker()),
         const SizedBox(height: 6),
