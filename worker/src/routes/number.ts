@@ -9,7 +9,7 @@
 // `numberFeatureEnabled` kill switch.
 import type { Env } from "../types";
 import { json } from "../util";
-import { metaSession } from "../db/shard";
+import { metaSession, metaDb } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { readConfig } from "./config";
 import { tierOf } from "./plans";
@@ -277,7 +277,11 @@ export async function me(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const tier = await tierOf(env, ctx.uid);
-  const r = await metaSession(env).prepare("SELECT avatok_number, avatok_number_display, free_number_used FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatok_number: string | null; avatok_number_display: string | null; free_number_used: number | null }>();
+  // Read from the PRIMARY (not a session/replica): this is the gate's source of
+  // truth right after assigning a number in a previous request, and a lagged
+  // replica here made the app re-ask for a number it had just set (loop bug,
+  // owner report 2026-06-27).
+  const r = await metaDb(env).prepare("SELECT avatok_number, avatok_number_display, free_number_used FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatok_number: string | null; avatok_number_display: string | null; free_number_used: number | null }>();
   // can_generate: free accounts may claim their ONE number; paid accounts always.
   const canGenerate = paid(tier) || ((r?.free_number_used ?? 0) === 0 && !(r?.avatok_number ?? ""));
   return json({ entitled: paid(tier), tier, number: r?.avatok_number ?? null, display: r?.avatok_number_display ?? null, feature: await featureOn(env), can_generate: canGenerate });
