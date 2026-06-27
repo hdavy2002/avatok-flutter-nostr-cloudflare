@@ -260,6 +260,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       ApiAuth.postJson(kMsgReadUrl, {'conv': conv, 'read_ts': ts})
           .then((_) {}, onError: (_) {});
+      // DURABLE read receipt to the PEER (1:1) so their bubbles turn blue (Read)
+      // even if they're offline now — they pick it up on their next /sync. The
+      // ephemeral presence read only worked when both were online at once, which
+      // is why ticks were stuck on "Sent" (owner report 2026-06-27).
+      if (_dm != null) _dm!.sendReceipt('read', ts);
     });
   }
 
@@ -464,7 +469,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       setState(() { _peerOnline = false; _peerTyping = false; _peerLastSeen = ts; });
       return;
     }
-    _markPeerOnline();
+    // Only an explicit peer 'online' frame marks them online — NOT read/delivered/
+    // typing/liveloc frames. Inferring online from those (or from a mis-attributed
+    // echo) is what made every contact look "online" (owner report 2026-06-27).
+    if (e['type'] == 'online') _markPeerOnline();
     if (e['type'] == 'typing') {
       setState(() { _peerTyping = e['on'] == true; _typingWho = e['who']?.toString(); });
       _typingClear?.cancel();
