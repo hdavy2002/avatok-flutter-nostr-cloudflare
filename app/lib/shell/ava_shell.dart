@@ -69,7 +69,15 @@ class _AvaShellState extends State<AvaShell> {
     // Mandatory-profile gate (pic5): every entry into the shell — new users after
     // onboarding AND existing users on next open — must have a complete profile
     // (photo, first+last name, valid email, valid phone) before using the app.
-    final complete = (await ProfileStore().load()).isComplete;
+    final store = ProfileStore();
+    var complete = (await store.load()).isComplete;
+    // Email-OTP recovery on a NEW phone: if the local profile is incomplete (a
+    // fresh install), ask the server for this account's saved profile and
+    // hydrate it so a returning user skips onboarding. Phone is re-added later
+    // via the soft nudge (owner request 2026-06-27).
+    if (!complete) {
+      try { complete = await store.restoreFromServer(); } catch (_) {/* offline → setup screen */}
+    }
     if (mounted) setState(() { _id = id; _profileComplete = complete; });
     // Onboarding nudge: once the profile is complete, offer the free AvaTOK
     // number ONCE so the user picks a number that represents them and keeps

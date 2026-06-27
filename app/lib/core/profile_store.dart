@@ -1,8 +1,14 @@
 import 'dart:convert';
 
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
 import 'account_storage.dart';
+import 'analytics.dart';
+import 'api_auth.dart';
+import 'config.dart';
 
 /// The user's public profile (display name + @handle). Stored locally; published
 /// to the directory only when the user opts in by saving a handle.
@@ -65,6 +71,9 @@ class Profile {
 
 class ProfileStore {
   static const _key = 'avatok_profile';
+  // Set once a fresh device has recovered an existing account from the server,
+  // so we don't re-hit /api/me on every cold start (account-scoped).
+  static const _recoveredKey = 'account_recovered_v1';
   final FlutterSecureStorage _s;
   ProfileStore([FlutterSecureStorage? s])
       : _s = s ??
@@ -111,5 +120,50 @@ class ProfileStore {
     final p = await load();
     if (p.email == e) return;
     await save(p.copyWith(email: e));
+  }
+
+  /// Recover an existing account on a NEW phone (email-OTP recovery, owner
+  /// request 2026-06-27). When the local profile is incomplete, ask the server
+  /// (`GET /api/me`, Clerk-authed) for this account's saved profile and hydrate
+  /// it locally so a returning user skips onboarding. The real phone is stored
+  /// only as a hash server-side and can't be recovered — it's re-added later via
+  /// the soft phone nudge — so a recovered account is treated as set up WITHOUT a
+  /// local phone. Returns true when an existing account was recovered (the caller
+  /// should let the user straight into the app).
+  Future<bool> restoreFromServer() async {
+    // Already recovered on this device → trust it, skip the network round-trip.
+    try { if (await readScoped(_s, _recoveredKey) == '1') return true; } catch (_) {}
+    http.Response res;
+    try {
+      res = await ApiAuth.getSigned(kMeUrl);
+    } catch (_) {
+      return false; // offline / transient → fall back to the setup screen
+    }
+    if (res.statusCode != 200) return false;
+    Map<String, dynamic> j;
+    try { j = jsonDecode(res.body) as Map<String, dynamic>; } catch (_) { return false; }
+    if (j['found'] != true) return false;
+    final first = (j['first_name'] ?? '').toString().trim();
+    final last = (j['last_name'] ?? '').toString().trim();
+    final display = (j['display_name'] ?? '').toString().trim();
+    final name = display.isNotEmpty ? display : [first, last].where((s) => s.isNotEmpty).join(' ').trim();
+    final avatar = (j['avatar_url'] ?? '').toString().trim();
+    // A genuinely set-up account has at least a name and a photo. (A brand-new
+    // signup with no profile row yet returns found:false / empty → setup screen.)
+    if (name.isEmpty || avatar.isEmpty) return false;
+    final by = (j['birth_year'] is num) ? (j['birth_year'] as num).toInt() : null;
+    final bio = (j['bio'] ?? '').toString();
+    // Email isn't returned (stored hashed) — take it from the signed-in account.
+    final email = (Analytics.currentEmail ?? '').trim();
+    final existing = await load();
+    await save(existing.copyWith(
+      displayName: name,
+      avatarUrl: avatar,
+      bio: bio,
+      birthYear: by,
+      email: email.isNotEmpty ? email : null,
+    ));
+    try { await _s.write(key: scopedKey(_recoveredKey), value: '1'); } catch (_) {/* best-effort */}
+    return true;
   }
 }

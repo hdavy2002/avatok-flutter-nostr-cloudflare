@@ -30,6 +30,12 @@ const String kCallStatusUrl = 'https://$kSignalingHost/api/call-status';
 /// Nudge recipients that a new message arrived (content-less wake). (NIP-98)
 const String kNotifyUrl = 'https://$kSignalingHost/api/notify';
 
+/// Restore endpoint — GET the signed-in account's own saved profile (Clerk JWT)
+/// so a fresh install / new phone rehydrates name, photo, birth year, bio + the
+/// AvaTOK number without re-onboarding. Email-OTP account recovery (owner
+/// request 2026-06-27).
+const String kMeUrl = 'https://$kSignalingHost/api/me';
+
 /// Signaling host (no scheme). Baked at compile time; the staging APK flavor
 /// (--dart-define=AVATOK_ENV=staging, Phase 1 A1) talks to the staging worker.
 const String kSignalingHost =
