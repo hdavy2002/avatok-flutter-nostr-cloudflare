@@ -608,8 +608,52 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// Open a fresh companion chat with Ava (persona picker → free-form chat).
   /// Runs entirely through the existing Ava endpoints (no new worker route).
   void _openAvaChat() {
+    Analytics.capture('ava_session_opened', const {'source': 'messenger_pinned'});
     Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanionHome()));
   }
+
+  /// The pinned, clearly-marked PRIVATE Ava session at the top of the chat list —
+  /// green so it's never confused with a real person. Tapping opens the Ava chat.
+  Widget _avaSessionRow() => InkWell(
+        onTap: _openAvaChat,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Zine.lime.withValues(alpha: 0.20),
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            border: Border.all(color: Zine.mintInk.withValues(alpha: 0.55), width: 1.5),
+          ),
+          child: Row(children: [
+            Container(
+              width: 50, height: 50,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, color: Zine.lilac,
+                border: Border.all(color: Zine.ink, width: 2)),
+              child: Center(child: PhosphorIcon(
+                  PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.ink, size: 24)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text('Ava', style: ZineText.value(size: 15.5)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Zine.mint, borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: Zine.ink, width: 1.5)),
+                  child: Text('PRIVATE', style: ZineText.tag(size: 9, color: Zine.mintInk)),
+                ),
+              ]),
+              const SizedBox(height: 3),
+              Text('Your private AI — brainstorm, practise a language, or just talk',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 13)),
+            ])),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
+          ]),
+        ),
+      );
 
   /// New-chat menu (the green FAB): chat with Ava, message, group, or invite.
   void _openNewChatMenu() {
@@ -850,6 +894,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             Expanded(
               child: ListView(
                 children: [
+                  // Ava lives INSIDE Messenger as a pinned, clearly-marked PRIVATE
+                  // session (green) so it's never confused with a real contact
+                  // (owner decision 2026-06-27). Tapping opens the Ava chat.
+                  if (_filter == 'all' || _filter == 'fav') _avaSessionRow(),
                   if (archivedCount > 0)
                     InkWell(
                       onTap: () => setState(() => _showArchived = !_showArchived),

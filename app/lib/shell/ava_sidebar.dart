@@ -196,8 +196,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // the ACCOUNT section; AvaExplore/AvaVerse hidden.
               _special('avatok', 'Messenger', 'Messages & calls',
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue),
-              _special('avachat', 'ChatAVA', 'Chat privately with Ava',
-                  PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
+              // ChatAVA removed from the sidebar (owner decision 2026-06-27): the
+              // private Ava chat now lives INSIDE Messenger as a pinned green
+              // session (and via the + menu), so this duplicate is gone.
               // Owner request 2026-06-27: hide the "AI Voice Agent" entry from the
               // sidebar menu (the route/feature stays registered; only the menu
               // tile is suppressed so users can't start a hands-free voice call
