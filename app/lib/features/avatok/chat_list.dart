@@ -39,7 +39,6 @@ import 'add_contact_sheet.dart';
 import 'calls_screen.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
-import 'handle_prompt_sheet.dart';
 import 'data.dart';
 import 'media.dart';
 import 'new_group_screen.dart';
@@ -434,26 +433,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       }
     } catch (_) {/* not signed in / offline */}
     _startInbox(id);
-    // Just-in-time @handle: onboarding no longer collects one, so if the user
-    // landed in AvaTok without a handle, ask once (this session) — saving it
-    // publishes to the directory in the background. Non-blocking, skippable.
-    _maybePromptHandle(id.npub);
-    // Directory listing is opt-in: we only publish a profile when the user
-    // sets a @handle (privacy default — don't auto-index every npub).
-  }
-
-  // Show the handle prompt at most once per app session, only when no handle is
-  // set yet. Runs after the first frame so it never fights the inbox bootstrap.
-  static bool _handlePrompted = false;
-  Future<void> _maybePromptHandle(String npub) async {
-    if (_handlePrompted) return;
-    Profile prof;
-    try { prof = await ProfileStore().load(); } catch (_) { return; }
-    if (prof.handle.trim().isNotEmpty) return; // already has one — nothing to do
-    _handlePrompted = true; // guard before awaiting the frame so we ask just once
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) showHandlePromptSheet(context, npub: npub);
-    });
+    // Handles are retired (owner decision 2026-06-27): we no longer prompt for a
+    // @handle. Tagging in groups uses the name you saved the contact under.
   }
 
   /// Global inbox: receive group invites (ginfo) even when no thread is open.
@@ -797,7 +778,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         ),
         child: NavigationBar(
           selectedIndex: _tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
+          // The Dialpad slot (index 1) opens the AvaPhone dialer on top instead of
+          // being a tab body — so selection stays on the current tab.
+          onDestinationSelected: (i) { if (i == 1) { _openAvaPhone(); return; } setState(() => _tab = i); },
           backgroundColor: Zine.paper2,
           surfaceTintColor: Colors.transparent,
           indicatorColor: Zine.lime,
@@ -807,13 +790,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 selectedIcon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill)),
                 label: 'Chats'),
             NavigationDestination(
-                icon: Badge(
-                  isLabelVisible: _statusCount > 0,
-                  backgroundColor: Zine.coral,
-                  child: PhosphorIcon(PhosphorIcons.circleDashed(PhosphorIconsStyle.bold)),
-                ),
-                selectedIcon: PhosphorIcon(PhosphorIcons.circleDashed(PhosphorIconsStyle.fill)),
-                label: 'Updates'),
+                icon: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold)),
+                selectedIcon: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.fill)),
+                label: 'Dialpad'),
             NavigationDestination(
                 icon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.bold)),
                 selectedIcon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.fill)),
@@ -852,17 +831,17 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   // Status avatar — opens the status viewer; shows my latest photo
                   // status as a thumbnail (glows when I have a live status).
                   _headerStatusButton(),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 10),
                   // Filters collapsed into a single dropdown (active label shown).
                   _filterMenuButton(),
-                  const SizedBox(width: 4),
-                  // Chat with Ava — companion / blank Ava chat (Phase 6).
-                  _hdrIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), _openAvaChat, color: Zine.lilac),
-                  const SizedBox(width: 4),
-                  // AvaPhone — the PSTN-style dialer over AvaTOK-to-AvaTOK calling.
-                  _hdrIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), _openAvaPhone, color: Zine.blueInk),
-                  const SizedBox(width: 4),
-                  _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch, color: Zine.blueInk),
+                  const SizedBox(width: 10),
+                  // Chat with Ava — companion / blank Ava chat (Phase 6). (The top
+                  // dialpad icon was removed — the dialer now lives in the bottom nav.)
+                  _hdrIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), _openAvaChat,
+                      color: Zine.lilac, bg: Zine.lilac),
+                  const SizedBox(width: 10),
+                  _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch,
+                      color: Zine.blueInk, bg: Zine.blue),
                 ],
               ),
             ),
@@ -926,8 +905,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// Compact circular header icon button (smaller than ZineBackButton so the
   /// fuller header row — title + 4 trailing controls — fits on narrow phones).
-  Widget _hdrIcon(IconData icon, VoidCallback onTap, {Color color = Zine.ink}) => ZinePressable(
+  Widget _hdrIcon(IconData icon, VoidCallback onTap, {Color color = Zine.ink, Color? bg}) => ZinePressable(
         onTap: onTap,
+        color: bg == null ? Zine.card : bg.withValues(alpha: 0.22),
         pressedColor: Zine.lime,
         radius: BorderRadius.circular(100),
         padding: EdgeInsets.zero,
