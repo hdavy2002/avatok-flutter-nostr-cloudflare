@@ -35,6 +35,13 @@ class RemoteConfig {
   static bool get translationGroupEnabled => _b('translationGroupEnabled', true);
   static bool get avavoiceEnabled => _b('avavoiceEnabled', true);
   static bool get avavisionEnabled => _b('avavisionEnabled', true);
+  /// ChatAVA "talk to Ava by voice" — the hands-free Gemini Live call
+  /// (LiveVoiceController). Owner kill switch (2026-06-27): default OFF so the
+  /// feature stays dark after a config-fetch failure and can't burn the shared
+  /// Gemini Live quota. NOTE: distinct from [avavoiceEnabled] (the AvaVoice
+  /// studio/agents app). Flip `aiVoiceCallEnabled: true` in KV `platform_config`
+  /// to re-enable. Premium still applies on top of this when the switch is on.
+  static bool get aiVoiceCallEnabled => _b('aiVoiceCallEnabled', false);
   /// AvaAffiliate (PROPOSAL-AVA-AFFILIATE) — default OFF until launch, so a
   /// config-fetch failure never advertises a program the Worker isn't serving.
   static bool get avaAffiliateEnabled => _b('avaAffiliateEnabled', false);

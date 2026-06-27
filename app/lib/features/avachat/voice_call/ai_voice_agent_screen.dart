@@ -12,6 +12,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/money_api.dart';
+import '../../../core/remote_config.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../subscribe/subscribe_screen.dart';
@@ -36,7 +37,18 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
     }).catchError((_) { if (mounted) setState(() => _loaded = true); });
   }
 
+  /// Server kill switch — when off, the feature is fully unavailable regardless
+  /// of premium status (premium is reported true for everyone during beta, so it
+  /// can't gate this on its own).
+  bool get _available => RemoteConfig.aiVoiceCallEnabled;
+
   void _dial(BuildContext context) {
+    if (!_available) {
+      Analytics.capture('aivoice_call_start', const {'blocked': 'kill_switch'});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Voice calling with Ava is currently unavailable.')));
+      return;
+    }
     if (!_premium) { _goSubscribe(); return; }
     Analytics.capture('aivoice_call_start', const {});
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VoiceCallScreen()));
@@ -49,7 +61,10 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final locked = !_premium;
+    // Killed by the server switch → fully unavailable (subscribing won't help).
+    // Otherwise fall back to the premium gate.
+    final unavailable = !_available;
+    final locked = unavailable || !_premium;
     return Scaffold(
       backgroundColor: Zine.paper,
       appBar: ZineAppBar(title: 'AI Voice Agent', markWord: 'Voice', tag: 'PREMIUM'),
@@ -85,11 +100,14 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 36),
               child: Text(
-                locked
-                    ? 'Calling Ava by voice is a premium feature. Subscribe to have '
-                        'hands-free, real-time conversations with Ava.'
-                    : 'Tap to call Ava and have a hands-free conversation. She knows your '
-                        'name and answers in real time.',
+                unavailable
+                    ? 'Voice calling with Ava is currently unavailable. Please check '
+                        'back soon.'
+                    : locked
+                        ? 'Calling Ava by voice is a premium feature. Subscribe to have '
+                            'hands-free, real-time conversations with Ava.'
+                        : 'Tap to call Ava and have a hands-free conversation. She knows your '
+                            'name and answers in real time.',
                 textAlign: TextAlign.center,
                 style: ZineText.sub(size: 13.5),
               ),
@@ -97,7 +115,15 @@ class _AiVoiceAgentScreenState extends State<AiVoiceAgentScreen> {
             const Spacer(),
             Padding(
               padding: const EdgeInsets.only(bottom: 30),
-              child: locked
+              child: unavailable
+                  ? ZineButton(
+                      label: 'Unavailable',
+                      variant: ZineButtonVariant.lime,
+                      icon: PhosphorIcons.prohibit(PhosphorIconsStyle.fill),
+                      trailingIcon: false,
+                      onPressed: null,
+                    )
+                  : locked
                   ? ZineButton(
                       label: _loaded ? 'Subscribe to talk to Ava' : 'Checking…',
                       variant: ZineButtonVariant.lime,

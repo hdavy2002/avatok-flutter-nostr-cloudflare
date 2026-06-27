@@ -23,6 +23,7 @@ import '../../../core/analytics.dart';
 import '../../../core/ava_live_api.dart';
 import '../../../core/ava_log.dart';
 import '../../../core/disk_cache.dart';
+import '../../../core/remote_config.dart';
 import '../../../core/voice/google_voice.dart';
 import '../../../core/voice/native_voice_audio.dart';
 import 'voice_call_api.dart';
@@ -128,6 +129,16 @@ class LiveVoiceController implements VoiceCallApi {
     _callId = 'vc_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
     _callSw.start();
     _ev('voice_live_dial'); // user tapped Call
+    // KILL SWITCH (owner 2026-06-27): hard backstop for EVERY entry point into a
+    // hands-free Gemini Live call. When the server flag is off we never mint a
+    // token or open the Gemini WS, so no UI path (sidebar, in-thread/ChatAVA-home
+    // button, deep link) can spend the shared Gemini Live quota. Re-enable via
+    // `aiVoiceCallEnabled` in KV `platform_config`.
+    if (!RemoteConfig.aiVoiceCallEnabled) {
+      _ev('voice_live_blocked', {'reason': 'kill_switch'});
+      _fail('Voice calling with Ava is currently unavailable.', stage: 'disabled');
+      return false;
+    }
     state.value = CallState.preparing;
     status.value = 'Connecting to Ava…';
     await _loadSpeakerPref(); // restore the user's last speaker/earpiece choice
