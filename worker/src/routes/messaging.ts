@@ -8,6 +8,7 @@ import { json } from "../util";
 import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
 import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
+import { ablyPublish, ablyConfigured } from "./ably"; // Ably realtime fan-out (migration)
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -161,6 +162,17 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
 
   // Append to the sender's own log first (its id anchors the client's cursor).
   const mine = await appendTo(env, ctx.uid, payload);
+
+  // Ably realtime fan-out (migration): publish the SAME moderated payload to the
+  // conversation's Ably channel so every subscribed iOS/Android client gets it
+  // instantly via Ably's global edge — replacing the flaky per-user InboxDO
+  // socket. Server-side publish (AFTER moderation/blocks/brain above) keeps
+  // messages server-readable. Best-effort: never blocks the send, and offline
+  // recipients still get the FCM wake below. No-op until ABLY_API_KEY is set, so
+  // this is safe to ship dark and flip on per the rollout plan.
+  if (ablyConfigured(env)) {
+    void ablyPublish(env, `msg:${conv}`, "msg", payload, { clientId: ctx.uid });
+  }
 
   if (recipients.length <= FANOUT_SYNC_MAX) {
     // Small fan-out: deliver in PARALLEL (was sequential awaits).
