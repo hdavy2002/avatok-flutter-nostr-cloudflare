@@ -277,64 +277,24 @@ class DeviceContactsService {
       // matched `phone`; an older Worker echoes our `name` (= the phone) — either
       // way we recover the phoneNorm key. Best-effort: offline keeps the cache.
       final phones = byNorm.keys.toList();
-      if (phones.isNotEmpty) {
-        final matchT0 = DateTime.now().millisecondsSinceEpoch;
-        try {
-          final res = await ApiAuth.postJson(
-            kContactsSyncUrl,
-            {'contacts': phones.map((p) => {'name': p, 'phones': [p]}).toList()},
-            timeout: const Duration(seconds: 12),
-          );
-          matchMs = DateTime.now().millisecondsSinceEpoch - matchT0;
-          matchStatus = res.statusCode;
-          if (res.statusCode == 200) {
-            final j = jsonDecode(res.body) as Map<String, dynamic>;
-            final matched = ((j['matched'] as List?) ?? const []);
-            // Reset stale matches first so people who left AvaTOK lose the badge.
-            await Db.I.clearDeviceMatches();
-            for (final m in matched) {
-              final mm = (m as Map).cast<String, dynamic>();
-              final uid = (mm['uid'] ?? '').toString();
-              if (uid.isEmpty) continue;
-              // Prefer the echoed `phone`; fall back to `name` (older Worker).
-              final key = normPhone((mm['phone'] ?? mm['name'] ?? '').toString());
-              if (key.length < 4 || !byNorm.containsKey(key)) continue;
-              await Db.I.applyDeviceMatch(
-                phoneNorm: key,
-                uid: uid,
-                handle: (mm['handle'] ?? '').toString(),
-                avatarUrl: (mm['avatar_url'] ?? '').toString(),
-                displayName: (mm['display_name'] ?? '').toString(),
-                matchedAt: nowMs,
-              );
-              matchedCount++;
-            }
-          } else {
-            Analytics.error(
-                domain: 'contacts', code: 'match_http_${res.statusCode}',
-                action: 'refresh', message: 'contacts match returned ${res.statusCode}',
-                extra: {'source': source, 'sent': phones.length});
-          }
-        } catch (e) {
-          matchMs = DateTime.now().millisecondsSinceEpoch - matchT0;
-          matchError = e.runtimeType.toString();
-          // Offline/timeout — keep the cache; report so latency is diagnosable.
-          Analytics.error(
-              domain: 'contacts', code: 'match_failed', action: 'refresh',
-              message: e.toString(), extra: {'source': source, 'match_ms': matchMs});
-        }
-        // Dedicated match-perf event (separate from the full sync) so the match
-        // round-trip and hit-rate are queryable on their own.
-        Analytics.capture('contacts_match_result', {
-          'source': source,
-          'status': matchStatus,
-          'sent_count': phones.length,
-          'matched_count': matchedCount,
-          'match_ms': matchMs,
-          'hit_rate': phones.isEmpty ? 0 : (matchedCount * 100 ~/ phones.length),
-          if (matchError.isNotEmpty) 'error_type': matchError,
-        });
-      }
+      // PRIVACY (owner request 2026-06-27): the device address book is kept ONLY
+      // for WhatsApp-style invites — we NO LONGER probe the backend for which
+      // numbers are already on AvaTOK. Revealing that presence let anyone confirm
+      // a private number belongs to an AvaTOK user and, combined with number
+      // search, correlate a private phone → AvaTOK number → identity. We also
+      // clear any previously-cached matches so the old "On AvaTOK" badge/trace
+      // disappears everywhere it used to surface. (`kContactsSyncUrl` / the match
+      // round-trip is intentionally no longer called from this path.)
+      await Db.I.clearDeviceMatches();
+      matchedCount = 0;
+      Analytics.capture('contacts_presence_probe_skipped', {
+        'source': source,
+        'sent_count': phones.length,
+        'reason': 'privacy_no_presence',
+        'match_ms': matchMs,
+        'match_status': matchStatus,
+        if (matchError.isNotEmpty) 'error_type': matchError,
+      });
 
       Analytics.capture('contacts_sync', {
         'result': 'ok',

@@ -45,8 +45,16 @@ export async function getResolve(req: Request, env: Env): Promise<Response> {
     uid = (await db.prepare("SELECT uid FROM users WHERE handle=?1").bind(q.slice(1).toLowerCase()).first<{ uid: string }>())?.uid ?? null;
   } else if (q.includes("@")) {
     uid = (await db.prepare("SELECT uid FROM users WHERE email_hash=?1").bind(await sha256Hex(q.toLowerCase())).first<{ uid: string }>())?.uid ?? null;
-  } else if (/^[+\d][\d\s\-]{4,}$/.test(q)) {
-    uid = (await db.prepare("SELECT uid FROM contact_phone_index WHERE phone_hash=?1").bind(await sha256Hex(normalizePhone(q))).first<{ uid: string }>())?.uid ?? null;
+  } else if (/^[+\d][\d\s\-]{3,}$/.test(q)) {
+    // AvaTOK NUMBER lookup ONLY (privacy). We deliberately DO NOT resolve a raw
+    // private/real phone number → account here anymore: that let anyone map a
+    // private phone to an AvaTOK identity. A numeric query now matches solely the
+    // public in-network AvaTOK number namespace (avatok_numbers), so the only way
+    // to find someone by number is to already know their AvaTOK number.
+    const numDigits = q.replace(/[^\d]/g, "");
+    uid = (await db
+      .prepare("SELECT uid FROM avatok_numbers WHERE number=?1 AND status='active'")
+      .bind(numDigits).first<{ uid: string }>())?.uid ?? null;
   } else {
     uid = (await db.prepare("SELECT uid FROM users WHERE handle=?1").bind(q.toLowerCase()).first<{ uid: string }>())?.uid ?? null;
   }
@@ -54,6 +62,11 @@ export async function getResolve(req: Request, env: Env): Promise<Response> {
   const profile = await db.prepare(
     "SELECT uid, handle, display_name, bio, avatar_url FROM users WHERE uid=?1",
   ).bind(uid).first<{ uid: string; handle?: string; display_name?: string; bio?: string; avatar_url?: string }>();
+  // The resolved person's active AvaTOK number (pretty form) — the client shows
+  // this as the contact's network identity and dials it back.
+  const avaNum = await db
+    .prepare("SELECT display FROM avatok_numbers WHERE uid=?1 AND status='active'")
+    .bind(uid).first<{ display: string }>();
   // `uid` MUST be at the TOP LEVEL — the app (Directory.resolve) reads j['uid']
   // as the addressing id. Nesting it only under `profile` made every email/
   // handle/phone resolve return null, so the contact had no routable id and DMs
@@ -70,6 +83,7 @@ export async function getResolve(req: Request, env: Env): Promise<Response> {
       display_name: profile?.display_name ?? "",
       avatar_url: profile?.avatar_url ?? "",
       bio: profile?.bio ?? "",
+      number: avaNum?.display ?? "",
     },
   });
 }
