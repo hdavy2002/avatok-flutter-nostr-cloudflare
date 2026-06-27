@@ -22,6 +22,23 @@ import { trackUserContact, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
 
+/** Redact secrets from free-text error strings BEFORE they go into telemetry.
+ *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
+ *  raw `String(e)` on a connect failure would otherwise leak GEMINI_API_KEY into
+ *  PostHog (observed 2026-06-24). Scrub first, then truncate — never the reverse,
+ *  so a cut can't leave a partial key behind. */
+function scrubSecrets(s: string): string {
+  return s
+    // querystring secrets: ?key= / &access_token= / token= / api_key=
+    .replace(/([?&](?:key|access_token|token|api_key)=)[^&\s"']+/gi, "$1[redacted]")
+    // Google API keys (AIza…) anywhere in the text
+    .replace(/AIza[0-9A-Za-z_\-]{10,}/g, "[redacted-key]")
+    // ephemeral Gemini token names (auth_tokens/…)
+    .replace(/auth_tokens\/[^&\s"']+/g, "auth_tokens/[redacted]")
+    // any remaining long opaque token (bearer/JWT-ish)
+    .replace(/[A-Za-z0-9_\-]{40,}/g, "[redacted]");
+}
+
 interface InitBlob {
   sid: string; owner_uid: string; caller_uid: string;
   caller_phone: string | null; caller_name: string | null; call_id: string | null;
@@ -119,7 +136,7 @@ export class ReceptionRoom {
     this.connectGemini().catch((e) => {
       this.ev("ava_recept_gemini_connect_failed", {
         via_gateway: false,
-        error_scrubbed: String(e).slice(0, 200),
+        error_scrubbed: scrubSecrets(String(e)).slice(0, 200),
         ms: Date.now() - this.startedAt,
       });
       this.failHard("gemini_connect_failed");
@@ -394,7 +411,7 @@ export class ReceptionRoom {
         });
       }
     } catch (e) {
-      this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: String(e).slice(0, 200) });
+      this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
 
     const sumT0 = Date.now();
@@ -552,7 +569,7 @@ export class ReceptionRoom {
       });
       this.ev("ava_recept_push_sent", { ok: true });
     } catch (e) {
-      this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: String(e).slice(0, 200) });
+      this.ev("ava_recept_delivery_failed", { stage: "push", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
     // v2 telemetry: did the message reach the caller's real DM thread?
     this.ev("ava_recept_delivered_inthread", {
@@ -590,7 +607,7 @@ export class ReceptionRoom {
         await this.env.Q_PUSH.send({ kind: "notify", to: init.caller_uid, fromName: ownerLabel });
         this.ev("ava_recept_caller_ack_sent", { ok: true });
       } catch (e) {
-        this.ev("ava_recept_caller_ack_sent", { ok: false, error_scrubbed: String(e).slice(0, 200) });
+        this.ev("ava_recept_caller_ack_sent", { ok: false, error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
       }
     }
   }
