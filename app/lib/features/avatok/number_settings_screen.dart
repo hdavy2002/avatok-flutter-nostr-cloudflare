@@ -109,7 +109,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         backgroundColor: Zine.paper,
         title: Text('Use this number?', style: ZineText.cardTitle(size: 18)),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(n.display, style: ZineText.cardTitle(size: 20, color: Zine.blue)),
+          Text(n.display, style: ZineText.cardTitle(size: 20, color: Zine.mintInk)),
           const SizedBox(height: 12),
           Row(children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 16, color: Zine.mint),
@@ -119,7 +119,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Back', style: ZineText.button(size: 15, color: Zine.inkSoft))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Use this number', style: ZineText.button(size: 15, color: Zine.blue))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Use this number', style: ZineText.button(size: 15, color: Zine.mintInk))),
         ],
       ),
     );
@@ -251,7 +251,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('YOUR AVATOK NUMBER', style: ZineText.kicker()),
             const SizedBox(height: 10),
-            Text(me.display ?? '', style: ZineText.cardTitle(size: 24, color: Zine.blue)),
+            Text(me.display ?? '', style: ZineText.cardTitle(size: 24, color: Zine.mintInk)),
             const SizedBox(height: 8),
             Row(children: [
               PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 15, color: Zine.mint),
@@ -342,14 +342,14 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         hint: 'Try a pattern, e.g. 555',
         keyboardType: TextInputType.number,
         onSubmitted: (_) => _loadAvailable(),
-        trailing: TextButton(onPressed: _busy ? null : _loadAvailable, child: Text('Search', style: ZineText.button(size: 13, color: Zine.blue))),
+        trailing: TextButton(onPressed: _busy ? null : _loadAvailable, child: Text('Search', style: ZineText.button(size: 13, color: Zine.mintInk))),
       ),
       const SizedBox(height: 8),
       Row(children: [
         Text('AVAILABLE NUMBERS', style: ZineText.kicker()),
         const Spacer(),
         TextButton(onPressed: _busy || _loadingAvail ? null : _loadAvailable,
-            child: Text('Shuffle', style: ZineText.button(size: 12.5, color: Zine.blue))),
+            child: Text('Shuffle', style: ZineText.button(size: 12.5, color: Zine.mintInk))),
       ]),
       const SizedBox(height: 4),
     ]);
@@ -366,7 +366,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             onTap: _busy ? null : () => _confirm(n),
             child: Row(children: [
               Expanded(child: Text(n.display, style: ZineText.value(size: 16))),
-              Text('available', style: ZineText.sub(size: 11, color: Zine.mint)),
+              Text('available', style: ZineText.sub(size: 11, color: Zine.mintInk)),
               const SizedBox(width: 8),
               PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 15, color: Zine.inkMute),
             ]),
