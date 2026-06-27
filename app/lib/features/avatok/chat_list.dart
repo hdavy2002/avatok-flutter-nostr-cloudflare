@@ -907,9 +907,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// fuller header row — title + 4 trailing controls — fits on narrow phones).
   Widget _hdrIcon(IconData icon, VoidCallback onTap, {Color color = Zine.ink, Color? bg}) => ZinePressable(
         onTap: onTap,
-        color: bg == null ? Zine.card : bg.withValues(alpha: 0.22),
-        pressedColor: Zine.lime,
+        // Pale, flat header chips (owner feedback 2026-06-27): a soft tinted fill,
+        // a thin matching border and NO hard shadow — not dark circles.
+        color: bg == null ? Zine.card : bg.withValues(alpha: 0.14),
+        pressedColor: bg?.withValues(alpha: 0.30) ?? Zine.lime,
         radius: BorderRadius.circular(100),
+        boxShadow: const <BoxShadow>[],
+        borderWidth: 1.2,
+        borderColor: (bg ?? Zine.inkMute).withValues(alpha: 0.45),
         padding: EdgeInsets.zero,
         child: SizedBox(
           width: 38, height: 38,
