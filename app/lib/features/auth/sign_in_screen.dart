@@ -74,6 +74,21 @@ class _SignInScreenState extends State<SignInScreen> {
     _handleStep(await widget.clerk.signInWithGoogle());
   }
 
+  // ── Passwordless: email me a sign-in code ────────────────────────────────────
+  // Owner decision 2026-06-27: email + email-OTP is the primary sign-in/recovery
+  // path (no phone). signIn() with an empty password triggers Clerk's
+  // identifier-only flow, which emails a 6-digit code → _Mode.verify.
+  Future<void> _emailCode() async {
+    if (_email.text.trim().isEmpty) {
+      setState(() => _error = 'Enter your email');
+      return;
+    }
+    setState(() { _busy = true; _error = null; });
+    _provider = 'email_code';
+    unawaited(Analytics.capture('signup_attempt', {'provider': 'email_code', 'mode': 'signin'}));
+    _handleStep(await widget.clerk.signIn(_email.text, ''));
+  }
+
   // ── Email + password ─────────────────────────────────────────────────────────
   Future<void> _submit() async {
     setState(() { _busy = true; _error = null; });
@@ -381,6 +396,15 @@ class _SignInScreenState extends State<SignInScreen> {
             child: Align(
               alignment: Alignment.centerRight,
               child: ZineLink('forgot password?', onTap: () => _switch(_Mode.reset)),
+            ),
+          ),
+        // Passwordless: sign in with just an email code (no password / no phone).
+        if (_mode == _Mode.signIn)
+          Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Center(
+              child: ZineLink('Sign in with an email code instead',
+                  fontSize: 14, onTap: () => _emailCode()),
             ),
           ),
       ],

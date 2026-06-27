@@ -88,12 +88,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     return (y >= 1900 && y <= maxY) ? y : null;
   }
 
+  // Phone is intentionally NOT required (owner decision 2026-06-27): users sign
+  // in and recover with email + email-OTP. Phone stays optional here, collected
+  // later for features like dating verification.
   bool get _valid =>
       _avatarUrl.trim().isNotEmpty &&
       _first.text.trim().isNotEmpty &&
       _last.text.trim().isNotEmpty &&
       Profile.isValidEmail(_email.text) &&
-      Profile.isValidPhone(_phone.text) &&
       _bio.text.trim().isNotEmpty &&
       _birthYearValue != null;
 
@@ -208,7 +210,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         body: ListView(
           padding: EdgeInsets.fromLTRB(20, 18, 20, 40 + MediaQuery.of(context).padding.bottom),
           children: [
-            Text('A few details so people can recognise and reach you. All fields are required.',
+            Text('A few details so people can recognise and reach you. Phone is '
+                'optional — you sign in and recover your account with email.',
                 style: ZineText.sub(size: 13)),
             const SizedBox(height: 18),
             Center(
@@ -262,10 +265,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ZineField(controller: _email, label: 'Email', hint: 'you@example.com',
                 keyboardType: TextInputType.emailAddress, onChanged: (_) => setState(() {})),
             const SizedBox(height: 14),
-            ZineField(controller: _phone, label: 'Phone', hint: '+1 555 123 4567',
+            ZineField(controller: _phone, label: 'Phone (optional)', hint: '+1 555 123 4567',
                 keyboardType: TextInputType.phone,
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s\-()]'))],
                 onChanged: (_) => setState(() {})),
+            const SizedBox(height: 4),
+            Text('Optional. Add it later if you want phone-based features.',
+                style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
             ZineField(controller: _birthYear, label: 'Birth year (Private)', hint: 'e.g. 1990',
                 keyboardType: TextInputType.number, maxLength: 4,

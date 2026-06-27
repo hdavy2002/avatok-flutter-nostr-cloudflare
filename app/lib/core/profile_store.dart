@@ -31,15 +31,15 @@ class Profile {
       displayName.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
 
   /// All MANDATORY fields present & valid: a profile photo, a first AND last
-  /// name, a valid email, a valid phone, an "about you" bio, and a birth year.
-  /// Drives the mandatory profile gate (new users can't finish onboarding,
-  /// existing users are diverted on next open) — see ProfileSetupScreen /
-  /// AvaShell. (Owner request 2026-06-27: bio + birth year are now compulsory.)
+  /// name, a valid email, an "about you" bio, and a birth year. PHONE IS
+  /// OPTIONAL (owner decision 2026-06-27): sign-in and recovery run on email +
+  /// email-OTP, so a phone is never required to finish onboarding — it's only
+  /// collected later (e.g. for future dating features). Drives the mandatory
+  /// profile gate — see ProfileSetupScreen / AvaShell.
   bool get isComplete =>
       avatarUrl.trim().isNotEmpty &&
       nameParts.length >= 2 &&
       isValidEmail(email) &&
-      isValidPhone(phone) &&
       bio.trim().isNotEmpty &&
       birthYear != null;
 
