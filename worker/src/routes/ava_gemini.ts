@@ -33,8 +33,14 @@ import { searchForUser } from "../lib/ava_search";     // sharded tenancy bounda
 // everything online). Both have thinking OFF by default → no chain-of-thought leak.
 // SPEED: gemini-2.5-flash (thinking off) is ~1s vs gemini-3-flash-preview's ~3–5s.
 // gemini-3 stays available but is too slow per call for a chat reply today.
-const CHAT_MODEL = "gemini-2.5-flash";           // DIRECT Google API id (fast, thinking off)
-const FALLBACK_MODEL = "gemini-2.5-flash-lite";  // DIRECT Google API id
+const CHAT_MODEL = "gemini-2.5-flash";           // (legacy, unused) DIRECT Google API id
+const FALLBACK_MODEL = "gemini-2.5-flash-lite";  // (legacy, unused) DIRECT Google API id
+// ChatAVA now runs on OpenRouter (owner decision 2026-06-27 — replace the direct
+// Gemini key). Default model z-ai/glm-5.2; override via env.OPENROUTER_CHAT_MODEL.
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+function openRouterModel(env: Env): string {
+  return ((env as any).OPENROUTER_CHAT_MODEL as string) || "z-ai/glm-5.2";
+}
 const MAX_TOKENS = 700;
 
 const SYSTEM_BASE = [
@@ -140,49 +146,85 @@ async function retrieveMemory(env: Env, uid: string, query: string): Promise<str
   } catch { return ""; }
 }
 
+/// Common OpenRouter request headers.
+function orHeaders(key: string): Record<string, string> {
+  return {
+    "authorization": `Bearer ${key}`,
+    "content-type": "application/json",
+    "HTTP-Referer": "https://avatok.ai",
+    "X-Title": "AvaTOK ChatAVA",
+  };
+}
+
+/// ChatAVA reply via OpenRouter (z-ai/glm-5.2 by default). Throws on a hard
+/// failure so the caller's gate surfaces a truthful reason (quota/safety).
 async function generate(env: Env, uid: string, email: string | null, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
-  const key = (env as any).GEMINI_API_KEY;
+  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return "Ava is temporarily unavailable.";
-  const body = {
-    systemInstruction: { parts: [{ text: sys }] },
-    contents: buildGeminiContents(history, message, images),
-    generationConfig: { maxOutputTokens: MAX_TOKENS, temperature: 0.7 },
-  };
-  // DIRECT Google API (gemini-3-flash-preview is NOT a valid Workers-AI partner
-  // id — it 7003s and wasted a round-trip per turn). One real call; fall back to
-  // gemini-2.5 only on a hard failure. NEVER Gemma.
-  let fellBackReason = "";
-  for (const model of [CHAT_MODEL, FALLBACK_MODEL]) {
-    try {
-      // Thinking off (per-model) → ~1s replies instead of ~4–5s of silent g3 reasoning.
-      const mbody = { ...body, generationConfig: { ...body.generationConfig, ...thinkingCfg(model) } };
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-goog-api-key": key },
-          body: JSON.stringify(mbody),
-        },
-      );
-      const out: any = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const t = stripReasoning(extractGeminiText(out));
-        if (t) return t;
-        fellBackReason = "empty";
-      } else {
-        fellBackReason = `${res.status}: ${String(out?.error?.message ?? "").slice(0, 120)}`;
-      }
-    } catch (e: any) {
-      fellBackReason = String(e?.message ?? e).slice(0, 160);
-    }
-    if (model === CHAT_MODEL) {
-      trackUser(env, uid, email, "ava_model_fallback", "avaai", {
-        route: "chat", from: CHAT_MODEL, to: FALLBACK_MODEL, reason: fellBackReason,
-      });
+  const model = openRouterModel(env);
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: orHeaders(key),
+    body: JSON.stringify({
+      model,
+      messages: buildMessages(sys, history, message, images),
+      max_tokens: MAX_TOKENS,
+      temperature: 0.7,
+    }),
+  });
+  const out: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const reason = `${res.status}: ${String(out?.error?.message ?? out?.error ?? "").slice(0, 160)}`;
+    trackUser(env, uid, email, "ava_model_error", "avaai", { route: "chat", provider: "openrouter", model, reason });
+    throw new Error(`openrouter ${reason}`);
+  }
+  const t = stripReasoning(String(out?.choices?.[0]?.message?.content ?? "").trim());
+  return t || "I couldn't reach my thoughts just now — try again?";
+}
+
+/// Streaming ChatAVA reply via OpenRouter (SSE). Calls [onDelta] for each chunk.
+async function streamGenerate(env: Env, system: string, history: Turn[], message: string,
+    images: Array<{ mime: string; data: string }>, onDelta: (t: string) => void): Promise<void> {
+  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
+  if (!key) throw new Error("openrouter key missing");
+  const model = openRouterModel(env);
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: orHeaders(key),
+    body: JSON.stringify({
+      model,
+      messages: buildMessages(system, history, message, images),
+      max_tokens: MAX_TOKENS,
+      temperature: 0.7,
+      stream: true,
+    }),
+  });
+  if (!res.ok || !res.body) {
+    const e = await res.text().catch(() => "");
+    throw new Error(`openrouter ${res.status}: ${e.slice(0, 160)}`);
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      const s = line.trim();
+      if (!s.startsWith("data:")) continue;
+      const data = s.slice(5).trim();
+      if (data === "[DONE]") return;
+      try {
+        const j = JSON.parse(data);
+        const d = j?.choices?.[0]?.delta?.content;
+        if (d) onDelta(String(d));
+      } catch { /* partial/keep-alive line */ }
     }
   }
-  return "I couldn't reach my thoughts just now — try again?";
 }
 
 export async function avaGemini(req: Request, env: Env): Promise<Response> {
@@ -233,36 +275,19 @@ export async function avaGemini(req: Request, env: Env): Promise<Response> {
     return premiumUpsell(env, ctx.uid, "file_understanding");
   }
 
-  // ChatAVA MASTER BRAIN: run the SAME unified tool-calling loop as Messenger @ava
-  // (gemini-3-flash-preview) over the user's ONE Cloudflare AI Search store. It can
-  // pull files/messages on demand (search_memory — ALL tiers, since it's the user's
-  // own data), read attached files (premium), act on connected apps (premium), and
-  // GENERATE images — returned inline as `images` so the ChatAVA thread renders them.
-  const ctxStr = [
+  // ChatAVA on OpenRouter (z-ai/glm-5.2) — owner decision 2026-06-27, replacing the
+  // direct Gemini key. AvaBrain memory is still injected so Ava "remembers" the
+  // user; Composio app tools + inline image-gen are NOT used in the companion (they
+  // remain on the @ava agentic loop). Memory search runs once up-front (not agentic).
+  const memory = await brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => "");
+  const system = [
+    SYSTEM_BASE,
     context ? `Persona/style for this chat: ${context}` : "",
-    history.length
-      ? "Recent turns:\n" + history.map((t) => `${t.role === "user" ? "User" : "Ava"}: ${t.text}`).join("\n")
-      : "",
+    memory ? `Things you remember about this user (use only if relevant):\n${memory}` : "",
   ].filter(Boolean).join("\n\n");
   const generatedImages: string[] = [];
   const runChat = (steer?: string): Promise<string> =>
-    runAgentLoop(
-      env, ctx.uid, steer ? `${message}\n\n[note: ${steer}]` : message, ctxStr,
-      (q) => brainSearchLines(env, ctx.uid, q, 6),
-      {
-        apps: premium,
-        images: premium ? images : undefined,
-        onImage: async (prompt, editRef) => {
-          const r = await generateAvaImageSync(env, { uid: ctx.uid, prompt, editRef });
-          if (r.ok && r.url) { generatedImages.push(r.url); return "Image created and shown to the user."; }
-          return r.message ?? "I couldn't create that image right now.";
-        },
-        onTool: (t: any) => {
-          toolCalls++;
-          try { if (t?.tool && toolNames.length < 8) toolNames.push(String(t.tool)); } catch { /* best-effort */ }
-        },
-      },
-    );
+    generate(env, ctx.uid, email, system, history, message, premium ? images : [], steer);
 
   const tGen0 = Date.now();
   let result;
@@ -332,21 +357,20 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
   const context = String(b.context ?? "").trim();
   const history = normHistory(b.history);
   const images = normImages(b.images);
-  if (!(env as any).GEMINI_API_KEY) return json({ error: "unavailable" }, 502);
+  if (!(env as any).OPENROUTER_API_KEY) return json({ error: "unavailable" }, 502);
 
-  // ChatAVA master brain over SSE: the SAME unified tool-calling loop as @ava,
-  // streamed. search_memory (AI Search) for all tiers, file understanding + apps
-  // for premium, and image gen — generated images are sent as a `{image:url}` SSE
-  // event the client renders inline. Attachments are premium → free users get the
-  // upsell (plain JSON the client also handles).
+  // ChatAVA over SSE on OpenRouter (z-ai/glm-5.2). AvaBrain memory is injected
+  // up-front so Ava remembers the user; Composio app tools + inline image-gen are
+  // not used in the companion (they remain on the @ava agentic loop). Attachments
+  // stay premium → free users get the upsell.
   const { premium } = await isPremiumAI(req, env, ctx.uid, b);
   if (images.length && !premium) return premiumUpsell(env, ctx.uid, "file_understanding");
 
-  const ctxStr = [
+  const memory = await brainSearchLines(env, ctx.uid, message, 6).then((l) => l.join("\n")).catch(() => "");
+  const system = [
+    SYSTEM_BASE,
     context ? `Persona/style for this chat: ${context}` : "",
-    history.length
-      ? "Recent turns:\n" + history.map((t) => `${t.role === "user" ? "User" : "Ava"}: ${t.text}`).join("\n")
-      : "",
+    memory ? `Things you remember about this user (use only if relevant):\n${memory}` : "",
   ].filter(Boolean).join("\n\n");
 
   const enc = new TextEncoder();
@@ -357,24 +381,8 @@ export async function avaGeminiStream(req: Request, env: Env): Promise<Response>
       };
       let streamedAny = false;
       try {
-        await runAgentLoop(
-          env, ctx.uid, message, ctxStr,
-          (q) => brainSearchLines(env, ctx.uid, q, 6),
-          {
-            apps: premium,
-            images: premium ? images : undefined,
-            onDelta: (t) => { if (t) { streamedAny = true; send({ delta: t }); } },
-            onImage: async (prompt, editRef) => {
-              // Tell the client to show a "generating image…" placeholder thumbnail
-              // immediately, then swap in the real image (or clear on failure).
-              send({ image_pending: true });
-              const r = await generateAvaImageSync(env, { uid: ctx.uid, prompt, editRef });
-              if (r.ok && r.url) { send({ image: r.url }); return "Image created and shown to the user."; }
-              send({ image_failed: true });
-              return r.message ?? "I couldn't create that image right now.";
-            },
-          },
-        );
+        await streamGenerate(env, system, history, message, premium ? images : [],
+          (t) => { if (t) { streamedAny = true; send({ delta: t }); } });
       } catch (e) {
         // On a hard failure before any token streamed, send a truthful reason
         // (quota/safety) so the chat bubble isn't a bare "couldn't generate".
