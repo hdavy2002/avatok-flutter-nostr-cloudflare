@@ -198,8 +198,12 @@ class _AvaSidebarState extends State<AvaSidebar> {
                   PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue),
               _special('avachat', 'ChatAVA', 'Chat privately with Ava',
                   PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac),
-              _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
-                  PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint, paid: true),
+              // Owner request 2026-06-27: hide the "AI Voice Agent" entry from the
+              // sidebar menu (the route/feature stays registered; only the menu
+              // tile is suppressed so users can't start a hands-free voice call
+              // from here). Re-enable by un-commenting this tile.
+              // _special('aivoice', 'AI Voice Agent', 'Call Ava and talk hands-free',
+              //     PhosphorIcons.phoneCall(PhosphorIconsStyle.bold), Zine.mint, paid: true),
               _special('library', 'Library', 'Saved media & files',
                   PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), Zine.mint),
               // Contacts — moved out of ACCOUNT to sit below Library; own colour.
