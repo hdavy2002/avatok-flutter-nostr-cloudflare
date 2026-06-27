@@ -16,6 +16,7 @@ import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
 import 'core/deep_links.dart';
 import 'core/disk_cache.dart';
+import 'core/font_scale.dart';
 import 'core/guest_session.dart';
 import 'core/onboarding_store.dart';
 import 'core/prefs_sync.dart';
@@ -56,6 +57,8 @@ void main() async {
   // Ava in-chat layer init (Phase 0). Single startup hook — later phases plug in
   // tools/memory/settings sections via their own files. Non-blocking + guarded.
   try { await AvaBootstrap.init(); } catch (_) {/* never block boot on Ava init */}
+  // User's app-wide font-size preference (Settings → Display & fonts).
+  try { await FontScale.load(); } catch (_) {/* default scale */}
   // Remote kill switches (A2): fetch in the background; never blocks startup.
   unawaited(RemoteConfig.start());
   // Push is separate: a messaging failure must not block the app.
@@ -132,14 +135,19 @@ class AvaTalkApp extends StatelessWidget {
       navigatorObservers: [Analytics.observer], // auto $screen on every route
       debugShowCheckedModeBanner: false,
       theme: AvaTheme.light,
-      // Bump all text up ~18% (on top of the user's system setting) so the UI
-      // isn't tiny, while still respecting accessibility scaling.
+      // Text scaling = OS accessibility setting × the app's base bump (~22%) ×
+      // the user's own Display & fonts choice (FontScale). Listens live so the
+      // whole app re-scales the instant the user moves the slider.
       builder: (context, child) {
         final mq = MediaQuery.of(context);
-        final base = mq.textScaler.scale(1.0);
-        return MediaQuery(
-          data: mq.copyWith(textScaler: TextScaler.linear((base * 1.18).clamp(1.0, 2.0))),
-          child: child!,
+        final sys = mq.textScaler.scale(1.0);
+        return ValueListenableBuilder<double>(
+          valueListenable: FontScale.scale,
+          builder: (_, userScale, __) => MediaQuery(
+            data: mq.copyWith(
+                textScaler: TextScaler.linear((sys * 1.22 * userScale).clamp(0.9, 2.8))),
+            child: child!,
+          ),
         );
       },
       home: const RootFlow(),

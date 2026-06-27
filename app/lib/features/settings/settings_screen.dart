@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'display_fonts_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -268,6 +269,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Choose how people can find and add you', () => _push(const PrivacyScreen())),
         _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
             'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
+        _tile(PhosphorIcons.textAa(PhosphorIconsStyle.bold), Zine.blue, 'Display & fonts',
+            'Make text across the app bigger or smaller', () => _push(const DisplayFontsScreen())),
         // Pluggable sections (Phase 0 contract): feature phases register a
         // SettingsSection from their own file under settings/sections/; each one
         // now renders as a row that opens the section in its own sub-page.
