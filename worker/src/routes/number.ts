@@ -22,11 +22,40 @@ async function featureOn(env: Env): Promise<boolean> {
 }
 function paid(tier: number): boolean { return tier >= 1; }
 
-function analytics(env: Env, event: string, uid: string, props: Record<string, unknown>): void {
+// Cloudflare-derived request signals (IP + geo + network) for rich PostHog
+// analytics: where the user is, on what network, from which edge — captured at
+// the moment of each number action. `req.cf` is populated by Cloudflare's edge.
+function geoProps(req: Request): Record<string, unknown> {
+  const cf = (((req as unknown as { cf?: Record<string, unknown> }).cf) ?? {}) as Record<string, unknown>;
+  return {
+    ip: req.headers.get("CF-Connecting-IP") ?? req.headers.get("X-Forwarded-For") ?? null,
+    geo_country: cf.country ?? null,
+    geo_region: cf.region ?? null,
+    geo_region_code: cf.regionCode ?? null,
+    geo_city: cf.city ?? null,
+    geo_postal: cf.postalCode ?? null,
+    geo_continent: cf.continent ?? null,
+    geo_lat: cf.latitude ?? null,
+    geo_lon: cf.longitude ?? null,
+    geo_timezone: cf.timezone ?? null,
+    net_asn: cf.asn ?? null,
+    net_org: cf.asOrganization ?? null,
+    cf_colo: cf.colo ?? null,
+    http_protocol: cf.httpProtocol ?? null,
+    user_agent: req.headers.get("User-Agent") ?? null,
+    accept_language: req.headers.get("Accept-Language") ?? null,
+  };
+}
+
+function analytics(env: Env, event: string, uid: string, props: Record<string, unknown>, req?: Request): void {
   try {
     void env.Q_ANALYTICS.send({
       event, uid, ts: Date.now(),
-      props: { ...props, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: uid },
+      props: {
+        ...props,
+        ...(req ? geoProps(req) : {}),
+        app_name: "avatok", service_name: "avatok-api", worker: true, account_id: uid,
+      },
     });
   } catch { /* best-effort; telemetry never blocks */ }
 }
@@ -68,7 +97,11 @@ export async function available(req: Request, env: Env): Promise<Response> {
     if (await isTaken(db, num, ctx.uid)) continue;
     out.push({ nsn, canonical: num, display: display(plan, nsn) });
   }
-  analytics(env, "number_store_opened", ctx.uid, { country: plan.iso2, pattern: pattern ? "yes" : "no", entitled: paid(tier), results: out.length });
+  analytics(env, "number_store_opened", ctx.uid, {
+    country: plan.iso2, country_name: plan.name, country_dial: plan.dial,
+    pattern: pattern ? "yes" : "no", pattern_value: pattern || null,
+    entitled: paid(tier), tier, results: out.length, has_results: out.length > 0,
+  }, req);
   return json({ country: plan.iso2, entitled: paid(tier), tier, numbers: out });
 }
 
@@ -99,7 +132,10 @@ export async function reserve(req: Request, env: Env): Promise<Response> {
   await env.DB_META.prepare(
     "INSERT INTO number_reservations (number, uid, expires_at) VALUES (?1,?2,?3) ON CONFLICT(number) DO UPDATE SET uid=?2, expires_at=?3",
   ).bind(r.number, ctx.uid, expires).run();
-  analytics(env, "number_reserved", ctx.uid, { country: r.plan.iso2, number: r.number });
+  analytics(env, "number_reserved", ctx.uid, {
+    country: r.plan.iso2, country_name: r.plan.name, country_dial: r.plan.dial,
+    number: r.number, display: display(r.plan, r.nsn), nsn: r.nsn, tier: await tierOf(env, ctx.uid),
+  }, req);
   return json({ ok: true, number: r.number, display: display(r.plan, r.nsn), expires_at: expires });
 }
 
@@ -119,15 +155,21 @@ export async function assign(req: Request, env: Env): Promise<Response> {
       "SELECT free_number_used, avatok_number FROM users WHERE uid=?1",
     ).bind(ctx.uid).first<{ free_number_used: number | null; avatok_number: string | null }>();
     if ((u?.free_number_used ?? 0) === 1 || (u?.avatok_number ?? "")) {
-      analytics(env, "number_regen_blocked_free", ctx.uid, {});
+      analytics(env, "number_regen_blocked_free", ctx.uid, { tier, reason: "free_already_used" }, req);
       return json({ error: "upgrade_required" }, 402);
     }
   }
   const body = (await req.json().catch(() => ({}))) as any;
   const r = resolveInput(req, body);
-  if (!r) return json({ error: "invalid_number" }, 400);
+  if (!r) {
+    analytics(env, "number_assign_failed", ctx.uid, { reason: "invalid_number", country: (body?.country ?? null), tier }, req);
+    return json({ error: "invalid_number" }, 400);
+  }
   const db = metaSession(env);
-  if (await isTaken(db, r.number, ctx.uid)) return json({ error: "number_taken" }, 409);
+  if (await isTaken(db, r.number, ctx.uid)) {
+    analytics(env, "number_assign_failed", ctx.uid, { reason: "number_taken", country: r.plan.iso2, number: r.number, tier }, req);
+    return json({ error: "number_taken" }, 409);
+  }
   const now = Date.now();
   const disp = display(r.plan, r.nsn);
 
@@ -153,8 +195,16 @@ export async function assign(req: Request, env: Env): Promise<Response> {
   ];
   await env.DB_META.batch(stmts);
 
-  analytics(env, prev ? "number_changed" : "number_assigned", ctx.uid, { country: r.plan.iso2, number: r.number, previous: prev?.number ?? null });
-  if (hadReal?.phone_hash && !hadReal.avatok_number) analytics(env, "private_number_replaced", ctx.uid, { country: r.plan.iso2 });
+  analytics(env, prev ? "number_changed" : "number_assigned", ctx.uid, {
+    country: r.plan.iso2, country_name: r.plan.name, country_dial: r.plan.dial,
+    number: r.number, display: disp, nsn: r.nsn,
+    previous: prev?.number ?? null, replaced_previous: !!prev,
+    tier, is_free: !paid(tier), had_real_phone: !!hadReal?.phone_hash,
+    is_first_number: !prev && !hadReal?.avatok_number,
+  }, req);
+  if (hadReal?.phone_hash && !hadReal.avatok_number) {
+    analytics(env, "private_number_replaced", ctx.uid, { country: r.plan.iso2, tier }, req);
+  }
   return json({ ok: true, number: r.number, display: disp });
 }
 
@@ -193,7 +243,10 @@ export async function shareCardPut(req: Request, env: Env): Promise<Response> {
   ).bind(ctx.uid, JSON.stringify(card), card.firstName, card.lastName, token, Date.now()).run();
   const row = await metaSession(env).prepare("SELECT share_token FROM users WHERE uid=?1").bind(ctx.uid).first<{ share_token: string }>();
   const t = row?.share_token ?? token;
-  analytics(env, "qr_shown", ctx.uid, { plan: card.plan });
+  analytics(env, "qr_shown", ctx.uid, {
+    plan: card.plan, has_email: !!card.email, has_number: !!card.number,
+    has_name: !!(card.firstName || card.lastName),
+  }, req);
   return json({ ok: true, token: t, link: `https://avatok.ai/add?t=${t}` });
 }
 
@@ -206,8 +259,9 @@ export async function addResolve(req: Request, env: Env): Promise<Response> {
   const r = await metaSession(env).prepare(
     "SELECT uid, display_name, avatar_url, share_card, who_can_add FROM users WHERE share_token=?1",
   ).bind(t).first<any>();
-  if (!r) return json({ error: "not_found" }, 404);
-  if (r.who_can_add === "nobody") return json({ error: "adds_disabled" }, 403);
+  if (!r) { analytics(env, "qr_resolve_failed", "anon", { reason: "not_found" }, req); return json({ error: "not_found" }, 404); }
+  if (r.who_can_add === "nobody") { analytics(env, "qr_resolve_failed", r.uid, { reason: "adds_disabled" }, req); return json({ error: "adds_disabled" }, 403); }
+  analytics(env, "qr_resolved", r.uid, { who_can_add: r.who_can_add ?? "everyone" }, req);
   let card: any = {};
   try { card = r.share_card ? JSON.parse(r.share_card) : {}; } catch { /* malformed → empty */ }
   const name = (r.display_name && String(r.display_name).trim()) || `${card.firstName || ""} ${card.lastName || ""}`.trim();
@@ -241,7 +295,7 @@ export async function privacySet(req: Request, env: Env): Promise<Response> {
     typeof b.email_discoverable === "boolean" ? (b.email_discoverable ? 1 : 0) : null,
     who, Date.now(),
   ).run();
-  analytics(env, "discoverability_changed", ctx.uid, { who_can_add: who, phone: b.phone_discoverable, email: b.email_discoverable });
+  analytics(env, "discoverability_changed", ctx.uid, { who_can_add: who, phone: b.phone_discoverable, email: b.email_discoverable }, req);
   return json({ ok: true });
 }
 
@@ -255,6 +309,6 @@ export async function release(req: Request, env: Env): Promise<Response> {
     env.DB_META.prepare("UPDATE avatok_numbers SET status='released', uid=NULL, released_at=?2, updated_at=?2 WHERE uid=?1 AND status='active'").bind(ctx.uid, now),
     env.DB_META.prepare("UPDATE users SET avatok_number=NULL, avatok_number_display=NULL, updated_at=?2 WHERE uid=?1").bind(ctx.uid, now),
   ]);
-  analytics(env, "number_released", ctx.uid, {});
+  analytics(env, "number_released", ctx.uid, {}, req);
   return json({ ok: true });
 }

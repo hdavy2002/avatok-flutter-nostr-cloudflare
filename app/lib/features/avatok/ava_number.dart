@@ -143,11 +143,24 @@ class AvaNumber {
     try {
       final q = 'country=${Uri.encodeQueryComponent(country)}${pattern.isNotEmpty ? '&pattern=${Uri.encodeQueryComponent(pattern)}' : ''}';
       final r = await ApiAuth.getSigned('$kNumberBase/available?$q');
-      if (r.statusCode != 200) return (entitled: false, tier: 0, numbers: <AvailableNumber>[]);
+      if (r.statusCode != 200) {
+        Analytics.capture('number_store_opened_client', {'country': country, 'ok': false, 'status': r.statusCode});
+        return (entitled: false, tier: 0, numbers: <AvailableNumber>[]);
+      }
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final list = (j['numbers'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      Analytics.capture('number_store_opened_client', {
+        'country': country, 'ok': true,
+        'has_pattern': pattern.isNotEmpty,
+        'result_count': list.length,
+        'entitled': j['entitled'] == true,
+        'tier': (j['tier'] as int?) ?? 0,
+      });
       return (entitled: j['entitled'] == true, tier: (j['tier'] as int?) ?? 0, numbers: list.map(AvailableNumber.fromJson).toList());
-    } catch (_) { return (entitled: false, tier: 0, numbers: <AvailableNumber>[]); }
+    } catch (e) {
+      Analytics.capture('number_store_opened_client', {'country': country, 'ok': false, 'error': e.runtimeType.toString()});
+      return (entitled: false, tier: 0, numbers: <AvailableNumber>[]);
+    }
   }
 
   /// Hold a number briefly while the user confirms (authed + paid).
@@ -165,11 +178,24 @@ class AvaNumber {
       final r = await ApiAuth.postJson('$kNumberBase/assign', {'country': country, 'nsn': nsn});
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       if (r.statusCode == 200 && j['ok'] == true) {
-        Analytics.capture('number_assigned', {'country': country});
+        // Conversion event — country chosen + the number now bound to this account
+        // (the signed-in person's email/phone are attached as person properties via
+        // Analytics.setUserKeys, so PostHog ties email ↔ this AvaTOK number).
+        Analytics.capture('number_assigned', {
+          'country': country, 'nsn': nsn,
+          'number': (j['number'] ?? '').toString(),
+          'display': (j['display'] ?? '').toString(),
+        });
         return (ok: true, number: (j['number'] ?? '').toString(), display: (j['display'] ?? '').toString(), error: null);
       }
-      return (ok: false, number: null, display: null, error: (j['error'] ?? 'http_${r.statusCode}').toString());
-    } catch (_) { return (ok: false, number: null, display: null, error: 'network'); }
+      final err = (j['error'] ?? 'http_${r.statusCode}').toString();
+      Analytics.capture('number_assign_failed', {'country': country, 'nsn': nsn, 'error': err, 'status': r.statusCode});
+      return (ok: false, number: null, display: null, error: err);
+    } catch (e) {
+      Analytics.error(domain: 'number', code: 'assign_failed', action: 'assign',
+          message: e.toString(), extra: {'country': country});
+      return (ok: false, number: null, display: null, error: 'network');
+    }
   }
 
   static Future<MyNumber> me() async {
