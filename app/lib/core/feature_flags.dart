@@ -29,6 +29,19 @@ const bool kSocialLinkedInEnabled = false;
 /// Build environment, baked at compile time: --dart-define=AVATOK_ENV=staging.
 const String kAvatokEnv = String.fromEnvironment('AVATOK_ENV', defaultValue: 'prod');
 
+/// ── Messaging transport (Ably migration, 2026-06-27) ────────────────────────
+/// Which realtime transport carries chat: 'inbox' (legacy Cloudflare InboxDO
+/// WebSocket) or 'ably' (Ably Pub/Sub realtime — instant delivery, native
+/// presence/typing/receipts). Ably's Flutter SDK is iOS+Android ONLY (it wraps
+/// the native cocoa/java libs — no desktop/macOS/web), so the runtime selector
+/// `useAblyTransport()` (sync/transport/ava_transport.dart) hard-falls-back to
+/// 'inbox' on every other platform regardless of this value. Default 'inbox'
+/// until the Worker token endpoint + Ably integration webhook are live; flip to
+/// 'ably' (or set the server kill switch PlatformConfig.messagingProvider, which
+/// wins at runtime) to cut mobile over.
+const String kMessagingProvider =
+    String.fromEnvironment('AVATOK_MSG_PROVIDER', defaultValue: 'inbox');
+
 /// Numeric build number — keep in sync with pubspec `version` (after the +)
 /// and Analytics.appVersion. Compared against RemoteConfig.minAppBuild.
 const int kAppBuild = 17;
