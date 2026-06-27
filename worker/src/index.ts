@@ -32,6 +32,7 @@ import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveI
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, convList, convCreate, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { ablyToken } from "./routes/ably";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
@@ -225,6 +226,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/receipt" && req.method === "POST") return await receiptMsg(req, env);
       if (p === "/api/msg/read" && req.method === "POST") return await readMsg(req, env);
       if (p === "/api/msg/hide" && req.method === "POST") return await hideMsg(req, env);
+      // Ably realtime: mint a short-lived, clientId-pinned, room-scoped Ably JWT
+      // (iOS/Android transport — Ably migration). Clerk-JWT auth, no API key on device.
+      if (p === "/api/ably/token" && req.method === "POST") return await ablyToken(req, env);
       // Call-log multi-device sync (owner's own InboxDO; delete/clear wake asleep devices).
       if (p === "/api/call-log/append" && req.method === "POST") return await callLogAppend(req, env);
       if (p === "/api/call-log/delete" && req.method === "POST") return await callLogDelete(req, env);

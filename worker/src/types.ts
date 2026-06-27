@@ -168,6 +168,12 @@ export interface Env {
   LIVEKIT_API_KEY?: string;
   LIVEKIT_API_SECRET?: string;
 
+  // Ably realtime (iOS/Android messaging transport — Ably migration 2026-06-27).
+  // ONE Ably API key, format "<keyName>:<keySecret>". Used to (a) mint short-lived
+  // client JWTs (/api/ably/token) and (b) server-publish moderated messages to
+  // Ably (ablyPublish). Unset ⇒ /api/ably/token returns 503 (flag-gated).
+  ABLY_API_KEY?: string;
+
   // Cloudflare AI Gateway (2026-06-18). When set, all Workers-AI + Google image
   // calls route through this gateway for cost logging, caching, and a hard spend
   // cap. AI_GATEWAY_ID = the gateway name/id; AI_GATEWAY_TOKEN = optional
