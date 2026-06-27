@@ -19,7 +19,7 @@ import 'voice/native_voice_audio.dart';
 /// Ava enabled, the caller talks to Ava instead of a dead "No answer". This
 /// streams the mic up (PCM16/16k) to the ReceptionRoom DO over a WebSocket and
 /// plays Ava's PCM16/24k audio back. The DO holds the Gemini Live session,
-/// enforces the 2-minute cap, captures the transcript, and on close posts the
+/// enforces the call-length cap (~70s), captures the transcript, and on close posts the
 /// message + recording to the callee.
 ///
 /// AUDIO ENGINE (RECEPTIONIST-V2): we use the SHARED native full-duplex engine
@@ -139,7 +139,7 @@ class ReceptionistCall {
       });
       return false;
     }
-    final hardCapMs = (s['hard_cap_ms'] as num?)?.toInt() ?? 120000;
+    final hardCapMs = (s['hard_cap_ms'] as num?)?.toInt() ?? 70000;
 
     try {
       onStatus?.call('connecting');

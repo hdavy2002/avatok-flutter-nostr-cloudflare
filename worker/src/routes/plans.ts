@@ -70,7 +70,9 @@ export const PLANS: Record<TierId, Plan> = {
   0: {
     id: 0, key: "free", name: "Free", priceUsd: 0,
     tokensPerMonth: 200, // PLACEHOLDER (TBD): small monthly allowance for extras; basic chat stays free
-    caps: { ava_chat: null, image: 3, voice_min: 10, recept: 3, translate_min: 0, conf_min: 60 },
+    // recept: 0 — the AI Receptionist is PREMIUM-ONLY (paid tiers only). Free users
+    // never get Ava answering their calls (owner decision 2026-06-28).
+    caps: { ava_chat: null, image: 3, voice_min: 10, recept: 0, translate_min: 0, conf_min: 60 },
     confParticipants: 5,
     features: { memory: false, fileAnalysis: false, webSearch: false, premiumImageModel: false },
   },

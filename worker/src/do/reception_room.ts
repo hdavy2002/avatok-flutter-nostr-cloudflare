@@ -1,10 +1,10 @@
 // ReceptionRoom — Ava Receptionist call bridge (Specs/PROPOSAL-AI-RECEPTIONIST.md).
 // One instance per session id. NOT hibernated: it holds a live outbound Gemini
-// Live WebSocket for the duration of a (≤2 min) call.
+// Live WebSocket for the duration of a (≤70 s) call.
 //
 // Why a server-side relay (not client→Gemini directly): it lets us route through
 // Cloudflare AI Gateway for METERING, keep GEMINI_API_KEY + the hidden system
-// prompt + the 2-minute cap SERVER-SIDE (the caller can't tamper), and capture
+// prompt + the 70-second cap SERVER-SIDE (the caller can't tamper), and capture
 // the transcript + voicemail recording. This is the AvaVoice pipeline foundation.
 //
 // Pipe:  caller app  <--WS (PCM16 16k in / PCM16 24k out)-->  ReceptionRoom DO
@@ -37,6 +37,34 @@ function scrubSecrets(s: string): string {
     .replace(/auth_tokens\/[^&\s"']+/g, "auth_tokens/[redacted]")
     // any remaining long opaque token (bearer/JWT-ish)
     .replace(/[A-Za-z0-9_\-]{40,}/g, "[redacted]");
+}
+
+// Gemini 3.1 Flash Live audio pricing — PAID tier, per minute of audio
+// (Google AI pricing, https://ai.google.dev/gemini-api/docs/pricing, 2026-06-15):
+//   input audio  $3.00 / 1M tokens  ≈ $0.005/min
+//   output audio $12.00 / 1M tokens ≈ $0.018/min
+// Audio dominates a receptionist call; text I/O (system prompt + transcripts) is
+// negligible, so the cost estimate is audio-seconds × per-second rate. Tunable via
+// env so a model/price change needs no redeploy.
+const LIVE_AUDIO_IN_USD_PER_MIN = 0.005;
+const LIVE_AUDIO_OUT_USD_PER_MIN = 0.018;
+
+// Voice → gender, mirroring app/lib/core/voice/google_voice.dart (the 30 prebuilt
+// Gemini Live voices). Stamped on every telemetry event ("woman"/"man") so PostHog
+// can break usage + cost down by the voice the owner picked. Unknown → "".
+const VOICE_GENDER: Record<string, "woman" | "man"> = {
+  // female / woman
+  Aoede: "woman", Kore: "woman", Leda: "woman", Zephyr: "woman", Autonoe: "woman",
+  Callirrhoe: "woman", Despina: "woman", Erinome: "woman", Laomedeia: "woman",
+  Achernar: "woman", Gacrux: "woman", Pulcherrima: "woman", Vindemiatrix: "woman",
+  Sulafat: "woman", Achird: "woman", Sadachbia: "woman",
+  // male / man
+  Puck: "man", Charon: "man", Fenrir: "man", Orus: "man", Enceladus: "man",
+  Iapetus: "man", Umbriel: "man", Algieba: "man", Algenib: "man", Rasalgethi: "man",
+  Alnilam: "man", Schedar: "man", Zubenelgenubi: "man", Sadaltager: "man",
+};
+function voiceGender(name: string | null | undefined): string {
+  return (name && VOICE_GENDER[name]) || "";
 }
 
 interface InitBlob {
@@ -142,7 +170,7 @@ export class ReceptionRoom {
       this.failHard("gemini_connect_failed");
     });
 
-    // 2-minute cap (authoritative, server-side).
+    // Call-length caps (authoritative, server-side): soft wrap-up + hard end.
     this.softTimer = setTimeout(() => this.onSoftCap(), init.soft_cap_ms);
     this.hardTimer = setTimeout(() => this.finalize("hard_cap"), init.hard_cap_ms);
 
@@ -154,8 +182,11 @@ export class ReceptionRoom {
   private ev(event: string, props: Record<string, unknown> = {}): void {
     const i = this.init;
     if (!i) return;
+    // Every event carries the model + chosen voice and its gender (woman/man) so
+    // PostHog can slice usage and cost by voice. v2 cost telemetry.
     trackUserContact(this.env, i.owner_uid, this.ownerEmail, this.ownerPhone, event, "receptionist",
-      { ...props, call_id: i.call_id, activation_mode: i.activation_mode ?? null }, i.sid);
+      { ...props, call_id: i.call_id, activation_mode: i.activation_mode ?? null,
+        model: i.model, voice: i.voice_name, voice_gender: voiceGender(i.voice_name) }, i.sid);
   }
 
   // -------------------------------------------------------------------------
@@ -349,10 +380,11 @@ export class ReceptionRoom {
   }
 
   private onSoftCap(): void {
-    // Nudge Ava to wrap up (the system prompt also knows the limit).
+    // Nudge Ava to wrap up (the system prompt also knows the limit). The call is
+    // capped at 70s and this fires at 55s, so there are only seconds left.
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[SYSTEM: ~40 seconds left — confirm the message and say goodbye now.]" }] }],
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM: time's almost up — confirm the message in one sentence and say goodbye now.]" }] }],
         turnComplete: true,
       },
     });
@@ -453,6 +485,33 @@ export class ReceptionRoom {
       out_chars: this.outText.join("").length, has_recording: !!recordingUrl,
     });
     metric(this.env, reason === "hard_cap" ? "ava_recept_hardcap" : "ava_recept_completed", [1, durationS]);
+
+    // ── COST telemetry (Gemini Live audio) ────────────────────────────────────
+    // Estimate $ spent on this call from audio throughput both ways:
+    //   caller mic  = PCM16 16k mono = 32000 bytes/s  (input audio)
+    //   Ava output  = PCM16 24k mono = 48000 bytes/s  (output audio)
+    // priced at the per-minute audio rates above. Per-min rates are tunable via
+    // env (RECEPT_AUDIO_IN_USD_MIN / _OUT_) so a price change needs no redeploy.
+    const inRate = Number((this.env as any).RECEPT_AUDIO_IN_USD_MIN) || LIVE_AUDIO_IN_USD_PER_MIN;
+    const outRate = Number((this.env as any).RECEPT_AUDIO_OUT_USD_MIN) || LIVE_AUDIO_OUT_USD_PER_MIN;
+    const inAudioS = this.inBytes / 32000;
+    const outAudioS = this.avaBytes / 48000;
+    const inUsd = (inAudioS / 60) * inRate;
+    const outUsd = (outAudioS / 60) * outRate;
+    const estUsd = inUsd + outUsd;
+    const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+    this.ev("ava_recept_cost", {
+      duration_s: durationS,
+      in_audio_s: Math.round(inAudioS * 10) / 10,
+      out_audio_s: Math.round(outAudioS * 10) / 10,
+      in_audio_usd: round6(inUsd),
+      out_audio_usd: round6(outUsd),
+      est_usd: round6(estUsd),
+      in_rate_usd_min: inRate, out_rate_usd_min: outRate,
+      cutoff_reason: reason,
+    });
+    // Aggregate metric (USD micro-cents so the integer counter stays meaningful).
+    metric(this.env, "ava_recept_cost_usd_micro", [Math.round(estUsd * 1e6)]);
   }
 
   /** Append a transcript fragment to the running turn-by-turn dialogue, merging
