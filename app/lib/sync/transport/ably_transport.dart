@@ -48,6 +48,8 @@ class AblyTransport implements AvaTransport {
   final _presence = StreamController<PresenceEvent>.broadcast();
   final _receipts = StreamController<ReceiptEvent>.broadcast();
   final _seen = <String>{};
+  // clientId → send time (ms), for the publish→own-echo roundtrip metric.
+  final Map<String, int> _sentAt = {};
 
   // Telemetry: when the current connection came up, and reconnect tally.
   int _connectedAt = 0;
@@ -191,6 +193,15 @@ class AblyTransport implements AvaTransport {
       final clientId = (data['client_id'] ?? m.id ?? '').toString();
       final rumorId = clientId.isNotEmpty ? clientId : 'srv_${m.id}';
       if (!_seen.add(rumorId)) return; // dedup optimistic echo + redelivery
+      // Roundtrip metric: time from local send → the message coming back live
+      // over Ably. A direct, per-device read on realtime delivery speed (the core
+      // "chat takes forever" complaint). Auto-tagged with email by Analytics.
+      final sentAt = _sentAt.remove(rumorId);
+      if (sentAt != null) {
+        Analytics.capture('ably_send_roundtrip', {
+          'ms': DateTime.now().millisecondsSinceEpoch - sentAt,
+        });
+      }
       final createdMs = (data['created_at'] as num?)?.toInt() ??
           m.timestamp?.millisecondsSinceEpoch ??
           DateTime.now().millisecondsSinceEpoch;
@@ -217,6 +228,12 @@ class AblyTransport implements AvaTransport {
         final status = (data['status'] ?? 'delivered').toString();
         final ts = (data['ts'] as num?)?.toInt() ?? 0;
         if ((m.clientId ?? '') == myUid) return; // ignore my own echo
+        // Receipt lag: how long after the message timestamp the tick landed.
+        final tsMs = ts > 2000000000 ? ts : ts * 1000;
+        Analytics.capture('ably_receipt_lag', {
+          'status': status,
+          'ms': DateTime.now().millisecondsSinceEpoch - tsMs,
+        });
         _receipts.add(ReceiptEvent(convKey, status, ts));
       } else if (t == 'del' || t == 'gdel') {
         // Surface delete-for-everyone as a control message the thread applies.
@@ -241,6 +258,7 @@ class AblyTransport implements AvaTransport {
   @override
   String sendText(String convKey, String payload) {
     final clientId = _randId();
+    _sentAt[clientId] = DateTime.now().millisecondsSinceEpoch; // roundtrip start
     // Optimistic local write for instant UI (drift is the on-device truth).
     try {
       Db.I.upsertMessage(MessagesCompanion.insert(
