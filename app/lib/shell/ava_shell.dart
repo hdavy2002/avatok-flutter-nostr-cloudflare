@@ -84,16 +84,15 @@ class _AvaShellState extends State<AvaShell> {
     if (!complete) {
       try { complete = await store.restoreFromServer(); } catch (_) {/* offline → setup screen */}
     }
-    // Compulsory AvaTOK number: a complete profile with NO number must choose one
-    // before using the app. Fail-open when offline so a network error never traps
-    // a user — they're gated on the next online open instead.
+    // Compulsory AvaTOK number — now picked BEFORE the profile (owner decision
+    // 2026-06-27) so the chosen number can be shown (locked) in the profile's
+    // phone field. Computed regardless of profile completeness. Fail-open when
+    // offline so a network error never traps a user.
     var needsNumber = false;
-    if (complete) {
-      try {
-        final me = await AvaNumber.me();
-        needsNumber = me.featureOn && !me.hasNumber;
-      } catch (_) { needsNumber = false; }
-    }
+    try {
+      final me = await AvaNumber.me();
+      needsNumber = me.featureOn && !me.hasNumber;
+    } catch (_) { needsNumber = false; }
     if (mounted) setState(() { _id = id; _profileComplete = complete; _needsNumber = needsNumber; });
     // Funnel signal: did the user hit the compulsory number gate?
     if (needsNumber) Analytics.capture('number_gate_shown', const {});
@@ -284,23 +283,24 @@ class _AvaShellState extends State<AvaShell> {
         body: Center(child: CircularProgressIndicator(color: Zine.blueInk)),
       );
     }
-    if (_profileComplete == false) {
-      return ProfileSetupScreen(
-        identity: _id,
-        onSignOut: widget.onSignOut,
-        // Re-run the gate after the profile is saved so the compulsory number
-        // check runs next (show the loader meanwhile, no flash to the chat list).
-        onDone: () { setState(() { _profileComplete = null; _needsNumber = false; }); _load(); },
-      );
-    }
-    // Compulsory AvaTOK number gate: a complete profile with no number must pick
-    // one before entering the app (owner decision 2026-06-27). Same gate for new
-    // users at onboarding and existing users who never registered a number.
+    // Compulsory AvaTOK number gate FIRST (owner decision 2026-06-27): the user
+    // picks their number before completing the profile, so the profile can show
+    // that number (locked) in the phone field. Same gate for new users at
+    // onboarding and existing users who never registered a number.
     if (_needsNumber) {
       return NumberSettingsScreen(
         gate: true,
         onSignOut: widget.onSignOut,
         onAssigned: () => setState(() => _needsNumber = false),
+      );
+    }
+    if (_profileComplete == false) {
+      return ProfileSetupScreen(
+        identity: _id,
+        onSignOut: widget.onSignOut,
+        // Re-run the gate after the profile is saved (show the loader meanwhile,
+        // no flash to the chat list).
+        onDone: () { setState(() { _profileComplete = null; }); _load(); },
       );
     }
     // Messaging-first landing (owner decision 2026-06-18, free release): the app

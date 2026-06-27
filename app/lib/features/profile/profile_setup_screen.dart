@@ -13,6 +13,7 @@ import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
+import '../avatok/ava_number.dart';
 import '../avatok/contacts.dart';
 import 'avatar_crop_screen.dart';
 
@@ -49,6 +50,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   Identity? _id;
   String _avatarUrl = '';
+  String _avatokNumber = ''; // chosen in the number gate (shown here, locked)
   bool _photoBusy = false;
   bool _saving = false;
 
@@ -65,12 +67,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         final parts = p.nameParts;
         _first.text = parts.isNotEmpty ? parts.first : '';
         _last.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-        _email.text = p.email.isNotEmpty ? p.email : (Analytics.currentEmail ?? '');
-        _phone.text = p.phone;
+        // Email is the account you signed in with — prefilled and LOCKED here
+        // (owner decision 2026-06-27); change it later in Settings if needed.
+        _email.text = (Analytics.currentEmail ?? '').isNotEmpty ? Analytics.currentEmail! : p.email;
         _birthYear.text = p.birthYear?.toString() ?? '';
         _bio.text = p.bio;
         _avatarUrl = p.avatarUrl;
       });
+    });
+    // The AvaTOK number was picked in the gate just before this screen — show it
+    // (locked) in place of an editable phone field.
+    AvaNumber.me().then((m) {
+      if (mounted && (m.display ?? '').isNotEmpty) {
+        setState(() { _avatokNumber = m.display!; _phone.text = m.display!; });
+      }
     });
   }
 
@@ -174,7 +184,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final last = _last.text.trim();
     final fullName = '$first $last'.trim();
     final email = _email.text.trim();
-    final phone = _phone.text.trim();
     final bio = _bio.text.trim();
     final by = _birthYearValue;
     // Under-18 gate: minors must accept the minor-specific terms before finishing.
@@ -184,6 +193,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       if (!accepted) { if (mounted) setState(() => _saving = false); return; }
     }
     final existing = await _store.load();
+    // The visible "phone" field shows the AvaTOK number (locked) and is NOT the
+    // user's real phone — preserve any previously-stored real phone instead of
+    // overwriting it with the AvaTOK number.
+    final phone = existing.phone;
     await _store.save(existing.copyWith(
         displayName: fullName, email: email, phone: phone, avatarUrl: _avatarUrl,
         bio: bio, birthYear: by));
@@ -191,7 +204,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         npub: id.npub, name: fullName, firstName: first, lastName: last,
         email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio);
     Analytics.capture('profile_completed', {
-      'has_photo': true, 'via': 'mandatory_gate', 'email': email, 'phone': phone,
+      'has_photo': true, 'via': 'mandatory_gate', 'email': email,
     });
     if (!mounted) return;
     setState(() => _saving = false);
@@ -210,8 +223,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         body: ListView(
           padding: EdgeInsets.fromLTRB(20, 18, 20, 40 + MediaQuery.of(context).padding.bottom),
           children: [
-            Text('A few details so people can recognise and reach you. Phone is '
-                'optional — you sign in and recover your account with email.',
+            Text('A few details so people can recognise you. Your email and AvaTOK '
+                'number are set from sign-up and shown locked below.',
                 style: ZineText.sub(size: 13)),
             const SizedBox(height: 18),
             Center(
@@ -263,15 +276,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 textCapitalization: TextCapitalization.words, onChanged: (_) => setState(() {})),
             const SizedBox(height: 14),
             ZineField(controller: _email, label: 'Email', hint: 'you@example.com',
-                keyboardType: TextInputType.emailAddress, onChanged: (_) => setState(() {})),
-            const SizedBox(height: 14),
-            ZineField(controller: _phone, label: 'Phone (optional)', hint: '+1 555 123 4567',
-                keyboardType: TextInputType.phone,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s\-()]'))],
-                onChanged: (_) => setState(() {})),
+                enabled: false),
             const SizedBox(height: 4),
-            Text('Optional. Add it later if you want phone-based features.',
-                style: ZineText.sub(size: 12)),
+            Text('The email you signed in with — locked here.', style: ZineText.sub(size: 12)),
+            const SizedBox(height: 14),
+            ZineField(controller: _phone, label: 'Your AvaTOK number',
+                hint: _avatokNumber.isEmpty ? 'Assigned just now' : _avatokNumber,
+                enabled: false),
+            const SizedBox(height: 4),
+            Text('This is your AvaTOK number — it represents you and keeps your real '
+                'phone private. You can change it later in Settings.', style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
             ZineField(controller: _birthYear, label: 'Birth year (Private)', hint: 'e.g. 1990',
                 keyboardType: TextInputType.number, maxLength: 4,
