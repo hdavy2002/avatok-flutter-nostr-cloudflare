@@ -1,8 +1,9 @@
 // AvaTOK Number routes (Specs/AVATOK-NUMBER-FEATURE-SPEC.md §7).
 //
-// A purchasable, pure-virtual, country-standard, NON-PSTN number that represents a
-// user in-network and maps to their Clerk uid. Bundled free on paid plans (tier>=1);
-// free-tier callers get a 402 upgrade gate. Assigning a number REPLACES the user's
+// A pure-virtual, country-standard, NON-PSTN number that represents a user
+// in-network and maps to their Clerk uid. Generating one is FREE for everyone
+// (one number per free account; claimed at onboarding); only paid plans (tier>=1)
+// can regenerate/change it — a free regen attempt gets a 402. Assigning REPLACES the user's
 // real phone as their network identity (card / QR / search). Numbers are unique;
 // the picker only ever offers available combinations. All gated by the
 // `numberFeatureEnabled` kill switch.
@@ -109,7 +110,19 @@ export async function assign(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const tier = await tierOf(env, ctx.uid);
-  if (!paid(tier)) return json({ error: "upgrade_required" }, 402);
+  // Generating an AvaTOK number is FREE for everyone, but a FREE account gets
+  // exactly ONE number. Paid accounts regenerate without limit. A free account
+  // that already used its free generation (or already holds a number) must
+  // upgrade to change (owner request 2026-06-27).
+  if (!paid(tier)) {
+    const u = await metaSession(env).prepare(
+      "SELECT free_number_used, avatok_number FROM users WHERE uid=?1",
+    ).bind(ctx.uid).first<{ free_number_used: number | null; avatok_number: string | null }>();
+    if ((u?.free_number_used ?? 0) === 1 || (u?.avatok_number ?? "")) {
+      analytics(env, "number_regen_blocked_free", ctx.uid, {});
+      return json({ error: "upgrade_required" }, 402);
+    }
+  }
   const body = (await req.json().catch(() => ({}))) as any;
   const r = resolveInput(req, body);
   if (!r) return json({ error: "invalid_number" }, 400);
@@ -133,7 +146,7 @@ export async function assign(req: Request, env: Env): Promise<Response> {
     ).bind(r.number, r.plan.iso2, ctx.uid, disp, now),
     // set as the user's network identity; real phone is hidden (not searchable)
     env.DB_META.prepare(
-      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, phone_discoverable=0, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
+      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, phone_discoverable=0, free_number_used=1, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
     ).bind(ctx.uid, r.number, disp, crypto.randomUUID().replace(/-/g, ""), now),
     // clear any reservation
     env.DB_META.prepare("DELETE FROM number_reservations WHERE number=?1").bind(r.number),
@@ -150,8 +163,10 @@ export async function me(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const tier = await tierOf(env, ctx.uid);
-  const r = await metaSession(env).prepare("SELECT avatok_number, avatok_number_display FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatok_number: string | null; avatok_number_display: string | null }>();
-  return json({ entitled: paid(tier), tier, number: r?.avatok_number ?? null, display: r?.avatok_number_display ?? null, feature: await featureOn(env) });
+  const r = await metaSession(env).prepare("SELECT avatok_number, avatok_number_display, free_number_used FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatok_number: string | null; avatok_number_display: string | null; free_number_used: number | null }>();
+  // can_generate: free accounts may claim their ONE number; paid accounts always.
+  const canGenerate = paid(tier) || ((r?.free_number_used ?? 0) === 0 && !(r?.avatok_number ?? ""));
+  return json({ entitled: paid(tier), tier, number: r?.avatok_number ?? null, display: r?.avatok_number_display ?? null, feature: await featureOn(env), can_generate: canGenerate });
 }
 
 // POST /api/number/share-card — auth. The client (which holds the raw phone/email)

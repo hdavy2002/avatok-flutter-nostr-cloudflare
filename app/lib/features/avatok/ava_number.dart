@@ -53,7 +53,10 @@ class MyNumber {
   final bool featureOn;
   final String? number;    // canonical digits, or null if unassigned
   final String? display;   // pretty form
-  const MyNumber({required this.entitled, required this.tier, required this.featureOn, this.number, this.display});
+  // Whether the account may (re)generate a number now. Paid: always. Free: only
+  // their ONE free generation, until it's used. Server-computed (can_generate).
+  final bool canGenerate;
+  const MyNumber({required this.entitled, required this.tier, required this.featureOn, this.number, this.display, this.canGenerate = false});
   bool get hasNumber => (number ?? '').isNotEmpty;
   factory MyNumber.fromJson(Map<String, dynamic> j) => MyNumber(
         entitled: j['entitled'] == true,
@@ -61,6 +64,8 @@ class MyNumber {
         featureOn: j['feature'] != false,
         number: (j['number'] ?? '').toString().isEmpty ? null : j['number'].toString(),
         display: (j['display'] ?? '').toString().isEmpty ? null : j['display'].toString(),
+        // Back-compat: an older server without can_generate → old rule (paid only).
+        canGenerate: j.containsKey('can_generate') ? j['can_generate'] == true : (j['entitled'] == true),
       );
 }
 

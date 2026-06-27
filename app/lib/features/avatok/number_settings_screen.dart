@@ -8,10 +8,11 @@ import 'ava_number.dart';
 
 /// Settings → "Your number" (Specs/AVATOK-NUMBER-FEATURE-SPEC.md §10C).
 ///
-/// Paid users self-assign a virtual, country-standard, NON-PSTN number that
-/// represents them on the network. Assigning one REPLACES the real phone as the
-/// user's identity (card / QR / search). The picker only ever offers AVAILABLE
-/// numbers, so no two users share one. Free users see an upgrade gate.
+/// Everyone gets one virtual, country-standard, NON-PSTN number (free) that
+/// represents them on the network and REPLACES the real phone as the user's
+/// identity (card / QR / search). The picker only ever offers AVAILABLE numbers,
+/// so no two users share one. Only PAID users can regenerate/change it — a free
+/// user's number is locked after their one free generation (owner request 2026-06-27).
 class NumberSettingsScreen extends StatefulWidget {
   const NumberSettingsScreen({super.key});
   @override
@@ -50,8 +51,8 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       _country = countries.isNotEmpty ? countries.first : null;
       _picking = !me.hasNumber; // jump straight to picking when no number yet
     });
-    if (!me.entitled) Analytics.capture('assign_blocked_free_tier', const {'where': 'settings'});
-    if (_picking && me.entitled) _loadAvailable();
+    if (!me.canGenerate) Analytics.capture('assign_blocked_free_tier', const {'where': 'settings'});
+    if (_picking && me.canGenerate) _loadAvailable();
   }
 
   Future<void> _loadAvailable() async {
@@ -153,7 +154,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     await AvaNumber.release();
     final me = await AvaNumber.me();
     if (!mounted) return;
-    setState(() { _me = me; _busy = false; _picking = me.entitled; });
+    setState(() { _me = me; _busy = false; _picking = me.canGenerate; });
     if (_picking) _loadAvailable();
   }
 
@@ -173,32 +174,9 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     if (!me.featureOn) {
       return [_infoCard('Not available', 'AvaTOK numbers aren’t available right now. Check back soon.')];
     }
-    if (!me.entitled) {
-      return [
-        ZineCard(
-          color: Zine.lime,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              ZineIconBadge(icon: PhosphorIcons.hash(PhosphorIconsStyle.bold), color: Zine.card, size: 30),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Keep your number private', style: ZineText.cardTitle(size: 18))),
-            ]),
-            const SizedBox(height: 10),
-            Text('Get a number that represents you on AvaTOK and hides your real phone. Included free on any paid plan.', style: ZineText.value(size: 14)),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        ZineButton(
-          label: 'See plans',
-          fullWidth: true,
-          icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-          onPressed: () { Navigator.of(context).maybePop(); },
-        ),
-      ];
-    }
     final widgets = <Widget>[];
     if (me.hasNumber && !_picking) {
-      widgets.addAll([
+      widgets.add(
         ZineCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('YOUR AVATOK NUMBER', style: ZineText.kicker()),
@@ -212,16 +190,68 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             ]),
           ]),
         ),
-        const SizedBox(height: 14),
-        ZineButton(label: 'Change number', variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 16,
-            icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
-            onPressed: _busy ? null : () { setState(() => _picking = true); _loadAvailable(); }),
-        const SizedBox(height: 10),
-        ZineButton(label: 'Release number', variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 16,
-            icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), trailingIcon: false,
-            onPressed: _busy ? null : _release),
-      ]);
+      );
+      if (me.canGenerate) {
+        // Paid: regenerate / release freely.
+        widgets.addAll([
+          const SizedBox(height: 14),
+          ZineButton(label: 'Change number', variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 16,
+              icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
+              onPressed: _busy ? null : () { setState(() => _picking = true); _loadAvailable(); }),
+          const SizedBox(height: 10),
+          ZineButton(label: 'Release number', variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 16,
+              icon: PhosphorIcons.trash(PhosphorIconsStyle.bold), trailingIcon: false,
+              onPressed: _busy ? null : _release),
+        ]);
+      } else {
+        // Free: this is their one free number — locked. Upgrade to change it.
+        widgets.addAll([
+          const SizedBox(height: 14),
+          ZineCard(
+            color: Zine.lime,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ZineIconBadge(icon: PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), color: Zine.card, size: 28),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Your number is locked', style: ZineText.cardTitle(size: 17))),
+              ]),
+              const SizedBox(height: 8),
+              Text('You get one AvaTOK number free. Upgrade to a paid plan to generate a new number any time.', style: ZineText.value(size: 14)),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          ZineButton(label: 'See plans', fullWidth: true,
+              icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+              onPressed: () { Navigator.of(context).maybePop(); }),
+        ]);
+      }
       return widgets;
+    }
+
+    // No number yet, or a paid user changing it. A free account that already used
+    // its one free generation can't generate again — show the upgrade gate.
+    if (!me.canGenerate) {
+      return [
+        ZineCard(
+          color: Zine.lime,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              ZineIconBadge(icon: PhosphorIcons.hash(PhosphorIconsStyle.bold), color: Zine.card, size: 30),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Generate a new number', style: ZineText.cardTitle(size: 18))),
+            ]),
+            const SizedBox(height: 10),
+            Text('Your free number generation is used up. Upgrade to a paid plan to generate a new number that represents you and hides your real phone.', style: ZineText.value(size: 14)),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        ZineButton(
+          label: 'See plans',
+          fullWidth: true,
+          icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+          onPressed: () { Navigator.of(context).maybePop(); },
+        ),
+      ];
     }
 
     // Picker
