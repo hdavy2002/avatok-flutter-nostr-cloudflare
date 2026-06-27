@@ -9,9 +9,9 @@ import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/ice_cache.dart';
 import '../avatok/call_screen.dart';
+import '../avatok/contact_profile_screen.dart';
 import '../avatok/contacts.dart';
 import 'ava_phone_contacts.dart';
-import 'ava_sms_inbox.dart';
 import 'phone_theme.dart';
 
 /// AvaPhone — a PSTN-style phone experience that is, under the hood, pure
@@ -54,22 +54,38 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
         bottom: false,
         child: IndexedStack(index: _tab, children: const [
           _CallsTab(),
-          AvaSmsInbox(),
           AvaPhoneContacts(),
         ]),
       ),
+      // Calls tab: Home (back to Messenger) + Dialpad. Contacts tab uses its own FAB.
       floatingActionButton: _tab == 0
-          ? FloatingActionButton(
-              backgroundColor: PhoneTheme.teal,
-              foregroundColor: _kInk,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: const BorderSide(color: PhoneTheme.border, width: 2),
+          ? Column(mainAxisSize: MainAxisSize.min, children: [
+              FloatingActionButton.small(
+                heroTag: 'avaphone_home',
+                backgroundColor: PhoneTheme.surface2,
+                foregroundColor: PhoneTheme.accent,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: PhoneTheme.border, width: 1.5),
+                ),
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold), size: 20),
               ),
-              onPressed: _openDialpad,
-              child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 26),
-            )
+              const SizedBox(height: 12),
+              FloatingActionButton(
+                heroTag: 'avaphone_dialpad',
+                backgroundColor: PhoneTheme.teal,
+                foregroundColor: _kInk,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: const BorderSide(color: PhoneTheme.border, width: 2),
+                ),
+                onPressed: _openDialpad,
+                child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 26),
+              ),
+            ])
           : null,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
@@ -93,10 +109,6 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
                   icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
                   selectedIcon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
                   label: 'Calls'),
-              NavigationDestination(
-                  icon: PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
-                  selectedIcon: PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
-                  label: 'Messages'),
               NavigationDestination(
                   icon: PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
                   selectedIcon: PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
@@ -182,6 +194,99 @@ class _CallsTabState extends State<_CallsTab> {
     )).then((_) => _load());
   }
 
+  /// All log entries for a person (newest first) — drives the "called N times" count.
+  List<CallEntry> _historyFor(String seed) =>
+      (_calls.where((e) => e.seed == seed).toList()..sort((a, b) => b.ts.compareTo(a.ts)));
+
+  /// Per-row options (tap or long-press) — NO accidental dialling.
+  void _options(CallEntry c) {
+    final history = _historyFor(c.seed);
+    final isContact = _byNpub.containsKey(c.seed);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PhoneTheme.surface,
+      shape: const RoundedRectangleBorder(
+        side: BorderSide(color: PhoneTheme.border, width: 1.5),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 10),
+        ListTile(
+          leading: PhoneTheme.ring(Avatar(seed: c.seed, name: c.name, size: 44, avatarUrl: _avatarFor(c.seed))),
+          title: Text(c.name.isNotEmpty ? c.name : c.seed, style: PhoneTheme.value(size: 15.5)),
+          subtitle: Text('Called ${history.length} time${history.length == 1 ? '' : 's'}', style: PhoneTheme.sub(size: 12.5)),
+        ),
+        const Divider(color: PhoneTheme.border, height: 1),
+        ListTile(
+          leading: const Icon(Icons.call, color: PhoneTheme.callGreen),
+          title: Text('Call', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _call(c); }),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.clockCounterClockwise(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
+          title: Text('Call history (${history.length})', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _showHistory(c, history); }),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
+          title: Text(isContact ? 'View contact' : 'Add to contacts', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _viewContact(c); }),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
+          title: Text('Delete this log', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
+          onTap: () async {
+            Navigator.pop(ctx);
+            if (c.id.isNotEmpty) await _store.removeById(c.id);
+            Analytics.capture('avaphone_calllog_delete', const {});
+            _load();
+          }),
+        const SizedBox(height: 8),
+      ])),
+    );
+  }
+
+  void _showHistory(CallEntry c, List<CallEntry> history) {
+    ({IconData icon, Color color}) dir(CallDir d) => switch (d) {
+          CallDir.incoming => (icon: Icons.call_received, color: PhoneTheme.callGreen),
+          CallDir.outgoing => (icon: Icons.call_made, color: PhoneTheme.teal),
+          CallDir.missed => (icon: Icons.call_missed, color: PhoneTheme.danger),
+        };
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PhoneTheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        side: BorderSide(color: PhoneTheme.border, width: 1.5),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${c.name.isNotEmpty ? c.name : c.seed} — ${history.length} call${history.length == 1 ? '' : 's'}',
+              style: PhoneTheme.title(size: 17)),
+          const SizedBox(height: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 360),
+            child: ListView(shrinkWrap: true, children: [
+              for (final e in history)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    Icon(dir(e.dir).icon, size: 16, color: dir(e.dir).color),
+                    const SizedBox(width: 10),
+                    Text(e.dir.name[0].toUpperCase() + e.dir.name.substring(1), style: PhoneTheme.value(size: 14)),
+                    const Spacer(),
+                    Text(e.timeLabel, style: PhoneTheme.sub(size: 12.5)),
+                  ]),
+                ),
+            ]),
+          ),
+        ]),
+      )),
+    );
+  }
+
+  void _viewContact(CallEntry c) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ContactProfileScreen(name: c.name, npub: c.seed)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final favs = _favorites;
@@ -210,7 +315,8 @@ class _CallsTabState extends State<_CallsTab> {
                           entry: c,
                           avatarUrl: _avatarFor(c.seed),
                           isAvatok: _byNpub.containsKey(c.seed),
-                          onTap: () => _call(c),
+                          onTap: () => _options(c),   // tap → options (no accidental dial)
+                          onCall: () => _call(c),     // green phone icon → dial
                         ),
                       ],
                     )),
@@ -350,8 +456,9 @@ class _CallRow extends StatelessWidget {
   final CallEntry entry;
   final String? avatarUrl;
   final bool isAvatok;
-  final VoidCallback onTap;
-  const _CallRow({required this.entry, required this.onTap, this.avatarUrl, this.isAvatok = false});
+  final VoidCallback onTap;  // row tap / long-press → options sheet
+  final VoidCallback onCall; // green phone icon → dial
+  const _CallRow({required this.entry, required this.onTap, required this.onCall, this.avatarUrl, this.isAvatok = false});
 
   ({IconData icon, Color color, String label}) get _dir => switch (entry.dir) {
         CallDir.incoming => (icon: Icons.call_received, color: PhoneTheme.callGreen, label: 'Incoming'),
@@ -364,6 +471,7 @@ class _CallRow extends StatelessWidget {
     final d = _dir;
     return InkWell(
       onTap: onTap,
+      onLongPress: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         child: Row(children: [
@@ -388,7 +496,7 @@ class _CallRow extends StatelessWidget {
             ]),
           ),
           IconButton(
-            onPressed: onTap,
+            onPressed: onCall,
             icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 20, color: PhoneTheme.accent),
           ),
         ]),
