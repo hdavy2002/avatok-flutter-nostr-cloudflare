@@ -72,6 +72,7 @@ import '../conference/conference_screen.dart';
 import '../conference/mesh_api.dart';
 import '../conference/mesh_call_screen.dart';
 import '../../core/analytics.dart';
+import '../../core/money_api.dart';
 import '../../core/live_location_service.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
@@ -142,6 +143,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String _myAvatarUrl = ''; // my own photo, for the avatar beside my bubbles
   int _seq = 0;
   bool _hasText = false;
+  // Premium = topped-up wallet / active subscription. Gates the @ava·#ava
+  // composer hint (paid users only) — loaded in initState via MoneyApi.
+  bool _premium = false;
   bool _recording = false;
   String? _recPath;
   // Live voice-to-text (on-device Whisper) — types into the composer as you speak.
@@ -262,6 +266,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    // Paid status — drives the paid-only @ava·#ava composer hint.
+    MoneyApi.balance().then((b) {
+      if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
+    }).catchError((_) {});
     _audio.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _playingAudioId = null);
     });
@@ -4080,11 +4088,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 child: Icon(Icons.stop_rounded, color: Colors.white, size: 22)),
           )
         else
+          // Mic is now a pure voice-note record button (owner request
+          // 2026-06-27): tapping it starts/stops recording a voice message.
+          // The old "Record audio / Convert voice to text" chooser (_openMicMenu)
+          // and the speech-to-text path are no longer surfaced.
           _sendCircle(
               _hasText
                   ? PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill)
                   : PhosphorIcons.microphone(PhosphorIconsStyle.fill),
-              _hasText ? _send : _openMicMenu),
+              _hasText ? _send : _toggleRecord),
           ]),
         ),
       ]),
@@ -4126,28 +4138,38 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // bigger, better-separated touch targets — they used to be tiny and bunched
     // in the centre with empty space either side. spaceEvenly gives equal gutters
     // left, right and between, so the row breathes and each chip is easy to hit.
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      child: Wrap(
-        alignment: WrapAlignment.spaceEvenly,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        // `spacing` is the GUARANTEED minimum horizontal gap between chips —
-        // spaceEvenly alone only distributes leftover space, so when the wide
-        // translate chip nearly filled the run the chips ended up bunched. A
-        // fixed 16px gap (plus the even distribution on top) keeps them spread.
-        spacing: 16,
-        runSpacing: 10,
-        children: [
-          _avaModeChip(),
-          _translateChip(),
-          // The three separate writing chips (Fix grammar / Rewrite / Reply
-          // ideas) are consolidated into ONE "Help me write better" control that
-          // opens a menu — keeps the row to three clean controls.
-          _writeHelpChip(),
-        ],
-      ),
-    );
+    // Owner request (2026-06-27): the three quick-tool chips — Talk-to-Ava (✦),
+    // Translate, and Help-me-write-better — are retired from the composer. In
+    // their place a tiny PAID-ONLY hint reminds people how to summon Ava inline:
+    // `@ava` for a private reply, `#ava` to ask Ava in front of everyone. Free
+    // users see nothing here (Ava AI in chat is a paid feature). The old chip
+    // builders below are intentionally left in place (unused) to keep this a
+    // surgical, low-risk change.
+    if (!_premium) return const SizedBox.shrink();
+    return _avaHintNote();
   }
+
+  /// Tiny paid-only reminder above the field: how to call Ava without a button.
+  Widget _avaHintNote() => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+        child: Row(children: [
+          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+              size: 14, color: Zine.blueInk),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                const TextSpan(text: 'Type '),
+                TextSpan(text: '@ava', style: ZineText.tag(size: 11.5, color: Zine.blueInk)),
+                const TextSpan(text: ' for a private reply, or '),
+                TextSpan(text: '#ava', style: ZineText.tag(size: 11.5, color: Zine.mintInk)),
+                const TextSpan(text: ' to ask Ava in the chat.'),
+              ]),
+              style: ZineText.sub(size: 11.5),
+            ),
+          ),
+        ]),
+      );
 
   /// Ava-mode toggle chip — sits at the front of the quick-tools row. Flip ON
   /// to talk privately to Ava without typing @ava; flip back to message the
