@@ -293,6 +293,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/number/available" && req.method === "GET") return await num.available(req, env);
       if (p === "/api/number/reserve" && req.method === "POST") return await num.reserve(req, env);
       if (p === "/api/number/assign" && req.method === "POST") return await num.assign(req, env);
+      if (p === "/api/number/assign-own" && req.method === "POST") return await num.assignOwn(req, env);
       if (p === "/api/number/me" && req.method === "GET") return await num.me(req, env);
       if (p === "/api/number/release" && req.method === "POST") return await num.release(req, env);
       if (p === "/api/number/share-card" && req.method === "POST") return await num.shareCardPut(req, env);

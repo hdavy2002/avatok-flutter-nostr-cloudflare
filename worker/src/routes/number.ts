@@ -13,7 +13,7 @@ import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { readConfig } from "./config";
 import { tierOf } from "./plans";
-import { COUNTRIES, planFor, canonical, display, validNsn, generate, type CountryPlan } from "../lib/numbering";
+import { COUNTRIES, planFor, canonical, display, validNsn, validOwnNsn, exampleNsn, generate, type CountryPlan } from "../lib/numbering";
 
 const RESERVE_TTL_MS = 10 * 60 * 1000; // 10-minute hold while the user confirms
 
@@ -63,7 +63,7 @@ function analytics(env: Env, event: string, uid: string, props: Record<string, u
 // GET /api/number/countries — public. The picker's country list.
 export function countries(): Response {
   return json(
-    { countries: COUNTRIES.map((c) => ({ iso2: c.iso2, name: c.name, dial: c.dial, flag: c.flag, example: display(c, c.avaPrefix.padEnd(c.nsnLen, "0")) })) },
+    { countries: COUNTRIES.map((c) => ({ iso2: c.iso2, name: c.name, dial: c.dial, flag: c.flag, example: display(c, exampleNsn(c)) })) },
     200, { "cache-control": "public, max-age=3600" },
   );
 }
@@ -206,6 +206,70 @@ export async function assign(req: Request, env: Env): Promise<Response> {
     analytics(env, "private_number_replaced", ctx.uid, { country: r.plan.iso2, tier }, req);
   }
   return json({ ok: true, number: r.number, display: disp });
+}
+
+// POST /api/number/assign-own {country, number} — auth. "Use my own number": the
+// user supplies a real number they want to represent them (e.g. a business that
+// doesn't need privacy). Per owner decision (2026-06-27) this is NOT ownership-
+// verified — it is format-validated only and bound as the user's AvaTOK identity.
+// AvaTOK numbers never touch the PSTN, so this is an in-app label, not a carrier
+// claim. In-network uniqueness is still enforced. Unlike minting, this does NOT
+// hide the real phone (a business sharing its own number WANTS it visible).
+export async function assignOwn(req: Request, env: Env): Promise<Response> {
+  if (!(await featureOn(env))) return json({ error: "number_feature_off" }, 503);
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const tier = await tierOf(env, ctx.uid);
+  // Same free allowance as minting: a free account gets ONE number total (mint OR
+  // bring-your-own); paid can change freely.
+  if (!paid(tier)) {
+    const u = await metaSession(env).prepare(
+      "SELECT free_number_used, avatok_number FROM users WHERE uid=?1",
+    ).bind(ctx.uid).first<{ free_number_used: number | null; avatok_number: string | null }>();
+    if ((u?.free_number_used ?? 0) === 1 || (u?.avatok_number ?? "")) {
+      analytics(env, "number_regen_blocked_free", ctx.uid, { tier, reason: "free_already_used", kind: "own" }, req);
+      return json({ error: "upgrade_required" }, 402);
+    }
+  }
+  const body = (await req.json().catch(() => ({}))) as { country?: string; number?: string; nsn?: string };
+  const plan = planFor(body.country || "");
+  if (!plan) return json({ error: "unsupported_country" }, 400);
+  let nsn = (body.nsn || "").replace(/[^0-9]/g, "");
+  if (!nsn && body.number) {
+    const digits = (body.number || "").replace(/[^0-9]/g, "");
+    nsn = digits.startsWith(plan.dial) ? digits.slice(plan.dial.length) : digits;
+  }
+  if (!validOwnNsn(plan, nsn)) {
+    analytics(env, "number_assign_failed", ctx.uid, { reason: "invalid_own_number", country: plan.iso2, tier, kind: "own" }, req);
+    return json({ error: "invalid_number" }, 400);
+  }
+  const number = canonical(plan, nsn);
+  const disp = display(plan, nsn);
+  const db = metaSession(env);
+  if (await isTaken(db, number, ctx.uid)) {
+    analytics(env, "number_assign_failed", ctx.uid, { reason: "number_taken", country: plan.iso2, number, tier, kind: "own" }, req);
+    return json({ error: "number_taken" }, 409);
+  }
+  const now = Date.now();
+  const prev = await env.DB_META.prepare("SELECT number FROM avatok_numbers WHERE uid=?1 AND status='active'").bind(ctx.uid).first<{ number: string }>();
+  await env.DB_META.batch([
+    env.DB_META.prepare("UPDATE avatok_numbers SET status='released', uid=NULL, released_at=?2, updated_at=?2 WHERE uid=?1 AND status='active'").bind(ctx.uid, now),
+    env.DB_META.prepare(
+      `INSERT INTO avatok_numbers (number, country, uid, display, status, claimed_at, updated_at)
+       VALUES (?1,?2,?3,?4,'active',?5,?5)
+       ON CONFLICT(number) DO UPDATE SET uid=?3, country=?2, display=?4, status='active', claimed_at=?5, released_at=NULL, updated_at=?5`,
+    ).bind(number, plan.iso2, ctx.uid, disp, now),
+    env.DB_META.prepare(
+      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, free_number_used=1, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
+    ).bind(ctx.uid, number, disp, crypto.randomUUID().replace(/-/g, ""), now),
+    env.DB_META.prepare("DELETE FROM number_reservations WHERE number=?1").bind(number),
+  ]);
+  analytics(env, prev ? "number_changed" : "number_assigned", ctx.uid, {
+    country: plan.iso2, country_name: plan.name, country_dial: plan.dial,
+    number, display: disp, nsn, previous: prev?.number ?? null, replaced_previous: !!prev,
+    tier, is_free: !paid(tier), kind: "own",
+  }, req);
+  return json({ ok: true, number, display: disp });
 }
 
 // GET /api/number/me — current account's number + entitlement (restore/display).

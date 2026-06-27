@@ -198,6 +198,28 @@ class AvaNumber {
     }
   }
 
+  /// "Use my own number" — bind a real number the user types (e.g. a business
+  /// that doesn't need privacy) as their AvaTOK identity. Format-validated on the
+  /// server; not ownership-verified (owner decision 2026-06-27). AvaTOK numbers
+  /// are in-app only and never touch the PSTN. Pass the full number or NSN.
+  static Future<({bool ok, String? number, String? display, String? error})> assignOwn(String country, String number) async {
+    try {
+      final r = await ApiAuth.postJson('$kNumberBase/assign-own', {'country': country, 'number': number});
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (r.statusCode == 200 && j['ok'] == true) {
+        Analytics.capture('number_assigned_own', {'country': country, 'number': (j['number'] ?? '').toString()});
+        return (ok: true, number: (j['number'] ?? '').toString(), display: (j['display'] ?? '').toString(), error: null);
+      }
+      final err = (j['error'] ?? 'http_${r.statusCode}').toString();
+      Analytics.capture('number_assign_own_failed', {'country': country, 'error': err, 'status': r.statusCode});
+      return (ok: false, number: null, display: null, error: err);
+    } catch (e) {
+      Analytics.error(domain: 'number', code: 'assign_own_failed', action: 'assign_own',
+          message: e.toString(), extra: {'country': country});
+      return (ok: false, number: null, display: null, error: 'network');
+    }
+  }
+
   static Future<MyNumber> me() async {
     // Cache-first: a warm cache returns instantly and refreshes in the
     // background; a cold cache awaits the network (first load only).
