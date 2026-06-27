@@ -229,19 +229,23 @@ class AvaNumber {
   }
 
   static Future<MyNumber> me() async {
-    // Cache-first: a warm cache returns instantly and refreshes in the
-    // background; a cold cache awaits the network (first load only).
+    // Cache-first ONLY when the cache already has a number (the steady state):
+    // return instantly + refresh in the background. If the cache has NO number
+    // (the bug-prone state that drove the gate loop + a blank profile QR), treat
+    // it as a miss and await the network — which now reads the PRIMARY D1, so a
+    // just-assigned number is always seen.
     final cached = await _readCache(_meCacheKey);
-    if (cached != null) {
+    if (cached != null && (cached['number'] ?? '').toString().isNotEmpty) {
       unawaited(_fetchJson('$kNumberBase/me').then((fresh) {
         if (fresh != null) _writeCache(_meCacheKey, fresh);
       }));
       return MyNumber.fromJson(cached);
     }
     final fresh = await _fetchJson('$kNumberBase/me');
-    if (fresh == null) return const MyNumber(entitled: false, tier: 0, featureOn: true);
-    await _writeCache(_meCacheKey, fresh);
-    return MyNumber.fromJson(fresh);
+    if (fresh != null) { await _writeCache(_meCacheKey, fresh); return MyNumber.fromJson(fresh); }
+    // Network unavailable → fall back to whatever cache we had, else a safe default.
+    if (cached != null) return MyNumber.fromJson(cached);
+    return const MyNumber(entitled: false, tier: 0, featureOn: true);
   }
 
   static Future<bool> release() async {
