@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'ava_number.dart';
+
+/// Deep green for number accents — the cyan/mint zine accents read too light for
+/// numbers on the cream background (owner feedback 2026-06-27).
+const Color _dkGreen = Color(0xFF0A5C2E);
 
 /// Settings → "Your number" (Specs/AVATOK-NUMBER-FEATURE-SPEC.md §10C).
 ///
@@ -35,10 +40,6 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
   bool _loadingAvail = false;
   bool _busy = false;
   bool _picking = false; // showing the picker (vs the current-number summary)
-  // 'new' = pick a fresh AvaTOK number (privacy); 'own' = bring your own number
-  // (e.g. a business that wants its real number shown). Owner decision 2026-06-27.
-  String _mode = 'new';
-  final _ownCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -49,7 +50,6 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
   @override
   void dispose() {
     _patternCtrl.dispose();
-    _ownCtrl.dispose();
     super.dispose();
   }
 
@@ -114,7 +114,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         backgroundColor: Zine.paper,
         title: Text('Use this number?', style: ZineText.cardTitle(size: 18)),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(n.display, style: ZineText.cardTitle(size: 20, color: Zine.mintInk)),
+          Text(n.display, style: ZineText.cardTitle(size: 20, color: _dkGreen)),
           const SizedBox(height: 12),
           Row(children: [
             PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 16, color: Zine.mint),
@@ -124,7 +124,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Back', style: ZineText.button(size: 15, color: Zine.inkSoft))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Use this number', style: ZineText.button(size: 15, color: Zine.mintInk))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Use this number', style: ZineText.button(size: 15, color: _dkGreen))),
         ],
       ),
     );
@@ -176,71 +176,6 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
               : 'Could not assign that number';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       if (res.error == 'number_taken') _loadAvailable();
-    }
-  }
-
-  /// "Use my own number" — bind the number the user typed. Format-checked on the
-  /// server; not ownership-verified (owner decision). AvaTOK numbers are in-app
-  /// only and never routed over the PSTN.
-  Future<void> _useOwnNumber() async {
-    final c = _country;
-    if (c == null) return;
-    final raw = _ownCtrl.text.trim();
-    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid number')));
-      return;
-    }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: Zine.paper,
-        title: Text('Use your own number?', style: ZineText.cardTitle(size: 18)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('+${c.dial} $digits', style: ZineText.cardTitle(size: 20, color: Zine.mintInk)),
-          const SizedBox(height: 12),
-          Text('This will represent you on AvaTOK. It is an in-app number only — '
-              'AvaTOK never dials it on the phone network.', style: ZineText.sub(size: 12.5)),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Back', style: ZineText.button(size: 15, color: Zine.inkSoft))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Use this number', style: ZineText.button(size: 15, color: Zine.mintInk))),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    setState(() => _busy = true);
-    final prev = _me;
-    final res = await AvaNumber.assignOwn(c.iso2, digits);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (res.ok) {
-      final me = await AvaNumber.me();
-      final paid = prev?.entitled ?? me.entitled;
-      final newDisplay = res.display ?? '+${c.dial} $digits';
-      Analytics.capture('number_assigned', {
-        'country': c.iso2, 'number': newDisplay, 'kind': 'own',
-        'plan': paid ? 'paid' : 'free', 'is_change': prev?.hasNumber == true,
-        'via': widget.gate ? 'onboarding_gate' : 'settings',
-        if (Analytics.currentEmail != null) 'account_email': Analytics.currentEmail!,
-        r'$set': <String, Object>{'avatok_number': newDisplay, 'number_country': c.iso2, 'number_kind': 'own'},
-      });
-      if (!mounted) return;
-      setState(() { _me = me; _picking = false; });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Your number is now ${res.display}')));
-      if (widget.gate) {
-        Analytics.capture('number_gate_completed', {'country': c.iso2, 'kind': 'own'});
-        widget.onAssigned?.call();
-      }
-    } else {
-      final msg = res.error == 'number_taken'
-          ? 'That number is already used on AvaTOK'
-          : res.error == 'upgrade_required'
-              ? 'Available on paid plans'
-              : res.error == 'invalid_number'
-                  ? 'That doesn’t look like a valid ${c.name} number'
-                  : 'Could not set that number';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
@@ -321,7 +256,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('YOUR AVATOK NUMBER', style: ZineText.kicker()),
             const SizedBox(height: 10),
-            Text(me.display ?? '', style: ZineText.cardTitle(size: 24, color: Zine.mintInk)),
+            Text(me.display ?? '', style: ZineText.cardTitle(size: 24, color: _dkGreen)),
             const SizedBox(height: 8),
             Row(children: [
               PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), size: 15, color: Zine.mint),
@@ -394,10 +329,9 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       ];
     }
 
-    // Picker — two paths: pick a fresh AvaTOK number, or bring your own.
+    // Picker — generate a fresh AvaTOK number. (Bringing your own number is a
+    // premium feature reserved for later; for now everyone gets a generated one.)
     widgets.addAll([
-      _modeToggle(),
-      const SizedBox(height: 12),
       ZineCard(
         onTap: _busy ? null : _pickCountry,
         child: Row(children: [
@@ -408,69 +342,54 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         ]),
       ),
       const SizedBox(height: 12),
+      // Pattern field (no cramped inline button — Search is its own button below).
+      ZineField(
+        controller: _patternCtrl,
+        leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+        hint: 'Want certain digits? e.g. 777',
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        onSubmitted: (_) => _loadAvailable(),
+      ),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(
+          child: ZineButton(
+            label: 'Search', variant: ZineButtonVariant.blue, fullWidth: true, fontSize: 15,
+            icon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), trailingIcon: false,
+            onPressed: _busy || _loadingAvail ? null : _loadAvailable),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: ZineButton(
+            label: 'Shuffle', variant: ZineButtonVariant.ghost, fullWidth: true, fontSize: 15,
+            icon: PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold), trailingIcon: false,
+            onPressed: _busy || _loadingAvail ? null : () { _patternCtrl.clear(); _loadAvailable(); }),
+        ),
+      ]),
+      const SizedBox(height: 12),
+      Text('AVAILABLE NUMBERS', style: ZineText.kicker()),
+      const SizedBox(height: 6),
     ]);
-
-    if (_mode == 'own') {
-      // "Use my own number" — for businesses / anyone who doesn't need privacy.
-      widgets.addAll([
-        Text('Enter the number you want to represent you on AvaTOK. It’s an in-app '
-            'number only — AvaTOK never dials it on the phone network.', style: ZineText.sub(size: 12.5)),
-        const SizedBox(height: 12),
-        ZineField(
-          controller: _ownCtrl,
-          leadText: '+${_country?.dial ?? ''}',
-          hint: 'Your number',
-          keyboardType: TextInputType.phone,
-          onSubmitted: (_) => _useOwnNumber(),
-        ),
-        const SizedBox(height: 14),
-        ZineButton(
-          label: 'Use this number', fullWidth: true, fontSize: 16,
-          loading: _busy,
-          icon: PhosphorIcons.check(PhosphorIconsStyle.bold), trailingIcon: false,
-          onPressed: _busy ? null : _useOwnNumber,
-        ),
-      ]);
+    if (_loadingAvail) {
+      widgets.add(const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())));
+    } else if (_avail.isEmpty) {
+      widgets.add(Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text('No matches — try different digits or tap Shuffle.', style: ZineText.sub())));
     } else {
-      // "Get a new AvaTOK number" — the privacy path: pick from the varied pool.
-      widgets.addAll([
-        ZineField(
-          controller: _patternCtrl,
-          leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-          hint: 'Try a pattern, e.g. 555',
-          keyboardType: TextInputType.number,
-          onSubmitted: (_) => _loadAvailable(),
-          trailing: TextButton(onPressed: _busy ? null : _loadAvailable, child: Text('Search', style: ZineText.button(size: 13, color: Zine.mintInk))),
-        ),
-        const SizedBox(height: 8),
-        Row(children: [
-          Text('AVAILABLE NUMBERS', style: ZineText.kicker()),
-          const Spacer(),
-          TextButton(onPressed: _busy || _loadingAvail ? null : _loadAvailable,
-              child: Text('Shuffle', style: ZineText.button(size: 12.5, color: Zine.mintInk))),
-        ]),
-        const SizedBox(height: 4),
-      ]);
-      if (_loadingAvail) {
-        widgets.add(const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())));
-      } else if (_avail.isEmpty) {
-        widgets.add(Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text('No matches — try a different pattern.', style: ZineText.sub())));
-      } else {
-        for (final n in _avail) {
-          widgets.add(Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: ZineCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              onTap: _busy ? null : () => _confirm(n),
-              child: Row(children: [
-                Expanded(child: Text(n.display, style: ZineText.value(size: 16))),
-                Text('available', style: ZineText.sub(size: 11, color: Zine.mintInk)),
-                const SizedBox(width: 8),
-                PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 15, color: Zine.inkMute),
-              ]),
-            ),
-          ));
-        }
+      for (final n in _avail) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: ZineCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            onTap: _busy ? null : () => _confirm(n),
+            child: Row(children: [
+              Expanded(child: Text(n.display, style: ZineText.value(size: 16))),
+              Text('available', style: ZineText.sub(size: 11, color: _dkGreen)),
+              const SizedBox(width: 8),
+              PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 15, color: Zine.inkMute),
+            ]),
+          ),
+        ));
       }
     }
     if (me.hasNumber) {
@@ -481,54 +400,6 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
       ]);
     }
     return widgets;
-  }
-
-  /// Two-path chooser: a fresh AvaTOK number (privacy) vs bring-your-own (e.g. a
-  /// business that wants its real number shown).
-  Widget _modeToggle() {
-    Widget seg(String mode, String label, IconData icon) {
-      final sel = _mode == mode;
-      return Expanded(
-        child: GestureDetector(
-          onTap: _busy
-              ? null
-              : () {
-                  if (_mode == mode) return;
-                  setState(() => _mode = mode);
-                  Analytics.capture('number_mode_selected', {'mode': mode});
-                  if (mode == 'new' && _avail.isEmpty) _loadAvailable();
-                },
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 11),
-            decoration: BoxDecoration(
-              color: sel ? Zine.lime : Zine.card,
-              borderRadius: BorderRadius.circular(Zine.rSm),
-              border: Border.all(color: Zine.ink, width: 2),
-            ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              PhosphorIcon(icon, size: 16, color: Zine.ink),
-              const SizedBox(width: 6),
-              Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.button(size: 13))),
-            ]),
-          ),
-        ),
-      );
-    }
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        seg('new', 'New number', PhosphorIcons.hash(PhosphorIconsStyle.bold)),
-        const SizedBox(width: 8),
-        seg('own', 'Use my own', PhosphorIcons.phone(PhosphorIconsStyle.bold)),
-      ]),
-      const SizedBox(height: 8),
-      Text(
-        _mode == 'own'
-            ? 'Businesses or anyone who doesn’t need privacy can use their own number.'
-            : 'Get a new number to keep your real phone private.',
-        style: ZineText.sub(size: 12),
-      ),
-    ]);
   }
 
   Widget _infoCard(String title, String body) => ZineCard(
