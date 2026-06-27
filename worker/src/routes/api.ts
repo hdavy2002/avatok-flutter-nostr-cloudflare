@@ -7,7 +7,7 @@
 // D1 reads use the Sessions API (one session per DB per request) → nearest
 // replica with read-after-write consistency within the request.
 import type { Env } from "../types";
-import { json, sha256Hex, normalizePhone, chunk } from "../util";
+import { json, sha256Hex, normalizePhone } from "../util";
 import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk } from "../auth";
@@ -252,9 +252,10 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
     // 1) exact AvaTOK number (canonical E.164 digits)
     const byNum = await db.prepare("SELECT uid FROM users WHERE avatok_number=?1 LIMIT 1").bind(digits).first<{ uid: string }>();
     if (byNum) return json({ uid: byNum.uid, profile: profOut(await fetchProf(byNum.uid)) });
-    // 2) real phone, only if the owner made it discoverable
-    const byPhone = await db.prepare("SELECT uid FROM users WHERE phone_hash=?1 AND phone_discoverable<>0 ORDER BY updated_at DESC LIMIT 1").bind(await sha256Hex(normalizePhone(q))).first<{ uid: string }>();
-    if (byPhone) return json({ uid: byPhone.uid, profile: profOut(await fetchProf(byPhone.uid)) });
+    // PRIVACY (owner decision 2026-06-27): a real/private phone number must NEVER
+    // resolve to an account — that would let anyone map a private phone → AvaTOK
+    // identity. Only the public AvaTOK number (above) is a valid numeric lookup
+    // key. The former phone_hash + phone_discoverable lookup is removed.
   }
   return json({ uid: null }, 404);
 }
@@ -275,62 +276,26 @@ export async function search(req: Request, env: Env): Promise<Response> {
 }
 
 // ---- contacts: /api/contacts/sync /api/contacts/match (auth) /list ----
-interface RawContact { name?: string; emails?: string[]; phones?: string[]; }
-
-async function matchContacts(db: D1DatabaseSession, contacts: RawContact[]): Promise<any[]> {
-  // hash -> the exact normalized phone/email that produced it, so we can echo it
-  // back: the client maps the match to the precise number/address. `name` is also
-  // echoed for backward-compat with older clients that key the result on it.
-  const phoneHashes = new Map<string, { name: string; phone: string }>();
-  const emailHashes = new Map<string, { name: string; email: string }>();
-  for (const c of contacts) {
-    for (const p of c.phones ?? []) {
-      const norm = normalizePhone(p);
-      phoneHashes.set(await sha256Hex(norm), { name: c.name ?? "", phone: norm });
-    }
-    for (const e of c.emails ?? []) {
-      const norm = String(e).toLowerCase().trim();
-      emailHashes.set(await sha256Hex(norm), { name: c.name ?? "", email: norm });
-    }
-  }
-  const matched: any[] = [];
-  const seen = new Set<string>();
-  for (const hs of chunk([...phoneHashes.keys()])) {
-    const rs = await db.prepare(
-      `SELECT phone_hash AS h, uid, handle, display_name, avatar_url FROM users WHERE phone_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
-    ).bind(...hs).all();
-    for (const r of (rs.results ?? []) as any[]) {
-      if (seen.has(r.uid)) continue; seen.add(r.uid);
-      const m = phoneHashes.get(r.h);
-      matched.push({ name: m?.name ?? "", phone: m?.phone ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name, avatar_url: r.avatar_url ?? "" });
-    }
-  }
-  for (const hs of chunk([...emailHashes.keys()])) {
-    const rs = await db.prepare(
-      `SELECT email_hash AS h, uid, handle, display_name, avatar_url FROM users WHERE email_hash IN (${hs.map((_, i) => `?${i + 1}`).join(",")})`,
-    ).bind(...hs).all();
-    for (const r of (rs.results ?? []) as any[]) {
-      if (seen.has(r.uid)) continue; seen.add(r.uid);
-      const m = emailHashes.get(r.h);
-      matched.push({ name: m?.name ?? "", email: m?.email ?? "", uid: r.uid, handle: r.handle, display_name: r.display_name, avatar_url: r.avatar_url ?? "" });
-    }
-  }
-  return matched;
-}
-
+// PRIVACY (owner decision 2026-06-27): contact "presence" matching is DISABLED.
+// These endpoints previously took a batch of the user's phone-book numbers/emails
+// and returned which ones map to AvaTOK accounts (uid) — a presence oracle that
+// let anyone confirm a private phone belongs to an AvaTOK user and correlate it
+// to their identity (the phone branch wasn't even gated by phone_discoverable).
+// They now intentionally return NOTHING regardless of the request body, so even a
+// modified client cannot probe. Discovery is allowed ONLY via the exact,
+// owner-controlled keys in `resolve` (AvaTOK number, or email when the owner
+// enabled email discovery). The phone book stays on-device, used solely for the
+// user's own invites.
 export async function contactsSync(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { contacts?: RawContact[] };
-  const contacts = Array.isArray(b.contacts) ? b.contacts.slice(0, 5000) : [];
-  return json({ stored: contacts.length, matched: await matchContacts(metaSession(env), contacts) });
+  return json({ stored: 0, matched: [] });
 }
 
 export async function contactsMatch(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { contacts?: RawContact[] };
-  return json({ matched: await matchContacts(metaSession(env), Array.isArray(b.contacts) ? b.contacts : []) });
+  return json({ matched: [] });
 }
 
 export function contactsList(): Response {
