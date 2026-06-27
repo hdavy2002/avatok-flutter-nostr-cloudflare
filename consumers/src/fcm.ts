@@ -66,7 +66,12 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     // Android Doze, so a sleeping phone only learns of a new message minutes
     // later (the "message arrived after 10 min" symptom). Chat messages must
     // wake the device immediately, exactly like calls.
-    return { highPriority: true, data: { type: "message", fromName: msg.fromName ?? "AvaTOK" } };
+    return { highPriority: true, data: {
+      type: "message", fromName: msg.fromName ?? "AvaTOK",
+      // Short preview (when the sender included one) → the app renders an
+      // expandable banner so the message reads from the shade without opening.
+      ...(msg.preview ? { preview: msg.preview } : {}),
+    } };
   }
   if (msg.kind === "del") {
     // Delete-for-everyone: silent (no banner) but HIGH priority so it punches

@@ -85,11 +85,16 @@ export async function call(req: Request, env: Env): Promise<Response> {
 export async function notify(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { to?: string[]; fromName?: string };
+  const b = (await req.json().catch(() => ({}))) as { to?: string[]; fromName?: string; preview?: string };
   if (!Array.isArray(b.to) || !b.to.length) return json({ error: "to[] required" }, 400);
+  // Optional short message PREVIEW so the recipient's banner is readable straight
+  // from the shade (WhatsApp-style). The sender's client holds the plaintext and
+  // chooses what to reveal; we collapse whitespace and cap length. Omitted → the
+  // privacy-safe content-less banner (just the sender name).
+  const preview = String(b.preview ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
   let queued = 0;
   for (const uid of b.to.slice(0, 64)) {
-    await env.Q_PUSH.send({ kind: "notify", to: uid, fromName: (b.fromName || "AvaTOK").slice(0, 60), ts: Date.now() });
+    await env.Q_PUSH.send({ kind: "notify", to: uid, fromName: (b.fromName || "AvaTOK").slice(0, 60), preview: preview || undefined, ts: Date.now() });
     queued++;
   }
   return json({ sent: queued });

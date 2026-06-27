@@ -101,6 +101,9 @@ export interface PushMsg {
   to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
+  // kind === "notify": optional short message preview (WhatsApp-style expandable
+  // banner). Omitted → content-less banner (sender name only).
+  preview?: string;
   // kind === "del" (delete-for-everyone → silent realtime redaction on the device):
   conv?: string; target?: string;
   // kind === "hide" (delete-for-me / undo on another of MY devices → silent wake so

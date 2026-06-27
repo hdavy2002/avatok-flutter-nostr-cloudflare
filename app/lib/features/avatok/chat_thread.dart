@@ -1207,7 +1207,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _jump();
       if (_convKey != null) DraftStore().set(_convKey!, '');
       _schedulePersist();
-      PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK');
+      PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK', preview: t);
       return;
     }
     if (_realMode && _dm != null) {
@@ -1227,7 +1227,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _jump();
       if (_convKey != null) DraftStore().set(_convKey!, '');
       _schedulePersist();
-      if (_peerNpub != null) PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK');
+      if (_peerNpub != null) PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK', preview: t);
       return;
     }
     setState(() {

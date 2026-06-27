@@ -460,9 +460,14 @@ class PushService {
   }
 
   /// Best-effort: nudge recipients that a new message arrived (content-less).
-  static void notifyMessage(List<String> npubs, String fromName) {
+  static void notifyMessage(List<String> npubs, String fromName, {String? preview}) {
     if (npubs.isEmpty) return;
-    ApiAuth.postJson(kNotifyUrl, {'to': npubs, 'fromName': fromName}).ignore();
+    final body = <String, dynamic>{'to': npubs, 'fromName': fromName};
+    final p = (preview ?? '').trim();
+    // Include a short preview so the recipient can read the message from the
+    // notification shade (WhatsApp-style). Capped server-side too.
+    if (p.isNotEmpty) body['preview'] = p.length > 140 ? p.substring(0, 140) : p;
+    ApiAuth.postJson(kNotifyUrl, body).ignore();
   }
 
   /// Clear the unread app-icon badge + collapse the message notification. Call
