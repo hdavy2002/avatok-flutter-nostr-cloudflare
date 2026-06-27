@@ -913,8 +913,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         pressedColor: bg?.withValues(alpha: 0.30) ?? Zine.lime,
         radius: BorderRadius.circular(100),
         boxShadow: const <BoxShadow>[],
-        borderWidth: 1.2,
-        borderColor: (bg ?? Zine.inkMute).withValues(alpha: 0.45),
+        // Black (ink) border on each header icon (owner request 2026-06-27).
+        borderWidth: 2,
+        borderColor: Zine.ink,
         padding: EdgeInsets.zero,
         child: SizedBox(
           width: 38, height: 38,

@@ -60,10 +60,17 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
       _recoverName();
     }
     // Resolve the contact's AvaTOK number for display (best-effort).
-    // Seed email from the saved contact immediately (directory resolve refines it).
+    // Seed number + email from the saved contact immediately (directory resolve
+    // refines them). The saved contact usually already has the AvaTOK number, so
+    // we show it right away instead of a raw "user_…" id.
     ContactsStore().load().then((cs) {
       final m = cs.where((c) => c.npub == widget.npub).toList();
-      if (mounted && m.isNotEmpty && m.first.email.isNotEmpty) setState(() => _email = m.first.email);
+      if (mounted && m.isNotEmpty) {
+        setState(() {
+          if (m.first.number.isNotEmpty) _number = m.first.number;
+          if (m.first.email.isNotEmpty) _email = m.first.email;
+        });
+      }
     });
     Directory.resolve(widget.npub).then((c) {
       if (!mounted || c == null) return;
@@ -97,8 +104,6 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     return 'AvaTOK user';
   }
 
-  String get _identityLabel => _number.isNotEmpty ? _number : _short(widget.npub);
-  static String _short(String id) => id.length > 16 ? '${id.substring(0, 10)}…${id.substring(id.length - 4)}' : id;
 
   @override
   Widget build(BuildContext context) {
@@ -115,16 +120,22 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         const SizedBox(height: 14),
         Center(child: Text(_displayName, style: ZineText.cardTitle(size: 23))),
         const SizedBox(height: 20),
-        _box(_number.isNotEmpty ? 'AvaTOK number' : 'Contact ID', PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue,
-            child: Row(children: [
-          Expanded(child: SelectableText(_identityLabel, style: ZineText.value(size: 15))),
-          IconButton(
-              icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: _identityLabel));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
-              }),
-        ])),
+        if (_number.isNotEmpty)
+          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue,
+              child: Row(children: [
+            Expanded(child: SelectableText(_number, style: ZineText.value(size: 15))),
+            IconButton(
+                icon: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _number));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+                }),
+          ]))
+        else
+          // No shared AvaTOK number — show a friendly note, never the raw user_… id.
+          _box('AvaTOK number', PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue,
+              child: Text('This contact hasn’t shared an AvaTOK number yet.',
+                  style: ZineText.sub(size: 13))),
         if (_email.isNotEmpty) ...[
           const SizedBox(height: 12),
           _box('Email', PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.lilac,
