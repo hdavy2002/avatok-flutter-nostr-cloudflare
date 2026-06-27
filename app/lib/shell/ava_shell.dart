@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../auth/clerk_client.dart';
+import '../core/account_storage.dart';
 import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine.dart';
+import '../core/ui/zine_widgets.dart';
 import '../identity/identity.dart';
 import '../features/avaapps/avaapps_screen.dart';
 import '../features/ava_companion/companion_home.dart';
@@ -15,8 +18,10 @@ import '../features/avalive/avalive_discovery.dart';
 import '../features/affiliate/affiliate_home.dart';
 import '../features/avavoice/avavoice_home.dart';
 import '../features/avavision/avavision_home.dart';
+import '../features/avatok/ava_number.dart';
 import '../features/avatok/chat_list.dart';
 import '../features/avatok/invite_screen.dart';
+import '../features/avatok/number_settings_screen.dart';
 import '../features/ava_backup/backup_service.dart';
 import '../features/booking/avabooking_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
@@ -66,6 +71,12 @@ class _AvaShellState extends State<AvaShell> {
     // (photo, first+last name, valid email, valid phone) before using the app.
     final complete = (await ProfileStore().load()).isComplete;
     if (mounted) setState(() { _id = id; _profileComplete = complete; });
+    // Onboarding nudge: once the profile is complete, offer the free AvaTOK
+    // number ONCE so the user picks a number that represents them and keeps
+    // their real phone private (owner request 2026-06-27, soft/skippable).
+    if (complete && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeOfferNumber());
+    }
     // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
     // (premium) or the user's own Google Drive (free). Makes the device + backup
     // the durable copy so the InboxDO can shed old history.
@@ -185,6 +196,52 @@ class _AvaShellState extends State<AvaShell> {
         final a = appByKey(dest);
         _push(ComingSoon(title: a.name, subtitle: a.tagline, icon: a.icon, color: a.color));
     }
+  }
+
+  /// One-time onboarding offer: if the account has no AvaTOK number yet and can
+  /// still generate one (free accounts get one; paid unlimited), invite the user
+  /// to pick it now. Skippable — they can always do it later in Settings → Your
+  /// number. The offer is shown once per account (scoped flag).
+  Future<void> _maybeOfferNumber() async {
+    const ss = FlutterSecureStorage();
+    const flag = 'onboarding_number_offered_v1';
+    try { if (await readScoped(ss, flag) == '1') return; } catch (_) {}
+    MyNumber me;
+    try { me = await AvaNumber.me(); } catch (_) { return; } // offline → try again next open
+    if (!mounted) return;
+    // Mark offered now (one-time), regardless of choice — never nag again.
+    try { await ss.write(key: scopedKey(flag), value: '1'); } catch (_) {}
+    if (!me.featureOn || me.hasNumber || !me.canGenerate) return;
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Zine.paper,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            ZineIconBadge(icon: PhosphorIcons.hash(PhosphorIconsStyle.bold), color: Zine.lime, size: 36),
+            const SizedBox(width: 12),
+            Expanded(child: Text('Get your AvaTOK number', style: ZineText.cardTitle(size: 18))),
+          ]),
+          const SizedBox(height: 12),
+          Text('Pick a free number that represents you on AvaTOK so you can stay in '
+              'touch without giving out your real phone — your real number always '
+              'stays private. Free accounts get one number; you can choose it now.',
+              style: ZineText.sub(size: 13.5)),
+          const SizedBox(height: 18),
+          ZineButton(label: 'Choose my number', variant: ZineButtonVariant.blue,
+              fullWidth: true, fontSize: 16, trailingIcon: false,
+              icon: PhosphorIcons.hash(PhosphorIconsStyle.bold),
+              onPressed: () => Navigator.pop(ctx, true)),
+          const SizedBox(height: 8),
+          Center(child: TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Maybe later', style: ZineText.link(size: 14, color: Zine.inkSoft)))),
+        ]),
+      )),
+    );
+    if (go == true && mounted) await _push(const NumberSettingsScreen());
   }
 
   Future<void> _push(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
