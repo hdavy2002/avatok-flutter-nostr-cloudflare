@@ -1120,23 +1120,44 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final avaModePrivate = _avaMode && !shared && !atAva;
       final privateAva = (atAva && !shared) || avaModePrivate;
       if (privateAva || shared) {
-        // Ava-mode plain text carries no marker → prefix so AvaInvoke parses it
-        // as a private @ava call.
-        // ignore: unawaited_futures
-        onSummonAva!(avaModePrivate ? '$_avaWakeWord $t' : t);
-      }
-      if (privateAva) {
-        _ragAddLine('You', t);
-        _composerFocus.requestFocus();
-        setState(() {
-          // aiLocal: rendered locally only, never sent → no delivery ticks.
-          _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, aiLocal: true));
-          _ctrl.clear(); _hasText = false; _replyTo = null;
-        });
-        _jump();
-        if (_convKey != null) DraftStore().set(_convKey!, '');
-        _schedulePersist();
-        return;
+        // Ava-in-chat (@ava / #ava) AND connected-app/composio actions (email,
+        // image generation, etc.) are a PAID feature (owner request 2026-06-27).
+        // Free users get a one-line upsell instead of an Ava turn.
+        if (!_premium) {
+          Analytics.capture('ava_chat_gate_blocked', <String, Object>{
+            'mode': privateAva ? 'private' : 'shared', 'is_group': _isGroup,
+          });
+          if (privateAva) {
+            // Private @ava is never sent to the peer — show the upsell and stop.
+            _composerFocus.requestFocus();
+            _capNote('Asking Ava is a paid feature — subscribe to use @ava (private) '
+                'and #ava (in chat), plus connected apps like email and image generation.');
+            setState(() { _ctrl.clear(); _hasText = false; });
+            if (_convKey != null) DraftStore().set(_convKey!, '');
+            return;
+          }
+          // #ava: the literal message still sends to the peer (below); Ava just
+          // won't reply for free users.
+          _capNote('Ava in chat is a paid feature — subscribe to get an Ava reply to #ava.');
+        } else {
+          // Ava-mode plain text carries no marker → prefix so AvaInvoke parses it
+          // as a private @ava call.
+          // ignore: unawaited_futures
+          onSummonAva!(avaModePrivate ? '$_avaWakeWord $t' : t);
+          if (privateAva) {
+            _ragAddLine('You', t);
+            _composerFocus.requestFocus();
+            setState(() {
+              // aiLocal: rendered locally only, never sent → no delivery ticks.
+              _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, aiLocal: true));
+              _ctrl.clear(); _hasText = false; _replyTo = null;
+            });
+            _jump();
+            if (_convKey != null) DraftStore().set(_convKey!, '');
+            _schedulePersist();
+            return;
+          }
+        }
       }
     }
 

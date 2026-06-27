@@ -381,7 +381,10 @@ class _AvaSidebarState extends State<AvaSidebar> {
             ZineIconBadge(icon: a.icon, color: a.color, size: 30),
             const SizedBox(width: 11),
             Expanded(child: Text(a.title, style: ZineText.value(size: 14))),
-            if (paid) ...[
+            // Owner request 2026-06-27: hide the PAID marker once the user is on
+            // a paid plan / topped-up wallet — subscribers shouldn't see it on
+            // the AI Voice Agent (or any other premium app) row.
+            if (paid && !_premium) ...[
               const PaidBadge(),
               const SizedBox(width: 8),
             ],
