@@ -14,7 +14,8 @@ class Profile {
   final String avatarUrl; // canonical blossom URL of the profile photo ('' = none)
   final String bio; // free-text "about you" — AvaBrain learns from it (opt-in via the Brain switch)
   final bool sharePresence; // last-seen / online visible to others
-  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true});
+  final int? birthYear; // year of birth — used to compute age (under-18 gate); never shown publicly
+  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true, this.birthYear});
 
   bool get isEmpty => displayName.isEmpty && handle.isEmpty;
   String get atHandle => handle.isEmpty ? '' : '@$handle';
@@ -24,14 +25,24 @@ class Profile {
       displayName.trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
 
   /// All MANDATORY fields present & valid: a profile photo, a first AND last
-  /// name, a valid email, and a valid phone. Drives the mandatory profile gate
-  /// (new users can't finish onboarding, existing users are diverted on next
-  /// open) — see ProfileSetupScreen / AvaShell.
+  /// name, a valid email, a valid phone, an "about you" bio, and a birth year.
+  /// Drives the mandatory profile gate (new users can't finish onboarding,
+  /// existing users are diverted on next open) — see ProfileSetupScreen /
+  /// AvaShell. (Owner request 2026-06-27: bio + birth year are now compulsory.)
   bool get isComplete =>
       avatarUrl.trim().isNotEmpty &&
       nameParts.length >= 2 &&
       isValidEmail(email) &&
-      isValidPhone(phone);
+      isValidPhone(phone) &&
+      bio.trim().isNotEmpty &&
+      birthYear != null;
+
+  /// Age in whole years derived from [birthYear] (year-precision — the profile
+  /// collects a birth year, not a full date). Null when no birth year is set.
+  int? get age => birthYear == null ? null : (DateTime.now().year - birthYear!);
+
+  /// True when the user is under 18 — drives the minor-terms acceptance gate.
+  bool get isMinor => (age ?? 99) < 18;
 
   static bool isValidEmail(String e) =>
       RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(e.trim());
@@ -40,7 +51,7 @@ class Profile {
   static bool isValidPhone(String p) =>
       RegExp(r'^\+?\d{8,15}$').hasMatch(p.trim().replaceAll(RegExp(r'[\s\-()]'), ''));
 
-  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence}) => Profile(
+  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence, int? birthYear}) => Profile(
         displayName: displayName ?? this.displayName,
         handle: handle ?? this.handle,
         phone: phone ?? this.phone,
@@ -48,6 +59,7 @@ class Profile {
         avatarUrl: avatarUrl ?? this.avatarUrl,
         bio: bio ?? this.bio,
         sharePresence: sharePresence ?? this.sharePresence,
+        birthYear: birthYear ?? this.birthYear,
       );
 }
 
@@ -73,6 +85,9 @@ class ProfileStore {
         avatarUrl: (j['avatarUrl'] ?? '').toString(),
         bio: (j['bio'] ?? '').toString(),
         sharePresence: j['sharePresence'] != false,
+        birthYear: (j['birthYear'] is num)
+            ? (j['birthYear'] as num).toInt()
+            : int.tryParse((j['birthYear'] ?? '').toString()),
       );
     } catch (_) {
       return const Profile();
@@ -81,7 +96,7 @@ class ProfileStore {
 
   Future<void> save(Profile p) => _s.write(
       key: scopedKey(_key),
-      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence}));
+      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear}));
 
   /// Persist just the phone (merging with any existing profile fields).
   Future<void> setPhone(String phone) async {

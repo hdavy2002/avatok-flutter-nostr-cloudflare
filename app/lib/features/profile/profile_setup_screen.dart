@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
+import '../../core/minor_terms.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -43,6 +44,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _last = TextEditingController();
   final _email = TextEditingController();
   final _phone = TextEditingController();
+  final _birthYear = TextEditingController();
+  final _bio = TextEditingController();
 
   Identity? _id;
   String _avatarUrl = '';
@@ -64,6 +67,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         _last.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
         _email.text = p.email.isNotEmpty ? p.email : (Analytics.currentEmail ?? '');
         _phone.text = p.phone;
+        _birthYear.text = p.birthYear?.toString() ?? '';
+        _bio.text = p.bio;
         _avatarUrl = p.avatarUrl;
       });
     });
@@ -72,7 +77,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   @override
   void dispose() {
     _first.dispose(); _last.dispose(); _email.dispose(); _phone.dispose();
+    _birthYear.dispose(); _bio.dispose();
     super.dispose();
+  }
+
+  int? get _birthYearValue {
+    final y = int.tryParse(_birthYear.text.trim());
+    if (y == null) return null;
+    final maxY = DateTime.now().year - 13;
+    return (y >= 1900 && y <= maxY) ? y : null;
   }
 
   bool get _valid =>
@@ -80,7 +93,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       _first.text.trim().isNotEmpty &&
       _last.text.trim().isNotEmpty &&
       Profile.isValidEmail(_email.text) &&
-      Profile.isValidPhone(_phone.text);
+      Profile.isValidPhone(_phone.text) &&
+      _bio.text.trim().isNotEmpty &&
+      _birthYearValue != null;
 
   Future<void> _pickAndCrop(ImageSource source) async {
     try {
@@ -158,12 +173,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final fullName = '$first $last'.trim();
     final email = _email.text.trim();
     final phone = _phone.text.trim();
+    final bio = _bio.text.trim();
+    final by = _birthYearValue;
+    // Under-18 gate: minors must accept the minor-specific terms before finishing.
+    final minor = by != null && (DateTime.now().year - by) < 18;
+    if (minor) {
+      final accepted = await MinorTerms.ensureAccepted(context, isMinor: true);
+      if (!accepted) { if (mounted) setState(() => _saving = false); return; }
+    }
     final existing = await _store.load();
     await _store.save(existing.copyWith(
-        displayName: fullName, email: email, phone: phone, avatarUrl: _avatarUrl));
+        displayName: fullName, email: email, phone: phone, avatarUrl: _avatarUrl,
+        bio: bio, birthYear: by));
     await Directory.registerProfile(
         npub: id.npub, name: fullName, firstName: first, lastName: last,
-        email: email, phone: phone, avatarUrl: _avatarUrl);
+        email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio);
     Analytics.capture('profile_completed', {
       'has_photo': true, 'via': 'mandatory_gate', 'email': email, 'phone': phone,
     });
@@ -241,6 +265,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ZineField(controller: _phone, label: 'Phone', hint: '+1 555 123 4567',
                 keyboardType: TextInputType.phone,
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s\-()]'))],
+                onChanged: (_) => setState(() {})),
+            const SizedBox(height: 14),
+            ZineField(controller: _birthYear, label: 'Birth year (Private)', hint: 'e.g. 1990',
+                keyboardType: TextInputType.number, maxLength: 4,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (_) => setState(() {})),
+            const SizedBox(height: 4),
+            Text('Private — never shown to anyone. Used to confirm your age '
+                '(under-18 accounts get extra safety protections).',
+                style: ZineText.sub(size: 12)),
+            const SizedBox(height: 14),
+            ZineField(controller: _bio, label: 'About you', hint: 'Tell Ava a little about yourself…',
+                maxLines: 4, maxLength: 600, textCapitalization: TextCapitalization.sentences,
                 onChanged: (_) => setState(() {})),
             const SizedBox(height: 24),
             ZineButton(

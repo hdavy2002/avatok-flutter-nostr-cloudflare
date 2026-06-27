@@ -10,6 +10,7 @@ import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/config.dart';
+import '../../core/minor_terms.dart';
 import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
@@ -66,6 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _name.text = parts.isNotEmpty ? parts.first : '';
         _last.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
         _bio.text = p.bio;
+        _birthYear.text = p.birthYear?.toString() ?? '';
         _listed = !p.isEmpty;
         _sharePresence = p.sharePresence;
         _avatarUrl = p.avatarUrl;
@@ -100,6 +102,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final maxY = DateTime.now().year - 13;
     return (y >= 1900 && y <= maxY) ? y : null;
   }
+
+  /// Every mandatory field present & valid — drives whether Save is enabled.
+  /// Owner request 2026-06-27: birth year + "about you" are now compulsory, so
+  /// Save stays disabled until they (and the name) are filled in.
+  bool get _canSave =>
+      _name.text.trim().isNotEmpty &&
+      _last.text.trim().isNotEmpty &&
+      _bio.text.trim().isNotEmpty &&
+      _birthYearValue != null;
 
   Future<void> _save() async {
     if (_saving) return;
@@ -142,11 +153,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
     }
+    // Under-18 gate: if the birth year makes the user a minor, they must accept
+    // the minor-specific terms before we save (owner request 2026-06-27).
+    final by = _birthYearValue;
+    final minor = by != null && (DateTime.now().year - by) < 18;
+    if (minor) {
+      final accepted = await MinorTerms.ensureAccepted(context, isMinor: true);
+      if (!accepted) {
+        if (mounted) setState(() => _saving = false);
+        return;
+      }
+    }
     final existing = await _store.load();
     // Personal email — keep it stored so the QR card + email discovery stay complete.
     final email = existing.email.isNotEmpty ? existing.email : (Analytics.currentEmail ?? '');
     await _store.save(existing.copyWith(
-        displayName: fullName, email: email, bio: _bio.text.trim(), sharePresence: _sharePresence));
+        displayName: fullName, email: email, bio: _bio.text.trim(),
+        sharePresence: _sharePresence, birthYear: by));
     // Opt-in discovery: publish to the directory so others can find me by name/email.
     if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty || email.isNotEmpty) {
       await Directory.registerProfile(npub: id.npub, name: fullName, firstName: first, lastName: last,
@@ -502,14 +525,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 16),
         ZineField(
           controller: _birthYear,
-          label: 'Birth year (optional)',
+          label: 'Birth year (Private)',
           hint: 'e.g. 1990',
           keyboardType: TextInputType.number,
           maxLength: 4,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 7),
-        Text('Never shown to anyone. Helps creators see anonymous age-group stats (e.g. "25-34").',
+        Text('Private — never shown to anyone. Required. Used to confirm your age '
+            '(under-18 accounts get extra safety protections) and for anonymous '
+            'age-group stats (e.g. "25-34").',
             style: ZineText.sub(size: 12.5)),
         const SizedBox(height: 16),
         ZineField(
@@ -519,6 +545,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           maxLines: 4,
           maxLength: 600,
           textCapitalization: TextCapitalization.sentences,
+          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 7),
         Text('Private to you. Ava reads this to personalise its help — manage what Ava '
@@ -604,8 +631,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           fullWidth: true,
           fontSize: 19,
           loading: _saving,
-          onPressed: _saving ? null : _save,
+          // Save is enabled only when every mandatory field is filled — removing
+          // birth year or "about you" disables it (owner request 2026-06-27).
+          onPressed: (_saving || !_canSave) ? null : _save,
         ),
+        if (!_canSave) ...[
+          const SizedBox(height: 8),
+          Center(child: Text('First name, last name, birth year and "about you" are all required.',
+              style: ZineText.sub(size: 12, color: Zine.coral))),
+        ],
       ]),
     );
   }
