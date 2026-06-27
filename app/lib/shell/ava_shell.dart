@@ -20,6 +20,7 @@ import '../features/avavoice/avavoice_home.dart';
 import '../features/avavision/avavision_home.dart';
 import '../features/avatok/ava_number.dart';
 import '../features/avatok/chat_list.dart';
+import '../features/avaphone/ava_phone_screen.dart';
 import '../features/avatok/invite_screen.dart';
 import '../features/avatok/number_settings_screen.dart';
 import '../features/ava_backup/backup_service.dart';
@@ -110,6 +111,11 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'avatok':
         _push(ChatListScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, onSwitchApp: _switchFromChild));
+        return;
+      case 'avaphone':
+      case 'phone':
+      case 'dialer':
+        _push(const AvaPhoneScreen()); // PSTN-style dialer over AvaTOK-to-AvaTOK calling
         return;
       case 'avalive':
         _push(const AvaLiveDiscovery());

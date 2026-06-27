@@ -44,6 +44,7 @@ import 'data.dart';
 import 'media.dart';
 import 'new_group_screen.dart';
 import 'search_screen.dart';
+import '../avaphone/ava_phone_screen.dart';
 
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
 class ChatListScreen extends StatefulWidget {
@@ -646,7 +647,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold), color: Zine.blue),
           title: Text('New chat', style: ZineText.value(size: 15)),
-          subtitle: Text('Add someone by email, phone or @handle', style: ZineText.sub(size: 12.5)),
+          subtitle: Text('Find someone by email or AvaTOK number', style: ZineText.sub(size: 12.5)),
           onTap: () { Navigator.pop(ctx); _openAddContact(); }),
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: Zine.lime),
@@ -666,6 +667,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     Navigator.push(context, MaterialPageRoute(
         builder: (_) => SearchScreen(identity: _id, contacts: _contacts, groups: _groups)))
         .then((_) => _flagsStore.load().then((f) { if (mounted) setState(() => _flags = f); }));
+  }
+
+  /// Open the AvaPhone dialer (PSTN-style calling/SMS over AvaTOK numbers).
+  void _openAvaPhone() {
+    Analytics.capture('avaphone_opened', const {'source': 'chat_list_header'});
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const AvaPhoneScreen()));
   }
 
   /// Create a custom filter chip (the "+" chip).
@@ -851,6 +858,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   const SizedBox(width: 4),
                   // Chat with Ava — companion / blank Ava chat (Phase 6).
                   _hdrIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), _openAvaChat, color: Zine.lilac),
+                  const SizedBox(width: 4),
+                  // AvaPhone — the PSTN-style dialer over AvaTOK-to-AvaTOK calling.
+                  _hdrIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), _openAvaPhone, color: Zine.blueInk),
                   const SizedBox(width: 4),
                   _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch, color: Zine.blueInk),
                 ],
