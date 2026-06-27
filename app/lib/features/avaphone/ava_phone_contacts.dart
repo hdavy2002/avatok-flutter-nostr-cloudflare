@@ -4,11 +4,14 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
+import '../../core/chat_state.dart';
 import '../../core/ice_cache.dart';
 import '../../core/device_contacts.dart';
+import '../../identity/nostr_keys.dart';
 import '../avatok/add_by_link_sheet.dart';
 import '../avatok/call_screen.dart';
 import '../avatok/chat_thread.dart';
+import '../avatok/contact_profile_screen.dart';
 import '../avatok/contacts.dart';
 import '../avatok/data.dart';
 import 'phone_theme.dart';
@@ -28,7 +31,9 @@ class AvaPhoneContacts extends StatefulWidget {
 
 class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
   final _store = ContactsStore();
+  final _flags = ChatFlagsStore();
   List<Contact> _all = [];
+  Set<String> _blocked = {};
   bool _loaded = false;
   String _q = '';
 
@@ -41,8 +46,30 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
 
   Future<void> _load() async {
     final cs = await _store.load();
+    final flags = await _flags.load();
     if (!mounted) return;
-    setState(() { _all = cs; _loaded = true; });
+    setState(() { _all = cs; _blocked = flags['blocked'] ?? {}; _loaded = true; });
+  }
+
+  String _key(Contact c) => '1:${NostrKeys.npubToHex(c.npub) ?? c.npub}';
+  bool _isBlocked(Contact c) => _blocked.contains(_key(c));
+
+  Future<void> _toggleBlock(Contact c) async {
+    final wasBlocked = _isBlocked(c);
+    await _flags.toggle('blocked', _key(c));
+    final flags = await _flags.load();
+    if (mounted) setState(() => _blocked = flags['blocked'] ?? {});
+    Analytics.capture('avaphone_contact_block', {'blocked': !wasBlocked});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(wasBlocked ? 'Unblocked ${c.name.isNotEmpty ? c.name : c.number}'
+                                   : 'Blocked ${c.name.isNotEmpty ? c.name : c.number}')));
+    }
+  }
+
+  void _viewContact(Contact c) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ContactProfileScreen(name: c.name, npub: c.npub)));
   }
 
   /// AvaTOK-number contacts only — phone-only entries never appear here.
@@ -97,8 +124,12 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         ),
         const Divider(color: PhoneTheme.border, height: 1),
         ListTile(
+          leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
+          title: Text('View contact', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _viewContact(c); }),
+        ListTile(
           leading: const Icon(Icons.call, color: PhoneTheme.callGreen),
-          title: Text('Call', style: PhoneTheme.value(size: 15)),
+          title: Text('Dial', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _call(c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
@@ -106,12 +137,16 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           onTap: () { Navigator.pop(ctx); _message(c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: PhoneTheme.accent),
-          title: Text('Share number', style: PhoneTheme.value(size: 15)),
+          title: Text('Share contact', style: PhoneTheme.value(size: 15)),
           subtitle: Text('WhatsApp, email & more', style: PhoneTheme.sub(size: 11.5)),
           onTap: () { Navigator.pop(ctx); _shareNumber(c); }),
         ListTile(
+          leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
+          title: Text(_isBlocked(c) ? 'Unblock contact' : 'Block contact', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); _toggleBlock(c); }),
+        ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
-          title: Text('Remove contact', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
+          title: Text('Delete contact', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
           onTap: () async { Navigator.pop(ctx); final l = await _store.remove(c.npub); if (mounted) setState(() => _all = l); }),
         const SizedBox(height: 8),
       ])),
@@ -243,6 +278,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
 
   Widget _row(Contact c) => InkWell(
         onTap: () => _actions(c),
+        onLongPress: () => _actions(c), // long-press → view/dial/share/block/delete
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           child: Row(children: [
