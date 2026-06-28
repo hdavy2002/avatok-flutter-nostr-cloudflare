@@ -126,7 +126,12 @@ export async function getConfig(env: Env): Promise<Response> {
   try {
     stored = (await env.TOKENS.get(KEY, "json")) ?? {};
   } catch { /* defaults */ }
-  return json({ ...DEFAULTS, ...stored }, 200, {
+  // Ably-transport runtime kill switch (ABLY-R2). Derived from the MSG_TRANSPORT
+  // env (NOT a KV flag), so flipping the secret cuts mobile over to Ably — or
+  // rolls back — within one client poll. Clients that predate this read it as a
+  // no-op and stay on their compile-time default.
+  const messagingProvider = env.MSG_TRANSPORT === "ably" ? "ably" : "inbox";
+  return json({ ...DEFAULTS, ...stored, messagingProvider }, 200, {
     "cache-control": "public, max-age=60",
   });
 }
