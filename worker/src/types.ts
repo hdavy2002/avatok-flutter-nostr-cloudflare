@@ -50,6 +50,10 @@ export interface Env {
   CALL_ROOMS: DurableObjectNamespace;
   // Durable Object — free-tier P2P mesh group-call signaling rooms (≤5)
   MESH_ROOMS: DurableObjectNamespace;
+  // Durable Object — CF Realtime SFU group-AUDIO rooms (≤32, active-speaker).
+  // Roster + active-speaker fan-out over hibernatable WS; one per group id.
+  // Gated by groupAudioSfuEnabled (dormant until built+CI-verified).
+  GROUP_CALL_ROOMS: DurableObjectNamespace;
   // Durable Object — per-user AvaBrain reasoning
   USER_BRAIN: DurableObjectNamespace;
   // Durable Object — per-user atomic coin balance (Phase 2)
@@ -101,6 +105,11 @@ export interface Env {
   COMPOSIO_API_KEY?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
+  // Cloudflare Realtime SFU (group AUDIO). App id + bearer token for the
+  // rtc.live.cloudflare.com sessions/tracks API. Unset → /api/groupcall/* 503s,
+  // so the new path is a safe no-op until these are set.
+  CF_RT_SFU_APP_ID?: string;
+  CF_RT_SFU_APP_TOKEN?: string;
   FCM_SERVICE_ACCOUNT?: string;
   // Bunny.net Stream (video upload path for AvaTube/AvaGram/AvaLive recordings)
   BUNNY_API_KEY?: string;

@@ -44,6 +44,7 @@ import { inviteEmail } from "./routes/invite";
 import { featureCostsRoute } from "./feature_pricing";
 import { googleAuth } from "./routes/google_auth";
 import { conferenceStart, conferenceJoin, conferenceStatus, conferenceEnd, conferenceWebhook, conferenceBeat } from "./routes/conference";
+import { groupCallJoin, groupCallPublish, groupCallPull, groupCallRenegotiate, groupCallClose, groupCallStatus } from "./routes/groupcall";
 import { translateStart, translateBeat, translateStop, translateToken, translateQuote } from "./routes/translate";
 import { sttTranscribe } from "./routes/stt";
 import {
@@ -109,6 +110,7 @@ import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route w
 
 export { CallRoom } from "./do/call_room";
 export { MeshRoom } from "./do/mesh_room";
+export { GroupCallRoom } from "./do/group_call_room"; // CF Realtime SFU group AUDIO (≤32)
 export { InboxDO } from "./do/inbox";
 export { UserBrain } from "./do/user_brain";
 export { WalletDO } from "./do/wallet";
@@ -206,6 +208,26 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (conf[2] === "status" && req.method === "GET") return await conferenceStatus(req, env, conf[1]);
       if (conf[2] === "end" && req.method === "POST") return await conferenceEnd(req, env, conf[1]);
       if (conf[2] === "beat" && req.method === "POST") return await conferenceBeat(req, env, conf[1]);
+    }
+
+    // CF Realtime SFU group AUDIO (≤32, audio-only, active-speaker). WS →
+    // GroupCallRoom DO (roster + active-speaker fan-out); HTTP → SFU session/
+    // track proxy (routes/groupcall.ts, app token stays server-side). Gated by
+    // groupAudioSfuEnabled (dormant; LiveKit /api/conference/* stays live until
+    // flipped). Keyed by group id so all members meet on one room instance.
+    const gc = p.match(/^\/api\/groupcall\/([A-Za-z0-9_:.-]{1,64})\/(join|publish|pull|renegotiate|close|status|ws)$/);
+    if (gc) {
+      const groupId = gc[1];
+      if (gc[2] === "ws") {
+        const hint = continentHint(req);
+        return env.GROUP_CALL_ROOMS.get(env.GROUP_CALL_ROOMS.idFromName(groupId), hint ? { locationHint: hint } : undefined).fetch(req);
+      }
+      if (gc[2] === "join" && req.method === "POST") return await groupCallJoin(req, env, groupId);
+      if (gc[2] === "publish" && req.method === "POST") return await groupCallPublish(req, env, groupId);
+      if (gc[2] === "pull" && req.method === "POST") return await groupCallPull(req, env, groupId);
+      if (gc[2] === "renegotiate" && req.method === "PUT") return await groupCallRenegotiate(req, env, groupId);
+      if (gc[2] === "close" && req.method === "POST") return await groupCallClose(req, env, groupId);
+      if (gc[2] === "status" && req.method === "GET") return await groupCallStatus(req, env, groupId);
     }
 
     // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).

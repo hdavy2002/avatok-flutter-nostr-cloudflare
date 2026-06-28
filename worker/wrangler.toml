@@ -239,6 +239,12 @@ class_name = "CallRoom"
 name = "MESH_ROOMS"
 class_name = "MeshRoom"
 
+# CF Realtime SFU group-AUDIO room (≤32, active-speaker). Roster + active-speaker
+# fan-out over hibernatable WS. Gated by groupAudioSfuEnabled (dormant).
+[[durable_objects.bindings]]
+name = "GROUP_CALL_ROOMS"
+class_name = "GroupCallRoom"
+
 # Per-user reasoning DO (AvaBrain). Keyed by npub; idles to nothing between asks.
 [[durable_objects.bindings]]
 name = "USER_BRAIN"
@@ -329,6 +335,11 @@ new_sqlite_classes = ["ReceptionRoom"]
 [[migrations]]
 tag = "v8"
 new_sqlite_classes = ["MeshRoom"]
+
+# CF Realtime SFU group-AUDIO room (≤32, active-speaker).
+[[migrations]]
+tag = "v9"
+new_sqlite_classes = ["GroupCallRoom"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -503,6 +514,10 @@ name = "MESH_ROOMS"
 class_name = "MeshRoom"
 
 [[env.staging.durable_objects.bindings]]
+name = "GROUP_CALL_ROOMS"
+class_name = "GroupCallRoom"
+
+[[env.staging.durable_objects.bindings]]
 name = "USER_BRAIN"
 class_name = "UserBrain"
 
@@ -571,3 +586,7 @@ new_sqlite_classes = ["ReceptionRoom"]
 [[env.staging.migrations]]
 tag = "v8"
 new_sqlite_classes = ["MeshRoom"]
+
+[[env.staging.migrations]]
+tag = "v9"
+new_sqlite_classes = ["GroupCallRoom"]
