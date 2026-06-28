@@ -131,6 +131,7 @@ export interface ArchiveMsg {
   kind: string;
   body?: string | null;
   media_ref?: string | null;
+  client_id?: string | null;   // sender's optimistic id (shared) — client dedupe key
   created_at: number;
   group?: boolean;
   // Phase 4: reaction archive (type:'reaction') rides the same queue.

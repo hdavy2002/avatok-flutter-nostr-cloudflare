@@ -218,7 +218,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     try {
       void env.Q_ARCHIVE.send({
         conv, serial: mid, sender: ctx.uid, kind,
-        body: text, media_ref: mediaRef, created_at: created,
+        body: text, media_ref: mediaRef, client_id: clientId, created_at: created,
         group: mem.length > 2,
       });
     } catch { /* best-effort; the message still delivered live + via InboxDO */ }

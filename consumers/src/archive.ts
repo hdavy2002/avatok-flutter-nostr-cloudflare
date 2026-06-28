@@ -27,7 +27,7 @@ export async function handleArchive(msg: ArchiveMsg, env: Env): Promise<void> {
   // Phase 4 reactions ride the same queue; route them to their own table.
   if (msg.type === "reaction") { await archiveReaction(msg, env); return; }
 
-  const { conv, serial, sender, kind, body, media_ref, created_at } = msg;
+  const { conv, serial, sender, kind, body, media_ref, client_id, created_at } = msg;
   if (!conv || !serial) return;
 
   const key = archiveKey(conv, serial);
@@ -37,20 +37,20 @@ export async function handleArchive(msg: ArchiveMsg, env: Env): Promise<void> {
   if (env.BACKUP_R2) {
     await env.BACKUP_R2.put(
       key,
-      JSON.stringify({ conv, serial, sender, kind, body: body ?? null, media_ref: media_ref ?? null, created_at }),
+      JSON.stringify({ conv, serial, sender, kind, body: body ?? null, media_ref: media_ref ?? null, client_id: client_id ?? null, created_at }),
       { httpMetadata: { contentType: "application/json" } },
     );
   }
 
   // 2) D1 index (idempotent on (conv, serial)).
   await env.DB_META.prepare(
-    `INSERT INTO message_index (conv, serial, sender, kind, preview, media_ref, r2_key, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    `INSERT INTO message_index (conv, serial, sender, kind, preview, media_ref, client_id, r2_key, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
      ON CONFLICT(conv, serial) DO UPDATE SET
        preview=excluded.preview, kind=excluded.kind, media_ref=excluded.media_ref`,
   ).bind(
     conv, serial, sender, kind || "text",
-    previewOf(kind || "text", body, media_ref), media_ref ?? null, key, created_at || Date.now(),
+    previewOf(kind || "text", body, media_ref), media_ref ?? null, client_id ?? null, key, created_at || Date.now(),
   ).run();
 }
 

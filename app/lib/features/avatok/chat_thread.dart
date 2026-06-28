@@ -104,6 +104,7 @@ class _Msg {
   String? evId; // rumor id (real DMs) — set after media upload too
   final String? senderLabel; // group: who sent (null for mine / 1:1)
   String? reaction;
+  Map<String, int> reactCounts = {}; // Phase 4: aggregate live reactions (emoji → count)
   ChatMedia? media;
   String mediaCaption; // caption shown UNDER the photo in the SAME bubble (WhatsApp-style)
   Uint8List? localBytes; // instant preview of self-sent media
@@ -165,6 +166,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Presence: typing + read receipts (ephemeral, over the signaling WS).
   PresenceChannel? _presence;
+  // Phase 4 (ABLY-R2): live reactions / floating bursts / occupancy + scroll-up
+  // history. All gated on SyncHub.I.ably (no-ops on the legacy/desktop transport).
+  final List<StreamSubscription> _ablySubs = [];
+  int _occupancy = 0;                       // live members present (groups)
+  final List<_BurstFx> _burstFx = [];       // active floating-emoji animations
+  int _burstSeq = 0;
+  bool _loadingOlder = false;               // scroll-up history guard
+  String? _archiveCursor;                   // next 'before' serial for paging
+  bool _archiveExhausted = false;
   // Live location (WhatsApp-style): one session per share id. The pin moves via
   // ephemeral 'liveloc' presence frames; the durable 't:'live'' bubble anchors
   // it. _liveBroadcaster is non-null only while *I* am actively sharing.
@@ -360,6 +370,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
     _loadGuardian();
+    _wireAblyExtras(); // Phase 4: live reactions/bursts + scroll-up history (DM)
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
@@ -432,6 +443,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
     _loadGuardian();
+    _wireAblyExtras(); // Phase 4: live reactions/bursts/occupancy + scroll-up history (group)
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
@@ -585,6 +597,103 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _presence!.sendTyping(true);
     _myTypingOff?.cancel();
     _myTypingOff = Timer(const Duration(seconds: 2), () => _presence?.sendTyping(false));
+  }
+
+  // ── Phase 4 (ABLY-R2): live reactions / bursts / occupancy + scroll-up ──────
+  // All no-ops when SyncHub.I.ably is null (legacy/desktop transport) — the chat
+  // keeps its existing behaviour untouched.
+  void _wireAblyExtras() {
+    final t = SyncHub.I.ably;
+    if (t == null || _convKey == null) return;
+    final ck = _convKey!;
+    // Live per-message reactions from peers → bump the aggregate count on the bubble.
+    _ablySubs.add(t.reactions.listen((e) {
+      if (e.convKey != ck) return;
+      final i = _msgs.indexWhere((m) => m.evId == e.targetSerial);
+      if (i < 0) return;
+      setState(() {
+        final c = _msgs[i].reactCounts;
+        c[e.emoji] = ((c[e.emoji] ?? 0) + (e.add ? 1 : -1)).clamp(0, 9999);
+        if (c[e.emoji] == 0) c.remove(e.emoji);
+      });
+    }));
+    // Ephemeral floating-emoji bursts from peers → animate.
+    _ablySubs.add(t.bursts.listen((e) { if (e.convKey == ck) _spawnBurst(e.emoji); }));
+    // Live occupancy (groups): how many members are present right now.
+    if (widget.chat.group) {
+      _ablySubs.add(t.occupancy.listen((e) {
+        if (e.convKey == ck && mounted) setState(() => _occupancy = e.present);
+      }));
+      t.watchOccupancy(ck);
+    }
+    // Scroll-to-top → load older history from the R2 archive.
+    _scroll.addListener(_onScrollForHistory);
+  }
+
+  void _onScrollForHistory() {
+    if (!_scroll.hasClients || _loadingOlder || _archiveExhausted) return;
+    if (_scroll.position.pixels <= 80) _loadOlderHistory();
+  }
+
+  Future<void> _loadOlderHistory() async {
+    final t = SyncHub.I.ably;
+    final myUid = _meId?.uid;
+    if (t == null || myUid == null || _convKey == null) return;
+    if (widget.chat.group) return; // group archive replay uses a different render path (follow-up)
+    _loadingOlder = true;
+    try {
+      final page = await t.history(_convKey!, myUid, beforeSerial: _archiveCursor, limit: 30);
+      if (!mounted) return;
+      var added = 0;
+      for (final tm in page.messages) {
+        if (_seenEv.contains(tm.rumorId)) continue; // already on screen (dedupe by client_id)
+        _seenEv.add(tm.rumorId);
+        _onDm(DmMessage(rumorId: tm.rumorId, mine: tm.mine, payload: tm.payload, createdAt: tm.createdAt), seed: true);
+        added++;
+      }
+      setState(() {
+        _archiveCursor = page.nextBefore;
+        if (page.nextBefore == null || added == 0) _archiveExhausted = true;
+      });
+    } catch (_) {/* keep what we have */} finally {
+      _loadingOlder = false;
+    }
+  }
+
+  void _spawnBurst(String emoji) {
+    if (!mounted) return;
+    final fx = _BurstFx(id: _burstSeq++, emoji: emoji);
+    setState(() => _burstFx.add(fx));
+    // Self-remove after the rise animation completes.
+    Timer(const Duration(milliseconds: 2200), () {
+      if (mounted) setState(() => _burstFx.removeWhere((b) => b.id == fx.id));
+    });
+  }
+
+  // Send an ephemeral floating-emoji burst to everyone in the room + animate locally.
+  void _sendBurst(String emoji) {
+    HapticFeedback.lightImpact();
+    if (_convKey != null) SyncHub.I.ably?.sendBurst(_convKey!, emoji);
+    _spawnBurst(emoji); // optimistic local animation (peers see it via the burst stream)
+  }
+
+  void _pickBurstEmoji() {
+    showModalBottomSheet(
+      context: context, backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+            for (final e in ['🎉', '❤️', '👏', '😂', '🔥', '😮'])
+              GestureDetector(
+                onTap: () { Navigator.pop(ctx); _sendBurst(e); },
+                child: Text(e, style: const TextStyle(fontSize: 32)),
+              ),
+          ]),
+        ),
+      ),
+    );
   }
 
   void _onGroupMsg(GroupMessage m) {
@@ -918,6 +1027,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void dispose() {
     _localAvaSub?.cancel();
     _avaStreamSub?.cancel();
+    for (final s in _ablySubs) { s.cancel(); } // Phase 4: reactions/bursts/occupancy
+    _scroll.removeListener(_onScrollForHistory);
     _ctrl.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
@@ -3214,7 +3325,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _react(_Msg m, String emoji) {
     final adding = m.reaction != emoji;
-    setState(() => m.reaction = adding ? emoji : null);
+    final prev = m.reaction;
+    setState(() {
+      // Maintain MY single reaction + the aggregate count shown on the bubble.
+      if (prev != null) { // remove my previous emoji from the tally
+        m.reactCounts[prev] = ((m.reactCounts[prev] ?? 1) - 1).clamp(0, 9999);
+        if (m.reactCounts[prev] == 0) m.reactCounts.remove(prev);
+      }
+      m.reaction = adding ? emoji : null;
+      if (adding) m.reactCounts[emoji] = (m.reactCounts[emoji] ?? 0) + 1;
+    });
     HapticFeedback.lightImpact();
     if (adding) {
       final file = _reactionSounds[emoji];
@@ -3222,6 +3342,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _sfx.stop();
         _sfx.play(AssetSource('sounds/$file.wav'));
       }
+    }
+    // Phase 4: publish live + persist durably (Ably transport only; no-op on legacy).
+    final t = SyncHub.I.ably;
+    final myUid = _meId?.uid;
+    if (t != null && myUid != null && _convKey != null && m.evId != null) {
+      if (prev != null && prev != emoji) {
+        t.sendReaction(_convKey!, myUid, m.evId!, prev, add: false); // retract the old one
+      }
+      t.sendReaction(_convKey!, myUid, m.evId!, emoji, add: adding);
     }
   }
 
@@ -3781,7 +3910,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final c = widget.chat;
     return Scaffold(
       backgroundColor: Zine.paper,
-      body: SafeArea(
+      body: Stack(children: [
+      SafeArea(
         bottom: false,
         child: Column(
           children: [
@@ -3819,7 +3949,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       Text(
                           (_peerTyping
                               ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'typing…')
-                              : (c.group ? '${c.members} members · tap to manage'
+                              : (c.group ? (_occupancy > 0 ? '$_occupancy online · ${c.members} members' : '${c.members} members · tap to manage')
                                   : (_peerOnline ? 'online' : _relLastSeen()))).toUpperCase(),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ZineText.tag(size: 9,
@@ -3911,7 +4041,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ],
         ),
       ),
+      // Phase 4: floating-emoji burst overlay (ignores touches; pure delight).
+      if (_burstFx.isNotEmpty) Positioned.fill(child: IgnorePointer(child: _burstOverlay())),
+      ]),
     );
+  }
+
+  // Floating-emoji bursts rise + fade from the bottom. Each _BurstFx self-removes
+  // after the animation (see _spawnBurst). Horizontal offset is deterministic per
+  // id so concurrent bursts spread out instead of stacking.
+  Widget _burstOverlay() {
+    final w = MediaQuery.of(context).size.width;
+    return Stack(children: [
+      for (final b in _burstFx)
+        TweenAnimationBuilder<double>(
+          key: ValueKey(b.id),
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 2100),
+          curve: Curves.easeOut,
+          builder: (_, t, __) => Positioned(
+            left: 24 + ((b.id * 53) % (w.toInt().clamp(120, 4000) - 80)).toDouble(),
+            bottom: 90 + t * (MediaQuery.of(context).size.height * 0.5),
+            child: Opacity(
+              opacity: (1 - t).clamp(0.0, 1.0),
+              child: Transform.scale(scale: 1 + t * 0.6, child: Text(b.emoji, style: const TextStyle(fontSize: 34))),
+            ),
+          ),
+        ),
+    ]);
   }
 
   // Uniform header action button — fixed 40x40 hit area, zero internal padding,
@@ -4032,6 +4189,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         IconButton(
             icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), color: Zine.ink, size: 26),
             onPressed: _attach),
+        // Phase 4: tap = send a 🎉 burst to the room; long-press picks the emoji.
+        if (SyncHub.I.ably != null)
+          GestureDetector(
+            onLongPress: _pickBurstEmoji,
+            child: IconButton(
+              icon: PhosphorIcon(PhosphorIcons.confetti(PhosphorIconsStyle.bold), color: Zine.coral, size: 24),
+              onPressed: () => _sendBurst('🎉'),
+            ),
+          ),
         Expanded(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -5143,7 +5309,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 ],
               ),
             ),
-            if (m.reaction != null)
+            // Phase 4: aggregate reaction chips (emoji + live count). Falls back to
+            // a single sticker when there are no counts yet (legacy local-only tap).
+            if (m.reactCounts.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10, top: 1),
+                child: Wrap(spacing: 4, children: [
+                  for (final e in m.reactCounts.entries)
+                    GestureDetector(
+                      onTap: () => _react(m, e.key),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: m.reaction == e.key ? Zine.lime : Zine.card,
+                            borderRadius: BorderRadius.circular(100),
+                            border: Border.all(color: Zine.ink, width: 2),
+                            boxShadow: Zine.shadowXs),
+                        child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
+                            style: const TextStyle(fontSize: 13)),
+                      ),
+                    ),
+                ]),
+              )
+            else if (m.reaction != null)
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -5633,4 +5821,11 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       ],
     ]);
   }
+}
+
+/// Phase 4 (ABLY-R2): one active floating-emoji burst animation.
+class _BurstFx {
+  final int id;
+  final String emoji;
+  const _BurstFx({required this.id, required this.emoji});
 }

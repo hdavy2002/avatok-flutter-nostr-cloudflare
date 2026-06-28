@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS message_index (
   kind       TEXT    NOT NULL DEFAULT 'text',
   preview    TEXT,                       -- short snippet (list/search without an R2 read)
   media_ref  TEXT,
+  client_id  TEXT,                        -- sender's optimistic id (shared across peers) — client dedupe key on scroll-up
   r2_key     TEXT    NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (conv, serial)

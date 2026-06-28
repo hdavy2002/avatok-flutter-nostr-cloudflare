@@ -36,13 +36,13 @@ export async function archiveList(req: Request, env: Env): Promise<Response> {
 
   // Newest-first page, strictly older than the cursor (serial sorts chronologically).
   const rows = await env.DB_META.prepare(
-    `SELECT serial, sender, kind, media_ref, r2_key, created_at
+    `SELECT serial, sender, kind, media_ref, client_id, r2_key, created_at
        FROM message_index
       WHERE conv=?1 ${before ? "AND serial < ?3" : ""}
       ORDER BY serial DESC
       LIMIT ?2`,
   ).bind(...(before ? [conv, limit, before] : [conv, limit])).all<{
-    serial: string; sender: string; kind: string; media_ref: string | null; r2_key: string; created_at: number;
+    serial: string; sender: string; kind: string; media_ref: string | null; client_id: string | null; r2_key: string; created_at: number;
   }>();
 
   const items = rows.results ?? [];
@@ -56,7 +56,7 @@ export async function archiveList(req: Request, env: Env): Promise<Response> {
         if (obj) { const j = await obj.json<any>(); body = j?.body ?? null; }
       }
     } catch { /* body unavailable — index row still returned */ }
-    return { serial: r.serial, sender: r.sender, kind: r.kind, body, media_ref: r.media_ref, created_at: r.created_at };
+    return { serial: r.serial, sender: r.sender, kind: r.kind, body, media_ref: r.media_ref, client_id: r.client_id, created_at: r.created_at };
   }));
 
   const nextBefore = items.length === limit ? items[items.length - 1].serial : null;

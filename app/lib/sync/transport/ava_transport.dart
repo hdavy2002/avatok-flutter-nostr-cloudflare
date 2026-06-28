@@ -94,9 +94,13 @@ abstract class AvaTransport {
       for (final m in list) {
         final mm = (m as Map).cast<String, dynamic>();
         final sender = (mm['sender'] ?? '').toString();
+        // Dedupe key = the shared client_id (same value the live message used as
+        // its rumorId/evId), so scroll-up history merges cleanly with what's on
+        // screen. Falls back to the server serial when no client_id was stored.
+        final cid = (mm['client_id'] ?? '').toString();
         msgs.add(TransportMessage(
           convKey, sender, sender == myUid,
-          'srv_${mm['serial']}',
+          cid.isNotEmpty ? cid : 'srv_${mm['serial']}',
           (mm['body'] ?? '').toString(),
           ((mm['created_at'] as num?)?.toInt() ?? 0) ~/ 1000,
         ));
