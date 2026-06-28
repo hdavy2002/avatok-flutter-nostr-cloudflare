@@ -508,17 +508,21 @@ class _AvaSidebarState extends State<AvaSidebar> {
       // Diagnostics moved here (owner decision 2026-06-19). Identity (the trust
       // ladder + profile hub) also lives here now.
       if (_accountOpen) ...[
-        _acct('identity', 'Identity', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold)),
-        _acct('billing', 'Billing', PhosphorIcons.creditCard(PhosphorIconsStyle.bold)),
-        _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
+        // Owner request 2026-06-29: hide Identity, Billing, Wallet and
+        // Diagnostics from the ACCOUNT & SETTINGS menu. Routes/features stay
+        // registered — only these menu rows are suppressed. Re-enable by
+        // un-commenting the rows below.
+        // _acct('identity', 'Identity', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold)),
+        // _acct('billing', 'Billing', PhosphorIcons.creditCard(PhosphorIconsStyle.bold)),
+        // _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
         _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
         _acct('avastorage', 'View Storage', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
         // (Contacts moved OUT of ACCOUNT to a featured tile below Library.)
-        _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
-            onTap: () {
-              if (!widget.permanent) Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
-            }),
+        // _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
+        //     onTap: () {
+        //       if (!widget.permanent) Navigator.pop(context);
+        //       Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
+        //     }),
         _acct('settings', 'Settings', PhosphorIcons.gearSix(PhosphorIconsStyle.bold)),
       ],
     ]);
