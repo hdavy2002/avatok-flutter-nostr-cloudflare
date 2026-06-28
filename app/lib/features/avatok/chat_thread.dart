@@ -447,9 +447,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // as "in the list" but NOT as saved until the owner names them.)
     ContactsStore().load().then((cs) {
       if (!mounted) return;
-      final saved = cs.any((c) => c.npub == telNpub(phone) && c.name.trim().isNotEmpty &&
-          c.name.trim() != formatTelDisplay(phone) && c.name.trim() != phone);
-      setState(() => _callerSaved = saved);
+      setState(() => _callerSaved = callerIsSaved(cs, phone));
     });
     _markRead();
     _loadChatExtras();
@@ -6094,10 +6092,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     final e164 = DeviceContactsService.normPhone(p);
     try {
       final cs = await ContactsStore().load();
-      final saved = cs.any((c) => c.npub == telNpub(e164) &&
-          c.name.trim().isNotEmpty &&
-          c.name.trim() != formatTelDisplay(e164) && c.name.trim() != e164);
-      if (mounted) setState(() => _saved = saved);
+      if (mounted) setState(() => _saved = callerIsSaved(cs, e164));
     } catch (_) {/* leave the button hidden on failure */}
   }
 

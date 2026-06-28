@@ -615,7 +615,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     final name = (callerName != null && callerName.trim().isNotEmpty)
         ? callerName.trim()
         : formatTelDisplay(e164);
-    final list = await _contactsStore.add(Contact(npub: npub, name: name, phone: e164));
+    final list = await _contactsStore.add(
+        Contact(npub: npub, name: name, phone: e164, handle: kProvisionalContactHandle));
     if (mounted) setState(() => _contacts = list);
   }
 
@@ -644,10 +645,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (e164 == null) continue;
       final d = matched[e164];
       if (d == null || d.uid == myUid) continue;
-      // Preserve a name the owner already chose; otherwise take the matched
+      // Preserve a name the owner explicitly saved; otherwise take the matched
       // profile/device name.
-      final namedByUser = c.name.trim().isNotEmpty &&
-          c.name.trim() != formatTelDisplay(e164) && c.name.trim() != e164;
+      final namedByUser = !isProvisionalContact(c) && c.name.trim().isNotEmpty;
       final name = namedByUser
           ? c.name
           : (d.displayName.isNotEmpty ? d.displayName : formatTelDisplay(e164));

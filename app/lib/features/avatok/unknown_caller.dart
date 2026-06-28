@@ -26,6 +26,12 @@ import 'contacts.dart';
 /// [receptTelConvKey] reproduces that string EXACTLY so the chat list, the
 /// thread loader and the stored messages all agree.
 
+/// Marker stored in [Contact.handle] for a PROVISIONAL phone-only row that the
+/// receptionist auto-created (so the thread shows up) but the owner has NOT yet
+/// explicitly saved. The "Save to contacts" affordances stay visible while this
+/// marker is present; saving (or promotion to a real account) clears it.
+const String kProvisionalContactHandle = '__recept_unsaved__';
+
 /// Synthetic contact id for a phone-only caller.
 String telNpub(String e164) => 'tel:$e164';
 
@@ -54,6 +60,23 @@ String? phoneFromReceptConv(String convKey) {
 bool isReceptTelConv(String convKey) =>
     convKey.startsWith('g:recept_') && convKey.contains('__tel:');
 
+/// A provisional auto-created receptionist row (not yet saved by the owner).
+bool isProvisionalContact(Contact c) =>
+    isTelNpub(c.npub) && c.handle == kProvisionalContactHandle;
+
+/// True when the caller behind [e164] is a real, owner-known contact — either an
+/// explicitly-saved phone contact or one promoted to a real AvaTOK account — as
+/// opposed to a provisional auto-row. Drives whether the "Save to contacts"
+/// affordances are shown.
+bool callerIsSaved(List<Contact> contacts, String e164) {
+  final tel = telNpub(e164);
+  for (final c in contacts) {
+    if (c.npub == tel) return c.handle != kProvisionalContactHandle;
+    if (!c.isPhoneOnly && c.phone == e164) return true; // promoted to real npub
+  }
+  return false;
+}
+
 /// Light, readable formatting of an E.164 number for titles/labels. We don't
 /// pull in a full libphonenumber — just group the national digits in 3s so a
 /// raw `+233245550148` reads as `+233 245 550 148`.
@@ -69,7 +92,8 @@ String formatTelDisplay(String e164) {
   final buf = StringBuffer();
   for (var i = 0; i < rest.length; i += 3) {
     if (buf.isNotEmpty) buf.write(' ');
-    buf.write(rest.substring(i, (i + 3).clamp(0, rest.length)));
+    final end = (i + 3) < rest.length ? i + 3 : rest.length;
+    buf.write(rest.substring(i, end));
   }
   final body = cc.isEmpty ? buf.toString() : '$cc ${buf.toString()}';
   return (plus ? '+' : '') + body;
