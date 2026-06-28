@@ -299,7 +299,13 @@ class PushService {
       return;
     }
     AvaLog.I.log('app', 'session start (app=${AvaLog.I.app}, session=${AvaLog.I.session})');
-    await FirebaseMessaging.instance.requestPermission();
+    final perm = await FirebaseMessaging.instance.requestPermission();
+    // Telemetry: a denied/notDetermined notification permission is a common
+    // reason a device never receives calls/messages — capture it so "user never
+    // got the push" is queryable instead of invisible.
+    Analytics.capture('push_permission', {
+      'status': perm.authorizationStatus.name, // authorized|denied|notDetermined|provisional
+    });
     await _local.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -427,7 +433,15 @@ class PushService {
     // calls/pushes — this was a key cause of "no call came through".
     FirebaseMessaging.instance.onTokenRefresh.listen((t) {
       AvaLog.I.log('push', 'FCM token refreshed — re-registering');
-      _postToken(t).catchError((e) => AvaLog.I.log('push', 're-register failed: $e'));
+      Analytics.capture('push_token_refreshed', {});
+      _postToken(t).catchError((e) {
+        AvaLog.I.log('push', 're-register failed: $e');
+        final err = e.toString();
+        Analytics.capture('push_register_failed', {
+          'reason': 'refresh_repost_error',
+          'error': err.length > 160 ? err.substring(0, 160) : err,
+        });
+      });
     });
     _listenCallkit();
     await CallDiag.load(); // TURN-only diagnostics flag
@@ -611,9 +625,14 @@ class PushService {
   static Future<void> _postToken(String token) async {
     final res = await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
     AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
-    // Telemetry: confirm device registration so we can tell "registered OK" from
-    // the failures above when diagnosing missed-call / no-device reports.
-    Analytics.capture('push_register_ok', {'status': res.statusCode});
+    // Telemetry: distinguish a real registration (HTTP 200) from a server-side
+    // failure (401/5xx). A non-200 here also means the device ends up with no
+    // usable token row, so don't log it as "ok" — that masked the problem before.
+    final ok = res.statusCode == 200;
+    Analytics.capture(ok ? 'push_register_ok' : 'push_register_failed', {
+      'reason': ok ? 'registered' : 'http_error',
+      'status': res.statusCode,
+    });
   }
 
   static void _openCall(dynamic extra) {

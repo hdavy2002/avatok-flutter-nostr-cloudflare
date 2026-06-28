@@ -1566,14 +1566,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           'kind': video ? 'video' : 'audio',
         });
         AvaLog.I.log('call', 'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
+        final callKind = video ? 'video' : 'audio';
         if (res.statusCode == 200) {
           try { ringbackUrl = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString(); } catch (_) {}
+          Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': ringbackUrl.isNotEmpty});
+        } else if (res.statusCode == 404) {
+          // The callee has NO registered device (server found 0 push tokens) — the
+          // exact "no device registered" failure. Capture it so call reachability
+          // is queryable per-callee instead of being a UI-only snackbar.
+          Analytics.capture('call_no_device', {
+            'to': to.length > 40 ? to.substring(0, 40) : to,
+            'kind': callKind,
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('They have no device registered yet — they need to open AvaTOK once')));
+          }
+        } else {
+          // Any other non-200 (auth, 5xx, rate-limit) — capture so a failed call
+          // placement isn't silent.
+          Analytics.capture('call_place_failed', {'status': res.statusCode, 'kind': callKind});
         }
-        if (res.statusCode == 404 && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('They have no device registered yet — they need to open AvaTOK once')));
-        }
-      } catch (e) { AvaLog.I.log('call', 'POST /api/call FAILED: $e'); }
+      } catch (e) {
+        AvaLog.I.log('call', 'POST /api/call FAILED: $e');
+        final err = e.toString();
+        Analytics.capture('call_place_error', {
+          'kind': video ? 'video' : 'audio',
+          'error': err.length > 160 ? err.substring(0, 160) : err,
+        });
+      }
     } else {
       AvaLog.I.log('call', 'NOT ringing — contact seed is not an npub ($to)');
     }
