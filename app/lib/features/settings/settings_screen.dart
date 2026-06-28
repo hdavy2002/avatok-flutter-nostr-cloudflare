@@ -33,6 +33,20 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
 
+  // Owner request 2026-06-29: hide these registry sections from Settings. The
+  // sections stay REGISTERED (features keep working); they are only filtered out
+  // of the Settings list. Re-show by removing an id. Ava Receptionist is kept.
+  static const Set<String> _hiddenSettingsSections = {
+    'focus_mode',   // Focus mode
+    'ava_local',    // Ava AI
+    'ava_voice',    // Ava voice
+    'ai_ringback',  // Ringback tone
+    'ava_delegate', // Ava delegate
+    'ava_guardian', // Guardian / safety
+    'ava_tools',    // Tools & connectors
+    'backup_sync',  // Backup & sync
+  };
+
   bool _backingUp = false;
 
   Map<String, bool> _brain = {};
@@ -263,18 +277,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // AvaBrain routes to its full control room; Backup / Danger zone and every
         // pluggable registry section open as detail pages too (owner 2026-06-19).
         const SizedBox(height: 4),
-        _tile(PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue, 'Your number',
-            'Get a number that represents you, keep your real one private', () => _push(const NumberSettingsScreen())),
+        // Owner request 2026-06-29: hide 'Your number' and 'AvaBrain' tiles (the
+        // screens stay registered; only these Settings rows are suppressed).
+        // _tile(PhosphorIcons.hash(PhosphorIconsStyle.bold), Zine.blue, 'Your number',
+        //     'Get a number that represents you, keep your real one private', () => _push(const NumberSettingsScreen())),
         _tile(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.mint, 'Privacy & discoverability',
             'Choose how people can find and add you', () => _push(const PrivacyScreen())),
-        _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
-            'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
+        // _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
+        //     'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         _tile(PhosphorIcons.textAa(PhosphorIconsStyle.bold), Zine.blue, 'Display & fonts',
             'Make text across the app bigger or smaller', () => _push(const DisplayFontsScreen())),
         // Pluggable sections (Phase 0 contract): feature phases register a
         // SettingsSection from their own file under settings/sections/; each one
         // now renders as a row that opens the section in its own sub-page.
-        for (final s in SettingsSectionRegistry.sections) _sectionRow(s),
+        // Owner request 2026-06-29: hide several of these sections (see
+        // _hiddenSettingsSections); Ava Receptionist and any others stay visible.
+        for (final s in SettingsSectionRegistry.sections)
+          if (!_hiddenSettingsSections.contains(s.id)) _sectionRow(s),
         _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Backup',
             'Export or back up your account', () => _push(_SettingsDetail(
                   title: 'Backup',
