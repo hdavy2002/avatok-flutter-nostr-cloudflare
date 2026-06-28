@@ -73,6 +73,15 @@ class GroupStore {
     await DiskCache.write(_key, jsonEncode(list.map((x) => x.toJson()).toList()));
   }
 
+  /// Wipe ALL locally-cached groups (both the DiskCache copy and the legacy
+  /// secure-storage copy). Used by the one-time "start fresh" migration that
+  /// drops pre-server-backed (local-only) groups so they don't linger after an
+  /// update; valid server groups are then re-pulled via GroupApi.sync().
+  Future<void> clear() async {
+    await DiskCache.write(_key, '[]');
+    try { await _legacy.delete(key: scopedKey(_key)); } catch (_) {/* best-effort */}
+  }
+
   Future<Group?> byId(String id) async {
     final list = await load();
     for (final g in list) {

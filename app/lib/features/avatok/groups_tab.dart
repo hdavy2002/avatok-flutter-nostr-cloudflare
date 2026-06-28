@@ -42,6 +42,9 @@ class _GroupsTabState extends State<GroupsTab> {
   }
 
   Future<void> _load() async {
+    // One-time clean-slate: drop pre-server-backed (local-only) groups before the
+    // first paint so they don't flash up, then reconcile with the server.
+    await GroupApi.resetLocalOnce();
     // Paint the local list first, then reconcile with the server so groups the
     // user was ADDED to (on this or another device) show up here.
     final local = await _store.load();

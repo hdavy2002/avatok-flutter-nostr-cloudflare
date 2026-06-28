@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../core/api_auth.dart';
 import '../core/config.dart';
+import '../core/disk_cache.dart';
 import '../core/group_store.dart';
 import '../identity/identity.dart';
 
@@ -93,10 +94,24 @@ class GroupApi {
     }
   }
 
+  /// One-time "start fresh" migration: clear locally-cached groups exactly once
+  /// per account so pre-server-backed (local-only) groups don't linger after an
+  /// app update. Valid server groups are re-pulled by [sync] immediately after.
+  /// Idempotent — guarded by a per-account flag.
+  static const _resetFlag = 'groups_local_reset_v1';
+  static Future<void> resetLocalOnce() async {
+    try {
+      if (await DiskCache.read(_resetFlag) == '1') return;
+      await GroupStore().clear();
+      await DiskCache.write(_resetFlag, '1');
+    } catch (_) {/* best-effort; retried next launch if it failed */}
+  }
+
   /// Pull all server `group` conversations and merge them into the local store so
   /// a user who was ADDED to a group (on another device) sees it appear. Returns
   /// the resulting local group list.
   static Future<List<Group>> sync() async {
+    await resetLocalOnce(); // drop legacy local-only groups once, then reconcile
     try {
       final r = await ApiAuth.getSigned(kConversationsUrl);
       if (r.statusCode != 200) return GroupStore().load();
