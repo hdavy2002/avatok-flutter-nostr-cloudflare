@@ -57,35 +57,22 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
           AvaPhoneContacts(),
         ]),
       ),
-      // Calls tab: Home (back to Messenger) + Dialpad. Contacts tab uses its own FAB.
+      // Dialpad stays as a separate CENTERED button (owner request 2026-06-28).
+      // Home moved into the footer (left of Calls). Contacts tab uses its own FAB.
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: _tab == 0
-          ? Column(mainAxisSize: MainAxisSize.min, children: [
-              FloatingActionButton.small(
-                heroTag: 'avaphone_home',
-                backgroundColor: PhoneTheme.surface2,
-                foregroundColor: PhoneTheme.accent,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: const BorderSide(color: PhoneTheme.border, width: 1.5),
-                ),
-                onPressed: () => Navigator.of(context).maybePop(),
-                child: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold), size: 20),
+          ? FloatingActionButton(
+              heroTag: 'avaphone_dialpad',
+              backgroundColor: PhoneTheme.teal,
+              foregroundColor: _kInk,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: const BorderSide(color: PhoneTheme.border, width: 2),
               ),
-              const SizedBox(height: 12),
-              FloatingActionButton(
-                heroTag: 'avaphone_dialpad',
-                backgroundColor: PhoneTheme.teal,
-                foregroundColor: _kInk,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: const BorderSide(color: PhoneTheme.border, width: 2),
-                ),
-                onPressed: _openDialpad,
-                child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 26),
-              ),
-            ])
+              onPressed: _openDialpad,
+              child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 26),
+            )
           : null,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
@@ -100,11 +87,21 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
           ),
           child: NavigationBar(
             height: 64,
-            selectedIndex: _tab,
-            onDestinationSelected: (i) => setState(() => _tab = i),
+            // Home sits at index 0 (left of Calls) but acts as a button, not a
+            // tab — Calls/Contacts are the only real tabs, so the selected index
+            // is offset by 1.
+            selectedIndex: _tab + 1,
+            onDestinationSelected: (i) {
+              if (i == 0) { Navigator.of(context).maybePop(); return; } // Home → Messenger
+              setState(() => _tab = i - 1); // 1 → Calls (0), 2 → Contacts (1)
+            },
             backgroundColor: PhoneTheme.surface,
             surfaceTintColor: Colors.transparent,
             destinations: [
+              NavigationDestination(
+                  icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
+                  selectedIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
+                  label: 'Home'),
               NavigationDestination(
                   icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
                   selectedIcon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
