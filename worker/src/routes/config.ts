@@ -73,6 +73,8 @@ export interface PlatformConfig {
   // virtual number that represents a user and hides their real phone. Master
   // switch for /api/number/* and the directory's number search key.
   numberFeatureEnabled: boolean;
+  teamIvrEnabled: boolean;           // master switch for /api/team/* (auto-attendant + team billing)
+  ivrAiFrontDesk: boolean;           // future: AI natural-language front desk (off; tap-menu is default)
   minAppBuild: number;
 }
 
@@ -111,6 +113,8 @@ const DEFAULTS: PlatformConfig = {
   betaFreePremium: false,          // metered economy LIVE (beta-free ended 2026-06-23; billing on)
   billingEnabled: true,            // Phase 1 subscriptions LIVE (enabled 2026-06-23)
   numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
+  teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
+  ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   minAppBuild: 0,
 };
 
