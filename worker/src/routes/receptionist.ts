@@ -397,7 +397,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
 
   const s = await loadSettingsCached(env, to);
   if (!s || !s.enabled) { skip("off"); return json({ error: "receptionist_unavailable", reason: "off" }, 409); }
-  if (!env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
+  // Receptionist Live runs on its dedicated key when set, else the global key.
+  if (!env.RECEPTIONIST_GEMINI_API_KEY && !env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
   // PREMIUM-ONLY: the OWNER must be a paid subscriber (Plus/Pro/Max). A Free owner
   // never gets Ava → caller falls back to a plain missed call.
   const ownerTier = await tierOf(env, to);

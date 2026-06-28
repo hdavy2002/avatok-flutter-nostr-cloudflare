@@ -206,6 +206,13 @@ export interface Env {
   // Also powers the AvaAffiliate v2 marketing-asset kit (Nano Banana 2 images).
   GEMINI_API_KEY?: string;
 
+  // Dedicated Gemini key for the AI Receptionist Live (speech-to-speech) calls +
+  // its summary call, so receptionist spend is isolated to its own Google Cloud
+  // project (avatok-live-receptionist-2026, project #7456307191, owner
+  // hdavy2005@gmail.com). Falls back to GEMINI_API_KEY when unset. The key never
+  // leaves the Worker (the caller only gets a DO WebSocket URL).
+  RECEPTIONIST_GEMINI_API_KEY?: string;
+
   // GenUI global template cache (Upstash Redis REST). URL is a [var]; TOKEN is a
   // secret. Absent → cache no-ops (compose every time; nothing breaks).
   UPSTASH_REDIS_REST_URL?: string;

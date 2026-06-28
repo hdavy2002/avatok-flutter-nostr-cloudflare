@@ -215,8 +215,14 @@ export class ReceptionRoom {
   // -------------------------------------------------------------------------
   // Gemini Live (via Cloudflare AI Gateway for metering)
   // -------------------------------------------------------------------------
+  /** The Gemini key for receptionist calls: the dedicated receptionist key when
+   *  set (isolates spend to its own Google project), else the global key. */
+  private receptKey(): string | undefined {
+    return this.env.RECEPTIONIST_GEMINI_API_KEY || this.env.GEMINI_API_KEY;
+  }
+
   private geminiWsUrl(): { url: string; protocols: string[] } {
-    const key = this.env.GEMINI_API_KEY!;
+    const key = this.receptKey()!;
     // DIRECT to Gemini Live — no AI Gateway hop (owner decision 2026-06-24).
     // CRITICAL: a Cloudflare Worker opens an OUTBOUND WebSocket via fetch() with
     // an `Upgrade: websocket` header, and the runtime ONLY accepts the http(s)
@@ -627,11 +633,12 @@ export class ReceptionRoom {
   /** Quick non-streaming summary of the message (best-effort, via AI Gateway). */
   private async summarize(transcript: string, init: InitBlob):
       Promise<{ caller_name: string | null; reason: string; callback: string | null; urgency: string } | null> {
-    if (!transcript || !this.env.GEMINI_API_KEY) return null;
+    const key = this.receptKey();
+    if (!transcript || !key) return null;
     const model = "gemini-2.5-flash";
     // Direct to Gemini (no AI Gateway hop) — same rationale as the live socket.
     const sysUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const headers: Record<string, string> = { "content-type": "application/json", "x-goog-api-key": this.env.GEMINI_API_KEY };
+    const headers: Record<string, string> = { "content-type": "application/json", "x-goog-api-key": key };
     const prompt = `From this phone-message transcript, return STRICT JSON {"caller_name":string|null,"reason":string,"callback":string|null,"urgency":"low"|"normal"|"high"}. Transcript:\n${transcript.slice(0, 4000)}`;
     const r = await fetch(sysUrl, {
       method: "POST", headers,
