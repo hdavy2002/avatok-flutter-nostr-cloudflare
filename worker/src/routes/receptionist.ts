@@ -438,12 +438,28 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   let activationMode = String(b.activation_mode || "rings");
   if (!VALID_MODES.has(activationMode)) activationMode = "rings";
 
+  // Team Receptionist context (Specs/TEAM-RECEPTIONIST-IVR-SPEC.md): when this Ava
+  // session is the no-answer fallback for a staffer dialed via a team IVR menu, the
+  // caller passes the team id + the menu slot. Tagging the session lets the message
+  // card fan out to the manager's team inbox and meters the team's recept pool.
+  const teamId = b.team_id == null ? null : String(b.team_id).slice(0, 64);
+  const teamSlot = b.team_slot == null ? null : (Number(b.team_slot) || null);
+
   // Session row (active). The DO finalizes it on close.
   await metaDb(env).prepare(
     `INSERT INTO receptionist_sessions
-       (id, owner_uid, caller_uid, caller_phone, caller_name, call_id, activation_mode, status, started_at, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,'active',?8,?8,?8)`,
-  ).bind(sid, to, ctx.uid, callerPhone, callerName, callId, activationMode, now).run();
+       (id, owner_uid, caller_uid, caller_phone, caller_name, call_id, activation_mode, team_id, team_slot, status, started_at, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?9,?10,'active',?8,?8,?8)`,
+  ).bind(sid, to, ctx.uid, callerPhone, callerName, callId, activationMode, now, teamId, teamSlot).run();
+  // Meter the team's monthly receptionist-minute pool (~1 min/session; the call is
+  // capped at 70s). Best-effort; the per-owner daily allowance above is the hard gate.
+  if (teamId) {
+    try {
+      await metaDb(env).prepare(
+        "UPDATE teams SET recept_min_used = recept_min_used + 1, updated_at=?2 WHERE id=?1",
+      ).bind(teamId, now).run();
+    } catch { /* pool gauge is best-effort */ }
+  }
 
   // Init blob the DO reads on connect (system prompt is composed here, locked
   // server-side, and handed to the DO — never sent to the client).
@@ -516,8 +532,16 @@ export async function receptionistRecording(req: Request, env: Env): Promise<Res
   const sid = String(new URL(req.url).searchParams.get("sid") || "");
   if (!sid) return json({ error: "sid required" }, 400);
   const s = await metaDb(env).prepare(
-    "SELECT owner_uid, recording_url FROM receptionist_sessions WHERE id=?1").bind(sid).first<any>();
-  if (!s || s.owner_uid !== ctx.uid) return json({ error: "not found" }, 404);
+    "SELECT owner_uid, recording_url, team_id FROM receptionist_sessions WHERE id=?1").bind(sid).first<any>();
+  if (!s) return json({ error: "not found" }, 404);
+  // Access: the staffer (session owner) always; for a team voicemail, the team
+  // manager (Specs/TEAM-RECEPTIONIST-IVR-SPEC.md — card recipients = staffer + manager).
+  let allowed = s.owner_uid === ctx.uid;
+  if (!allowed && s.team_id) {
+    const t = await metaDb(env).prepare("SELECT owner_uid FROM teams WHERE id=?1").bind(String(s.team_id)).first<{ owner_uid: string }>();
+    allowed = !!t && t.owner_uid === ctx.uid;
+  }
+  if (!allowed) return json({ error: "not found" }, 404);
   if (!s.recording_url) return json({ error: "no recording" }, 404);
   const obj = await env.BLOBS.get(String(s.recording_url));
   if (!obj) return json({ error: "gone" }, 404);
