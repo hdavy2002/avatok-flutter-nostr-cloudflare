@@ -1,15 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/community_store.dart';
-import '../../core/config.dart';
-import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
-import '../../sync/legacy_stubs.dart';
+import '../../sync/group_api.dart';
 import '../avatok/contacts.dart';
 import 'community_detail_screen.dart';
 
@@ -76,14 +72,16 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     );
     if (ok != true || nameCtrl.text.trim().isEmpty) return;
 
-    // Every community starts with an "Announcements" channel (a real group).
-    final ann = Group(
-      id: Group.newId(),
-      name: '${nameCtrl.text.trim()} · Announcements',
-      members: [id.pubHex],
-      admins: [id.pubHex],
-    );
-    await GroupStore().upsert(ann);
+    // Every community starts with an "Announcements" channel — a real server-backed
+    // group (so members are notified + receive messages), created via GroupApi.
+    final ann = await GroupApi.create('${nameCtrl.text.trim()} · Announcements', const []);
+    if (ann == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not create the community — try again')));
+      }
+      return;
+    }
 
     final comm = Community(
       id: Community.newId(),
@@ -95,29 +93,12 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     );
     await _store.upsert(comm);
     await CommunityStore.publish(comm);
-
-    // Tell the (empty for now) member set about the announcement channel.
-    _broadcastGinfo(ann);
+    GroupApi.announce(ann.id, 'created the community');
 
     if (mounted) setState(() => _communities = [comm, ..._communities.where((c) => c.id != comm.id)]);
     if (mounted) {
       _openDetail(comm);
     }
-  }
-
-  void _broadcastGinfo(Group g) {
-    final id = widget.identity;
-    if (id == null) return;
-    try {
-      final client = NostrClient(kNostrRelayUrl)..connect();
-      final ginfo = jsonEncode({'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins});
-      final (gifts, _) = Nip17.wrapMany(
-          senderPriv: id.privHex, senderPub: id.pubHex, recipientPubs: g.members, payload: ginfo);
-      for (final gift in gifts) {
-        client.publish(gift);
-      }
-      Future.delayed(const Duration(seconds: 2), client.dispose);
-    } catch (_) {/* members can be re-invited later */}
   }
 
   Future<void> _joinByCode() async {

@@ -1,17 +1,13 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
 import '../../core/community_store.dart';
-import '../../core/config.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
-import '../../identity/nostr_keys.dart';
-import '../../sync/legacy_stubs.dart';
+import '../../sync/group_api.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/contacts.dart';
 import '../avatok/data.dart';
@@ -46,29 +42,12 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     if (mounted) setState(() => _channels = mine);
   }
 
-  void _publishGinfo(Group g) {
-    final id = widget.identity;
-    if (id == null) return;
-    try {
-      final client = NostrClient(kNostrRelayUrl)..connect();
-      final ginfo = jsonEncode({'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins});
-      final (gifts, _) = Nip17.wrapMany(
-          senderPriv: id.privHex, senderPub: id.pubHex, recipientPubs: g.members, payload: ginfo);
-      for (final gift in gifts) {
-        client.publish(gift);
-      }
-      Future.delayed(const Duration(seconds: 2), client.dispose);
-    } catch (_) {/* best effort */}
-  }
-
-  List<String> get _memberHexes => _c.members
-      .map((n) => n.startsWith('npub1') ? NostrKeys.npubToHex(n) : null)
-      .whereType<String>()
-      .toList();
+  /// Community members resolved to Clerk uids (the addressing id). Phone-only and
+  /// the legacy self-as-npub entry are skipped; GroupApi adds me as owner.
+  List<String> get _memberUids =>
+      _c.members.where((m) => m.startsWith('user_')).toList();
 
   Future<void> _addChannel() async {
-    final id = widget.identity;
-    if (id == null) return;
     final ctrl = TextEditingController();
     final name = await showDialog<String>(
       context: context,
@@ -84,11 +63,17 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       ),
     );
     if (name == null || name.isEmpty) return;
-    final members = <String>{id.pubHex, ..._memberHexes}.toList();
-    final g = Group(
-        id: Group.newId(), name: '${_c.name} · $name', members: members, admins: [id.pubHex]);
-    await _groupStore.upsert(g);
-    _publishGinfo(g);
+    // Channels are real server-backed groups (so members are notified + receive
+    // messages) — created via GroupApi, same path as AvaTOK groups.
+    final g = await GroupApi.create('${_c.name} · $name', _memberUids);
+    if (g == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not create the channel — try again')));
+      }
+      return;
+    }
+    GroupApi.announce(g.id, 'started the “$name” channel');
     final updated = _c.copyWith(groups: [..._c.groups, g.id]);
     await _store.upsert(updated);
     await CommunityStore.publish(updated);
@@ -97,8 +82,6 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   }
 
   Future<void> _addMembers() async {
-    final id = widget.identity;
-    if (id == null) return;
     final picked = await showModalBottomSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
@@ -111,14 +94,14 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     );
     if (picked == null || picked.isEmpty) return;
     final newMembers = {..._c.members, ...picked}.toList();
-    final newHexes = <String>{id.pubHex, ...newMembers.map((n) => NostrKeys.npubToHex(n)).whereType<String>()}.toList();
+    final pickedUids = picked.where((m) => m.startsWith('user_')).toList();
 
-    // Add the new members to every channel and re-announce.
+    // Add the new members to every channel server-side (notifies them) + refresh.
     for (final ch in _channels) {
-      final merged = {...ch.members, ...newHexes}.toList();
-      final updatedG = ch.copyWith(members: merged);
-      await _groupStore.upsert(updatedG);
-      _publishGinfo(updatedG);
+      if (await GroupApi.addMembers(ch.id, pickedUids)) {
+        GroupApi.announce(ch.id, 'added new members to the channel');
+        await GroupApi.refresh(ch.id);
+      }
     }
     final updated = _c.copyWith(members: newMembers);
     await _store.upsert(updated);

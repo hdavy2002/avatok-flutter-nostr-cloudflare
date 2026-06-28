@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,14 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
-import '../../core/config.dart';
 import '../../core/profile_store.dart';
 import '../../core/status_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
-import '../../identity/nostr_keys.dart';
-import '../../sync/legacy_stubs.dart';
 import '../avatok/contacts.dart';
 import '../avatok/media.dart';
 import '../avatok/video_player_screen.dart';
@@ -40,24 +36,12 @@ class _StatusScreenState extends State<StatusScreen> {
     });
   }
 
-  List<String> get _recipientHexes => widget.contacts
-      .map((c) => c.npub.startsWith('npub1') ? NostrKeys.npubToHex(c.npub) : null)
-      .whereType<String>()
-      .toList();
-
+  // NOTE: status currently persists locally only. The previous Nostr fan-out was a
+  // dead no-op (relay removed in the Cloudflare pivot) and has been removed; a real
+  // status transport will replace it. [payload] is kept for that future wiring.
   Future<void> _post(Map<String, dynamic> payload, StatusPost mine) async {
     final id = widget.identity;
     if (id == null) return;
-    try {
-      final client = NostrClient(kNostrRelayUrl)..connect();
-      final (gifts, _) = Nip17.wrapMany(
-          senderPriv: id.privHex, senderPub: id.pubHex,
-          recipientPubs: _recipientHexes, payload: jsonEncode(payload));
-      for (final g in gifts) {
-        client.publish(g);
-      }
-      Future.delayed(const Duration(seconds: 2), client.dispose);
-    } catch (_) {/* best effort */}
     final list = await StatusStore().add(mine);
     if (mounted) setState(() => _posts = list);
   }
