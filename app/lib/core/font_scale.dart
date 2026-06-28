@@ -38,3 +38,27 @@ class FontScale {
     return 'Largest';
   }
 }
+
+/// Pins a subtree's text to the OS + base app scale, REMOVING the user's
+/// Display-&-fonts slider multiplier ([FontScale.scale]). The root applies the
+/// slider app-wide (so chat/message/contact/menu body text grows); wrapping the
+/// big page titles + headings in this keeps them a fixed size while everything
+/// else still responds to the slider (owner request 2026-06-28, pic 3: "the big
+/// titles remain the same"). Icons already ignore text scaling, so they're
+/// unaffected either way. Live: rebuilds when the root MediaQuery re-scales.
+class NoUserFontScale extends StatelessWidget {
+  final Widget child;
+  const NoUserFontScale({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final user = FontScale.scale.value;           // the slider multiplier
+    final cur = mq.textScaler.scale(1.0);         // OS × base × user (root-applied)
+    final pinned = user <= 0 ? cur : cur / user;  // divide the user factor back out
+    return MediaQuery(
+      data: mq.copyWith(textScaler: TextScaler.linear(pinned)),
+      child: child,
+    );
+  }
+}

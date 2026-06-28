@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../font_scale.dart';
 import 'zine.dart';
 
 // =============================================================================
@@ -853,17 +854,22 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
               ZineBackButton(onTap: onBack),
               const SizedBox(width: 14),
             ],
+            // Big page title + kicker stay a FIXED size — the Display & fonts
+            // slider only grows body/chat/contact/menu text, not headings
+            // (owner request 2026-06-28, pic 3).
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  titleW,
-                  if (tag != null) ...[
-                    const SizedBox(height: 2),
-                    Text(tag!.toUpperCase(), style: ZineText.kicker()),
+              child: NoUserFontScale(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    titleW,
+                    if (tag != null) ...[
+                      const SizedBox(height: 2),
+                      Text(tag!.toUpperCase(), style: ZineText.kicker()),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             ...actions,

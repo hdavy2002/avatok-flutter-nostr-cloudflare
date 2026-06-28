@@ -34,8 +34,8 @@ class _DisplayFontsScreenState extends State<DisplayFontsScreen> {
       backgroundColor: Zine.paper,
       appBar: const ZineAppBar(title: 'Display & fonts', markWord: 'fonts'),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        Text('Make text across the whole app bigger or smaller. This applies '
-            'everywhere — chats, contacts, menus and more.', style: ZineText.sub(size: 13.5)),
+        Text('Make message, chat, contacts and menu text bigger or smaller. '
+            'Big titles and icons stay the same size.', style: ZineText.sub(size: 13.5)),
         const SizedBox(height: 18),
         // Live preview card — text inside scales with the chosen value.
         ZineCard(
