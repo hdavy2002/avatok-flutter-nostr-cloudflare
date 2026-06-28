@@ -880,11 +880,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   // Filters collapsed into a single dropdown (active label shown).
                   _filterMenuButton(),
                   const SizedBox(width: 10),
-                  // Chat with Ava — companion / blank Ava chat (Phase 6). (The top
-                  // dialpad icon was removed — the dialer now lives in the bottom nav.)
-                  _hdrIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.bold), _openAvaChat,
-                      color: Zine.lilac, bg: Zine.lilac),
-                  const SizedBox(width: 10),
+                  // (Header "Chat with Ava" sparkle icon removed — owner request
+                  // 2026-06-28. Ava is still reachable via the pinned PRIVATE Ava
+                  // session at the top of the chat list and the new-chat menu.)
                   _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch,
                       color: Zine.blueInk, bg: Zine.blue),
                 ],
