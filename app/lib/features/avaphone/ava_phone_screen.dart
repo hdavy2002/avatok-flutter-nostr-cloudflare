@@ -8,7 +8,9 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/ice_cache.dart';
+import '../../core/team_api.dart';
 import '../avatok/call_screen.dart';
+import '../team/team_ivr_screen.dart';
 import '../avatok/contact_profile_screen.dart';
 import '../avatok/contacts.dart';
 import 'ava_phone_contacts.dart';
@@ -546,6 +548,19 @@ class _DialpadSheetState extends State<_DialpadSheet> {
     }
     setState(() { _dialing = true; _status = null; });
     Analytics.capture('avaphone_dial', {'len': q.length});
+    // Team auto-attendant: if the dialed number runs a team IVR, open the spoken
+    // menu (Ava greets + caller punches a digit + warm transfer) instead of a
+    // direct 1:1 call. Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md §1b.
+    final qDigits = q.replaceAll(RegExp(r'[^\d]'), '');
+    final ivr = await TeamApi.ivrMenu(qDigits);
+    if (!mounted) return;
+    if (ivr != null) {
+      Analytics.capture('avaphone_dial_team_ivr', const {});
+      setState(() => _dialing = false);
+      Navigator.pop(context); // close the dialpad
+      Navigator.push(context, MaterialPageRoute(builder: (_) => TeamIvrScreen(teamNumber: qDigits)));
+      return;
+    }
     Contact? hit;
     try { hit = await Directory.resolve(q); } catch (_) { hit = null; }
     if (!mounted) return;

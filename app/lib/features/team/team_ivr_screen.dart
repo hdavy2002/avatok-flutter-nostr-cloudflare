@@ -1,24 +1,27 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/api_auth.dart';
 import '../../core/team_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../avatok/call_screen.dart';
 
-/// TeamIvrScreen — the caller-facing auto-attendant ("press 1 / press 2") for a
-/// team's AvaTOK number. Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md.
+/// TeamIvrScreen — the caller-facing auto-attendant for a team's AvaTOK number.
+/// Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md §1b.
 ///
-/// These are in-network app calls (no PSTN keypad), so the menu is on-screen
-/// tappable buttons. Tapping a slot resolves the target staffer server-side and
-/// places a normal 1:1 call; if they don't answer, their Ava takes a message
-/// (the existing receptionist path, carrying team context for the message card).
+/// Real IVR experience: on connect, **Ava speaks** the greeting + menu (one-way
+/// TTS streamed from the server), the caller **punches a digit on the dialpad**,
+/// then Ava says "Hold on, I'm transferring you to <dept>" and the call is
+/// **bridged to that staffer without dropping** (pushReplacement → CallScreen, one
+/// continuous flow). No answer → the staffer's Ava takes a message.
 ///
 /// Reached two ways: the dialer pushes it when a dialed number is a team number,
-/// and the manager can open it from the team dashboard to preview the experience.
+/// and the manager opens it (preview=true) to hear the experience without calling.
 class TeamIvrScreen extends StatefulWidget {
   final String teamNumber;
-  final bool preview; // manager preview → don't actually place calls
+  final bool preview; // manager preview → speak + show, but don't place real calls
   const TeamIvrScreen({super.key, required this.teamNumber, this.preview = false});
   @override
   State<TeamIvrScreen> createState() => _TeamIvrScreenState();
@@ -26,122 +29,153 @@ class TeamIvrScreen extends StatefulWidget {
 
 class _TeamIvrScreenState extends State<TeamIvrScreen> {
   bool _loading = true;
-  bool _routing = false;
+  bool _busy = false; // playing the greeting or a transfer line
+  String _status = 'Connecting…';
   Map<String, dynamic>? _menu;
+  final _player = AudioPlayer();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _start();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
     final m = await TeamApi.ivrMenu(widget.teamNumber);
     if (!mounted) return;
     setState(() { _menu = m; _loading = false; });
+    if (m == null) { setState(() => _status = 'Not a team number'); return; }
+    setState(() => _status = '${m['team_name'] ?? 'Team'} — listen and choose');
+    await _speak(TeamApi.ivrAudioUrl(widget.teamNumber)); // greeting + menu
   }
 
-  Future<void> _tap(int slot, String roleLabel, bool available) async {
-    if (_routing) return;
-    setState(() => _routing = true);
+  // Fetch a spoken clip (auth-signed) and play it; waits until it finishes.
+  Future<void> _speak(String url) async {
+    setState(() => _busy = true);
+    try {
+      final r = await ApiAuth.getSigned(url);
+      if (r.statusCode == 200 && r.bodyBytes.isNotEmpty) {
+        await _player.stop();
+        await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/mpeg'));
+        await _player.onPlayerComplete.first;
+      }
+    } catch (_) {/* silent — the menu legend is still on screen */}
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _press(int slot) async {
+    if (_busy) return;
     final r = await TeamApi.ivrRoute(widget.teamNumber, slot);
+    if (!mounted || r == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not connect')));
+      return;
+    }
+    final fallback = r['fallback'] == true;
+    final name = (r['target_name'] ?? '').toString();
+    // Ava speaks the transfer (or "invalid option") line.
+    setState(() => _status = fallback ? 'Sorry, try another option' : 'Transferring you to $name…');
+    await _speak(TeamApi.ivrAudioUrl(widget.teamNumber, slot: slot));
     if (!mounted) return;
-    setState(() => _routing = false);
-    if (r == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not connect')));
-      return;
-    }
+    if (fallback) return; // invalid slot → stay on the menu, let them pick again
     if (widget.preview) {
-      final fb = r['fallback'] == true;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(fb ? 'Would route to reception (no staffer on slot $slot)' : 'Would call ${r['target_name'] ?? roleLabel}'),
-        backgroundColor: Zine.ink));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Would transfer to $name'), backgroundColor: Zine.ink));
+      setState(() => _status = '${_menu?['team_name'] ?? 'Team'} — listen and choose');
       return;
     }
-    // Place the 1:1 call to the resolved target. The callee's app rings; on no
-    // answer, the caller-side receptionist hand-off carries team_id + slot so the
-    // voicemail card reaches the staffer + manager.
+    // Warm transfer: bridge to the staffer in the SAME flow (no hangup → dialer).
     final number = (r['target_number'] ?? '').toString();
-    final name = (r['target_name'] ?? roleLabel).toString();
-    Navigator.push(context, MaterialPageRoute(
+    await _player.stop();
+    Navigator.pushReplacement(context, MaterialPageRoute(
       builder: (_) => CallScreen(
-        room: 'avatok-$number', title: name, seed: number,
-        video: false, outgoing: true, avatarUrl: ''),
+        room: 'avatok-$number', title: name.isNotEmpty ? name : '+$number',
+        seed: number, video: false, outgoing: true, avatarUrl: ''),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final menu = _menu;
+    final entries = ((_menu?['entries'] ?? []) as List).cast<Map<String, dynamic>>();
     return Scaffold(
       backgroundColor: Zine.paper,
       appBar: ZineAppBar(
-        title: widget.preview ? 'Menu preview' : 'Connecting',
-        markWord: widget.preview ? 'preview' : null,
-        tag: 'AUTO-ATTENDANT'),
+        title: widget.preview ? 'Menu preview' : 'Auto-attendant',
+        markWord: widget.preview ? 'preview' : 'attendant',
+        tag: widget.teamNumber.isEmpty ? '' : '+${widget.teamNumber}'),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Zine.ink))
-          : menu == null
+          : _menu == null
               ? Center(child: Padding(padding: const EdgeInsets.all(28), child: ZineEmptyState(icon: PhosphorIcons.phoneX(PhosphorIconsStyle.bold), text: 'This number is not a team auto-attendant.')))
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
-                  children: [
-                    // Greeting
-                    ZineCard(
-                      color: Zine.lilac,
+              : SafeArea(
+                  child: Column(children: [
+                    // Speaking indicator + status
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
                       child: Row(children: [
-                        ZineIconBadge(icon: PhosphorIcons.buildings(PhosphorIconsStyle.bold), color: Zine.card),
+                        ZineIconBadge(
+                            icon: _busy ? PhosphorIcons.speakerHigh(PhosphorIconsStyle.fill) : PhosphorIcons.buildings(PhosphorIconsStyle.bold),
+                            color: _busy ? Zine.mint : Zine.lilac),
                         const SizedBox(width: 12),
-                        Expanded(child: Text(
-                          (menu['greeting_text'] ?? "You've reached ${menu['team_name']}").toString(),
-                          style: ZineText.cardTitle(size: 16))),
+                        Expanded(child: Text(_status, style: ZineText.cardTitle(size: 16))),
                       ]),
                     ),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 12, 6, 8),
-                      child: Text('CHOOSE A DEPARTMENT', style: ZineText.kicker()),
+                    // Menu legend (what each digit does)
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        children: [
+                          for (final e in entries)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(children: [
+                                _digitChip((e['slot'] as num?)?.toInt() ?? 0),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text((e['role_label'] ?? '').toString(), style: ZineText.value(size: 15))),
+                                if (e['available'] != true)
+                                  Text('voicemail', style: ZineText.tag(size: 10.5, color: Zine.inkMute)),
+                              ]),
+                            ),
+                        ],
+                      ),
                     ),
-                    ...((menu['entries'] ?? []) as List).map((e) {
-                      final m = e as Map<String, dynamic>;
-                      final slot = (m['slot'] as num?)?.toInt() ?? 0;
-                      final role = (m['role_label'] ?? '').toString();
-                      final available = m['available'] == true;
-                      return _entry(slot, role, (m['display_name'] ?? '').toString(), available);
-                    }),
-                    if (_routing) const Padding(padding: EdgeInsets.only(top: 16), child: Center(child: CircularProgressIndicator(color: Zine.ink))),
-                  ],
+                    // Dialpad — punch the menu number
+                    _dialpad(),
+                    const SizedBox(height: 10),
+                  ]),
                 ),
     );
   }
 
-  Widget _entry(int slot, String role, String name, bool available) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: ZinePressable(
-          onTap: () => _tap(slot, role, available),
-          color: Zine.card,
-          radius: BorderRadius.circular(Zine.rSm),
-          boxShadow: Zine.shadowSm,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Row(children: [
-            Container(
-              width: 40, height: 40, alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Zine.lime, shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: Zine.bw)),
-              child: Text('$slot', style: ZineText.cardTitle(size: 18)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(role, style: ZineText.cardTitle(size: 16)),
-                Text(available ? 'Press to connect' : 'Ava will take a message',
-                    style: ZineText.tag(size: 11, color: Zine.inkSoft)),
-              ]),
-            ),
-            PhosphorIcon(PhosphorIcons.phoneCall(PhosphorIconsStyle.fill),
-                size: 20, color: available ? Zine.mintInk : Zine.inkMute),
-          ]),
-        ),
+  Widget _digitChip(int n) => Container(
+        width: 30, height: 30, alignment: Alignment.center,
+        decoration: BoxDecoration(color: Zine.lime, shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+        child: Text('$n', style: ZineText.cardTitle(size: 14)),
       );
+
+  Widget _dialpad() {
+    Widget key(int n) => Padding(
+          padding: const EdgeInsets.all(7),
+          child: GestureDetector(
+            onTap: _busy ? null : () => _press(n),
+            child: Container(
+              width: 68, height: 68, alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _busy ? Zine.card : Zine.paper2, shape: BoxShape.circle,
+                border: Border.all(color: Zine.ink, width: Zine.bw),
+                boxShadow: _busy ? const [] : Zine.shadowXs,
+              ),
+              child: Text('$n', style: ZineText.cardTitle(size: 26, color: _busy ? Zine.inkMute : Zine.ink)),
+            ),
+          ),
+        );
+    return Column(children: [
+      for (final row in [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [for (final n in row) key(n)]),
+    ]);
+  }
 }

@@ -279,6 +279,11 @@ class TeamApi {
     }
   }
 
+  /// URL for a spoken IVR clip (greeting+menu, or a per-slot transfer line).
+  /// Requires signed auth, so fetch the bytes with ApiAuth.getSigned and play them.
+  static String ivrAudioUrl(String number, {int? slot}) =>
+      '$_base/ivr/audio?number=${Uri.encodeQueryComponent(number)}${slot != null ? '&slot=$slot' : ''}';
+
   /// Caller: resolve a tapped slot to the dial target (member uid + number).
   static Future<Map<String, dynamic>?> ivrRoute(String number, int slot) async {
     try {
