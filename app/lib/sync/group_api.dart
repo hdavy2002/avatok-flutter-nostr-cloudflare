@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/config.dart';
 import '../core/disk_cache.dart';
@@ -37,18 +38,27 @@ class GroupApi {
     final me = _myUid;
     if (me == null || me.isEmpty) return null;
     final uids = memberUids.where((u) => u.isNotEmpty && u != me).toSet().toList();
+    Analytics.capture('group_create_attempt', {'member_count': uids.length});
     try {
       final r = await ApiAuth.postJson(kConversationsUrl, {
         'members': uids,
         'title': name,
       });
-      if (r.statusCode != 200) return null;
+      if (r.statusCode != 200) {
+        Analytics.capture('group_create_failed', {'status': r.statusCode, 'member_count': uids.length});
+        return null;
+      }
       final conv = (jsonDecode(r.body) as Map<String, dynamic>)['conv']?.toString();
-      if (conv == null || conv.isEmpty) return null;
+      if (conv == null || conv.isEmpty) {
+        Analytics.capture('group_create_failed', {'status': 200, 'reason': 'no_conv', 'member_count': uids.length});
+        return null;
+      }
       final g = Group(id: conv, name: name, members: [me, ...uids], admins: [me]);
       await GroupStore().upsert(g);
+      Analytics.capture('group_created', {'gid': conv, 'member_count': g.members.length});
       return g;
-    } catch (_) {
+    } catch (e) {
+      Analytics.capture('group_create_failed', {'reason': 'exception', 'member_count': uids.length});
       return null;
     }
   }
@@ -102,8 +112,10 @@ class GroupApi {
   static Future<void> resetLocalOnce() async {
     try {
       if (await DiskCache.read(_resetFlag) == '1') return;
+      final purged = (await GroupStore().load()).length;
       await GroupStore().clear();
       await DiskCache.write(_resetFlag, '1');
+      Analytics.capture('group_local_reset', {'purged': purged});
     } catch (_) {/* best-effort; retried next launch if it failed */}
   }
 
@@ -116,13 +128,16 @@ class GroupApi {
       final r = await ApiAuth.getSigned(kConversationsUrl);
       if (r.statusCode != 200) return GroupStore().load();
       final convs = ((jsonDecode(r.body) as Map<String, dynamic>)['conversations'] as List?) ?? const [];
+      var n = 0;
       for (final c in convs) {
         final m = (c as Map).cast<String, dynamic>();
         if ((m['kind'] ?? '').toString() != 'group') continue;
         final id = (m['id'] ?? '').toString();
         if (id.isEmpty) continue;
         await refresh(id); // hydrate members + title and upsert
+        n++;
       }
+      Analytics.capture('group_synced', {'server_group_count': n});
     } catch (_) {/* best-effort; keep local */}
     return GroupStore().load();
   }
@@ -132,8 +147,12 @@ class GroupApi {
     if (add.isEmpty) return false;
     try {
       final r = await ApiAuth.postJson(kConvAddMembersUrl, {'conv': conv, 'members': add});
-      return r.statusCode == 200;
+      final ok = r.statusCode == 200;
+      Analytics.capture(ok ? 'group_members_added' : 'group_members_add_failed',
+          {'gid': conv, 'count': add.length, if (!ok) 'status': r.statusCode});
+      return ok;
     } catch (_) {
+      Analytics.capture('group_members_add_failed', {'gid': conv, 'count': add.length, 'reason': 'exception'});
       return false;
     }
   }
@@ -141,8 +160,12 @@ class GroupApi {
   static Future<bool> removeMember(String conv, String uid) async {
     try {
       final r = await ApiAuth.postJson(kConvRemoveMemberUrl, {'conv': conv, 'uid': uid});
-      return r.statusCode == 200;
+      final ok = r.statusCode == 200;
+      Analytics.capture(ok ? 'group_member_removed' : 'group_member_remove_failed',
+          {'gid': conv, if (!ok) 'status': r.statusCode});
+      return ok;
     } catch (_) {
+      Analytics.capture('group_member_remove_failed', {'gid': conv, 'reason': 'exception'});
       return false;
     }
   }
@@ -151,8 +174,12 @@ class GroupApi {
   static Future<bool> setRole(String conv, String uid, String role) async {
     try {
       final r = await ApiAuth.postJson(kConvSetRoleUrl, {'conv': conv, 'uid': uid, 'role': role});
-      return r.statusCode == 200;
+      final ok = r.statusCode == 200;
+      Analytics.capture(ok ? 'group_role_changed' : 'group_role_change_failed',
+          {'gid': conv, 'role': role, if (!ok) 'status': r.statusCode});
+      return ok;
     } catch (_) {
+      Analytics.capture('group_role_change_failed', {'gid': conv, 'role': role, 'reason': 'exception'});
       return false;
     }
   }
@@ -160,8 +187,12 @@ class GroupApi {
   static Future<bool> leave(String conv) async {
     try {
       final r = await ApiAuth.postJson(kConvLeaveUrl, {'conv': conv});
-      return r.statusCode == 200;
+      final ok = r.statusCode == 200;
+      Analytics.capture(ok ? 'group_left' : 'group_leave_failed',
+          {'gid': conv, if (!ok) 'status': r.statusCode});
+      return ok;
     } catch (_) {
+      Analytics.capture('group_leave_failed', {'gid': conv, 'reason': 'exception'});
       return false;
     }
   }
@@ -169,8 +200,12 @@ class GroupApi {
   static Future<bool> deleteGroup(String conv) async {
     try {
       final r = await ApiAuth.postJson(kConvDeleteUrl, {'conv': conv});
-      return r.statusCode == 200;
+      final ok = r.statusCode == 200;
+      Analytics.capture(ok ? 'group_deleted' : 'group_delete_failed',
+          {'gid': conv, if (!ok) 'status': r.statusCode});
+      return ok;
     } catch (_) {
+      Analytics.capture('group_delete_failed', {'gid': conv, 'reason': 'exception'});
       return false;
     }
   }
@@ -185,6 +220,7 @@ class GroupApi {
         'kind': 'text',
         'body': jsonEncode({'t': 'gtext', 'gid': conv, 'body': text, 'system': true}),
       });
+      Analytics.capture('group_announce_sent', {'gid': conv});
     } catch (_) {/* best-effort */}
   }
 }

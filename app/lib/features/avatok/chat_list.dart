@@ -602,6 +602,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (g != null) {
       final list = await _groupStore.load();
       if (mounted) setState(() => _groups = list);
+      // The user was added to a group and it just surfaced on this device.
+      Analytics.capture('group_materialized',
+          {'gid': gid, 'member_count': g.members.length, 'source': 'incoming_message'});
     }
     _syncingGroups.remove(gid);
   }

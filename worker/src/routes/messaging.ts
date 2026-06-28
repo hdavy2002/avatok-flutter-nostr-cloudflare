@@ -607,6 +607,11 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
       env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, u, now)),
   ];
   await env.DB_META.batch(stmts);
+  try {
+    void env.Q_ANALYTICS?.send({ event: "group_created", uid: ctx.uid, ts: Date.now(),
+      props: { conv, member_count: list.filter((u) => u !== ctx.uid).length + 1,
+        account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
   return json({ conv, kind: "group" });
 }
 

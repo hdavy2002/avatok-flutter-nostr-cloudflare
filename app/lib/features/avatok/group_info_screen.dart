@@ -60,6 +60,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         if (g != null) _group = g;
       });
     }
+    Analytics.capture('group_info_opened', {
+      'gid': _group.id,
+      'member_count': _group.members.length,
+      'am_admin': _amAdmin,
+      'am_owner': _amOwner,
+      'server_backed': r != null,
+    });
   }
 
   String _label(String uid) =>
@@ -96,8 +103,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final ok = await GroupApi.addMembers(_group.id, [uid]);
     if (ok) {
       // Announce so the added member is notified (chat line + offline banner).
+      // (GroupApi.addMembers already emits the group_members_added telemetry.)
       GroupApi.announce(_group.id, 'added ${_label(uid)} to the group');
-      Analytics.capture('group_member_added', {'gid': _group.id});
     } else {
       _toast('Could not add member');
     }
@@ -107,8 +114,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   Future<void> _removeMember(String uid) async {
     setState(() => _busy = true);
     final ok = await GroupApi.removeMember(_group.id, uid);
-    if (!ok) _toast('Could not remove member');
-    else Analytics.capture('group_member_removed', {'gid': _group.id});
+    if (!ok) _toast('Could not remove member'); // telemetry emitted in GroupApi
     await _refresh();
   }
 
@@ -116,8 +122,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     setState(() => _busy = true);
     final makeAdmin = _roleOf(uid) == 'member';
     final ok = await GroupApi.setRole(_group.id, uid, makeAdmin ? 'admin' : 'member');
-    if (!ok) _toast('Could not update admin');
-    else Analytics.capture('group_role_changed', {'gid': _group.id, 'admin': makeAdmin});
+    if (!ok) _toast('Could not update admin'); // telemetry emitted in GroupApi
     await _refresh();
   }
 
@@ -175,9 +180,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
   Future<void> _leave() async {
     setState(() => _busy = true);
-    await GroupApi.leave(_group.id);
+    await GroupApi.leave(_group.id); // telemetry emitted in GroupApi
     await GroupStore().remove(_group.id);
-    Analytics.capture('group_left', {'gid': _group.id});
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -204,10 +208,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     setState(() => _busy = true);
     // Delete server-side; other members' devices drop the group on their next
     // conversation sync (it stops appearing in their list).
-    final done = await GroupApi.deleteGroup(_group.id);
+    final done = await GroupApi.deleteGroup(_group.id); // telemetry emitted in GroupApi
     if (done) {
       await GroupStore().remove(_group.id);
-      Analytics.capture('group_deleted', {'gid': _group.id});
       if (mounted) Navigator.pop(context, true);
     } else {
       _toast('Could not delete the group');
@@ -218,6 +221,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   void _pickToAdd() {
     final candidates = _contacts.where((c) =>
         !c.isPhoneOnly && c.npub.isNotEmpty && !_group.members.contains(c.npub)).toList();
+    Analytics.capture('group_add_picker_opened', {'gid': _group.id, 'candidate_count': candidates.length});
     showModalBottomSheet(
       context: context,
       backgroundColor: Zine.paper,

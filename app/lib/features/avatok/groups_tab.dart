@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/analytics.dart';
 import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
@@ -54,6 +55,8 @@ class _GroupsTabState extends State<GroupsTab> {
     if (mounted) setState(() { _groups = visible(local); _loading = false; });
     final synced = await GroupApi.sync();
     if (mounted) setState(() => _groups = visible(synced));
+    Analytics.capture('groups_tab_viewed',
+        {'group_count': _groups.length, 'archived_count': archived.length});
   }
 
   Future<void> _newGroup() async {
@@ -63,6 +66,7 @@ class _GroupsTabState extends State<GroupsTab> {
   }
 
   void _openGroup(Group g) {
+    Analytics.capture('group_opened', {'gid': g.id, 'member_count': g.members.length});
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => ChatThreadScreen(
         chat: Chat(

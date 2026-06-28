@@ -484,6 +484,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _realMode = true;
     _isGroup = true;
     _group = g;
+    Analytics.capture('group_thread_opened', {'gid': g.id, 'member_count': g.members.length});
     setState(() => _msgs.clear());
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
     _gdm = AvaGroupDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, group: g);
@@ -1460,6 +1461,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (replyMeta != null) 'replyTo': replyMeta, if (expire != null) 'exp': expire,
       }));
       _seenEv.add(id);
+      Analytics.capture('group_message_sent', {
+        'gid': _group!.id, 'member_count': _group!.members.length, 'kind': 'text',
+        'has_reply': replyMeta != null, 'expiring': expire != null,
+      });
       setState(() {
         // Optimistic "Sent" the instant it leaves the device — the message is
         // already persisted locally + dispatched, so we show the 1-tick state now
@@ -2699,6 +2704,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         final id = _gdm!.send(jsonEncode({...m.toEnvelope(), 't': 'gmedia', 'gid': _group!.id, 'fromName': _fromNameTag}));
         msg.evId = id;
         _seenEv.add(id);
+        Analytics.capture('group_message_sent', {
+          'gid': _group!.id, 'member_count': _group!.members.length, 'kind': kind.name,
+        });
         AvaLog.I.log('media', 'sent gmedia kind=${kind.name} ${bytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
       } else if (_realMode && _dm != null) {
         final id = _dm!.send(jsonEncode(m.toEnvelope()));
