@@ -124,6 +124,10 @@ const String kMsgReceiptUrl = 'https://$kSignalingHost/api/msg/receipt';
 const String kMsgReadUrl = 'https://$kSignalingHost/api/msg/read';
 // Owner soft-delete/Undo sync across my own devices (writes to my own InboxDO).
 const String kMsgHideUrl = 'https://$kSignalingHost/api/msg/hide';
+// Phase 3 (ABLY-R2): deep chat history from R2/D1 (older than Ably's window).
+const String kMsgArchiveUrl = 'https://$kSignalingHost/api/msg/archive';
+// Phase 4 (ABLY-R2): persist a per-message reaction toggle (live ride is Ably).
+const String kMsgReactUrl = 'https://$kSignalingHost/api/msg/react';
 const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
 
 /// Deterministic 1:1 conversation id — MUST match server authz.dmConvId.

@@ -32,6 +32,7 @@ import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveI
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, convList, convCreate, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { archiveList } from "./routes/archive";
 import { ablyToken } from "./routes/ably";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
@@ -223,6 +224,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- messaging (Cloudflare-native; Clerk-JWT auth, server-readable) ---
       if (p === "/api/msg/send" && req.method === "POST") return await sendMsg(req, env);
       if (p === "/api/msg/sync" && req.method === "GET") return await syncMsg(req, env);
+      // Phase 3 (ABLY-R2-3): deep history from R2/D1 (older than Ably's window).
+      if (p === "/api/msg/archive" && req.method === "GET") return await archiveList(req, env);
       if (p === "/api/msg/receipt" && req.method === "POST") return await receiptMsg(req, env);
       if (p === "/api/msg/read" && req.method === "POST") return await readMsg(req, env);
       if (p === "/api/msg/hide" && req.method === "POST") return await hideMsg(req, env);

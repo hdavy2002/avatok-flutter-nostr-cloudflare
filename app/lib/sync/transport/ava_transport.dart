@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
+import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
+import '../../core/config.dart';
 import '../../core/feature_flags.dart';
 
 /// ── AvaTransport: the realtime-messaging seam (Ably migration) ───────────────
@@ -65,6 +69,52 @@ abstract class AvaTransport {
 
   /// Tear down all subscriptions/connections.
   void dispose();
+
+  /// Phase 3 (ABLY-R2): deep history page from the Cloudflare archive (R2 + D1),
+  /// for messages OLDER than Ably's live window. Transport-agnostic HTTP, so it's
+  /// a concrete shared method (both transports inherit it). [beforeSerial] is the
+  /// exclusive cursor returned as [ArchivePage.nextBefore]; null loads the newest
+  /// archived page. Returns an empty page on any error (caller keeps local cache).
+  Future<ArchivePage> history(String convKey, String myUid,
+      {String? beforeSerial, int limit = 30}) async {
+    final conv = serverConvFromKey(convKey, myUid);
+    if (conv == null) return const ArchivePage(<TransportMessage>[], null);
+    try {
+      final qp = <String, String>{'conv': conv, 'limit': '$limit'};
+      if (beforeSerial != null && beforeSerial.isNotEmpty) qp['before'] = beforeSerial;
+      final uri = Uri.parse(kMsgArchiveUrl).replace(queryParameters: qp);
+      final res = await ApiAuth.getSigned(uri.toString());
+      if (res.statusCode != 200) {
+        Analytics.capture('chat_archive_fetch_failed', {'status': res.statusCode});
+        return const ArchivePage(<TransportMessage>[], null);
+      }
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final list = (body['messages'] as List? ?? const []);
+      final msgs = <TransportMessage>[];
+      for (final m in list) {
+        final mm = (m as Map).cast<String, dynamic>();
+        final sender = (mm['sender'] ?? '').toString();
+        msgs.add(TransportMessage(
+          convKey, sender, sender == myUid,
+          'srv_${mm['serial']}',
+          (mm['body'] ?? '').toString(),
+          ((mm['created_at'] as num?)?.toInt() ?? 0) ~/ 1000,
+        ));
+      }
+      Analytics.capture('chat_archive_page', {'conv': conv, 'count': msgs.length, 'paged': beforeSerial != null});
+      return ArchivePage(msgs, body['nextBefore']?.toString());
+    } catch (e) {
+      Analytics.capture('chat_archive_fetch_error', {'err': e.toString()});
+      return const ArchivePage(<TransportMessage>[], null);
+    }
+  }
+}
+
+/// A page of archived history (newest-first) + the cursor for the next older page.
+class ArchivePage {
+  final List<TransportMessage> messages;
+  final String? nextBefore; // pass back as beforeSerial; null = no more history
+  const ArchivePage(this.messages, this.nextBefore);
 }
 
 /// A durable message as seen by the app, transport-neutral.
