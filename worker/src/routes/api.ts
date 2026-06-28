@@ -43,7 +43,22 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // Read the callee's device count from the PRIMARY (plain prepare), not an
   // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
   const n = await tokenCount(env.DB_META, b.to);
-  if (n === 0) return json({ error: "callee has no registered devices" }, 404);
+  if (n === 0) {
+    // Visibility: the caller reached someone with 0 registered devices — the
+    // exact "no device registered" failure. Emit telemetry (best-effort) keyed
+    // on the callee uid so reachability gaps are queryable per-user, then return
+    // 404 as before. This path was previously a silent 404 with no analytics.
+    try {
+      void env.Q_ANALYTICS.send({
+        event: "call_no_device", uid: ctx.uid, ts: Date.now(),
+        props: {
+          to: b.to, call_id: b.callId, call_type: b.kind ?? "audio",
+          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+        },
+      });
+    } catch { /* best-effort: telemetry must never block the response */ }
+    return json({ error: "callee has no registered devices" }, 404);
+  }
   // Resolve the caller's real name SERVER-SIDE (Clerk first name → app
   // display_name/handle) instead of trusting the client. The client was sending
   // the raw uid, so the callee's incoming-call screen showed "user_xxx…" / an
