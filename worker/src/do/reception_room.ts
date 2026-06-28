@@ -49,6 +49,20 @@ function scrubSecrets(s: string): string {
 const LIVE_AUDIO_IN_USD_PER_MIN = 0.005;
 const LIVE_AUDIO_OUT_USD_PER_MIN = 0.018;
 
+// Gemini 3.1 Flash Live PER-TOKEN pricing (paid tier, per 1M tokens) — used for
+// the EXACT cost when the model reports usageMetadata (audio AND text I/O). Text
+// is tiny per call but real, so we account for it rather than ignore it:
+//   input:  text $0.75/1M,  audio $3.00/1M
+//   output: text $4.50/1M,  audio $12.00/1M
+const LIVE_TEXT_IN_USD_PER_M = 0.75;
+const LIVE_TEXT_OUT_USD_PER_M = 4.50;
+const LIVE_AUDIO_IN_USD_PER_M = 3.00;
+const LIVE_AUDIO_OUT_USD_PER_M = 12.00;
+// Gemini 2.5 Flash pricing for the one-shot summary call (paid tier, per 1M):
+//   input text $0.30/1M, output $2.50/1M.
+const SUM_TEXT_IN_USD_PER_M = 0.30;
+const SUM_TEXT_OUT_USD_PER_M = 2.50;
+
 // Voice → gender, mirroring app/lib/core/voice/google_voice.dart (the 30 prebuilt
 // Gemini Live voices). Stamped on every telemetry event ("woman"/"man") so PostHog
 // can break usage + cost down by the voice the owner picked. Unknown → "".
@@ -112,6 +126,15 @@ export class ReceptionRoom {
   private callerPeak = 0; // peak |sample| of caller audio → drives adaptive normalization
   private inBytes = 0;   // caller audio bytes received (mic throughput / dead-mic)
   private turnCount = 0; // completed conversational turns
+  // Latest cumulative token usage reported by Gemini Live (usageMetadata). Lets us
+  // bill the EXACT audio + text I/O instead of estimating from audio bytes alone.
+  private liveTokIn = { audio: 0, text: 0 };
+  private liveTokOut = { audio: 0, text: 0 };
+  private haveLiveUsage = false;
+  // Tokens spent by the one-shot summary call (Gemini 2.5 Flash), tracked so the
+  // cost telemetry covers ALL Gemini spend on a receptionist call, not just live.
+  private sumTokIn = 0;
+  private sumTokOut = 0;
   // Goodbye backstop: end the call after a stretch of total silence (covers the
   // case where Ava says "have a great day" but the model doesn't hang up).
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -245,29 +268,37 @@ export class ReceptionRoom {
       inputAudioTranscription: {},
       outputAudioTranscription: {},
     };
-    // Tools: an end_call function so Ava can hang up after her goodbye, plus the
-    // owner's knowledge base (File Search) when configured.
+    // Tools: ONLY an end_call function (so Ava can hang up after her goodbye) and
+    // the owner's knowledge base (File Search) when configured + not disabled.
+    //
+    // COST GUARD — we deliberately NEVER attach Google Search grounding
+    // ({ googleSearch: {} }). A message-taker has no need to search the web, and
+    // grounding is billed beyond a free monthly quota ($14 / 1,000 queries). If a
+    // future change wants it, it must be a separate, explicitly-gated decision.
     const tools: any[] = [{
       functionDeclarations: [{
         name: "end_call",
         description: "End the phone call. Invoke this right AFTER you have said goodbye and the caller has nothing more to add.",
       }],
     }];
-    if (init.file_search_store) {
+    // File Search (RAG) is optional and also billable; gate it behind a kill
+    // switch so it can be turned off fleet-wide without a redeploy.
+    const kbDisabled = String((this.env as any).RECEPT_KB_DISABLED || "") === "1";
+    if (init.file_search_store && !kbDisabled) {
       tools.push({ fileSearch: { fileSearchStoreNames: [init.file_search_store] } });
     }
     setup.tools = tools;
     this.sendGem({ setup });
     this.ev("ava_recept_session_started", {
-      setup_latency_ms: Date.now() - this.startedAt, has_kb: !!init.file_search_store,
+      setup_latency_ms: Date.now() - this.startedAt,
+      has_kb: !!init.file_search_store && !kbDisabled,
     });
-    // GREET FIRST. Without this, Gemini's automatic VAD waits for the caller to
-    // speak-and-pause before the model says anything — which showed up as a ~19s
-    // dead-air gap before Ava's first word. A one-shot user turn makes her open
-    // the call immediately; the caller's streamed mic audio drives the rest.
+    // GREET FIRST (lean nudge to keep text-input tokens minimal). Without it,
+    // Gemini's VAD waits for the caller to speak before Ava says anything (a long
+    // dead-air gap). One short one-shot user turn makes her open immediately.
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[The caller has just connected and is on the line. Greet them now, by name if you have it, state the status, then offer to take a message. Keep it to one or two short sentences.]" }] }],
+        turns: [{ role: "user", parts: [{ text: "[Caller connected — greet and offer to take a message now, in one short sentence.]" }] }],
         turnComplete: true,
       },
     });
@@ -301,6 +332,34 @@ export class ReceptionRoom {
     });
   }
 
+  /** Capture Gemini Live token usage (cumulative) split by modality, so we can
+   *  bill the exact audio + text I/O. Tolerant of field-name variants (prompt vs
+   *  response vs candidates token details). */
+  private captureLiveUsage(u: any): void {
+    try {
+      const split = (details: any): { audio: number; text: number } => {
+        const out = { audio: 0, text: 0 };
+        if (Array.isArray(details)) {
+          for (const d of details) {
+            const n = Number(d?.tokenCount) || 0;
+            if (String(d?.modality).toUpperCase() === "AUDIO") out.audio += n;
+            else out.text += n; // TEXT (and anything non-audio) billed at text rate
+          }
+        }
+        return out;
+      };
+      const inD = split(u.promptTokensDetails);
+      const outD = split(u.responseTokensDetails ?? u.candidatesTokensDetails);
+      // Fall back to the flat totals when the modality breakdown is absent (treat
+      // as text — the conservative direction for input; output audio dominates so
+      // we keep the byte estimate as a floor in finalize()).
+      if (inD.audio === 0 && inD.text === 0 && Number(u.promptTokenCount)) inD.text = Number(u.promptTokenCount);
+      this.liveTokIn = inD;
+      this.liveTokOut = outD;
+      this.haveLiveUsage = true;
+    } catch { /* best-effort — fall back to byte-based estimate */ }
+  }
+
   /** Reset the silence backstop on any real audio activity (either side). */
   private bumpIdle(): void {
     if (this.finalized) return;
@@ -316,6 +375,10 @@ export class ReceptionRoom {
       msg = typeof ev.data === "string" ? JSON.parse(ev.data)
         : JSON.parse(new TextDecoder().decode(ev.data as ArrayBuffer));
     } catch { return; }
+
+    // Token accounting — the Live API reports cumulative usageMetadata; keep the
+    // latest so finalize() can bill exact audio + text I/O (cost hardening).
+    if (msg.usageMetadata) this.captureLiveUsage(msg.usageMetadata);
 
     // Ava decided the call is done (she invoked the end_call tool after her
     // goodbye) → hang up immediately instead of leaving the line open.
@@ -496,16 +559,38 @@ export class ReceptionRoom {
     const outRate = Number((this.env as any).RECEPT_AUDIO_OUT_USD_MIN) || LIVE_AUDIO_OUT_USD_PER_MIN;
     const inAudioS = this.inBytes / 32000;
     const outAudioS = this.avaBytes / 48000;
-    const inUsd = (inAudioS / 60) * inRate;
-    const outUsd = (outAudioS / 60) * outRate;
-    const estUsd = inUsd + outUsd;
+    const inAudioUsd = (inAudioS / 60) * inRate;
+    const outAudioUsd = (outAudioS / 60) * outRate;
     const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+    // TEXT I/O — small per call but real. When the model reported usageMetadata we
+    // bill the exact text tokens (and prefer its audio token count too); otherwise
+    // text cost is 0 and we fall back to the byte-based audio estimate. The summary
+    // call (Gemini 2.5 Flash) is billed separately and added in.
+    const textInUsd = (this.liveTokIn.text / 1e6) * LIVE_TEXT_IN_USD_PER_M;
+    const textOutUsd = (this.liveTokOut.text / 1e6) * LIVE_TEXT_OUT_USD_PER_M;
+    const tokAudioInUsd = (this.liveTokIn.audio / 1e6) * LIVE_AUDIO_IN_USD_PER_M;
+    const tokAudioOutUsd = (this.liveTokOut.audio / 1e6) * LIVE_AUDIO_OUT_USD_PER_M;
+    // Prefer token-reported audio cost when available; else the byte estimate.
+    const liveAudioUsd = this.haveLiveUsage ? (tokAudioInUsd + tokAudioOutUsd) : (inAudioUsd + outAudioUsd);
+    const summaryUsd = (this.sumTokIn / 1e6) * SUM_TEXT_IN_USD_PER_M + (this.sumTokOut / 1e6) * SUM_TEXT_OUT_USD_PER_M;
+    // Total = live audio + live text + summary. (in_audio_usd/out_audio_usd remain
+    // the byte-based audio estimate for backward-compatible dashboards.)
+    const estUsd = liveAudioUsd + textInUsd + textOutUsd + summaryUsd;
+
     this.ev("ava_recept_cost", {
       duration_s: durationS,
       in_audio_s: Math.round(inAudioS * 10) / 10,
       out_audio_s: Math.round(outAudioS * 10) / 10,
-      in_audio_usd: round6(inUsd),
-      out_audio_usd: round6(outUsd),
+      in_audio_usd: round6(inAudioUsd),
+      out_audio_usd: round6(outAudioUsd),
+      // exact token usage (0 when the model didn't report it)
+      have_token_usage: this.haveLiveUsage,
+      tok_audio_in: this.liveTokIn.audio, tok_audio_out: this.liveTokOut.audio,
+      tok_text_in: this.liveTokIn.text, tok_text_out: this.liveTokOut.text,
+      text_in_usd: round6(textInUsd), text_out_usd: round6(textOutUsd),
+      live_audio_usd: round6(liveAudioUsd),
+      summary_tok_in: this.sumTokIn, summary_tok_out: this.sumTokOut, summary_usd: round6(summaryUsd),
       est_usd: round6(estUsd),
       in_rate_usd_min: inRate, out_rate_usd_min: outRate,
       cutoff_reason: reason,
@@ -556,6 +641,14 @@ export class ReceptionRoom {
       }),
     });
     const j = (await r.json().catch(() => ({}))) as any;
+    // Account for the summary call's token spend (added into ava_recept_cost).
+    try {
+      const um = j?.usageMetadata;
+      if (um) {
+        this.sumTokIn = Number(um.promptTokenCount) || 0;
+        this.sumTokOut = (Number(um.candidatesTokenCount) || 0) + (Number(um.thoughtsTokenCount) || 0);
+      }
+    } catch { /* best-effort */ }
     const txt = j?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!txt) return null;
     try {
