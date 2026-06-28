@@ -465,25 +465,38 @@ export async function getStorage(req: Request, env: Env): Promise<Response> {
   return json({ total_used: total, quota, by_category: byCategory, by_app: byApp, state, free_gb: freeGb });
 }
 
-// GET /ice — short-lived STUN+TURN credentials from Cloudflare Calls.
-export async function getIce(env: Env): Promise<Response> {
-  const stunOnly = { iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] };
-  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return json(stunOnly);
+const STUN_FALLBACK = [{ urls: "stun:stun.cloudflare.com:3478" }];
+
+/**
+ * Mint short-lived STUN+TURN ICE servers from Cloudflare Calls. Returns the
+ * `iceServers` value (array of RTCIceServer) — Cloudflare-STUN-only fallback when
+ * TURN isn't configured or the call fails. Shared by GET /ice (1:1 + mesh) and
+ * the group-conference token issue (so LiveKit clients can relay via Cloudflare
+ * TURN). `ttl` seconds (default 24h). Never throws.
+ */
+export async function mintIceServers(env: Env, ttl = 86400): Promise<unknown[]> {
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return STUN_FALLBACK;
   try {
     const r = await fetch(
       `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ttl: 86400 }),
+        body: JSON.stringify({ ttl }),
       },
     );
-    if (!r.ok) return json(stunOnly);
+    if (!r.ok) return STUN_FALLBACK;
     const data = (await r.json()) as any;
-    return json(data.iceServers ? data : { iceServers: data });
+    const ice = data.iceServers ?? data;
+    return Array.isArray(ice) ? ice : [ice];
   } catch {
-    return json(stunOnly);
+    return STUN_FALLBACK;
   }
+}
+
+// GET /ice — short-lived STUN+TURN credentials from Cloudflare Calls.
+export async function getIce(env: Env): Promise<Response> {
+  return json({ iceServers: await mintIceServers(env) });
 }
 
 function mediaType(ct: string): string {

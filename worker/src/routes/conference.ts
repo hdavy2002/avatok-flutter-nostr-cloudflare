@@ -20,8 +20,15 @@
 //     server-side backstop that refuses the 26th joiner even when racing.
 //
 // LiveKit auth is plain JWT HS256 + Twirp HTTP — no SDK dependency.
-// Config (secrets): LIVEKIT_URL (wss://… or https://…), LIVEKIT_API_KEY,
-// LIVEKIT_API_SECRET. Unset ⇒ 503 (flag-gated like every other integration).
+//
+// MULTI-REGION (Specs/AVA-SFU-SELFHOST-PLAYBOOK.md): a room is PINNED to ONE
+// region (self-hosted OSS has no cross-region media mesh — that's Cloud-only).
+// `LIVEKIT_REGIONS` (JSON secret) maps region→creds; absent ⇒ a single `cloud`
+// region synthesized from the legacy LIVEKIT_URL/API_KEY/API_SECRET, so this is
+// a no-op until you populate it. start() picks a region (free→cloud; paid→nearest
+// by req.cf.continent, falling back to cloud), records it in KV `conf_region:<gid>`
+// + room metadata, and join/end/status read it back so every participant lands on
+// the SAME node. NAT traversal uses Cloudflare Calls TURN (minted per call).
 import type { Env } from "../types";
 import { json } from "../util";
 import { isFail, requireUser } from "../authz";
@@ -29,13 +36,65 @@ import { PLANS, tierOf } from "./plans";
 import { enforceAllowance, planLimitBody } from "../lib/usage";
 import { track, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
+import { mintIceServers } from "./media";
 
 // Absolute backstop — no tier may ever exceed this on the SFU. Per-call caps are
-// the STARTER's plan `confParticipants` (Plus 10 / Pro 25 / Max 25). Free (tier 0)
-// does NOT use the SFU at all — those group calls run P2P-mesh (≤5) client-side,
-// so issue() rejects tier 0 with `mode:"mesh"` and the client routes accordingly.
+// the STARTER's plan `confParticipants` (Free 5 / Plus 10 / Pro 25 / Max 25).
+// Free (tier 0) DOES use the SFU now (LiveKit Cloud, ≤5, 60 min/day) — see issue().
 const MAX_PARTICIPANTS = 25;
 const TOKEN_TTL_S = 6 * 3600; // long enough for any realistic call
+const REGION_TTL_S = 6 * 3600; // KV room→region pin lives at least as long as a call
+
+// ---- region routing -----------------------------------------------------------
+
+/** One LiveKit cluster's credentials (cloud or a self-hosted region). */
+interface LkCreds { url: string; key: string; secret: string; }
+
+/** continent (req.cf.continent) → preferred self-hosted region key. */
+const CONTINENT_REGION: Record<string, string> = {
+  EU: "eu", AF: "eu", NA: "us", SA: "us", AS: "ap", OC: "ap",
+};
+
+/** The region map actually in effect. `LIVEKIT_REGIONS` JSON secret overrides;
+ *  always falls back to a `cloud` region built from the legacy single creds. */
+function regionsConfig(env: Env): Record<string, LkCreds> {
+  const out: Record<string, LkCreds> = {};
+  try {
+    const parsed = env.LIVEKIT_REGIONS ? (JSON.parse(env.LIVEKIT_REGIONS) as Record<string, Partial<LkCreds>>) : {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (v && v.url && v.key && v.secret) out[k] = { url: v.url, key: v.key, secret: v.secret };
+    }
+  } catch { /* malformed secret — ignore, use legacy cloud */ }
+  if (!out.cloud && env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) {
+    out.cloud = { url: env.LIVEKIT_URL, key: env.LIVEKIT_API_KEY, secret: env.LIVEKIT_API_SECRET };
+  }
+  return out;
+}
+
+/** Pick the region a NEW room should live on. Free → always cloud. Paid →
+ *  nearest self-hosted region by continent, falling back to cloud when that
+ *  region isn't deployed yet. */
+function pickRegion(env: Env, req: Request, tier: number): string {
+  const cfg = regionsConfig(env);
+  if (tier === 0) return cfg.cloud ? "cloud" : Object.keys(cfg)[0] ?? "cloud";
+  const continent = (req as any).cf?.continent as string | undefined;
+  const want = continent ? CONTINENT_REGION[continent] : undefined;
+  if (want && cfg[want]) return want;
+  return cfg.cloud ? "cloud" : (Object.keys(cfg)[0] ?? "cloud");
+}
+
+/** Resolve a region key → creds, falling back to cloud then any configured region. */
+function credsFor(env: Env, region: string | null | undefined): LkCreds | null {
+  const cfg = regionsConfig(env);
+  return (region && cfg[region]) || cfg.cloud || Object.values(cfg)[0] || null;
+}
+
+function regionKvKey(groupId: string): string { return `conf_region:${groupId}`; }
+
+/** The region a live room is pinned to (written at start). Defaults to cloud. */
+async function roomRegion(env: Env, groupId: string): Promise<string> {
+  try { return (await env.TOKENS.get(regionKvKey(groupId))) || "cloud"; } catch { return "cloud"; }
+}
 
 // ---- small utils --------------------------------------------------------------
 
@@ -52,20 +111,20 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-/** Mint a LiveKit access token (JWT HS256). */
-async function lkToken(env: Env, claims: Record<string, unknown>): Promise<string> {
+/** Mint a LiveKit access token (JWT HS256) signed with a region's creds. */
+async function lkToken(lk: LkCreds, claims: Record<string, unknown>): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const payload = { iss: env.LIVEKIT_API_KEY, nbf: now - 10, exp: now + TOKEN_TTL_S, ...claims };
+  const payload = { iss: lk.key, nbf: now - 10, exp: now + TOKEN_TTL_S, ...claims };
   const head = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = b64url(JSON.stringify(payload));
-  const sig = await crypto.subtle.sign("HMAC", await hmacKey(env.LIVEKIT_API_SECRET!), enc.encode(`${head}.${body}`));
+  const sig = await crypto.subtle.sign("HMAC", await hmacKey(lk.secret), enc.encode(`${head}.${body}`));
   return `${head}.${body}.${b64url(new Uint8Array(sig))}`;
 }
 
-/** Twirp call against the LiveKit RoomService. */
-async function lkApi(env: Env, method: string, body: Record<string, unknown>): Promise<Response> {
-  const host = env.LIVEKIT_URL!.replace(/^wss:/, "https:").replace(/^ws:/, "http:").replace(/\/$/, "");
-  const admin = await lkToken(env, { video: { roomCreate: true, roomList: true, roomAdmin: true } });
+/** Twirp call against a specific region's LiveKit RoomService. */
+async function lkApi(lk: LkCreds, method: string, body: Record<string, unknown>): Promise<Response> {
+  const host = lk.url.replace(/^wss:/, "https:").replace(/^ws:/, "http:").replace(/\/$/, "");
+  const admin = await lkToken(lk, { video: { roomCreate: true, roomList: true, roomAdmin: true } });
   return fetch(`${host}/twirp/livekit.RoomService/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${admin}` },
@@ -89,7 +148,7 @@ function confGeo(req: Request): Record<string, string | null> {
 }
 
 function configured(env: Env): boolean {
-  return Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET);
+  return Object.keys(regionsConfig(env)).length > 0;
 }
 
 async function conferenceEnabled(env: Env): Promise<boolean> {
@@ -137,7 +196,14 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   // ships, free's 60 min/day expands to 180 (3h) — a plans.ts conf_min bump only.
   const tier = await tierOf(env, u.uid);
   const cap = Math.min(PLANS[tier].confParticipants, MAX_PARTICIPANTS); // 5 / 10 / 25 / 25
-  const provider = "livekit_cloud"; // TODO: route paid tiers to self-hosted regional SFU
+
+  // Region pin: a NEW room (create) is routed to the nearest region (free→cloud);
+  // a JOIN reuses the region the room was started on (KV pin), so every
+  // participant connects to the SAME node. credsFor falls back to cloud.
+  const region = create ? pickRegion(env, req, tier) : await roomRegion(env, groupId);
+  const lk = credsFor(env, region);
+  if (!lk) return json({ error: "conference backend not configured" }, 503);
+  const provider = region === "cloud" ? "livekit_cloud" : "livekit_selfhost";
 
   // Daily minute allowance (conf_min) enforced at ENTRY so a tapped-out user
   // can't start/join (the per-minute beat keeps consuming once inside). Peek only
@@ -175,48 +241,55 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
     // Idempotent: CreateRoom on an existing name returns the room. The per-plan
     // `cap` here is THE backstop — a racing (cap+1)th joiner is refused by
     // LiveKit itself even if two workers issued tokens.
-    const r = await lkApi(env, "CreateRoom", {
+    const r = await lkApi(lk, "CreateRoom", {
       name: room, max_participants: cap, empty_timeout: 120, departure_timeout: 30,
-      metadata: JSON.stringify({ groupId, kind, started_by: u.uid, starter_tier: tier, provider, region: g.colo ?? null }),
+      metadata: JSON.stringify({ groupId, kind, started_by: u.uid, starter_tier: tier, provider, region, edge: g.colo ?? null }),
     });
     if (!r.ok) {
       const detail = await r.text();
       await trackUser(env, u.uid, email, "conf_error", "avatok", {
-        stage: "create_room", tier, detail: detail.slice(0, 300), group_id: groupId, provider, ...g,
+        stage: "create_room", tier, region, detail: detail.slice(0, 300), group_id: groupId, provider, ...g,
       });
       return json({ error: "could not create conference room", detail }, 502);
     }
+    // Pin the room→region so JOIN/END/STATUS target the same node. Best-effort:
+    // a missed write just falls back to `cloud`, which is where free rooms live.
+    try { await env.TOKENS.put(regionKvKey(groupId), region, { expirationTtl: REGION_TTL_S }); } catch { /* non-fatal */ }
   } else {
     // join: the room must be live (started by someone). ListParticipants 404s/
     // errors when the room doesn't exist.
-    const r = await lkApi(env, "ListParticipants", { room });
+    const r = await lkApi(lk, "ListParticipants", { room });
     if (!r.ok) {
-      await trackUser(env, u.uid, email, "conf_blocked", "avatok", { reason: "no_live_room", tier, group_id: groupId, ...g });
+      await trackUser(env, u.uid, email, "conf_blocked", "avatok", { reason: "no_live_room", tier, region, group_id: groupId, ...g });
       return json({ error: "no live conference for this group" }, 404);
     }
     const list = (await r.json()) as { participants?: unknown[] };
     if ((list.participants?.length ?? 0) >= cap) {
-      await trackUser(env, u.uid, email, "conf_blocked", "avatok", { reason: "room_full", tier, cap, group_id: groupId, provider, ...g });
+      await trackUser(env, u.uid, email, "conf_blocked", "avatok", { reason: "room_full", tier, cap, region, group_id: groupId, provider, ...g });
       return json({ error: `conference is full (${cap})` }, 409);
     }
   }
 
-  const token = await lkToken(env, {
+  const token = await lkToken(lk, {
     sub: u.uid,
     jti: u.uid,
     name: await displayName(env, u.uid),
     video: { room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true },
   });
 
-  // Server-truth analytics: who / where / which tier / which backend. The geo
-  // (...g) is what powers the "where are our video-conf regions" dashboard.
+  // Cloudflare Calls TURN/STUN for NAT traversal — handed to the client so the
+  // LiveKit connection can relay when a direct path is blocked (esp. cellular).
+  const iceServers = await mintIceServers(env, TOKEN_TTL_S);
+
+  // Server-truth analytics: who / where / which tier / which backend / region.
+  // The geo (...g) powers the "where are our video-conf regions" dashboard.
   await trackUser(env, u.uid, email, create ? "conf_start" : "conf_join", "avatok", {
-    tier, kind, cap, provider, group_id: groupId,
+    tier, kind, cap, provider, region, group_id: groupId,
     members: mem.length || null, remaining_min: allow.remaining, ...g,
   });
 
-  const url = env.LIVEKIT_URL!.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-  return json({ url, token, room, kind, max: cap, tier, provider });
+  const url = lk.url.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+  return json({ url, token, room, kind, max: cap, tier, provider, region, iceServers });
 }
 
 export async function conferenceStart(req: Request, env: Env, groupId: string): Promise<Response> {
@@ -234,8 +307,10 @@ export async function conferenceEnd(req: Request, env: Env, groupId: string): Pr
   if (!configured(env)) return json({ error: "conference backend not configured" }, 503);
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: u.error }, u.status);
+  const lk = credsFor(env, await roomRegion(env, groupId));
+  if (!lk) return json({ error: "conference backend not configured" }, 503);
   const room = roomName(groupId);
-  const lr = await lkApi(env, "ListRooms", { names: [room] });
+  const lr = await lkApi(lk, "ListRooms", { names: [room] });
   if (lr.ok) {
     const data = (await lr.json()) as { rooms?: { name: string; metadata?: string }[] };
     const r = data.rooms?.find((x) => x.name === room);
@@ -245,8 +320,9 @@ export async function conferenceEnd(req: Request, env: Env, groupId: string): Pr
       if (meta.started_by && meta.started_by !== u.uid) return json({ error: "only the starter can end for all" }, 403);
     } catch { /* unreadable metadata — fall through, allow */ }
   }
-  const del = await lkApi(env, "DeleteRoom", { room });
+  const del = await lkApi(lk, "DeleteRoom", { room });
   if (!del.ok) return json({ error: "could not end conference" }, 502);
+  try { await env.TOKENS.delete(regionKvKey(groupId)); } catch { /* non-fatal */ }
   await trackUser(env, u.uid, await emailFor(env, u.uid).catch(() => null), "conf_end", "avatok", {
     group_id: groupId, ...confGeo(req),
   });
@@ -291,7 +367,9 @@ export async function conferenceStatus(req: Request, env: Env, groupId: string):
   if (!configured(env)) return json({ live: false, count: 0 });
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: u.error }, u.status);
-  const r = await lkApi(env, "ListParticipants", { room: roomName(groupId) });
+  const lk = credsFor(env, await roomRegion(env, groupId));
+  if (!lk) return json({ live: false, count: 0 });
+  const r = await lkApi(lk, "ListParticipants", { room: roomName(groupId) });
   if (!r.ok) return json({ live: false, count: 0 });
   const list = (await r.json()) as { participants?: unknown[] };
   const count = list.participants?.length ?? 0;
@@ -367,18 +445,22 @@ export async function conferenceWebhook(req: Request, env: Env): Promise<Respons
   return json({ ok: true });
 }
 
+// Webhooks can arrive from ANY region's LiveKit (each may have its own key/
+// secret), so verify against every configured region until one validates.
 async function verifyLkJwt(env: Env, jwt: string, body: string): Promise<boolean> {
   const parts = jwt.split(".");
   if (parts.length !== 3) return false;
   try {
-    const key = await hmacKey(env.LIVEKIT_API_SECRET!);
-    const sig = Uint8Array.from(atob(parts[2].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(parts[2].length / 4) * 4, "=")), (c) => c.charCodeAt(0));
-    const ok = await crypto.subtle.verify("HMAC", key, sig, enc.encode(`${parts[0]}.${parts[1]}`));
-    if (!ok) return false;
     const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(parts[1].length / 4) * 4, "=")));
-    if (payload.iss !== env.LIVEKIT_API_KEY) return false;
+    const sig = Uint8Array.from(atob(parts[2].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(parts[2].length / 4) * 4, "=")), (c) => c.charCodeAt(0));
     const digest = await crypto.subtle.digest("SHA-256", enc.encode(body));
     const sha = btoa(String.fromCharCode(...new Uint8Array(digest)));
-    return payload.sha256 === sha;
+    if (payload.sha256 !== sha) return false;
+    for (const lk of Object.values(regionsConfig(env))) {
+      if (payload.iss !== lk.key) continue;
+      const ok = await crypto.subtle.verify("HMAC", await hmacKey(lk.secret), sig, enc.encode(`${parts[0]}.${parts[1]}`));
+      if (ok) return true;
+    }
+    return false;
   } catch { return false; }
 }

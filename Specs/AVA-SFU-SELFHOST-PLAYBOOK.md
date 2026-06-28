@@ -127,24 +127,43 @@ region's cluster for horizontal scale.
 
 ---
 
-## 6. Worker changes to land the region router (future PR — not in the free-tier PR)
+## 6. Region router — BUILT (commit, 2026-06-28)
 
-`worker/src/routes/conference.ts → issue()` already stamps `provider` + `region`
-into room metadata and reads plan caps. To finish self-host routing:
+The region router now ships in `worker/src/routes/conference.ts`. Behaviour:
 
-1. Add a config map `LIVEKIT_REGIONS = { us:{url,key,secret}, eu:{…}, ap:{…},
-   cloud:{…} }` (secrets / KV). Keep `cloud` as default + fallback.
-2. **start**: choose region (host's stored region, else nearest from `req.cf`),
-   `CreateRoom` on that region's cluster, write `region` into metadata.
-3. **join**: read `region` from existing room metadata, issue token against THAT
-   region's url/secret.
-4. **Free tier → always `cloud`.** Paid tiers → nearest self-hosted region, falling
-   back to `cloud` for any region not yet deployed.
-5. Mint Cloudflare TURN creds in the same response.
+1. **`LIVEKIT_REGIONS` secret** (one JSON blob) maps region→creds:
+   ```json
+   {"eu":{"url":"wss://eu.sfu.avatok.ai","key":"APIxxx","secret":"yyy"},
+    "us":{"url":"wss://us.sfu.avatok.ai","key":"APIxxx","secret":"yyy"},
+    "ap":{"url":"wss://ap.sfu.avatok.ai","key":"APIxxx","secret":"yyy"}}
+   ```
+   Set with `wrangler secret put LIVEKIT_REGIONS`. When **unset/empty**, the worker
+   synthesizes a single `cloud` region from the legacy `LIVEKIT_URL/API_KEY/
+   API_SECRET` — so behaviour is unchanged until you populate it. `cloud` is always
+   the default + fallback; add a region by editing this one secret.
+2. **start** (`pickRegion`): free → `cloud`; paid → nearest region by
+   `req.cf.continent` (EU/AF→eu, NA/SA→us, AS/OC→ap), falling back to `cloud` when
+   that region isn't deployed. `CreateRoom` runs on the chosen region; the room is
+   **pinned** in KV `conf_region:<gid>` (6 h TTL) **and** in room metadata.
+3. **join / end / status** (`roomRegion`): read the KV pin so every participant +
+   teardown targets the SAME node. Defaults to `cloud` if the pin is missing.
+4. **Cloudflare TURN** minted per call via `mintIceServers()` (shared with
+   `/api/ice`) and returned as `iceServers` in the start/join response.
+5. **Webhook** (`verifyLkJwt`) validates the signature against EVERY region's
+   secret, so webhooks from any cluster authenticate.
 
 Because the worker uses **plain JWT + Twirp (no SDK)**, "switch a region to
-self-hosted" = point that region's 3 secrets at your server. Cloud stays wired as
-overflow/fallback indefinitely (cheap insurance).
+self-hosted" = add that region's 3 values to `LIVEKIT_REGIONS`. Cloud stays wired
+as overflow/fallback indefinitely (cheap insurance).
+
+**Remaining (small) follow-ups:**
+- **Client TURN wiring (optional):** the start/join response now carries
+  `iceServers`, but `conference_screen.dart` still calls `room.connect(url, token)`
+  without `ConnectOptions.rtcConfiguration`. For self-hosted clusters LiveKit
+  serves its own TURN (config.yaml §4/§5), so this is belt-and-suspenders; wire it
+  only if you want the client to force Cloudflare TURN directly.
+- **Stand up region #1**: deploy LiveKit + Upstash Redis + point its `turn:` at
+  Cloudflare Calls, then add its entry to `LIVEKIT_REGIONS`. Nothing else changes.
 
 ---
 
@@ -165,10 +184,12 @@ overflow/fallback indefinitely (cheap insurance).
 
 ## 8. Rollout order
 
-1. ✅ **Free → LiveKit Cloud (5 ppl, 60 min/day)** + rich telemetry — *this PR*.
-2. Stand up **region #1** (LiveKit + Upstash Redis + Cloudflare TURN); verify with
-   real app by pointing one region's secrets at it.
-3. Add region map + metadata-pinned routing in `issue()` (§6); `cloud` = default.
+1. ✅ **Free → LiveKit Cloud (5 ppl, 60 min/day)** + rich telemetry.
+2. ✅ **Region router** — `LIVEKIT_REGIONS` map + KV-pinned routing + Cloudflare
+   TURN minting + multi-region webhook verify (§6). `cloud` = default until you
+   add regions, so this is live and inert today.
+3. Stand up **region #1** (LiveKit + Upstash Redis + Cloudflare TURN), then add its
+   entry to `LIVEKIT_REGIONS`. Verify with the real app.
 4. Migrate paid traffic region-by-region off Cloud as each is verified.
 5. Bump free `conf_min` 60 → 180 when revenue supports it.
 6. Keep LiveKit Cloud configured as permanent overflow/fallback.

@@ -168,6 +168,15 @@ export interface Env {
   LIVEKIT_URL?: string;
   LIVEKIT_API_KEY?: string;
   LIVEKIT_API_SECRET?: string;
+  // Self-hosted multi-region SFU (Specs/AVA-SFU-SELFHOST-PLAYBOOK.md). A single
+  // JSON secret mapping region key → creds, e.g.
+  //   {"eu":{"url":"wss://eu.sfu.avatok.ai","key":"…","secret":"…"},
+  //    "us":{…},"ap":{…},"cloud":{…}}
+  // When unset/empty the worker synthesizes a single `cloud` region from the
+  // legacy LIVEKIT_URL/API_KEY/API_SECRET above (so nothing changes until you
+  // populate it). Adding a region = edit this one secret. `cloud` is always the
+  // default + fallback. Set via `wrangler secret put LIVEKIT_REGIONS`.
+  LIVEKIT_REGIONS?: string;
 
   // Ably realtime (iOS/Android messaging transport — Ably migration 2026-06-27).
   // ONE Ably API key, format "<keyName>:<keySecret>". Used to (a) mint short-lived
