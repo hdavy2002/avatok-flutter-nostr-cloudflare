@@ -27,13 +27,13 @@ const ghostCta =
 const primaryCta =
   'rounded-full border-zine border-ink bg-lime px-4 py-2 font-mono font-bold uppercase text-[12px] tracking-[0.06em] text-ink no-underline shadow-zine-xs hover:-translate-y-[1px] transition-transform duration-zine';
 
-// Primary nav — mirrors the old site (Live streaming · Marketplace · How it
-// works · Earnings · FAQ). The last three are landing-page anchors.
+// Primary nav — the three launch features plus pricing & FAQ. All are
+// landing-page anchors so they resolve to the home page sections from any route.
 const links: { href: string; label: string }[] = [
-  { href: '/marketplace?kind=live', label: 'Live streaming' },
-  { href: '/marketplace', label: 'Marketplace' },
-  { href: '/#how', label: 'How it works' },
-  { href: '/#earnings', label: 'Earnings' },
+  { href: '/#features', label: 'Features' },
+  { href: '/#receptionist', label: 'Receptionist' },
+  { href: '/#number', label: 'Number' },
+  { href: '/#messaging', label: 'Messaging' },
   { href: '/#faq', label: 'FAQ' },
 ];
 const linkClass =
