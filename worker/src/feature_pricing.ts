@@ -16,6 +16,7 @@ import type { Env } from "./types";
 import { json } from "./util";
 import { walletOp } from "./routes/wallet";
 import { readConfig } from "./routes/config";
+import { billingUidFor, bumpTeamAiMsgPool } from "./team_billing";
 
 export const FEATURE_COSTS: Record<string, number> = {
   ava_chat: 1,               // $0.01 — one Ava chat message (Workers-AI Gemma 4); floored to 1-coin min
@@ -49,10 +50,14 @@ export async function chargeFeature(
   // BETA PHASE: all services are free for everyone — never deduct coins. Flip
   // betaFreePremium off in KV to re-enable metering. (Lookup failure → charge as normal.)
   try { if ((await readConfig(env)).betaFreePremium) return { ok: true, charged: 0 }; } catch { /* meter normally */ }
-  const r = await walletOp(env, uid, {
+  // TEAM BILLING: if `uid` is on a Team plan, the spend leaves the TEAM wallet, not
+  // the member's. The op_id stays keyed to the member + action (audit shows WHO
+  // spent); only the payer changes. Non-members resolve to themselves (no-op).
+  const payer = await billingUidFor(env, uid).catch(() => uid);
+  const r = await walletOp(env, payer, {
     // allow_free: feature/AI costs may be paid with the daily FREE coins first
     // (then paid coins). Real marketplace spends omit this → paid-only.
-    op: "spend", uid, amount: cost, type: "spend", app_name: featureKey, op_id: opId, allow_free: true,
+    op: "spend", uid: payer, amount: cost, type: "spend", app_name: featureKey, op_id: opId, allow_free: true,
   });
   if (r.status === 402) return { ok: false, reason: "insufficient", balance: r.body?.balance };
   if (r.status !== 200) return { ok: false, reason: "error" };
@@ -73,15 +78,20 @@ export async function chargeFeature(
         id: `${opId}:fee`,
         ts: Date.now(),
         ledger: {
-          debit: `user:${uid}`,
+          debit: `user:${payer}`,
           credit: "platform:fees",
           type: "spend",
           ref: opId,
-          meta: JSON.stringify({ amount: paidUsed, feature: featureKey }),
+          // `member` records the originating staffer when the payer is a team wallet,
+          // so audit/recon can attribute team spend back to the actor.
+          meta: JSON.stringify({ amount: paidUsed, feature: featureKey, member: payer === uid ? undefined : uid }),
         },
       });
     } catch { /* best-effort; recon catches any missed row */ }
   }
+  // Team AI-message pool gauge: when a team wallet paid for an Ava chat message,
+  // tick the manager's monthly counter (display only; the wallet is the real gate).
+  if (payer !== uid && featureKey === "ava_chat") { try { await bumpTeamAiMsgPool(env, payer); } catch { /* gauge */ } }
   return { ok: true, charged: cost, balance: r.body?.balance };
 }
 

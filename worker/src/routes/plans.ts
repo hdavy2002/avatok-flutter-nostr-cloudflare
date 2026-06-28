@@ -18,6 +18,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { isFail, requireUser } from "../authz";
+import { teamTierOf } from "../team_billing";
 
 const KEY = "plan_config";
 
@@ -107,6 +108,25 @@ export function isTierId(n: unknown): n is TierId {
   return typeof n === "number" && (VALID_TIERS as number[]).includes(n);
 }
 
+// ── Team plan (Specs/TEAM-RECEPTIONIST-IVR-SPEC.md) ─────────────────────────
+// A Team is a separate billing UNIT (not a per-user tier): a manager subscribes,
+// adds staff, and ALL staff AvaTOK usage bills to the team wallet. Each staffer is
+// granted `memberTier` (Pro) for free while on the team. Calls (1:1 P2P) are
+// unlimited on every tier already, so "unlimited incoming/outgoing calls" is free;
+// the metered pools are receptionist minutes + AI messages, refreshed monthly.
+// Owner pricing 2026-06-28: $50/mo · unlimited calls · 1000 recept min · 3000 AI msgs.
+export const TEAM_PLAN = {
+  key: "team" as const,
+  name: "Team",
+  priceUsd: 50,
+  memberTier: 2 as TierId,        // staff get Pro entitlement while on the team
+  defaultSeatLimit: 5,
+  receptMinutesPerMonth: 1000,    // pooled AI-receptionist minutes/month (null would = unlimited)
+  aiMessagesPerMonth: 3000,       // pooled Ava AI messages/month
+  playProductId: "avatok_team_monthly",
+};
+
+
 /** The matrix actually served — KV `plan_config` overrides merge over DEFAULTS. */
 export async function readPlans(env: Env): Promise<Record<TierId, Plan>> {
   try {
@@ -162,9 +182,18 @@ export async function getSub(env: Env, uid: string): Promise<SubState> {
   }
 }
 
-/** Convenience: just the effective tier number (0 when none/free). */
+/** Convenience: just the effective tier number (0 when none/free).
+ *
+ * Team override: a staffer on a Team plan is entitled to the team's tier (Pro) for
+ * free while on the team. We return max(personalTier, teamTier) so membership only
+ * ever UPGRADES, never downgrades — and removing the member cleanly reverts them to
+ * whatever personal subscription they still hold (no destructive write needed). */
 export async function tierOf(env: Env, uid: string): Promise<TierId> {
-  return (await getSub(env, uid)).tier;
+  const own = (await getSub(env, uid)).tier;
+  let team = 0;
+  try { team = await teamTierOf(env, uid); } catch { /* fail-open to own tier */ }
+  const eff = Math.max(own, isTierId(team) ? team : 0);
+  return (isTierId(eff) ? eff : own) as TierId;
 }
 
 /** Upsert a user's subscription tier (called by the payment webhook / verifier). */
