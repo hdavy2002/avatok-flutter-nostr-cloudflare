@@ -18,17 +18,31 @@ export async function postCall(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, queued: true });
 }
 
-// POST /notify  { to: uid, title?, body?, data? }
+// POST /notify  { to: uid | uid[], fromName?, preview?, title?, body?, data? }
+// The chat client (push_service.notifyMessage) sends { to: [npub,...], fromName,
+// preview } — so we MUST forward fromName + preview (the consumer's buildPayload
+// reads them to render the WhatsApp-style sender + expandable message banner) and
+// fan out one push PER recipient. The old code dropped fromName/preview (banner
+// fell back to a bare "AvaTOK / New message") and String([a,b]) collapsed a group
+// into one bogus comma-joined uid, so group messages got no push at all. This
+// regressed once the Ably migration made /api/notify the sole offline-wake path
+// (the InboxDO append-push was skipped on mobile). Owner report 2026-06-28.
 export async function postNotify(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   if (!b.to) return json({ error: "to (uid) required" }, 400);
-  await env.Q_PUSH.send({
-    kind: "notify", to: String(b.to), from: ctx.uid,
-    title: b.title ?? null, body: b.body ?? null, data: b.data ?? null, ts: Date.now(),
-  });
-  return json({ ok: true, queued: true });
+  const recipients = (Array.isArray(b.to) ? b.to : [b.to])
+    .map((x: unknown) => String(x).trim())
+    .filter((x: string) => x.length > 0);
+  if (!recipients.length) return json({ error: "to (uid) required" }, 400);
+  const fromName = b.fromName ?? b.title ?? null;
+  const preview = b.preview ?? b.body ?? null;
+  await Promise.all(recipients.map((to: string) => env.Q_PUSH.send({
+    kind: "notify", to, from: ctx.uid,
+    fromName, preview, data: b.data ?? null, ts: Date.now(),
+  })));
+  return json({ ok: true, queued: recipients.length });
 }
 
 // POST /call-status  { to: uid, status: 'declined'|'missed'|'ended' }
