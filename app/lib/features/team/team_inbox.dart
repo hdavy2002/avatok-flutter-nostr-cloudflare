@@ -8,6 +8,7 @@ import '../../core/config.dart';
 import '../../core/team_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../avatok/call_screen.dart';
 
 /// TeamInboxScreen — the message cards from Ava-taken voicemails across the team.
 /// Spec: Specs/TEAM-RECEPTIONIST-IVR-SPEC.md. Each card: "Julie called from +1 302…
@@ -64,12 +65,23 @@ class _TeamInboxScreenState extends State<TeamInboxScreen> {
   }
 
   void _callBack(TeamMessage m) {
+    final title = m.callerName ?? (m.callerPhone != null ? '+${m.callerPhone}' : 'Caller');
+    // In-network caller → place a real 1:1 call (calls are keyed by uid). Stop any
+    // voicemail playback first so it doesn't bleed into the call screen.
+    if (m.callerUid != null && m.callerUid!.isNotEmpty) {
+      _player.stop();
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => CallScreen(
+          room: 'avatok-${m.callerUid}', title: title, seed: m.callerUid!,
+          video: false, outgoing: true, avatarUrl: ''),
+      ));
+      return;
+    }
+    // External / unknown caller (no in-network account) → copy the number to dial.
     final number = (m.callback?.isNotEmpty == true) ? m.callback! : (m.callerPhone ?? '');
     if (number.isEmpty) { _toast('No callback number'); return; }
     Clipboard.setData(ClipboardData(text: number));
-    _toast('Number copied — opening dialer for ${m.callerName ?? number}');
-    // Hand off to the AvaTOK dialer (deep link) so the call uses the normal 1:1 path.
-    Navigator.pop(context, {'call': number});
+    _toast('Number copied — $number');
   }
 
   void _toast(String s) => ScaffoldMessenger.of(context)

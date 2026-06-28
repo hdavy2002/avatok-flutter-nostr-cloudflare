@@ -336,13 +336,13 @@ export async function teamMessages(req: Request, env: Env): Promise<Response> {
   let rows: any[] = [];
   if (owned) {
     const r = await metaSession(env).prepare(
-      `SELECT id, owner_uid, caller_phone, caller_name, team_slot, summary_json, recording_url, duration_s, created_at
+      `SELECT id, owner_uid, caller_uid, caller_phone, caller_name, team_slot, summary_json, recording_url, duration_s, created_at
          FROM receptionist_sessions WHERE team_id=?1 AND status='ended' ORDER BY created_at DESC LIMIT ?2`,
     ).bind(owned.id, limit).all();
     rows = (r.results ?? []) as any[];
   } else {
     const r = await metaSession(env).prepare(
-      `SELECT id, owner_uid, caller_phone, caller_name, team_slot, summary_json, recording_url, duration_s, created_at
+      `SELECT id, owner_uid, caller_uid, caller_phone, caller_name, team_slot, summary_json, recording_url, duration_s, created_at
          FROM receptionist_sessions WHERE owner_uid=?1 AND team_id IS NOT NULL AND status='ended' ORDER BY created_at DESC LIMIT ?2`,
     ).bind(ctx.uid, limit).all();
     rows = (r.results ?? []) as any[];
@@ -351,7 +351,7 @@ export async function teamMessages(req: Request, env: Env): Promise<Response> {
     let summary: any = {};
     try { summary = r.summary_json ? JSON.parse(r.summary_json) : {}; } catch { /* ignore */ }
     return {
-      id: r.id, caller_phone: r.caller_phone, caller_name: r.caller_name || summary.caller_name || null,
+      id: r.id, caller_uid: r.caller_uid, caller_phone: r.caller_phone, caller_name: r.caller_name || summary.caller_name || null,
       slot: r.team_slot, message: summary.message || summary.reason || null,
       callback: summary.callback || null, urgency: summary.urgency || null,
       duration_s: r.duration_s, has_recording: !!r.recording_url, created_at: r.created_at,

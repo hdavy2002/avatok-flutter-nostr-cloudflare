@@ -96,6 +96,7 @@ class Team {
 /// A voicemail card (one ended receptionist session under the team).
 class TeamMessage {
   final String id;
+  final String? callerUid;
   final String? callerPhone;
   final String? callerName;
   final int? slot;
@@ -107,6 +108,7 @@ class TeamMessage {
   final int createdAt;
   const TeamMessage({
     required this.id,
+    required this.callerUid,
     required this.callerPhone,
     required this.callerName,
     required this.slot,
@@ -119,6 +121,7 @@ class TeamMessage {
   });
   factory TeamMessage.fromJson(Map<String, dynamic> j) => TeamMessage(
         id: (j['id'] ?? '').toString(),
+        callerUid: j['caller_uid']?.toString(),
         callerPhone: j['caller_phone']?.toString(),
         callerName: j['caller_name']?.toString(),
         slot: (j['slot'] as num?)?.toInt(),
