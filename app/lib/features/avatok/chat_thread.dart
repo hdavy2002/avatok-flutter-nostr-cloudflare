@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -105,6 +106,7 @@ class _Msg {
   final String? senderLabel; // group: who sent (null for mine / 1:1)
   String? reaction;
   Map<String, int> reactCounts = {}; // Phase 4: aggregate live reactions (emoji → count)
+  Map<String, Set<String>> reactBy = {}; // Phase 5: who reacted (emoji → set of uids) for the "reacted by" sheet
   ChatMedia? media;
   String mediaCaption; // caption shown UNDER the photo in the SAME bubble (WhatsApp-style)
   Uint8List? localBytes; // instant preview of self-sent media
@@ -187,6 +189,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   int _peerReadTs = 0;
   Timer? _typingClear;
   Timer? _myTypingOff;
+  // Phase 5: live clock — refreshes relative timestamps + day separators so
+  // "Today" rolls to "Yesterday" and "last seen" stays current without a reload.
+  Timer? _clockTimer;
+  // Phase 5: floating reaction pill (anchored to the bubble on long-press).
+  OverlayEntry? _reactionOverlay;
 
   // Reply / edit / star.
   _Msg? _replyTo;
@@ -281,6 +288,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    // Phase 5: tick a lightweight clock so relative timestamps, day separators
+    // and the "last seen" header stay live without the user reloading the thread.
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
     // Paid status — drives the paid-only @ava·#ava composer hint.
     MoneyApi.balance().then((b) {
       if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
@@ -612,9 +624,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final i = _msgs.indexWhere((m) => m.evId == e.targetSerial);
       if (i < 0) return;
       setState(() {
-        final c = _msgs[i].reactCounts;
+        final msg = _msgs[i];
+        final c = msg.reactCounts;
         c[e.emoji] = ((c[e.emoji] ?? 0) + (e.add ? 1 : -1)).clamp(0, 9999);
         if (c[e.emoji] == 0) c.remove(e.emoji);
+        // Phase 5: track WHO reacted so the "reacted by" sheet can name them.
+        final by = msg.reactBy.putIfAbsent(e.emoji, () => <String>{});
+        if (e.add) { by.add(e.who); } else { by.remove(e.who); }
+        if (by.isEmpty) msg.reactBy.remove(e.emoji);
       });
     }));
     // Ephemeral floating-emoji bursts from peers → animate.
@@ -1021,12 +1038,69 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  // Phase 5: realtime timestamps ─────────────────────────────────────────────
+  // A short relative age ("now", "2m", "1h") for very recent messages; older
+  // ones keep their fixed HH:MM. Recomputed on every clock tick so it stays live.
+  String _relTime(int epochSecs) {
+    if (epochSecs <= 0) return '';
+    final nowS = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final diff = nowS - epochSecs;
+    if (diff < 45) return 'now';
+    if (diff < 3600) return '${(diff / 60).floor()}m';
+    if (diff < 21600) return '${(diff / 3600).floor()}h'; // <6h → still feels "live"
+    return _fmtTime(epochSecs); // older → fixed clock time
+  }
+
+  // A day-separator label: Today / Yesterday / weekday (this week) / d Mon.
+  String _dayLabel(int epochSecs) {
+    final d = DateTime.fromMillisecondsSinceEpoch(epochSecs * 1000);
+    final now = DateTime.now();
+    final day = DateTime(d.year, d.month, d.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final delta = today.difference(day).inDays;
+    if (delta == 0) return 'Today';
+    if (delta == 1) return 'Yesterday';
+    const wk = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (delta < 7) return wk[d.weekday - 1];
+    final y = d.year == now.year ? '' : ' ${d.year}';
+    return '${d.day} ${mo[d.month - 1]}$y';
+  }
+
+  bool _sameDay(int a, int b) {
+    if (a == 0 || b == 0) return true; // demo/unknown ts → no separator
+    final da = DateTime.fromMillisecondsSinceEpoch(a * 1000);
+    final db = DateTime.fromMillisecondsSinceEpoch(b * 1000);
+    return da.year == db.year && da.month == db.month && da.day == db.day;
+  }
+
+  // A centered "Today / Yesterday / date" chip rendered between day groups.
+  Widget _daySeparator(String label) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Zine.card,
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(color: Zine.ink, width: 1.5),
+              boxShadow: Zine.shadowXs,
+            ),
+            child: Text(label.toUpperCase(),
+                style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+          ),
+        ),
+      );
+
   final List<_Msg> _msgs = [];
 
   @override
   void dispose() {
     _localAvaSub?.cancel();
     _avaStreamSub?.cancel();
+    _clockTimer?.cancel();              // Phase 5: live clock
+    _reactionOverlay?.remove();        // Phase 5: tear down a floating reaction pill if open
+    _reactionOverlay = null;
     for (final s in _ablySubs) { s.cancel(); } // Phase 4: reactions/bursts/occupancy
     _scroll.removeListener(_onScrollForHistory);
     _ctrl.dispose();
@@ -3148,6 +3222,129 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _msgHasImage(_Msg m) =>
       m.media?.kind == MediaKind.image || _imageRefOf(m).isNotEmpty;
 
+  // ---- Phase 5: floating reaction pill (anchored to the bubble) ----
+  void _closeReactionOverlay() {
+    _reactionOverlay?.remove();
+    _reactionOverlay = null;
+  }
+
+  // Long-press / right-click a bubble → a floating emoji pill + compact action
+  // menu anchored to the touch point (iMessage / WhatsApp style), instead of a
+  // bottom sheet. "+" opens the full emoji picker; "More…" opens the full menu.
+  void _onBubbleLongPressAt(_Msg m, Offset pos) {
+    HapticFeedback.mediumImpact();
+    Analytics.capture('chat_reaction_pill_open', {'group': widget.chat.group});
+    _closeReactionOverlay();
+    final size = MediaQuery.of(context).size;
+    const pillW = 312.0;
+    final left = pos.dx.clamp(12.0, math.max(12.0, size.width - pillW - 12.0)).toDouble();
+    final top = (pos.dy - 64).clamp(90.0, math.max(90.0, size.height - 360.0)).toDouble();
+    const quick = ['❤️', '👍', '😂', '😮', '😢', '👏'];
+    final hasImage = _msgHasImage(m);
+
+    Widget pillBtn(Widget child, VoidCallback onTap) => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: child,
+          ),
+        );
+
+    Widget menuRow(IconData icon, String label, VoidCallback onTap, {bool danger = false}) =>
+        InkWell(
+          onTap: () { _closeReactionOverlay(); onTap(); },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            child: Row(children: [
+              Icon(icon, size: 18, color: danger ? Zine.coral : Zine.ink),
+              const SizedBox(width: 12),
+              Text(label, style: ZineText.value(size: 14.5, color: danger ? Zine.coral : Zine.ink)),
+            ]),
+          ),
+        );
+
+    _reactionOverlay = OverlayEntry(builder: (octx) => Stack(children: [
+          // Tap anywhere to dismiss.
+          Positioned.fill(child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _closeReactionOverlay,
+            child: Container(color: Colors.black.withOpacity(0.05)),
+          )),
+          Positioned(
+            left: left, top: top, width: pillW,
+            child: Material(
+              color: Colors.transparent,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                // Floating emoji pill.
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Zine.paper,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: Zine.ink, width: 2),
+                    boxShadow: Zine.shadowXs,
+                  ),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    for (final e in quick)
+                      pillBtn(
+                        Text(e, style: TextStyle(fontSize: m.reaction == e ? 30 : 26)),
+                        () { _closeReactionOverlay(); _react(m, e); },
+                      ),
+                    // "+" → full emoji picker.
+                    pillBtn(
+                      Container(
+                        width: 30, height: 30, alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Zine.card, shape: BoxShape.circle,
+                          border: Border.all(color: Zine.ink, width: 1.5)),
+                        child: PhosphorIcon(PhosphorIcons.plus(PhosphorIconsStyle.bold), size: 15, color: Zine.ink),
+                      ),
+                      () async {
+                        _closeReactionOverlay();
+                        final picked = await _openEmojiPicker();
+                        if (picked != null) {
+                          Analytics.capture('chat_react_custom_emoji', {'emoji': picked});
+                          _react(m, picked);
+                        }
+                      },
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 8),
+                // Compact action menu.
+                Container(
+                  decoration: BoxDecoration(
+                    color: Zine.paper,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Zine.ink, width: 2),
+                    boxShadow: Zine.shadowXs,
+                  ),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    menuRow(PhosphorIcons.arrowBendUpLeft(PhosphorIconsStyle.bold), 'Reply',
+                        () => setState(() => _replyTo = m)),
+                    if (m.text.trim().isNotEmpty && m.special != 'ava_status')
+                      menuRow(PhosphorIcons.copy(PhosphorIconsStyle.bold),
+                          m.media != null ? 'Copy caption' : 'Copy text', () => _copyText(m)),
+                    if (hasImage)
+                      menuRow(PhosphorIcons.image(PhosphorIconsStyle.bold), 'Copy image',
+                          () => _copyImageFromMsg(m)),
+                    menuRow(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
+                    menuRow(PhosphorIcons.star(m.starred ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
+                        m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
+                    if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
+                      menuRow(PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', () => _startEdit(m)),
+                    menuRow(PhosphorIcons.dotsThree(PhosphorIconsStyle.bold), 'More…',
+                        () => _onBubbleLongPress(m)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+        ]));
+    Overlay.of(context).insert(_reactionOverlay!);
+  }
+
   // ---- bubble long-press actions ----
   void _onBubbleLongPress(_Msg m) {
     HapticFeedback.mediumImpact();
@@ -3326,15 +3523,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _react(_Msg m, String emoji) {
     final adding = m.reaction != emoji;
     final prev = m.reaction;
+    final myUidTag = _meId?.uid ?? 'me';
     setState(() {
       // Maintain MY single reaction + the aggregate count shown on the bubble.
       if (prev != null) { // remove my previous emoji from the tally
         m.reactCounts[prev] = ((m.reactCounts[prev] ?? 1) - 1).clamp(0, 9999);
         if (m.reactCounts[prev] == 0) m.reactCounts.remove(prev);
+        m.reactBy[prev]?.remove(myUidTag);
+        if (m.reactBy[prev]?.isEmpty ?? false) m.reactBy.remove(prev);
       }
       m.reaction = adding ? emoji : null;
-      if (adding) m.reactCounts[emoji] = (m.reactCounts[emoji] ?? 0) + 1;
+      if (adding) {
+        m.reactCounts[emoji] = (m.reactCounts[emoji] ?? 0) + 1;
+        m.reactBy.putIfAbsent(emoji, () => <String>{}).add(myUidTag);
+      }
     });
+    Analytics.capture('chat_reaction', {'emoji': emoji, 'op': adding ? 'add' : 'remove'});
     HapticFeedback.lightImpact();
     if (adding) {
       final file = _reactionSounds[emoji];
@@ -3352,6 +3556,102 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       }
       t.sendReaction(_convKey!, myUid, m.evId!, emoji, add: adding);
     }
+  }
+
+  // Phase 5: a curated, categorized emoji picker. Returns the chosen emoji (or
+  // null). Kept package-free (a scrollable grid of common emoji) so it builds in
+  // CI without a new dependency.
+  static const Map<String, List<String>> _emojiCatalog = {
+    'Smileys': ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','😢','😭','😡','🥺','🤔','😴','🤯','😱','🥳','😅','😉','🙃','😇','🤗','🤭','😬','🙄','😏','😌','🤤','🤪'],
+    'Gestures': ['👍','👎','👏','🙏','🤝','💪','👊','✊','🤞','✌️','🤟','🤙','👌','🖐️','✋','👋','🫶','🫰','👇','👆'],
+    'Hearts': ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','❤️‍🔥'],
+    'Fun': ['🔥','🎉','🎊','✨','⭐','🌟','💯','🚀','🏆','🎈','🎁','💎','👑','💥','💫','🌈','☀️','⚡','🍾','🥂'],
+    'Animals': ['🐶','🐱','🦄','🐼','🦁','🐯','🐸','🐵','🐧','🐢','🦋','🐝','🐬','🐳','🦊','🐰','🐨','🐮','🐷','🐙'],
+    'Food': ['🍕','🍔','🍟','🌮','🍣','🍦','🍩','🍪','🎂','🍰','🍫','🍿','☕','🍺','🍷','🥤','🍓','🍉','🍌','🥑'],
+  };
+
+  Future<String?> _openEmojiPicker() {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Zine.paper,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.6),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+              child: Align(alignment: Alignment.centerLeft,
+                  child: Text('React with…', style: ZineText.value(size: 15))),
+            ),
+            Flexible(
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 12),
+                children: [
+                  for (final cat in _emojiCatalog.entries) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                      child: Align(alignment: Alignment.centerLeft,
+                          child: Text(cat.key.toUpperCase(), style: ZineText.tag(size: 10, color: Zine.inkSoft))),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Wrap(children: [
+                        for (final e in cat.value)
+                          GestureDetector(
+                            onTap: () => Navigator.pop(ctx, e),
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Text(e, style: const TextStyle(fontSize: 28)),
+                            ),
+                          ),
+                      ]),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // Resolve a reactor uid to a friendly name. Mine → "You"; a 1:1 peer → the
+  // chat name; otherwise a short uid tail (group sender names aren't keyed here).
+  String _reactorName(String uid) {
+    if (uid == (_meId?.uid ?? 'me')) return 'You';
+    if (!widget.chat.group) return widget.chat.name;
+    return uid.length > 6 ? '…${uid.substring(uid.length - 6)}' : uid;
+  }
+
+  // Phase 5: "reacted by" — long-press a reaction chip to see who reacted.
+  void _showReactedBy(_Msg m) {
+    if (m.reactBy.isEmpty) return;
+    Analytics.capture('chat_reacted_by_view', {'kinds': m.reactBy.length});
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Align(alignment: Alignment.centerLeft,
+                child: Text('Reactions', style: ZineText.value(size: 15))),
+          ),
+          for (final e in m.reactBy.entries)
+            for (final uid in e.value)
+              ListTile(
+                dense: true,
+                leading: Text(e.key, style: const TextStyle(fontSize: 22)),
+                title: Text(_reactorName(uid), style: ZineText.value(size: 14, color: Zine.ink)),
+              ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
   }
 
   // Save a chat media file into the user's OWN AvaTOK Google Drive folder
@@ -4031,7 +4331,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   itemCount: visible.length,
-                  itemBuilder: (c, i) => _bubble(visible[i]),
+                  itemBuilder: (c, i) {
+                    final m = visible[i];
+                    // Phase 5: insert a "Today / Yesterday / date" separator above
+                    // the first message of each new calendar day.
+                    final needsSep = m.ts != 0 &&
+                        (i == 0 || !_sameDay(visible[i - 1].ts, m.ts));
+                    if (!needsSep) return _bubble(m);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [_daySeparator(_dayLabel(m.ts)), _bubble(m)],
+                    );
+                  },
                 );
               }),
               ),
@@ -5134,7 +5445,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final toAva = m.me && m.aiLocal;
     final onRight = m.me && !isAva;
     final core = GestureDetector(
-        onLongPress: () => _onBubbleLongPress(m),
+        // Phase 5: long-press / right-click → floating reaction pill anchored at
+        // the touch point. Double-tap → quick ❤️ (toggle), like iMessage.
+        onLongPressStart: (d) => _onBubbleLongPressAt(m, d.globalPosition),
+        // Double-tap → quick ❤️ (toggle). Disabled on media bubbles so the
+        // single-tap "open image/video" stays instant (no double-tap wait).
+        onDoubleTap: hasMedia
+            ? null
+            : () {
+                Analytics.capture('chat_react_doubletap', const <String, Object>{});
+                _react(m, '❤️');
+              },
         child: Column(
           crossAxisAlignment: onRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
@@ -5264,8 +5585,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       if (m.edited) ...[
                         Text('EDITED ', style: ZineText.tag(size: 9, color: Zine.inkMute)),
                       ],
-                      // Mono timestamp (10px).
-                      Text(m.time, style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                      // Mono timestamp (10px) — Phase 5: live relative age for
+                      // recent messages ("now"/"2m"/"1h"), fixed HH:MM for older.
+                      Text(m.ts != 0 ? _relTime(m.ts) : m.time,
+                          style: ZineText.tag(size: 10, color: Zine.inkSoft)),
                       if (m.expireAt != null) ...[
                         const SizedBox(width: 4),
                         PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 11, color: Zine.inkSoft),
@@ -5318,6 +5641,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   for (final e in m.reactCounts.entries)
                     GestureDetector(
                       onTap: () => _react(m, e.key),
+                      onLongPress: () => _showReactedBy(m), // Phase 5: who reacted
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
