@@ -474,7 +474,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final names = <String, String>{};
       for (final c in contacts) { final h = NostrKeys.npubToHex(c.npub); if (h != null) names[h] = c.name; }
       if (_meId != null) names[_meId!.uid] = 'You';
-      if (mounted) setState(() => _memberNames = names);
+      // Merge (don't replace): keep any names already learned from early
+      // live reactions / messages (keyed by uid) — Phase 5.
+      if (mounted) setState(() => _memberNames.addAll(names));
     }
   }
 
@@ -663,6 +665,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Live per-message reactions from peers → bump the aggregate count on the bubble.
     _ablySubs.add(t.reactions.listen((e) {
       if (e.convKey != ck) return;
+      // Phase 5: learn the reactor's name from the live frame so the "reacted by"
+      // sheet can name them even if they've never sent a message in this thread.
+      if (e.whoName.isNotEmpty && e.who.isNotEmpty && _memberNames[e.who] != e.whoName) {
+        _memberNames[e.who] = e.whoName;
+      }
       final i = _msgs.indexWhere((m) => m.evId == e.targetSerial);
       if (i < 0) return;
       setState(() {
@@ -789,6 +796,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       return;
     }
     final env2 = jsonDecode(m.payload) as Map;
+    // Phase 5: learn this member's display name from the message (carried as
+    // `fromName`), keyed by their uid — so bubbles AND the "reacted by" sheet can
+    // show a real name instead of a short id.
+    final fromName = (env2['fromName'] ?? '').toString().trim();
+    if (!m.mine && fromName.isNotEmpty && m.senderPub.isNotEmpty &&
+        _memberNames[m.senderPub] != fromName) {
+      _memberNames[m.senderPub] = fromName;
+    }
     final exp = (env2['exp'] as num?)?.toInt();
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return; // already gone
     // Safety net: any control envelope (del/gdel/receipt/…) that reached here
@@ -810,7 +825,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ts: m.createdAt, evId: m.rumorId, media: media, replyTo: replyMeta,
           forwarded: env2['forwarded'] == true, expireAt: exp, special: special, extra: extra,
           starred: _starred.contains(m.rumorId), hidden: _hiddenIds[m.rumorId] == true,
-          senderLabel: m.mine ? null : _shortPub(m.senderPub)));
+          senderLabel: _groupLabelFor(m.senderPub, mine: m.mine)));
       _noteGuardianFlag(special, extra);
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
@@ -825,6 +840,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   String _shortPub(String hex) => hex.length > 8 ? '${hex.substring(0, 6)}…' : hex;
+
+  // Phase 5: my display name, stamped onto outgoing group messages + reactions so
+  // peers can show "Reacted by <name>" and a real sender label (not a short id).
+  String get _fromNameTag =>
+      (_myName != null && _myName!.trim().isNotEmpty) ? _myName!.trim() : 'Member';
+
+  // Resolve a sender/reactor uid to a friendly group label: my uid → "You", a
+  // learned name (from a message or reaction that carried fromName) → that name,
+  // else a short id. Empty uid → null (no label).
+  String? _groupLabelFor(String uid, {bool mine = false}) {
+    if (mine) return null;
+    if (uid.isEmpty) return null;
+    return _memberNames[uid] ?? _shortPub(uid);
+  }
 
   // The relay accepted/rejected one of our sends → flag the bubble accordingly.
   // ok=true means the event is now ON THE RELAY ("sent" / 1 tick); delivery and
@@ -1429,7 +1458,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
     if (_isGroup && _gdm != null) {
       final id = _gdm!.send(jsonEncode({
-        't': 'gtext', 'gid': _group!.id, 'body': t,
+        't': 'gtext', 'gid': _group!.id, 'body': t, 'fromName': _fromNameTag,
         if (replyMeta != null) 'replyTo': replyMeta, if (expire != null) 'exp': expire,
       }));
       _seenEv.add(id);
@@ -1768,7 +1797,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _sendSpecial(String type, Map<String, dynamic> data, String caption) {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final payload = {'t': type, ...data, if (_isGroup) 'gid': _group!.id};
+    final payload = {'t': type, ...data, if (_isGroup) ...{'gid': _group!.id, 'fromName': _fromNameTag}};
     String id;
     if (_isGroup && _gdm != null) {
       id = _gdm!.send(jsonEncode(payload));
@@ -2669,7 +2698,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final keyShort = m.id.length > 12 ? m.id.substring(m.id.length - 8) : m.id;
       // Deliver the media reference + key inside an encrypted DM / group fan-out.
       if (_isGroup && _gdm != null) {
-        final id = _gdm!.send(jsonEncode({...m.toEnvelope(), 't': 'gmedia', 'gid': _group!.id}));
+        final id = _gdm!.send(jsonEncode({...m.toEnvelope(), 't': 'gmedia', 'gid': _group!.id, 'fromName': _fromNameTag}));
         msg.evId = id;
         _seenEv.add(id);
         AvaLog.I.log('media', 'sent gmedia kind=${kind.name} ${bytes.length}B key=…$keyShort rumor=${id.length >= 8 ? id.substring(0, 8) : id}');
@@ -3594,9 +3623,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final myUid = _meId?.uid;
     if (t != null && myUid != null && _convKey != null && m.evId != null) {
       if (prev != null && prev != emoji) {
-        t.sendReaction(_convKey!, myUid, m.evId!, prev, add: false); // retract the old one
+        t.sendReaction(_convKey!, myUid, m.evId!, prev, add: false, whoName: _fromNameTag); // retract the old one
       }
-      t.sendReaction(_convKey!, myUid, m.evId!, emoji, add: adding);
+      t.sendReaction(_convKey!, myUid, m.evId!, emoji, add: adding, whoName: _fromNameTag);
     }
   }
 
@@ -3660,12 +3689,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
-  // Resolve a reactor uid to a friendly name. Mine → "You"; a 1:1 peer → the
-  // chat name; otherwise a short uid tail (group sender names aren't keyed here).
+  // Resolve a reactor uid to a friendly name. Mine → "You"; a learned group
+  // member name (from a message or reaction that carried fromName) → that name;
+  // a 1:1 peer → the chat name; otherwise a short id.
   String _reactorName(String uid) {
-    if (uid == (_meId?.uid ?? 'me')) return 'You';
+    if (uid == (_meId?.uid ?? 'me') || uid == 'me') return 'You';
+    final known = _memberNames[uid];
+    if (known != null && known.isNotEmpty && known != 'You') return known;
     if (!widget.chat.group) return widget.chat.name;
-    return uid.length > 6 ? '…${uid.substring(uid.length - 6)}' : uid;
+    return _shortPub(uid);
   }
 
   // Phase 5: "reacted by" — long-press a reaction chip to see who reacted.

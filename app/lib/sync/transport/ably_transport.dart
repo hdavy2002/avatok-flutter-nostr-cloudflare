@@ -209,6 +209,7 @@ class AblyTransport extends AvaTransport {
         (m.clientId ?? data['who'] ?? '').toString(),
         (data['emoji'] ?? '').toString(),
         data['add'] != false,
+        (data['who_name'] ?? '').toString(), // Phase 5: name the reactor
       ));
     } catch (e) { AvaLog.I.log('ably', 'onReaction err: $e'); }
   }
@@ -400,18 +401,21 @@ class AblyTransport extends AvaTransport {
   // ── Phase 4: reactions · bursts · occupancy (live overrides) ───────────────
   @override
   Future<void> sendReaction(String convKey, String myUid, String targetSerial,
-      String emoji, {bool add = true}) async {
+      String emoji, {bool add = true, String whoName = ''}) async {
     // Publish live to react:<conv> for instant peer feedback…
     final sc = serverConvFromKey(convKey, myUid);
     final rt = _realtime;
     if (sc != null && rt != null) {
       try {
         rt.channels.get(ablyReactChannel(sc)).publish(
-            name: 'react', data: jsonEncode({'target': targetSerial, 'emoji': emoji, 'add': add}));
+            name: 'react', data: jsonEncode({
+              'target': targetSerial, 'emoji': emoji, 'add': add,
+              if (whoName.isNotEmpty) 'who_name': whoName, // Phase 5: name the reactor
+            }));
       } catch (_) {}
     }
     // …then persist durably via the worker (base implementation).
-    await super.sendReaction(convKey, myUid, targetSerial, emoji, add: add);
+    await super.sendReaction(convKey, myUid, targetSerial, emoji, add: add, whoName: whoName);
   }
 
   @override

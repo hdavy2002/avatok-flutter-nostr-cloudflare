@@ -121,7 +121,10 @@ abstract class AvaTransport {
   /// Toggle a per-message reaction. Persists via the worker (durable summary);
   /// AblyTransport ALSO publishes it live to the react:<conv> channel.
   Future<void> sendReaction(String convKey, String myUid, String targetSerial,
-      String emoji, {bool add = true}) async {
+      String emoji, {bool add = true, String whoName = ''}) async {
+    // whoName is a display-name hint carried only on the LIVE Ably frame
+    // (AblyTransport) so peers can name the reactor; the durable worker summary
+    // doesn't need it. The base persists without it.
     final conv = serverConvFromKey(convKey, myUid);
     if (conv == null) return;
     try {
@@ -156,7 +159,9 @@ class ReactionEvent {
   final String who;          // reactor uid
   final String emoji;
   final bool add;            // true = added, false = removed
-  const ReactionEvent(this.convKey, this.targetSerial, this.who, this.emoji, this.add);
+  final String whoName;      // reactor display name (live hint; '' if unknown)
+  const ReactionEvent(this.convKey, this.targetSerial, this.who, this.emoji, this.add,
+      [this.whoName = '']);
 }
 
 /// An ephemeral floating-emoji burst (not persisted).
