@@ -299,13 +299,78 @@ class _CallScreenState extends State<CallScreen> {
     _ice = await IceCache.get();
   }
 
+  /// FREE LAUNCH §2: tune the Opus encoder on the LOCAL SDP for voice — in-band
+  /// FEC (packet-loss resilience), DTX (silence suppression → less bandwidth on
+  /// a 1:1 call), and a ~40 kbps average-bitrate cap (the voice sweet spot,
+  /// 32–48 kbps band). Only the opus `a=fmtp` line is rewritten; video m-lines
+  /// and everything else are untouched. Safe no-op when no opus payload exists.
+  static String _tuneOpusSdp(String? sdp) {
+    if (sdp == null || sdp.isEmpty) return sdp ?? '';
+    final pts = RegExp(r'a=rtpmap:(\d+) opus/', caseSensitive: false)
+        .allMatches(sdp)
+        .map((m) => m.group(1)!)
+        .toSet();
+    if (pts.isEmpty) return sdp;
+    const want = <String, String>{
+      'useinbandfec': '1',
+      'usedtx': '1',
+      'maxaveragebitrate': '40000',
+      'stereo': '0',
+    };
+    final lines = sdp.split(RegExp(r'\r\n|\n'));
+    for (var i = 0; i < lines.length; i++) {
+      for (final pt in pts) {
+        final prefix = 'a=fmtp:$pt ';
+        if (!lines[i].startsWith(prefix)) continue;
+        final params = <String, String>{};
+        for (final kv in lines[i].substring(prefix.length).split(';')) {
+          final t = kv.trim();
+          if (t.isEmpty) continue;
+          final eq = t.indexOf('=');
+          if (eq < 0) {
+            params[t] = '';
+          } else {
+            params[t.substring(0, eq)] = t.substring(eq + 1);
+          }
+        }
+        params.addAll(want);
+        lines[i] = prefix +
+            params.entries
+                .map((e) => e.value.isEmpty ? e.key : '${e.key}=${e.value}')
+                .join(';');
+      }
+    }
+    return lines.join('\r\n');
+  }
+
+  /// Apply the Opus tuning to a freshly created offer/answer before it becomes
+  /// our local description (and is signalled to the peer).
+  RTCSessionDescription _tuned(RTCSessionDescription d) =>
+      RTCSessionDescription(_tuneOpusSdp(d.sdp), d.type);
+
   Future<void> _start() async {
     await _local.initialize();
     await _remote.initialize();
     await _fetchIce();
     try {
+      // FREE LAUNCH audio quality (Specs/FREE-LAUNCH-DIRECTION.md §2): explicit
+      // capture DSP — echo cancellation + noise suppression + auto gain — instead
+      // of bare `audio: true`. Both the W3C keys and the legacy goog* mandatory
+      // keys are sent so the chain is on across WebRTC backends. Opus FEC/DTX/
+      // bitrate are applied separately via _tuneOpusSdp() on the local SDP.
       _stream = await navigator.mediaDevices.getUserMedia({
-        'audio': true,
+        'audio': {
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+          'mandatory': {
+            'googEchoCancellation': true,
+            'googNoiseSuppression': true,
+            'googAutoGainControl': true,
+            'googHighpassFilter': true,
+          },
+          'optional': [],
+        },
         'video': widget.video ? {'facingMode': 'user'} : false,
       });
     } catch (e) {
@@ -365,7 +430,7 @@ class _CallScreenState extends State<CallScreen> {
       _remoteSet = false;
       _pendingCandidates.clear();
       final pc = await _newPC(forceRelay: true);
-      final offer = await pc.createOffer();
+      final offer = _tuned(await pc.createOffer());
       await pc.setLocalDescription(offer);
       _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
     } catch (_) {/* the ring/fail timers still bound the attempt */}
@@ -501,7 +566,7 @@ class _CallScreenState extends State<CallScreen> {
     _telemetry.onIceRestart();
     try {
       _ice = await IceCache.get(); // fresh short-lived TURN creds
-      final offer = await pc.createOffer({'iceRestart': true});
+      final offer = _tuned(await pc.createOffer({'iceRestart': true}));
       await pc.setLocalDescription(offer);
       _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
     } catch (_) {/* transport may already be gone; the fail timer decides */}
@@ -549,7 +614,7 @@ class _CallScreenState extends State<CallScreen> {
             await _tryIceRestart('ws-reconnect');
           } else {
             final pc = await _newPC();
-            final offer = await pc.createOffer();
+            final offer = _tuned(await pc.createOffer());
             await pc.setLocalDescription(offer);
             _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
           }
@@ -560,7 +625,7 @@ class _CallScreenState extends State<CallScreen> {
         final pc = _pc ?? await _newPC();
         await pc.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
         await _flushCandidates();
-        final ans = await pc.createAnswer();
+        final ans = _tuned(await pc.createAnswer());
         await pc.setLocalDescription(ans);
         _send({'type': 'answer', 'to': _remoteId, 'sdp': ans.toMap()});
         break;
@@ -687,7 +752,7 @@ class _CallScreenState extends State<CallScreen> {
       // over the still-open signaling socket; the peer answers on its existing
       // PeerConnection and the video starts flowing.
       if (!_ended && _pc != null && _remoteId != null) {
-        final offer = await _pc!.createOffer();
+        final offer = _tuned(await _pc!.createOffer());
         await _pc!.setLocalDescription(offer);
         _send({'type': 'offer', 'to': _remoteId, 'sdp': offer.toMap()});
         Analytics.capture('call_video_upgraded', {'call_id': widget.room});
