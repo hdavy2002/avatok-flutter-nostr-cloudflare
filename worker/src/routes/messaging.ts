@@ -398,6 +398,16 @@ export async function readMsg(req: Request, env: Env): Promise<Response> {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ conv: String(b.conv), read_ts: Number(b.read_ts) || 0 }),
   });
+  // Phase 5 (ABLY-R2-5): mirror read position to D1 (dark, MSG_STATE_STORE=d1) so
+  // the InboxDO can eventually stop holding owner-private state.
+  if (env.MSG_STATE_STORE === "d1") {
+    try {
+      await env.DB_META.prepare(
+        `INSERT INTO msg_read_state (uid, conv, read_ts) VALUES (?1, ?2, ?3)
+         ON CONFLICT(uid, conv) DO UPDATE SET read_ts=MAX(read_ts, excluded.read_ts)`,
+      ).bind(ctx.uid, String(b.conv), Number(b.read_ts) || 0).run();
+    } catch { /* best-effort; InboxDO remains the source until cutover */ }
+  }
   return json({ ok: true });
 }
 
@@ -416,6 +426,15 @@ export async function hideMsg(req: Request, env: Env): Promise<Response> {
     body: JSON.stringify({ conv: String(b.conv), target: String(b.target), hidden: b.hidden === true }),
   });
   const live = await hideRes.json().then((r: any) => r?.live === true).catch(() => false);
+  // Phase 5 (ABLY-R2-5): mirror the hide/Undo to D1 (dark, MSG_STATE_STORE=d1).
+  if (env.MSG_STATE_STORE === "d1") {
+    try {
+      await env.DB_META.prepare(
+        `INSERT INTO msg_hidden (uid, target, hidden, updated_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(uid, target) DO UPDATE SET hidden=excluded.hidden, updated_at=excluded.updated_at`,
+      ).bind(ctx.uid, String(b.target), b.hidden === true ? 1 : 0, Date.now()).run();
+    } catch { /* best-effort */ }
+  }
   // Multi-device parity with the call log: the DO already broadcast a live 'hide'
   // frame to my OPEN sockets; ALSO enqueue a SILENT high-priority FCM wake so my
   // ASLEEP/killed devices hide/un-hide in realtime instead of on their next sync
@@ -436,6 +455,26 @@ export async function hideMsg(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// ---- GET /api/msg/state -----------------------------------------------------
+// Phase 5 (ABLY-R2-5): the owner's private state from D1 (read positions, hidden
+// flags, call log). The client uses this to restore unread + deletions + calls on
+// a fresh device once cut over from the InboxDO. Dark until MSG_STATE_STORE=d1.
+export async function stateMsg(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if (env.MSG_STATE_STORE !== "d1") return json({ read: [], hidden: [], calls: [] });
+  try {
+    const [read, hidden, calls] = await Promise.all([
+      env.DB_META.prepare("SELECT conv, read_ts FROM msg_read_state WHERE uid=?1").bind(ctx.uid).all(),
+      env.DB_META.prepare("SELECT target, hidden FROM msg_hidden WHERE uid=?1 AND hidden=1").bind(ctx.uid).all(),
+      env.DB_META.prepare("SELECT entry_id, name, seed, video, dir, ts FROM call_log_d1 WHERE uid=?1 ORDER BY ts DESC LIMIT 500").bind(ctx.uid).all(),
+    ]);
+    return json({ read: read.results ?? [], hidden: hidden.results ?? [], calls: calls.results ?? [] });
+  } catch (e) {
+    return json({ error: "state read failed", detail: String(e).slice(0, 200) }, 500);
+  }
+}
+
 // ---- call log (owner multi-device sync) -------------------------------------
 // The call history lives in the caller's OWN InboxDO (same model as /read + /hide:
 // the owner's private, multi-device state). A change on any device fans out live
@@ -450,6 +489,25 @@ async function callOp(env: Env, uid: string, op: string, body: Record<string, un
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+  // Phase 5 (ABLY-R2-5): mirror the call log to D1 (dark, MSG_STATE_STORE=d1).
+  if (env.MSG_STATE_STORE === "d1") {
+    try {
+      if (op === "append") {
+        await env.DB_META.prepare(
+          `INSERT INTO call_log_d1 (uid, entry_id, name, seed, video, dir, ts)
+           VALUES (?1,?2,?3,?4,?5,?6,?7)
+           ON CONFLICT(uid, entry_id) DO UPDATE SET name=excluded.name, seed=excluded.seed,
+             video=excluded.video, dir=excluded.dir, ts=excluded.ts`,
+        ).bind(uid, String(body.entry_id ?? ""), (body.name ?? "") as string, (body.seed ?? "") as string,
+          body.video === true ? 1 : 0, String(body.dir ?? "outgoing"), Number(body.ts) || 0).run();
+      } else if (op === "delete") {
+        await env.DB_META.prepare("DELETE FROM call_log_d1 WHERE uid=?1 AND entry_id=?2")
+          .bind(uid, String(body.entry_id ?? "")).run();
+      } else if (op === "clear") {
+        await env.DB_META.prepare("DELETE FROM call_log_d1 WHERE uid=?1").bind(uid).run();
+      }
+    } catch { /* best-effort */ }
+  }
   try { return (await res.json()) as { live: boolean }; } catch { return { live: false }; }
 }
 

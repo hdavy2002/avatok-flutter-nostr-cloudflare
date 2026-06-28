@@ -31,7 +31,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
-import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, convList, convCreate, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList } from "./routes/archive";
 import { ablyToken } from "./routes/ably";
 import { getConfig, putConfig } from "./routes/config";
@@ -231,6 +231,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/hide" && req.method === "POST") return await hideMsg(req, env);
       // Phase 4 (ABLY-R2-4): persist a per-message reaction (live ride is Ably).
       if (p === "/api/msg/react" && req.method === "POST") return await reactMsg(req, env);
+      // Phase 5 (ABLY-R2-5): owner-private state from D1 (read/hidden/call-log).
+      if (p === "/api/msg/state" && req.method === "GET") return await stateMsg(req, env);
       // Ably realtime: mint a short-lived, clientId-pinned, room-scoped Ably JWT
       // (iOS/Android transport — Ably migration). Clerk-JWT auth, no API key on device.
       if (p === "/api/ably/token" && req.method === "POST") return await ablyToken(req, env);
