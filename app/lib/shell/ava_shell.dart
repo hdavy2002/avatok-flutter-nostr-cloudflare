@@ -17,6 +17,7 @@ import '../features/ava_companion/companion_home.dart';
 import '../features/avachat/voice_call/ai_voice_agent_screen.dart';
 import '../features/avalive/avalive_discovery.dart';
 import '../features/affiliate/affiliate_home.dart';
+import '../features/team/team_home.dart';
 import '../features/avavoice/avavoice_home.dart';
 import '../features/avavision/avavision_home.dart';
 import '../features/avatok/ava_number.dart';
@@ -199,6 +200,9 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'invite':
         _push(const InviteScreen());
+        return;
+      case 'team':
+        _push(const TeamHomeScreen());
         return;
       case 'subscribe':
         _push(const SubscribeScreen());

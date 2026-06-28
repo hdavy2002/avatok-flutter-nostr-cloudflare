@@ -7,6 +7,7 @@ import '../core/avatar.dart';
 import '../core/money_api.dart';
 import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
+import '../core/team_api.dart';
 import '../core/ui/zine.dart';
 import '../core/ui/zine_widgets.dart';
 import '../features/diagnostics/log_page.dart';
@@ -49,6 +50,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
   String _handle = '';
   String _avatarUrl = ''; // the user's own profile photo (was never read → drawer showed initials)
   bool _premium = false; // topped-up wallet → premium (shown as a green pill)
+  bool _onPaidTeam = false; // owner/member of a paid Team plan → drop the Team PAID badge
 
   @override
   void initState() {
@@ -59,6 +61,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
     // Reflect premium status in the sidebar (green PREMIUM pill once topped up).
     MoneyApi.balance().then((b) {
       if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
+    }).catchError((_) {});
+    // Team plan status — once the user owns or belongs to a paid team, the Team
+    // row drops its PAID badge (their staff seat / team plan already covers it).
+    TeamApi.status().then((_) {
+      if (mounted) setState(() => _onPaidTeam = TeamApi.onPaidTeam);
     }).catchError((_) {});
     // Refresh focus-mode for the current account whenever the sidebar mounts
     // (account may have switched). The ValueListenableBuilder in build() then
@@ -210,6 +217,11 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Contacts — moved out of ACCOUNT to sit below Library; own colour.
               _special('invite', 'Contacts', 'Find & manage people',
                   PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.coral),
+              // Team — AI receptionist + staff routing. Marked PAID (Team plan);
+              // the badge drops once the user is on a paid team (owner or member).
+              _special('team', 'Team', 'AI receptionist & staff',
+                  PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.lilac,
+                  paid: true, paidHidden: _onPaidTeam),
               // Subscribe — moved to sit just below Contacts (was a top CTA).
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
@@ -311,7 +323,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     );
   }
 
-  Widget _special(String key, String name, String sub, IconData icon, Color color, {bool paid = false}) {
+  Widget _special(String key, String name, String sub, IconData icon, Color color, {bool paid = false, bool paidHidden = false}) {
     final active = widget.current == key;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -331,8 +343,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
               Text(sub, style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
             ]),
           ),
-          // Premium marker — hidden once the user is on a paid plan / topped up.
-          if (paid && !_premium) const PaidBadge(),
+          // Premium marker — hidden once the user is on a paid plan / topped up,
+          // or (for the Team row) once they're on a paid Team plan.
+          if (paid && !_premium && !paidHidden) const PaidBadge(),
         ]),
       ),
     );

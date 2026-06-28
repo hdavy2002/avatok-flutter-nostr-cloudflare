@@ -195,6 +195,11 @@ class ReceptionistApi {
     String? callerPhone,
     String? callerName,
     String activationMode = 'rings', // rings|first_ring|manual|decline
+    // Team Receptionist context: when this hand-off is the no-answer fallback for a
+    // staffer dialed via a team IVR menu, pass the team id + menu slot so the
+    // voicemail card reaches the staffer + manager. Spec: TEAM-RECEPTIONIST-IVR-SPEC.md.
+    String? teamId,
+    int? teamSlot,
   }) async {
     try {
       final r = await ApiAuth.postJson('$_base/start', {
@@ -203,6 +208,8 @@ class ReceptionistApi {
         'caller_phone': callerPhone,
         'caller_name': callerName,
         'activation_mode': activationMode,
+        if (teamId != null) 'team_id': teamId,
+        if (teamSlot != null) 'team_slot': teamSlot,
       });
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
