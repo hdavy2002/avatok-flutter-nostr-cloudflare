@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
+import '../../sync/group_api.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -19,7 +21,10 @@ import 'new_group_screen.dart';
 class GroupsTab extends StatefulWidget {
   final Identity? identity;
   final List<Contact> contacts;
-  const GroupsTab({super.key, this.identity, this.contacts = const []});
+  /// Opens the app sidebar (the parent shell owns the Drawer). When provided, a
+  /// hamburger button is shown in the app bar in place of the back arrow.
+  final VoidCallback? onMenu;
+  const GroupsTab({super.key, this.identity, this.contacts = const [], this.onMenu});
 
   @override
   State<GroupsTab> createState() => _GroupsTabState();
@@ -37,8 +42,15 @@ class _GroupsTabState extends State<GroupsTab> {
   }
 
   Future<void> _load() async {
-    final list = await _store.load();
-    if (mounted) setState(() { _groups = list; _loading = false; });
+    // Paint the local list first, then reconcile with the server so groups the
+    // user was ADDED to (on this or another device) show up here.
+    final local = await _store.load();
+    final archived = (await ChatFlagsStore().load())['archived'] ?? <String>{};
+    List<Group> visible(List<Group> gs) =>
+        gs.where((g) => !archived.contains('g:${g.id}')).toList();
+    if (mounted) setState(() { _groups = visible(local); _loading = false; });
+    final synced = await GroupApi.sync();
+    if (mounted) setState(() => _groups = visible(synced));
   }
 
   Future<void> _newGroup() async {
@@ -72,6 +84,11 @@ class _GroupsTabState extends State<GroupsTab> {
         markWord: 'Groups',
         tag: 'your group chats',
         showBack: Navigator.of(context).canPop(),
+        leading: widget.onMenu == null
+            ? null
+            : ZineBackButton(
+                icon: PhosphorIcons.list(PhosphorIconsStyle.bold),
+                onTap: widget.onMenu),
       ),
       floatingActionButton: ZineButton(
         label: 'New group',

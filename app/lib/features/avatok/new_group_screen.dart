@@ -1,16 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/avatar.dart';
-import '../../core/config.dart';
-import '../../core/group_store.dart';
+import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
-import '../../identity/identity.dart';
-import '../../identity/nostr_keys.dart';
-import '../../sync/legacy_stubs.dart';
+import '../../sync/group_api.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -33,32 +28,38 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
 
   bool get _canCreate => _name.text.trim().isNotEmpty && _picked.isNotEmpty;
 
+  /// Only real AvaTOK accounts can be group members — phone-only receptionist
+  /// contacts (no account) are excluded from the picker.
+  List<Contact> get _selectable =>
+      widget.contacts.where((c) => !c.isPhoneOnly && c.npub.isNotEmpty).toList();
+
   bool _creating = false;
 
   Future<void> _create() async {
     if (_creating) return;
     setState(() => _creating = true);
-    final id = await IdentityStore().load();
-    if (id == null) { setState(() => _creating = false); return; }
-    // Resolve members to x-only hex pubkeys (incl. me).
-    final members = <String>[id.pubHex];
-    for (final c in widget.contacts.where((c) => _picked.contains(c.npub))) {
-      final h = c.npub.startsWith('npub1') ? NostrKeys.npubToHex(c.npub) : null;
-      if (h != null && !members.contains(h)) members.add(h);
-    }
-    final g = Group(id: Group.newId(), name: _name.text.trim(), members: members, admins: [id.pubHex]);
-    await GroupStore().upsert(g);
-    // Notify members (gift-wrapped) so the group appears for them too.
-    try {
-      final client = NostrClient(kNostrRelayUrl)..connect();
-      final ginfo = jsonEncode({'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins});
-      final (gifts, _) = Nip17.wrapMany(
-          senderPriv: id.privHex, senderPub: id.pubHex, recipientPubs: g.members, payload: ginfo);
-      for (final gift in gifts) {
-        client.publish(gift);
+    // Members are Clerk uids (Contact.npub). Phone-only callers have no account
+    // and can't be group members, so they're excluded.
+    final memberUids = widget.contacts
+        .where((c) => _picked.contains(c.npub) && !c.isPhoneOnly && c.npub.isNotEmpty)
+        .map((c) => c.npub)
+        .toList();
+    // Create the group SERVER-SIDE so membership exists in D1 — this is what makes
+    // messages fan out to everyone and makes the group appear (with an offline
+    // push) for the people just added.
+    final g = await GroupApi.create(_name.text.trim(), memberUids);
+    if (g == null) {
+      if (mounted) {
+        setState(() => _creating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not create the group — try again')));
       }
-      Future.delayed(const Duration(seconds: 2), client.dispose);
-    } catch (_) {/* members can still be invited later */}
+      return;
+    }
+    // Announce so every added member is notified (chat line + offline banner) and
+    // the group surfaces on their device.
+    final myName = (await ProfileStore().load()).displayName;
+    GroupApi.announce(g.id, myName.isEmpty ? 'created the group' : '$myName created the group');
 
     final chat = Chat(
       name: g.name, seed: 'group-${g.id}',
@@ -104,15 +105,15 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
             ),
           ),
           Expanded(
-            child: widget.contacts.isEmpty
+            child: _selectable.isEmpty
                 ? Center(
                     child: ZineEmptyState(
                         icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
                         text: 'Add contacts first to build a group'))
                 : ListView.builder(
-                    itemCount: widget.contacts.length,
+                    itemCount: _selectable.length,
                     itemBuilder: (_, i) {
-                      final c = widget.contacts[i];
+                      final c = _selectable[i];
                       final on = _picked.contains(c.npub);
                       return CheckboxListTile(
                         value: on,

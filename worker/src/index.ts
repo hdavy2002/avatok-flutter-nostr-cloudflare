@@ -31,7 +31,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
-import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList } from "./routes/archive";
 import { ablyToken } from "./routes/ably";
 import { getConfig, putConfig } from "./routes/config";
@@ -243,6 +243,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/call-log/clear" && req.method === "POST") return await callLogClear(req, env);
       if (p === "/api/conversations" && req.method === "GET") return await convList(req, env);
       if (p === "/api/conversations" && req.method === "POST") return await convCreate(req, env);
+      // Group membership management (Group Info screen).
+      if (p === "/api/conversations/members" && req.method === "GET") return await convMembers(req, env);
+      if (p === "/api/conversations/members/add" && req.method === "POST") return await convAddMembers(req, env);
+      if (p === "/api/conversations/members/remove" && req.method === "POST") return await convRemoveMember(req, env);
+      if (p === "/api/conversations/members/role" && req.method === "POST") return await convSetRole(req, env);
+      if (p === "/api/conversations/leave" && req.method === "POST") return await convLeave(req, env);
+      if (p === "/api/conversations/delete" && req.method === "POST") return await convDelete(req, env);
 
       // --- Ava in-chat AI (Phase 0 registered routes; handlers filled by the
       // owner phases — master-plan §4). Order: most-specific first. ---

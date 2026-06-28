@@ -1,22 +1,20 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/analytics.dart';
 import '../../core/avatar.dart';
-import '../../core/config.dart';
+import '../../core/chat_state.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
-import '../../identity/nostr_keys.dart';
-import '../../sync/legacy_stubs.dart';
+import '../../sync/group_api.dart';
 import 'contacts.dart';
 
-/// Group details + member management: add from contacts, remove, leave.
-/// Membership changes re-broadcast a ginfo to members (and gkick to
-/// anyone removed). Pops `true` if you left the group.
+/// Group details + member management: add from contacts, remove, promote/demote
+/// admins, archive, leave, and (owner) delete. Membership changes go through the
+/// server (`GroupApi`), which fans out + notifies. Pops `true` if you left/deleted.
 class GroupInfoScreen extends StatefulWidget {
   final Group group;
   const GroupInfoScreen({super.key, required this.group});
@@ -27,8 +25,9 @@ class GroupInfoScreen extends StatefulWidget {
 class _GroupInfoScreenState extends State<GroupInfoScreen> {
   late Group _group;
   Identity? _id;
-  final Map<String, String> _names = {}; // hex → display name
-  final Map<String, String> _avatars = {}; // hex → photo URL (from contacts)
+  final Map<String, String> _names = {};   // uid → display name
+  final Map<String, String> _avatars = {}; // uid → photo URL (from contacts)
+  Map<String, String> _roles = {};         // uid → owner|admin|member (server truth)
   List<Contact> _contacts = [];
   bool _busy = false;
 
@@ -45,63 +44,81 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final names = <String, String>{};
     final avatars = <String, String>{};
     for (final c in contacts) {
-      final h = c.npub.startsWith('npub1') ? NostrKeys.npubToHex(c.npub) : null;
-      if (h != null) { names[h] = c.name; if (c.avatarUrl.isNotEmpty) avatars[h] = c.avatarUrl; }
+      if (c.npub.isEmpty) continue;
+      names[c.npub] = c.name;
+      if (c.avatarUrl.isNotEmpty) avatars[c.npub] = c.avatarUrl;
     }
-    if (id != null) names[id.pubHex] = 'You';
+    if (id != null) names[id.uid] = 'You';
     if (mounted) setState(() { _id = id; _contacts = contacts; _names.addAll(names); _avatars.addAll(avatars); });
+    // Pull authoritative members + roles from the server (this also refreshes the
+    // local group), so admin controls and the member list reflect reality.
+    final r = await GroupApi.rolesOf(_group.id);
+    if (r != null && mounted) {
+      final g = await GroupStore().byId(_group.id);
+      setState(() {
+        _roles = r.roles;
+        if (g != null) _group = g;
+      });
+    }
   }
 
-  String _label(String hex) => _names[hex] ?? '${hex.substring(0, 6)}…';
+  String _label(String uid) =>
+      _names[uid] ?? (uid.length > 8 ? '${uid.substring(0, 8)}…' : uid);
 
-  Future<void> _broadcast(List<String> recipients, Map<String, dynamic> payload) async {
-    final id = _id;
-    if (id == null) return;
-    try {
-      final client = NostrClient(kNostrRelayUrl)..connect();
-      final (gifts, _) = Nip17.wrapMany(
-          senderPriv: id.privHex, senderPub: id.pubHex,
-          recipientPubs: recipients, payload: jsonEncode(payload));
-      for (final g in gifts) {
-        client.publish(g);
-      }
-      Future.delayed(const Duration(seconds: 2), client.dispose);
-    } catch (_) {/* best effort */}
+  String? get _myUid => _id?.uid;
+  String _roleOf(String uid) => _roles[uid] ?? (_group.admins.contains(uid) ? 'admin' : 'member');
+  bool get _amAdmin {
+    final me = _myUid;
+    if (me == null) return false;
+    final r = _roleOf(me);
+    return r == 'owner' || r == 'admin' || _group.admins.contains(me);
+  }
+  bool get _amOwner => _myUid != null && _roleOf(_myUid!) == 'owner';
+
+  /// Re-pull roles + members after a server mutation.
+  Future<void> _refresh() async {
+    final r = await GroupApi.rolesOf(_group.id);
+    final g = await GroupStore().byId(_group.id);
+    if (mounted) setState(() {
+      if (r != null) _roles = r.roles;
+      if (g != null) _group = g;
+      _busy = false;
+    });
   }
 
-  bool get _amAdmin => _id != null && _group.admins.contains(_id!.pubHex);
-
-  Map<String, dynamic> _ginfo(Group g) =>
-      {'t': 'ginfo', 'gid': g.id, 'name': g.name, 'members': g.members, 'admins': g.admins, 'description': g.description};
-
-  Future<void> _commit(Group g2, {List<String>? extraTo, Map<String, dynamic>? extraMsg}) async {
-    await GroupStore().upsert(g2);
-    await _broadcast(g2.members, _ginfo(g2));
-    if (extraTo != null && extraMsg != null) await _broadcast(extraTo, extraMsg);
-    if (mounted) setState(() { _group = g2; _busy = false; });
+  void _toast(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
-  Future<void> _addMember(String hex) async {
-    if (_group.members.contains(hex)) return;
+  Future<void> _addMember(String uid) async {
+    if (_group.members.contains(uid)) return;
     setState(() => _busy = true);
-    await _commit(_group.copyWith(members: [..._group.members, hex]));
+    final ok = await GroupApi.addMembers(_group.id, [uid]);
+    if (ok) {
+      // Announce so the added member is notified (chat line + offline banner).
+      GroupApi.announce(_group.id, 'added ${_label(uid)} to the group');
+      Analytics.capture('group_member_added', {'gid': _group.id});
+    } else {
+      _toast('Could not add member');
+    }
+    await _refresh();
   }
 
-  Future<void> _removeMember(String hex) async {
+  Future<void> _removeMember(String uid) async {
     setState(() => _busy = true);
-    await _commit(
-      _group.copyWith(
-        members: _group.members.where((m) => m != hex).toList(),
-        admins: _group.admins.where((m) => m != hex).toList()),
-      extraTo: [hex], extraMsg: {'t': 'gkick', 'gid': _group.id});
+    final ok = await GroupApi.removeMember(_group.id, uid);
+    if (!ok) _toast('Could not remove member');
+    else Analytics.capture('group_member_removed', {'gid': _group.id});
+    await _refresh();
   }
 
-  Future<void> _toggleAdmin(String hex) async {
+  Future<void> _toggleAdmin(String uid) async {
     setState(() => _busy = true);
-    final admins = _group.admins.contains(hex)
-        ? _group.admins.where((m) => m != hex).toList()
-        : [..._group.admins, hex];
-    await _commit(_group.copyWith(admins: admins));
+    final makeAdmin = _roleOf(uid) == 'member';
+    final ok = await GroupApi.setRole(_group.id, uid, makeAdmin ? 'admin' : 'member');
+    if (!ok) _toast('Could not update admin');
+    else Analytics.capture('group_role_changed', {'gid': _group.id, 'admin': makeAdmin});
+    await _refresh();
   }
 
   Future<void> _editDescription() async {
@@ -119,11 +136,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       ),
     );
     if (v == null) return;
-    setState(() => _busy = true);
-    await _commit(_group.copyWith(description: v));
+    // Description is local-only metadata for now (no server column).
+    final g2 = _group.copyWith(description: v);
+    await GroupStore().upsert(g2);
+    if (mounted) setState(() => _group = g2);
   }
 
-  void _memberActions(String hex) {
+  void _memberActions(String uid) {
+    final isAdmin = _roleOf(uid) == 'admin' || _roleOf(uid) == 'owner';
+    final canManageAdmin = _amOwner; // only the owner promotes/demotes admins
     showModalBottomSheet(
       context: context,
       backgroundColor: Zine.paper,
@@ -132,42 +153,71 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 8),
-        ListTile(
-          leading: PhosphorIcon(
-              _group.admins.contains(hex)
-                  ? PhosphorIcons.shieldSlash(PhosphorIconsStyle.bold)
-                  : PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
-              color: Zine.blueInk),
-          title: Text(_group.admins.contains(hex) ? 'Dismiss as admin' : 'Make admin',
-              style: ZineText.value(size: 15)),
-          onTap: () { Navigator.pop(ctx); _toggleAdmin(hex); },
-        ),
+        if (canManageAdmin && _roleOf(uid) != 'owner')
+          ListTile(
+            leading: PhosphorIcon(
+                isAdmin
+                    ? PhosphorIcons.shieldSlash(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold),
+                color: Zine.blueInk),
+            title: Text(isAdmin ? 'Dismiss as admin' : 'Make admin',
+                style: ZineText.value(size: 15)),
+            onTap: () { Navigator.pop(ctx); _toggleAdmin(uid); },
+          ),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), color: Zine.coral),
           title: Text('Remove from group', style: ZineText.value(size: 15, color: Zine.coral)),
-          onTap: () { Navigator.pop(ctx); _removeMember(hex); },
+          onTap: () { Navigator.pop(ctx); _removeMember(uid); },
         ),
       ])),
     );
   }
 
   Future<void> _leave() async {
-    final id = _id;
-    if (id == null) return;
     setState(() => _busy = true);
-    final g2 = _group.copyWith(
-      members: _group.members.where((m) => m != id.pubHex).toList(),
-      admins: _group.admins.where((m) => m != id.pubHex).toList());
-    await _broadcast(g2.members, _ginfo(g2));
+    await GroupApi.leave(_group.id);
     await GroupStore().remove(_group.id);
+    Analytics.capture('group_left', {'gid': _group.id});
     if (mounted) Navigator.pop(context, true);
   }
 
+  Future<void> _archive() async {
+    await ChatFlagsStore().toggle('archived', 'g:${_group.id}');
+    Analytics.capture('group_archived', {'gid': _group.id});
+    if (mounted) { _toast('Group archived'); Navigator.pop(context, true); }
+  }
+
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete group?'),
+        content: const Text('This permanently deletes the group for everyone. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Delete', style: ZineText.value(color: Zine.coral))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    // Delete server-side; other members' devices drop the group on their next
+    // conversation sync (it stops appearing in their list).
+    final done = await GroupApi.deleteGroup(_group.id);
+    if (done) {
+      await GroupStore().remove(_group.id);
+      Analytics.capture('group_deleted', {'gid': _group.id});
+      if (mounted) Navigator.pop(context, true);
+    } else {
+      _toast('Could not delete the group');
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _pickToAdd() {
-    final candidates = _contacts.where((c) {
-      final h = c.npub.startsWith('npub1') ? NostrKeys.npubToHex(c.npub) : null;
-      return h != null && !_group.members.contains(h);
-    }).toList();
+    final candidates = _contacts.where((c) =>
+        !c.isPhoneOnly && c.npub.isNotEmpty && !_group.members.contains(c.npub)).toList();
     showModalBottomSheet(
       context: context,
       backgroundColor: Zine.paper,
@@ -196,7 +246,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   ),
                   title: Text(c.name, style: ZineText.value(size: 15)),
                   trailing: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), color: Zine.blueInk),
-                  onTap: () { Navigator.pop(ctx); _addMember(NostrKeys.npubToHex(c.npub)!); },
+                  onTap: () { Navigator.pop(ctx); _addMember(c.npub); },
                 ),
             ])),
         ]),
@@ -281,16 +331,41 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 const ZineSticker('admin', kind: ZineStickerKind.ok),
               ],
             ]),
-            subtitle: m == _id?.pubHex ? Text('You', style: ZineText.sub(size: 12)) : null,
-            trailing: (_amAdmin && m != _id?.pubHex)
+            subtitle: m == _myUid ? Text('You', style: ZineText.sub(size: 12)) : null,
+            trailing: (_amAdmin && m != _myUid)
                 ? IconButton(
                     icon: PhosphorIcon(PhosphorIcons.dotsThreeVertical(PhosphorIconsStyle.bold), color: Zine.inkSoft),
                     onPressed: _busy ? null : () => _memberActions(m))
                 : null,
           ),
         const SizedBox(height: 16),
+        // Archive (anyone) — hides the group from your list without leaving it.
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: ZineButton(
+            label: 'Archive group',
+            variant: ZineButtonVariant.ghost,
+            fullWidth: true,
+            icon: PhosphorIcons.archive(PhosphorIconsStyle.bold),
+            trailingIcon: false,
+            onPressed: _busy ? null : _archive,
+          ),
+        ),
+        // Delete (owner only) — removes the group for everyone.
+        if (_amOwner)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: ZineButton(
+              label: 'Delete group',
+              variant: ZineButtonVariant.coral,
+              fullWidth: true,
+              icon: PhosphorIcons.trash(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: _busy ? null : _confirmDelete,
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: ZineButton(
             label: 'Leave group',
             variant: ZineButtonVariant.coral,

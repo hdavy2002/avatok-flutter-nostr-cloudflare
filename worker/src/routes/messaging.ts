@@ -610,3 +610,160 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   return json({ conv, kind: "group" });
 }
 
+// ---- group membership management --------------------------------------------
+// These power the Group Info screen: add members (from contacts), remove a
+// member, promote/demote admins, leave, and delete the whole group. Membership
+// lives in D1 `conversation_members` (role: owner | admin | member) — the SAME
+// table the message router fans out from, so an added member immediately starts
+// receiving the group's messages (and the offline FCM wake) with no extra wiring.
+// The client posts a system announcement message after a successful add so every
+// member (incl. the just-added, offline ones) gets a "X added Y" banner.
+
+async function convRoleOf(env: Env, conv: string, uid: string): Promise<string | null> {
+  const r = await env.DB_META
+    .prepare("SELECT role FROM conversation_members WHERE conv_id=?1 AND uid=?2")
+    .bind(conv, uid).first<{ role: string }>();
+  return r?.role ?? null;
+}
+
+async function convIsGroup(env: Env, conv: string): Promise<boolean> {
+  const r = await env.DB_META
+    .prepare("SELECT kind FROM conversations WHERE id=?1").bind(conv).first<{ kind: string }>();
+  return r?.kind === "group";
+}
+
+function trackGroup(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
+  try {
+    void env.Q_ANALYTICS?.send({ event, uid, ts: Date.now(),
+      props: { ...props, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
+}
+
+// ---- GET /api/conversations/members?conv=ID ---------------------------------
+export async function convMembers(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const conv = new URL(req.url).searchParams.get("conv") || "";
+  if (!conv) return json({ error: "conv required" }, 400);
+  if (!(await convRoleOf(env, conv, ctx.uid))) return json({ error: "not a member" }, 403);
+  const c = await env.DB_META
+    .prepare("SELECT title, kind, created_by FROM conversations WHERE id=?1")
+    .bind(conv).first<{ title: string | null; kind: string; created_by: string }>();
+  const rows = await env.DB_META
+    .prepare("SELECT uid, role FROM conversation_members WHERE conv_id=?1")
+    .bind(conv).all<{ uid: string; role: string }>();
+  return json({
+    conv, title: c?.title ?? null, kind: c?.kind ?? null, created_by: c?.created_by ?? null,
+    members: rows.results || [],
+  });
+}
+
+// ---- POST /api/conversations/members/add  { conv, members:[uid] } -----------
+export async function convAddMembers(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const add: string[] = Array.isArray(b.members) ? b.members.map(String).filter(Boolean) : [];
+  if (!conv || !add.length) return json({ error: "conv and members required" }, 400);
+  if (!(await convIsGroup(env, conv))) return json({ error: "not a group" }, 400);
+  const myRole = await convRoleOf(env, conv, ctx.uid);
+  if (myRole !== "owner" && myRole !== "admin") return json({ error: "forbidden" }, 403);
+  const now = Date.now();
+  const stmts = [
+    env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, now),
+    ...add.map((u) =>
+      env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, u, now)),
+  ];
+  await env.DB_META.batch(stmts);
+  trackGroup(env, ctx.uid, "group_members_added", { conv, count: add.length });
+  return json({ ok: true, added: add });
+}
+
+// ---- POST /api/conversations/members/remove  { conv, uid } ------------------
+export async function convRemoveMember(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const target = String(b.uid || "");
+  if (!conv || !target) return json({ error: "conv and uid required" }, 400);
+  const myRole = await convRoleOf(env, conv, ctx.uid);
+  if (myRole !== "owner" && myRole !== "admin") return json({ error: "forbidden" }, 403);
+  const targetRole = await convRoleOf(env, conv, target);
+  if (targetRole === "owner") return json({ error: "cannot_remove_owner" }, 400);
+  // Admins can't remove other admins; only the owner can.
+  if (targetRole === "admin" && myRole !== "owner") return json({ error: "forbidden" }, 403);
+  await env.DB_META.prepare("DELETE FROM conversation_members WHERE conv_id=?1 AND uid=?2").bind(conv, target).run();
+  await env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, Date.now()).run();
+  trackGroup(env, ctx.uid, "group_member_removed", { conv, target });
+  return json({ ok: true });
+}
+
+// ---- POST /api/conversations/members/role  { conv, uid, role } --------------
+export async function convSetRole(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const target = String(b.uid || "");
+  const role = String(b.role || "");
+  if (!conv || !target || (role !== "admin" && role !== "member")) return json({ error: "conv, uid, role required" }, 400);
+  const myRole = await convRoleOf(env, conv, ctx.uid);
+  if (myRole !== "owner" && myRole !== "admin") return json({ error: "forbidden" }, 403);
+  const targetRole = await convRoleOf(env, conv, target);
+  if (!targetRole) return json({ error: "not_a_member" }, 404);
+  if (targetRole === "owner") return json({ error: "cannot_change_owner" }, 400);
+  await env.DB_META.prepare("UPDATE conversation_members SET role=?3 WHERE conv_id=?1 AND uid=?2").bind(conv, target, role).run();
+  trackGroup(env, ctx.uid, "group_role_changed", { conv, target, role });
+  return json({ ok: true, role });
+}
+
+// ---- POST /api/conversations/leave  { conv } -------------------------------
+export async function convLeave(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  if (!conv) return json({ error: "conv required" }, 400);
+  const myRole = await convRoleOf(env, conv, ctx.uid);
+  if (!myRole) return json({ ok: true }); // already not a member
+  await env.DB_META.prepare("DELETE FROM conversation_members WHERE conv_id=?1 AND uid=?2").bind(conv, ctx.uid).run();
+  // If the owner leaves, hand ownership to the next member (oldest join) so the
+  // group isn't left admin-less; if nobody remains, drop the empty conversation.
+  if (myRole === "owner") {
+    const next = await env.DB_META
+      .prepare("SELECT uid FROM conversation_members WHERE conv_id=?1 ORDER BY (role='admin') DESC, joined_at ASC LIMIT 1")
+      .bind(conv).first<{ uid: string }>();
+    if (next?.uid) {
+      await env.DB_META.prepare("UPDATE conversation_members SET role='owner' WHERE conv_id=?1 AND uid=?2").bind(conv, next.uid).run();
+    } else {
+      await env.DB_META.prepare("DELETE FROM conversations WHERE id=?1").bind(conv).run();
+    }
+  }
+  await env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, Date.now()).run();
+  trackGroup(env, ctx.uid, "group_left", { conv, was_owner: myRole === "owner" });
+  return json({ ok: true });
+}
+
+// ---- POST /api/conversations/delete  { conv } ------------------------------
+// Owner-only hard delete: removes every membership + the conversation row. Other
+// members' devices drop the group on their next sync (it stops appearing in their
+// conversation list); the client also broadcasts a 'gdel' system message so open
+// clients remove it live.
+export async function convDelete(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  if (!conv) return json({ error: "conv required" }, 400);
+  const myRole = await convRoleOf(env, conv, ctx.uid);
+  if (myRole !== "owner") return json({ error: "forbidden" }, 403);
+  await env.DB_META.batch([
+    env.DB_META.prepare("DELETE FROM conversation_members WHERE conv_id=?1").bind(conv),
+    env.DB_META.prepare("DELETE FROM conversations WHERE id=?1").bind(conv),
+  ]);
+  trackGroup(env, ctx.uid, "group_deleted", { conv });
+  return json({ ok: true });
+}
+

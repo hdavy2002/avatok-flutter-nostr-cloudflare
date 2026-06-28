@@ -129,6 +129,13 @@ const String kMsgArchiveUrl = 'https://$kSignalingHost/api/msg/archive';
 // Phase 4 (ABLY-R2): persist a per-message reaction toggle (live ride is Ably).
 const String kMsgReactUrl = 'https://$kSignalingHost/api/msg/react';
 const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
+// Group membership management (Group Info screen).
+const String kConvMembersUrl = 'https://$kSignalingHost/api/conversations/members';
+const String kConvAddMembersUrl = 'https://$kSignalingHost/api/conversations/members/add';
+const String kConvRemoveMemberUrl = 'https://$kSignalingHost/api/conversations/members/remove';
+const String kConvSetRoleUrl = 'https://$kSignalingHost/api/conversations/members/role';
+const String kConvLeaveUrl = 'https://$kSignalingHost/api/conversations/leave';
+const String kConvDeleteUrl = 'https://$kSignalingHost/api/conversations/delete';
 
 /// Deterministic 1:1 conversation id — MUST match server authz.dmConvId.
 String dmConvId(String a, String b) {

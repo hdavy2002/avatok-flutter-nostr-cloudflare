@@ -27,6 +27,7 @@ import '../../core/onboarding_store.dart';
 import '../../core/admin_tools.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
+import '../../sync/group_api.dart';
 import '../../sync/legacy_stubs.dart';
 import '../../sync/sync_hub.dart';
 import '../../sync/presence.dart';
@@ -420,6 +421,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // PostHog against the relay re-sync that follows.
     AvaLog.I.log('cache',
         'cold-start scope=${AccountScope.id ?? "null"} contacts=${contacts.length} previews=${previews.length} groups=${groups.length} loadMs=${DateTime.now().difference(bootT0).inMilliseconds}');
+    // Reconcile server-side group memberships so any group the user was ADDED to
+    // (here or on another device) shows up in the Groups tab — best-effort.
+    GroupApi.sync().then((gs) { if (mounted) setState(() => _groups = gs); });
     // Backfill profile photos for contacts saved before avatars existed — silent.
     _contactsStore.refreshMissingAvatars().then((list) {
       if (mounted) setState(() => _contacts = list);
@@ -525,6 +529,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
           if (u.senderPub == id.uid) return; // my own message
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
+          // A group message for a group we don't have locally yet (e.g. we were
+          // just added) → fetch it from the server so it appears in the Groups tab.
+          if (env['gid'] != null) _ensureGroup(env['gid'].toString());
           if (_flags['blocked']!.contains(key)) return;
           // Durable, gift-wrapped DELIVERED receipt — fires from the global inbox
           // so it works with no thread open, and (unlike the ephemeral presence
@@ -585,6 +592,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// Make sure a 1:1 sender has a chat row. Adds a lightweight placeholder
   /// immediately (so the message appears at once), then enriches name/avatar
   /// from the directory in the background. No-op if already a contact / me.
+  /// Materialise a group we don't have locally (we were just added to it) by
+  /// pulling its members from the server. De-duped so a burst of group messages
+  /// only triggers one fetch.
+  final Set<String> _syncingGroups = {};
+  Future<void> _ensureGroup(String gid) async {
+    if (gid.isEmpty || _groups.any((g) => g.id == gid) || !_syncingGroups.add(gid)) return;
+    final g = await GroupApi.refresh(gid);
+    if (g != null) {
+      final list = await _groupStore.load();
+      if (mounted) setState(() => _groups = list);
+    }
+    _syncingGroups.remove(gid);
+  }
+
   final Set<String> _autoAdding = {}; // npubs currently being auto-added (dedupe)
   Future<void> _ensureContact(String npub) async {
     if (npub.isEmpty || npub == _id?.npub) return;
@@ -842,15 +863,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       final pv = _previews[k];
       return pv != null && pv.ts > 0 ? _fmtListTime(pv.ts) : '';
     }
-    final groupChats = _groups
-        .where((g) => _showArchived || !archived.contains('g:${g.id}'))
-        .map((g) => Chat(
-            name: g.name, seed: 'group-${g.id}',
-            last: draftOr('g:${g.id}', previewOr('g:${g.id}', 'Group · ${g.members.length} members')),
-            time: timeOf('g:${g.id}'),
-            group: true, members: g.members.length, gid: g.id,
-            unread: _unread['g:${g.id}'] ?? 0))
-        .toList();
+    // Groups are surfaced ONLY in the dedicated Groups tab (owner decision
+    // 2026-06-28) — they no longer appear in the main Chats thread list.
     String contactKey(Contact c) {
       final tel = telPhone(c.npub);
       if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
@@ -868,7 +882,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           last: draftOr(k, previewOr(k, c.subtitle.isNotEmpty ? c.subtitle : empty)),
           time: timeOf(k), unread: _unread[k] ?? 0);
     }).toList();
-    final realRows = [...groupChats, ...contactChats];
+    final realRows = [...contactChats];
     // Pinned chats first, then most-recently-active by last-message time.
     int tsOf(Chat c) => _previews[_keyOf(c)]?.ts ?? 0;
     realRows.sort((a, b) {
@@ -1056,7 +1070,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         ),
       ),
         StatusScreen(identity: _id, contacts: _contacts),
-        GroupsTab(identity: _id, contacts: _contacts),
+        GroupsTab(
+            identity: _id,
+            contacts: _contacts,
+            onMenu: () => _scaffoldKey.currentState?.openDrawer()),
         const CallsScreen(),
       ]),
     );
@@ -1160,7 +1177,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         _fItem('all', 'All'),
         _fItem('fav', 'Favourites'),
         _fItem('unread', 'Unread'),
-        _fItem('groups', 'Groups'),
+        // 'Groups' filter removed — groups now live in the Groups tab, never the
+        // Chats list (owner decision 2026-06-28).
         for (final f in _customFilters) _fItem('c:${f.name}', f.name),
         for (final f in _customFilters)
           PopupMenuItem<String>(
