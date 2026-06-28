@@ -585,11 +585,24 @@ class PushService {
       }
       if (token == null) {
         AvaLog.I.log('push', 'FCM token STILL NULL — device cannot receive calls/pushes');
+        // Telemetry: a null FCM token means /api/register is never reached, so the
+        // server stores 0 push tokens and CALLERS hit the "no device registered"
+        // 404. Previously this was only in the local diag log (invisible in
+        // PostHog) — emit a discrete, per-user event so it is queryable.
+        Analytics.capture('push_register_failed', {'reason': 'fcm_token_null'});
         return;
       }
       await _postToken(token);
     } catch (e) {
       AvaLog.I.log('push', 'register token FAILED: $e');
+      // Surface the FCM/Firebase error (e.g. FIS_AUTH_ERROR — a Firebase
+      // Installations auth failure) as its own event so the root cause behind
+      // "no device registered" is visible per-user in PostHog.
+      final err = e.toString();
+      Analytics.capture('push_register_failed', {
+        'reason': 'exception',
+        'error': err.length > 200 ? err.substring(0, 200) : err,
+      });
     }
   }
 
@@ -598,6 +611,9 @@ class PushService {
   static Future<void> _postToken(String token) async {
     final res = await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
     AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
+    // Telemetry: confirm device registration so we can tell "registered OK" from
+    // the failures above when diagnosing missed-call / no-device reports.
+    Analytics.capture('push_register_ok', {'status': res.statusCode});
   }
 
   static void _openCall(dynamic extra) {
