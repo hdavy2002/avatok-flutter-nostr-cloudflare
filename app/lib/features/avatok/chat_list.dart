@@ -353,7 +353,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // Re-sync the address book on every resume so newly-added phone contacts
       // (and people who just joined AvaTOK) show up immediately. Throttled inside
       // the service so it won't hammer the OS book on rapid foreground/background.
-      DeviceContactsService.refresh(source: 'resume');
+      DeviceContactsService.refresh(source: 'resume')
+          .then((_) => _reconcileTelContacts());
     }
   }
 
@@ -425,7 +426,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     });
     // Sync the phone address book to our backend (per-user storage, reused by
     // AvaContacts) and resolve who's already on AvaTok — best-effort, silent.
-    DeviceContactsService.syncAndMatch(id.npub);
+    DeviceContactsService.syncAndMatch(id.npub)
+        .then((_) => _reconcileTelContacts());
     // Register this device for incoming-call wake pushes (npub hashed at rest).
     Analytics.identify(id.npub); // attribute diagnostics/events to this npub every app open
     await PushService.registerToken(id.npub);
@@ -615,6 +617,62 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         : formatTelDisplay(e164);
     final list = await _contactsStore.add(Contact(npub: npub, name: name, phone: e164));
     if (mounted) setState(() => _contacts = list);
+  }
+
+  /// Auto-promote provisional `tel:<E.164>` receptionist contacts to real AvaTOK
+  /// accounts once the device-contacts match sync discovers that number IS on
+  /// AvaTOK (i.e. the caller is in the owner's address book and has since joined,
+  /// or was already a user). Folds the synthetic row into the real npub via
+  /// [ContactsStore.mergeTel] and moves the voicemail history into the proper DM
+  /// thread so nothing is lost. Privacy-safe: it only acts on numbers the match
+  /// endpoint already returned (never probes arbitrary numbers). Called after a
+  /// match sync completes.
+  Future<void> _reconcileTelContacts() async {
+    final myUid = _id?.uid;
+    if (myUid == null || myUid.isEmpty) return;
+    final provisional = _contacts.where((c) => c.isPhoneOnly).toList();
+    if (provisional.isEmpty) return;
+    List<DeviceContact> dev;
+    try { dev = await DeviceContactsService.cached(); } catch (_) { return; }
+    final matched = <String, DeviceContact>{
+      for (final d in dev) if (d.onAvatok && d.phoneNorm.isNotEmpty) d.phoneNorm: d,
+    };
+    if (matched.isEmpty) return;
+    var changed = false;
+    for (final c in provisional) {
+      final e164 = telPhone(c.npub);
+      if (e164 == null) continue;
+      final d = matched[e164];
+      if (d == null || d.uid == myUid) continue;
+      // Preserve a name the owner already chose; otherwise take the matched
+      // profile/device name.
+      final namedByUser = c.name.trim().isNotEmpty &&
+          c.name.trim() != formatTelDisplay(e164) && c.name.trim() != e164;
+      final name = namedByUser
+          ? c.name
+          : (d.displayName.isNotEmpty ? d.displayName : formatTelDisplay(e164));
+      final real = Contact(npub: d.uid, name: name, handle: d.handle,
+          avatarUrl: d.avatarUrl, phone: e164);
+      final list = await _contactsStore.mergeTel(e164, real);
+      // Move the voicemail cards into the real DM thread.
+      final from = receptTelConvKey(myUid, e164);
+      final to = '1:${NostrKeys.npubToHex(d.uid) ?? d.uid}';
+      final hadHistory = _previews[from] != null;
+      try {
+        await Db.I.rekeyConversation(from, to);
+        final pv = _previews[from];
+        if (pv != null) await _previewStore.record(to, pv.text, pv.ts, pv.me);
+      } catch (_) {/* history move is best-effort */}
+      if (mounted) setState(() => _contacts = list);
+      Analytics.capture('unknown_caller_promoted', {
+        'named_by_user': namedByUser,
+        'had_history': hadHistory,
+      });
+      changed = true;
+    }
+    if (changed && mounted) {
+      _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
+    }
   }
 
   Future<void> _openAddContact() async {

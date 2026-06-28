@@ -270,6 +270,17 @@ class AppDb extends _$AppDb {
   Future<void> upsertMessage(MessagesCompanion m) =>
       into(messages).insert(m, mode: InsertMode.insertOrIgnore);
 
+  /// Move every message from one conversation key to another (used when an
+  /// unknown-number receptionist thread `g:recept_…__tel:<phone>` is promoted to
+  /// a real DM `1:<uid>` after the caller is discovered on AvaTOK, so the
+  /// voicemail history follows the caller into their proper thread). Returns the
+  /// number of rows moved.
+  Future<int> rekeyConversation(String from, String to) {
+    if (from == to) return Future.value(0);
+    return (update(messages)..where((t) => t.convKey.equals(from)))
+        .write(MessagesCompanion(convKey: Value(to)));
+  }
+
   /// How many messages we already have for a conversation (cheap count).
   Future<int> messageCount(String convKey) async {
     final c = messages.rumorId.count();
