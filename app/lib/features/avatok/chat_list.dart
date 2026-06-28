@@ -453,12 +453,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // @handle. Tagging in groups uses the name you saved the contact under.
   }
 
-  /// Global inbox: receive group invites (ginfo) even when no thread is open.
+  /// Global inbox: surface incoming messages/status/receipts even with no thread
+  /// open. (Group membership now syncs via GroupApi — the old Nostr `ginfo`/`gkick`
+  /// invite handlers were dead no-ops and have been removed.)
   void _startInbox(Identity id) {
     _inbox = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client + inbox sub (survives navigation)
-    // Consume the hub's SINGLE-decrypt stream (HubEvent already unwrapped) — no
-    // own Nip17.unwrap here. This was one of 3-4 places re-decrypting every wrap
-    // on the UI thread.
+    // Consume the hub's already-unwrapped stream (HubEvent). No crypto here.
     _inboxSub = SyncHub.I.incoming.listen((u) {
       if (_seenInbox.contains(u.rumorId)) return;
       _seenInbox.add(u.rumorId);
@@ -466,19 +466,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         final env = jsonDecode(u.payload);
         if (env is! Map) return;
         final t = env['t'];
-        if (t == 'ginfo') {
-          final g = Group(
-            id: env['gid'].toString(),
-            name: (env['name'] ?? 'Group').toString(),
-            members: ((env['members'] as List?) ?? []).map((e) => e.toString()).toList(),
-            admins: ((env['admins'] as List?) ?? []).map((e) => e.toString()).toList(),
-          );
-          _groupStore.upsert(g).then((list) { if (mounted) setState(() => _groups = list); });
-        } else if (t == 'gkick' && u.senderPub != id.uid) {
-          _groupStore.remove(env['gid'].toString())
-              .then((_) => _groupStore.load())
-              .then((list) { if (mounted) setState(() => _groups = list); });
-        } else if (t == 'status' && u.senderPub != id.uid) {
+        if (t == 'status' && u.senderPub != id.uid) {
           final post = StatusPost(
             id: u.rumorId, authorPub: u.senderPub,
             authorName: (env['who'] ?? 'Someone').toString(),

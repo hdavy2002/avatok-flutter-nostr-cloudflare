@@ -487,7 +487,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Analytics.capture('group_thread_opened', {'gid': g.id, 'member_count': g.members.length});
     setState(() => _msgs.clear());
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
-    _gdm = AvaGroupDm(client: _nostr!, myPriv: id.uid, myPub: id.uid, group: g);
+    _gdm = AvaGroupDm(group: g);
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
     _presenceMe = id.shortNpub;

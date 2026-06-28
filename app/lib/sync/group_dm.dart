@@ -5,8 +5,6 @@ import '../core/api_auth.dart';
 import '../core/config.dart';
 import '../core/db.dart';
 import '../core/group_store.dart';
-import '../identity/identity.dart';
-import 'legacy_stubs.dart';
 import 'sync_hub.dart';
 
 class GroupMessage {
@@ -21,20 +19,15 @@ class GroupMessage {
 /// Group messaging over the Cloudflare-native backend. Fan-out is server-side: we
 /// POST one message to the group conversation (conv = group.id) and the router
 /// appends it to every member's InboxDO. Incoming arrives via [SyncHub] filtered
-/// to this group. [client]/[myPriv]/[myPub] are legacy params, ignored.
+/// to this group.
 class AvaGroupDm {
-  final NostrClient client;
-  final String myPriv;
-  final String myPub;
   final Group group;
   StreamSubscription? _sub;
   final _controller = StreamController<GroupMessage>.broadcast();
 
-  AvaGroupDm({required this.client, required this.myPriv, required this.myPub, required this.group});
+  AvaGroupDm({required this.group});
 
   Stream<GroupMessage> get messages => _controller.stream;
-
-  String get _myUid => AccountScope.id ?? myPub;
 
   void start() {
     final myConv = 'g:${group.id}';
