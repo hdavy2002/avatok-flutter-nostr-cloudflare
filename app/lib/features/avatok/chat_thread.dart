@@ -73,6 +73,8 @@ import '../conference/conference_api.dart';
 import '../conference/conference_screen.dart';
 import '../conference/mesh_api.dart';
 import '../conference/mesh_call_screen.dart';
+import '../conference/sfu_group_call_api.dart';
+import '../conference/sfu_group_call_screen.dart';
 import '../../core/analytics.dart';
 import '../../core/money_api.dart';
 import '../../core/live_location_service.dart';
@@ -1634,6 +1636,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           content: Text('Group calls are temporarily unavailable')));
       return;
     }
+    // FREE LAUNCH: when the CF Realtime SFU group-audio path is enabled, AUDIO
+    // group calls run on Cloudflare Realtime SFU (≤32, active-speaker). Video
+    // group calls and the dormant (flag-off) case fall through to LiveKit/mesh.
+    if (RemoteConfig.groupAudioSfuEnabled && !video) {
+      await _sfuGroupCall();
+      return;
+    }
     if (_groupMemberCount > 25) { _confLimitNotice(video); return; }
 
     // Already in THIS group's call (minimized) → just re-open the room screen.
@@ -1697,6 +1706,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not start the call')));
       }
     }
+  }
+
+  /// FREE LAUNCH group AUDIO via Cloudflare Realtime SFU (≤32, active-speaker).
+  /// Reached from _groupCall when RemoteConfig.groupAudioSfuEnabled is ON and the
+  /// call is audio. Audio-only by design (no group video on this path).
+  Future<void> _sfuGroupCall() async {
+    final gid = widget.chat.gid;
+    if (gid == null) return;
+    if (_groupMemberCount > SfuGroupCallApi.maxParticipants) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          'This group has more than ${SfuGroupCallApi.maxParticipants} members, '
+          'so group audio is not available')));
+      return;
+    }
+    if (OngoingConference.active != null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You are already in a call — leave it first')));
+      return;
+    }
+    final s = await SfuGroupCallApi.status(gid);
+    final starting = !s.live;
+    if (starting) {
+      _sendSpecial('gcall', {'state': 'start', 'kind': 'audio', 'gid': gid, 'sfu': true},
+          '🎙️ Audio call started — tap 📞 to join');
+    }
+    if (!mounted) return;
+    await Navigator.push(context, MaterialPageRoute(
+        builder: (_) => SfuGroupCallScreen(gid: gid, title: widget.chat.name, starter: starting)));
+    _refreshConfStatus();
   }
 
   /// FREE-tier group call: P2P mesh (≤5) via MeshCallScreen. Reached when the SFU
