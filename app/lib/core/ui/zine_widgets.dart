@@ -811,6 +811,9 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onBack;
   final List<Widget> actions;
   final bool showBack;
+  /// Optional leading widget (e.g. a hamburger menu button) shown in place of the
+  /// back button. When set, [showBack] is ignored.
+  final Widget? leading;
   const ZineAppBar({
     super.key,
     required this.title,
@@ -819,6 +822,7 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.onBack,
     this.actions = const [],
     this.showBack = true,
+    this.leading,
   });
 
   @override
@@ -850,7 +854,10 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
           child: Row(children: [
-            if (showBack) ...[
+            if (leading != null) ...[
+              leading!,
+              const SizedBox(width: 14),
+            ] else if (showBack) ...[
               ZineBackButton(onTap: onBack),
               const SizedBox(width: 14),
             ],
