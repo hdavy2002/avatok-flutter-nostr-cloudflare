@@ -164,6 +164,10 @@ queue = "agent-tasks"
 binding = "Q_MONEY"            # money-settlements (refund/settlement engine, marketplace Phase 7)
 queue = "money-settlements"
 
+[[queues.producers]]
+binding = "Q_ARCHIVE"          # chat-archive (Phase 1 ABLY-R2): message body → R2 + D1 index
+queue = "chat-archive"         # NOTE: create once → `wrangler queues create chat-archive` (+ chat-archive-dlq)
+
 # Phase 7: avatok-api consumes its OWN money queue — the engine lives next to
 # the ledger primitives. 5 retries, then the DLQ (alert email + admin retry).
 [[queues.consumers]]
@@ -457,6 +461,10 @@ queue = "agent-tasks-staging"
 [[env.staging.queues.producers]]
 binding = "Q_MONEY"
 queue = "money-settlements-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_ARCHIVE"
+queue = "chat-archive-staging"
 
 [[env.staging.queues.consumers]]
 queue = "money-settlements-staging"

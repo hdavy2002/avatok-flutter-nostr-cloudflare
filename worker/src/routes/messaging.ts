@@ -8,7 +8,7 @@ import { json } from "../util";
 import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
 import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
-import { ablyPublish, ablyConfigured } from "./ably"; // Ably realtime fan-out (migration)
+import { ablyPublish, ablyConfigured, canonicalMsgId } from "./ably"; // Ably realtime fan-out (migration)
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -142,7 +142,10 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   }
 
   const created = Date.now();
-  const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created };
+  // Canonical, chronologically-sortable id shared by the live Ably message, the
+  // R2 archive key, and the client dedupe key (Phase 1, ABLY-R2-1).
+  const mid = canonicalMsgId(created);
+  const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created, mid };
 
   // Is this a delete-for-everyone control? Offline recipients then get a silent,
   // high-priority 'del' push (apply in realtime) instead of a "New message" banner.
@@ -171,7 +174,22 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // recipients still get the FCM wake below. No-op until ABLY_API_KEY is set, so
   // this is safe to ship dark and flip on per the rollout plan.
   if (ablyConfigured(env)) {
-    void ablyPublish(env, `msg:${conv}`, "msg", payload, { clientId: ctx.uid });
+    void ablyPublish(env, `msg:${conv}`, "msg", payload, { clientId: ctx.uid, id: mid });
+  }
+
+  // Phase 1 (ABLY-R2-1): durable R2 archive. Enqueue the moderated message so a
+  // consumer writes the body to R2 (BACKUP_R2, chat/<conv>/<mid>.json) + indexes
+  // it in D1 (message_index). This is the "never lose a chat" + AI-search source
+  // of truth, DECOUPLED from the per-user InboxDO. Best-effort + flag-gated
+  // (CHAT_ARCHIVE=1) so it ships dark; archives are idempotent on `mid`.
+  if (env.CHAT_ARCHIVE === "1" && env.Q_ARCHIVE) {
+    try {
+      void env.Q_ARCHIVE.send({
+        conv, serial: mid, sender: ctx.uid, kind,
+        body: text, media_ref: mediaRef, created_at: created,
+        group: mem.length > 2,
+      });
+    } catch { /* best-effort; the message still delivered live + via InboxDO */ }
   }
 
   if (recipients.length <= FANOUT_SYNC_MAX) {

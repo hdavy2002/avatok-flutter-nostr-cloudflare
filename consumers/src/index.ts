@@ -1,8 +1,9 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
-import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg } from "./types";
+import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg } from "./types";
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
 import { handleBrain } from "./brain";
+import { handleArchive } from "./archive";
 import { handleDeletion } from "./deletion";
 import { handleWalletTx } from "./wallet";
 import { handleAgent } from "./agent";
@@ -31,6 +32,7 @@ export default {
           case "account-deletions": await handleDeletion(msg.body as DeletionMsg, env); break;
           case "wallet-transactions": await handleWalletTx(msg.body as WalletTxMsg, env); break;
           case "agent-tasks": await handleAgent(msg.body as AgentMsg, env); break;
+          case "chat-archive": await handleArchive(msg.body as ArchiveMsg, env); break;
         }
         msg.ack(); ok++;
       } catch (e) {

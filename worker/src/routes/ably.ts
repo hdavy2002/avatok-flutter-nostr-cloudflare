@@ -79,9 +79,13 @@ export async function ablyToken(req: Request, env: Env): Promise<Response> {
 // Basic-auth REST publish with the API key. Used by /api/msg/send to push the
 // stored, moderated message onto Ably for instant live delivery. Best-effort —
 // never blocks the send (offline recipients still get the FCM wake).
+// `opts.id` sets Ably's idempotent message id. We pass our own canonical id
+// (chronologically sortable — see canonicalMsgId) so the live message, the R2
+// archive key, and the client dedupe key are all the SAME value. Re-publishing
+// the same id is a no-op on Ably (safe retries).
 export async function ablyPublish(
   env: Env, channel: string, name: string, data: unknown,
-  opts?: { clientId?: string },
+  opts?: { clientId?: string; id?: string },
 ): Promise<boolean> {
   if (!ablyConfigured(env)) return false;
   try {
@@ -91,11 +95,22 @@ export async function ablyPublish(
       {
         method: "POST",
         headers: { "content-type": "application/json", authorization: auth },
-        body: JSON.stringify({ name, data, ...(opts?.clientId ? { clientId: opts.clientId } : {}) }),
+        body: JSON.stringify({
+          name, data,
+          ...(opts?.clientId ? { clientId: opts.clientId } : {}),
+          ...(opts?.id ? { id: opts.id } : {}),
+        }),
       },
     );
     return res.ok;
   } catch {
     return false;
   }
+}
+
+/** Canonical, chronologically-sortable message id: 13-digit zero-padded epoch ms
+ *  + a short random suffix → lexical sort == time order, collision-safe. Used as
+ *  the Ably message id, the R2 archive key, and the client dedupe key. */
+export function canonicalMsgId(createdMs: number): string {
+  return `${String(createdMs).padStart(13, "0")}.${crypto.randomUUID().slice(0, 8)}`;
 }

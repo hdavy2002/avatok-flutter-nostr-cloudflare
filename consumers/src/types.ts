@@ -8,6 +8,7 @@ export interface Env {
   VERIFICATION?: R2Bucket;            // locked selfie videos (delete cascade)
   DIGITAL?: R2Bucket;                 // OLX digital goods (delete cascade; Phase 5)
   AGENT_AUDIO?: R2Bucket;             // agent TTS cache (delete cascade; Phase 8)
+  BACKUP_R2?: R2Bucket;               // avatok-backup — durable chat archive (Phase 1 ABLY-R2)
   TOKENS: KVNamespace;
   AI: Ai;
   Q_PUSH?: Queue;                     // calendar reminders re-enqueue to push (Phase 3)
@@ -120,5 +121,23 @@ export interface PushMsg {
 // attachments: Brevo transactional attachment shape — content is base64 (Phase 5 ICS).
 export interface EmailMsg { to: string; subject: string; html: string; from?: string; replyTo?: { email: string; name?: string }; attachments?: { name: string; content: string }[]; }
 export interface AnalyticsMsg { event: string; uid?: string; props?: Record<string, unknown>; ts?: number; }
+
+// Chat archive message (producer: avatok-api /api/msg/send). The consumer writes
+// the body to R2 (BACKUP_R2, chat/<conv>/<serial>.json) + upserts D1 message_index.
+export interface ArchiveMsg {
+  conv: string;
+  serial: string;          // canonical message id (chronologically sortable)
+  sender: string;
+  kind: string;
+  body?: string | null;
+  media_ref?: string | null;
+  created_at: number;
+  group?: boolean;
+  // Phase 4: reaction archive (type:'reaction') rides the same queue.
+  type?: "message" | "reaction";
+  target?: string;         // reaction → the message serial being reacted to
+  emoji?: string;          // reaction → emoji name
+  op?: "add" | "remove";   // reaction → toggle direction
+}
 // AvaBrain: PUBLIC content only (server never gets DM plaintext). payload is JSON.
 export interface BrainMsg { uid: string; event_type: string; source_app: string; payload: Record<string, unknown>; capability?: string; traceId?: string; ts?: number; }

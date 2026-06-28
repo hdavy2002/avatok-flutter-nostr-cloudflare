@@ -27,6 +27,7 @@ export interface Env {
   Q_WALLET: Queue;   // wallet-transactions (DO → D1 audit trail, Phase 2)
   Q_AGENT: Queue;    // agent-tasks (agent conversations + per-app hooks, Phase 7)
   Q_MONEY: Queue;    // money-settlements (refund/settlement engine, marketplace Phase 7)
+  Q_ARCHIVE?: Queue; // chat-archive (Phase 1 ABLY-R2: message body → R2 + D1 index)
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;
@@ -173,6 +174,11 @@ export interface Env {
   // client JWTs (/api/ably/token) and (b) server-publish moderated messages to
   // Ably (ablyPublish). Unset ⇒ /api/ably/token returns 503 (flag-gated).
   ABLY_API_KEY?: string;
+
+  // Ably-transport + R2-archive rollout flags (Specs/ABLY-TRANSPORT-R2-ARCHIVE-PROPOSAL.md).
+  CHAT_ARCHIVE?: string;     // "1" → enqueue every sent message to R2 + D1 message_index (Phase 1)
+  MSG_TRANSPORT?: string;    // "ably" → Ably is the PRIMARY live path; InboxDO fan-out moves off the hot path (Phase 2)
+  MSG_STATE_STORE?: string;  // "d1" → owner-private state (read/hide/call-log) reads+writes go to D1 (Phase 5)
 
   // Cloudflare AI Gateway (2026-06-18). When set, all Workers-AI + Google image
   // calls route through this gateway for cost logging, caching, and a hard spend

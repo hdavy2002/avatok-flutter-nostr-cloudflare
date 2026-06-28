@@ -56,6 +56,13 @@ bucket_name = "avatok-digital"
 binding = "AGENT_AUDIO"
 bucket_name = "avatok-agent-audio"
 
+# Phase 1 (ABLY-R2): durable chat archive lives in the PRIVATE backup bucket
+# (no public access), key chat/<conv>/<serial>.json. Reuses avatok-backup so no
+# new bucket needs provisioning; can be split to a dedicated bucket later.
+[[r2_buckets]]
+binding = "BACKUP_R2"
+bucket_name = "avatok-backup"
+
 # FCM access-token cache (ephemeral) — Rulebook-allowed KV use.
 [[kv_namespaces]]
 binding = "TOKENS"
@@ -135,6 +142,21 @@ max_retries = 3
 queue = "agent-tasks"
 max_batch_size = 2
 max_batch_timeout = 5
+max_retries = 3
+
+# Phase 1 (ABLY-R2): chat archive — write each message to R2 + D1 message_index.
+# Idempotent on `serial`; 5 retries then the DLQ (so a chat is never silently lost).
+# Create once: `wrangler queues create chat-archive` (+ chat-archive-dlq).
+[[queues.consumers]]
+queue = "chat-archive"
+max_batch_size = 25
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "chat-archive-dlq"
+
+[[queues.consumers]]
+queue = "chat-archive-dlq"
+max_batch_size = 10
 max_retries = 3
 
 # Cross-script DO binding → avatok-api's ConversationDO (run the agent turn loop).
@@ -252,6 +274,10 @@ binding = "BLOBS"
 bucket_name = "avatok-blobs-staging"
 
 [[env.staging.r2_buckets]]
+binding = "BACKUP_R2"
+bucket_name = "avatok-backup-staging"
+
+[[env.staging.r2_buckets]]
 binding = "VERIFICATION"
 bucket_name = "avatok-verification-staging"
 
@@ -328,6 +354,18 @@ max_retries = 3
 queue = "agent-tasks-staging"
 max_batch_size = 2
 max_batch_timeout = 5
+max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "chat-archive-staging"
+max_batch_size = 25
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "chat-archive-dlq-staging"
+
+[[env.staging.queues.consumers]]
+queue = "chat-archive-dlq-staging"
+max_batch_size = 10
 max_retries = 3
 
 [[env.staging.durable_objects.bindings]]
