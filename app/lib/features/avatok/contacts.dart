@@ -25,6 +25,9 @@ class Contact {
 
   String get seed => npub; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
+  /// A phone-only caller saved from the AI Receptionist — keyed by a synthetic
+  /// `tel:<E.164>` id because they have no AvaTOK account / npub yet.
+  bool get isPhoneOnly => npub.startsWith('tel:');
   /// Human-friendly subtitle — AvaTOK number first, then phone, then email.
   String get subtitle => number.isNotEmpty ? number : (phone.isNotEmpty ? phone : email);
 
@@ -79,6 +82,25 @@ class ContactsStore {
   Future<List<Contact>> remove(String npub) async {
     final cs = await load();
     cs.removeWhere((x) => x.npub == npub);
+    await _save(cs);
+    _syncUp(cs);
+    return cs;
+  }
+
+  /// Promote a phone-only `tel:<e164>` contact to a real AvaTOK account once
+  /// that caller is discovered to have joined. Drops the synthetic row and adds
+  /// the real one, carrying the phone number across if the resolved profile
+  /// didn't include it. The conv key derives from the number either way, so the
+  /// thread and its receptionist cards stay intact through the merge.
+  Future<List<Contact>> mergeTel(String e164, Contact real) async {
+    final cs = await load();
+    cs.removeWhere((x) => x.npub == 'tel:$e164');
+    cs.removeWhere((x) => x.npub == real.npub);
+    final merged = real.phone.isEmpty
+        ? Contact(npub: real.npub, name: real.name, handle: real.handle,
+            email: real.email, avatarUrl: real.avatarUrl, phone: e164, number: real.number)
+        : real;
+    cs.insert(0, merged);
     await _save(cs);
     _syncUp(cs);
     return cs;

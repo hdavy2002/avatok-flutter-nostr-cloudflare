@@ -43,6 +43,7 @@ import 'data.dart';
 import 'media.dart';
 import 'new_group_screen.dart';
 import 'search_screen.dart';
+import 'unknown_caller.dart';
 import '../avaphone/ava_phone_screen.dart';
 
 /// AvaTok home — chat + calls list (the AvaChat "ChatList" design).
@@ -108,8 +109,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   List<ChatFilter> _customFilters = [];
   String? _clerkName; // real name from Clerk → drawer header
 
-  String _keyOf(Chat c) =>
-      c.gid != null ? 'g:${c.gid}' : '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
+  String _keyOf(Chat c) {
+    if (c.gid != null) return 'g:${c.gid}';
+    // Unknown-number receptionist threads key by the caller's phone, NOT by an
+    // npub (they have no AvaTOK account). Must match SyncHub's `g:recept_…` key.
+    final tel = telPhone(c.seed);
+    if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
+    return '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
+  }
 
   /// Chat-list timestamp: HH:mm today, 'Yesterday', else d/m.
   String _fmtListTime(int epochSecs) {
@@ -319,7 +326,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       })));
     }
     for (final c in contacts) {
-      final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
+      final tel = telPhone(c.npub);
+      final k = tel != null
+          ? receptTelConvKey(_id?.uid ?? '', tel)
+          : '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
       final pv = previews[k];
       final ts = pv?.ts ?? 0;
       rows.add((convKey: k, ts: ts, json: jsonEncode({
@@ -490,6 +500,26 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             _lastRead[key] = ts;
             if (mounted) setState(() => _unread.remove(key));
           }
+        } else if (t == 'recept') {
+          // The AI Receptionist took a message. For a phone-only caller (no
+          // AvaTOK account) the hub key is `g:recept_<me>__tel:<phone>` and there
+          // is no contact yet — materialise a provisional `tel:` contact so the
+          // thread appears in the list titled by the number, and the owner can
+          // Save it from inside the thread. Known callers already have a tile.
+          final key = u.convKey;
+          if (u.createdAt > (_lastRead[key] ?? 0) && mounted) {
+            setState(() => _unread[key] = (_unread[key] ?? 0) + 1);
+          }
+          if (u.createdAt >= (_previews[key]?.ts ?? 0)) {
+            final preview = (env['text'] ?? '📞 Ava took a message').toString();
+            _previewStore.record(key, preview, u.createdAt, false).then((_) {
+              if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
+            });
+          }
+          if (isReceptTelConv(key)) {
+            final phone = phoneFromReceptConv(key) ?? (env['caller_phone'] ?? '').toString();
+            if (phone.isNotEmpty) _ensureTelContact(phone, env['caller_name']?.toString());
+          }
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
           if (u.senderPub == id.uid) return; // my own message
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
@@ -569,6 +599,22 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         if (mounted) setState(() => _contacts = list);
       }
     } catch (_) {/* placeholder stands */}
+  }
+
+  /// Materialise a PROVISIONAL phone-only contact for an unknown caller the AI
+  /// Receptionist took a message from, so their thread shows up titled by the
+  /// number. Keyed by a synthetic `tel:<E.164>` id; de-dupes on that id. The
+  /// owner turns this into a real saved contact (with a name) from inside the
+  /// thread via "Save to contacts". No-op if already present.
+  Future<void> _ensureTelContact(String phone, String? callerName) async {
+    final e164 = DeviceContactsService.normPhone(phone);
+    final npub = telNpub(e164);
+    if (e164.isEmpty || _contacts.any((c) => c.npub == npub) || !_autoAdding.add(npub)) return;
+    final name = (callerName != null && callerName.trim().isNotEmpty)
+        ? callerName.trim()
+        : formatTelDisplay(e164);
+    final list = await _contactsStore.add(Contact(npub: npub, name: name, phone: e164));
+    if (mounted) setState(() => _contacts = list);
   }
 
   Future<void> _openAddContact() async {
@@ -747,13 +793,21 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             group: true, members: g.members.length, gid: g.id,
             unread: _unread['g:${g.id}'] ?? 0))
         .toList();
+    String contactKey(Contact c) {
+      final tel = telPhone(c.npub);
+      if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
+      return '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
+    }
     final contactChats = _contacts.where((c) {
-      final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
+      final k = contactKey(c);
       return !blocked.contains(k) && (_showArchived || !archived.contains(k));
     }).map((c) {
-      final k = '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
+      final k = contactKey(c);
+      // Phone-only callers can't be greeted with "Say hi" — their thread is a
+      // one-way voicemail record, so fall back to the formatted number.
+      final empty = c.isPhoneOnly ? c.subtitle : 'Say hi 👋';
       return Chat(name: c.name, seed: c.seed, avatarUrl: c.avatarUrl,
-          last: draftOr(k, previewOr(k, c.subtitle.isNotEmpty ? c.subtitle : 'Say hi 👋')),
+          last: draftOr(k, previewOr(k, c.subtitle.isNotEmpty ? c.subtitle : empty)),
           time: timeOf(k), unread: _unread[k] ?? 0);
     }).toList();
     final realRows = [...groupChats, ...contactChats];

@@ -57,6 +57,7 @@ import '../../core/message_store.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
 import '../../core/db.dart';
+import '../../core/device_contacts.dart';
 import '../../sync/dm.dart';
 import '../../sync/group_dm.dart';
 import '../../sync/legacy_stubs.dart';
@@ -85,6 +86,7 @@ import 'live_location.dart';
 import 'group_info_screen.dart';
 import 'media.dart';
 import 'media_library_screen.dart';
+import 'unknown_caller.dart';
 import 'video_player_screen.dart';
 
 /// AvaTok conversation thread — bubbles, media (photo/video/file/voice),
@@ -204,6 +206,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   List<String> _memberNpubs = []; // group recipient npubs (excl me)
   String? _convKey; // '1:<hex>' or 'g:<gid>' for read state / unread badges
   Identity? _meId;
+  // Unknown-number receptionist thread (caller has no AvaTOK account). When set,
+  // the thread is a read-only voicemail record keyed by the caller's phone.
+  bool _isTelThread = false;
+  String _telPhone = ''; // E.164 of the caller for a tel: thread
+  bool _callerSaved = true; // false ⇒ show the "Save to contacts" affordances
+  bool _saveBannerDismissed = false;
   // Shield watchdog (Ava guardian) state for THIS chat. Green shield = on.
   GuardianPrefs _guardian = GuardianPrefs.off;
   // created_at (ms) of incoming messages Ava flagged as unsafe → painted RED so
@@ -362,6 +370,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (widget.chat.gid != null) { _setupGroup(id); return; }
     if (widget.chat.group) return; // legacy local group
     final seed = widget.chat.seed;
+    final tel = telPhone(seed);
+    if (tel != null) { _setupTelThread(id, tel); return; } // unknown-number voicemail
     final peerHex = NostrKeys.npubToHex(seed);
     if (peerHex == null) return; // demo contact → keep local echo
     _realMode = true;
@@ -411,6 +421,38 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _markRead();
     _loadChatExtras();
     _loadCachedMessages();
+  }
+
+  /// Set up a READ-ONLY unknown-number receptionist thread. The caller has no
+  /// AvaTOK account, so there is no live peer to message — this is purely the
+  /// owner's voicemail record. We load the stored receptionist cards from the
+  /// hub + local DB under the deterministic `g:recept_<me>__tel:<phone>` key and
+  /// decide whether to show the "Save to contacts" affordances.
+  void _setupTelThread(Identity id, String phone) {
+    _realMode = true;
+    _isTelThread = true;
+    _telPhone = phone;
+    _convKey = receptTelConvKey(id.uid, phone);
+    setState(() => _msgs.clear());
+    // Seed from the in-memory hub store, then durable history from SQLite.
+    for (final m in SyncHub.I.messagesFor(_convKey!)) _onDm(m, seed: true);
+    Db.I.messagesFor(_convKey!).then((rows) {
+      if (!mounted) return;
+      for (final m in rows) {
+        _onDm(DmMessage(rumorId: m.rumorId, mine: m.mine, payload: m.payload, createdAt: m.createdAt), seed: true);
+      }
+      _jumpToEndSettled();
+    });
+    // Is this caller already a saved contact? (A provisional `tel:` row counts
+    // as "in the list" but NOT as saved until the owner names them.)
+    ContactsStore().load().then((cs) {
+      if (!mounted) return;
+      final saved = cs.any((c) => c.npub == telNpub(phone) && c.name.trim().isNotEmpty &&
+          c.name.trim() != formatTelDisplay(phone) && c.name.trim() != phone);
+      setState(() => _callerSaved = saved);
+    });
+    _markRead();
+    _loadChatExtras();
   }
 
   Future<void> _loadChatExtras() async {
@@ -3969,6 +4011,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
+          if (_isTelThread && !_callerSaved)
+            _action(ctx, PhosphorIcons.userPlus(PhosphorIconsStyle.bold), 'Save to contacts',
+                () { Navigator.pop(ctx); _saveUnknownContact(source: 'thread_menu'); }),
           if (kDiscussWithAvaEnabled && _convKey != null)
             _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Discuss with Ava',
                 _discussWithAva),
@@ -4267,7 +4312,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 _headerAction(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                     () => setState(() { _searchMode = true; _searchQuery = ''; }),
                     color: Zine.blueInk),
-                if (!c.group) ...[
+                if (_isTelThread) ...[
+                  // Unknown-number voicemail record — no live peer to call. Offer
+                  // a quick "save contact" shortcut in the header instead.
+                  if (!_callerSaved)
+                    _headerAction(PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
+                        () => _saveUnknownContact(source: 'thread_header'), color: Zine.lilac),
+                ] else if (!c.group) ...[
                   _headerAction(PhosphorIcons.phone(PhosphorIconsStyle.bold), () => _call('voice'), color: Zine.mintInk),
                   _headerAction(PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), () => _call('video'), color: Zine.coral),
                 ] else if (RemoteConfig.conferenceEnabled) ...[
@@ -4287,6 +4338,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ]),
             ),
             if (_pinned != null) _pinBanner(),
+            // Unknown-number receptionist thread — invite the owner to save the
+            // caller (dismissible). Hidden once saved or dismissed.
+            if (_isTelThread && !_callerSaved && !_saveBannerDismissed) _saveContactBanner(),
             // Ongoing group conference (Phase 10) — joinable, not ringing.
             if (widget.chat.gid != null && _confLive && RemoteConfig.conferenceEnabled) _confBanner(),
             Expanded(
@@ -4348,7 +4402,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ),
             ),
             if (_mentionMatches.isNotEmpty) _mentionBar(),
-            SafeArea(top: false, child: _inputBar()),
+            // Unknown-number threads are a one-way voicemail record (no live peer
+            // to reply to), so the composer is replaced with a read-only note.
+            if (_isTelThread) SafeArea(top: false, child: _telFooter())
+            else SafeArea(top: false, child: _inputBar()),
           ],
         ),
       ),
@@ -5309,6 +5366,80 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]),
       );
 
+  /// Open the "Save to contacts" sheet for an unknown caller, prefilled with
+  /// their number. On success the affordances disappear and the header repaints
+  /// with the chosen name.
+  Future<void> _saveUnknownContact({String source = 'thread_menu'}) async {
+    if (_telPhone.isEmpty) return;
+    final saved = await showSavePhoneContactSheet(context, phone: _telPhone, source: source);
+    if (saved != null && mounted) {
+      setState(() => _callerSaved = true);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Saved ${saved.name}'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
+  /// Dismissible banner shown atop an unknown-number thread inviting the owner
+  /// to save the caller as a contact.
+  Widget _saveContactBanner() => Container(
+        decoration: const BoxDecoration(
+          color: Zine.paper2,
+          border: Border(bottom: BorderSide(color: Zine.ink, width: 2)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+        child: Row(children: [
+          PhosphorIcon(PhosphorIcons.userPlus(PhosphorIconsStyle.bold), size: 16, color: Zine.lilac),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Unknown number · ${formatTelDisplay(_telPhone)}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: ZineText.sub(size: 12.5, color: Zine.ink))),
+          GestureDetector(
+            onTap: () => _saveUnknownContact(source: 'thread_banner'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Zine.card,
+                borderRadius: BorderRadius.circular(100),
+                border: Border.all(color: Zine.ink, width: 2),
+              ),
+              child: Text('Save', style: ZineText.tag(size: 11)),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(onTap: () => setState(() => _saveBannerDismissed = true),
+              child: PhosphorIcon(PhosphorIcons.x(PhosphorIconsStyle.bold), size: 15, color: Zine.inkSoft)),
+          const SizedBox(width: 8),
+        ]),
+      );
+
+  /// Read-only footer for an unknown-number voicemail thread.
+  Widget _telFooter() => Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: Zine.paper2,
+          border: Border(top: BorderSide(color: Zine.ink, width: 2)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.voicemail, size: 15, color: Zine.inkMute),
+          const SizedBox(width: 8),
+          Flexible(child: Text(
+              _callerSaved
+                  ? 'Voicemail record · this caller isn’t on AvaTOK'
+                  : 'Voicemail record from an unknown number',
+              style: ZineText.sub(size: 12.5, color: Zine.inkSoft))),
+          if (!_callerSaved) ...[
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: () => _saveUnknownContact(source: 'thread_footer'),
+              child: Text('Save contact', style: ZineText.tag(size: 12, color: Zine.blueInk)),
+            ),
+          ],
+        ]),
+      );
+
   Widget _pinBanner() => Container(
         decoration: const BoxDecoration(
           color: Zine.paper2,
@@ -5906,6 +6037,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   bool _expanded = false;
   bool _loadingAudio = false;
   bool _playing = false;
+  bool _saved = true; // assume saved until the contacts check says otherwise
 
   @override
   void initState() {
@@ -5916,6 +6048,32 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     // complaint. Best-effort; _togglePlay still fetches on demand if this misses.
     // ignore: unawaited_futures
     _prefetch();
+    _checkSaved();
+  }
+
+  /// The caller's E.164 number (if the card carries one).
+  String get _phone => (_e['caller_phone'] ?? '').toString();
+
+  /// Decide whether to offer "Save contact": only when we have a phone number
+  /// and no real (named) contact yet exists for it.
+  Future<void> _checkSaved() async {
+    final p = _phone;
+    if (p.isEmpty) return;
+    final e164 = DeviceContactsService.normPhone(p);
+    try {
+      final cs = await ContactsStore().load();
+      final saved = cs.any((c) => c.npub == telNpub(e164) &&
+          c.name.trim().isNotEmpty &&
+          c.name.trim() != formatTelDisplay(e164) && c.name.trim() != e164);
+      if (mounted) setState(() => _saved = saved);
+    } catch (_) {/* leave the button hidden on failure */}
+  }
+
+  Future<void> _save() async {
+    final p = _phone;
+    if (p.isEmpty) return;
+    final saved = await showSavePhoneContactSheet(context, phone: p, source: 'recept_card');
+    if (saved != null && mounted) setState(() => _saved = true);
   }
 
   @override
@@ -6082,9 +6240,40 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       ]),
       const SizedBox(height: 2),
       Text('Ava took a message', style: ZineText.kicker(size: 10.5)),
+      // Caller's phone number — always shown when present, even if Ava also
+      // captured a name, so the owner can identify/return the call.
+      if (_phone.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.phone, size: 13, color: Zine.inkSoft),
+          const SizedBox(width: 5),
+          Flexible(child: Text(formatTelDisplay(_phone),
+              style: ZineText.tag(size: 12, color: Zine.inkSoft))),
+        ]),
+      ],
       const SizedBox(height: 6),
       Text(_reason, style: ZineText.sub(size: 13, color: Zine.ink)),
       const SizedBox(height: 8),
+      // Unknown caller → offer to save them as a contact right from the card.
+      if (_phone.isNotEmpty && !_saved) ...[
+        GestureDetector(
+          onTap: _save,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Zine.card,
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(color: Zine.ink, width: 2),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.person_add_alt, size: 15, color: Zine.ink),
+              const SizedBox(width: 5),
+              Text('Save contact', style: ZineText.tag(size: 11)),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
       Row(mainAxisSize: MainAxisSize.min, children: [
         if (hasRec)
           GestureDetector(
