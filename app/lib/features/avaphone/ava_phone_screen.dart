@@ -59,23 +59,10 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
           AvaPhoneContacts(),
         ]),
       ),
-      // Dialpad stays as a separate CENTERED button (owner request 2026-06-28).
-      // Home moved into the footer (left of Calls). Contacts tab uses its own FAB.
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: _tab == 0
-          ? FloatingActionButton(
-              heroTag: 'avaphone_dialpad',
-              backgroundColor: PhoneTheme.teal,
-              foregroundColor: _kInk,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: const BorderSide(color: PhoneTheme.border, width: 2),
-              ),
-              onPressed: _openDialpad,
-              child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 26),
-            )
-          : null,
+      // Dialpad now lives INLINE in the footer, between Home and Calls (owner
+      // request 2026-06-29) — the centered floating button is gone. Home and
+      // Dialpad act as buttons (pop / open sheet); Calls & Contacts are the only
+      // real tabs.
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: PhoneTheme.surface,
@@ -89,13 +76,14 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
           ),
           child: NavigationBar(
             height: 64,
-            // Home sits at index 0 (left of Calls) but acts as a button, not a
-            // tab — Calls/Contacts are the only real tabs, so the selected index
-            // is offset by 1.
-            selectedIndex: _tab + 1,
+            // Footer order: Home(0) · Dialpad(1) · Calls(2) · Contacts(3). Home
+            // and Dialpad act as buttons (not tabs); Calls/Contacts are the only
+            // real tabs, so the selected index is offset by 2.
+            selectedIndex: _tab + 2,
             onDestinationSelected: (i) {
               if (i == 0) { Navigator.of(context).maybePop(); return; } // Home → Messenger
-              setState(() => _tab = i - 1); // 1 → Calls (0), 2 → Contacts (1)
+              if (i == 1) { _openDialpad(); return; }                  // Dialpad → sheet
+              setState(() => _tab = i - 2); // 2 → Calls (0), 3 → Contacts (1)
             },
             backgroundColor: PhoneTheme.surface,
             surfaceTintColor: Colors.transparent,
@@ -104,6 +92,9 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
                   icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
                   selectedIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
                   label: 'Home'),
+              const NavigationDestination(
+                  icon: _DialpadNavIcon(),
+                  label: 'Dialpad'),
               NavigationDestination(
                   icon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), color: PhoneTheme.textSoft),
                   selectedIcon: PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.fill), color: PhoneTheme.accent),
@@ -122,6 +113,27 @@ class _AvaPhoneScreenState extends State<AvaPhoneScreen> {
 
 /// Convenience: ink colour for FAB foreground (kept readable on the teal accent).
 const Color _kInk = Color(0xFF0E1116);
+
+/// The dialpad footer destination keeps its distinctive teal rounded-square
+/// badge so it still reads as the dialer entry point now that it lives inline
+/// between Home and Calls (instead of as a centered floating button).
+class _DialpadNavIcon extends StatelessWidget {
+  const _DialpadNavIcon();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 28,
+      decoration: BoxDecoration(
+        color: PhoneTheme.teal,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: PhoneTheme.border, width: 1.5),
+      ),
+      alignment: Alignment.center,
+      child: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.bold), size: 18, color: _kInk),
+    );
+  }
+}
 
 // ─────────────────────────────── Calls tab ────────────────────────────────
 
