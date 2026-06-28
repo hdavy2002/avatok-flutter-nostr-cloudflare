@@ -14,6 +14,13 @@ export interface PlatformConfig {
   liveEnabled: boolean;
   consultEnabled: boolean;
   conferenceEnabled: boolean;
+  // FREE LAUNCH group AUDIO on Cloudflare Realtime SFU (Specs/FREE-LAUNCH-DIRECTION.md
+  // + Specs/CF-REALTIME-SFU-GROUP-AUDIO-BUILD.md). Default OFF: the new audio-only
+  // CF-SFU group path stays dormant until its worker+client build lands and is
+  // CI/device-verified. While OFF, group calls keep using the existing LiveKit
+  // path (kept dormant per the launch doc, NOT deleted). Flip ON in KV to cut the
+  // GROUP path over to CF Realtime SFU (audio-only, 32 cap, active-speaker pull).
+  groupAudioSfuEnabled: boolean;
   brainEnabled: boolean;
   verseEnabled: boolean;
   // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md)
@@ -78,40 +85,47 @@ export interface PlatformConfig {
   minAppBuild: number;
 }
 
+// FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
+// all-free, focused comms product. Core ON: messaging, 1:1 calls, group AUDIO,
+// free number/dialpad, AI receptionist, basic Ava chat, Guardian. Everything
+// else (paid/marketplace/agent-builders/premium-AI) is OFF and hidden in the
+// client. All paywalls off (betaFreePremium ON / billingEnabled OFF). Fully
+// reversible — flip these back in KV `platform_config`, no redeploy.
 const DEFAULTS: PlatformConfig = {
   walletRealMoney: false, // money-in stays OFF pending legal (§10.1)
   donationsEnabled: true,
-  liveEnabled: true,
-  consultEnabled: true,
-  conferenceEnabled: true,
-  brainEnabled: true,
-  verseEnabled: true,
+  liveEnabled: false,              // FREE LAUNCH: marketplace/AvaLive hidden
+  consultEnabled: false,           // FREE LAUNCH: paid consulting hidden
+  conferenceEnabled: true,         // group AUDIO calls (master kill switch)
+  groupAudioSfuEnabled: false,     // CF Realtime SFU group path — dormant until built+CI-verified
+  brainEnabled: false,             // FREE LAUNCH: secondary — revisit later
+  verseEnabled: false,             // FREE LAUNCH: creator dashboard hidden
   identityLadderEnabled: true,
   guestTierEnabled: true,
   workersAiLivenessEnabled: false, // flip on after model tuning; Rekognition stays default
   simOnlyPhoneEnabled: true,
-  translationEnabled: true,
-  translationGroupEnabled: true,
-  avavoiceEnabled: true,
-  avavisionEnabled: true,
-  receptionistEnabled: false,      // Ava Receptionist — OFF until dogfood passes (enable via KV)
+  translationEnabled: false,       // FREE LAUNCH: Gemini-Live cost — hidden
+  translationGroupEnabled: false,  // FREE LAUNCH: hidden
+  avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
+  avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
+  receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
   receptionistRings: 4,            // v2 Mode A: auto-handoff after 4 unanswered rings
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).
-  aiEnabled: true,
+  aiEnabled: true,                 // basic free Ava chat ON
   focusMode: true,
-  webSearchEnabled: true,          // BYO (free) + premium; gated by webSearchAllowed
+  webSearchEnabled: false,         // FREE LAUNCH: premium AI cost — hidden
   fileAnalysisEnabled: false,      // premium unlocks
   openChatUncapped: false,         // premium removes the cap
   dailyAvaTurnLimit: 25,
-  guardianEnabled: true,
-  companionEnabled: true,
-  generativeEnabled: true,
+  guardianEnabled: true,           // safety shield — free, trust driver
+  companionEnabled: true,          // basic free Ava chat
+  generativeEnabled: false,        // FREE LAUNCH: premium image gen — hidden
   imageDailyCap: 100,              // fair-use backstop per user/day — applies even to "unlimited" packages
   ringbackEnabled: true,           // AI ringback + busy tone (free, our AI key)
-  betaFreePremium: false,          // metered economy LIVE (beta-free ended 2026-06-23; billing on)
-  billingEnabled: true,            // Phase 1 subscriptions LIVE (enabled 2026-06-23)
+  betaFreePremium: true,           // FREE LAUNCH: no paywalls — everyone premium, no metering
+  billingEnabled: false,           // FREE LAUNCH: subscriptions/checkout off
   numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
