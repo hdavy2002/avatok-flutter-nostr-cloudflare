@@ -26,16 +26,32 @@ class RemoteConfig {
 
   static bool _b(String k, bool dflt) => _cfg[k] is bool ? _cfg[k] as bool : dflt;
 
+  // FREE LAUNCH (2026-06-28, Specs/FREE-LAUNCH-DIRECTION.md): the hidden-feature
+  // defaults below flip to FALSE so a config-fetch failure renders the focused
+  // free product (not the full marketplace). The live KV `platform_config`
+  // mirrors these; flip them back when paid/marketplace returns.
   static bool get walletRealMoney => _b('walletRealMoney', false);
   static bool get donationsEnabled => _b('donationsEnabled', true);
-  static bool get liveEnabled => _b('liveEnabled', true);
-  static bool get consultEnabled => _b('consultEnabled', true);
+  static bool get liveEnabled => _b('liveEnabled', false);
+  static bool get consultEnabled => _b('consultEnabled', false);
   static bool get conferenceEnabled => _b('conferenceEnabled', true);
-  static bool get brainEnabled => _b('brainEnabled', true);
-  static bool get translationEnabled => _b('translationEnabled', true);
-  static bool get translationGroupEnabled => _b('translationGroupEnabled', true);
-  static bool get avavoiceEnabled => _b('avavoiceEnabled', true);
-  static bool get avavisionEnabled => _b('avavisionEnabled', true);
+  /// CF Realtime SFU group-audio path — dormant until its build lands + is
+  /// CI/device-verified. While false, group calls use the existing LiveKit path.
+  static bool get groupAudioSfuEnabled => _b('groupAudioSfuEnabled', false);
+  static bool get brainEnabled => _b('brainEnabled', false);
+  static bool get verseEnabled => _b('verseEnabled', false);
+  static bool get translationEnabled => _b('translationEnabled', false);
+  static bool get translationGroupEnabled => _b('translationGroupEnabled', false);
+  static bool get avavoiceEnabled => _b('avavoiceEnabled', false);
+  static bool get avavisionEnabled => _b('avavisionEnabled', false);
+  /// FREE LAUNCH: no paywalls. When true, the whole client renders premium and
+  /// no upgrade/metering UI shows. Mirrors KV `betaFreePremium`.
+  static bool get betaFreePremium => _b('betaFreePremium', true);
+  /// FREE LAUNCH: subscriptions/checkout off. When false, hide Subscribe/upgrade
+  /// + wallet top-up entry points. Mirrors KV `billingEnabled`.
+  static bool get billingEnabled => _b('billingEnabled', false);
+  /// AI receptionist (Gemini Live) — ON for the free launch. Mirrors KV.
+  static bool get receptionistEnabled => _b('receptionistEnabled', true);
   /// ChatAVA "talk to Ava by voice" — the hands-free Gemini Live call
   /// (LiveVoiceController). Owner kill switch (2026-06-27): default OFF so the
   /// feature stays dark after a config-fetch failure and can't burn the shared
