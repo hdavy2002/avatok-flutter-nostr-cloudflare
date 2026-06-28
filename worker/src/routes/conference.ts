@@ -27,7 +27,8 @@ import { json } from "../util";
 import { isFail, requireUser } from "../authz";
 import { PLANS, tierOf } from "./plans";
 import { enforceAllowance, planLimitBody } from "../lib/usage";
-import { readConfig } from "./config";
+import { track, trackUser } from "../hooks";
+import { emailFor } from "../lib/identity";
 
 // Absolute backstop — no tier may ever exceed this on the SFU. Per-call caps are
 // the STARTER's plan `confParticipants` (Plus 10 / Pro 25 / Max 25). Free (tier 0)
@@ -74,6 +75,19 @@ async function lkApi(env: Env, method: string, body: Record<string, unknown>): P
 
 function roomName(groupId: string): string { return `group:${groupId}`; }
 
+/** Rich edge geo (Cloudflare request.cf) for the conference analytics dashboard:
+ *  country, city, region, timezone, continent + the Cloudflare colo (edge PoP),
+ *  a coarse "where the call entered the network" signal. Powers the "where are
+ *  our top video-conf regions" PostHog view. Best-effort — all fields nullable. */
+function confGeo(req: Request): Record<string, string | null> {
+  const cf = (req as any).cf ?? {};
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return {
+    country: s(cf.country), city: s(cf.city), region: s(cf.region),
+    timezone: s(cf.timezone), continent: s(cf.continent), colo: s(cf.colo),
+  };
+}
+
 function configured(env: Env): boolean {
   return Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET);
 }
@@ -110,20 +124,45 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: u.error }, u.status);
 
-  // Plan gate. Free (tier 0) gets P2P-mesh group calls (≤5), NOT the SFU — tell
-  // the client to route to mesh. Paid tiers get the SFU capped by their plan.
+  const g = confGeo(req);
+  const email = await emailFor(env, u.uid).catch(() => null);
+
+  // Plan gate. RULE CHANGE 2026-06-28 (owner): Free (tier 0) NOW uses the SFU
+  // too — on LiveKit Cloud, max 5 participants, metered to 60 min/day (6×10-min
+  // calls ≈ one hour). Previously free was P2P-mesh only; the mesh path stays as
+  // a dormant fallback. Per-call SIZE cap = the plan's confParticipants
+  // (Free 5 / Plus 10 / Pro 25 / Max 25). `provider` is stamped so the analytics
+  // dashboard can separate LiveKit-Cloud spend from the future self-hosted
+  // regional SFU (see Specs/AVA-SFU-SELFHOST-PLAYBOOK.md). When self-hosted SFU
+  // ships, free's 60 min/day expands to 180 (3h) — a plans.ts conf_min bump only.
   const tier = await tierOf(env, u.uid);
-  if (tier === 0) {
-    return json({ error: "Free plan group calls are peer-to-peer", mode: "mesh", maxMesh: 5 }, 403);
+  const cap = Math.min(PLANS[tier].confParticipants, MAX_PARTICIPANTS); // 5 / 10 / 25 / 25
+  const provider = "livekit_cloud"; // TODO: route paid tiers to self-hosted regional SFU
+
+  // Daily minute allowance (conf_min) enforced at ENTRY so a tapped-out user
+  // can't start/join (the per-minute beat keeps consuming once inside). Peek only
+  // (commit:false) — conferenceBeat does the actual decrement. Free = 60 min/day.
+  const allow = await enforceAllowance(env, u.uid, tier, "conf_min", 1, { commit: false });
+  if (!allow.allowed) {
+    await trackUser(env, u.uid, email, "conf_blocked", "avatok", {
+      reason: "daily_limit", stage: create ? "start" : "join", tier, cap_min: allow.cap,
+      group_id: groupId, provider, ...g,
+    });
+    return json(planLimitBody(allow), 402);
   }
-  const cap = Math.min(PLANS[tier].confParticipants, MAX_PARTICIPANTS); // 10 / 25 / 25
 
   // Membership + per-plan size cap (hard product rule). Legacy local groups have
   // no D1 rows — fall back to authenticated access (see header comment).
   const mem = await groupMembers(env, groupId);
   if (mem.length > 0) {
-    if (!mem.includes(u.uid)) return json({ error: "not a member" }, 403);
+    if (!mem.includes(u.uid)) {
+      await trackUser(env, u.uid, email, "conf_blocked", "avatok", { reason: "not_member", tier, group_id: groupId, ...g });
+      return json({ error: "not a member" }, 403);
+    }
     if (mem.length > cap) {
+      await trackUser(env, u.uid, email, "conf_blocked", "avatok", {
+        reason: "size_cap", tier, cap, members: mem.length, group_id: groupId, provider, ...g,
+      });
       return json({ error: `your plan allows up to ${cap} on a group call — upgrade for more`, cap, tier }, 403);
     }
   }
@@ -138,16 +177,28 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
     // LiveKit itself even if two workers issued tokens.
     const r = await lkApi(env, "CreateRoom", {
       name: room, max_participants: cap, empty_timeout: 120, departure_timeout: 30,
-      metadata: JSON.stringify({ groupId, kind, started_by: u.uid, starter_tier: tier }),
+      metadata: JSON.stringify({ groupId, kind, started_by: u.uid, starter_tier: tier, provider, region: g.colo ?? null }),
     });
-    if (!r.ok) return json({ error: "could not create conference room", detail: await r.text() }, 502);
+    if (!r.ok) {
+      const detail = await r.text();
+      await trackUser(env, u.uid, email, "conf_error", "avatok", {
+        stage: "create_room", tier, detail: detail.slice(0, 300), group_id: groupId, provider, ...g,
+      });
+      return json({ error: "could not create conference room", detail }, 502);
+    }
   } else {
     // join: the room must be live (started by someone). ListParticipants 404s/
     // errors when the room doesn't exist.
     const r = await lkApi(env, "ListParticipants", { room });
-    if (!r.ok) return json({ error: "no live conference for this group" }, 404);
+    if (!r.ok) {
+      await trackUser(env, u.uid, email, "conf_blocked", "avatok", { reason: "no_live_room", tier, group_id: groupId, ...g });
+      return json({ error: "no live conference for this group" }, 404);
+    }
     const list = (await r.json()) as { participants?: unknown[] };
-    if ((list.participants?.length ?? 0) >= cap) return json({ error: `conference is full (${cap})` }, 409);
+    if ((list.participants?.length ?? 0) >= cap) {
+      await trackUser(env, u.uid, email, "conf_blocked", "avatok", { reason: "room_full", tier, cap, group_id: groupId, provider, ...g });
+      return json({ error: `conference is full (${cap})` }, 409);
+    }
   }
 
   const token = await lkToken(env, {
@@ -157,8 +208,15 @@ async function issue(req: Request, env: Env, groupId: string, create: boolean): 
     video: { room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true },
   });
 
+  // Server-truth analytics: who / where / which tier / which backend. The geo
+  // (...g) is what powers the "where are our video-conf regions" dashboard.
+  await trackUser(env, u.uid, email, create ? "conf_start" : "conf_join", "avatok", {
+    tier, kind, cap, provider, group_id: groupId,
+    members: mem.length || null, remaining_min: allow.remaining, ...g,
+  });
+
   const url = env.LIVEKIT_URL!.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
-  return json({ url, token, room, kind, max: cap, tier });
+  return json({ url, token, room, kind, max: cap, tier, provider });
 }
 
 export async function conferenceStart(req: Request, env: Env, groupId: string): Promise<Response> {
@@ -189,6 +247,9 @@ export async function conferenceEnd(req: Request, env: Env, groupId: string): Pr
   }
   const del = await lkApi(env, "DeleteRoom", { room });
   if (!del.ok) return json({ error: "could not end conference" }, 502);
+  await trackUser(env, u.uid, await emailFor(env, u.uid).catch(() => null), "conf_end", "avatok", {
+    group_id: groupId, ...confGeo(req),
+  });
   return json({ ok: true });
 }
 
@@ -198,23 +259,29 @@ export async function conferenceEnd(req: Request, env: Env, groupId: string): Pr
 // exhausted the beat returns 402 and the client leaves with an upgrade prompt.
 // Free tier never reaches here — its calls run P2P-mesh, which is unmetered
 // (P2P media costs us nothing). Gated by `billingEnabled` (no-op while off).
-export async function conferenceBeat(req: Request, env: Env, _groupId: string): Promise<Response> {
+export async function conferenceBeat(req: Request, env: Env, groupId: string): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return json({ error: u.error }, u.status);
 
-  let billing = true;
-  try { billing = !!(await readConfig(env)).billingEnabled; } catch { billing = false; }
-  if (!billing) return json({ ok: true, metered: false });
-
   const tier = await tierOf(env, u.uid);
+  const g = confGeo(req);
+  const email = await emailFor(env, u.uid).catch(() => null);
   let minutes = 1;
   try {
     const b = (await req.json()) as { minutes?: number };
     if (Number.isFinite(b?.minutes)) minutes = Math.max(1, Math.min(10, Math.trunc(b!.minutes!)));
   } catch { /* default 1 */ }
 
+  // conf_min is ALWAYS enforced (NOT gated by billingEnabled): it is the hard cap
+  // on our LiveKit SFU spend. Free = 60 min/day, Plus 180, Pro 480, Max unlimited.
   const r = await enforceAllowance(env, u.uid, tier, "conf_min", minutes, { commit: true });
-  if (!r.allowed) return json(planLimitBody(r), 402);
+  if (!r.allowed) {
+    await trackUser(env, u.uid, email, "conf_limit_reached", "avatok", { tier, cap_min: r.cap, group_id: groupId, ...g });
+    return json(planLimitBody(r), 402);
+  }
+  await trackUser(env, u.uid, email, "conf_minute", "avatok", {
+    tier, minutes, used_min: r.used, remaining_min: r.remaining, cap_min: r.cap, group_id: groupId, ...g,
+  });
   return json({ ok: true, metered: true, remaining: r.remaining, cap: r.cap });
 }
 
@@ -249,6 +316,22 @@ export async function conferenceWebhook(req: Request, env: Env): Promise<Respons
   if (!room.startsWith("group:")) return json({ ok: true }); // not ours
   const groupId = room.slice("group:".length);
   const n = Number(ev?.room?.numParticipants ?? ev?.room?.num_participants ?? 0);
+
+  // Server-truth room lifecycle (no user geo here — this is LiveKit→worker). The
+  // authoritative participant count + start/finish events feed the dashboard's
+  // "live calls / peak participants" tiles and pair with the per-user conf_start/
+  // conf_join geo events. starter_tier/provider come from the room metadata.
+  let starterTier: number | null = null;
+  let provider: string | null = null;
+  try {
+    const meta = JSON.parse(ev?.room?.metadata || "{}");
+    if (typeof meta.starter_tier === "number") starterTier = meta.starter_tier;
+    if (typeof meta.provider === "string") provider = meta.provider;
+  } catch { /* metadata absent/unreadable */ }
+  void track(env, "system", "conf_room_event", "avatok", {
+    livekit_event: ev?.event, num_participants: n, group_id: groupId,
+    starter_tier: starterTier, provider,
+  });
 
   let body: string | null = null;
   let push = false;

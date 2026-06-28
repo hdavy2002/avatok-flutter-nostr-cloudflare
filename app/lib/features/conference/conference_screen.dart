@@ -98,7 +98,7 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
   OngoingConference? _conf;
   lk.EventsListener<lk.RoomEvent>? _events;
   ConferenceTelemetry? _tel;
-  Timer? _beatTimer; // per-minute conf_min metering (paid plans)
+  Timer? _beatTimer; // per-minute conf_min metering (ALL SFU plans, incl. Free 60 min/day)
   String? _error;
   bool _mic = true, _cam = true, _speaker = true;
   bool _leaving = false;
@@ -170,8 +170,9 @@ class _ConferenceScreenState extends State<ConferenceScreen> {
     if (mounted) setState(() {});
   }
 
-  /// Meter conf_min once a minute (paid plans). When the daily cap is exhausted
-  /// the server returns 402; we leave the call and prompt an upgrade.
+  /// Meter conf_min once a minute (every SFU plan, including Free at 60 min/day).
+  /// When the daily cap is exhausted the server returns 402; we leave the call and
+  /// prompt an upgrade.
   void _startBeat() {
     _beatTimer?.cancel();
     _beatTimer = Timer.periodic(const Duration(minutes: 1), (_) async {

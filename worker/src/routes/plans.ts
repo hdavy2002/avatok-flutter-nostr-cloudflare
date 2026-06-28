@@ -73,6 +73,11 @@ export const PLANS: Record<TierId, Plan> = {
     tokensPerMonth: 200, // PLACEHOLDER (TBD): small monthly allowance for extras; basic chat stays free
     // recept: 0 — the AI Receptionist is PREMIUM-ONLY (paid tiers only). Free users
     // never get Ava answering their calls (owner decision 2026-06-28).
+    // conf_min: 60 — RULE CHANGE 2026-06-28: free group calls now run on the
+    // LiveKit Cloud SFU (max 5 people), metered to 60 min/day (≈ 6×10-min calls).
+    // EXPANSION PLANNED: bump to 180 (3h/day) once the self-hosted regional SFU is
+    // live and revenue covers it (Specs/AVA-SFU-SELFHOST-PLAYBOOK.md) — a one-line
+    // change here, no code edit needed.
     caps: { ava_chat: null, image: 3, voice_min: 10, recept: 0, translate_min: 0, conf_min: 60 },
     confParticipants: 5,
     features: { memory: false, fileAnalysis: false, webSearch: false, premiumImageModel: false },
