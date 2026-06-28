@@ -50,6 +50,32 @@ that department's Ava fallback persona.
 
 ---
 
+## 1b. Interaction model — spoken menu + in-call dialpad + warm transfer (REVISED 2026-06-28)
+
+**Owner correction:** this is a real auto-attendant, not a tap list. When a caller dials
+the team number:
+
+1. The call connects and **Ava speaks** the greeting + menu aloud:
+   *"You've reached Hilton. For Accounts, press 1. For Housekeeping, press 2…"*
+2. The call screen shows a **dialpad**. The caller **punches a digit** (DTMF-style).
+3. The caller is **transferred internally without the call dropping** — Ava says
+   *"Hold on, I'm transferring you to Accounts,"* then the chosen staffer's line
+   rings. No return to the dialer; the call is continuous.
+4. No answer → that staffer's Ava takes a message (existing path, team-tagged).
+
+**How Ava "speaks" cheaply:** the caller never talks *to* Ava — they answer with
+digits — so we do NOT need a full-duplex dialogue model (Gemini Live) for the menu.
+We use **one-way TTS** (`@cf/deepgram/aura-2-en`, the same Workers-AI voice used by
+`agent_tts.ts`), synthesizing three fixed line types — greeting+menu, the
+per-department transfer line, and an "invalid option" line — and **caching each clip
+in R2** keyed by a hash of its text+voice, so a clip is synthesized once and replayed
+on every subsequent call for free. Gemini Live is reserved for the *voicemail* step
+(the staffer's Ava actually converses to take a message).
+
+**"Without hanging up":** the dialpad lives inside the call UI. On a digit, the client
+plays the transfer line then transitions in-place to the 1:1 call with the staffer —
+one continuous screen flow, the caller never drops or returns to the dialer.
+
 ## 2. Refinements — the better / faster / cheaper choices
 
 These are the decisions that make this cheap to run and fast to ship (all confirmed

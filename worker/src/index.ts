@@ -324,6 +324,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/team/invite/decline" && req.method === "POST") return await team.teamInviteDecline(req, env);
       if (p === "/api/team/messages" && req.method === "GET") return await team.teamMessages(req, env);
       if (p === "/api/team/ivr" && req.method === "GET") return await team.teamIvrMenu(req, env);
+      if (p === "/api/team/ivr/audio" && req.method === "GET") return await team.teamIvrAudio(req, env);
       if (p === "/api/team/ivr/route" && req.method === "POST") return await team.teamIvrRoute(req, env);
 
       // --- push / calls ---

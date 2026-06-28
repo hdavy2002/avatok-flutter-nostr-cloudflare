@@ -22,7 +22,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
-import { metaDb, metaSession } from "../db/shard";
+import { metaDb, metaSession, sha256hex } from "../db/shard";
 import { readConfig } from "./config";
 import { TEAM_PLAN } from "./plans";
 import { track, metric } from "../hooks";
@@ -382,6 +382,83 @@ export async function teamIvrMenu(req: Request, env: Env): Promise<Response> {
     greeting_clip: t.greeting_clip || null,
     entries,
   });
+}
+
+// ── IVR voice (Ava speaks the greeting/menu/transfer) ────────────────────────
+// One-way TTS via Workers AI (same Aura-2 voice family as agent_tts.ts). The caller
+// answers with dialpad digits, not voice, so NO dialogue model is needed here —
+// Gemini Live is reserved for the staffer's voicemail. Each clip is cached in R2
+// (avatok-agent-audio) keyed by a hash of its text+voice, so a line is synthesized
+// once and replayed free on every later call. Spec: TEAM-RECEPTIONIST-IVR-SPEC.md §1b.
+const TTS_MODEL = "@cf/deepgram/aura-2-en";
+const GREETER_VOICE = "thalia"; // warm default greeter (Aura-2); per-team voice is a future option
+
+// Normalize Workers-AI TTS output (base64 | {audio} | ArrayBuffer | ReadableStream) → bytes.
+async function ttsBytes(out: any): Promise<Uint8Array | null> {
+  if (!out) return null;
+  if (out instanceof ArrayBuffer) return new Uint8Array(out);
+  if (out instanceof Uint8Array) return out;
+  if (typeof out.getReader === "function") {
+    const reader = out.getReader(); const chunks: Uint8Array[] = []; let n = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); n += value.length; }
+    const all = new Uint8Array(n); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; } return all;
+  }
+  const b64 = typeof out === "string" ? out : (typeof out.audio === "string" ? out.audio : null);
+  if (b64) { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  return null;
+}
+
+// Synthesize-or-serve a spoken line; returns the MP3 bytes (cached in R2). null on failure.
+async function speak(env: Env, text: string, voice: string): Promise<Uint8Array | null> {
+  const key = `ivr/${await sha256hex(`${voice}:${text}`)}.mp3`;
+  try {
+    const hit = await env.AGENT_AUDIO.get(key);
+    if (hit) return new Uint8Array(await hit.arrayBuffer());
+  } catch { /* synth fresh */ }
+  try {
+    const out: any = await env.AI.run(TTS_MODEL, { text: text.slice(0, 800), speaker: voice } as any);
+    const buf = await ttsBytes(out);
+    if (!buf || !buf.length) return null;
+    await env.AGENT_AUDIO.put(key, buf, { httpMetadata: { contentType: "audio/mpeg" } });
+    return buf;
+  } catch { return null; }
+}
+
+// Build the spoken greeting+menu text from the team + its active entries.
+function greetingScript(t: TeamRow, members: any[]): string {
+  const open = (t.greeting_text && t.greeting_text.trim()) || `You've reached ${t.name}`;
+  const lines = members
+    .filter((m) => m.invite_status === "active")
+    .sort((a, b) => a.slot - b.slot)
+    .map((m) => `For ${m.role_label}, press ${m.slot}.`);
+  const tail = lines.length ? ` ${lines.join(" ")}` : " Please hold and we'll connect you.";
+  return `${open}.${tail}`;
+}
+
+// ── GET /api/team/ivr/audio?number=<n>[&slot=N] — spoken greeting/menu or transfer line ──
+export async function teamIvrAudio(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env); if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const off = await flagOff(env); if (off) return off;
+  const url = new URL(req.url);
+  const number = digits(url.searchParams.get("number"));
+  const slotParam = url.searchParams.get("slot");
+  const t = await metaSession(env).prepare("SELECT * FROM teams WHERE team_number=?1 AND status='active'").bind(number).first<TeamRow>();
+  if (!t) return json({ error: "not_team" }, 404);
+  let text: string;
+  if (slotParam != null) {
+    const slot = Number(slotParam) || 0;
+    const m = await metaSession(env).prepare(
+      "SELECT role_label FROM team_members WHERE team_id=?1 AND slot=?2 AND invite_status='active' LIMIT 1",
+    ).bind(t.id, slot).first<{ role_label: string }>();
+    text = m ? `Hold on, I'm transferring you to ${m.role_label}.`
+             : `Sorry, that's not a valid option. ${greetingScript(t, await membersOf(env, t.id))}`;
+  } else {
+    text = greetingScript(t, await membersOf(env, t.id));
+  }
+  const buf = await speak(env, text, GREETER_VOICE);
+  track(env, ctx.uid, "ivr_audio_served", APP, { team_id: t.id, kind: slotParam != null ? "transfer" : "greeting", ok: !!buf, bytes: buf?.length ?? 0 });
+  if (!buf) return json({ error: "tts_unavailable" }, 503);
+  return new Response(buf, { headers: { "content-type": "audio/mpeg", "cache-control": "private, max-age=86400" } });
 }
 
 // ── POST /api/team/ivr/route — caller tapped slot N → dial target ────────────
