@@ -108,6 +108,66 @@ abstract class AvaTransport {
       return const ArchivePage(<TransportMessage>[], null);
     }
   }
+
+  // ── Phase 4 (ABLY-R2): reactions · bursts · occupancy ──────────────────────
+  // Live delivery is Ably-native (AblyTransport overrides the streams + the live
+  // publish). The base persists reactions over HTTP so the legacy transport still
+  // saves them; bursts/occupancy degrade to no-ops off Ably.
+
+  /// Toggle a per-message reaction. Persists via the worker (durable summary);
+  /// AblyTransport ALSO publishes it live to the react:<conv> channel.
+  Future<void> sendReaction(String convKey, String myUid, String targetSerial,
+      String emoji, {bool add = true}) async {
+    final conv = serverConvFromKey(convKey, myUid);
+    if (conv == null) return;
+    try {
+      await ApiAuth.postJson(kMsgReactUrl,
+          {'conv': conv, 'target': targetSerial, 'emoji': emoji, 'op': add ? 'add' : 'remove'});
+      Analytics.capture('chat_reaction_sent', {'emoji': emoji, 'add': add});
+    } catch (e) {
+      Analytics.capture('chat_reaction_error', {'err': e.toString()});
+    }
+  }
+
+  /// Live per-message reaction events from peers (empty off Ably).
+  Stream<ReactionEvent> get reactions => const Stream<ReactionEvent>.empty();
+
+  /// Send an ephemeral floating-emoji burst to the room (no-op off Ably).
+  void sendBurst(String convKey, String emoji) {}
+
+  /// Live burst events from the room (empty off Ably).
+  Stream<BurstEvent> get bursts => const Stream<BurstEvent>.empty();
+
+  /// Start tracking live occupancy for [convKey] (no-op off Ably).
+  void watchOccupancy(String convKey) {}
+
+  /// Live occupancy counts for watched rooms (empty off Ably).
+  Stream<OccupancyEvent> get occupancy => const Stream<OccupancyEvent>.empty();
+}
+
+/// A live per-message reaction toggle from a peer.
+class ReactionEvent {
+  final String convKey;
+  final String targetSerial; // message reacted to
+  final String who;          // reactor uid
+  final String emoji;
+  final bool add;            // true = added, false = removed
+  const ReactionEvent(this.convKey, this.targetSerial, this.who, this.emoji, this.add);
+}
+
+/// An ephemeral floating-emoji burst (not persisted).
+class BurstEvent {
+  final String convKey;
+  final String who;
+  final String emoji;
+  const BurstEvent(this.convKey, this.who, this.emoji);
+}
+
+/// Live occupancy for a room: how many members are currently present.
+class OccupancyEvent {
+  final String convKey;
+  final int present;
+  const OccupancyEvent(this.convKey, this.present);
 }
 
 /// A page of archived history (newest-first) + the cursor for the next older page.

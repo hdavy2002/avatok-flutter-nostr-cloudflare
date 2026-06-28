@@ -30,7 +30,7 @@ import 'ava_transport.dart';
 /// Auth: an `authCallback` fetches a short-lived Ably JWT from the Worker
 /// (`/api/ably/token`, Clerk-gated) — no API key ever ships in the app. The JWT
 /// pins clientId = AccountScope.id and room-scoped capabilities.
-class AblyTransport implements AvaTransport {
+class AblyTransport extends AvaTransport {
   AblyTransport(this.myUid);
 
   final String myUid;
@@ -47,6 +47,11 @@ class AblyTransport implements AvaTransport {
   final _typing = StreamController<TypingEvent>.broadcast();
   final _presence = StreamController<PresenceEvent>.broadcast();
   final _receipts = StreamController<ReceiptEvent>.broadcast();
+  // Phase 4 (ABLY-R2): live reactions / bursts / occupancy.
+  final _reactions = StreamController<ReactionEvent>.broadcast();
+  final _bursts = StreamController<BurstEvent>.broadcast();
+  final _occupancy = StreamController<OccupancyEvent>.broadcast();
+  final Set<String> _roomsWatched = {};
   final _seen = <String>{};
   // clientId → send time (ms), for the publish→own-echo roundtrip metric.
   final Map<String, int> _sentAt = {};
@@ -63,6 +68,12 @@ class AblyTransport implements AvaTransport {
   Stream<PresenceEvent> get presence => _presence.stream;
   @override
   Stream<ReceiptEvent> get receipts => _receipts.stream;
+  @override
+  Stream<ReactionEvent> get reactions => _reactions.stream;
+  @override
+  Stream<BurstEvent> get bursts => _bursts.stream;
+  @override
+  Stream<OccupancyEvent> get occupancy => _occupancy.stream;
 
   @override
   Future<void> start() async {
@@ -179,7 +190,36 @@ class AblyTransport implements AvaTransport {
     final typeCh = rt.channels.get(ablyTypingChannel(serverConv));
     subs.add(typeCh.subscribe(name: 'typing').listen((m) => _onTyping(serverConv, m)));
 
+    // Phase 4: live per-message reactions + ephemeral floating-emoji bursts.
+    final reactCh = rt.channels.get(ablyReactChannel(serverConv));
+    subs.add(reactCh.subscribe(name: 'react').listen((m) => _onReaction(serverConv, m)));
+    final burstCh = rt.channels.get(ablyBurstChannel(serverConv));
+    subs.add(burstCh.subscribe(name: 'burst').listen((m) => _onBurst(serverConv, m)));
+
     _convSubs[serverConv] = subs;
+  }
+
+  void _onReaction(String serverConv, ably.Message m) {
+    try {
+      if ((m.clientId ?? '') == myUid) return; // ignore my own echo (already shown locally)
+      final data = _asMap(m.data);
+      _reactions.add(ReactionEvent(
+        _convKeyFor(serverConv),
+        (data['target'] ?? '').toString(),
+        (m.clientId ?? data['who'] ?? '').toString(),
+        (data['emoji'] ?? '').toString(),
+        data['add'] != false,
+      ));
+    } catch (e) { AvaLog.I.log('ably', 'onReaction err: $e'); }
+  }
+
+  void _onBurst(String serverConv, ably.Message m) {
+    try {
+      if ((m.clientId ?? '') == myUid) return;
+      final data = _asMap(m.data);
+      _bursts.add(BurstEvent(
+        _convKeyFor(serverConv), (m.clientId ?? '').toString(), (data['emoji'] ?? '').toString()));
+    } catch (e) { AvaLog.I.log('ably', 'onBurst err: $e'); }
   }
 
   String _convKeyFor(String serverConv) =>
@@ -357,6 +397,51 @@ class AblyTransport implements AvaTransport {
     });
   }
 
+  // ── Phase 4: reactions · bursts · occupancy (live overrides) ───────────────
+  @override
+  Future<void> sendReaction(String convKey, String myUid, String targetSerial,
+      String emoji, {bool add = true}) async {
+    // Publish live to react:<conv> for instant peer feedback…
+    final sc = serverConvFromKey(convKey, myUid);
+    final rt = _realtime;
+    if (sc != null && rt != null) {
+      try {
+        rt.channels.get(ablyReactChannel(sc)).publish(
+            name: 'react', data: jsonEncode({'target': targetSerial, 'emoji': emoji, 'add': add}));
+      } catch (_) {}
+    }
+    // …then persist durably via the worker (base implementation).
+    await super.sendReaction(convKey, myUid, targetSerial, emoji, add: add);
+  }
+
+  @override
+  void sendBurst(String convKey, String emoji) {
+    final sc = serverConvFromKey(convKey, myUid);
+    final rt = _realtime;
+    if (sc == null || rt == null) return;
+    try {
+      rt.channels.get(ablyBurstChannel(sc)).publish(name: 'burst', data: jsonEncode({'emoji': emoji}));
+      Analytics.capture('chat_burst_sent', {'emoji': emoji});
+    } catch (_) {}
+  }
+
+  @override
+  void watchOccupancy(String convKey) {
+    final sc = serverConvFromKey(convKey, myUid);
+    final rt = _realtime;
+    if (sc == null || rt == null || !_roomsWatched.add(sc)) return;
+    final ch = rt.channels.get(ablyRoomChannel(sc));
+    try {
+      ch.presence.enter({'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000});
+      ch.presence.subscribe().listen((_) async {
+        try {
+          final members = await ch.presence.get();
+          _occupancy.add(OccupancyEvent(_convKeyFor(sc), members.length));
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }
+
   @override
   void onResumed() {
     // ably-flutter auto-reconnects; nudge a connect in case it was suspended.
@@ -376,6 +461,9 @@ class AblyTransport implements AvaTransport {
     _typing.close();
     _presence.close();
     _receipts.close();
+    _reactions.close();
+    _bursts.close();
+    _occupancy.close();
   }
 
   static Map<String, dynamic> _asMap(Object? data) {

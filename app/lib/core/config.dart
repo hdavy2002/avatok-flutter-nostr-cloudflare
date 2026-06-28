@@ -173,6 +173,15 @@ String ablyMetaChannel(String serverConv) => 'meta:$serverConv';
 /// Per-user presence channel (online / last-seen). One per account.
 String ablyPresenceChannel(String uid) => 'presence:$uid';
 
+/// Phase 4 — per-message reactions (live). Persisted via /api/msg/react.
+String ablyReactChannel(String serverConv) => 'react:$serverConv';
+
+/// Phase 4 — ephemeral floating-emoji bursts (never persisted).
+String ablyBurstChannel(String serverConv) => 'burst:$serverConv';
+
+/// Phase 4 — room presence used purely for live occupancy counts.
+String ablyRoomChannel(String serverConv) => 'room:$serverConv';
+
 /// Account backup: export your relay data → download link (media excluded). (NIP-98)
 const String kBackupUrl = 'https://$kSignalingHost/api/backup';
 

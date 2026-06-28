@@ -326,6 +326,38 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   return json({ id: mine.id, conv, created_at: created });
 }
 
+// ---- POST /api/msg/react ----------------------------------------------------
+// Phase 4 (ABLY-R2-4): persist a per-message reaction toggle. The LIVE reaction
+// rides Ably (client→react:<conv>) for instant feedback; this call durably stores
+// it (message_reactions) so it survives reopen and feeds "reacted by" + restore.
+export async function reactMsg(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const target = String(b.target || "");
+  const emoji = String(b.emoji || "");
+  const op = b.op === "remove" ? "remove" : "add";
+  if (!conv || !target || !emoji) return json({ error: "conv, target, emoji required" }, 400);
+  const mem = await members(env, conv);
+  if (!mem.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+
+  if (env.Q_ARCHIVE) {
+    try {
+      void env.Q_ARCHIVE.send({
+        type: "reaction", conv, target, sender: ctx.uid, emoji, op,
+        serial: "", kind: "reaction", created_at: Date.now(),
+      });
+    } catch { /* best-effort; the live Ably reaction already showed */ }
+  }
+  try {
+    void env.Q_ANALYTICS.send({ event: "chat_reaction", uid: ctx.uid, ts: Date.now(),
+      props: { conv, emoji, op, group: mem.length > 2, account_id: ctx.uid,
+        app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
+  return json({ ok: true });
+}
+
 // ---- GET /api/msg/sync?cursor=N ---------------------------------------------
 export async function syncMsg(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);

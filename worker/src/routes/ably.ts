@@ -41,6 +41,10 @@ function capabilityFor(uid: string): Record<string, string[]> {
     "msg:*": ["subscribe", "history"],            // durable msgs (server publishes)
     "typing:*": ["publish", "subscribe"],          // ephemeral typing
     "meta:*": ["publish", "subscribe", "history"], // receipts + tombstones
+    "react:*": ["publish", "subscribe", "history"],// Phase 4 — per-message reactions (live)
+    "burst:*": ["publish", "subscribe"],           // Phase 4 — ephemeral floating-emoji bursts
+    "room:*": ["subscribe", "presence"],           // Phase 4 — occupancy (presence members count)
+    [`room:${uid}`]: ["publish", "subscribe", "presence"],
     "presence:*": ["subscribe"],                   // watch peers' online/last-seen
     [`presence:${uid}`]: ["publish", "subscribe", "presence"], // my own presence
   };
