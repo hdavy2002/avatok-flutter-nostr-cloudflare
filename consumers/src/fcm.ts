@@ -38,7 +38,14 @@ async function handleFanout(msg: PushMsg, env: Env): Promise<void> {
           body: JSON.stringify({ ...msg.payload, owner: uid }),
         });
         const r = (await res.json()) as { live?: boolean };
-        if (!r.live) await handlePush({ kind: "notify", to: uid, fromName: "AvaTOK" }, env);
+        // Forward the sender name + preview the router attached so offline (group)
+        // recipients get the WhatsApp-style banner, not a bare "AvaTOK" (regression
+        // fixed 2026-06-28 — fanout pushes previously carried no name/preview).
+        if (!r.live) await handlePush({
+          kind: "notify", to: uid,
+          fromName: msg.fromName || "AvaTOK",
+          ...(msg.preview ? { preview: msg.preview } : {}),
+        }, env);
       } catch (e) {
         console.warn("fanout append failed", uid, String(e));
       }

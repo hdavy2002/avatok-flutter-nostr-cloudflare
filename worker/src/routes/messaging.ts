@@ -85,12 +85,39 @@ async function appendTo(env: Env, owner: string, body: Record<string, unknown>):
   return res.json();
 }
 
-async function pushOffline(env: Env, toUid: string, _fromUid: string, _conv: string, _preview: string): Promise<void> {
-  // Reuse the consumer's proven high-priority 'notify' path (fcm.ts looks up the
-  // recipient's tokens in push_tokens_v2 by uid and wakes the device).
+// Offline wake. Since the Ably migration this is the ONLY offline path on mobile,
+// so it MUST carry the sender's name + a short preview (the WhatsApp-style
+// expandable banner). The consumer's notify branch already renders both — the old
+// bug was the PRODUCER sending a bare "AvaTOK" with no preview (regression noted
+// 2026-06-28). We now forward the real name + preview here and in the fanout path.
+async function pushOffline(env: Env, toUid: string, fromName: string, preview: string): Promise<void> {
   try {
-    await env.Q_PUSH.send({ kind: "notify", to: toUid, fromName: "AvaTOK" });
+    await env.Q_PUSH.send({
+      kind: "notify", to: toUid, fromName: fromName || "AvaTOK",
+      ...(preview ? { preview } : {}),
+    });
   } catch { /* best-effort; never block the send */ }
+}
+
+/** Sender's display name for push banners. One cheap D1 lookup; falls back to the
+ *  @handle, then "AvaTOK". */
+async function senderDisplayName(env: Env, uid: string): Promise<string> {
+  try {
+    const r = await env.DB_META.prepare(
+      "SELECT display_name, handle FROM users WHERE uid=?1 LIMIT 1",
+    ).bind(uid).first<{ display_name: string | null; handle: string | null }>();
+    return (r?.display_name || r?.handle || "AvaTOK").toString();
+  } catch { return "AvaTOK"; }
+}
+
+/** Short, human banner preview. Control envelopes ({"t":"del"|"read"|…}) and media
+ *  get a generic label rather than raw JSON. */
+function msgPreview(kind: string, text: string | null, mediaRef: string | null): string {
+  if (kind === "audio") return "🎤 Voice message";
+  const t = (text ?? "").trim();
+  if (t.startsWith("{") && t.includes('"t":"')) return "New message";
+  if (!t && mediaRef) return "📎 Attachment";
+  return t.slice(0, 140) || "New message";
 }
 
 // Delete-for-everyone to an OFFLINE recipient: a SILENT, high-priority DATA push
@@ -166,6 +193,11 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // Append to the sender's own log first (its id anchors the client's cursor).
   const mine = await appendTo(env, ctx.uid, payload);
 
+  // Rich offline banner inputs (the Ably migration made push the only offline
+  // wake path on mobile, so these must be populated — not a bare "AvaTOK").
+  const fromName = await senderDisplayName(env, ctx.uid);
+  const preview = msgPreview(kind, text, mediaRef);
+
   // Ably realtime fan-out (migration): publish the SAME moderated payload to the
   // conversation's Ably channel so every subscribed iOS/Android client gets it
   // instantly via Ably's global edge — replacing the flaky per-user InboxDO
@@ -192,7 +224,26 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     } catch { /* best-effort; the message still delivered live + via InboxDO */ }
   }
 
-  if (recipients.length <= FANOUT_SYNC_MAX) {
+  // Phase 2 (ABLY-R2-2): Ably-first delivery. When Ably is the primary transport
+  // the live message is ALREADY out (the publish above), so we DON'T block the
+  // response on per-recipient InboxDO hops. We hand the durable InboxDO fan-out
+  // (desktop continuity + offline FCM) to the queue and return immediately — this
+  // removes the N-DO-hop latency that made sends feel slow. The delete-for-everyone
+  // path keeps its precise synchronous delivery + telemetry (so a redaction is
+  // never merely eventually-consistent). Flag-gated (MSG_TRANSPORT=ably).
+  const ablyFirst = env.MSG_TRANSPORT === "ably" && ablyConfigured(env) && !delTarget;
+  let deliveryPath = "sync";
+  if (ablyFirst) {
+    deliveryPath = "ably_async";
+    const sends: Promise<unknown>[] = [];
+    for (let i = 0; i < recipients.length; i += FANOUT_QUEUE_CHUNK) {
+      sends.push(env.Q_PUSH.send({
+        kind: "fanout", payload, fromName, preview,
+        recipients: recipients.slice(i, i + FANOUT_QUEUE_CHUNK),
+      }));
+    }
+    await Promise.all(sends);
+  } else if (recipients.length <= FANOUT_SYNC_MAX) {
     // Small fan-out: deliver in PARALLEL (was sequential awaits).
     let delLive = 0, delPush = 0; // delete-for-everyone delivery-path counters
     await Promise.all(recipients.map(async (m) => {
@@ -208,7 +259,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
               app_name: "avatok", service_name: "avatok-api", worker: true } });
         } catch { /* best-effort */ }
       } else if (!r.live) {
-        await pushOffline(env, m, ctx.uid, conv, text || "[media]");
+        await pushOffline(env, m, fromName, preview);
       }
     }));
     if (delTarget) {
@@ -221,14 +272,26 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   } else {
     // Large fan-out: hand to Queues — consumers append to each InboxDO + FCM
     // offline. The router NEVER loops >FANOUT_SYNC_MAX synchronous DO calls.
+    deliveryPath = "queue";
     const sends: Promise<unknown>[] = [];
     for (let i = 0; i < recipients.length; i += FANOUT_QUEUE_CHUNK) {
       sends.push(env.Q_PUSH.send({
-        kind: "fanout", payload, recipients: recipients.slice(i, i + FANOUT_QUEUE_CHUNK),
+        kind: "fanout", payload, fromName, preview,
+        recipients: recipients.slice(i, i + FANOUT_QUEUE_CHUNK),
       }));
     }
     await Promise.all(sends);
   }
+
+  // Telemetry: every send records its delivery path + latency so we can SEE the
+  // Ably-first win (ably_async) vs the legacy sync/queue paths on the dashboard.
+  try {
+    void env.Q_ANALYTICS.send({ event: "chat_message_sent", uid: ctx.uid, ts: Date.now(),
+      props: { conv, kind, path: deliveryPath, recipients: recipients.length,
+        group: mem.length > 2, ably: ablyConfigured(env), archived: env.CHAT_ARCHIVE === "1",
+        latency_ms: Date.now() - created, account_id: ctx.uid,
+        app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
 
   // Phase 9 — AvaBrain ingestion producer (best-effort; consumer re-checks the
   // guardrails). Sender + each recipient (≤ sync cap) get the message indexed
