@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../core/admin_tools.dart';
 import '../core/app_registry.dart';
 import '../core/avatar.dart';
+import '../core/remote_config.dart';
 import '../core/money_api.dart';
 import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
@@ -217,12 +218,14 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Contacts — moved out of ACCOUNT to sit below Library; own colour.
               _special('invite', 'Contacts', 'Find & manage people',
                   PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.coral),
-              // Team — AI receptionist + staff routing. Marked PAID (Team plan);
-              // the badge drops once the user is on a paid team (owner or member).
-              _special('team', 'Team', 'AI receptionist & staff',
-                  PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.lilac,
-                  paid: true, paidHidden: _onPaidTeam),
+              // Team — AI receptionist + staff routing. HIDDEN from the sidebar
+              // (owner decision 2026-06-28). Re-enable by un-commenting this row.
+              // _special('team', 'Team', 'AI receptionist & staff',
+              //     PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.lilac,
+              //     paid: true, paidHidden: _onPaidTeam),
               // Subscribe — moved to sit just below Contacts (was a top CTA).
+              // FREE LAUNCH: hidden while billing is off (no paywalls).
+              if (RemoteConfig.billingEnabled)
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: ZinePressable(
@@ -304,9 +307,13 @@ class _AvaSidebarState extends State<AvaSidebar> {
         ]),
       );
     }
+    // FREE LAUNCH: no paywalls. With billing off, show a plain non-tappable
+    // "FREE PLAN" pill (no upgrade route). Reverts to the upgrade chip when
+    // billingEnabled flips back on.
+    final billingOn = RemoteConfig.billingEnabled;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => widget.onSelect('subscribe'),
+      onTap: billingOn ? () => widget.onSelect('subscribe') : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
         decoration: BoxDecoration(
@@ -317,7 +324,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           PhosphorIcon(PhosphorIcons.crown(PhosphorIconsStyle.fill), size: 13, color: Zine.inkSoft),
           const SizedBox(width: 6),
-          Text('FREE PLAN · UPGRADE', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+          Text(billingOn ? 'FREE PLAN · UPGRADE' : 'FREE PLAN',
+              style: ZineText.tag(size: 11, color: Zine.inkSoft)),
         ]),
       ),
     );

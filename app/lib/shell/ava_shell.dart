@@ -8,6 +8,7 @@ import '../core/admin_tools.dart';
 import '../core/analytics.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
+import '../core/remote_config.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine.dart';
 import '../core/ui/zine_widgets.dart';
@@ -118,6 +119,32 @@ class _AvaShellState extends State<AvaShell> {
   void _openDest(String dest) {
     // Where users go after signing in / which features they use most.
     Analytics.capture('feature_opened', {'dest': dest});
+    // FREE LAUNCH (Specs/FREE-LAUNCH-DIRECTION.md): defensively route any hidden
+    // feature (deep-link/stray nav) to ComingSoon instead of opening it, so the
+    // app stays focused even if an entry point slips through. Reverts when the
+    // matching flag flips back on.
+    bool launchBlocked(String key) {
+      switch (key) {
+        case 'avalive': return !RemoteConfig.liveEnabled;
+        case 'avaconsult':
+        case 'consult': return !RemoteConfig.consultEnabled;
+        case 'avavoice': return !RemoteConfig.avavoiceEnabled;
+        case 'avavision': return !RemoteConfig.avavisionEnabled;
+        case 'avaaffiliate':
+        case 'affiliate': return !RemoteConfig.avaAffiliateEnabled;
+        case 'verse': return !RemoteConfig.verseEnabled;
+        case 'subscribe':
+        case 'billing': return !RemoteConfig.billingEnabled;
+        default: return false;
+      }
+    }
+    if (launchBlocked(dest)) {
+      _push(AppRegistry.byId(dest) != null
+          ? ComingSoon.forApp(dest)
+          : ComingSoon(title: 'Coming soon', subtitle: 'Not available right now',
+              icon: PhosphorIcons.lightning(PhosphorIconsStyle.fill), color: Zine.blue));
+      return;
+    }
     switch (dest) {
       case 'explore':
         return; // marketplace de-emphasised for the free messaging release

@@ -7,6 +7,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/db.dart';
 import '../../core/money_api.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../payout/payout_screen.dart';
@@ -635,6 +636,22 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 16),
             // Withdraw/payout is HIDDEN for now — no marketplace/payout flow yet.
             // Flip _kShowWithdraw back to true to restore the two-button row.
+            // FREE LAUNCH: with billing off there are no paid features, so the
+            // top-up CTA is hidden (everything is free). A short note replaces it.
+            // Reverts automatically when billingEnabled flips back on.
+            if (!RemoteConfig.billingEnabled)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Zine.mint,
+                  borderRadius: BorderRadius.circular(Zine.rSm),
+                  border: Border.all(color: Zine.ink, width: Zine.bw),
+                ),
+                child: Text('Everything is free right now — no top-ups needed.',
+                    style: ZineText.value(size: 14, color: Zine.mintInk)),
+              )
+            else
             Row(children: [
               Expanded(
                 child: ZineButton(
