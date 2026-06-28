@@ -37,6 +37,7 @@ import { ablyToken } from "./routes/ably";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
+import * as team from "./routes/team";
 import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./routes/subscribe";
 import { referralClaim, referralSummary } from "./routes/referral";
 import { inviteEmail } from "./routes/invite";
@@ -311,6 +312,19 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/number/privacy" && req.method === "GET") return await num.privacyGet(req, env);
       if (p === "/api/number/privacy" && req.method === "POST") return await num.privacySet(req, env);
       if (p === "/api/add" && req.method === "GET") return await cached(req, ctx, () => num.addResolve(req, env), 30);
+
+      // --- Team Receptionist (IVR / auto-attendant; Specs/TEAM-RECEPTIONIST-IVR-SPEC.md) ---
+      if (p === "/api/team" && req.method === "POST") return await team.teamCreate(req, env);
+      if (p === "/api/team" && req.method === "GET") return await team.teamGet(req, env);
+      if (p === "/api/team" && req.method === "PUT") return await team.teamUpdate(req, env);
+      if (p === "/api/team/members" && req.method === "POST") return await team.teamMemberAdd(req, env);
+      if (p.startsWith("/api/team/members/") && req.method === "PUT") return await team.teamMemberUpdate(req, env, p.slice("/api/team/members/".length));
+      if (p.startsWith("/api/team/members/") && req.method === "DELETE") return await team.teamMemberRemove(req, env, p.slice("/api/team/members/".length));
+      if (p === "/api/team/invite/accept" && req.method === "POST") return await team.teamInviteAccept(req, env);
+      if (p === "/api/team/invite/decline" && req.method === "POST") return await team.teamInviteDecline(req, env);
+      if (p === "/api/team/messages" && req.method === "GET") return await team.teamMessages(req, env);
+      if (p === "/api/team/ivr" && req.method === "GET") return await team.teamIvrMenu(req, env);
+      if (p === "/api/team/ivr/route" && req.method === "POST") return await team.teamIvrRoute(req, env);
 
       // --- push / calls ---
       if (p === "/api/register" && req.method === "POST") return await api.register(req, env);
