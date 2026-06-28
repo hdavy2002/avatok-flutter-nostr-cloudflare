@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/analytics.dart';
+import '../../core/subscribe_api.dart';
 import '../../core/team_api.dart';
 import '../../core/voice/google_voice.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../subscribe/subscribe_screen.dart';
 import 'team_inbox.dart';
 import 'team_ivr_screen.dart';
 
@@ -23,6 +26,9 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
   bool _loading = true;
   String? _role;
   Team? _team;
+  // Adding staff is a Team-plan capability: free-tier users (subscription tier 0)
+  // can view the team but the "Add staff" action is locked behind an upgrade.
+  bool _paidPlan = false;
 
   @override
   void initState() {
@@ -33,10 +39,19 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final s = await TeamApi.status();
+    // Subscription tier — 0 = Free. Adding staff requires a paid (Team) plan.
+    // Fail-closed (treat as free) so the gate is never silently bypassed offline.
+    var paid = false;
+    try {
+      final p = await SubscribeApi.plans();
+      final cur = (p['current'] as Map?)?.cast<String, dynamic>() ?? const {};
+      paid = ((cur['tier'] as num?)?.toInt() ?? 0) > 0;
+    } catch (_) { paid = false; }
     if (!mounted) return;
     setState(() {
       _role = s.role;
       _team = s.team;
+      _paidPlan = paid;
       _loading = false;
     });
   }
@@ -161,15 +176,7 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
         Row(children: [
           Text('MENU · ${t.members.length}/${t.seatLimit}', style: ZineText.kicker()),
           const Spacer(),
-          if (isOwner)
-            GestureDetector(
-              onTap: _addMember,
-              child: Row(children: [
-                PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 20, color: Zine.blueInk),
-                const SizedBox(width: 4),
-                Text('Add staff', style: ZineText.value(size: 13.5, color: Zine.blueInk)),
-              ]),
-            ),
+          if (isOwner) _addStaffAction(),
         ]),
         const SizedBox(height: 10),
         if (t.members.isEmpty)
@@ -273,7 +280,94 @@ class _TeamHomeScreenState extends State<TeamHomeScreen> {
     );
   }
 
+  /// The "Add staff" affordance. On a paid plan it's the lime+blue add action;
+  /// on the free plan it's visibly greyed with a small lock and opens the Team
+  /// plan upsell sheet instead of the add-member form.
+  Widget _addStaffAction() {
+    if (_paidPlan) {
+      return GestureDetector(
+        onTap: _addMember,
+        child: Row(children: [
+          PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), size: 20, color: Zine.blueInk),
+          const SizedBox(width: 4),
+          Text('Add staff', style: ZineText.value(size: 13.5, color: Zine.blueInk)),
+        ]),
+      );
+    }
+    // Locked (free plan) — greyed out + tap explains the Team plan.
+    return GestureDetector(
+      onTap: () {
+        Analytics.capture('team_add_staff_locked_tapped', const {'reason': 'free_plan'});
+        _showTeamPlanSheet();
+      },
+      child: Row(children: [
+        PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.bold), size: 18, color: Zine.inkMute),
+        const SizedBox(width: 4),
+        Text('Add staff', style: ZineText.value(size: 13.5, color: Zine.inkMute)),
+      ]),
+    );
+  }
+
+  /// Team plan upsell — what it is, why it helps a business, and an upgrade CTA.
+  Future<void> _showTeamPlanSheet() async {
+    Analytics.capture('team_plan_upsell_shown', const {'source': 'add_staff'});
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SheetShell(
+        title: 'Add staff is a Team plan feature',
+        children: [
+          Text(
+            'Your team’s AI receptionist greets every caller and routes them to the '
+            'right person — “press 1 for Sales, press 2 for Support”. Adding staff '
+            'builds that menu.',
+            style: ZineText.sub(size: 13.5),
+          ),
+          const SizedBox(height: 14),
+          _benefit(PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+              'Unlimited staff seats', 'Add your whole team to the call menu — each with their own AvaTOK number, voice and greeting.'),
+          _benefit(PhosphorIcons.phoneCall(PhosphorIconsStyle.bold),
+              'One business number', 'Callers reach a single team line; Ava answers 24/7 and warm-transfers to whoever is free.'),
+          _benefit(PhosphorIcons.voicemail(PhosphorIconsStyle.bold),
+              'Never miss a call', 'When staff don’t pick up, Ava takes a message and drops it in your team inbox.'),
+          _benefit(PhosphorIcons.chartLineUp(PhosphorIconsStyle.bold),
+              'Higher monthly pools', 'Generous receptionist-minute and AI-message allowances, billed to one team wallet.'),
+          const SizedBox(height: 18),
+          ZineButton(
+            label: 'See Team plans', fullWidth: true, variant: ZineButtonVariant.blue,
+            icon: PhosphorIcons.crown(PhosphorIconsStyle.bold), trailingIcon: false,
+            onPressed: () => Navigator.pop(context, true),
+          ),
+          const SizedBox(height: 8),
+          Center(child: TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Maybe later', style: ZineText.link(size: 14, color: Zine.inkSoft)))),
+        ],
+      ),
+    );
+    if (go == true && mounted) {
+      Analytics.capture('team_plan_upgrade_opened', const {'source': 'add_staff'});
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscribeScreen()));
+      _load(); // tier may have changed on return
+    }
+  }
+
+  Widget _benefit(IconData icon, String title, String body) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ZineIconBadge(icon: icon, color: Zine.lime, size: 32),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: ZineText.cardTitle(size: 14.5)),
+            const SizedBox(height: 1),
+            Text(body, style: ZineText.sub(size: 12.5)),
+          ])),
+        ]),
+      );
+
   Future<void> _addMember() async {
+    if (!_paidPlan) { _showTeamPlanSheet(); return; }
     final t = _team!;
     if (t.members.length >= t.seatLimit) { _toast('Seat limit reached (${t.seatLimit})'); return; }
     final added = await showModalBottomSheet<bool>(
