@@ -11,13 +11,40 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (!uid) return;
   const rs = await env.DB_META.prepare("SELECT platform, token FROM push_tokens_v2 WHERE uid=?1").bind(uid).all();
   const tokens = (rs.results ?? []) as Array<{ platform: string; token: string }>;
-  if (!tokens.length) return; // recipient has no registered device — nothing to do
+  if (!tokens.length) {
+    // SEND-side visibility: a push (call/notify/…) that can't be delivered because
+    // the recipient has NO registered device. Previously a silent return — the
+    // same blind spot behind the "no device registered" incident, seen from the
+    // delivery side. Now queryable per recipient.
+    await capturePush(env, "push_no_device", uid, { kind: msg.kind, call_id: msg.callId ?? null });
+    return;
+  }
 
   const payload = buildPayload(msg);
   for (const t of tokens) {
     if (t.platform === "apns") await sendApns(env, t.token, payload);
-    else await sendFcm(env, t.token, payload); // 'fcm' (Android) — default
+    else await sendFcm(env, t.token, payload, uid); // 'fcm' (Android) — default
   }
+}
+
+// Best-effort single-event PostHog capture so push-delivery failures are
+// queryable (not just visible in `wrangler tail`). Mirrors captureBatch's
+// transport in index.ts; never throws — telemetry must not block delivery.
+async function capturePush(env: Env, event: string, uid: string, props: Record<string, unknown>): Promise<void> {
+  if (!env.POSTHOG_API_KEY || !env.POSTHOG_HOST) return;
+  try {
+    await fetch(`${env.POSTHOG_HOST}/capture/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: env.POSTHOG_API_KEY,
+        event,
+        distinct_id: uid || "anonymous",
+        properties: { ...props, source: "consumer", service_name: "avatok-consumers", account_id: uid },
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch { /* best-effort */ }
 }
 
 // Large-group message delivery (router enqueues "fanout" for >25 recipients —
@@ -110,21 +137,35 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
   return { highPriority: true, data: { type, fromPub: msg.from_pubkey ?? "", event_id: msg.event_id ?? "" } };
 }
 
-async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }): Promise<void> {
-  if (!env.FCM_SERVICE_ACCOUNT) { console.warn("FCM_SERVICE_ACCOUNT unset; cannot send"); return; }
-  const accessToken = await getAccessToken(env);
-  const body = {
-    message: {
-      token,
-      data: payload.data,
-      android: { priority: payload.highPriority ? "high" : "normal" },
-    },
-  };
-  const res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FCM_PROJECT}/messages:send`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string): Promise<void> {
+  if (!env.FCM_SERVICE_ACCOUNT) {
+    console.warn("FCM_SERVICE_ACCOUNT unset; cannot send");
+    await capturePush(env, "push_send_failed", uid, { reason: "no_service_account" });
+    return;
+  }
+  let res: Response;
+  try {
+    const accessToken = await getAccessToken(env);
+    const body = {
+      message: {
+        token,
+        data: payload.data,
+        android: { priority: payload.highPriority ? "high" : "normal" },
+      },
+    };
+    res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FCM_PROJECT}/messages:send`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // OAuth token-exchange or network failure — e.g. a broken/deleted FCM project
+    // or service account. This is the SEND-side equivalent of the client
+    // FIS_AUTH_ERROR and was previously console-only. Surface it, then rethrow so
+    // the queue still retries.
+    await capturePush(env, "push_send_error", uid, { reason: "send_threw", error: String(e).slice(0, 180) });
+    throw e;
+  }
   if (!res.ok) {
     const txt = await res.text();
     // ONLY prune a token Firebase says is genuinely dead. NOT INVALID_ARGUMENT —
@@ -135,9 +176,13 @@ async function sendFcm(env: Env, token: string, payload: { data: Record<string, 
     if (dead) {
       await env.DB_META.prepare("DELETE FROM push_tokens_v2 WHERE token=?1").bind(token).run();
       console.warn("FCM: pruned dead token", token.slice(0, 12));
+      await capturePush(env, "push_token_pruned", uid, { status: res.status });
     } else {
-      // Keep the token; surface the error in logs (visible via `wrangler tail`).
+      // Keep the token; surface the error in logs (visible via `wrangler tail`)
+      // AND in PostHog so a project/credential/payload break is queryable, not
+      // just a log line nobody is tailing.
       console.error("FCM send failed (token KEPT):", res.status, txt.slice(0, 300));
+      await capturePush(env, "push_send_failed", uid, { status: res.status, error: txt.slice(0, 180) });
     }
   }
 }
