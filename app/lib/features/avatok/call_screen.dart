@@ -68,6 +68,11 @@ class CallScreen extends StatefulWidget {
   // time (POST /api/call response). The CALLER plays this locally during the
   // ringing phase. Empty → the bundled default ringback is used instead.
   final String ringbackUrl;
+  // Team IVR warm transfer: when this call was placed by the team auto-attendant,
+  // these tag the no-answer voicemail so the card reaches the team manager's inbox
+  // (Specs/TEAM-RECEPTIONIST-IVR-SPEC.md). Null for ordinary 1:1 calls.
+  final String? teamId;
+  final int? teamSlot;
   const CallScreen({
     super.key,
     required this.room,
@@ -77,6 +82,8 @@ class CallScreen extends StatefulWidget {
     this.outgoing = true,
     this.avatarUrl = '',
     this.ringbackUrl = '',
+    this.teamId,
+    this.teamSlot,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -793,7 +800,7 @@ class _CallScreenState extends State<CallScreen> {
 
       final call = ReceptionistCall(
           calleeUid: widget.seed, callId: widget.room, activationMode: activationMode,
-          speaker: _speaker);
+          speaker: _speaker, teamId: widget.teamId, teamSlot: widget.teamSlot);
       call.onStatus = (s) {
         if (!mounted) return;
         setState(() {

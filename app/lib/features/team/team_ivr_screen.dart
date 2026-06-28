@@ -89,12 +89,15 @@ class _TeamIvrScreenState extends State<TeamIvrScreen> {
       return;
     }
     // Warm transfer: bridge to the staffer in the SAME flow (no hangup → dialer).
+    // Carry the team tag so a no-answer voicemail lands in the manager's team inbox.
     final number = (r['target_number'] ?? '').toString();
+    final teamId = (r['team_id'] ?? '').toString();
     await _player.stop();
     Navigator.pushReplacement(context, MaterialPageRoute(
       builder: (_) => CallScreen(
         room: 'avatok-$number', title: name.isNotEmpty ? name : '+$number',
-        seed: number, video: false, outgoing: true, avatarUrl: ''),
+        seed: number, video: false, outgoing: true, avatarUrl: '',
+        teamId: teamId.isEmpty ? null : teamId, teamSlot: slot),
     ));
   }
 

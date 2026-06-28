@@ -38,6 +38,8 @@ class ReceptionistCall {
     this.callerName,
     this.activationMode = 'rings', // rings|first_ring|manual|decline|busy
     this.speaker = false,          // initial route: earpiece for audio calls
+    this.teamId,                   // Team IVR fallback: tags the voicemail card
+    this.teamSlot,                 // for the manager's team inbox + attribution
   });
 
   final String calleeUid;
@@ -45,6 +47,8 @@ class ReceptionistCall {
   final String? callerPhone;
   final String? callerName;
   final String activationMode;
+  final String? teamId;
+  final int? teamSlot;
 
   /// Current audio route (loudspeaker vs earpiece). Mutable: the call screen's
   /// speaker button calls [setSpeaker] to switch mid-call.
@@ -119,7 +123,7 @@ class ReceptionistCall {
     }
     final s = await ReceptionistApi.start(
       to: calleeUid, callId: callId, callerPhone: callerPhone, callerName: callerName,
-      activationMode: activationMode);
+      activationMode: activationMode, teamId: teamId, teamSlot: teamSlot);
     if (s == null) {
       Analytics.capture('ava_recept_skipped', {
         'reason': 'start_failed',
