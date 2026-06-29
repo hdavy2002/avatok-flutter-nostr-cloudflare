@@ -291,7 +291,9 @@ export class ReceptionRoomCf {
 
   private async cfStt(wav: Uint8Array): Promise<string> {
     try {
-      const out: any = await this.env.AI.run(this.cfSttModel(), { audio: Array.from(wav) } as any);
+      // whisper-large-v3-turbo wants audio as a base64 STRING (verified against the
+      // live model 2026-06-29 — array/binary inputs are rejected with AiError 5006).
+      const out: any = await this.env.AI.run(this.cfSttModel(), { audio: b64encode(wav) } as any);
       return String(out?.text ?? out?.transcription ?? out?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "").trim();
     } catch (e) { this.ev("ava_recept_cf_stt_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); return ""; }
   }
@@ -538,6 +540,11 @@ function b64decode(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+function b64encode(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
 }
 function concatFrames(frames: Uint8Array[], total: number): Uint8Array {
   const out = new Uint8Array(total);
