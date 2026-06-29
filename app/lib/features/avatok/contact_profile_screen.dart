@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import 'package:qr_flutter/qr_flutter.dart';
+
 import '../../core/avatar.dart';
 import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
 import '../../identity/nostr_keys.dart';
+import '../profile/qr_share.dart';
 import 'contacts.dart';
 
 /// Contact details: name, AvaTOK number, and shared groups.
@@ -104,6 +107,14 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     return 'AvaTOK user';
   }
 
+  /// Deep link others can scan/click to add THIS contact by their AvaTOK number.
+  /// Forward-compatible `?n=` form (the web landing + server add-by-number resolve
+  /// it; non-installers are sent to the Play Store).
+  String get _addLink {
+    final digits = _number.replaceAll(RegExp(r'[^0-9+]'), '');
+    return 'https://avatok.ai/add?n=${Uri.encodeQueryComponent(digits)}';
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -147,6 +158,29 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
                   Clipboard.setData(ClipboardData(text: _email));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
                 }),
+          ])),
+        ],
+        if (_number.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _box('Add $_displayName on AvaTOK', PhosphorIcons.qrCode(PhosphorIconsStyle.bold), Zine.mint,
+              child: Column(children: [
+            Center(child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Zine.card, borderRadius: BorderRadius.circular(14), border: Zine.border),
+              child: QrImageView(data: _addLink, size: 150, backgroundColor: Zine.card),
+            )),
+            const SizedBox(height: 12),
+            ZineButton(
+              label: 'Share contact', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
+              fullWidth: true, fontSize: 15,
+              onPressed: () async {
+                try {
+                  await QrShare.share(link: _addLink, name: _displayName, number: _number);
+                } catch (_) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Couldn't prepare the QR image — try again.")));
+                }
+              }),
           ])),
         ],
         const SizedBox(height: 18),

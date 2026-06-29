@@ -97,6 +97,13 @@ dependencies:
   pointycastle: ^4.0.0
   # Contact QR code (profile share)
   qr_flutter: ^4.1.0
+  # Compose the shareable/downloadable QR card image (JPEG) — branded card with
+  # title + QR + AvaTOK number, generated programmatically (owner request 2026-06-29).
+  image: ^4.2.0
+  # Print the QR card (post it at a business) — wraps the generated card in a PDF.
+  printing: ^5.13.4
+  # PDF document model used to lay out the QR card (shared by print + JPEG raster).
+  pdf: ^3.11.1
   # Incoming deep links — avatok://add?t= and https://avatok.ai/add?t= open the
   # app straight to the "add contact" card (Specs/AVATOK-NUMBER-FEATURE-SPEC.md).
   app_links: ^6.3.2

@@ -23,6 +23,7 @@ import 'package:share_plus/share_plus.dart';
 import '../avatok/contacts.dart';
 import '../avatok/ava_number.dart';
 import 'avatar_crop_screen.dart';
+import 'qr_share.dart';
 
 /// Set your public display name + @handle. Saving publishes you to the AvaTok
 /// directory (opt-in discovery) and makes your @handle resolvable.
@@ -678,18 +679,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Expanded(child: ZineButton(
                 label: 'Share', icon: PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
-                onPressed: _shareLink.isEmpty ? null : () {
-                  Analytics.capture('qr_shared', {'method': 'share', 'plan': _myNum?.hasNumber == true ? 'paid' : 'free'});
-                  Share.share(_shareLink, subject: 'Add me on AvaTOK');
+                onPressed: _shareLink.isEmpty ? null : () async {
+                  try {
+                    await QrShare.share(link: _shareLink, name: _fullName, number: _cardNumber);
+                  } catch (_) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Couldn't prepare the QR image — try again.")));
+                  }
                 })),
               const SizedBox(width: 10),
               Expanded(child: ZineButton(
                 label: 'Copy', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.copy(PhosphorIconsStyle.bold), trailingIcon: false,
                 fullWidth: true, fontSize: 15,
                 onPressed: _shareLink.isEmpty ? null : () {
-                  Analytics.capture('qr_shared', {'method': 'copy', 'plan': _myNum?.hasNumber == true ? 'paid' : 'free'});
+                  Analytics.capture('qr_card_action', {'action': 'copy'});
                   Clipboard.setData(ClipboardData(text: _shareLink));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
+                })),
+            ]),
+            const SizedBox(height: 10),
+            // Owner request 2026-06-29: Download a JPEG of the card, or Print it to
+            // post at a business — both use the identical QrShare layout.
+            Row(children: [
+              Expanded(child: ZineButton(
+                label: 'Download', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.downloadSimple(PhosphorIconsStyle.bold), trailingIcon: false,
+                fullWidth: true, fontSize: 15,
+                onPressed: _shareLink.isEmpty ? null : () async {
+                  try {
+                    final path = await QrShare.download(link: _shareLink, name: _fullName, number: _cardNumber);
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Saved QR card to $path')));
+                  } catch (_) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Couldn't save the image.")));
+                  }
+                })),
+              const SizedBox(width: 10),
+              Expanded(child: ZineButton(
+                label: 'Print', variant: ZineButtonVariant.ghost, icon: PhosphorIcons.printer(PhosphorIconsStyle.bold), trailingIcon: false,
+                fullWidth: true, fontSize: 15,
+                onPressed: _shareLink.isEmpty ? null : () async {
+                  try {
+                    await QrShare.printCard(link: _shareLink, name: _fullName, number: _cardNumber);
+                  } catch (_) {
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Couldn't open the print dialog.")));
+                  }
                 })),
             ]),
           ]),
