@@ -121,6 +121,10 @@ class _CallScreenState extends State<CallScreen> {
   // call ended in ~1s" bug). When set, signaling teardown events are ignored;
   // the receptionist owns the call and ends it via its own done future.
   bool _receptionistActive = false;
+  // Movie-style 3-2-1 handoff countdown: warms Ava up (connect + greeting, buffered)
+  // while it ticks, then releases her audio at 0 so she speaks instantly.
+  int _avaCount = 0;
+  bool _avaCountingDown = false;
   // v2 activation: probed from /api/receptionist/config at dial time.
   String _receptMode = 'rings';    // rings | first_ring
   int _receptRings = 5;            // Mode A ring count (RemoteConfig-driven)
@@ -867,7 +871,7 @@ class _CallScreenState extends State<CallScreen> {
           calleeUid: widget.seed, callId: widget.room, activationMode: activationMode,
           speaker: _speaker, teamId: widget.teamId, teamSlot: widget.teamSlot);
       call.onStatus = (s) {
-        if (!mounted) return;
+        if (!mounted || _avaCountingDown) return; // the countdown owns the screen until 0
         setState(() {
           _phase = switch (s) {
             'connecting' => 'receptionist-connecting',
@@ -877,15 +881,34 @@ class _CallScreenState extends State<CallScreen> {
           };
         });
       };
-      final ok = await call.start();
+      // Warm Ava up (connect + render the greeting, buffered) WHILE a 3-2-1 countdown
+      // runs on screen, then release her audio at 0 so she speaks the instant it ends.
+      _avaCountingDown = true;
+      call.beginHold();
+      final startFut = call.start();
+      await _runAvaCountdown();
+      final ok = await startFut;
+      _avaCountingDown = false;
       if (!ok) return false;
       _receptionist = call;
+      if (mounted) setState(() => _phase = 'receptionist');
+      call.release(); // Ava speaks now — fully warmed
       call.done.then((_) {
         if (mounted && !_ended) _endWith('ended', reason: 'receptionist-done');
       });
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// 3 → 2 → 1 handoff countdown (one second each). Ava warms up in the background
+  /// during these three seconds; her audio is released at 0.
+  Future<void> _runAvaCountdown() async {
+    for (var n = 3; n >= 1; n--) {
+      if (!mounted || _ended) return;
+      setState(() { _phase = 'ava-countdown'; _avaCount = n; });
+      await Future<void>.delayed(const Duration(seconds: 1));
     }
   }
 
@@ -937,6 +960,7 @@ class _CallScreenState extends State<CallScreen> {
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
+        'ava-countdown' => 'Ava is taking your call…',
         'receptionist-connecting' => 'Connecting you to Ava…',
         'receptionist' => 'Ava is taking a message',
         'receptionist-wrapup' => 'Ava is wrapping up…',
@@ -1027,11 +1051,20 @@ class _CallScreenState extends State<CallScreen> {
                   Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
+                      color: _phase == 'ava-countdown' ? Zine.lilac : null,
                       border: Zine.borderLg,
                       boxShadow: Zine.shadow,
                     ),
-                    child: Avatar(seed: widget.seed, name: widget.title, size: 132,
-                        avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
+                    // During handoff: a big movie-style 3-2-1 countdown in the ring
+                    // (Ava warms up behind it); otherwise the caller/contact avatar.
+                    child: _phase == 'ava-countdown'
+                        ? SizedBox(
+                            width: 132, height: 132,
+                            child: Center(child: Text('$_avaCount',
+                                style: ZineText.hero(size: 76))),
+                          )
+                        : Avatar(seed: widget.seed, name: widget.title, size: 132,
+                            avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
                   ),
                   const SizedBox(height: 24),
                   Text(widget.title, textAlign: TextAlign.center,

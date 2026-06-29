@@ -97,6 +97,8 @@ class ReceptionistCall {
   int _micBytes = 0;    // mic bytes uploaded
   int _lastMicAtMs = 0; // last captured mic frame — drives the dead-mic detector
   int _avaChunks = 0;   // Ava audio chunks received from the DO
+  bool _hold = false;                    // countdown gate: buffer Ava audio until released
+  final List<Uint8List> _heldAudio = []; // Ava chunks captured while held (native path)
   int _beats = 0;       // heartbeat counter
   bool _micStallFired = false;
   Timer? _hb;           // periodic in-call telemetry heartbeat
@@ -104,6 +106,23 @@ class ReceptionistCall {
   final Completer<String> _done = Completer<String>();
 
   Future<String> get done => _done.future;
+
+  /// Buffer Ava's audio instead of playing it — used during the on-screen 3-2-1
+  /// countdown so she connects + renders the greeting in the background and is
+  /// fully warmed up to speak the INSTANT the countdown hits zero.
+  void beginHold() => _hold = true;
+
+  /// Release the buffered audio and resume live playback (called at countdown 0).
+  void release() {
+    if (!_hold) return;
+    _hold = false;
+    if (_useNative) {
+      for (final b in _heldAudio) { try { _native.feed(b); } catch (_) {/* drained */} }
+      _heldAudio.clear();
+    } else if (_pcmBuf.length > 0) {
+      _enqueueSegment();
+    }
+  }
 
   // ~0.4 s of 24kHz mono PCM16 before we flush a playable WAV segment (fallback).
   static const int _flushBytes = 24000 * 2 * 2 ~/ 5;
@@ -258,13 +277,15 @@ class ReceptionistCall {
       _bytesIn += data.length;
       _avaChunks++;
       _lastAvaAudioAtMs = DateTime.now().millisecondsSinceEpoch; // echo-gate timing
+      final bytes = data is Uint8List ? data : Uint8List.fromList(data);
       if (_useNative) {
         // Native engine plays on the AEC'd comm stream — smooth + gapless, and
         // barge-in just works (caller's clean voice → Gemini stops → DO stops feeding).
-        _native.feed(data is Uint8List ? data : Uint8List.fromList(data));
+        // While held (countdown), buffer instead of playing.
+        if (_hold) { _heldAudio.add(bytes); } else { _native.feed(bytes); }
       } else {
         _pcmBuf.add(data);
-        if (_pcmBuf.length >= _flushBytes) _enqueueSegment();
+        if (!_hold && _pcmBuf.length >= _flushBytes) _enqueueSegment();
       }
     } else if (data is String) {
       // Barge-in: the server's VAD heard the caller speak over Ava → drop her
