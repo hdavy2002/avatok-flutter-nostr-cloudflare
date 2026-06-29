@@ -27,7 +27,11 @@ class Profile {
   // their AvaTOK number, and the AvaTOK dialpad routes calls to that number to
   // their AvaTOK app. Off by default — privacy-first.
   final bool showPrivateNumber;
-  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true, this.birthYear, this.privatePhone = '', this.showPrivateNumber = false});
+  // 'male' | 'female' | 'other' | '' (unset). Drives Ava's pronouns when she
+  // answers calls ("can I take a message for him/her/them?") and is a MANDATORY
+  // profile field (see [isComplete]).
+  final String gender;
+  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true, this.birthYear, this.privatePhone = '', this.showPrivateNumber = false, this.gender = ''});
 
   // VERIFICATION STUB (future): until phone verification ships, an exposed
   // private number is always treated as unverified. Wire this to the verification
@@ -52,7 +56,8 @@ class Profile {
       nameParts.length >= 2 &&
       isValidEmail(email) &&
       bio.trim().isNotEmpty &&
-      birthYear != null;
+      birthYear != null &&
+      gender.trim().isNotEmpty;
 
   /// Age in whole years derived from [birthYear] (year-precision — the profile
   /// collects a birth year, not a full date). Null when no birth year is set.
@@ -68,7 +73,7 @@ class Profile {
   static bool isValidPhone(String p) =>
       RegExp(r'^\+?\d{8,15}$').hasMatch(p.trim().replaceAll(RegExp(r'[\s\-()]'), ''));
 
-  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence, int? birthYear, String? privatePhone, bool? showPrivateNumber}) => Profile(
+  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence, int? birthYear, String? privatePhone, bool? showPrivateNumber, String? gender}) => Profile(
         displayName: displayName ?? this.displayName,
         handle: handle ?? this.handle,
         phone: phone ?? this.phone,
@@ -79,6 +84,7 @@ class Profile {
         birthYear: birthYear ?? this.birthYear,
         privatePhone: privatePhone ?? this.privatePhone,
         showPrivateNumber: showPrivateNumber ?? this.showPrivateNumber,
+        gender: gender ?? this.gender,
       );
 }
 
@@ -112,6 +118,7 @@ class ProfileStore {
             : int.tryParse((j['birthYear'] ?? '').toString()),
         privatePhone: (j['privatePhone'] ?? '').toString(),
         showPrivateNumber: j['showPrivateNumber'] == true,
+        gender: (j['gender'] ?? '').toString(),
       );
     } catch (_) {
       return const Profile();
@@ -120,7 +127,7 @@ class ProfileStore {
 
   Future<void> save(Profile p) => _s.write(
       key: scopedKey(_key),
-      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear, 'privatePhone': p.privatePhone, 'showPrivateNumber': p.showPrivateNumber}));
+      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear, 'privatePhone': p.privatePhone, 'showPrivateNumber': p.showPrivateNumber, 'gender': p.gender}));
 
   /// Persist just the phone (merging with any existing profile fields).
   Future<void> setPhone(String phone) async {
@@ -168,6 +175,7 @@ class ProfileStore {
     if (name.isEmpty || avatar.isEmpty) return false;
     final by = (j['birth_year'] is num) ? (j['birth_year'] as num).toInt() : null;
     final bio = (j['bio'] ?? '').toString();
+    final gender = (j['gender'] ?? '').toString();
     // Email isn't returned (stored hashed) — take it from the signed-in account.
     final email = (Analytics.currentEmail ?? '').trim();
     final existing = await load();
@@ -177,6 +185,7 @@ class ProfileStore {
       bio: bio,
       birthYear: by,
       email: email.isNotEmpty ? email : null,
+      gender: gender.isNotEmpty ? gender : null,
     ));
     try { await _s.write(key: scopedKey(_recoveredKey), value: '1'); } catch (_) {/* best-effort */}
     return true;

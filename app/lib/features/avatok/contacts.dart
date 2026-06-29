@@ -341,7 +341,7 @@ class Directory {
       {required String npub, String handle = '', String name = '', String email = '', String phone = '',
        String firstName = '', String lastName = '',
        String? encryptedNsecBackup, String? backupMethod, String? accountKind, String? avatarUrl,
-       int? birthYear, String? bio}) async {
+       int? birthYear, String? bio, String? gender}) async {
     try {
       // Handles are retired — names power the directory + contact card. `handle` is
       // accepted but no longer sent. account_kind persists the Single/Parent choice.
@@ -357,6 +357,8 @@ class Directory {
         if (birthYear != null) 'birth_year': birthYear,
         // Optional self-description — AvaBrain learns from it (server-side, consent-gated).
         if (bio != null) 'bio': bio,
+        // Profile gender → Ava's pronouns when answering calls.
+        if (gender != null && gender.isNotEmpty) 'gender': gender,
       });
       return (ok: res.statusCode == 200, status: res.statusCode);
     } catch (_) {

@@ -49,6 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _sharePresence = true;
   bool _showPrivateNumber = false; // show private number instead of AvaTOK number
   String _avatarUrl = '';
+  String _gender = ''; // 'male' | 'female' | 'other' — mandatory (Ava's pronouns)
   bool _photoBusy = false;
   // AvaTOK Number — the stable QR share link + my current number.
   MyNumber? _myNum;
@@ -70,6 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _name.text = parts.isNotEmpty ? parts.first : '';
         _last.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
         _bio.text = p.bio;
+        _gender = p.gender;
         _birthYear.text = p.birthYear?.toString() ?? '';
         _listed = !p.isEmpty;
         _sharePresence = p.sharePresence;
@@ -130,7 +132,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _name.text.trim().isNotEmpty &&
       _last.text.trim().isNotEmpty &&
       _bio.text.trim().isNotEmpty &&
-      _birthYearValue != null;
+      _birthYearValue != null &&
+      _gender.isNotEmpty;
 
   Future<void> _save() async {
     if (_saving) return;
@@ -195,7 +198,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final showPriv = _showPrivateNumber && priv.isNotEmpty;
     await _store.save(existing.copyWith(
         displayName: fullName, email: email, bio: _bio.text.trim(),
-        sharePresence: _sharePresence, birthYear: by,
+        sharePresence: _sharePresence, birthYear: by, gender: _gender,
         privatePhone: priv, showPrivateNumber: showPriv));
     Analytics.capture('private_number_pref', {
       'has_private_number': priv.isNotEmpty,
@@ -214,7 +217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Background directory publish — fire-and-forget, retried on the next save.
     if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty || email.isNotEmpty) {
       unawaited(Directory.registerProfile(npub: id.npub, name: fullName, firstName: first, lastName: last,
-          email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim()));
+          email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim(), gender: _gender));
     }
   }
 
@@ -574,6 +577,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             '(under-18 accounts get extra safety protections) and for anonymous '
             'age-group stats (e.g. "25-34").',
             style: ZineText.sub(size: 12.5)),
+        const SizedBox(height: 16),
+        Text('Gender', style: ZineText.value(size: 13.5)),
+        const SizedBox(height: 7),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final opt in const [
+            ['male', 'Male (he/him)'],
+            ['female', 'Female (she/her)'],
+            ['other', 'Other (they/them)'],
+          ])
+            ChoiceChip(
+              label: Text(opt[1]),
+              selected: _gender == opt[0],
+              onSelected: (_) => setState(() => _gender = opt[0]),
+            ),
+        ]),
+        const SizedBox(height: 7),
+        Text('Ava uses this when she answers your missed calls — '
+            '"can I take a message for him/her/them?"', style: ZineText.sub(size: 12.5)),
         const SizedBox(height: 16),
         ZineField(
           controller: _bio,

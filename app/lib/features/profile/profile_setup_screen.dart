@@ -54,6 +54,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   Identity? _id;
   String _avatarUrl = '';
+  String _gender = ''; // 'male' | 'female' | 'other' — mandatory (Ava's pronouns)
   String _avatokNumber = ''; // chosen in the number gate (shown here, locked)
   bool _photoBusy = false;
   bool _saving = false;
@@ -81,6 +82,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         _birthYear.text = p.birthYear?.toString() ?? '';
         _bio.text = p.bio;
         _avatarUrl = p.avatarUrl;
+        _gender = p.gender;
       });
     });
     // The AvaTOK number was picked in the gate just before this screen — show it
@@ -115,7 +117,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       _last.text.trim().isNotEmpty &&
       Profile.isValidEmail(_email.text) &&
       _bio.text.trim().isNotEmpty &&
-      _birthYearValue != null;
+      _birthYearValue != null &&
+      _gender.isNotEmpty;
 
   Future<void> _pickAndCrop(ImageSource source) async {
     try {
@@ -207,10 +210,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final phone = existing.phone;
     await _store.save(existing.copyWith(
         displayName: fullName, email: email, phone: phone, avatarUrl: _avatarUrl,
-        bio: bio, birthYear: by));
+        bio: bio, birthYear: by, gender: _gender));
     await Directory.registerProfile(
         npub: id.npub, name: fullName, firstName: first, lastName: last,
-        email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio);
+        email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio, gender: _gender);
     Analytics.capture('profile_completed', {
       'has_photo': true, 'via': 'mandatory_gate', 'email': email,
     });
@@ -303,6 +306,25 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             Text('Private — never shown to anyone. Used to confirm your age '
                 '(under-18 accounts get extra safety protections).',
                 style: ZineText.sub(size: 12)),
+            const SizedBox(height: 14),
+            // ── Gender (mandatory) — drives how Ava refers to you on calls ──
+            Text('Gender', style: ZineText.value(size: 13)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final opt in const [
+                ['male', 'Male (he/him)'],
+                ['female', 'Female (she/her)'],
+                ['other', 'Other (they/them)'],
+              ])
+                ChoiceChip(
+                  label: Text(opt[1]),
+                  selected: _gender == opt[0],
+                  onSelected: (_) => setState(() => _gender = opt[0]),
+                ),
+            ]),
+            const SizedBox(height: 4),
+            Text('Ava uses this when she answers your missed calls — '
+                '"can I take a message for him/her/them?"', style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
             ZineField(controller: _bio, label: 'About you', hint: 'Tell Ava a little about yourself…',
                 maxLines: 4, maxLength: 600, textCapitalization: TextCapitalization.sentences,
