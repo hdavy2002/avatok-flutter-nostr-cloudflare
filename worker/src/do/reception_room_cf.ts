@@ -57,12 +57,14 @@ const AURA_FEMALE = new Set([
   "harmonia", "helena", "iris", "juno", "minerva", "ophelia", "pandora", "phoebe",
   "thalia", "theia", "vesta", "amalthea", "andromeda", "callista", "electra",
 ]);
-const CF_ENDPOINT_MS = 550;                 // trailing silence that ends a caller turn (lower = snappier)
+// VOICEMAIL: a long endpoint so natural pauses don't cut the caller off mid-message;
+// a big max so a continuous monologue is still captured in one shot; a 50s window.
+const CF_ENDPOINT_MS = 1500;                // trailing silence that ends the caller's message
 const CF_MIN_TURN_BYTES = 8000;             // ~0.25s @16k PCM16 — below = noise, ignore
-const CF_MAX_TURN_BYTES = 16000 * 2 * 20;   // ~20s @16k PCM16 — force-process
-// Barge-in: this much sustained caller speech (~300ms @16k) DURING Ava's playback
-// interrupts her. Relies on client-side echo cancellation (same as the Gemini
-// path) so Ava's own voice doesn't self-trigger it.
+const CF_MAX_TURN_BYTES = 16000 * 2 * 55;   // ~55s @16k PCM16 — force-process a long message
+const CF_MSG_WINDOW_MS = 50_000;            // caller's message window (starts AFTER the greeting)
+// Barge-in (greeting only): sustained caller speech (~300ms) over Ava's greeting lets
+// them start their message early. Relies on client-side echo cancellation.
 const CF_BARGE_BYTES = 16000 * 2 * 0.3;     // ~300ms of real speech
 
 interface InitBlob {
@@ -120,6 +122,12 @@ export class ReceptionRoomCf {
   private cfBargeBytes = 0;       // accumulated caller speech bytes during Ava's speech
   private cfSpeakResolve: (() => void) | null = null;
   private cfSpeakTimer: ReturnType<typeof setTimeout> | null = null;
+  // Voicemail flow: one message → confirm → end. cfClosing blocks any further input
+  // once we're wrapping up; cfTimeUp makes the close say "your time's up"; cfMsgTimer
+  // is the 50s caller-message window that starts after the greeting.
+  private cfMsgTimer: ReturnType<typeof setTimeout> | null = null;
+  private cfTimeUp = false;
+  private cfClosing = false;
 
   private static IDLE_MS = 10_000;
   private static MAX_REC_BYTES = 12 * 1024 * 1024;
@@ -193,9 +201,19 @@ export class ReceptionRoomCf {
     // generation is buffered (not raced into a second turn); barge-in still works
     // during the greet's playback via the cfSpeaking check in feedCfAudio.
     this.cfBusy = true;
-    try { await this.cfAssistantTurn("[Caller connected — greet and offer to take a message now, in one short sentence.]"); }
+    try { await this.cfAssistantTurn("[Caller connected — give your one-sentence voicemail greeting now, then stop and listen.]"); }
     finally { this.cfBusy = false; }
+    // Caller now has ~50s to leave their message; when it elapses Ava cuts in.
+    this.cfMsgTimer = setTimeout(() => this.onMsgCap(), CF_MSG_WINDOW_MS);
     this.bumpIdle();
+  }
+
+  /** The caller's ~50s message window elapsed → cut in and close with "time's up". */
+  private onMsgCap(): void {
+    if (this.finalized || this.cfClosing) return;
+    this.cfTimeUp = true;
+    if (this.cfSpeaking) return; // still mid-greeting — the hard cap is the backstop
+    void this.processCfTurn();
   }
 
   private onClientMessage(ev: MessageEvent): void {
@@ -217,7 +235,7 @@ export class ReceptionRoomCf {
 
   /** Full-duplex endpointing + barge-in detection. */
   private feedCfAudio(bytes: Uint8Array): void {
-    if (this.finalized) return;
+    if (this.finalized || this.cfClosing) return; // wrapping up → ignore further input
     const speech = callerHasSpeech(bytes);
     // (1) Ava is speaking → watch for the caller talking over her (barge-in).
     if (this.cfSpeaking) {
@@ -258,33 +276,44 @@ export class ReceptionRoomCf {
     this.cfHadSpeech = true; this.cfTurnBuf = [bytes]; this.cfTurnBytes = bytes.byteLength; // start the new turn
   }
 
+  /** VOICEMAIL: transcribe the caller's whole message, give ONE confirmation, end.
+   *  Never loops into a back-and-forth — cfClosing + finalize guarantee one turn. */
   private async processCfTurn(): Promise<void> {
-    if (this.finalized || this.cfBusy) return;
+    if (this.finalized || this.cfBusy || this.cfClosing) return;
+    this.cfClosing = true; // one message, then close
     if (this.cfEndpointTimer) { clearTimeout(this.cfEndpointTimer); this.cfEndpointTimer = null; }
+    if (this.cfMsgTimer) { clearTimeout(this.cfMsgTimer); this.cfMsgTimer = null; }
     const frames = this.cfTurnBuf; const total = this.cfTurnBytes;
     this.cfTurnBuf = []; this.cfTurnBytes = 0; this.cfHadSpeech = false;
-    if (total < CF_MIN_TURN_BYTES) return;
     this.cfBusy = true;
     try {
-      const wav = pcm16ToWavMono(concatFrames(frames, total), 16000);
-      this.cfSttSeconds += total / 32000;
-      const heard = await this.cfStt(wav);
-      if (heard) { this.inText.push(heard); this.pushDialog("caller", heard); }
+      let heard = "";
+      if (total >= CF_MIN_TURN_BYTES) {
+        const wav = pcm16ToWavMono(concatFrames(frames, total), 16000);
+        this.cfSttSeconds += total / 32000;
+        heard = await this.cfStt(wav);
+        if (heard) { this.inText.push(heard); this.pushDialog("caller", heard); }
+      }
       this.turnCount++;
       this.ev("ava_recept_turn", {
-        turn: this.turnCount, in_chars: this.inText.join("").length, out_chars: this.outText.join("").length,
+        turn: this.turnCount, engine: "cf", time_up: this.cfTimeUp,
+        in_chars: this.inText.join("").length, out_chars: this.outText.join("").length,
         in_bytes: this.inBytes, ava_bytes: this.pcmBytes, ms: Date.now() - this.startedAt,
       });
-      await this.cfAssistantTurn(heard || "[caller was silent]");
+      await this.cfAssistantTurn(heard || "[the caller left no message]");
     } catch (e) {
       this.ev("ava_recept_cf_turn_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) });
     } finally {
-      this.cfBusy = false; this.bumpIdle();
+      this.cfBusy = false;
     }
+    // Always end after the single message (the prompt also emits <END_CALL>, but
+    // this guarantees we never fall into a conversation).
+    if (!this.finalized) void this.finalize(this.cfTimeUp ? "time_up" : "ava_ended");
   }
 
   private async cfAssistantTurn(userContent: string): Promise<void> {
     if (this.finalized) return;
+    if (this.cfTimeUp) this.cfHistory.push({ role: "user", content: "[SYSTEM: time is up]" });
     this.cfHistory.push({ role: "user", content: userContent });
     let text = (await this.cfLlm()).trim();
     let end = false;
@@ -366,13 +395,11 @@ export class ReceptionRoomCf {
   }
 
   private onSoftCap(): void {
-    if (this.finalized) return;
+    if (this.finalized || this.cfClosing) return;
     try { this.client?.send(JSON.stringify({ t: "softcap" })); } catch { /* ignore */ }
     metric(this.env, "ava_recept_softcap", [1]);
-    this.ev("ava_recept_softcap", { at_ms: Date.now() - this.startedAt });
-    if (!this.cfBusy) {
-      void this.cfAssistantTurn("[SYSTEM: time's almost up — confirm the message in one sentence, say a short goodbye, then end with <END_CALL>.]");
-    }
+    this.ev("ava_recept_softcap", { engine: "cf", at_ms: Date.now() - this.startedAt });
+    this.onMsgCap(); // backstop for the 50s message timer — force the time's-up close
   }
 
   private bumpIdle(): void {
@@ -395,6 +422,7 @@ export class ReceptionRoomCf {
     if (this.hardTimer) clearTimeout(this.hardTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.cfEndpointTimer) clearTimeout(this.cfEndpointTimer);
+    if (this.cfMsgTimer) clearTimeout(this.cfMsgTimer);
     if (this.cfSpeakTimer) clearTimeout(this.cfSpeakTimer);
     if (this.cfSpeakResolve) { const r = this.cfSpeakResolve; this.cfSpeakResolve = null; r(); } // unblock any speaking wait
     try { this.client?.send(JSON.stringify({ t: "ended", reason })); this.client?.close(1000, reason); } catch { /* ignore */ }
