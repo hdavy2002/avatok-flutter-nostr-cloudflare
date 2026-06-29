@@ -267,7 +267,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Soft nudge to verify phone for users who skipped it at onboarding.
         // Self-hides when already verified or recently dismissed (account-scoped,
         // re-surfaces after 7 days), so it leaves no gap when not shown.
-        const PhoneNudgeCard(source: 'settings'),
+        // Owner request 2026-06-29: hide the phone-verify nudge card (we'll
+        // re-enable phone verification later). The widget stays imported/available.
+        // const PhoneNudgeCard(source: 'settings'),
         // Account type (preview) section hidden (owner decision 2026-06-17).
         // Google AI Studio BYOK removed (owner decision 2026-06-18): premium is
         // top-up only, everything runs on Cloudflare. The _aiCard() is no longer

@@ -72,15 +72,19 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                 ]),
               ),
               const SizedBox(height: 10),
-              _toggleRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Find me by my real phone number',
-                  'Off keeps your real number private', p.phoneDiscoverable, (v) => _save(phone: v)),
-              const SizedBox(height: 10),
+              // Owner request 2026-06-29: hide "Find me by my real phone number".
+              // Exposing a private number now lives in Profile (the private-number
+              // field + the "Show my private number" switch), so we never imply we
+              // surface someone's real number from this discoverability toggle.
+              // _toggleRow(PhosphorIcons.phone(PhosphorIconsStyle.bold), 'Find me by my real phone number',
+              //     'Off keeps your real number private', p.phoneDiscoverable, (v) => _save(phone: v)),
+              // const SizedBox(height: 10),
               _toggleRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), 'Find me by my email',
                   'People who know your email can add you', p.emailDiscoverable, (v) => _save(email: v)),
               const SizedBox(height: 22),
               Text('WHO CAN ADD ME', style: ZineText.kicker()),
               const SizedBox(height: 10),
-              _whoOption('everyone', 'Everyone', 'Anyone who searches your number, phone, or email'),
+              _whoOption('everyone', 'Everyone', 'Anyone who searches your AvaTOK number or email'),
               _whoOption('number_only', 'Only with my AvaTOK number', 'People must know your exact number'),
               _whoOption('nobody', 'Nobody', 'You won’t appear in search or QR adds'),
               if (_saving) const Padding(padding: EdgeInsets.only(top: 16), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))),
