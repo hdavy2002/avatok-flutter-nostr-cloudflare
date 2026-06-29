@@ -41,10 +41,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _handle = TextEditingController(); // DEPRECATED — handles retired
   final _birthYear = TextEditingController();
   final _bio = TextEditingController();
+  final _privatePhone = TextEditingController(); // optional, user-exposed private number
   Identity? _id; // resolved from the passed identity OR the local store
   bool _saving = false;
   bool _listed = false;
   bool _sharePresence = true;
+  bool _showPrivateNumber = false; // show private number instead of AvaTOK number
   String _avatarUrl = '';
   bool _photoBusy = false;
   // AvaTOK Number — the stable QR share link + my current number.
@@ -71,6 +73,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _listed = !p.isEmpty;
         _sharePresence = p.sharePresence;
         _avatarUrl = p.avatarUrl;
+        _privatePhone.text = p.privatePhone;
+        _showPrivateNumber = p.showPrivateNumber;
       });
     });
     _initShare();
@@ -84,10 +88,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final parts = _name.text.trim().isEmpty ? prof.displayName.split(RegExp(r'\s+')) : _name.text.trim().split(RegExp(r'\s+'));
     final first = parts.isNotEmpty ? parts.first : '';
     final last = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-    // Privacy (owner request 2026-06-27): NEVER put the user's real/private phone
-    // on the share card — only the virtual AvaTOK number is shareable. If they
-    // don't have one yet, the card carries no number (photo, name + email only).
-    final number = me.hasNumber ? (me.display ?? '') : '';
+    // Number on the share card. By default this is the virtual AvaTOK number.
+    // EXCEPTION (owner request 2026-06-29): if the user has explicitly added a
+    // private number AND chosen to expose it, that number REPLACES the AvaTOK
+    // number on the card (they've opted in — privacy is their choice).
+    final number = (prof.showPrivateNumber && prof.privatePhone.trim().isNotEmpty)
+        ? prof.privatePhone.trim()
+        : (me.hasNumber ? (me.display ?? '') : '');
     // Personal email — from the stored profile, else from the known account email.
     final email = prof.email.isNotEmpty ? prof.email : (Analytics.currentEmail ?? '');
     if (prof.email.isEmpty && email.isNotEmpty) _store.setEmail(email);
@@ -97,7 +104,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
-  void dispose() { _name.dispose(); _last.dispose(); _handle.dispose(); _birthYear.dispose(); _bio.dispose(); super.dispose(); }
+  void dispose() { _name.dispose(); _last.dispose(); _handle.dispose(); _birthYear.dispose(); _bio.dispose(); _privatePhone.dispose(); super.dispose(); }
+
+  /// The number to show on the QR/share card + under the QR. When the user has
+  /// opted to expose their private number, that REPLACES the AvaTOK number
+  /// everywhere (owner request 2026-06-29); otherwise we use the AvaTOK number.
+  String get _cardNumber {
+    final priv = _privatePhone.text.trim();
+    if (_showPrivateNumber && priv.isNotEmpty) return priv;
+    return _myNum?.hasNumber == true ? (_myNum!.display ?? '') : '';
+  }
 
   int? get _birthYearValue {
     final y = int.tryParse(_birthYear.text.trim());
@@ -173,9 +189,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // LOCAL-FIRST (owner report 2026-06-27 — "saving takes forever"): persist to the
     // on-device store and release the UI immediately; publish to the directory in
     // the BACKGROUND so a slow/offline network never blocks Save.
+    final priv = _privatePhone.text.trim();
+    // Can only "show private number" when one is actually entered.
+    final showPriv = _showPrivateNumber && priv.isNotEmpty;
     await _store.save(existing.copyWith(
         displayName: fullName, email: email, bio: _bio.text.trim(),
-        sharePresence: _sharePresence, birthYear: by));
+        sharePresence: _sharePresence, birthYear: by,
+        privatePhone: priv, showPrivateNumber: showPriv));
+    Analytics.capture('private_number_pref', {
+      'has_private_number': priv.isNotEmpty,
+      'show_private_number': showPriv,
+    });
+    // Refresh the share card so the QR immediately reflects the chosen number.
+    unawaited(_initShare());
     if (mounted) setState(() { _saving = false; _listed = true; });
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -573,8 +599,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
         ),
         const SizedBox(height: 16),
-        // Phone-number nudge removed (owner decision 2026-06-27): the public card
-        // no longer asks for a phone number — identity is the AvaTOK number + email.
+        // Optional private phone number the user may CHOOSE to expose (owner
+        // request 2026-06-29). Off by default; not verified yet (VERIFICATION STUB
+        // — Profile.privatePhoneVerified). When the switch is on, this number
+        // replaces the AvaTOK number on the QR card and contact areas.
+        Text('PRIVATE PHONE NUMBER (OPTIONAL)', style: ZineText.kicker()),
+        const SizedBox(height: 10),
+        ZineField(
+          controller: _privatePhone,
+          label: 'Private phone number',
+          hint: 'e.g. +1 302 555 0148',
+          keyboardType: TextInputType.phone,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 7),
+        Text('Optional and private by default. Not verified yet — verification is '
+            'coming later. Only shown to others if you turn on the switch below.',
+            style: ZineText.sub(size: 12.5)),
+        const SizedBox(height: 12),
+        ZineCard(
+          radius: Zine.rSm,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          boxShadow: Zine.shadowXs,
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Show my private number instead of my AvaTOK number', style: ZineText.value(size: 14.5)),
+              const SizedBox(height: 2),
+              Text('People see this number on your card and can call it on AvaTOK. '
+                  'Your AvaTOK number is hidden while this is on.', style: ZineText.sub(size: 12)),
+            ])),
+            const SizedBox(width: 10),
+            ZineToggle(
+              value: _showPrivateNumber && _privatePhone.text.trim().isNotEmpty,
+              onChanged: _privatePhone.text.trim().isEmpty
+                  ? null
+                  : (v) => setState(() => _showPrivateNumber = v),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
         Text('ACCOUNT & SECURITY', style: ZineText.kicker()),
         const SizedBox(height: 10),
         _securityRow(PhosphorIcons.envelope(PhosphorIconsStyle.bold), Zine.blue,
@@ -603,12 +666,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Center(child: Padding(padding: EdgeInsets.all(28), child: CircularProgressIndicator())),
             const SizedBox(height: 10),
             Center(child: Text(
-              _myNum?.hasNumber == true ? (_myNum!.display ?? '') : 'Scan to add me on AvaTOK',
+              _cardNumber.isNotEmpty ? _cardNumber : 'Scan to add me on AvaTOK',
               style: ZineText.value(size: 15, color: Zine.blueInk))),
-            if (_myNum != null && !_myNum!.hasNumber)
+            if (_cardNumber.isEmpty && _myNum != null && !_myNum!.hasNumber)
               Padding(padding: const EdgeInsets.only(top: 4), child: Center(child:
-                Text('Generate your AvaTOK number in Settings → Your number to share it. '
-                    'Your real number is always kept private.',
+                Text('Generate your AvaTOK number in Settings → Your number to share it, '
+                    'or add a private number above and choose to show it.',
                     textAlign: TextAlign.center, style: ZineText.sub(size: 11.5)))),
             const SizedBox(height: 14),
             Row(children: [

@@ -21,7 +21,20 @@ class Profile {
   final String bio; // free-text "about you" — AvaBrain learns from it (opt-in via the Brain switch)
   final bool sharePresence; // last-seen / online visible to others
   final int? birthYear; // year of birth — used to compute age (under-18 gate); never shown publicly
-  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true, this.birthYear});
+  // OPTIONAL private phone number the user may choose to expose (owner request
+  // 2026-06-29). NOT verified yet — VERIFICATION STUB: a future release will move
+  // this under identity verification (see [privatePhoneVerified] placeholder).
+  final String privatePhone;
+  // When true, the user's QR card / contact areas show [privatePhone] INSTEAD of
+  // their AvaTOK number, and the AvaTOK dialpad routes calls to that number to
+  // their AvaTOK app. Off by default — privacy-first.
+  final bool showPrivateNumber;
+  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true, this.birthYear, this.privatePhone = '', this.showPrivateNumber = false});
+
+  // VERIFICATION STUB (future): until phone verification ships, an exposed
+  // private number is always treated as unverified. Wire this to the verification
+  // service when it lands; UI can then show a "verified" check.
+  bool get privatePhoneVerified => false;
 
   bool get isEmpty => displayName.isEmpty && handle.isEmpty;
   String get atHandle => handle.isEmpty ? '' : '@$handle';
@@ -57,7 +70,7 @@ class Profile {
   static bool isValidPhone(String p) =>
       RegExp(r'^\+?\d{8,15}$').hasMatch(p.trim().replaceAll(RegExp(r'[\s\-()]'), ''));
 
-  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence, int? birthYear}) => Profile(
+  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence, int? birthYear, String? privatePhone, bool? showPrivateNumber}) => Profile(
         displayName: displayName ?? this.displayName,
         handle: handle ?? this.handle,
         phone: phone ?? this.phone,
@@ -66,6 +79,8 @@ class Profile {
         bio: bio ?? this.bio,
         sharePresence: sharePresence ?? this.sharePresence,
         birthYear: birthYear ?? this.birthYear,
+        privatePhone: privatePhone ?? this.privatePhone,
+        showPrivateNumber: showPrivateNumber ?? this.showPrivateNumber,
       );
 }
 
@@ -97,6 +112,8 @@ class ProfileStore {
         birthYear: (j['birthYear'] is num)
             ? (j['birthYear'] as num).toInt()
             : int.tryParse((j['birthYear'] ?? '').toString()),
+        privatePhone: (j['privatePhone'] ?? '').toString(),
+        showPrivateNumber: j['showPrivateNumber'] == true,
       );
     } catch (_) {
       return const Profile();
@@ -105,7 +122,7 @@ class ProfileStore {
 
   Future<void> save(Profile p) => _s.write(
       key: scopedKey(_key),
-      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear}));
+      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear, 'privatePhone': p.privatePhone, 'showPrivateNumber': p.showPrivateNumber}));
 
   /// Persist just the phone (merging with any existing profile fields).
   Future<void> setPhone(String phone) async {
