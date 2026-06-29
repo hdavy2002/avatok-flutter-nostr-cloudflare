@@ -201,6 +201,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'has_private_number': priv.isNotEmpty,
       'show_private_number': showPriv,
     });
+    // Register the private number server-side so the dialpad can resolve it to
+    // this account when exposed (Phase B backend). Fire-and-forget.
+    unawaited(AvaNumber.setPrivateNumber(number: priv, show: showPriv));
     // Refresh the share card so the QR immediately reflects the chosen number.
     unawaited(_initShare());
     if (mounted) setState(() { _saving = false; _listed = true; });

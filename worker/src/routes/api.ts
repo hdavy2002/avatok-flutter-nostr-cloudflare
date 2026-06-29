@@ -264,13 +264,22 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
   }
   const digits = q.replace(/[^0-9]/g, "");
   if (digits.length >= 6) {
-    // 1) exact AvaTOK number (canonical E.164 digits)
-    const byNum = await db.prepare("SELECT uid FROM users WHERE avatok_number=?1 LIMIT 1").bind(digits).first<{ uid: string }>();
+    // 1) exact AvaTOK number (canonical E.164 digits). ALSO match a user's
+    // EXPLICITLY-exposed private number (show_private_number=1) so dialing it on
+    // the AvaTOK dialpad rings their app (owner request 2026-06-29). This is
+    // OPT-IN only — a private phone never resolves by default (the 2026-06-27
+    // privacy rule still holds for everyone who hasn't turned it on). Guarded:
+    // falls back to the AvaTOK-only query if the columns aren't migrated yet, so
+    // a deploy-before-migration can NEVER break dialing.
+    let byNum: { uid: string } | null = null;
+    try {
+      byNum = await db.prepare(
+        "SELECT uid FROM users WHERE avatok_number=?1 OR (show_private_number=1 AND private_number=?1) LIMIT 1",
+      ).bind(digits).first<{ uid: string }>();
+    } catch {
+      byNum = await db.prepare("SELECT uid FROM users WHERE avatok_number=?1 LIMIT 1").bind(digits).first<{ uid: string }>();
+    }
     if (byNum) return json({ uid: byNum.uid, profile: profOut(await fetchProf(byNum.uid)) });
-    // PRIVACY (owner decision 2026-06-27): a real/private phone number must NEVER
-    // resolve to an account — that would let anyone map a private phone → AvaTOK
-    // identity. Only the public AvaTOK number (above) is a valid numeric lookup
-    // key. The former phone_hash + phone_discoverable lookup is removed.
   }
   return json({ uid: null }, 404);
 }

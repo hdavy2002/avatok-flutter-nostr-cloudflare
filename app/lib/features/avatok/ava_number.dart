@@ -262,6 +262,16 @@ class AvaNumber {
     } catch (_) { return null; }
   }
 
+  /// Register/clear the user's optional private number + whether to expose it.
+  /// When [show] is true, the server lets the AvaTOK dialpad resolve that number
+  /// to this account so calls ring their app (owner request 2026-06-29).
+  static Future<bool> setPrivateNumber({required String number, required bool show}) async {
+    try {
+      final r = await ApiAuth.postJson('$kNumberBase/private', {'number': number, 'show': show});
+      return r.statusCode == 200;
+    } catch (_) { return false; }
+  }
+
   static Future<Discoverability> getPrivacy() async {
     final cached = await _readCache(_privCacheKey);
     if (cached != null) {

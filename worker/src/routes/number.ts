@@ -386,6 +386,29 @@ export async function privacySet(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// POST /api/number/private { number?, show? } — auth. Register/clear the user's
+// OPTIONAL private number and whether to expose it. When show=1, the dialpad
+// resolves that number to this account (api.ts resolve) and the share card shows
+// it. Stored as DIGITS so it matches the numeric resolve. Not verified yet —
+// VERIFICATION STUB: gate behind the verification service when it ships. Guarded
+// so a missing migration returns 503 rather than 500. (Owner request 2026-06-29.)
+export async function privateNumberSet(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const digits = typeof b.number === "string" ? b.number.replace(/[^0-9]/g, "").slice(0, 20) : "";
+  const show = b.show === true && digits.length >= 6 ? 1 : 0;
+  try {
+    await env.DB_META.prepare(
+      "UPDATE users SET private_number=?2, show_private_number=?3, updated_at=?4 WHERE uid=?1",
+    ).bind(ctx.uid, digits || null, show, Date.now()).run();
+  } catch (e) {
+    return json({ error: "schema_pending", detail: String(e).slice(0, 120) }, 503);
+  }
+  analytics(env, "private_number_set", ctx.uid, { show: !!show, has_number: digits.length >= 6 }, req);
+  return json({ ok: true });
+}
+
 // POST /api/number/release — voluntarily give up the current number.
 export async function release(req: Request, env: Env): Promise<Response> {
   if (!(await featureOn(env))) return json({ error: "number_feature_off" }, 503);
