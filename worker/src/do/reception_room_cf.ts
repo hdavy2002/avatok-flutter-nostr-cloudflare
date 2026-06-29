@@ -366,36 +366,66 @@ export class ReceptionRoomCf {
     return this.cfChat(this.cfHistory, 120); // short replies → faster LLM + TTS
   }
 
+  /** STREAMING TTS: request raw PCM (encoding linear16, container none) with
+   *  returnRawResponse so we get a ReadableStream, and forward each chunk to the
+   *  client AS IT GENERATES — first audio in ~0.5s instead of waiting for the whole
+   *  synthesis (~3s). Barge-in still works throughout playback. */
   private async cfSpeak(text: string): Promise<void> {
     if (this.finalized || !text) return;
     this.cfTtsChars += text.length;
+    this.cfBarged = false; this.cfBargeBytes = 0; this.cfSpeaking = true;
+    let bytesSent = 0;
+    let firstChunkAt = 0;
+    let firstChunk = true;
     try {
-      const out: any = await this.env.AI.run(this.cfTtsModel(),
-        { text: text.slice(0, 800), speaker: this.cfVoice(), encoding: "linear16", sample_rate: 24000 } as any);
-      const pcm = await ttsToPcm(out);
-      if (!pcm || !pcm.byteLength) return;
-      if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength; }
-      this.avaBytes += pcm.byteLength;
-      this.cfTtsSeconds += pcm.byteLength / 48000;
-      if (!this.firstAudioSent) { this.firstAudioSent = true; this.ev("ava_recept_first_audio", { ms: Date.now() - this.startedAt }); }
-      // Stream the audio to the client (it buffers + plays in real time).
-      for (let o = 0; o < pcm.byteLength; o += 24000) {
-        try { this.client?.send(pcm.subarray(o, Math.min(o + 24000, pcm.byteLength))); } catch { /* caller gone */ }
+      const resp: any = await this.env.AI.run(this.cfTtsModel(),
+        { text: text.slice(0, 800), speaker: this.cfVoice(), encoding: "linear16", sample_rate: 24000, container: "none" } as any,
+        { returnRawResponse: true } as any);
+      const body: any = resp?.body ?? null;
+      if (body && typeof body.getReader === "function") {
+        const reader = body.getReader();
+        for (;;) {
+          if (this.cfBarged || this.finalized) { try { await reader.cancel(); } catch { /* ignore */ } break; }
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value || !value.length) continue;
+          // Defensive: if container:none wasn't honored, strip a leading WAV header.
+          let chunk: Uint8Array = value;
+          if (firstChunk) { chunk = stripWavHeader(value); firstChunk = false; }
+          if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm: chunk }); this.pcmBytes += chunk.byteLength; }
+          this.avaBytes += chunk.byteLength; bytesSent += chunk.byteLength;
+          if (!firstChunkAt) firstChunkAt = Date.now();
+          if (!this.firstAudioSent) { this.firstAudioSent = true; this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+          try { this.client?.send(chunk); } catch { /* caller gone */ }
+        }
+      } else {
+        // Fallback: buffered path (binding didn't give a streamable body).
+        const pcm = await ttsToPcm(resp);
+        if (pcm && pcm.byteLength) {
+          if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength; }
+          this.avaBytes += pcm.byteLength; bytesSent = pcm.byteLength; firstChunkAt = Date.now();
+          if (!this.firstAudioSent) { this.firstAudioSent = true; this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+          for (let o = 0; o < pcm.byteLength; o += 24000) { try { this.client?.send(pcm.subarray(o, Math.min(o + 24000, pcm.byteLength))); } catch { /* caller gone */ } }
+        }
       }
+      this.cfTtsSeconds += bytesSent / 48000;
       this.bumpIdle();
-      // Open the barge-in window for ~the audio's play duration. If the caller
-      // talks over her, triggerBargeIn() flushes the client + resolves this early.
-      this.cfBarged = false; this.cfBargeBytes = 0; this.cfSpeaking = true;
-      const durMs = Math.ceil((pcm.byteLength / 48000) * 1000);
-      await new Promise<void>((resolve) => {
-        this.cfSpeakResolve = resolve;
-        this.cfSpeakTimer = setTimeout(() => { this.cfSpeakResolve = null; resolve(); }, durMs);
-      });
-      if (this.cfSpeakTimer) { clearTimeout(this.cfSpeakTimer); this.cfSpeakTimer = null; }
-      this.cfSpeaking = false;
+      // Keep the barge-in window open for the REMAINING playback time (the client
+      // buffers what we streamed). Interruptible — triggerBargeIn resolves it early.
+      if (!this.cfBarged && !this.finalized && bytesSent > 0 && firstChunkAt) {
+        const residual = (firstChunkAt + Math.ceil((bytesSent / 48000) * 1000)) - Date.now();
+        if (residual > 0) {
+          await new Promise<void>((resolve) => {
+            this.cfSpeakResolve = resolve;
+            this.cfSpeakTimer = setTimeout(() => { this.cfSpeakResolve = null; resolve(); }, residual);
+          });
+          if (this.cfSpeakTimer) { clearTimeout(this.cfSpeakTimer); this.cfSpeakTimer = null; }
+        }
+      }
     } catch (e) {
-      this.cfSpeaking = false;
       this.ev("ava_recept_cf_tts_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) });
+    } finally {
+      this.cfSpeaking = false;
     }
   }
 
