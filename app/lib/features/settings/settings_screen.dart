@@ -296,6 +296,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // _hiddenSettingsSections); Ava Receptionist and any others stay visible.
         for (final s in SettingsSectionRegistry.sections)
           if (!_hiddenSettingsSections.contains(s.id)) _sectionRow(s),
+        // Owner request 2026-06-29: 'Backup' tile hidden from Settings. Backup &
+        // restore now live in the Storage area (AvaStorage → "Back up & restore",
+        // a Google-Drive-backed encrypted backup + restore). The _backup /
+        // _backupToDrive / _runBackup methods stay for reference. Re-show by
+        // un-commenting the _tile below.
+        /*
         _tile(PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold), Zine.blue, 'Backup',
             'Export or back up your account', () => _push(_SettingsDetail(
                   title: 'Backup',
@@ -307,6 +313,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Save your account export to your AvaTOK Drive (Backups)', _backupToDrive),
                   ],
                 ))),
+        */
         _tile(PhosphorIcons.trash(PhosphorIconsStyle.bold), Zine.coral, 'Danger zone',
             'Permanently delete your account', () => _push(_SettingsDetail(
                   title: 'Danger zone',

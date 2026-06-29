@@ -16,6 +16,7 @@ import '../../core/drive_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../sync/sync_hub.dart';
+import '../ava_backup/backup_service.dart';
 import '../wallet/wallet_screen.dart';
 
 class _CatStyle {
@@ -121,6 +122,8 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
               onRefresh: _load,
               child: ListView(padding: const EdgeInsets.fromLTRB(18, 18, 18, 30), children: [
                 const _DriveSection(),
+                const SizedBox(height: 12),
+                const _BackupRestoreSection(),
                 const SizedBox(height: 20),
                 _metricCards(total, quota, frac),
                 const SizedBox(height: 16),
@@ -573,5 +576,210 @@ class _DriveSectionState extends State<_DriveSection> {
         ],
       ]),
     );
+  }
+}
+
+/// Back up & restore panel (owner request 2026-06-29) — the single home for
+/// backup now that the Settings "Backup" tile is hidden. Wraps [BackupService]'s
+/// FREE Google-Drive lane: the on-device SQLite (the source of truth) is
+/// CLIENT-SIDE ENCRYPTED (AES-256-GCM, per-account key in secure storage) and
+/// uploaded to the user's OWN Google Drive "avatok-backup" folder, so neither
+/// AvaTOK nor Google can read it and it survives a reinstall. Restore downloads
+/// the blob, decrypts, and overwrites the local DB (the user reopens the app).
+/// Drive connection itself is handled by [_DriveSection] above; this panel gates
+/// on that connection and points there when not connected yet.
+class _BackupRestoreSection extends StatefulWidget {
+  const _BackupRestoreSection();
+  @override
+  State<_BackupRestoreSection> createState() => _BackupRestoreSectionState();
+}
+
+class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
+  bool? _connected; // null = still checking
+  bool _folderReady = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  /// Check Drive connection and, when connected, ensure the avatok-backup folder
+  /// exists — the same gate the (now-removed) settings section used.
+  Future<void> _refresh() async {
+    final st = await DriveService.I.status();
+    var folderReady = false;
+    if (st.connected) folderReady = await DriveService.I.ensureBackupFolder();
+    if (!mounted) return;
+    setState(() {
+      _connected = st.connected;
+      _folderReady = folderReady;
+    });
+    Analytics.capture('storage_backup_status', {
+      'connected': st.connected,
+      'folder_ready': folderReady,
+    });
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  String _reason(String? r) {
+    switch (r) {
+      case 'no_token':
+        return 'Connect Google Drive first (the panel above) to back up.';
+      case 'no_backup':
+        return 'No backup found in your Drive yet.';
+      case 'empty':
+        return 'Nothing to back up yet.';
+      case 'drive_upload_failed':
+        return 'Upload failed — check your connection and try again.';
+      default:
+        return 'Backup failed${r != null ? ' ($r)' : ''}.';
+    }
+  }
+
+  Future<void> _backup() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final sw = Stopwatch()..start();
+    Analytics.capture('storage_backup_started', const {});
+    try {
+      final res = await BackupService.I.backupToDrive();
+      Analytics.capture('storage_backup_result',
+          {'ok': res.ok, if (res.reason != null) 'reason': res.reason!, 'ms': sw.elapsedMilliseconds});
+      _snack(res.ok ? 'Backed up to your Google Drive ✓' : _reason(res.reason));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _restore() async {
+    if (_busy) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.r),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('Restore from Google Drive?', style: ZineText.cardTitle()),
+        content: Text(
+          'This replaces the data on this device with your latest Drive backup '
+          '(chats and history). Anything newer on this device that has not been '
+          'backed up will be overwritten. You will be asked to reopen the app.',
+          style: ZineText.sub(size: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+          ),
+          ZineButton(
+            label: 'Restore',
+            variant: ZineButtonVariant.blue,
+            fontSize: 15,
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || _busy) return;
+    setState(() => _busy = true);
+    final sw = Stopwatch()..start();
+    Analytics.capture('storage_restore_started', const {});
+    try {
+      final res = await BackupService.I.restoreFromDrive();
+      Analytics.capture('storage_restore_result',
+          {'ok': res.ok, if (res.reason != null) 'reason': res.reason!, 'ms': sw.elapsedMilliseconds});
+      _snack(res.ok
+          ? 'Restored from Drive — please reopen the app to finish.'
+          : _reason(res.reason));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ZineCard(
+      radius: Zine.rSm,
+      padding: const EdgeInsets.all(14),
+      boxShadow: Zine.shadowXs,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          ZineIconBadge(icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.fill), color: Zine.lime, size: 34),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Back up & restore', style: ZineText.value(size: 15)),
+            const SizedBox(height: 2),
+            Text('Encrypted backup to your Google Drive', style: ZineText.sub(size: 12)),
+          ])),
+        ]),
+        const SizedBox(height: 10),
+        Text(
+          'Your chats are encrypted on this device before upload, so neither '
+          'AvaTOK nor Google can read them. Survives reinstalling the app.',
+          style: ZineText.sub(size: 12),
+        ),
+        const SizedBox(height: 12),
+        _actions(),
+      ]),
+    );
+  }
+
+  Widget _actions() {
+    if (_connected == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2, color: Zine.blueInk)),
+          SizedBox(width: 10),
+          Text('Checking Google Drive…'),
+        ]),
+      );
+    }
+    final ready = _connected == true && _folderReady;
+    if (!ready) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(
+          'Connect Google Drive in the panel above, then come back here to back '
+          'up or restore.',
+          style: ZineText.sub(size: 12.5, color: Zine.inkMute),
+        ),
+        const SizedBox(height: 8),
+        Center(child: ZineLink("I've connected — refresh", fontSize: 13, onTap: _refresh)),
+      ]);
+    }
+    return Row(children: [
+      Expanded(
+        child: ZineButton(
+          label: 'Back up now',
+          variant: ZineButtonVariant.lime,
+          fullWidth: true,
+          fontSize: 14,
+          icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
+          trailingIcon: false,
+          loading: _busy,
+          onPressed: _busy ? null : _backup,
+        ),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: ZineButton(
+          label: 'Restore',
+          variant: ZineButtonVariant.ghost,
+          fullWidth: true,
+          fontSize: 14,
+          icon: PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold),
+          trailingIcon: false,
+          onPressed: _busy ? null : _restore,
+        ),
+      ),
+    ]);
   }
 }
