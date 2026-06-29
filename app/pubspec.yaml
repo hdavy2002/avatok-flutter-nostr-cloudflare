@@ -104,6 +104,8 @@ dependencies:
   printing: ^5.13.4
   # PDF document model used to lay out the QR card (shared by print + JPEG raster).
   pdf: ^3.11.1
+  # QR/barcode generator used by pdf's BarcodeWidget (Barcode.qrCode()).
+  barcode: ^2.2.9
   # Incoming deep links — avatok://add?t= and https://avatok.ai/add?t= open the
   # app straight to the "add contact" card (Specs/AVATOK-NUMBER-FEATURE-SPEC.md).
   app_links: ^6.3.2

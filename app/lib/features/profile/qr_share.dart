@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:barcode/barcode.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -35,7 +36,7 @@ class QrShare {
             pw.Text(_title, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 16),
             pw.BarcodeWidget(
-              barcode: pw.Barcode.qrCode(),
+              barcode: Barcode.qrCode(),
               data: link,
               width: 190,
               height: 190,
