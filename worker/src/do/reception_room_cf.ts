@@ -123,9 +123,9 @@ export class ReceptionRoomCf {
   private cfBargeBytes = 0;       // accumulated caller speech bytes during Ava's speech
   private cfSpeakResolve: (() => void) | null = null;
   private cfSpeakTimer: ReturnType<typeof setTimeout> | null = null;
-  // Voicemail flow: one message → confirm → end. cfClosing blocks any further input
-  // once we're wrapping up; cfTimeUp makes the close say "your time's up"; cfMsgTimer
-  // is the 50s caller-message window that starts after the greeting.
+  // Voicemail flow: listen → confirm. The confirmation is interruptible (the caller
+  // may resume) until cfTimeUp — the 50s window (cfMsgTimer) elapses, after which the
+  // close is final and input is ignored.
   private cfMsgTimer: ReturnType<typeof setTimeout> | null = null;
   private cfTimeUp = false;
 
