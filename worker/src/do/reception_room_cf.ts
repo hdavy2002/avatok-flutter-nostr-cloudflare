@@ -377,6 +377,7 @@ export class ReceptionRoomCf {
     let bytesSent = 0;
     let firstChunkAt = 0;
     let firstChunk = true;
+    let carry: Uint8Array | null = null; // odd trailing byte held for 16-bit alignment
     try {
       const resp: any = await this.env.AI.run(this.cfTtsModel(),
         { text: text.slice(0, 800), speaker: this.cfVoice(), encoding: "linear16", sample_rate: 24000, container: "none" } as any,
@@ -389,9 +390,14 @@ export class ReceptionRoomCf {
           const { done, value } = await reader.read();
           if (done) break;
           if (!value || !value.length) continue;
-          // Defensive: if container:none wasn't honored, strip a leading WAV header.
           let chunk: Uint8Array = value;
-          if (firstChunk) { chunk = stripWavHeader(value); firstChunk = false; }
+          if (firstChunk) { chunk = stripWavHeader(value); firstChunk = false; } // strip a leading WAV header if container:none wasn't honored
+          // 16-BIT ALIGNMENT: Deepgram streams arbitrary byte lengths. An odd-length
+          // PCM16 chunk shifts every later sample by a byte → pure noise. So prepend
+          // any carried byte and hold back a trailing odd byte for the next chunk.
+          if (carry) { const m = new Uint8Array(carry.length + chunk.length); m.set(carry, 0); m.set(chunk, carry.length); chunk = m; carry = null; }
+          if (chunk.length % 2 === 1) { carry = new Uint8Array([chunk[chunk.length - 1]]); chunk = chunk.subarray(0, chunk.length - 1); }
+          if (chunk.length === 0) continue;
           if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm: chunk }); this.pcmBytes += chunk.byteLength; }
           this.avaBytes += chunk.byteLength; bytesSent += chunk.byteLength;
           if (!firstChunkAt) firstChunkAt = Date.now();
