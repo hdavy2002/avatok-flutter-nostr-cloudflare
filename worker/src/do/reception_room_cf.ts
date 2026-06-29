@@ -39,11 +39,15 @@ function scrubSecrets(s: string): string {
 // recomputed if a default drifts). Whisper $0.0005/audio-min is exact; Llama +
 // Aura partner rates are best-effort and MUST be reconciled on first runs. ──
 const CF_STT_USD_PER_MIN = 0.0005;
-const CF_LLM_IN_USD_PER_M = 0.045;
-const CF_LLM_OUT_USD_PER_M = 0.384;
+const CF_LLM_IN_USD_PER_M = 15;     // Claude Opus 4.8 via OpenRouter (≈; env-overridable)
+const CF_LLM_OUT_USD_PER_M = 75;    // (≈)
 const CF_TTS_USD_PER_MIN = 0.030;
 const CF_STT_MODEL_DEFAULT = "@cf/openai/whisper-large-v3-turbo";
-const CF_LLM_MODEL_DEFAULT = "@cf/meta/llama-3.1-8b-instruct-fast";
+// LLM via OpenRouter (RECEPT_CF_LLM_MODEL overrides). Default = Claude Opus 4.8
+// for the smartest message-taking; switch to anthropic/claude-sonnet-4.6 or
+// claude-haiku-4.5 for LOWER LATENCY if Opus feels slow. Falls back to Workers AI
+// Llama only if OPENROUTER_API_KEY is unset or the call errors.
+const CF_LLM_MODEL_DEFAULT = "anthropic/claude-opus-4.8";
 const CF_TTS_MODEL_DEFAULT = "@cf/deepgram/aura-2-en";
 // Aura-2 female voices (subset of the 40 from the Phase-0 probe) — guards the
 // configured voice so a bad value can't break TTS.
@@ -52,7 +56,7 @@ const AURA_FEMALE = new Set([
   "harmonia", "helena", "iris", "juno", "minerva", "ophelia", "pandora", "phoebe",
   "thalia", "theia", "vesta", "amalthea", "andromeda", "callista", "electra",
 ]);
-const CF_ENDPOINT_MS = 900;                 // trailing silence that ends a caller turn
+const CF_ENDPOINT_MS = 550;                 // trailing silence that ends a caller turn (lower = snappier)
 const CF_MIN_TURN_BYTES = 8000;             // ~0.25s @16k PCM16 — below = noise, ignore
 const CF_MAX_TURN_BYTES = 16000 * 2 * 20;   // ~20s @16k PCM16 — force-process
 // Barge-in: this much sustained caller speech (~300ms @16k) DURING Ava's playback
@@ -181,9 +185,9 @@ export class ReceptionRoomCf {
       latency_ms: Date.now() - this.startedAt,
       voice: this.cfVoice(), stt_model: this.cfSttModel(), llm_model: this.cfLlmModel(), tts_model: this.cfTtsModel(),
     });
-    const sys = init.system_prompt +
-      "\n\nCONTROL: When the call is finished (right after your goodbye), end your FINAL reply with the marker <END_CALL>. Never speak the marker; it is a silent control token, not part of the message.";
-    this.cfHistory = [{ role: "system", content: sys }];
+    // The system prompt already carries the <END_CALL> ending instruction for the
+    // CF engine (composeReceptionistPrompt with engine:"cf").
+    this.cfHistory = [{ role: "system", content: init.system_prompt }];
     // Guard the greet like a turn so an eager caller talking during greet
     // generation is buffered (not raced into a second turn); barge-in still works
     // during the greet's playback via the cfSpeaking check in feedCfAudio.
@@ -298,13 +302,33 @@ export class ReceptionRoomCf {
     } catch (e) { this.ev("ava_recept_cf_stt_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); return ""; }
   }
 
-  private async cfLlm(): Promise<string> {
+  /** Chat completion via OpenRouter (Claude); falls back to Workers AI Llama only
+   *  if OPENROUTER_API_KEY is unset or the OpenRouter call fails. */
+  private async cfChat(messages: Array<{ role: string; content: string }>, maxTokens: number): Promise<string> {
+    const key = (this.env as any).OPENROUTER_API_KEY as string | undefined;
+    if (key) {
+      try {
+        const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://avatok.ai", "X-Title": "AvaTok Receptionist" },
+          body: JSON.stringify({ model: this.cfLlmModel(), messages, max_tokens: maxTokens, temperature: 0.4 }),
+        });
+        const j: any = await r.json().catch(() => ({}));
+        const u = j?.usage; if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
+        const txt = String(j?.choices?.[0]?.message?.content ?? "").trim();
+        if (txt) return txt;
+        this.ev("ava_recept_cf_llm_error", { via: "openrouter", error_scrubbed: scrubSecrets(JSON.stringify(j?.error ?? j)).slice(0, 160) });
+      } catch (e) { this.ev("ava_recept_cf_llm_error", { via: "openrouter", error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); }
+    }
     try {
-      const out: any = await this.env.AI.run(this.cfLlmModel(), { messages: this.cfHistory, max_tokens: 200, temperature: 0.4 } as any);
-      const u = out?.usage;
-      if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
+      const out: any = await this.env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", { messages, max_tokens: maxTokens, temperature: 0.4 } as any);
+      const u = out?.usage; if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
       return String(out?.response ?? out?.result?.response ?? "").trim();
-    } catch (e) { this.ev("ava_recept_cf_llm_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); return ""; }
+    } catch (e) { this.ev("ava_recept_cf_llm_error", { via: "workers_ai", error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); return ""; }
+  }
+
+  private async cfLlm(): Promise<string> {
+    return this.cfChat(this.cfHistory, 120); // short replies → faster LLM + TTS
   }
 
   private async cfSpeak(text: string): Promise<void> {
@@ -465,10 +489,8 @@ export class ReceptionRoomCf {
     if (!transcript) return null;
     try {
       const prompt = `From this phone-message transcript, return STRICT JSON {"caller_name":string|null,"reason":string,"callback":string|null,"urgency":"low"|"normal"|"high"}. Only the JSON. Transcript:\n${transcript.slice(0, 4000)}`;
-      const out: any = await this.env.AI.run(this.cfLlmModel(), { messages: [{ role: "user", content: prompt }], max_tokens: 200, temperature: 0.2 } as any);
-      const u = out?.usage;
-      if (u) { this.cfLlmTokIn += Number(u.prompt_tokens) || 0; this.cfLlmTokOut += Number(u.completion_tokens) || 0; }
-      const m = String(out?.response ?? "").trim().match(/\{[\s\S]*\}/);
+      const txt = await this.cfChat([{ role: "user", content: prompt }], 200);
+      const m = txt.match(/\{[\s\S]*\}/);
       if (!m) return null;
       const o = JSON.parse(m[0]);
       return {
