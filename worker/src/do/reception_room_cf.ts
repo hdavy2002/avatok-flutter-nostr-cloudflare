@@ -306,7 +306,7 @@ export class ReceptionRoomCf {
         in_bytes: this.inBytes, ava_bytes: this.pcmBytes, ms: Date.now() - this.startedAt,
       });
       this.cfBarged = false; // did the caller interrupt THIS close?
-      await this.cfAssistantTurn(heard || "[the caller left no message]");
+      await this.cfAssistantTurn(heard ? `Caller's message: "${heard.slice(0, 500)}"` : "[the caller left no message]");
     } catch (e) {
       this.ev("ava_recept_cf_turn_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) });
     } finally {

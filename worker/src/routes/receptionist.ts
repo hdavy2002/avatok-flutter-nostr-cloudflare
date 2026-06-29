@@ -235,6 +235,23 @@ export function composeReceptionistPrompt(
   const poss = g === "male" ? "his" : g === "female" ? "her" : "their";
   // The SINGLE owner note ("Let Ava know if you're busy…").
   const note = (s.instructions_text || "").trim();
+
+  // CF engine: the greeting is spoken deterministically and the ENGINE decides
+  // turn-taking, so the LLM is invoked ONLY to produce the closing line. Keep this
+  // dead simple so a small/fast model (Haiku) can't wander into questions or stage
+  // directions like "<silence>". (Gemini keeps the conversational prompt below.)
+  if (ctx?.engine === "cf") {
+    return [
+      `You are ${me}, ${who}'s voicemail assistant. ${who} couldn't pick up; a greeting has already played and the caller has just left a voice message. You ALREADY KNOW the caller (${callerRef}) and ${poss} number — NEVER ask for a name, number, or callback.`,
+      `Reply with EXACTLY ONE short spoken line and NOTHING else: no questions, no follow-ups, no narration, and NEVER output placeholders or stage directions such as "<silence>", "(listening)", or "…".`,
+      `• Normal message → "Got it — <one short clause capturing what they said>. I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`,
+      `• If you see "[SYSTEM: time is up]" → "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`,
+      `• If the caller left no message → "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!"`,
+      note ? `Context (never read aloud): ${who}'s availability note — "${note}".` : ``,
+      lang ? `Speak in ${lang}.` : ``,
+      `Refuse anything illegal or harmful.`,
+    ].filter(Boolean).join("\n");
+  }
   // End mechanism differs per engine: Gemini hangs up via the end_call tool; the
   // CF engine ends on a silent <END_CALL> marker. Keep the branch so Gemini is unchanged.
   const endWith = ctx?.engine === "cf"
@@ -498,8 +515,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const gSubj = ownerGender === "male" ? "he" : ownerGender === "female" ? "she" : "they";
   const ownerLabel = ownerName || "your contact";
   const greeting = firstName
-    ? `Hey ${firstName}, ${ownerLabel} can't take your call right now. Please leave a short message — about 50 seconds — and ${gSubj}'ll get back to you.`
-    : `Hi, ${ownerLabel} can't take your call right now. Please leave a short message — about 50 seconds — and ${gSubj}'ll get back to you.`;
+    ? `Hey ${firstName}, ${ownerLabel} can't take the call right now — go ahead and leave a quick message and ${gSubj}'ll get back to you.`
+    : `Hi, ${ownerLabel} can't take the call right now — go ahead and leave a quick message and ${gSubj}'ll get back to you.`;
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   // v2: how the call was handed off. Standard 2-button incoming UI, so the
   // triggers are: rings (no answer), first_ring (answer-all), decline (callee
