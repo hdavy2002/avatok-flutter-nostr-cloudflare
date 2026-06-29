@@ -145,11 +145,15 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as {
     name?: string; first_name?: string; last_name?: string; email?: string; phone?: string;
-    account_kind?: string; avatar_url?: string; birth_year?: number; bio?: string;
+    account_kind?: string; avatar_url?: string; birth_year?: number; bio?: string; gender?: string;
   };
   // Optional self-description — AvaBrain learns from it. Capped + trimmed; an
   // explicit empty string clears it, undefined leaves it unchanged.
   const bio = b.bio === undefined ? null : String(b.bio).trim().slice(0, 600);
+  // Gender (profile) — drives the receptionist's pronouns ("a message for him/her/
+  // them"). Allow-list only; undefined leaves it unchanged.
+  const gender = b.gender === undefined ? null
+    : (["male", "female", "other"].includes(String(b.gender)) ? String(b.gender) : null);
   // Optional birth year — powers coarse age-group analytics only (13+); never shown publicly.
   let birthYear: number | null = null;
   if (b.birth_year !== undefined && b.birth_year !== null && b.birth_year !== 0) {
@@ -178,14 +182,14 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   ]);
   if (blocked) return blocked;
   await db.prepare(
-    `INSERT INTO users (uid, display_name, first_name, last_name, avatar_url, email_hash, phone_hash, birth_year, bio, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?10,?9,?9)
+    `INSERT INTO users (uid, display_name, first_name, last_name, avatar_url, email_hash, phone_hash, birth_year, bio, gender, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?10,?11,?9,?9)
      ON CONFLICT(uid) DO UPDATE SET
        display_name=COALESCE(?2,display_name), first_name=COALESCE(?3,first_name), last_name=COALESCE(?4,last_name),
        avatar_url=COALESCE(?5,avatar_url), email_hash=COALESCE(?6,email_hash),
        phone_hash=COALESCE(?7,phone_hash), birth_year=COALESCE(?8,birth_year),
-       bio=COALESCE(?10,bio), updated_at=?9`,
-  ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio).run();
+       bio=COALESCE(?10,bio), gender=COALESCE(?11,gender), updated_at=?9`,
+  ).bind(ctx.uid, name, firstName, lastName, avatarUrl, emailHash, phoneHash, birthYear, now, bio, gender).run();
   // Feed a non-empty self-description to AvaBrain so Ava can personalise. Scoped
   // 'private'; the brain consumer still honours the user's AvaBrain consent toggle.
   if (bio) brainFact(env, ctx.uid, "profile_bio", "profile", { bio }, "private");
@@ -200,13 +204,14 @@ export async function me(req: Request, env: Env): Promise<Response> {
   if ("error" in clerk) return json({ error: "clerk: " + clerk.error }, 401);
   const uid = clerk.clerkUserId;
   const prof = await metaSession(env).prepare(
-    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token FROM users WHERE uid=?1",
+    "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token FROM users WHERE uid=?1",
   ).bind(uid).first<any>();
   if (!prof) return json({ found: false, clerk_enabled: true, uid });
   return json({
     found: true, clerk_enabled: true, uid,
     display_name: prof.display_name ?? null, first_name: prof.first_name ?? null, last_name: prof.last_name ?? null,
     avatar_url: prof.avatar_url ?? null, birth_year: prof.birth_year ?? null, bio: prof.bio ?? null,
+    gender: prof.gender ?? null,
     avatok_number: prof.avatok_number ?? null, avatok_number_display: prof.avatok_number_display ?? null,
     phone_discoverable: !!prof.phone_discoverable, email_discoverable: prof.email_discoverable !== 0,
     who_can_add: prof.who_can_add ?? "everyone", share_token: prof.share_token ?? null,
