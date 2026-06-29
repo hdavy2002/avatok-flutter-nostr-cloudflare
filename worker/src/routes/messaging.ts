@@ -7,6 +7,8 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
 import { nameFor } from "../lib/identity";        // resolve inviter display name
+import { readConfig } from "./config";            // groupInvitesEnabled kill switch
+import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
 import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
 import { ablyPublish, ablyConfigured, canonicalMsgId } from "./ably"; // Ably realtime fan-out (migration)
@@ -600,14 +602,20 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   if (!list.length) return json({ error: "members or to required" }, 400);
   const conv = "g_" + crypto.randomUUID();
   const now = Date.now();
+  const invitees = list.filter((u) => u !== ctx.uid);
+  // Pending-membership kill switch (default OFF = current behavior: invitees join
+  // immediately). When ON, invitees get a PENDING invite and only become members
+  // on Accept — so the router/fan-out is untouched (they aren't members yet).
+  const cfg = await readConfig(env);
   const stmts = [
     env.DB_META.prepare("INSERT INTO conversations (id, kind, title, created_by, created_at, updated_at) VALUES (?1,'group',?2,?3,?4,?4)")
       .bind(conv, b.title ? String(b.title) : null, ctx.uid, now),
     env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'owner',?3)").bind(conv, ctx.uid, now),
-    ...list.filter((u) => u !== ctx.uid).map((u) =>
-      env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, u, now)),
+    ...(cfg.groupInvitesEnabled ? [] : invitees.map((u) =>
+      env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, u, now))),
   ];
   await env.DB_META.batch(stmts);
+  if (cfg.groupInvitesEnabled) await recordGroupInvites(env, conv, ctx.uid, b.title ? String(b.title) : null, invitees);
   try {
     void env.Q_ANALYTICS?.send({ event: "group_created", uid: ctx.uid, ts: Date.now(),
       props: { conv, member_count: list.filter((u) => u !== ctx.uid).length + 1,
@@ -661,11 +669,31 @@ async function fanGroupInvites(env: Env, inviterUid: string, conv: string, group
     try {
       await env.Q_PUSH.send({ kind: "group_invite", to: uid, from: inviterUid, conv, groupName, fromName: inviterName, ts: now });
     } catch { /* best-effort */ }
+    // Optional external orchestration (Novu) — no-op unless NOVU_API_KEY is set.
+    void novuGroupInvite(env, uid, { inviter: inviterName, groupName, conv });
   }
   try {
     void env.Q_ANALYTICS?.send({ event: "group_invite_sent", uid: inviterUid, ts: now,
       props: { conv, invitees: list.length, account_id: inviterUid, app_name: "avatok", service_name: "avatok-api", worker: true } });
   } catch { /* best-effort */ }
+}
+
+// Record PENDING invites (group_invites) when the kill switch is ON, so the
+// invitee gets an Accept/Decline prompt and only joins conversation_members on
+// Accept. Best-effort — pre-migration this catches and the (off) flag means the
+// immediate-membership path ran anyway.
+async function recordGroupInvites(env: Env, conv: string, inviter: string, groupTitle: string | null, invitees: string[]): Promise<void> {
+  const list = invitees.filter((u) => u && u !== inviter);
+  if (!list.length) return;
+  const now = Date.now();
+  const name = (groupTitle && groupTitle.trim()) ? groupTitle.trim() : null;
+  try {
+    await env.DB_META.batch(list.map((u) =>
+      env.DB_META.prepare(
+        "INSERT INTO group_invites (conv, uid, inviter, group_name, status, created_at) VALUES (?1,?2,?3,?4,'pending',?5) " +
+        "ON CONFLICT(conv,uid) DO UPDATE SET status='pending', inviter=?3, group_name=?4, created_at=?5",
+      ).bind(conv, u, inviter, name, now)));
+  } catch { /* table missing (pre-migration) → best-effort */ }
 }
 
 function trackGroup(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
@@ -706,17 +734,68 @@ export async function convAddMembers(req: Request, env: Env): Promise<Response> 
   const myRole = await convRoleOf(env, conv, ctx.uid);
   if (myRole !== "owner" && myRole !== "admin") return json({ error: "forbidden" }, 403);
   const now = Date.now();
+  // Pending-membership kill switch (default OFF). When ON, added users get a
+  // PENDING invite instead of immediate membership (they join on Accept).
+  const cfg = await readConfig(env);
   const stmts = [
     env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, now),
-    ...add.map((u) =>
-      env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, u, now)),
+    ...(cfg.groupInvitesEnabled ? [] : add.map((u) =>
+      env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, u, now))),
   ];
   await env.DB_META.batch(stmts);
+  const grp = await env.DB_META.prepare("SELECT title FROM conversations WHERE id=?1").bind(conv).first<{ title: string | null }>();
+  if (cfg.groupInvitesEnabled) await recordGroupInvites(env, conv, ctx.uid, grp?.title ?? null, add);
   trackGroup(env, ctx.uid, "group_members_added", { conv, count: add.length });
   // Notify the newly-added members (FCM wake + internal notification).
-  const grp = await env.DB_META.prepare("SELECT title FROM conversations WHERE id=?1").bind(conv).first<{ title: string | null }>();
   await fanGroupInvites(env, ctx.uid, conv, grp?.title ?? null, add);
   return json({ ok: true, added: add });
+}
+
+// ---- GET /api/conversations/invites — my PENDING group invites --------------
+export async function convInvites(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  try {
+    const rows = await env.DB_META.prepare(
+      `SELECT gi.conv, gi.inviter, COALESCE(c.title, gi.group_name) AS group_name, gi.created_at,
+              (SELECT COUNT(*) FROM conversation_members m WHERE m.conv_id = gi.conv) AS member_count
+         FROM group_invites gi LEFT JOIN conversations c ON c.id = gi.conv
+        WHERE gi.uid = ?1 AND gi.status = 'pending'
+        ORDER BY gi.created_at DESC LIMIT 100`,
+    ).bind(ctx.uid).all();
+    return json({ invites: rows.results ?? [] });
+  } catch {
+    return json({ invites: [] }); // table missing (pre-migration) → empty
+  }
+}
+
+// ---- POST /api/conversations/invite/respond { conv, accept } ----------------
+export async function convInviteRespond(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const conv = String(b.conv || "");
+  const accept = b.accept === true;
+  if (!conv) return json({ error: "conv required" }, 400);
+  const inv = await env.DB_META.prepare("SELECT status FROM group_invites WHERE conv=?1 AND uid=?2").bind(conv, ctx.uid).first<{ status: string }>();
+  if (!inv) return json({ error: "no_invite" }, 404);
+  const now = Date.now();
+  if (accept) {
+    // Become a real member → the router now fans group messages to this user.
+    await env.DB_META.batch([
+      env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, ctx.uid, now),
+      env.DB_META.prepare("UPDATE group_invites SET status='accepted' WHERE conv=?1 AND uid=?2").bind(conv, ctx.uid),
+      env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, now),
+    ]);
+    trackGroup(env, ctx.uid, "group_invite_accepted", { conv });
+  } else {
+    await env.DB_META.batch([
+      env.DB_META.prepare("UPDATE group_invites SET status='declined' WHERE conv=?1 AND uid=?2").bind(conv, ctx.uid),
+      env.DB_META.prepare("DELETE FROM conversation_members WHERE conv_id=?1 AND uid=?2").bind(conv, ctx.uid),
+    ]);
+    trackGroup(env, ctx.uid, "group_invite_declined", { conv });
+  }
+  return json({ ok: true, conv, accepted: accept });
 }
 
 // ---- POST /api/conversations/members/remove  { conv, uid } ------------------

@@ -82,6 +82,13 @@ export interface PlatformConfig {
   numberFeatureEnabled: boolean;
   teamIvrEnabled: boolean;           // master switch for /api/team/* (auto-attendant + team billing)
   ivrAiFrontDesk: boolean;           // future: AI natural-language front desk (off; tap-menu is default)
+  // Group invites with TRUE pending membership + Accept/Decline (owner request
+  // 2026-06-29). OFF (default) = current behavior: added members join the group
+  // immediately. ON = added users get a PENDING invite (group_invites table) and
+  // only become members of conversation_members when they Accept — so the message
+  // router is unaffected (pending users simply aren't members yet). Flip ON in KV
+  // after the migration + a test; no redeploy.
+  groupInvitesEnabled: boolean;
   minAppBuild: number;
 }
 
@@ -129,6 +136,7 @@ const DEFAULTS: PlatformConfig = {
   numberFeatureEnabled: true,      // AvaTOK Number — virtual number + handle retirement
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
+  groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
   minAppBuild: 0,
 };
 
