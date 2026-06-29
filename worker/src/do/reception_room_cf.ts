@@ -39,15 +39,16 @@ function scrubSecrets(s: string): string {
 // recomputed if a default drifts). Whisper $0.0005/audio-min is exact; Llama +
 // Aura partner rates are best-effort and MUST be reconciled on first runs. ──
 const CF_STT_USD_PER_MIN = 0.0005;
-const CF_LLM_IN_USD_PER_M = 15;     // Claude Opus 4.8 via OpenRouter (≈; env-overridable)
-const CF_LLM_OUT_USD_PER_M = 75;    // (≈)
+const CF_LLM_IN_USD_PER_M = 1;      // Claude Haiku 4.5 via OpenRouter (≈; env-overridable)
+const CF_LLM_OUT_USD_PER_M = 5;     // (≈)
 const CF_TTS_USD_PER_MIN = 0.030;
 const CF_STT_MODEL_DEFAULT = "@cf/openai/whisper-large-v3-turbo";
-// LLM via OpenRouter (RECEPT_CF_LLM_MODEL overrides). Default = Claude Opus 4.8
-// for the smartest message-taking; switch to anthropic/claude-sonnet-4.6 or
-// claude-haiku-4.5 for LOWER LATENCY if Opus feels slow. Falls back to Workers AI
-// Llama only if OPENROUTER_API_KEY is unset or the call errors.
-const CF_LLM_MODEL_DEFAULT = "anthropic/claude-opus-4.8";
+// LLM via OpenRouter (RECEPT_CF_LLM_MODEL overrides). Default = Claude Haiku 4.5,
+// chosen for LOW LATENCY (owner: "latency is everything") while still smart enough
+// for message-taking. Switch to anthropic/claude-sonnet-4.6 / claude-opus-4.8 for
+// more intelligence at higher latency. Falls back to Workers AI Llama only if
+// OPENROUTER_API_KEY is unset or the call errors.
+const CF_LLM_MODEL_DEFAULT = "anthropic/claude-haiku-4.5";
 const CF_TTS_MODEL_DEFAULT = "@cf/deepgram/aura-2-en";
 // Aura-2 female voices (subset of the 40 from the Phase-0 probe) — guards the
 // configured voice so a bad value can't break TTS.
