@@ -42,6 +42,15 @@ class DeepLinks {
   }
 
   static void _handle(Uri uri) {
+    // Group-invite deep link (avatok://group?conv= / https://avatok.ai/group?conv=)
+    // → open the app; the Groups tab + notification bell surface the pending invite.
+    if (_isGroupLink(uri)) {
+      Analytics.capture('group_link_opened', {'scheme': uri.scheme});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navKey?.currentState?.popUntil((r) => r.isFirst);
+      });
+      return;
+    }
     final token = _addToken(uri);
     if (token.isEmpty) return;
     Analytics.capture('qr_link_opened', {'scheme': uri.scheme});
@@ -56,6 +65,14 @@ class DeepLinks {
         messenger?.showSnackBar(SnackBar(content: Text('Added ${contact.name}')));
       }
     });
+  }
+
+  static bool _isGroupLink(Uri uri) {
+    final isCustom = uri.scheme == 'avatok' &&
+        (uri.host == 'group' || uri.path == 'group' || uri.path == '/group');
+    final isHttp = (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.endsWith('avatok.ai') && uri.path.startsWith('/group');
+    return isCustom || isHttp;
   }
 
   /// Extract the share token if [uri] is an AvaTOK add link, else ''.

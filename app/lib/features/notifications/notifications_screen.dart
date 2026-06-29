@@ -52,6 +52,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'moderation': return (PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.coral);
       case 'brain': return (PhosphorIcons.sparkle(PhosphorIconsStyle.bold), Zine.lilac);
       case 'social': return (PhosphorIcons.usersThree(PhosphorIconsStyle.bold), Zine.blue);
+      case 'group_invite': return (PhosphorIcons.usersThree(PhosphorIconsStyle.fill), Zine.blue);
       default: return (PhosphorIcons.bell(PhosphorIconsStyle.bold), Zine.lime);
     }
   }
@@ -87,6 +88,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         radius: Zine.rSm,
                         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
                         boxShadow: Zine.shadowXs,
+                        // A group invite taps back to the messenger — the Groups
+                        // tab badge points the user at the new group.
+                        onTap: n.type == 'group_invite' ? () => Navigator.of(context).maybePop() : null,
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           ZineIconBadge(icon: icon, color: accent, size: 36),
                           const SizedBox(width: 12),

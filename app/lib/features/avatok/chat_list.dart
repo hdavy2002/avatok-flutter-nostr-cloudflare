@@ -34,6 +34,8 @@ import '../../sync/presence.dart';
 import '../../push/push_service.dart';
 import '../../shell/ava_sidebar.dart';
 import '../ava_companion/companion_home.dart';
+import '../../core/notifications_api.dart';
+import '../notifications/notifications_screen.dart';
 import 'groups_tab.dart';
 import '../status/status_screen.dart';
 import 'add_contact_sheet.dart';
@@ -67,6 +69,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   NostrClient? _inbox;
   StreamSubscription? _inboxSub; // our listener on the shared client (cancel on dispose, don't kill the socket)
   int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Groups, 3 = Calls
+  int _notifUnread = 0;  // header bell badge (system + group-invite notifications)
+  int _groupInvites = 0; // pending group invites → red count on the Groups footer icon
 
   // Unread badges + chat flags + status.
   final _readStore = ReadStateStore();
@@ -252,6 +256,54 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       _paintFromProjection();
     }
     _bootstrap();
+    _loadNotifCounts();
+  }
+
+  /// Load the bell badge + pending group-invite count (Phase D). Best-effort —
+  /// network failure just leaves the last-known counts.
+  Future<void> _loadNotifCounts() async {
+    try {
+      final unread = await NotificationsApi.unreadCount();
+      int invites = 0;
+      try {
+        final items = await NotificationsApi.list();
+        invites = items.where((n) => n.type == 'group_invite' && !n.read).length;
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() { _notifUnread = unread; _groupInvites = invites; });
+    } catch (_) {/* keep last-known counts */}
+  }
+
+  /// A small red count/dot badge overlaid on a footer/header icon.
+  Widget _badged(Widget child, {int count = 0, bool dot = false}) {
+    if (count <= 0 && !dot) return child;
+    final label = count > 99 ? '99+' : '$count';
+    return Stack(clipBehavior: Clip.none, children: [
+      child,
+      Positioned(
+        right: -6, top: -4,
+        child: Container(
+          padding: dot ? const EdgeInsets.all(4) : const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+          decoration: BoxDecoration(
+            color: Zine.coral,
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(color: Zine.paper2, width: 1.5),
+          ),
+          alignment: Alignment.center,
+          child: dot ? null : Text(label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800, height: 1.0)),
+        ),
+      ),
+    ]);
+  }
+
+  /// Open the notification center (bell) and refresh counts on return.
+  void _openNotifications() {
+    Analytics.capture('notifications_opened', {'unread': _notifUnread, 'group_invites': _groupInvites});
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))
+        .then((_) => _loadNotifCounts());
   }
 
   /// Cold-start fast path: read the persisted chat-list projection (ONE indexed
@@ -948,7 +1000,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           indicatorColor: Zine.lime,
           destinations: [
             NavigationDestination(
-                icon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold)),
+                // Red dot on Chats when there are unread messages.
+                icon: _badged(PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold)),
+                    dot: _unread.values.fold<int>(0, (a, b) => a + b) > 0),
                 selectedIcon: PhosphorIcon(PhosphorIcons.chatCircle(PhosphorIconsStyle.fill)),
                 label: 'Chats'),
             NavigationDestination(
@@ -956,7 +1010,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                 selectedIcon: PhosphorIcon(PhosphorIcons.gridFour(PhosphorIconsStyle.fill)),
                 label: 'Dialpad'),
             NavigationDestination(
-                icon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.bold)),
+                // Red count on Groups = pending group invites waiting.
+                icon: _badged(PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.bold)),
+                    count: _groupInvites),
                 selectedIcon: PhosphorIcon(PhosphorIcons.usersThree(PhosphorIconsStyle.fill)),
                 label: 'Groups'),
             NavigationDestination(
@@ -1002,6 +1058,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   // session at the top of the chat list and the new-chat menu.)
                   _hdrIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), _openSearch,
                       color: Zine.blueInk, bg: Zine.blue),
+                  const SizedBox(width: 10),
+                  // Notification bell + red unread count → the notification center.
+                  _badged(
+                    _hdrIcon(PhosphorIcons.bell(PhosphorIconsStyle.bold), _openNotifications,
+                        color: Zine.ink, bg: Zine.lime),
+                    count: _notifUnread),
                 ],
               ),
             ),

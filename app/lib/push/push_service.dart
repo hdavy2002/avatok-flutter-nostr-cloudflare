@@ -61,9 +61,42 @@ Future<void> _clearBadge() async {
 /// happened to be. (The old build had no tap handler, so a tap just foregrounded
 /// the app on whatever screen it was last on — e.g. the Diagnostics page.)
 void _onNotifTap(String? payload) {
-  if (payload != 'chat') return; // call taps are handled by CallKit, not here
+  if (payload == null) return; // call taps are handled by CallKit, not here
+  // Group-invite tap → open the app; the Groups tab + notification bell surface
+  // the pending invite (opening the exact thread from a cold tap is a refinement).
+  if (payload.startsWith('group')) {
+    _clearBadge();
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    return;
+  }
+  if (payload != 'chat') return;
   _clearBadge();
   navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
+}
+
+/// Local banner for "X added you to <group>" (Phase D — owner request
+/// 2026-06-29). Distinct notification id from the message banner so both can show.
+Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
+  final who = (d['fromName'] ?? 'Someone').toString();
+  final group = (d['groupName'] ?? 'a group').toString();
+  final conv = (d['conv'] ?? '').toString();
+  final count = await _bumpBadge();
+  await _local.show(
+    8001,
+    'Added to a group',
+    '$who added you to $group',
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _msgChannel.id, _msgChannel.name,
+        channelDescription: _msgChannel.description,
+        importance: Importance.high, priority: Priority.high,
+        number: count,
+        ticker: '$who added you to $group',
+        category: AndroidNotificationCategory.social,
+      ),
+    ),
+    payload: conv.isNotEmpty ? 'group:$conv' : 'group',
+  );
 }
 
 /// Background/terminated FCM handler — must be a top-level entry point.
@@ -72,6 +105,8 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   final d = message.data;
   if (d['type'] == 'message') {
     await _showMessageNotif(d);
+  } else if (d['type'] == 'group_invite') {
+    await _showGroupInviteNotif(d);
   } else if (d['type'] == 'del') {
     // Delete-for-everyone — silent. Park it for the app to apply on next foreground.
     await _queuePendingDelete(d);
@@ -338,6 +373,13 @@ class PushService {
         // App is open: the live InboxDO socket should already have it. But if the
         // socket was dropped (mobile DNS), this FCM wake forces a reconnect + sync
         // so the message lands immediately instead of waiting for a manual refresh.
+        SyncHub.I.ensureConnected();
+        return;
+      }
+      if (d['type'] == 'group_invite') {
+        // Foreground: show the "added to group" banner + refresh sync so the new
+        // group thread appears in the list.
+        _showGroupInviteNotif(d);
         SyncHub.I.ensureConnected();
         return;
       }
