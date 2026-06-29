@@ -95,6 +95,15 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
   if (msg.kind === "call-status") {
     return { highPriority: true, data: { type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "" } };
   }
+  if (msg.kind === "group_invite") {
+    // "X added you to <group>" — HIGH priority so it wakes the device. The app
+    // reads conv + groupName + fromName in its FCM handler to deep-link into the
+    // group and show the Accept/Decline prompt.
+    return { highPriority: true, data: {
+      type: "group_invite", conv: msg.conv ?? "",
+      groupName: msg.groupName ?? "", fromName: msg.fromName ?? "AvaTOK",
+    } };
+  }
   if (msg.kind === "notify") {
     // HIGH priority: a normal-priority data message is batched/deferred by
     // Android Doze, so a sleeping phone only learns of a new message minutes

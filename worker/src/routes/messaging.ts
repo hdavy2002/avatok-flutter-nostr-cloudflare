@@ -6,6 +6,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
+import { nameFor } from "../lib/identity";        // resolve inviter display name
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
 import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
 import { ablyPublish, ablyConfigured, canonicalMsgId } from "./ably"; // Ably realtime fan-out (migration)
@@ -612,6 +613,9 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
       props: { conv, member_count: list.filter((u) => u !== ctx.uid).length + 1,
         account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
   } catch { /* best-effort */ }
+  // Notify every invitee (FCM wake + internal notification). Fixes "members
+  // aren't told when added to a group" (owner report 2026-06-29).
+  await fanGroupInvites(env, ctx.uid, conv, b.title ? String(b.title) : null, list.filter((u) => u !== ctx.uid));
   return json({ conv, kind: "group" });
 }
 
@@ -635,6 +639,33 @@ async function convIsGroup(env: Env, conv: string): Promise<boolean> {
   const r = await env.DB_META
     .prepare("SELECT kind FROM conversations WHERE id=?1").bind(conv).first<{ kind: string }>();
   return r?.kind === "group";
+}
+
+// Notify newly-added group members: a dedicated FCM "group_invite" wake (taps
+// straight into the group + Accept/Decline) AND a row in the internal
+// notifications feed (powers the header bell + unread count). Best-effort — a
+// notification failure must NEVER fail the group create / add-members call.
+async function fanGroupInvites(env: Env, inviterUid: string, conv: string, groupTitle: string | null, invitees: string[]): Promise<void> {
+  const list = invitees.filter((u) => u && u !== inviterUid);
+  if (!list.length) return;
+  const inviterName = (await nameFor(env, inviterUid).catch(() => null)) || "Someone";
+  const groupName = (groupTitle && groupTitle.trim()) ? groupTitle.trim() : "a group";
+  const now = Date.now();
+  for (const uid of list) {
+    try {
+      await env.DB_META.prepare(
+        "INSERT INTO notifications (id, uid, type, title, body, data, read, created_at) VALUES (?1,?2,'group_invite',?3,?4,?5,0,?6)",
+      ).bind(crypto.randomUUID(), uid, `${inviterName} added you to ${groupName}`,
+        "Tap to open the group.", JSON.stringify({ conv, groupName, from: inviterUid, deeplink: `avatok://group?conv=${conv}` }), now).run();
+    } catch { /* notifications table absent / schema drift → best-effort */ }
+    try {
+      await env.Q_PUSH.send({ kind: "group_invite", to: uid, from: inviterUid, conv, groupName, fromName: inviterName, ts: now });
+    } catch { /* best-effort */ }
+  }
+  try {
+    void env.Q_ANALYTICS?.send({ event: "group_invite_sent", uid: inviterUid, ts: now,
+      props: { conv, invitees: list.length, account_id: inviterUid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
 }
 
 function trackGroup(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
@@ -682,6 +713,9 @@ export async function convAddMembers(req: Request, env: Env): Promise<Response> 
   ];
   await env.DB_META.batch(stmts);
   trackGroup(env, ctx.uid, "group_members_added", { conv, count: add.length });
+  // Notify the newly-added members (FCM wake + internal notification).
+  const grp = await env.DB_META.prepare("SELECT title FROM conversations WHERE id=?1").bind(conv).first<{ title: string | null }>();
+  await fanGroupInvites(env, ctx.uid, conv, grp?.title ?? null, add);
   return json({ ok: true, added: add });
 }
 

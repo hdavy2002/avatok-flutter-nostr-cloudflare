@@ -98,10 +98,14 @@ export interface WalletTxMsg {
 // scan is a follow-up — handler no-ops gracefully when hash is empty).
 export interface ModerationMsg { type: "image" | "stream_recording"; hash: string; uid: string; media_id: string; r2_key: string; }
 export interface PushMsg {
-  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear";
+  kind: "call" | "notify" | "call-status" | "relay-event" | "fanout" | "del" | "hide" | "call_del" | "call_clear" | "group_invite";
   to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
+  // kind === "group_invite": the inviter added the recipient to a group. Carries
+  // the group name + conv id so the app can deep-link straight to the group and
+  // show the Accept/Decline prompt.
+  groupName?: string;
   // kind === "notify": optional short message preview (WhatsApp-style expandable
   // banner). Omitted → content-less banner (sender name only).
   preview?: string;
