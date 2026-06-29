@@ -11,6 +11,7 @@ import '../../sync/group_api.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
 import 'data.dart';
+import 'group_invites_api.dart';
 import 'new_group_screen.dart';
 
 /// Groups tab — surfaces the user's group chats top-level (they used to be
@@ -34,6 +35,7 @@ class GroupsTab extends StatefulWidget {
 class _GroupsTabState extends State<GroupsTab> {
   final _store = GroupStore();
   List<Group> _groups = [];
+  List<GroupInvite> _invites = []; // pending group invites (Accept/Decline)
   bool _loading = true;
 
   @override
@@ -54,9 +56,26 @@ class _GroupsTabState extends State<GroupsTab> {
         gs.where((g) => !archived.contains('g:${g.id}')).toList();
     if (mounted) setState(() { _groups = visible(local); _loading = false; });
     final synced = await GroupApi.sync();
-    if (mounted) setState(() => _groups = visible(synced));
+    final invites = await GroupInvitesApi.list(); // empty unless server flag is on
+    if (mounted) setState(() { _groups = visible(synced); _invites = invites; });
     Analytics.capture('groups_tab_viewed',
-        {'group_count': _groups.length, 'archived_count': archived.length});
+        {'group_count': _groups.length, 'invite_count': _invites.length, 'archived_count': archived.length});
+  }
+
+  Future<void> _respondInvite(GroupInvite inv, bool accept) async {
+    final ok = await GroupInvitesApi.respond(conv: inv.conv, accept: accept);
+    if (!ok) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't respond — try again.")));
+      return;
+    }
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(accept ? 'Joined ${inv.groupName}' : 'Invite declined')));
+    await _load();
+    if (accept && mounted) {
+      final match = _groups.where((g) => g.id == inv.conv).toList();
+      if (match.isNotEmpty) _openGroup(match.first);
+    }
   }
 
   Future<void> _newGroup() async {
@@ -106,41 +125,78 @@ class _GroupsTabState extends State<GroupsTab> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
-          : _groups.isEmpty
+          : (_groups.isEmpty && _invites.isEmpty)
               ? _empty()
-              : ListView.separated(
+              : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
-                  itemCount: _groups.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) {
-                    final g = _groups[i];
-                    return ZineCard(
-                      radius: Zine.rSm,
-                      padding: const EdgeInsets.all(13),
-                      onTap: () => _openGroup(g),
-                      child: Row(children: [
-                        ZineIconBadge(
-                          icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
-                          color: Zine.accents[i % Zine.accents.length],
-                          size: 48,
-                        ),
-                        const SizedBox(width: 13),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                          Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: ZineText.cardTitle(size: 17)),
-                          const SizedBox(height: 3),
-                          Text(g.description.isNotEmpty ? g.description : 'Tap to open · calls inside',
-                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: ZineText.sub(size: 13)),
-                        ])),
-                        const SizedBox(width: 10),
-                        Text('${g.members.length} MEMBERS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
-                      ]),
-                    );
-                  },
+                  children: [
+                    if (_invites.isNotEmpty) ...[
+                      Text('PENDING INVITES', style: ZineText.kicker()),
+                      const SizedBox(height: 10),
+                      for (final inv in _invites)
+                        Padding(padding: const EdgeInsets.only(bottom: 12), child: _inviteCard(inv)),
+                      const SizedBox(height: 4),
+                      if (_groups.isNotEmpty) Text('YOUR GROUPS', style: ZineText.kicker()),
+                      if (_groups.isNotEmpty) const SizedBox(height: 10),
+                    ],
+                    for (int i = 0; i < _groups.length; i++)
+                      Padding(padding: const EdgeInsets.only(bottom: 12), child: _groupCard(_groups[i], i)),
+                  ],
                 ),
     );
   }
+
+  Widget _groupCard(Group g, int i) => ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.all(13),
+        onTap: () => _openGroup(g),
+        child: Row(children: [
+          ZineIconBadge(
+            icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold),
+            color: Zine.accents[i % Zine.accents.length],
+            size: 48,
+          ),
+          const SizedBox(width: 13),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.cardTitle(size: 17)),
+            const SizedBox(height: 3),
+            Text(g.description.isNotEmpty ? g.description : 'Tap to open · calls inside',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 13)),
+          ])),
+          const SizedBox(width: 10),
+          Text('${g.members.length} MEMBERS', style: ZineText.tag(size: 9.5, color: Zine.inkSoft)),
+        ]),
+      );
+
+  /// A pending group invite with Accept / Decline (Phase D — true pending
+  /// membership; only shown when the server flag is on).
+  Widget _inviteCard(GroupInvite inv) => ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.all(13),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            ZineIconBadge(
+                icon: PhosphorIcons.usersThree(PhosphorIconsStyle.fill), color: Zine.blue, size: 44),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(inv.groupName, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.cardTitle(size: 16)),
+              const SizedBox(height: 3),
+              Text("You've been invited to join${inv.memberCount > 0 ? ' · ${inv.memberCount} members' : ''}",
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
+            ])),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: ZineButton(
+              label: 'Accept', variant: ZineButtonVariant.lime, fontSize: 14.5, trailingIcon: false,
+              onPressed: () => _respondInvite(inv, true))),
+            const SizedBox(width: 10),
+            Expanded(child: ZineButton(
+              label: 'Decline', variant: ZineButtonVariant.ghost, fontSize: 14.5, trailingIcon: false,
+              onPressed: () => _respondInvite(inv, false))),
+          ]),
+        ]),
+      );
 
   Widget _empty() => Center(
         child: Padding(

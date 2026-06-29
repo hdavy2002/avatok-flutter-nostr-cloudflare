@@ -132,6 +132,8 @@ const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
 // Group membership management (Group Info screen).
 const String kConvMembersUrl = 'https://$kSignalingHost/api/conversations/members';
 const String kConvAddMembersUrl = 'https://$kSignalingHost/api/conversations/members/add';
+const String kConvInvitesUrl = 'https://$kSignalingHost/api/conversations/invites'; // GET my pending group invites
+const String kConvInviteRespondUrl = 'https://$kSignalingHost/api/conversations/invite/respond'; // POST {conv, accept}
 const String kConvRemoveMemberUrl = 'https://$kSignalingHost/api/conversations/members/remove';
 const String kConvSetRoleUrl = 'https://$kSignalingHost/api/conversations/members/role';
 const String kConvLeaveUrl = 'https://$kSignalingHost/api/conversations/leave';
