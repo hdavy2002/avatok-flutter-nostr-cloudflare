@@ -299,6 +299,12 @@ class_name = "BackupDO"
 name = "RECEPTION_ROOM"
 class_name = "ReceptionRoom"
 
+# Ava Receptionist — Cloudflare-native engine (separate from Gemini; Workers AI
+# STT→LLM→TTS). Selected per-call by the receptionistUseCf flag. Specs/RECEPTIONIST-CF-PIPELINE.md.
+[[durable_objects.bindings]]
+name = "RECEPTION_ROOM_CF"
+class_name = "ReceptionRoomCf"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -340,6 +346,11 @@ new_sqlite_classes = ["MeshRoom"]
 [[migrations]]
 tag = "v9"
 new_sqlite_classes = ["GroupCallRoom"]
+
+# Ava Receptionist — Cloudflare-native engine DO (separate from the Gemini bridge).
+[[migrations]]
+tag = "v10"
+new_sqlite_classes = ["ReceptionRoomCf"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -555,6 +566,11 @@ class_name = "BackupDO"
 name = "RECEPTION_ROOM"
 class_name = "ReceptionRoom"
 
+# Ava Receptionist — Cloudflare-native engine (separate). Specs/RECEPTIONIST-CF-PIPELINE.md.
+[[env.staging.durable_objects.bindings]]
+name = "RECEPTION_ROOM_CF"
+class_name = "ReceptionRoomCf"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -590,3 +606,7 @@ new_sqlite_classes = ["MeshRoom"]
 [[env.staging.migrations]]
 tag = "v9"
 new_sqlite_classes = ["GroupCallRoom"]
+
+[[env.staging.migrations]]
+tag = "v10"
+new_sqlite_classes = ["ReceptionRoomCf"]

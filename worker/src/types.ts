@@ -80,6 +80,9 @@ export interface Env {
   // caller audio ↔ Gemini Live (through AI Gateway) for "Ava answers after 5
   // rings". Specs/PROPOSAL-AI-RECEPTIONIST.md.
   RECEPTION_ROOM: DurableObjectNamespace;
+  // Ava Receptionist — Cloudflare-native engine DO (separate from the Gemini
+  // bridge above). Workers AI STT→LLM→TTS. Specs/RECEPTIONIST-CF-PIPELINE.md.
+  RECEPTION_ROOM_CF: DurableObjectNamespace;
 
   // vars
   BLOSSOM_BASE_URL: string;

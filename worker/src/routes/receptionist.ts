@@ -42,13 +42,13 @@ async function receptAllowance(env: Env, ownerUid: string, commit: boolean) {
   return { tier, res };
 }
 
-// PREMIUM-ONLY (owner decision 2026-06-28): the AI Receptionist is for paying
-// subscribers ONLY — Free (tier 0) users never get it (cannot enable it, and
-// callers to a Free user fall back to a plain missed call). "Premium" here = a
-// paid subscription tier (Plus/Pro/Max = tier ≥ 1), independent of the daily
-// `recept` allowance (which still meters paid tiers). This is enforced on every
-// surface (settings read/write, dial-time config probe, and session start) so a
-// stale KV `plan_config` override can never re-open it to Free.
+// FREE FOR NOW (owner decision 2026-06-29): the AI Receptionist is FREE for
+// everyone — the paid-tier gate is OFF while the all-free beta flag
+// `betaFreePremium` is on (its current state). When `betaFreePremium` is later
+// turned off (billing enabled), the original premium gate below automatically
+// returns: Free (tier 0) loses it, paid tiers (≥1) keep it. The gate is applied
+// on every surface (settings read/write, dial-time probe, session start) and the
+// daily `recept` allowance is also skipped while free (unlimited).
 const RECEPT_MIN_TIER = 1;
 function isPaidTier(tier: number): boolean {
   return tier >= RECEPT_MIN_TIER;
@@ -82,6 +82,12 @@ const VOICES = new Set([
   "Algenib", "Rasalgethi", "Alnilam", "Schedar", "Zubenelgenubi", "Sadaltager",
 ]);
 const DEFAULT_VOICE = "Aoede"; // warm FEMALE default for "Ava" (owner can override in Settings)
+
+// Cloudflare-native engine (receptionistUseCf) voice: ONE fixed warm female
+// Deepgram Aura-2 voice for "Ava" (no per-owner pick / no cloning on this engine
+// yet). "asteria" is Aura-2's flagship female. The owner's stored Gemini
+// voice_name is ignored while the CF engine is active.
+const AVA_CF_VOICE = "asteria";
 
 // --- v2: persona, language, availability status -----------------------------
 const MAX_GREETING = 200;
@@ -143,6 +149,21 @@ async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> 
   const r = await metaDb(env).prepare("SELECT * FROM receptionist_settings WHERE owner_uid=?1")
     .bind(uid).first<any>();
   return r ? (r as SettingsRow) : null;
+}
+
+// DEFAULT-ON (owner decision 2026-06-29): a user who has NEVER configured the
+// receptionist (no row) gets it ENABLED by default — Ava answers their unanswered
+// calls out of the box. An explicit opt-out (a saved row with enabled=0) is still
+// respected. Safe defaults so a never-configured account still composes a valid
+// call (warm female voice, "Ava" persona, message-first prompt, rings mode).
+function defaultSettings(uid: string): SettingsRow {
+  return {
+    owner_uid: uid, enabled: 1, instructions_text: null,
+    voice_name: DEFAULT_VOICE, display_name: null, file_search_store: null,
+    created_at: 0, updated_at: 0,
+    persona_name: null, language_code: null, greeting_text: null, custom_prompt: null,
+    answer_all: 0, status_preset: null, status_custom: null, decline_to_ava: 0,
+  };
 }
 
 // ── Settings cache (KV) ──────────────────────────────────────────────────────
@@ -234,10 +255,12 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
   const s = await loadSettings(env, ctx.uid);
   // "Can THIS user enable the receptionist?" = PREMIUM-ONLY: a paid subscription
   // tier (Plus/Pro/Max). Free (tier 0) sees the toggle greyed + the upsell.
+  const cfg = await readConfig(env);
   const tier = await tierOf(env, ctx.uid);
-  const premium = isPaidTier(tier);
+  // FREE FOR NOW: betaFreePremium → receptionist available to everyone.
+  const premium = (cfg as any).betaFreePremium === true || isPaidTier(tier);
   return json({
-    enabled: !!(s?.enabled),
+    enabled: s ? !!s.enabled : true, // DEFAULT-ON: unconfigured users get it by default
     instructions_text: s?.instructions_text ?? "",
     voice_name: s?.voice_name ?? DEFAULT_VOICE,
     display_name: s?.display_name ?? "",
@@ -267,10 +290,13 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
 
   const enabled = b.enabled === true;
   if (enabled) {
-    // PREMIUM-ONLY: only a paid subscription tier (Plus/Pro/Max) may turn the
-    // receptionist on. Free users get the upsell.
-    const tier = await tierOf(env, ctx.uid);
-    if (!isPaidTier(tier)) return premiumUpsell(env, ctx.uid, "receptionist");
+    // FREE FOR NOW: betaFreePremium lets anyone enable it. When off (billing on),
+    // the paid-tier gate returns.
+    const cfg = await readConfig(env);
+    if ((cfg as any).betaFreePremium !== true) {
+      const tier = await tierOf(env, ctx.uid);
+      if (!isPaidTier(tier)) return premiumUpsell(env, ctx.uid, "receptionist");
+    }
   }
   const instr = b.instructions_text == null ? "" : String(b.instructions_text).slice(0, MAX_INSTRUCTIONS);
   let voice = String(b.voice_name || DEFAULT_VOICE);
@@ -345,14 +371,16 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   const cfg = await readConfig(env);
   if ((cfg as any).receptionistEnabled === false) { checked(false, "disabled"); return json({ available: false, reason: "disabled" }); }
   if (!to) return json({ error: "to required" }, 400);
-  const s = await loadSettingsCached(env, to);
-  if (!s || !s.enabled) { checked(false, "off"); return json({ available: false, reason: "off" }); }
-  // PREMIUM-ONLY: the OWNER must be on a paid subscription tier. A Free owner is
-  // never available → caller gets a plain missed call.
+  // FREE FOR NOW: default-ON for unconfigured owners; betaFreePremium skips the
+  // paid-tier gate AND the daily allowance (free + unlimited). An explicit opt-out
+  // (saved row with enabled=0) is still respected.
+  const freeLaunch = (cfg as any).betaFreePremium === true;
+  let s = await loadSettingsCached(env, to);
+  if (s && !s.enabled) { checked(false, "off"); return json({ available: false, reason: "off" }); }
+  if (!s) s = defaultSettings(to);
   const ownerTier = await tierOf(env, to);
-  if (!isPaidTier(ownerTier)) { checked(false, "not_premium"); return json({ available: false, reason: "not_premium" }); }
-  // Subscription allowance (peek — don't consume on a dial-time probe). The OWNER
-  // pays from their tier's daily recept allowance. Out of allowance → unavailable.
+  if (!freeLaunch && !isPaidTier(ownerTier)) { checked(false, "not_premium"); return json({ available: false, reason: "not_premium" }); }
+  // Subscription allowance (peek — don't consume on a dial-time probe).
   const { res } = await receptAllowance(env, to, false);
   // v2: tell the caller HOW to hand off.
   //  - first_ring  → answer on ring 1 (owner is busy/away, Mode B)
@@ -361,7 +389,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   // on this; we surface decline_to_ava so the incoming UI knows its options.
   const rings = Math.max(1, Math.round(Number((cfg as any).receptionistRings ?? 5)));
   const mode = s.answer_all ? "first_ring" : "rings";
-  if (!res.allowed) {
+  if (!freeLaunch && !res.allowed) {
     checked(false, "plan_limit", mode);
     return json({ available: false, reason: "plan_limit", remaining: 0, cap: res.cap });
   }
@@ -395,21 +423,32 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_skipped", APP,
       { owner: to, reason, ...extra });
 
-  const s = await loadSettingsCached(env, to);
-  if (!s || !s.enabled) { skip("off"); return json({ error: "receptionist_unavailable", reason: "off" }, 409); }
-  // Receptionist Live runs on its dedicated key when set, else the global key.
-  if (!env.RECEPTIONIST_GEMINI_API_KEY && !env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
+  // Engine switch (KV flag): CF-native pipeline (Workers AI) vs Gemini Live. Read
+  // once so the init blob the DO consumes pins the engine for THIS call.
+  const cfg = await readConfig(env);
+  const useCf = (cfg as any).receptionistUseCf === true;
+
+  // FREE FOR NOW + DEFAULT-ON: unconfigured owners get Ava by default; an explicit
+  // opt-out (saved row with enabled=0) is respected. betaFreePremium skips the
+  // paid-tier gate + allowance below.
+  const freeLaunch = (cfg as any).betaFreePremium === true;
+  let s = await loadSettingsCached(env, to);
+  if (s && !s.enabled) { skip("off"); return json({ error: "receptionist_unavailable", reason: "off" }, 409); }
+  if (!s) s = defaultSettings(to);
+  // Gemini engine needs a Gemini key (dedicated, else global); the CF engine runs
+  // entirely on the Workers AI binding and needs no Gemini key.
+  if (!useCf && !env.RECEPTIONIST_GEMINI_API_KEY && !env.GEMINI_API_KEY) { skip("no_model_key"); return json({ error: "receptionist_unavailable", reason: "no_model_key" }, 503); }
   // PREMIUM-ONLY: the OWNER must be a paid subscriber (Plus/Pro/Max). A Free owner
   // never gets Ava → caller falls back to a plain missed call.
   const ownerTier = await tierOf(env, to);
-  if (!isPaidTier(ownerTier)) {
+  if (!freeLaunch && !isPaidTier(ownerTier)) {
     skip("not_premium", { tier: ownerTier });
     return json({ error: "receptionist_unavailable", reason: "not_premium" }, 409);
   }
-  // Subscription allowance — CONSUME one recept unit from the OWNER's daily quota
-  // (paid tiers only; tunable live via plan_config). Out of allowance → 402.
-  const { tier, res } = await receptAllowance(env, to, true);
-  if (!res.allowed) {
+  // Subscription allowance — consume one recept unit (only when NOT free; while
+  // betaFreePremium is on it's unlimited and unmetered).
+  const { tier, res } = await receptAllowance(env, to, !freeLaunch);
+  if (!freeLaunch && !res.allowed) {
     skip("plan_limit", { tier, cap: res.cap, used: res.used });
     trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_plan_block", APP,
       { owner: to, tier, cap: res.cap, used: res.used });
@@ -466,7 +505,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const init = {
     sid, owner_uid: to, caller_uid: ctx.uid, caller_phone: callerPhone,
     caller_name: callerName, call_id: callId, rtc_token: rtcToken,
-    voice_name: s.voice_name || DEFAULT_VOICE,
+    // CF engine uses ONE fixed female Aura voice; Gemini uses the owner's pick.
+    voice_name: useCf ? AVA_CF_VOICE : (s.voice_name || DEFAULT_VOICE),
     language_code: s.language_code || null,       // v2: DO pins speechConfig.languageCode
     activation_mode: activationMode,              // v2: telemetry context for the DO
     file_search_store: s.file_search_store || null,
@@ -476,7 +516,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     owner_name: ownerName,
     ava_name: (s.persona_name || "Ava").trim() || "Ava", // transcript speaker label
 
-    model: (env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT,
+    // engine: "cf" → the WS routes to ReceptionRoomCf (Workers AI); else Gemini.
+    engine: useCf ? "cf" : "gemini",
+    cf_voice: useCf ? AVA_CF_VOICE : null,
+    model: useCf ? "cf-workers-ai" : ((env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT),
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
     started_at: now,
   };
@@ -491,7 +534,9 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
 
   return json({
     ok: true, session_id: sid,
-    rtc_url: `/api/receptionist/rtc?session=${sid}&t=${rtcToken}`,
+    // Same client, same route — `&engine=cf` makes index.ts hand the WS to the
+    // Cloudflare-native DO. Omitted (Gemini) → the existing ReceptionRoom.
+    rtc_url: `/api/receptionist/rtc?session=${sid}&t=${rtcToken}${useCf ? "&engine=cf" : ""}`,
     rtc_token: rtcToken,
     voice_name: init.voice_name, model: init.model,
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,

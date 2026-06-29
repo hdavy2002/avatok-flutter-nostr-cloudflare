@@ -39,6 +39,13 @@ export interface PlatformConfig {
   // Gateway, 2-min cap.
   receptionistEnabled: boolean;      // master switch for /api/receptionist/* (default OFF until tested)
   receptionistRings: number;         // v2 Mode A: rings before auto-handoff (default 5)
+  // Receptionist ENGINE switch (Specs/RECEPTIONIST-CF-PIPELINE.md). false (default)
+  // = Gemini Live (do/reception_room.ts — untouched). true = the SEPARATE
+  // Cloudflare-native engine (do/reception_room_cf.ts: Workers AI Deepgram/Whisper
+  // STT → Llama LLM → Aura-2 TTS, fixed female "Ava"). Same Flutter client either
+  // way — /start just points the call's WS at the chosen DO. One KV flip switches
+  // every NEW call, instantly reversible, so the two can be A/B'd for cost.
+  receptionistUseCf: boolean;
   // AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md). OFF stops
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
@@ -117,6 +124,8 @@ const DEFAULTS: PlatformConfig = {
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
   receptionistRings: 4,            // v2 Mode A: auto-handoff after 4 unanswered rings
+  receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
+
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built
   // Ava in-chat AI defaults (proposal §7.1 anti-abuse tiering).

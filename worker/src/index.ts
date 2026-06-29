@@ -122,7 +122,8 @@ export { ConversationDO } from "./do/conversation";
 // wrangler.toml DO bindings + v6 migration; the files arrive with their phases.
 export { AvaAgentDO } from "./do/ava_agent"; // P3
 export { BackupDO } from "./do/backup";      // P10
-export { ReceptionRoom } from "./do/reception_room"; // Ava Receptionist call bridge
+export { ReceptionRoom } from "./do/reception_room"; // Ava Receptionist call bridge (Gemini engine)
+export { ReceptionRoomCf } from "./do/reception_room_cf"; // Ava Receptionist — Cloudflare-native engine (separate)
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -240,6 +241,12 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       const sid = url.searchParams.get("session") || "";
       if (!sid) return new Response("session required", { status: 400 });
       const hint = continentHint(req);
+      // Engine routing: /start stamps `&engine=cf` on the WS URL when the
+      // receptionistUseCf flag is on, so the SAME client connects to the
+      // Cloudflare-native DO; otherwise the Gemini ReceptionRoom (unchanged).
+      if (url.searchParams.get("engine") === "cf") {
+        return env.RECEPTION_ROOM_CF.get(env.RECEPTION_ROOM_CF.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
+      }
       return env.RECEPTION_ROOM.get(env.RECEPTION_ROOM.idFromName(sid), hint ? { locationHint: hint } : undefined).fetch(req);
     }
 
