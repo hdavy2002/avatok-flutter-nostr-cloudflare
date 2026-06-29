@@ -41,6 +41,7 @@ class AblyTransport extends AvaTransport {
   // conv channels we've subscribed to, keyed by serverConv → subs to cancel.
   final Map<String, List<StreamSubscription>> _convSubs = {};
   ably.RealtimeChannel? _presenceCh;
+  bool _wantOnline = false; // desired presence state; re-applied on (re)connect
   final Set<String> _presenceWatched = {};
 
   final _messages = StreamController<TransportMessage>.broadcast();
@@ -131,6 +132,9 @@ class AblyTransport extends AvaTransport {
         case ably.ConnectionState.connected:
           _connectedAt = DateTime.now().millisecondsSinceEpoch;
           Analytics.capture('ably_connected', {'reconnects': _reconnects});
+          // Re-enter presence after a (re)connect — the channel detaches when the
+          // connection drops, so our previous entry isn't guaranteed to restore.
+          if (_wantOnline) unawaited(_applyPresence());
           break;
         case ably.ConnectionState.disconnected:
         case ably.ConnectionState.suspended:
@@ -368,17 +372,36 @@ class AblyTransport extends AvaTransport {
 
   @override
   void setOnline(bool online) {
+    _wantOnline = online;
+    unawaited(_applyPresence());
+  }
+
+  /// Apply the desired presence state, but ONLY when the realtime connection is
+  /// connected and the channel is attached. Entering/leaving presence on a
+  /// detached/failed/suspended connection throws (Ably 90001 "not currently
+  /// attached" / 91001 "detached or failed state"); the call returns a Future, so
+  /// an UNAWAITED throw surfaced as an unhandled exception and CRASHED the app
+  /// (observed 2026-06-29, incl. on DNS failures resolving realtime.ably.io). We
+  /// now gate on connection state, attach first, and await+catch so a transient
+  /// network/DNS blip is a safe no-op. Presence is re-applied on reconnect (see
+  /// _wireConnection) because the channel detaches when the connection drops.
+  Future<void> _applyPresence() async {
     final rt = _realtime;
     if (rt == null) return;
+    if (rt.connection.state != ably.ConnectionState.connected) return;
     try {
-      _presenceCh ??= rt.channels.get(ablyPresenceChannel(myUid));
+      final ch = _presenceCh ??= rt.channels.get(ablyPresenceChannel(myUid));
+      await ch.attach(); // idempotent; resolves once the channel is attached
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      if (online) {
-        _presenceCh!.presence.enter({'ts': now});
+      if (_wantOnline) {
+        await ch.presence.enter({'ts': now});
       } else {
-        _presenceCh!.presence.leave({'ts': now});
+        await ch.presence.leave({'ts': now});
       }
-    } catch (_) {}
+    } catch (e) {
+      // Detached / suspended / DNS — safe to ignore; re-applied on reconnect.
+      Analytics.capture('ably_presence_skip', {'err': e.toString()});
+    }
   }
 
   /// Watch a peer's presence channel to render their online / last-seen state.
@@ -395,6 +418,10 @@ class AblyTransport extends AvaTransport {
       final lastSeen = (data['ts'] as num?)?.toInt() ??
           (p.timestamp != null ? p.timestamp!.millisecondsSinceEpoch ~/ 1000 : 0);
       _presence.add(PresenceEvent(uid, online, online ? 0 : lastSeen));
+    }, onError: (Object e) {
+      // A peer's presence channel can detach/fail; without onError the stream
+      // error is unhandled and crashes. Swallow — presence is best-effort.
+      Analytics.capture('ably_presence_watch_skip', {'err': e.toString()});
     });
   }
 
