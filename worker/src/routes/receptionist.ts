@@ -198,6 +198,18 @@ async function refreshSettingsCache(env: Env, uid: string): Promise<void> {
   } catch { /* best-effort — a stale entry still self-evicts via TTL */ }
 }
 
+/** Caller's local time-of-day word from their request timezone (Cloudflare geo),
+ *  for Ava's personalised sign-off ("have a great evening"). Falls back to "day". */
+function timeOfDayWord(tz: string | undefined | null): string {
+  try {
+    const h = Number(new Intl.DateTimeFormat("en-US", { timeZone: tz || "UTC", hour: "numeric", hour12: false }).format(new Date()));
+    if (h >= 5 && h < 12) return "morning";
+    if (h >= 12 && h < 17) return "afternoon";
+    if (h >= 17 && h < 22) return "evening";
+    return "day";
+  } catch { return "day"; }
+}
+
 // ---------------------------------------------------------------------------
 // Hidden system prompt — composed server-side, never exposed to the client.
 // Scaffold (role + ~1-min timing + safety): a short, message-first script.
@@ -205,13 +217,17 @@ async function refreshSettingsCache(env: Env, uid: string): Promise<void> {
 export function composeReceptionistPrompt(
   s: SettingsRow,
   ctx?: { callerName?: string | null; activationMode?: string | null; ownerName?: string | null;
-          gender?: string | null; engine?: "gemini" | "cf" | null },
+          gender?: string | null; engine?: "gemini" | "cf" | null; timeOfDay?: string | null },
 ): string {
   const me = (s.persona_name || "Ava").trim() || "Ava";  // Ava's own name (default Ava)
   const who = ((ctx?.ownerName || s.display_name || "the person you're assisting")).trim();
   const lang = (s.language_code || "").trim();
   const caller = (ctx?.callerName || "").trim();
   const callerRef = caller || "the caller";
+  // First name + caller's local time-of-day → personalised, mostly-templated lines.
+  const firstName = caller.split(/\s+/)[0] || "";
+  const firstSuffix = firstName ? `, ${firstName}` : "";
+  const tod = (ctx?.timeOfDay || "day").trim();
   // Owner's gender → pronouns (from the profile). male|female → he/she; else neutral.
   const g = (ctx?.gender || "").toLowerCase();
   const subj = g === "male" ? "he" : g === "female" ? "she" : "they";
@@ -235,9 +251,9 @@ export function composeReceptionistPrompt(
     note ? `${who} left a note about ${poss} availability: "${note}". Weave it into your greeting naturally if it fits.` : ``,
     `STEP 1 — GREET in ONE short, warm sentence: tell ${callerRef} that ${who} can't take the call right now and to please leave a short message — about 50 seconds — and ${subj}'ll get back to ${obj}. Then stop talking.`,
     `STEP 2 — STAY SILENT and let them speak. Do NOT interrupt, do NOT ask anything, do NOT make small talk. Just listen to their whole message.`,
-    `STEP 3 — When they finish, give ONE brief confirmation in your own words that captures their message, e.g. "Got it — you'd like ${who} to call you back. I'll let ${obj} know. Goodbye." Then ${endWith}.`,
-    `If you receive "[SYSTEM: time is up]": politely say their time's up but you've got the message and will pass it to ${who}, give a quick goodbye, then ${endWith} — do not ask for anything more.`,
-    `If they leave no message, say you'll let ${who} know they called, then goodbye and ${endWith}.`,
+    `STEP 3 — When they finish, close with ONE short line in EXACTLY this shape and nothing more: "Got it — <one short clause capturing what they said>. I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!" Then ${endWith}. The ONLY thing you fill in is the brief clause about their message; the rest is fixed.`,
+    `If you receive "[SYSTEM: time is up]": close with ONE short line: "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!" Then ${endWith}. Do not ask for anything more.`,
+    `If they leave no message: "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!" Then ${endWith}.`,
     `If asked who you are, say only "I'm ${who}'s assistant" and steer back to taking the message. Never debate, never chat, never answer off-topic questions. Refuse anything illegal or harmful. If asked, you may say the call is recorded.`,
   ].filter(Boolean);
   if (lang) lines.push(`Speak in ${lang}.`);
@@ -474,6 +490,16 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     const gr = await metaDb(env).prepare("SELECT gender FROM users WHERE uid=?1").bind(to).first<{ gender: string | null }>();
     ownerGender = gr?.gender ?? null;
   } catch { /* column may be absent on an un-migrated env → neutral */ }
+
+  // DETERMINISTIC GREETING (owner decision 2026-06-29): composed server-side and
+  // spoken immediately by the CF engine — NO LLM round-trip — so there's no dead
+  // air at the start (was ~5.5s). Uses the caller's FIRST name + owner pronoun.
+  const firstName = (callerName || "").trim().split(/\s+/)[0] || "";
+  const gSubj = ownerGender === "male" ? "he" : ownerGender === "female" ? "she" : "they";
+  const ownerLabel = ownerName || "your contact";
+  const greeting = firstName
+    ? `Hey ${firstName}, ${ownerLabel} can't take your call right now. Please leave a short message — about 50 seconds — and ${gSubj}'ll get back to you.`
+    : `Hi, ${ownerLabel} can't take your call right now. Please leave a short message — about 50 seconds — and ${gSubj}'ll get back to you.`;
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   // v2: how the call was handed off. Standard 2-button incoming UI, so the
   // triggers are: rings (no answer), first_ring (answer-all), decline (callee
@@ -517,13 +543,14 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     file_search_store: s.file_search_store || null,
     // Caller-aware + status-aware system prompt: "Hi <caller>, <owner> is
     // travelling/busy. Can I take a message?" — composed server-side, locked.
-    system_prompt: composeReceptionistPrompt(s, { callerName, activationMode, ownerName, gender: ownerGender, engine: useCf ? "cf" : "gemini" }),
+    system_prompt: composeReceptionistPrompt(s, { callerName, activationMode, ownerName, gender: ownerGender, engine: useCf ? "cf" : "gemini", timeOfDay: timeOfDayWord((req as any)?.cf?.timezone) }),
     owner_name: ownerName,
     ava_name: (s.persona_name || "Ava").trim() || "Ava", // transcript speaker label
 
     // engine: "cf" → the WS routes to ReceptionRoomCf (Workers AI); else Gemini.
     engine: useCf ? "cf" : "gemini",
     cf_voice: useCf ? AVA_CF_VOICE : null,
+    greeting,                                     // CF engine speaks this immediately (no LLM)
     model: useCf ? "cf-workers-ai" : ((env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT),
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
     started_at: now,
