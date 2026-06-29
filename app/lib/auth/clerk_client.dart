@@ -55,12 +55,32 @@ class ClerkClient {
     final auth = r.headers['authorization'];
     if (auth != null && auth.isNotEmpty) {
       _clientToken = auth;
-      _storage.write(key: 'clerk_client_token', value: auth);
+      // Fire-and-forget; never let a secure-storage write error escape into the
+      // auth path (see _loadToken for the corruption case).
+      unawaited(_storage
+          .write(key: 'clerk_client_token', value: auth)
+          .catchError((_) {/* best-effort persist */}));
     }
   }
 
   Future<void> _loadToken() async {
-    _clientToken ??= await _storage.read(key: 'clerk_client_token');
+    if (_clientToken != null) return;
+    try {
+      _clientToken = await _storage.read(key: 'clerk_client_token');
+    } catch (e) {
+      // Corrupted secure storage (Android Keystore key rotated, an OS backup
+      // restored encrypted prefs onto a different keystore, etc.) throws
+      // PlatformException(BadPaddingException / BAD_DECRYPT) on read. Previously
+      // this bubbled up through signIn() and froze the "Log in" button forever.
+      // Self-heal: wipe the unreadable store and continue as a fresh, signed-out
+      // session so the user can log in again instead of hanging.
+      _sx('secure_storage_reset',
+          provider: 'storage', reason: 'read_failed', detail: e.toString());
+      try {
+        await _storage.deleteAll();
+      } catch (_) {/* best-effort wipe */}
+      _clientToken = null;
+    }
   }
 
   Future<Map<String, dynamic>> _send(String path,
