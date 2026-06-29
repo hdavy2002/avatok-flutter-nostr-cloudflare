@@ -128,6 +128,10 @@ export class ReceptionRoomCf {
   // close is final and input is ignored.
   private cfMsgTimer: ReturnType<typeof setTimeout> | null = null;
   private cfTimeUp = false;
+  // Streaming STT (Deepgram Nova over WebSocket): transcribe the caller live so the
+  // transcript is ready the instant they stop (no post-speech STT round-trip).
+  private stt: WebSocket | null = null;
+  private sttFinals: string[] = []; // final transcript segments accumulated live
 
   private static IDLE_MS = 10_000;
   private static MAX_REC_BYTES = 12 * 1024 * 1024;
@@ -162,6 +166,7 @@ export class ReceptionRoomCf {
 
     this.env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {}); // single-use
 
+    void this.connectStt(); // live transcription in parallel with the greeting
     this.startCfEngine().catch((e) => {
       this.ev("ava_recept_cf_start_failed", { error_scrubbed: scrubSecrets(String(e)).slice(0, 200), ms: Date.now() - this.startedAt });
       this.failHard("cf_start_failed");
@@ -235,6 +240,7 @@ export class ReceptionRoomCf {
       this.pcmOut.push({ caller: true, pcm: up }); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
       this.bumpIdle();
     }
+    try { this.stt?.send(bytes); } catch { /* stt socket gone */ } // live transcription
     this.feedCfAudio(bytes);
   }
 
@@ -292,13 +298,15 @@ export class ReceptionRoomCf {
     this.cfTurnBuf = []; this.cfTurnBytes = 0; this.cfHadSpeech = false;
     this.cfBusy = true;
     try {
-      let heard = "";
-      if (total >= CF_MIN_TURN_BYTES) {
-        const wav = pcm16ToWavMono(concatFrames(frames, total), 16000);
-        this.cfSttSeconds += total / 32000;
-        heard = await this.cfStt(wav);
-        if (heard) { this.inText.push(heard); this.pushDialog("caller", heard); }
+      // Prefer the LIVE streamed transcript (ready instantly — no post-speech STT
+      // round-trip). Fall back to whole-clip Whisper only if streaming gave nothing.
+      this.cfSttSeconds += total / 32000;
+      let heard = this.sttFinals.join(" ").replace(/\s+/g, " ").trim();
+      this.sttFinals = [];
+      if (!heard && total >= CF_MIN_TURN_BYTES) {
+        heard = await this.cfStt(pcm16ToWavMono(concatFrames(frames, total), 16000));
       }
+      if (heard) { this.inText.push(heard); this.pushDialog("caller", heard); }
       this.turnCount++;
       this.ev("ava_recept_turn", {
         turn: this.turnCount, engine: "cf", time_up: this.cfTimeUp,
@@ -335,6 +343,42 @@ export class ReceptionRoomCf {
       const out: any = await this.env.AI.run(this.cfSttModel(), { audio: b64encode(wav) } as any);
       return String(out?.text ?? out?.transcription ?? out?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "").trim();
     } catch (e) { this.ev("ava_recept_cf_stt_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) }); return ""; }
+  }
+
+  /** Open Deepgram Nova streaming STT so the caller is transcribed AS THEY TALK —
+   *  transcript ready the instant they stop, plus a clean `speech_final` end-of-turn
+   *  signal. Best-effort: if it can't connect, the whole-clip Whisper fallback in
+   *  processCfTurn keeps the receptionist working (just at higher latency). */
+  private async connectStt(): Promise<void> {
+    const token = (this.env as any).AI_WS_TOKEN as string | undefined;
+    const acc = (this.env as any).CF_ACCOUNT_ID as string | undefined;
+    if (!token || !acc) return; // no token → Whisper fallback path stays in effect
+    const url = `https://api.cloudflare.com/client/v4/accounts/${acc}/ai/run/@cf/deepgram/nova-3?encoding=linear16&sample_rate=16000&interim_results=true&endpointing=1000&punctuate=true&language=en-US`;
+    try {
+      const resp = await fetch(url, { headers: { Upgrade: "websocket", Authorization: `Bearer ${token}` } });
+      const ws = (resp as any).webSocket as WebSocket | undefined;
+      if (!ws) { this.ev("ava_recept_cf_stt_error", { stage: "ws_no_socket" }); return; }
+      ws.accept();
+      this.stt = ws;
+      ws.addEventListener("message", (e) => this.onSttMessage(e));
+      ws.addEventListener("close", () => { this.stt = null; });
+      ws.addEventListener("error", () => { this.stt = null; });
+      this.ev("ava_recept_cf_stt_stream", { ms: Date.now() - this.startedAt });
+    } catch (e) {
+      this.ev("ava_recept_cf_stt_error", { stage: "ws_connect", error_scrubbed: scrubSecrets(String(e)).slice(0, 160) });
+    }
+  }
+
+  /** Nova transcript events: accumulate finals; `speech_final` = end-of-turn → close. */
+  private onSttMessage(ev: MessageEvent): void {
+    if (this.finalized) return;
+    let m: any;
+    try { m = JSON.parse(typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data as ArrayBuffer)); } catch { return; }
+    if (m?.type !== "Results") return;
+    const t = m.channel?.alternatives?.[0]?.transcript;
+    if (m.is_final && typeof t === "string" && t.trim()) this.sttFinals.push(t.trim());
+    // Deepgram detected end-of-turn (caller paused) → close now; transcript is ready.
+    if (m.speech_final && !this.cfSpeaking && !this.cfBusy && !this.cfTimeUp) void this.processCfTurn();
   }
 
   /** Chat completion via OpenRouter (Claude); falls back to Workers AI Llama only
@@ -466,6 +510,7 @@ export class ReceptionRoomCf {
     if (this.cfMsgTimer) clearTimeout(this.cfMsgTimer);
     if (this.cfSpeakTimer) clearTimeout(this.cfSpeakTimer);
     if (this.cfSpeakResolve) { const r = this.cfSpeakResolve; this.cfSpeakResolve = null; r(); } // unblock any speaking wait
+    try { this.stt?.close(); } catch { /* ignore */ }
     try { this.client?.send(JSON.stringify({ t: "ended", reason })); this.client?.close(1000, reason); } catch { /* ignore */ }
 
     const init = this.init;
