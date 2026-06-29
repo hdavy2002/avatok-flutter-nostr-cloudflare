@@ -51,6 +51,31 @@ class DeepLinks {
       });
       return;
     }
+    // Add-by-number link (?n=<digits>) — a contact's QR encodes their AvaTOK
+    // number. Resolve it to a card and add the contact directly.
+    final number = _addNumber(uri);
+    if (number.isNotEmpty) {
+      Analytics.capture('qr_link_opened', {'scheme': uri.scheme, 'by': 'number'});
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final ctx = _navKey?.currentContext;
+        final card = await AvaNumber.addResolveByNumber(number);
+        if (card == null || card.uid.isEmpty || ctx == null) return;
+        final name = card.name.isNotEmpty
+            ? card.name
+            : [card.firstName, card.lastName].where((s) => s.isNotEmpty).join(' ').trim();
+        final contact = Contact(
+          npub: card.uid,
+          name: name.isNotEmpty ? name : (card.email.isNotEmpty ? card.email : card.number),
+          email: card.email,
+          avatarUrl: card.avatarUrl,
+          number: card.sharesRealNumber ? '' : card.number,
+          phone: card.sharesRealNumber ? card.number : '',
+        );
+        await ContactsStore().add(contact);
+        ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(content: Text('Added ${contact.name}')));
+      });
+      return;
+    }
     final token = _addToken(uri);
     if (token.isEmpty) return;
     Analytics.capture('qr_link_opened', {'scheme': uri.scheme});
@@ -65,6 +90,16 @@ class DeepLinks {
         messenger?.showSnackBar(SnackBar(content: Text('Added ${contact.name}')));
       }
     });
+  }
+
+  /// Digits of the `?n=` number on an AvaTOK add link, or '' if none.
+  static String _addNumber(Uri uri) {
+    final isAdd = (uri.scheme == 'avatok' &&
+            (uri.host == 'add' || uri.path == 'add' || uri.path == '/add')) ||
+        ((uri.scheme == 'https' || uri.scheme == 'http') &&
+            uri.host.endsWith('avatok.ai') && uri.path.startsWith('/add'));
+    if (!isAdd) return '';
+    return (uri.queryParameters['n'] ?? '').replaceAll(RegExp(r'[^0-9]'), '');
   }
 
   static bool _isGroupLink(Uri uri) {

@@ -322,7 +322,26 @@ export async function shareCardPut(req: Request, env: Env): Promise<Response> {
 // contact card. Tokens are random + non-enumerable; respects who_can_add.
 export async function addResolve(req: Request, env: Env): Promise<Response> {
   if (!(await featureOn(env))) return json({ error: "number_feature_off" }, 503);
-  const t = (new URL(req.url).searchParams.get("t") || "").replace(/[^a-f0-9]/gi, "").slice(0, 64);
+  const url = new URL(req.url);
+  const t = (url.searchParams.get("t") || "").replace(/[^a-f0-9]/gi, "").slice(0, 64);
+  // Add-by-number (?n=<digits>) — a contact's QR encodes their PUBLIC AvaTOK
+  // number; resolve it to the owner's card so others can add them. Respects
+  // who_can_add. No share token needed. (Owner request 2026-06-29.)
+  const nRaw = url.searchParams.get("n") || "";
+  if (!t && nRaw) {
+    const digits = nRaw.replace(/[^0-9]/g, "").slice(0, 20);
+    if (!digits) return json({ error: "bad_number" }, 400);
+    const r = await metaSession(env).prepare(
+      "SELECT uid, display_name, avatar_url, share_card, who_can_add FROM users WHERE avatok_number=?1 LIMIT 1",
+    ).bind(digits).first<any>();
+    if (!r) { analytics(env, "qr_resolve_failed", "anon", { reason: "number_not_found" }, req); return json({ error: "not_found" }, 404); }
+    if (r.who_can_add === "nobody") { analytics(env, "qr_resolve_failed", r.uid, { reason: "adds_disabled" }, req); return json({ error: "adds_disabled" }, 403); }
+    analytics(env, "qr_resolved", r.uid, { by: "number", who_can_add: r.who_can_add ?? "everyone" }, req);
+    let card: any = {};
+    try { card = r.share_card ? JSON.parse(r.share_card) : {}; } catch { /* malformed → empty */ }
+    const name = (r.display_name && String(r.display_name).trim()) || `${card.firstName || ""} ${card.lastName || ""}`.trim();
+    return json({ uid: r.uid, name, avatar_url: r.avatar_url ?? null, card });
+  }
   if (!t) return json({ error: "bad_token" }, 400);
   const r = await metaSession(env).prepare(
     "SELECT uid, display_name, avatar_url, share_card, who_can_add FROM users WHERE share_token=?1",

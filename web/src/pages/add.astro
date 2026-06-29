@@ -1,0 +1,65 @@
+---
+// Smart "Add me on AvaTOK" landing (owner request 2026-06-29).
+// A shared QR/link points here. On a phone with AvaTOK installed, the
+// `avatok://add?...` deep link opens the app straight to Add Contact; otherwise
+// we fall back to the Play Store after a short delay. Pure static HTML + inline
+// JS — no layout import, so it has no build dependencies and can't break the site.
+const PLAY_STORE = 'https://play.google.com/store/apps/details?id=ai.avatok.app'; // DUMMY — update at launch
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add me on AvaTOK</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center;
+        background: #eef0e6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0e1116;
+      }
+      .card {
+        width: min(92vw, 420px); background: #fff; border: 2px solid #0e1116;
+        border-radius: 18px; box-shadow: 6px 6px 0 #0e1116; padding: 28px 24px; text-align: center;
+      }
+      h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.4px; }
+      .brand { color: #2b59ff; }
+      p { color: #4a5159; margin: 6px 0 20px; }
+      .btn {
+        display: inline-block; width: 100%; padding: 14px 18px; border-radius: 12px;
+        background: #c8f64f; color: #0e1116; font-weight: 800; text-decoration: none;
+        border: 2px solid #0e1116; box-shadow: 3px 3px 0 #0e1116;
+      }
+      .btn.alt { background: #fff; margin-top: 10px; }
+      .foot { margin-top: 16px; font-size: 12px; color: #8a9099; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Add me on <span class="brand">AvaTOK</span></h1>
+      <p id="sub">Opening AvaTOK…</p>
+      <a id="open" class="btn" href="#">Open in AvaTOK</a>
+      <a id="store" class="btn alt" href={PLAY_STORE}>Get AvaTOK</a>
+      <div class="foot">avatok.ai</div>
+    </main>
+    <script define:vars={{ store: PLAY_STORE }}>
+      const p = new URLSearchParams(location.search);
+      const t = p.get('t');
+      const n = p.get('n');
+      const q = t ? 't=' + encodeURIComponent(t) : (n ? 'n=' + encodeURIComponent(n) : '');
+      const deep = 'avatok://add' + (q ? '?' + q : '');
+      const openLink = document.getElementById('open');
+      openLink.setAttribute('href', deep);
+      let left = false;
+      const markLeft = () => { left = true; };
+      window.addEventListener('pagehide', markLeft);
+      window.addEventListener('blur', markLeft);
+      document.addEventListener('visibilitychange', () => { if (document.hidden) markLeft(); });
+      // Auto-attempt the deep link; if we're still here shortly after, the app
+      // isn't installed → send to the store.
+      try { location.href = deep; } catch (_) {}
+      setTimeout(() => { if (!left) location.href = store; }, 1600);
+    </script>
+  </body>
+</html>

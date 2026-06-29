@@ -321,6 +321,30 @@ class AvaNumber {
     } catch (_) { return null; }
   }
 
+  /// Resolve a contact by their PUBLIC AvaTOK number (a scanned/clicked `?n=`
+  /// link, e.g. from a contact's shared QR). Returns their add card, or null.
+  static Future<AddCard?> addResolveByNumber(String number) async {
+    final digits = number.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return null;
+    try {
+      final r = await http.get(Uri.parse('$kAddResolveUrl?n=${Uri.encodeQueryComponent(digits)}')).timeout(const Duration(seconds: 8));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      final card = (j['card'] as Map<String, dynamic>?) ?? {};
+      Analytics.capture('qr_scanned', {'by': 'number'});
+      return AddCard(
+        uid: (j['uid'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        avatarUrl: (j['avatar_url'] ?? '').toString(),
+        firstName: (card['firstName'] ?? '').toString(),
+        lastName: (card['lastName'] ?? '').toString(),
+        email: (card['email'] ?? '').toString(),
+        number: (card['number'] ?? '').toString(),
+        plan: (card['plan'] ?? 'free').toString(),
+      );
+    } catch (_) { return null; }
+  }
+
   /// Extract a share token from an avatok add link/deep-link, or '' if none.
   static String tokenFromLink(String input) {
     final s = input.trim();
