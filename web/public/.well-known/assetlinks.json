@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ai.avatok.avatok_call",
+      "sha256_cert_fingerprints": [
+        "C9:8F:A5:B2:95:5E:1B:16:50:5B:75:82:36:A9:7A:1F:09:23:C1:48:9E:40:D8:27:83:4A:38:2B:CA:59:BC:30",
+        "76:31:21:81:58:AA:01:C4:1F:C6:F1:99:23:CF:3B:01:46:29:40:E6:70:A4:0F:A9:CB:1F:51:92:73:A8:6A:4C"
+      ]
+    }
+  }
+]
