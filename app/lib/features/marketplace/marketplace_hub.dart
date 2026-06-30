@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
 import '../explore/explore_home.dart';
-import '../listings/create_listing_flow.dart';
 import 'my_listings_screen.dart';
+import 'sell_listing_flow.dart';
 
 /// AvaMarketplace P1 — the hub the sidebar "Marketplace" entry opens.
 /// Three destinations: Browse (the existing ExploreHome grid), Create Listing
@@ -38,7 +38,7 @@ class MarketplaceHub extends StatelessWidget {
             onTap: () {
               Analytics.capture('listing_pipeline_opened', {'via': 'hub'});
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const CreateListingFlow(),
+                builder: (_) => const SellListingFlow(),
               ));
             },
           ),
