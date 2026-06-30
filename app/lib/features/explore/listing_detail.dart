@@ -6,6 +6,7 @@ import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
 import '../marketplace/call_agent_sheet.dart';
+import '../../core/marketplace_api.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -42,12 +43,24 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     final d = await ListingsApi.detail(widget.listingId);
     if (!mounted) return;
     setState(() { _d = d; _loading = false; });
+    // Talk-once: grey the Call Agent button if this buyer already negotiated this
+    // listing version (one agent↔agent conversation per buyer per listing).
+    if (d != null && const ['sell', 'buy', 'social'].contains(d.listing.kind) && !d.isOwner) {
+      final talked = await MarketplaceApi.alreadyTalked(d.listing.id, 0);
+      if (mounted && talked) setState(() => _alreadyTalked = true);
+    }
   }
 
   // AvaMarketplace P5 — Call Agent. Greyed once this buyer has already
   // negotiated the current version of the listing (talk-once-per-version).
   bool _agentBusy = false;
   bool _alreadyTalked = false;
+
+  void _alreadyTalkedNotice() {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Your agent has already talked to this listing. Use Message to reach the seller.'),
+    ));
+  }
 
   Future<void> _callAgent() async {
     final d = _d;
@@ -58,7 +71,14 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       contentVersion: 0, // server keys talk-once on (buyer, listing, version)
       currency: d.listing.currency,
     );
-    if (started && mounted) setState(() => _alreadyTalked = true);
+    if (started && mounted) {
+      setState(() => _alreadyTalked = true);
+      // The negotiation runs in the background — let the buyer keep browsing.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        duration: Duration(seconds: 5),
+        content: Text('Your agent is negotiating in the background — keep browsing. The result will arrive in your chat.'),
+      ));
+    }
   }
 
   Future<void> _book() async {
@@ -205,7 +225,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
               const SizedBox(width: 12),
               if (const ['sell', 'buy', 'social'].contains(d.listing.kind)) ...[
                 ZinePressable(
-                  onTap: _alreadyTalked ? () {} : _callAgent,
+                  onTap: _alreadyTalked ? _alreadyTalkedNotice : _callAgent,
                   radius: BorderRadius.circular(100),
                   child: SizedBox(width: 52, height: 52, child: Center(
                     child: Icon(Icons.support_agent, size: 24,
