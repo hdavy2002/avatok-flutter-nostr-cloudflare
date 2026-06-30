@@ -535,7 +535,10 @@ export async function brainConsentAllows(env: Env, uid: string, app: string): Pr
       if (Number(r.enabled) === 0) return false; // explicit opt-out
     }
     return true; // default ON
-  } catch { return true; } // table missing → fail-open to default-ON
+  } catch { return false; } // [PRIV-CONSENT-1] D1 error → FAIL CLOSED: a brain_consent
+                            // read failure must NOT ingest a possibly-opted-out user's
+                            // private content. "Off = nothing captured" must hold even
+                            // when the consent table is transiently unreadable (DPDP).
 }
 
 // Emit a library_file_added event for content ingestion, gated on consent.
