@@ -188,19 +188,33 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
     listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: transcript.length,
   });
 
-  if (outcome === "deal") {
-    // DEAL → notify both owners. NOTE (P5 follow-up): render the verbatim transcript
-    // to a 2-voice note via Gemini 2.5 multi-speaker TTS and drop it into both chat
-    // threads (the POC proved the render). Audio is skipped entirely on impasse to
-    // save TTS cost. For now both parties get an actionable notification.
-    const body = `Your agents agreed around ${agreed} ${currency}. Open the chat to take it forward.`;
-    try {
-      await notifyUser(env, listing.creator_id, { type: "marketplace_deal", title: "A buyer's agent reached a deal", body, data: { listing_id: listingId } });
-      await notifyUser(env, ctx.uid, { type: "marketplace_deal", title: "Your agent reached a deal", body, data: { listing_id: listingId } });
-    } catch { /* notify best-effort */ }
-    return json({ ok: true, outcome, agreed_price: agreed, currency, transcript });
-  }
-  return json({ ok: true, outcome, transcript });
+  // RULE CHANGE (owner 2026-06-30): render the deal-audio voice note in BOTH
+  // outcomes and drop it into both chat threads — colour-coded by outcome:
+  //   DEAL    → audio bubble GREEN (go)
+  //   IMPASSE → audio bubble PALE YELLOW (no-go)
+  // This OVERRIDES the earlier "audio only on a deal" cost rule: TTS now runs on
+  // every completed negotiation, so both owners always get the voice note.
+  const bubble = outcome === "deal" ? "green" : "pale_yellow";
+  // NOTE (P5 follow-up still pending): actually render `transcript` to a 2-voice
+  // note via Gemini 2.5 multi-speaker TTS and post it as a voice MESSAGE in each
+  // thread, styled by `bubble`. For now both parties get a notification carrying
+  // {outcome, bubble} so the dropped audio can be coloured correctly.
+  const body = outcome === "deal"
+    ? `Your agents agreed around ${agreed} ${currency}. Open the chat to hear it and take it forward.`
+    : `Your agents talked but didn't agree this time. Open the chat to hear how it went.`;
+  try {
+    await notifyUser(env, listing.creator_id, {
+      type: "marketplace_negotiation",
+      title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing",
+      body, data: { listing_id: listingId, outcome, bubble },
+    });
+    await notifyUser(env, ctx.uid, {
+      type: "marketplace_negotiation",
+      title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating",
+      body, data: { listing_id: listingId, outcome, bubble },
+    });
+  } catch { /* notify best-effort */ }
+  return json({ ok: true, outcome, agreed_price: agreed, currency, bubble, transcript });
 }
 // ── P6: AI search over active listings ────────────────────────────────────────
 // ONE shared marketplace index (owner rule: no per-user AI Search instances).

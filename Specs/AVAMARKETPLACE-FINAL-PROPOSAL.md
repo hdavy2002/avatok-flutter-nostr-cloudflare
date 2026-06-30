@@ -14,7 +14,8 @@ and `AGENTIC-NEGOTIATION-MARKETPLACE.md`.
 - **Cap:** max 5 new listings/user/day (throttle, not a charge).
 - **Pricing:** any currency (ISO-4217), display native + normalized base for search only.
 - **Negotiation brain:** latest Claude Sonnet via OpenRouter (text — cheap).
-- **Deal audio:** Gemini 2.5 multi-speaker TTS, rendered **only on a DEAL** (no audio on impasse).
+- **Deal audio:** Gemini 2.5 multi-speaker TTS rendered for **both outcomes**, dropped into both threads,
+  colour-coded — **deal = green bubble, no-deal = pale-yellow bubble** (owner change 2026-06-30).
 - **Language:** agents talk in a shared language else fall back to English with owner-set accent.
 - **Talk-once-per-listing-version** gating (edits reopen; new listings are fresh).
 - **Image safety:** adult/NSFW now; CSAM service deferred (P8).
@@ -142,9 +143,10 @@ again when there's a real reason to.
 - **P5 — Listing detail + Call Agent.** Message Owner (always), show + dial the AvaTOK number, and
   **Call Agent** which captures the buyer's limit and kicks off the negotiation — enforcing the
   talk-once-per-version rule. The agents haggle in text using the **latest Claude Sonnet** (via
-  OpenRouter), which is cheap. **We only spend money making the voice note if they actually reach a
-  deal** — if they can't agree, no audio is created. *Achieves: the headline feature — agents negotiate
-  and drop the voice note, with no wasted audio cost on failed talks.*
+  OpenRouter), which is cheap. **Either way they get a voice note in both chats** — a **green** bubble
+  when they struck a deal, a **pale-yellow** bubble when they couldn't agree — so you can play it and
+  hear how it went. *Achieves: the headline feature — agents negotiate and always drop a colour-coded
+  voice note both sides can listen to.*
 - **P6 — AI search.** Put every live listing into one Cloudflare AI Search index so people can search by
   meaning, not just keywords. *Achieves: buyers actually find things.*
 - **P7 — Safety queue.** Before any listing or edit goes live: check the words (scam/abuse), **strip out
