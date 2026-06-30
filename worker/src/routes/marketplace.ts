@@ -142,9 +142,13 @@ async function ensureDmThread(env: Env, a: string, b: string, context: string | 
  *  NOT surfaced as a message, so the thread looked empty). */
 async function inboxAppend(env: Env, recipient: string, sender: string, conv: string, envelope: string, mediaRef: string | null): Promise<void> {
   const stub = (env as any).INBOX.get((env as any).INBOX.idFromName(recipient));
+  // No `scope` → thread-scoped (audience null), i.e. a NORMAL DM message. We already
+  // write a separate copy to each party's own InboxDO, so per-recipient privacy
+  // scoping isn't needed — and an unscoped message is what the app's sync/chat-list
+  // reliably surfaces (a `to:<uid>` private scope was an extra failure surface).
   await stub.fetch("https://inbox/append", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, scope: `to:${recipient}`, created_at: Date.now(), owner: recipient }),
+    body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, created_at: Date.now(), owner: recipient }),
   });
 }
 
