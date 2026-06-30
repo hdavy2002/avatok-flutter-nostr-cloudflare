@@ -43,9 +43,6 @@ export interface Env {
   // Vectorize — semantic search (populated Phase 4)
   VECTOR_INDEX: VectorizeIndex;
 
-  // Browser Rendering — link previews / OG images
-  BROWSER: Fetcher;
-
   // Durable Object — 1:1 call signaling rooms
   CALL_ROOMS: DurableObjectNamespace;
   // Durable Object — free-tier P2P mesh group-call signaling rooms (≤5)
@@ -114,9 +111,6 @@ export interface Env {
   CF_RT_SFU_APP_ID?: string;
   CF_RT_SFU_APP_TOKEN?: string;
   FCM_SERVICE_ACCOUNT?: string;
-  // Bunny.net Stream (video upload path for AvaTube/AvaGram/AvaLive recordings)
-  BUNNY_API_KEY?: string;
-  BUNNY_LIBRARY_ID?: string;
   // Cloudflare Stream webhook HMAC secret (AvaLive). Gated.
   STREAM_WEBHOOK_SECRET?: string;
 

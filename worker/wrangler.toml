@@ -220,13 +220,6 @@ binding = "VECTOR_INDEX"
 index_name = "avatok-semantic"
 
 # ---------------------------------------------------------------------------
-# Browser Rendering — headless Chrome for link previews / OG images.
-# Cache results in Cache API (same URL = same preview). No external service.
-# ---------------------------------------------------------------------------
-[browser]
-binding = "BROWSER"
-
-# ---------------------------------------------------------------------------
 # Durable Object — group call rooms (SFU signaling). 1:1 calls stay P2P.
 # WebSocket Hibernation so idle rooms cost ~nothing.
 # ---------------------------------------------------------------------------
@@ -361,7 +354,6 @@ new_sqlite_classes = ["ReceptionRoomCf"]
 # Secrets (set via `wrangler secret put`, never committed):
 #   CLERK_JWKS_URL, CLERK_ISSUER       — Clerk JWT verification (opt-in)
 #   TURN_KEY_ID, TURN_KEY_API_TOKEN    — Cloudflare Realtime TURN credentials
-#   BUNNY_API_KEY, BUNNY_LIBRARY_ID    — Bunny.net Stream video uploads
 #   STREAM_WEBHOOK_SECRET              — Cloudflare Stream webhook HMAC (AvaLive)
 # (Text/image moderation runs on Workers AI in avatok-consumers — no OpenAI.)
 
@@ -512,9 +504,6 @@ dataset = "avatok_metrics_staging"
 [[env.staging.vectorize]]
 binding = "VECTOR_INDEX"
 index_name = "avatok-semantic"
-
-[env.staging.browser]
-binding = "BROWSER"
 
 [[env.staging.durable_objects.bindings]]
 name = "CALL_ROOMS"
