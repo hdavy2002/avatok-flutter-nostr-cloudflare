@@ -10,7 +10,7 @@
 // a DEAL. Everything here is dark until the marketplaceEnabled kill switch is on.
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, isFail } from "../authz";
+import { requireUser, isFail, dmConvId } from "../authz";
 import { track } from "../hooks";
 import { metaDb } from "../db/shard";
 import { notifyUser } from "../notify";
@@ -55,6 +55,111 @@ export async function callSonnet(
   } catch {
     return "";
   }
+}
+
+// ── Deal-audio render (Gemini 2.5 multi-speaker TTS) + voice-note delivery ────
+const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Wrap 24kHz mono 16-bit PCM as a playable WAV (chat voice notes are WAV). */
+function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
+  const ch = 1, bits = 16;
+  const byteRate = (sampleRate * ch * bits) / 8, block = (ch * bits) / 8;
+  const head = new ArrayBuffer(44);
+  const v = new DataView(head);
+  const w = (o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + pcm.length, true); w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, byteRate, true);
+  v.setUint16(32, block, true); v.setUint16(34, bits, true); w(36, "data"); v.setUint32(40, pcm.length, true);
+  const out = new Uint8Array(44 + pcm.length);
+  out.set(new Uint8Array(head), 0); out.set(pcm, 44);
+  return out;
+}
+
+/** Render a 2-voice negotiation transcript to a WAV via Gemini TTS. null on error. */
+async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: string; text: string }>): Promise<Uint8Array | null> {
+  const key = (env as any).RECEPTIONIST_GEMINI_API_KEY || (env as any).GEMINI_API_KEY;
+  if (!key || !transcript.length) return null;
+  const script = "TTS this short marketplace negotiation between two agents, natural and businesslike:\n" +
+    transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`).join("\n");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${key}`;
+  const body = {
+    contents: [{ parts: [{ text: script }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
+        { speaker: "Seller", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } },
+        { speaker: "Buyer", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } },
+      ] } },
+    },
+  };
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+    if (!res.ok) return null;
+    const j: any = await res.json().catch(() => null);
+    const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (typeof data !== "string") return null;
+    return pcmToWav(b64ToBytes(data));
+  } catch {
+    return null;
+  }
+}
+
+/** Append a marketplace voice/text message into a user's InboxDO thread. */
+async function inboxAppend(env: Env, recipient: string, sender: string, conv: string, envelope: string, mediaRef: string | null): Promise<void> {
+  const stub = (env as any).INBOX.get((env as any).INBOX.idFromName(recipient));
+  await stub.fetch("https://inbox/append", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ conv, sender, kind: "marketplace_deal", body: envelope, media_ref: mediaRef, scope: `to:${recipient}`, created_at: Date.now(), owner: recipient }),
+  });
+}
+
+/**
+ * Render the deal audio (both outcomes) and drop the voice note into BOTH the
+ * seller's and buyer's chat threads, colour-coded by outcome, then FCM-push both.
+ * Best-effort: if TTS fails, still delivers a text message carrying the outcome.
+ */
+async function deliverDealAudio(env: Env, a: {
+  sellerUid: string; buyerUid: string; listingId: string; listingTitle: string;
+  outcome: string; bubble: string; agreed: number; currency: string;
+  transcript: Array<{ speaker: string; text: string }>;
+}): Promise<{ audioKey: string | null; bytes: number }> {
+  const conv = dmConvId(a.sellerUid, a.buyerUid);
+  let audioKey: string | null = null;
+  let bytes = 0;
+  const wav = await renderNegotiationWav(env, a.transcript);
+  if (wav) {
+    audioKey = `mkt/deal/${a.listingId}/${crypto.randomUUID()}.wav`;
+    try {
+      await (env as any).BLOBS.put(audioKey, wav, { httpMetadata: { contentType: "audio/wav" } });
+      bytes = wav.length;
+    } catch { audioKey = null; }
+  }
+  const text = a.outcome === "deal"
+    ? `Your agents agreed around ${a.agreed} ${a.currency} on "${a.listingTitle}". Play the voice note and say hello to take it forward.`
+    : `Your agents talked about "${a.listingTitle}" but didn't agree this time. Play the voice note to hear how it went.`;
+  const envelope = JSON.stringify({
+    t: "marketplace_deal", text, outcome: a.outcome, bubble: a.bubble,
+    agreed_price: a.agreed, currency: a.currency, listing_id: a.listingId, transcript: a.transcript,
+    has_audio: !!audioKey, audio_key: audioKey,
+  });
+  // Drop the message into both threads (each attributed to the counterparty).
+  try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, envelope, audioKey); } catch { /* best-effort */ }
+  try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, envelope, audioKey); } catch { /* best-effort */ }
+  // FCM push both.
+  const title = a.outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating";
+  try {
+    await (env as any).Q_PUSH.send({ kind: "notify", to: a.sellerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
+    await (env as any).Q_PUSH.send({ kind: "notify", to: a.buyerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
+  } catch { /* push best-effort */ }
+  return { audioKey, bytes };
 }
 
 // ── P3: AI writing help ──────────────────────────────────────────────────────
@@ -188,33 +293,28 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
     listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: transcript.length,
   });
 
-  // RULE CHANGE (owner 2026-06-30): render the deal-audio voice note in BOTH
-  // outcomes and drop it into both chat threads — colour-coded by outcome:
-  //   DEAL    → audio bubble GREEN (go)
-  //   IMPASSE → audio bubble PALE YELLOW (no-go)
-  // This OVERRIDES the earlier "audio only on a deal" cost rule: TTS now runs on
-  // every completed negotiation, so both owners always get the voice note.
+  // RULE (owner 2026-06-30): render the deal-audio voice note for BOTH outcomes
+  // and drop it into both chat threads, colour-coded — DEAL = green, IMPASSE =
+  // pale yellow. Gemini 2.5 multi-speaker TTS → WAV in R2 → voice message in each
+  // user's InboxDO thread → FCM push (reuses the receptionist delivery pattern).
   const bubble = outcome === "deal" ? "green" : "pale_yellow";
-  // NOTE (P5 follow-up still pending): actually render `transcript` to a 2-voice
-  // note via Gemini 2.5 multi-speaker TTS and post it as a voice MESSAGE in each
-  // thread, styled by `bubble`. For now both parties get a notification carrying
-  // {outcome, bubble} so the dropped audio can be coloured correctly.
+  const delivery = await deliverDealAudio(env, {
+    sellerUid: String(listing.creator_id), buyerUid: ctx.uid, listingId,
+    listingTitle: String(listing.title || "your listing"),
+    outcome, bubble, agreed, currency, transcript,
+  });
+  track(env, ctx.uid, "deal_audio_render_completed", "avamarketplace", {
+    listing_id: listingId, outcome, bubble, has_audio: !!delivery.audioKey, audio_bytes: delivery.bytes,
+  });
+  // Also a bell notification so it shows in the notifications list, not just the thread.
   const body = outcome === "deal"
-    ? `Your agents agreed around ${agreed} ${currency}. Open the chat to hear it and take it forward.`
-    : `Your agents talked but didn't agree this time. Open the chat to hear how it went.`;
+    ? `Your agents agreed around ${agreed} ${currency}.`
+    : `Your agents talked but didn't agree this time.`;
   try {
-    await notifyUser(env, listing.creator_id, {
-      type: "marketplace_negotiation",
-      title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing",
-      body, data: { listing_id: listingId, outcome, bubble },
-    });
-    await notifyUser(env, ctx.uid, {
-      type: "marketplace_negotiation",
-      title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating",
-      body, data: { listing_id: listingId, outcome, bubble },
-    });
+    await notifyUser(env, String(listing.creator_id), { type: "marketplace_deal", title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing", body, data: { listing_id: listingId, outcome, bubble } });
+    await notifyUser(env, ctx.uid, { type: "marketplace_deal", title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating", body, data: { listing_id: listingId, outcome, bubble } });
   } catch { /* notify best-effort */ }
-  return json({ ok: true, outcome, agreed_price: agreed, currency, bubble, transcript });
+  return json({ ok: true, outcome, agreed_price: agreed, currency, bubble, has_audio: !!delivery.audioKey, transcript });
 }
 // ── P6: AI search over active listings ────────────────────────────────────────
 // ONE shared marketplace index (owner rule: no per-user AI Search instances).
@@ -278,4 +378,18 @@ export async function marketplacePrecheck(req: Request, env: Env): Promise<Respo
   const stripped = cleaned !== description;
   track(env, ctx.uid, "moderation_pii_stripped", "avamarketplace", { changed: stripped });
   return json({ ok: true, cleaned_description: cleaned, pii_stripped: stripped });
+}
+
+// ── Deal-audio stream — authed playback of a rendered negotiation voice note ───
+// GET /api/marketplace/audio?key=mkt/deal/...   (the key from the chat envelope)
+export async function marketplaceAudio(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return new Response("unauthorized", { status: 401 });
+  const key = new URL(req.url).searchParams.get("key") || "";
+  if (!key.startsWith("mkt/deal/")) return new Response("bad key", { status: 400 });
+  const obj = await (env as any).BLOBS.get(key);
+  if (!obj) return new Response("not found", { status: 404 });
+  return new Response(obj.body, {
+    headers: { "content-type": "audio/wav", "cache-control": "private, max-age=86400" },
+  });
 }

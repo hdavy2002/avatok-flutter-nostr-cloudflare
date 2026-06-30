@@ -778,7 +778,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'gmedia') {
@@ -922,7 +922,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
       if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
-      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept'].contains(env['t'])) {
+      if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
       } else if (env is Map && env['t'] == 'media') {
@@ -1846,6 +1846,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         'ava' || 'ava_private' => (e['text'] ?? e['body'] ?? 'Ava').toString(),
         'ava_status' => (e['label'] ?? 'Ava is working…').toString(),
         'recept' => (e['text'] ?? '📞 Ava took a message').toString(),
+        'marketplace_deal' => '🤝 ${e['outcome'] == 'deal' ? 'Agents reached a deal' : 'Agents finished negotiating'}',
         _ => '',
       };
 
@@ -2249,6 +2250,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ]),
             )),
         ]);
+      case 'marketplace_deal':
+        return _MarketplaceDealCard(extra: e);
       case 'recept':
         return _ReceptionistCard(
           extra: e,
@@ -6114,6 +6117,106 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             maxLines: 1, overflow: TextOverflow.ellipsis,
             style: ZineText.value(size: 14))),
       ]);
+}
+
+/// AvaMarketplace deal card (special kind 'marketplace_deal'). Shows the agent
+/// negotiation result + a play button for the 2-voice audio note. Colour-coded:
+/// DEAL = green (go), IMPASSE = pale yellow (no-go). Audio streams from the
+/// authed /api/marketplace/audio endpoint (the render is server-side, not E2E).
+class _MarketplaceDealCard extends StatefulWidget {
+  const _MarketplaceDealCard({required this.extra});
+  final Map<String, dynamic> extra;
+  @override
+  State<_MarketplaceDealCard> createState() => _MarketplaceDealCardState();
+}
+
+class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _loading = false;
+  bool _playing = false;
+  bool _expanded = false;
+
+  Map<String, dynamic> get _e => widget.extra;
+  bool get _isDeal => _e['outcome'] == 'deal';
+  String get _audioKey => (_e['audio_key'] ?? '').toString();
+
+  @override
+  void dispose() { _player.dispose(); super.dispose(); }
+
+  Future<void> _toggle() async {
+    if (_playing) { await _player.stop(); if (mounted) setState(() => _playing = false); return; }
+    if (_audioKey.isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      final url = 'https://$kSignalingHost/api/marketplace/audio?key=${Uri.encodeQueryComponent(_audioKey)}';
+      final r = await ApiAuth.getBytes(url);
+      if (r.statusCode != 200 || r.bodyBytes.isEmpty) { if (mounted) setState(() => _loading = false); return; }
+      _player.onPlayerComplete.listen((_) { if (mounted) setState(() => _playing = false); });
+      await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/wav'));
+      if (mounted) setState(() { _loading = false; _playing = true; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _isDeal ? const Color(0xFFD7F5DD) : const Color(0xFFFFF6CC); // green / pale yellow
+    final transcript = (_e['transcript'] as List?) ?? const [];
+    final text = (_e['text'] ?? (_isDeal ? 'Your agents reached a deal.' : 'Your agents finished negotiating.')).toString();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: Zine.ink, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(_isDeal ? '🤝 Deal' : '💬 No deal',
+              style: ZineText.tag(size: 12, color: Zine.ink)),
+        ]),
+        const SizedBox(height: 4),
+        Text(text, style: ZineText.sub(size: 13, color: Zine.ink)),
+        const SizedBox(height: 8),
+        Row(children: [
+          GestureDetector(
+            onTap: _audioKey.isEmpty ? null : _toggle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _audioKey.isEmpty ? Zine.inkSoft : Zine.ink,
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_loading ? Icons.hourglass_top : _playing ? Icons.stop : Icons.play_arrow,
+                    color: Colors.white, size: 18),
+                const SizedBox(width: 6),
+                Text(_audioKey.isEmpty ? 'No audio' : _playing ? 'Stop' : 'Play conversation',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+          const Spacer(),
+          if (transcript.isNotEmpty)
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Text(_expanded ? 'Hide' : 'Transcript',
+                  style: ZineText.tag(size: 12, color: Zine.inkSoft)),
+            ),
+        ]),
+        if (_expanded && transcript.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ...transcript.whereType<Map>().map((t) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('${t['speaker'] ?? 'Agent'}: ${t['text'] ?? ''}',
+                    style: ZineText.sub(size: 12, color: Zine.ink)),
+              )),
+        ],
+      ]),
+    );
+  }
 }
 
 /// Ava Receptionist message card (special kind 'recept', v2). Renders inside a

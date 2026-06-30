@@ -81,7 +81,7 @@ import {
 import { listingStats, creatorStats } from "./routes/insights";
 import {
   marketplaceAiAssist, marketplaceNegotiate, marketplaceNegotiateState,
-  marketplaceSearch, marketplacePrecheck,
+  marketplaceSearch, marketplacePrecheck, marketplaceAudio,
 } from "./routes/marketplace";
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
@@ -754,6 +754,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/marketplace/negotiate/state" && req.method === "GET") return await marketplaceNegotiateState(req, env);
       if (p === "/api/marketplace/search" && req.method === "GET") return await marketplaceSearch(req, env);
       if (p === "/api/marketplace/precheck" && req.method === "POST") return await marketplacePrecheck(req, env);
+      if (p === "/api/marketplace/audio" && req.method === "GET") return await marketplaceAudio(req, env);
       if (p === "/api/report" && req.method === "POST") return await report(req, env);
       if (p === "/api/creators/me" && req.method === "PUT") return await updateMyChannel(req, env);
       // Creator insights dashboards (owner-gated).

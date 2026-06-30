@@ -94,6 +94,10 @@ class AppRegistry {
     'avastorage',
     'avaapps',
     'avawallet',
+    // AvaMarketplace shows even in focus mode (owner decision 2026-06-30) so it's
+    // reachable without turning focus mode off; the destination is still gated by
+    // RemoteConfig.marketplaceEnabled.
+    'marketplace',
   };
 
   static List<AppEntry> get focusMode =>
