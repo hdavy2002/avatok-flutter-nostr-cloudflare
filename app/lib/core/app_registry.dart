@@ -35,7 +35,11 @@ const kAppRegistry = <AppEntry>[
   AppEntry('explore', 'AvaExplore', 'Marketplace', Icons.storefront, Color(0xFFFF6036), tier: AppTier.hidden),
   AppEntry('verse', 'AvaVerse', 'Your dashboard', Icons.dashboard, Color(0xFF6C5CE7), tier: AppTier.hidden),
   AppEntry('avapayout', 'AvaPayout', 'Withdraw your earnings', Icons.payments, Color(0xFF0A66C2), tier: AppTier.hidden),
-  AppEntry('avaidentity', 'AvaIdentity', 'Verify your identity', Icons.verified_user, Color(0xFF7C5CFC), tier: AppTier.hidden),
+  // Unhidden (AvaMarketplace P1, owner decision 2026-06-30): Identity is the
+  // single source of truth for marketplace listing eligibility (video ID + email
+  // + phone OTP), so it must be reachable from the sidebar. Routes to
+  // IdentityScreen via AvaShell._openDest('avaidentity').
+  AppEntry('avaidentity', 'AvaIdentity', 'Verify your identity', Icons.verified_user, Color(0xFF7C5CFC)),
   AppEntry('avabooking', 'AvaBooking', 'Your bookings', Icons.event_available, Color(0xFFE1306C), tier: AppTier.hidden),
   AppEntry('avacalendar', 'AvaCalendar', 'Availability & sync', Icons.calendar_month, Color(0xFFEAB308), tier: AppTier.hidden),
   AppEntry('avalive', 'AvaLive', 'Live streaming', Icons.sensors, Color(0xFFFF3B30), tier: AppTier.hidden),
