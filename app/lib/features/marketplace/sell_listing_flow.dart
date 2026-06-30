@@ -38,6 +38,37 @@ const List<String> kMarketCategories = [
   'Sports & Hobbies', 'Pets', 'Kids & Baby', 'Business & Industrial', 'Other',
 ];
 
+/// ISO-3166 alpha-2 → display name for the country picker. Full global list so a
+/// seller can place their listing in any market (pic 2). Sorted by name in the UI.
+const Map<String, String> kCountries = {
+  'AF': 'Afghanistan', 'AL': 'Albania', 'DZ': 'Algeria', 'AR': 'Argentina', 'AU': 'Australia',
+  'AT': 'Austria', 'BD': 'Bangladesh', 'BE': 'Belgium', 'BR': 'Brazil', 'BG': 'Bulgaria',
+  'CA': 'Canada', 'CL': 'Chile', 'CN': 'China', 'CO': 'Colombia', 'HR': 'Croatia',
+  'CZ': 'Czechia', 'DK': 'Denmark', 'EG': 'Egypt', 'FI': 'Finland', 'FR': 'France',
+  'DE': 'Germany', 'GH': 'Ghana', 'GR': 'Greece', 'HK': 'Hong Kong', 'HU': 'Hungary',
+  'IN': 'India', 'ID': 'Indonesia', 'IR': 'Iran', 'IQ': 'Iraq', 'IE': 'Ireland',
+  'IL': 'Israel', 'IT': 'Italy', 'JP': 'Japan', 'JO': 'Jordan', 'KE': 'Kenya',
+  'KW': 'Kuwait', 'MY': 'Malaysia', 'MX': 'Mexico', 'MA': 'Morocco', 'NP': 'Nepal',
+  'NL': 'Netherlands', 'NZ': 'New Zealand', 'NG': 'Nigeria', 'NO': 'Norway', 'OM': 'Oman',
+  'PK': 'Pakistan', 'PH': 'Philippines', 'PL': 'Poland', 'PT': 'Portugal', 'QA': 'Qatar',
+  'RO': 'Romania', 'RU': 'Russia', 'SA': 'Saudi Arabia', 'RS': 'Serbia', 'SG': 'Singapore',
+  'ZA': 'South Africa', 'KR': 'South Korea', 'ES': 'Spain', 'LK': 'Sri Lanka', 'SE': 'Sweden',
+  'CH': 'Switzerland', 'TW': 'Taiwan', 'TZ': 'Tanzania', 'TH': 'Thailand', 'TR': 'Türkiye',
+  'UG': 'Uganda', 'UA': 'Ukraine', 'AE': 'United Arab Emirates', 'GB': 'United Kingdom',
+  'US': 'United States', 'VN': 'Vietnam', 'ZW': 'Zimbabwe',
+};
+
+/// Country codes sorted by display name for the dropdown.
+final List<String> kCountryCodes = kCountries.keys.toList()
+  ..sort((a, b) => kCountries[a]!.compareTo(kCountries[b]!));
+
+String flagFor(String cc) {
+  if (cc.length != 2) return '🌍';
+  final up = cc.toUpperCase();
+  return String.fromCharCode(0x1F1E6 + up.codeUnitAt(0) - 65) +
+      String.fromCharCode(0x1F1E6 + up.codeUnitAt(1) - 65);
+}
+
 class _SellListingFlowState extends State<SellListingFlow> {
   int _step = 0;
   String _type = 'sell'; // sell | buy | social
@@ -46,6 +77,11 @@ class _SellListingFlowState extends State<SellListingFlow> {
   final _title = TextEditingController();
   final _desc = TextEditingController();
   String _category = 'Vehicles';
+  // Default to the device's country so the listing lands in the seller's market.
+  String _country = (() {
+    final cc = WidgetsBinding.instance.platformDispatcher.locale.countryCode?.toUpperCase();
+    return (cc != null && kCountries.containsKey(cc)) ? cc : 'US';
+  })();
   final _location = TextEditingController();
   final _price = TextEditingController();
   String _currency = 'USD';
@@ -78,19 +114,28 @@ class _SellListingFlowState extends State<SellListingFlow> {
   }
 
   /// Zine-style input: white fill, 2px black border, rounded — matches the
-  /// AvaTOK design system (bordered cards + lime buttons).
-  InputDecoration _box(String label, {String? hint}) => InputDecoration(
-        labelText: label,
+  /// AvaTOK design system (bordered cards + lime buttons). Labels are rendered
+  /// ABOVE each field at a readable size (the floating-label form was tiny).
+  InputDecoration _box({String? hint}) => InputDecoration(
         hintText: hint,
         filled: true,
         fillColor: Colors.white,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        floatingLabelBehavior: FloatingLabelBehavior.always,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.black, width: 2)),
       );
+
+  /// A big, readable field label sitting above its input.
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6, top: 2),
+        child: Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black)),
+      );
+
+  /// Label + field stacked — replaces the tiny floating labels (pic 1).
+  Widget _field(String label, Widget input) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_label(label), input]);
 
   String get _exampleInstruction {
     switch (_type) {
@@ -121,6 +166,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
         'title': _title.text.trim(),
         'description': _desc.text.trim(),
         'category': _category,
+        'country': _country,
         'location': _location.text.trim(),
         'price_amount': int.tryParse(_price.text.trim()) ?? 0,
         'price_currency': _currency,
@@ -133,6 +179,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
 
   Future<void> _submit() async {
     setState(() { _busy = true; _error = null; });
+    final sw = Stopwatch()..start();
     Analytics.capture('listing_submitted', {
       'type': _type, 'category': _category,
       'price_amount': int.tryParse(_price.text.trim()) ?? 0, 'price_currency': _currency,
@@ -155,7 +202,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (res.isEmpty) {
-      Analytics.capture('listing_published', {'type': _type});
+      Analytics.capture('listing_published', {'type': _type, 'submit_ms': sw.elapsedMilliseconds});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Listing submitted for review.')));
@@ -207,11 +254,11 @@ class _SellListingFlowState extends State<SellListingFlow> {
                 onSelectionChanged: (s) => setState(() => _type = s.first),
               ),
               if (_type == 'social') ...[
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                const SizedBox(height: 14),
+                _field('Social type', DropdownButtonFormField<String>(
                   value: _socialSub,
                   isExpanded: true,
-                  decoration: _box('Social type'),
+                  decoration: _box(),
                   items: const [
                     DropdownMenuItem(value: 'dating', child: Text('Dating')),
                     DropdownMenuItem(value: 'matrimony', child: Text('Matrimony')),
@@ -219,27 +266,38 @@ class _SellListingFlowState extends State<SellListingFlow> {
                     DropdownMenuItem(value: 'events', child: Text('Community events')),
                   ],
                   onChanged: (v) => setState(() => _socialSub = v ?? 'roommate'),
-                ),
+                )),
               ],
             ]),
           ),
           Step(
             title: const Text('Details'),
             isActive: _step >= 1,
-            content: Column(children: [
-              TextField(controller: _title, decoration: _box('Title')),
-              const SizedBox(height: 12),
-              TextField(controller: _desc, maxLines: 4, decoration: _box('Description')),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+            content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _field('Title', TextField(controller: _title, decoration: _box(hint: 'What are you listing?'))),
+              const SizedBox(height: 14),
+              _field('Description', TextField(controller: _desc, maxLines: 4, decoration: _box(hint: 'Add the details buyers need'))),
+              const SizedBox(height: 14),
+              _field('Category', DropdownButtonFormField<String>(
                 value: _category,
                 isExpanded: true,
-                decoration: _box('Category'),
+                decoration: _box(),
                 items: [for (final c in kMarketCategories) DropdownMenuItem(value: c, child: Text(c))],
                 onChanged: (v) => setState(() => _category = v ?? kMarketCategories.first),
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: _location, decoration: _box('Location', hint: 'City or area')),
+              )),
+              const SizedBox(height: 14),
+              _field('Country', DropdownButtonFormField<String>(
+                value: _country,
+                isExpanded: true,
+                decoration: _box(),
+                items: [
+                  for (final cc in kCountryCodes)
+                    DropdownMenuItem(value: cc, child: Text('${flagFor(cc)}  ${kCountries[cc]}')),
+                ],
+                onChanged: (v) => setState(() => _country = v ?? _country),
+              )),
+              const SizedBox(height: 14),
+              _field('Location', TextField(controller: _location, decoration: _box(hint: 'City or area'))),
             ]),
           ),
           Step(
@@ -247,22 +305,22 @@ class _SellListingFlowState extends State<SellListingFlow> {
             isActive: _step >= 2,
             content: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
-                child: TextField(
+                child: _field(_type == 'social' ? 'Budget (optional)' : 'Price', TextField(
                   controller: _price,
                   keyboardType: TextInputType.number,
-                  decoration: _box(_type == 'social' ? 'Budget (optional)' : 'Price'),
-                ),
+                  decoration: _box(hint: '0'),
+                )),
               ),
               const SizedBox(width: 12),
               SizedBox(
-                width: 116,
-                child: DropdownButtonFormField<String>(
+                width: 120,
+                child: _field('Currency', DropdownButtonFormField<String>(
                   value: _currency,
                   isExpanded: true,
-                  decoration: _box('Currency'),
+                  decoration: _box(),
                   items: [for (final c in kMarketCurrencies) DropdownMenuItem(value: c, child: Text(c))],
                   onChanged: (v) => setState(() => _currency = v ?? 'USD'),
-                ),
+                )),
               ),
             ]),
           ),
@@ -270,9 +328,8 @@ class _SellListingFlowState extends State<SellListingFlow> {
             title: const Text('Your agent'),
             isActive: _step >= 3,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Tell your agent how to negotiate on your behalf:'),
-              const SizedBox(height: 6),
-              TextField(controller: _agentInstr, maxLines: 4, decoration: _box('Agent instructions')),
+              _label('Tell your agent how to negotiate for you'),
+              TextField(controller: _agentInstr, maxLines: 4, decoration: _box(hint: 'Your price stance, key facts, tone…')),
               const SizedBox(height: 4),
               Row(children: [
                 TextButton.icon(
@@ -286,17 +343,17 @@ class _SellListingFlowState extends State<SellListingFlow> {
                 decoration: BoxDecoration(color: const Color(0x0A000000), borderRadius: BorderRadius.circular(6)),
                 child: Text('Example: $_exampleInstruction', style: const TextStyle(fontSize: 12)),
               ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              const SizedBox(height: 14),
+              _field('Agent language', DropdownButtonFormField<String>(
                 value: _agentLang,
                 isExpanded: true,
-                decoration: _box('Agent language'),
+                decoration: _box(),
                 items: [for (final l in kAgentLangs) DropdownMenuItem(value: l, child: Text(l))],
                 onChanged: (v) => setState(() => _agentLang = v ?? 'English'),
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: _accent,
-                  decoration: _box('Accent / persona (optional)', hint: 'e.g. warm, Punjabi accent')),
+              )),
+              const SizedBox(height: 14),
+              _field('Accent / persona (optional)', TextField(controller: _accent,
+                  decoration: _box(hint: 'e.g. warm, Punjabi accent'))),
               const SizedBox(height: 4),
               const Text('If the other agent doesn’t speak your language, both fall back to English with your accent.',
                   style: TextStyle(fontSize: 11, color: Colors.black54)),
@@ -306,7 +363,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
             title: const Text('Photos'),
             isActive: _step >= 4,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Add up to 5 photos (optional).', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const Text('Add photos — max 5', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (var i = 0; i < _coverUrls.length; i++)
