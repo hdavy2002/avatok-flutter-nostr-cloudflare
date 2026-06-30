@@ -47,11 +47,15 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
             if (snap.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
             }
-            final items = snap.data ?? const <ListingCard>[];
+            // Cancelled (deleted) and expired listings live in Archived — keep
+            // them OUT of My Listings so they don't appear duplicated (pic 7/9).
+            final items = (snap.data ?? const <ListingCard>[])
+                .where((c) => c.status != 'cancelled' && !c.isExpired)
+                .toList();
             if (items.isEmpty) {
               return ListView(children: const [
                 SizedBox(height: 120),
-                Center(child: Text('You have no listings yet.')),
+                Center(child: Text('You have no active listings yet.')),
               ]);
             }
             return ListView.separated(
