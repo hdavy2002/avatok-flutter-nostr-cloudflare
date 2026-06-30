@@ -1,7 +1,36 @@
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 
 import 'api_auth.dart';
 import 'config.dart';
+
+/// Tiny disk cache for marketplace browse results so the grid shows instantly
+/// on reopen instead of reloading blank every time. Entries expire after a TTL
+/// (pic 3); pull-to-refresh forces a fresh fetch.
+class _MarketCache {
+  static Future<File> _file(String key) async {
+    final base = await getApplicationSupportDirectory();
+    final d = Directory('${base.path}/mktcache');
+    if (!await d.exists()) await d.create(recursive: true);
+    final safe = key.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+    return File('${d.path}/$safe.json');
+  }
+
+  static Future<List<dynamic>?> readFresh(String key, Duration ttl) async {
+    try {
+      final f = await _file(key);
+      if (!await f.exists()) return null;
+      if (DateTime.now().difference(await f.lastModified()) > ttl) return null;
+      return jsonDecode(await f.readAsString()) as List<dynamic>;
+    } catch (_) { return null; }
+  }
+
+  static Future<void> write(String key, List<dynamic> raw) async {
+    try { await (await _file(key)).writeAsString(jsonEncode(raw)); } catch (_) {/* best-effort */}
+  }
+}
 
 /// ListingsApi (Phase 6) — AvaExplore marketplace + creator listings pipeline.
 /// Marketplace reads are public (guest browsing works signed-out); everything
@@ -200,9 +229,9 @@ class ListingsApi {
   /// AvaMarketplace browse — buy/sell/social only. Country-filtered by default
   /// (the user's detected country); pass country='' for all countries. A query
   /// routes through search (FTS/AI), filtered to marketplace listings.
-  static Future<List<ListingCard>> marketBrowse({String? country, String? category, String? q}) async {
+  static Future<List<ListingCard>> marketBrowse({String? country, String? category, String? q, bool forceFresh = false}) async {
     if (q != null && q.trim().isNotEmpty) {
-      // AI search endpoint (query expansion + marketplace filter, server-side).
+      // Search is never cached (results depend on the live query).
       final params = <String>[
         'q=${Uri.encodeQueryComponent(q.trim())}', 'limit=40',
         if (country != null && country.isNotEmpty) 'country=$country',
@@ -216,8 +245,19 @@ class ListingsApi {
       if (country != null && country.isNotEmpty) 'country=$country',
       if (category != null && category.isNotEmpty) 'category=${Uri.encodeQueryComponent(category)}',
     ].join('&');
+    final cacheKey = 'market_${country ?? ''}_${category ?? ''}';
+    // Stale-while-revalidate: serve a fresh-enough cache instantly unless the
+    // caller forced a refresh (pull-to-refresh).
+    if (!forceFresh) {
+      final cached = await _MarketCache.readFresh(cacheKey, const Duration(minutes: 10));
+      if (cached != null) {
+        return cached.map((r) => ListingCard.fromJson((r as Map).cast<String, dynamic>())).toList();
+      }
+    }
     final r = await ApiAuth.getSigned('$_base/explore?$params');
-    return _cards(_j(r.body));
+    final list = (_j(r.body)['listings'] as List?) ?? const [];
+    await _MarketCache.write(cacheKey, list);
+    return list.map((x) => ListingCard.fromJson((x as Map).cast<String, dynamic>())).toList();
   }
 
   static Future<List<ListingCard>> liveNow() async {

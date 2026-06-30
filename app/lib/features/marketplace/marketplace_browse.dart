@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'dart:io';
+
 import '../../core/analytics.dart';
+import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
 import '../explore/listing_detail.dart';
 import 'sell_listing_flow.dart' show kMarketCategories;
@@ -38,19 +41,19 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
     _load();
   }
 
-  void _load() {
-    _future = _fetch();
+  void _load({bool fresh = false}) {
+    _future = _fetch(fresh: fresh);
     setState(() {});
   }
 
   /// Fetch listings; if "My country" yields nothing, auto-fall back to all
   /// countries so the user always sees results instead of an empty grid.
-  Future<List<ListingCard>> _fetch() async {
+  Future<List<ListingCard>> _fetch({bool fresh = false}) async {
     final country = _myCountryOnly && _country.isNotEmpty ? _country : '';
     final q = _search.text.trim();
-    final items = await ListingsApi.marketBrowse(country: country, category: _category, q: q);
+    final items = await ListingsApi.marketBrowse(country: country, category: _category, q: q, forceFresh: fresh);
     if (items.isEmpty && country.isNotEmpty) {
-      final all = await ListingsApi.marketBrowse(country: '', category: _category, q: q);
+      final all = await ListingsApi.marketBrowse(country: '', category: _category, q: q, forceFresh: fresh);
       if (all.isNotEmpty && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() => _myCountryOnly = false);
@@ -130,7 +133,7 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
         const Divider(height: 1),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: () async => _load(),
+            onRefresh: () async => _load(fresh: true),
             child: FutureBuilder<List<ListingCard>>(
               future: _future,
               builder: (context, snap) {
@@ -162,6 +165,33 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   }
 }
 
+/// Disk-cached cover image — loads from the on-device cache so it doesn't
+/// re-download on every scroll/reopen (pic 3). Falls back to a placeholder.
+class _CachedCover extends StatelessWidget {
+  final String? url;
+  const _CachedCover({required this.url});
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      color: const Color(0x11000000),
+      child: const Center(child: Icon(Icons.inventory_2_outlined, size: 36, color: Colors.black26)),
+    );
+    if (url == null || url!.isEmpty) return placeholder;
+    return FutureBuilder<File?>(
+      future: AvatarCache.getAny(url!, 600),
+      builder: (_, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return Container(color: const Color(0x08000000));
+        }
+        final f = snap.data;
+        if (f == null) return placeholder;
+        return Image.file(f, width: double.infinity, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => placeholder);
+      },
+    );
+  }
+}
+
 class _Card extends StatelessWidget {
   final ListingCard card;
   const _Card({required this.card});
@@ -181,12 +211,7 @@ class _Card extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: card.coverUrl != null
-                ? Image.network(card.coverUrl!, width: double.infinity, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: const Color(0x11000000), child: const Icon(Icons.image_not_supported)))
-                : Container(color: const Color(0x11000000), child: const Center(child: Icon(Icons.inventory_2_outlined, size: 36))),
-          ),
+          Expanded(child: _CachedCover(url: card.coverUrl)),
           Padding(
             padding: const EdgeInsets.all(8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

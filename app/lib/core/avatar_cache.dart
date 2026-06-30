@@ -55,4 +55,24 @@ class AvatarCache {
     } catch (_) {/* fall through to null */}
     return null;
   }
+
+  /// Host-aware variant for listing images. Only avatok.ai hosts support the
+  /// /cdn-cgi/image transform — other hosts (e.g. test/placeholder images) are
+  /// fetched raw. Caches the bytes on disk so the image loads instantly next
+  /// time instead of re-downloading on every scroll/open (pic 3).
+  static Future<File?> getAny(String rawUrl, int px) async {
+    if (rawUrl.isEmpty) return null;
+    try {
+      final f = File('${(await _dir()).path}/${_name(rawUrl, px)}');
+      if (await f.exists() && await f.length() > 0) return f;
+      final host = Uri.parse(rawUrl).host;
+      final fetchUrl = host.endsWith('avatok.ai') ? transformUrl(rawUrl, px) : rawUrl;
+      final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+        await f.writeAsBytes(res.bodyBytes, flush: true);
+        return f;
+      }
+    } catch (_) {/* fall through to null */}
+    return null;
+  }
 }
