@@ -146,10 +146,19 @@ async function inboxAppend(env: Env, recipient: string, sender: string, conv: st
   // write a separate copy to each party's own InboxDO, so per-recipient privacy
   // scoping isn't needed — and an unscoped message is what the app's sync/chat-list
   // reliably surfaces (a `to:<uid>` private scope was an extra failure surface).
-  await stub.fetch("https://inbox/append", {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, created_at: Date.now(), owner: recipient }),
-  });
+  try {
+    const res = await stub.fetch("https://inbox/append", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, created_at: Date.now(), owner: recipient }),
+    });
+    const out: any = await res.json().catch(() => ({}));
+    // Definitive proof the row landed in the recipient's InboxDO (msg_id) vs a
+    // silent failure — distinguishes "delivery broken" from "app didn't render".
+    track(env, recipient, "mkt_inbox_appended", "avamarketplace", { ok: res.ok, status: res.status, msg_id: out?.id ?? null, recipient, sender, conv });
+  } catch (e) {
+    track(env, recipient, "mkt_inbox_append_error", "avamarketplace", { recipient, conv, error: String((e as any)?.message ?? e).slice(0, 160) });
+    throw e;
+  }
 }
 
 /**
