@@ -16,5 +16,8 @@ CREATE TABLE IF NOT EXISTS message_index (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (conv, serial)
 );
-CREATE INDEX IF NOT EXISTS idx_msgidx_conv_created ON message_index(conv, created_at DESC);
+-- [IDX-PRUNE-1] idx_msgidx_conv_created removed: paged thread reads use the
+-- PRIMARY KEY (conv, serial) (archive.ts: WHERE conv=? ORDER BY serial DESC).
+-- serial is chronologically sortable, so a (conv, created_at) index is redundant
+-- write amplification. drop_idx_msgidx_conv_created.sql drops it where applied.
 CREATE INDEX IF NOT EXISTS idx_msgidx_sender       ON message_index(sender, created_at DESC);
