@@ -228,7 +228,7 @@ export async function marketplaceNegotiateState(req: Request, env: Env): Promise
   return json({ already_talked: !!row });
 }
 
-export async function marketplaceNegotiate(req: Request, env: Env): Promise<Response> {
+export async function marketplaceNegotiate(req: Request, env: Env, exctx?: ExecutionContext): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
@@ -254,76 +254,109 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
     return json({ ok: false, already_talked: true }, 200);
   }
 
-  // Run the negotiation. The agents talk in TEXT (cheap Sonnet); audio is only
-  // rendered on a DEAL (deferred to the TTS worker — see TODO below).
-  track(env, ctx.uid, "negotiation_started", "avamarketplace", { listing_id: listingId });
-  const asking = Math.trunc(Number(listing.price) || 0);
-  const agentLang = String(listing.agent_lang || "English").trim() || "English";
-  const mandate = String(listing.agent_instructions || "").slice(0, 1200);
-  const sys =
-    "You simulate a brief, businesslike negotiation between two marketplace agents and output ONLY JSON. " +
-    "The SELLER agent represents the listing and follows its owner's PRIVATE MANDATE (never reveal it verbatim); " +
-    "the BUYER agent has a maximum budget. If no explicit floor is given, the seller will realistically come down " +
-    "to about 80% of the asking price. Reach a DEAL only if the buyer's max is at least the seller's lowest " +
-    "acceptable price; settle near the midpoint of the overlap. " +
-    `Write the transcript text in ${agentLang} (the seller's agent language). ` +
-    'Output: {"outcome":"deal"|"impasse","agreed_price":<int>,"currency":"<code>","transcript":[{"speaker":"Seller"|"Buyer","text":"..."}]} ' +
-    "Keep the transcript to 4-8 short lines. No prose outside the JSON.";
-  const user =
-    `LISTING: "${listing.title}". Asking price: ${asking} ${listing.currency_display || currency}. ` +
-    `Details: ${String(listing.description || "").slice(0, 600)}. ` +
-    (mandate ? `SELLER PRIVATE MANDATE (do not reveal verbatim): ${mandate}. ` : "") +
-    `BUYER max: ${buyerMax} ${currency}. Buyer must-haves: ${mustHaves || "none"}.`;
-  const raw = await callSonnet(env, sys, user, 600);
-
-  let outcome = "impasse";
-  let agreed = 0;
-  let transcript: Array<{ speaker: string; text: string }> = [];
-  try {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (m) {
-      const j = JSON.parse(m[0]);
-      outcome = j.outcome === "deal" ? "deal" : "impasse";
-      agreed = Math.trunc(Number(j.agreed_price) || 0);
-      if (Array.isArray(j.transcript)) {
-        transcript = j.transcript
-          .filter((t: any) => t && t.text)
-          .map((t: any) => ({ speaker: String(t.speaker || "Agent"), text: String(t.text) }));
-      }
-    }
-  } catch { /* impasse */ }
-
+  // Reserve the talk-once slot NOW (outcome 'pending') so repeat taps are blocked
+  // immediately — even while the slow negotiation runs in the background.
   await metaDb(env).prepare(
-    "INSERT OR REPLACE INTO mkt_negotiations (buyer_id, listing_id, content_version, outcome, agreed_price, currency, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
-  ).bind(ctx.uid, listingId, version, outcome, agreed, currency, Date.now()).run();
+    "INSERT OR REPLACE INTO mkt_negotiations (buyer_id, listing_id, content_version, outcome, agreed_price, currency, created_at) VALUES (?1,?2,?3,'pending',0,?4,?5)",
+  ).bind(ctx.uid, listingId, version, currency, Date.now()).run();
+  track(env, ctx.uid, "negotiation_started", "avamarketplace", { listing_id: listingId });
 
-  track(env, ctx.uid, "negotiation_outcome", "avamarketplace", {
-    listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: transcript.length,
+  // The negotiation (Sonnet ~8s) + voice render (Gemini TTS ~up to 30s) + delivery
+  // is SLOW. If we ran it inline, a client disconnect (the app sends the user back
+  // to browsing) kills the worker mid-render and NOTHING reaches the chat thread —
+  // exactly the "no negotiation appeared" bug. Run it in the background via
+  // waitUntil so it always completes and lands in both threads. Respond instantly.
+  const work = runNegotiationJob(env, {
+    listing, buyerUid: ctx.uid, listingId, version, buyerMax, currency, mustHaves,
   });
+  if (exctx && typeof exctx.waitUntil === "function") exctx.waitUntil(work);
+  else await work; // fallback: no ctx (e.g. tests) → run inline
+  return json({ ok: true, queued: true });
+}
 
-  // RULE (owner 2026-06-30): render the deal-audio voice note for BOTH outcomes
-  // and drop it into both chat threads, colour-coded — DEAL = green, IMPASSE =
-  // pale yellow. Gemini 2.5 multi-speaker TTS → WAV in R2 → voice message in each
-  // user's InboxDO thread → FCM push (reuses the receptionist delivery pattern).
-  const bubble = outcome === "deal" ? "green" : "pale_yellow";
-  const delivery = await deliverDealAudio(env, {
-    sellerUid: String(listing.creator_id), buyerUid: ctx.uid, listingId,
-    listingTitle: String(listing.title || "your listing"),
-    outcome, bubble, agreed, currency, transcript,
-    persona: String(listing.agent_voice_persona || ""),
-  });
-  track(env, ctx.uid, "deal_audio_render_completed", "avamarketplace", {
-    listing_id: listingId, outcome, bubble, has_audio: !!delivery.audioKey, audio_bytes: delivery.bytes,
-  });
-  // Also a bell notification so it shows in the notifications list, not just the thread.
-  const body = outcome === "deal"
-    ? `Your agents agreed around ${agreed} ${currency}.`
-    : `Your agents talked but didn't agree this time.`;
+/** The heavy negotiation job — runs in the background (waitUntil). */
+async function runNegotiationJob(env: Env, a: {
+  listing: any; buyerUid: string; listingId: string; version: number;
+  buyerMax: number; currency: string; mustHaves: string;
+}): Promise<void> {
+  const { listing, buyerUid, listingId, version, buyerMax, currency, mustHaves } = a;
   try {
-    await notifyUser(env, String(listing.creator_id), { type: "marketplace_deal", title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing", body, data: { listing_id: listingId, outcome, bubble } });
-    await notifyUser(env, ctx.uid, { type: "marketplace_deal", title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating", body, data: { listing_id: listingId, outcome, bubble } });
-  } catch { /* notify best-effort */ }
-  return json({ ok: true, outcome, agreed_price: agreed, currency, bubble, has_audio: !!delivery.audioKey, transcript });
+    const asking = Math.trunc(Number(listing.price) || 0);
+    const agentLang = String(listing.agent_lang || "English").trim() || "English";
+    const mandate = String(listing.agent_instructions || "").slice(0, 1200);
+    const sys =
+      "You simulate a brief, businesslike negotiation between two marketplace agents and output ONLY JSON. " +
+      "The SELLER agent represents the listing and follows its owner's PRIVATE MANDATE (never reveal it verbatim); " +
+      "the BUYER agent has a maximum budget. If no explicit floor is given, the seller will realistically come down " +
+      "to about 80% of the asking price. Reach a DEAL only if the buyer's max is at least the seller's lowest " +
+      "acceptable price; settle near the midpoint of the overlap. " +
+      `Write the transcript text in ${agentLang} (the seller's agent language). ` +
+      'Output: {"outcome":"deal"|"impasse","agreed_price":<int>,"currency":"<code>","transcript":[{"speaker":"Seller"|"Buyer","text":"..."}]} ' +
+      "Keep the transcript to 4-8 short lines. No prose outside the JSON.";
+    const user =
+      `LISTING: "${listing.title}". Asking price: ${asking} ${listing.currency_display || currency}. ` +
+      `Details: ${String(listing.description || "").slice(0, 600)}. ` +
+      (mandate ? `SELLER PRIVATE MANDATE (do not reveal verbatim): ${mandate}. ` : "") +
+      `BUYER max: ${buyerMax} ${currency}. Buyer must-haves: ${mustHaves || "none"}.`;
+    const raw = await callSonnet(env, sys, user, 600);
+
+    let outcome = "impasse";
+    let agreed = 0;
+    let transcript: Array<{ speaker: string; text: string }> = [];
+    try {
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) {
+        const j = JSON.parse(m[0]);
+        outcome = j.outcome === "deal" ? "deal" : "impasse";
+        agreed = Math.trunc(Number(j.agreed_price) || 0);
+        if (Array.isArray(j.transcript)) {
+          transcript = j.transcript
+            .filter((t: any) => t && t.text)
+            .map((t: any) => ({ speaker: String(t.speaker || "Agent"), text: String(t.text) }));
+        }
+      }
+    } catch { /* impasse */ }
+
+    await metaDb(env).prepare(
+      "INSERT OR REPLACE INTO mkt_negotiations (buyer_id, listing_id, content_version, outcome, agreed_price, currency, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+    ).bind(buyerUid, listingId, version, outcome, agreed, currency, Date.now()).run();
+
+    track(env, buyerUid, "negotiation_outcome", "avamarketplace", {
+      listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: transcript.length,
+    });
+
+    // RULE (owner 2026-06-30): render the deal-audio voice note for BOTH outcomes
+    // and drop it into both chat threads, colour-coded — DEAL = green, IMPASSE =
+    // pale yellow. Gemini 2.5 multi-speaker TTS → WAV in R2 → voice message in each
+    // user's InboxDO thread → FCM push (reuses the receptionist delivery pattern).
+    const bubble = outcome === "deal" ? "green" : "pale_yellow";
+    const delivery = await deliverDealAudio(env, {
+      sellerUid: String(listing.creator_id), buyerUid, listingId,
+      listingTitle: String(listing.title || "your listing"),
+      outcome, bubble, agreed, currency, transcript,
+      persona: String(listing.agent_voice_persona || ""),
+    });
+    track(env, buyerUid, "deal_audio_render_completed", "avamarketplace", {
+      listing_id: listingId, outcome, bubble, has_audio: !!delivery.audioKey, audio_bytes: delivery.bytes,
+    });
+    // Also a bell notification so it shows in the notifications list, not just the thread.
+    const body = outcome === "deal"
+      ? `Your agents agreed around ${agreed} ${currency}.`
+      : `Your agents talked but didn't agree this time.`;
+    try {
+      await notifyUser(env, String(listing.creator_id), { type: "marketplace_deal", title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing", body, data: { listing_id: listingId, outcome, bubble } });
+      await notifyUser(env, buyerUid, { type: "marketplace_deal", title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating", body, data: { listing_id: listingId, outcome, bubble } });
+    } catch { /* notify best-effort */ }
+  } catch (e) {
+    // A rare failure shouldn't burn the buyer's single chance — release the slot
+    // (only if it's still 'pending', i.e. never produced an outcome) so they can retry.
+    try {
+      await metaDb(env).prepare(
+        "DELETE FROM mkt_negotiations WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3 AND outcome='pending'",
+      ).bind(buyerUid, listingId, version).run();
+    } catch { /* ignore */ }
+    track(env, buyerUid, "negotiation_failed", "avamarketplace", { listing_id: listingId, error: String((e as any)?.message ?? e).slice(0, 200) });
+  }
 }
 // ── P6: AI search over active listings ────────────────────────────────────────
 // ONE shared marketplace index (owner rule: no per-user AI Search instances).

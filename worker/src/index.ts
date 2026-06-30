@@ -750,7 +750,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/listings/mine" && req.method === "GET") return await myListings(req, env);
       // --- AvaMarketplace (buy/sell/social + agent negotiation) ---
       if (p === "/api/marketplace/ai-assist" && req.method === "POST") return await marketplaceAiAssist(req, env);
-      if (p === "/api/marketplace/negotiate" && req.method === "POST") return await marketplaceNegotiate(req, env);
+      if (p === "/api/marketplace/negotiate" && req.method === "POST") return await marketplaceNegotiate(req, env, ctx);
       if (p === "/api/marketplace/negotiate/state" && req.method === "GET") return await marketplaceNegotiateState(req, env);
       if (p === "/api/marketplace/search" && req.method === "GET") return await marketplaceSearch(req, env);
       if (p === "/api/marketplace/precheck" && req.method === "POST") return await marketplacePrecheck(req, env);
