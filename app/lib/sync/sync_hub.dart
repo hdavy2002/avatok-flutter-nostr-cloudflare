@@ -115,12 +115,22 @@ class SyncHub {
       unawaited(drainPendingDeletes()); // apply deletes queued while backgrounded
       unawaited(drainPendingHides());   // apply hide/undo queued while backgrounded
       unawaited(drainPendingCallOps()); // apply call-log deletes/clears queued while asleep
+      // DUAL TRANSPORT (fix 2026-06-30): when Ably is on we ALSO keep the InboxDO
+      // socket open instead of replacing it. Ably carries the snappy EPHEMERAL
+      // layer (typing / presence / receipts) plus an instant live copy of new
+      // messages; the InboxDO socket stays the DURABLE backbone — it runs the
+      // cursor 'hello' backlog restore (critical after a reinstall, since Ably
+      // keeps no history), the 'sync' frame that rebuilds read-state / hidden
+      // flags / the call-log snapshot, and reliable delivery whenever Ably is
+      // suspended. Previously Ably REPLACED the socket, which silently dropped all
+      // of that (empty threads + lost call records on every fresh install). They
+      // now run side by side; durable messages are de-duped across both paths by
+      // rumorId (see the bridge in _startAbly and _ingestMsg).
       if (useAblyTransport()) {
-        _startAbly(); // iOS/Android 'ably' provider — no InboxDO socket
-      } else {
-        _open();
+        _startAbly();
       }
-      AvaLog.I.log('hub', 'sync started for uid=${_myUid} (ably=${useAblyTransport()})');
+      _open(); // durable backbone — ALWAYS on (desktop already relied on this).
+      AvaLog.I.log('hub', 'sync started for uid=${_myUid} (ably=${useAblyTransport()}, dualTransport=${useAblyTransport()})');
     } else {
       ensureConnected();
     }
@@ -135,7 +145,11 @@ class SyncHub {
     final t = AblyTransport(uid);
     _ably = t;
     // Durable messages → HubEvent (AblyTransport already persisted to drift).
+    // Shared dedup with the InboxDO durable path via [_seen]: whichever transport
+    // delivers a given rumorId first wins, the other is dropped here so a thread
+    // never double-renders a message now that both Ably and the socket carry it.
     _ablyBridge.add(t.messages.listen((m) {
+      if (!_seen.add(m.rumorId)) return;
       _incoming.add(HubEvent(m.convKey, m.senderUid, uid, m.mine, m.rumorId, m.payload, m.createdAt));
     }));
     // Delivered/read receipts → the same receipt HubEvent shape threads expect.
@@ -144,12 +158,12 @@ class SyncHub {
       _incoming.add(HubEvent(r.convKey, '', uid, false, 'rcpt_${r.convKey}_${r.ts}', payload, r.ts));
     }));
     unawaited(t.start());
-    Analytics.capture('ably_transport_started', const {});
-    AvaLog.I.log('hub', 'Ably transport active for uid=$uid (InboxDO socket skipped)');
+    Analytics.capture('ably_transport_started', const {'dual_transport': true});
+    AvaLog.I.log('hub', 'Ably transport active for uid=$uid (alongside InboxDO socket)');
   }
 
   void ensureConnected() {
-    if (ablyActive) { _ably?.onResumed(); return; } // Ably self-manages its connection
+    if (ablyActive) _ably?.onResumed(); // nudge Ably; the durable socket is still managed below
     if (!_wantConnected) return;
     unawaited(drainPendingDeletes()); // a foreground wake also flushes queued deletes
     unawaited(drainPendingHides());   // …and queued hide/undo ops
@@ -167,7 +181,7 @@ class SyncHub {
   /// message still wasn't there" — [ensureConnected] alone is fooled by a zombie
   /// `_ch` that is non-null but dead.
   void onAppResumed() {
-    if (ablyActive) { _ably?.onResumed(); return; } // Ably reconnects itself
+    if (ablyActive) _ably?.onResumed(); // nudge Ably; the InboxDO socket is probed below too
     if (!_wantConnected) return;
     if (_ch == null) { ensureConnected(); return; }
     final probedAt = DateTime.now().millisecondsSinceEpoch;
@@ -381,6 +395,11 @@ class SyncHub {
               .toList();
           if (calls.isNotEmpty) unawaited(CallLogStore().applyServerSnapshot(calls));
         }
+        // After a backlog/restore sync the local DB now holds conversations that
+        // didn't exist when Ably started (the reinstall case: Ably came up against
+        // an empty drift and subscribed to nothing). Re-run Ably's known-conv
+        // subscription so live delivery covers the just-restored threads too.
+        if (_ably != null) unawaited(_ably!.resubscribeKnown());
         break;
       case 'msg':
         _ingestMsg(m);

@@ -105,25 +105,40 @@ class AblyTransport extends AvaTransport {
   }
 
   /// authCallback: fetch a short-lived Ably JWT from the Worker (Clerk bearer).
+  ///
+  /// Retries a few times before giving up. Previously a SINGLE transient Worker
+  /// blip (DNS flap on a wifi/LTE switch, a cold start, a 5xx) threw straight out
+  /// of authCallback, which dropped the Ably connection to `suspended` and stalled
+  /// all realtime delivery until the next app resume. The bounded retry absorbs
+  /// those blips so the connection re-auths and stays up. (Durable messages still
+  /// flow over the InboxDO socket meanwhile — see SyncHub dual transport.)
   Future<ably.TokenDetails> _mintToken() async {
-    final t0 = DateTime.now().millisecondsSinceEpoch;
-    try {
-      final res = await ApiAuth.postJson(kAblyTokenUrl, const {});
-      if (res.statusCode != 200) {
-        Analytics.capture('ably_token_mint_failed', {'status': res.statusCode});
-        throw Exception('ably token ${res.statusCode}');
+    Object? lastErr;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final t0 = DateTime.now().millisecondsSinceEpoch;
+      try {
+        final res = await ApiAuth.postJson(kAblyTokenUrl, const {});
+        if (res.statusCode != 200) {
+          Analytics.capture('ably_token_mint_failed', {'status': res.statusCode, 'attempt': attempt});
+          throw Exception('ably token ${res.statusCode}');
+        }
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final jwt = (body['token'] ?? '').toString();
+        Analytics.capture('ably_token_minted', {
+          'ms': DateTime.now().millisecondsSinceEpoch - t0,
+          if (attempt > 0) 'attempt': attempt,
+        });
+        // A JWT supplied as an Ably token literal.
+        return ably.TokenDetails(jwt);
+      } catch (e) {
+        lastErr = e;
+        Analytics.capture('ably_token_mint_error', {'err': e.toString(), 'attempt': attempt});
+        if (attempt < 2) {
+          await Future.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+        }
       }
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final jwt = (body['token'] ?? '').toString();
-      Analytics.capture('ably_token_minted', {
-        'ms': DateTime.now().millisecondsSinceEpoch - t0,
-      });
-      // A JWT supplied as an Ably token literal.
-      return ably.TokenDetails(jwt);
-    } catch (e) {
-      Analytics.capture('ably_token_mint_error', {'err': e.toString()});
-      rethrow;
     }
+    throw Exception('ably token mint failed after retries: $lastErr');
   }
 
   void _wireConnection(ably.Realtime rt) {
@@ -173,6 +188,13 @@ class AblyTransport extends AvaTransport {
       if (sc != null) subscribeConversation(sc);
     }
   }
+
+  /// Public re-subscribe hook. SyncHub calls this after the InboxDO backlog/restore
+  /// 'sync' frame populates drift with conversations that weren't present when this
+  /// transport started (notably right after a reinstall, when Ably comes up against
+  /// an empty DB and subscribes to nothing). Idempotent — [subscribeConversation]
+  /// skips channels already subscribed.
+  Future<void> resubscribeKnown() => _subscribeKnownConversations();
 
   /// Subscribe to a conversation's message + meta channels (idempotent). Called
   /// for known convs at startup and when a new thread is opened/created.
