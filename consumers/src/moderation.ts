@@ -179,6 +179,7 @@ async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
   const model = env.MODERATION_MODEL || "@cf/google/gemma-4-26b-a4b-it";
   const type = env.MODERATION_MODEL_TYPE || "vision";
   const started = Date.now();
+  let completionTokens = 0; // [MOD-THINK-1] AI output tokens this scan (spend telemetry)
   try {
     let result: ScanResult;
     if (type === "classifier") {
@@ -189,8 +190,16 @@ async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
         "You are a strict content-safety classifier. Rate the image for two risks on a 0-100 scale: " +
         "NSFW (explicit sexual content / nudity) and VIOLENCE (gore, graphic injury, weapons used to harm). " +
         "Reply with ONLY this exact line, nothing else: nsfw=<0-100> violence=<0-100> label=<one short word>";
-      // Multimodal chat schema (Gemma 4 / OpenAI-style): image passed as a data
-      // URL. max_tokens leaves room for thinking-mode before the final line.
+      // Multimodal chat schema (Gemma 4 / OpenAI-style): image passed as a data URL.
+      // [MOD-THINK-1] Gemma 4's thinking mode is ON by default and burns ~220 reasoning
+      // tokens — billed as OUTPUT — per scan to produce a ~12-token answer line.
+      // chat_template_kwargs.enable_thinking:false cut measured completion tokens
+      // 243→11 (≈22×) with byte-identical content, verified live against
+      // @cf/google/gemma-4-26b-a4b-it. max_completion_tokens replaces the deprecated
+      // max_tokens; 32 ≫ the ~12 needed. Order matters: capping WHILE thinking is on
+      // truncates before the answer (empty content → parsed 0/0 → fail-open), so we
+      // disable thinking FIRST, then cap. (thinking:false / reasoning_effort had no
+      // effect; enable_thinking:false is the working flag.)
       const out = (await env.AI.run(model as any, {
         messages: [{
           role: "user",
@@ -199,8 +208,10 @@ async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
             { type: "image_url", image_url: { url: dataUrl(bytes) } },
           ],
         }],
-        max_tokens: 512, temperature: 0,
+        chat_template_kwargs: { enable_thinking: false },
+        max_completion_tokens: 32, temperature: 0,
       })) as unknown;
+      completionTokens = Number((out as any)?.usage?.completion_tokens ?? 0);
       const text = aiText(out).toLowerCase();
       const nsfw = pct(text, "nsfw");
       const violence = pct(text, "violence");
@@ -210,7 +221,7 @@ async function classifyGemma(env: Env, bytes: Uint8Array): Promise<ScanResult> {
     // F6: operational cost/latency metric (one inference). Neuron count isn't
     // returned by AI.run, so we track count + duration + model as a proxy.
     try {
-      env.ANALYTICS?.writeDataPoint({ blobs: ["moderation", model, type], doubles: [Date.now() - started, 1], indexes: ["ai_moderation"] });
+      env.ANALYTICS?.writeDataPoint({ blobs: ["moderation", model, type], doubles: [Date.now() - started, 1, completionTokens], indexes: ["ai_moderation"] });
     } catch { /* metrics best-effort */ }
     await bumpAiSpend(env, Date.now() - started);
     return result;
