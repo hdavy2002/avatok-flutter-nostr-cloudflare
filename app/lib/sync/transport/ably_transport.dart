@@ -484,15 +484,29 @@ class AblyTransport extends AvaTransport {
     final rt = _realtime;
     if (sc == null || rt == null || !_roomsWatched.add(sc)) return;
     final ch = rt.channels.get(ablyRoomChannel(sc));
-    try {
-      ch.presence.enter({'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000});
-      ch.presence.subscribe().listen((_) async {
-        try {
-          final members = await ch.presence.get();
-          _occupancy.add(OccupancyEvent(_convKeyFor(sc), members.length));
-        } catch (_) {}
-      });
-    } catch (_) {}
+    // Enter the room presence set — but attach first and swallow ASYNC rejections.
+    // Entering on a detached/failed channel throws (Ably 90001/91001); unawaited,
+    // that surfaced as an unhandled exception and crashed the app (e.g. on an FCM
+    // wake that reconnects the socket). Best-effort; re-applied on next open.
+    unawaited(() async {
+      try {
+        if (rt.connection.state != ably.ConnectionState.connected) return;
+        await ch.attach();
+        await ch.presence.enter({'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000});
+      } catch (e) {
+        Analytics.capture('ably_occupancy_skip', {'err': e.toString()});
+      }
+    }());
+    ch.presence.subscribe().listen((_) async {
+      try {
+        final members = await ch.presence.get();
+        _occupancy.add(OccupancyEvent(_convKeyFor(sc), members.length));
+      } catch (_) {}
+    }, onError: (Object e) {
+      // A room presence channel can detach/fail — without onError the stream error
+      // is unhandled and crashes. Swallow; occupancy is best-effort.
+      Analytics.capture('ably_occupancy_watch_skip', {'err': e.toString()});
+    });
   }
 
   @override
