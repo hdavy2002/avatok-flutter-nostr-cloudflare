@@ -55,7 +55,8 @@ class _EditListingScreenState extends State<EditListingScreen> {
     _currency = kMarketCurrencies.contains(l.currency) ? l.currency : 'USD';
     _category = kMarketCategories.contains(l.category) ? l.category : kMarketCategories.first;
     final cc = (l.country ?? '').toUpperCase();
-    _country = kCountries.containsKey(cc) ? cc : 'US';
+    final dev = WidgetsBinding.instance.platformDispatcher.locale.countryCode?.toUpperCase();
+    _country = kCountries.containsKey(cc) ? cc : (dev != null && kCountries.containsKey(dev) ? dev : 'US');
     _location.text = l.location ?? '';
     for (final m in l.coverMedia) {
       final url = (m is Map ? m['url'] : null)?.toString();
@@ -211,20 +212,29 @@ class _EditListingScreenState extends State<EditListingScreen> {
                     selectedColor: const Color(0xFFC4F24D),
                   ),
               ]),
-              if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-              const SizedBox(height: 20),
-              SizedBox(
-                height: 52,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFC4F24D), foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: const BorderSide(color: Colors.black, width: 2)),
-                  ),
-                  onPressed: _busy ? null : _save,
-                  child: Text(_busy ? 'Saving…' : 'Save changes', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                ),
-              ),
+              if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600))),
             ]),
+      // Save pinned in a safe-area bar so it's never cut off behind the nav bar (pic 8).
+      bottomNavigationBar: _loading ? null : Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFFF5F1E8),
+          border: Border(top: BorderSide(color: Colors.black, width: 2)),
+        ),
+        child: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: SizedBox(
+            height: 52, width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFC4F24D), foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: const BorderSide(color: Colors.black, width: 2)),
+              ),
+              onPressed: _busy ? null : _save,
+              child: Text(_busy ? 'Saving…' : 'Save changes', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
