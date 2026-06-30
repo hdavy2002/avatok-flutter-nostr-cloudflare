@@ -14,6 +14,7 @@ import { requireUser, isFail } from "../authz";
 import { track } from "../hooks";
 import { metaDb } from "../db/shard";
 import { notifyUser } from "../notify";
+import { exploreSearch } from "./listings";
 
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
 export const MARKET_LLM = "anthropic/claude-sonnet-4.6";
@@ -200,8 +201,22 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
   }
   return json({ ok: true, outcome, transcript });
 }
-export async function marketplaceSearch(_req: Request, _env: Env): Promise<Response> {
-  return json({ listings: [] }, 200); // P6
+// ── P6: AI search over active listings ────────────────────────────────────────
+// ONE shared marketplace index (owner rule: no per-user AI Search instances).
+// Today this delegates to the single shared FTS5 index behind /api/explore/search
+// so search works now; the documented upgrade is to point this at one Cloudflare
+// AI Search index (env.AI_SEARCH binding) for semantic ranking without changing
+// the client contract.
+export async function marketplaceSearch(req: Request, env: Env): Promise<Response> {
+  const u = new URL(req.url);
+  const q = u.searchParams.get("q") ?? "";
+  const t0 = Date.now();
+  const res = await exploreSearch(req, env);
+  // Best-effort telemetry (no uid needed; search is public/guest-friendly).
+  try {
+    track(env, "guest", "marketplace_search", "avamarketplace", { query_len: q.length, ai_search_ms: Date.now() - t0 });
+  } catch { /* ignore */ }
+  return res;
 }
 export async function marketplacePrecheck(_req: Request, _env: Env): Promise<Response> {
   return json({ ok: true }, 200); // P7
