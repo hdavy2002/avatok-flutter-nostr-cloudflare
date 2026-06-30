@@ -51,8 +51,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
       case 'buy':
         return 'You represent me buying a used road bike. My max is the price set, must be under 5 yrs old. Be polite, ask about condition, don’t reveal my max early.';
       case 'social':
-        return 'You represent me ($socialSub). Share that I value honesty and family; ask about their background and expectations; only connect us if it’s a genuine match.'
-            .replaceAll('\$socialSub', _socialSub);
+        return 'You represent me (${_socialSub}). Share that I value honesty and family; ask about their background and expectations; only connect us if it’s a genuine match.';
       default:
         return 'You represent me selling a 2018 Honda Civic. Floor is the price set, aim higher. Mention low mileage + full service history. Pickup this week only. Be polite, firm on price.';
     }
