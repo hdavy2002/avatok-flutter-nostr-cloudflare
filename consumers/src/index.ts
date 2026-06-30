@@ -2,7 +2,7 @@
 import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg } from "./types";
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
-import { handleBrain } from "./brain";
+import { handleBrain, purgeChurnedBrains } from "./brain";
 import { handleArchive } from "./archive";
 import { handleDeletion } from "./deletion";
 import { handleWalletTx } from "./wallet";
@@ -83,6 +83,12 @@ export default {
     const now = Date.now();
     await env.DB_BRAIN.prepare("DELETE FROM brain_events WHERE expires_at < ?1").bind(now).run();
     await env.DB_BRAIN.prepare("DELETE FROM brain_facts WHERE expires_at IS NOT NULL AND expires_at < ?1").bind(now).run();
+    // [BRAIN-CHURN-1] Reclaim Vectorize + DB_BRAIN storage for users with no durable
+    // brain activity in 90 days (else storage only ever grows). Bounded; self-dedups.
+    try {
+      const purged = await purgeChurnedBrains(env, 90, 200);
+      if (purged) env.ANALYTICS?.writeDataPoint({ blobs: ["brain_churn_purge"], doubles: [purged], indexes: ["cron"] });
+    } catch (e) { console.error("[brain-churn]", String(e)); }
 
     // Wallet (Phase 2): mark matured earning holds released in the D1 mirror.
     // (WalletDO releases authoritatively via its own alarm; this keeps D1 tidy.)

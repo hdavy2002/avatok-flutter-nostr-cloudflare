@@ -493,6 +493,35 @@ async function purgeBrain(uid: string, env: Env): Promise<void> {
   ]) { try { await env.DB_BRAIN.prepare(q).bind(uid).run(); } catch { /* table optional */ } }
 }
 
+// [BRAIN-CHURN-1] Storage reclaim for churned users. A user is "churned" when their
+// NEWEST durable brain activity is older than `cutoffDays` (default 90) — measured
+// across brain_vectors.created_at, brain_entities.updated_at and brain_facts.updated_at
+// (brain_events are ignored; they self-expire at 30d). For each, purgeBrain() removes
+// every DB_BRAIN row + Vectorize id, so the user drops out of this query on the next
+// run (self-dedup, no marker table needed); their brain rebuilds from scratch if they
+// ever return (owner-accepted 2026-06-30). All in the SAME `uid` space as purgeBrain —
+// no cross-table/identity join, so it can never mis-target an active account. Bounded
+// by `limit` so a backlog drains across successive 6h ticks. Returns #users purged.
+export async function purgeChurnedBrains(env: Env, cutoffDays = 90, limit = 200): Promise<number> {
+  const cutoff = Date.now() - cutoffDays * 86_400_000;
+  let rows: Array<{ uid: string }> = [];
+  try {
+    const rs = await env.DB_BRAIN.prepare(
+      `SELECT uid, MAX(ts) AS last FROM (
+         SELECT uid, created_at AS ts FROM brain_vectors
+         UNION ALL SELECT uid, updated_at AS ts FROM brain_entities
+         UNION ALL SELECT uid, updated_at AS ts FROM brain_facts
+       ) GROUP BY uid HAVING last < ?1 LIMIT ?2`,
+    ).bind(cutoff, limit).all();
+    rows = (rs.results ?? []) as Array<{ uid: string }>;
+  } catch { return 0; } // brain tables optional / absent pre-Phase-9
+  let n = 0;
+  for (const r of rows) {
+    try { await purgeBrain(String(r.uid), env); n++; } catch { /* best-effort; retry next tick */ }
+  }
+  return n;
+}
+
 // Admin-triggered backfill: re-index the user's existing PUBLIC library files
 // (bounded). Messages live in InboxDO and flow in as they're sent — the backfill
 // covers the static file history, guardrails respected via the normal path.
