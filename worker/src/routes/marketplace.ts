@@ -26,6 +26,7 @@ export async function callSonnet(
   system: string,
   user: string,
   maxTokens = 400,
+  timeoutMs = 25000,
 ): Promise<string> {
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return "";
@@ -47,7 +48,7 @@ export async function callSonnet(
         temperature: 0.4,
         max_tokens: maxTokens,
       }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return "";
     const out: any = await res.json().catch(() => null);
@@ -368,22 +369,27 @@ export async function marketplacePrecheck(req: Request, env: Env): Promise<Respo
   const b = (await req.json().catch(() => ({}))) as any;
   const title = String(b.title || "").slice(0, 400);
   const description = String(b.description || "").slice(0, 4000);
+  const t0 = Date.now();
 
-  // 1) text moderation (porn / scam / hate / etc.)
-  const tMod = await moderate(env, { text: title, field: "listing_title" });
+  // 1) text moderation (porn / scam / hate / etc.) — title + description in
+  //    parallel so the submit gate isn't two sequential round-trips (pic 4).
+  const [tMod, dMod] = await Promise.all([
+    moderate(env, { text: title, field: "listing_title" }),
+    description.trim() ? moderate(env, { text: description, field: "listing_desc" }) : Promise.resolve({ safe: true } as any),
+  ]);
   if (!tMod.safe) {
-    track(env, ctx.uid, "listing_rejected", "avamarketplace", { failing_check: "text_title" });
+    track(env, ctx.uid, "listing_rejected", "avamarketplace", { failing_check: "text_title", precheck_ms: Date.now() - t0 });
     return json({ ok: false, reason: tMod.reason || "Title isn’t allowed.", failing_check: "title" }, 200);
   }
-  const dMod = await moderate(env, { text: description, field: "listing_desc" });
   if (!dMod.safe) {
-    track(env, ctx.uid, "listing_rejected", "avamarketplace", { failing_check: "text_desc" });
+    track(env, ctx.uid, "listing_rejected", "avamarketplace", { failing_check: "text_desc", precheck_ms: Date.now() - t0 });
     return json({ ok: false, reason: dMod.reason || "Description isn’t allowed.", failing_check: "description" }, 200);
   }
 
   // 2) PII strip — remove phone numbers + emails, including obfuscated forms.
   //    LLM beats regex on "nine-eight-seven…" / "name [at] gmail dot com"; a
-  //    regex backstop catches the obvious cases if the model is unavailable.
+  //    regex backstop catches the obvious cases. Short 8s timeout so a slow/
+  //    unavailable model can't stall the submit — the regex backstop still runs.
   let cleaned = description;
   if (description.trim()) {
     const out = await callSonnet(
@@ -393,13 +399,14 @@ export async function marketplacePrecheck(req: Request, env: Env): Promise<Respo
         "everything else exactly as written. Output ONLY the cleaned text, no commentary.",
       description,
       400,
+      8000,
     );
     cleaned = (out && out.length > 0 ? out : description)
       .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[removed]")
       .replace(/(?:\+?\d[\s().-]?){7,}\d/g, "[removed]");
   }
   const stripped = cleaned !== description;
-  track(env, ctx.uid, "moderation_pii_stripped", "avamarketplace", { changed: stripped });
+  track(env, ctx.uid, "moderation_pii_stripped", "avamarketplace", { changed: stripped, precheck_ms: Date.now() - t0 });
   return json({ ok: true, cleaned_description: cleaned, pii_stripped: stripped });
 }
 
