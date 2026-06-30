@@ -566,6 +566,28 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             final phone = phoneFromReceptConv(key) ?? (env['caller_phone'] ?? '').toString();
             if (phone.isNotEmpty) _ensureTelContact(phone, env['caller_name']?.toString());
           }
+        } else if (t == 'marketplace_deal') {
+          // AvaMarketplace agent-negotiation result. Like 'recept', materialise the
+          // counterparty as a contact so the thread APPEARS in the chat list — a
+          // newly-negotiated seller isn't a contact yet, so without this the card is
+          // delivered but the thread never surfaces. Also record a preview + unread.
+          if (u.senderPub != id.uid) {
+            final key = '1:${u.senderPub}';
+            if (!_flags['blocked']!.contains(key)) {
+              if (u.createdAt > (_lastRead[key] ?? 0) && mounted) {
+                setState(() => _unread[key] = (_unread[key] ?? 0) + 1);
+              }
+              if (u.createdAt >= (_previews[key]?.ts ?? 0)) {
+                final preview = env['outcome'] == 'deal'
+                    ? '🤝 Your agents reached a deal'
+                    : '🤝 Your agents finished negotiating';
+                _previewStore.record(key, preview, u.createdAt, false).then((_) {
+                  if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
+                });
+              }
+              _ensureContact(NostrKeys.npub(u.senderPub));
+            }
+          }
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
           if (u.senderPub == id.uid) return; // my own message
           final key = env['gid'] != null ? 'g:${env['gid']}' : '1:${u.senderPub}';
