@@ -6,13 +6,17 @@ import 'feature_flags.dart';
 /// Clerk publishable key (existing avatok.ai tenant) — public, ships in app.
 const String kClerkPublishableKey = 'pk_live_Y2xlcmsuYXZhdG9rLmFpJA';
 
-/// Google WEB OAuth client id — the same Google-Cloud project Clerk's Google
-/// connection uses. Native `google_sign_in` requests an ID token with THIS as the
-/// audience so Clerk's `google_one_tap` strategy accepts it. (The app's release
-/// SHA-1 must also be registered in that Google project, or Google returns
-/// DEVELOPER_ERROR.)
+/// Google WEB OAuth client id used as the native `google_sign_in` serverClientId
+/// (the ID-token audience the Worker `/api/auth/google` verifies). MIGRATED
+/// 2026-06-30 to the healthy **avatok-e19ef** project (#1098288797441) — the same
+/// project as the app's google-services.json — after the old `avatok` project
+/// (#604131207750) was deleted and its restored clients no longer minted tokens
+/// (Android 12500 SIGN_IN_FAILED). avatok-e19ef hosts this web client plus two
+/// Android clients (package ai.avatok.avatok_call, Play app-signing + upload
+/// SHA-1s); consent screen is published to Production. The Worker ALLOWED_AUD
+/// accepts both this and the old id during rollout.
 const String kGoogleServerClientId =
-    '604131207750-atsjcb1f1annjp10qa6l9mtd8gj1e5ps.apps.googleusercontent.com';
+    '1098288797441-rkj7rbifn7uipi639dmhsnf7tpgq1kno.apps.googleusercontent.com';
 
 /// Server endpoint that exchanges a native Google ID token for a Clerk sign-in
 /// ticket (the app redeems it via strategy=ticket). Avoids Clerk native One Tap.

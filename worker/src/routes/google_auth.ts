@@ -15,6 +15,11 @@ const CLERK_API = "https://api.clerk.com/v1";
 // Accepted audiences for the Google ID token = the WEB OAuth client(s) the app
 // requests the token for (serverClientId). Must match Clerk's Google client id.
 const ALLOWED_AUD = new Set<string>([
+  // NEW (2026-06-30): serverClientId moved to the healthy avatok-e19ef project
+  // (#1098288797441) after the old `avatok` project (#604131207750) was deleted
+  // and its restored OAuth clients stopped minting tokens (Android 12500).
+  "1098288797441-rkj7rbifn7uipi639dmhsnf7tpgq1kno.apps.googleusercontent.com",
+  // OLD — kept during rollout so older builds still work if the old project recovers.
   "604131207750-atsjcb1f1annjp10qa6l9mtd8gj1e5ps.apps.googleusercontent.com",
 ]);
 
