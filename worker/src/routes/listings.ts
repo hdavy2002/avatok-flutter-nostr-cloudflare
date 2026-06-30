@@ -567,10 +567,13 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const where = ["l.status IN ('published','live')"];
   const binds: unknown[] = [];
 
+  const isMarket = u.get("market") === "1";
   if (q) {
     const tokens = q.toLowerCase().replace(/[^a-z0-9\s@_-]/g, " ").split(/\s+/).filter(Boolean).slice(0, 6);
     if (tokens.length) {
-      const match = tokens.map((t) => `"${t.replace(/"/g, "")}"*`).join(" ");
+      // Marketplace search uses OR for broad recall (any keyword matches);
+      // creator search keeps AND for precision.
+      const match = tokens.map((t) => `"${t.replace(/"/g, "")}"*`).join(isMarket ? " OR " : " ");
       const ids = await metaSession(env).prepare(
         "SELECT listing_id FROM listings_fts WHERE listings_fts MATCH ?1 LIMIT 200",
       ).bind(match).all();
@@ -592,6 +595,12 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   if (to > 0) { binds.push(to); where.push(`l.starts_at <= ?${binds.length}`); }
   const minRating = Number(u.get("minRating") || 0);
   if (minRating > 0) { binds.push(minRating); where.push(`l.rating_avg >= ?${binds.length}`); }
+  // Marketplace-only + hide expired listings from search.
+  if (isMarket) {
+    where.push("l.kind IN ('sell','buy','social')");
+    binds.push(Date.now());
+    where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
+  }
   blockFilter(uid, binds, where);
 
   const sort = u.get("sort") || "soonest";

@@ -332,12 +332,27 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
 // the client contract.
 export async function marketplaceSearch(req: Request, env: Env): Promise<Response> {
   const u = new URL(req.url);
-  const q = u.searchParams.get("q") ?? "";
+  const q = (u.searchParams.get("q") ?? "").trim();
+  // AI query expansion (Sonnet) → synonyms/brands/category, OR'd into the FTS
+  // match for broad recall — makes keyword search feel semantic.
+  let expanded = q;
+  if (q) {
+    const syn = await callSonnet(
+      env,
+      "Expand a marketplace search query into 3-6 closely related search keywords (synonyms, common brands, the category). Output ONLY a comma-separated list, nothing else.",
+      q, 40,
+    );
+    if (syn) expanded = `${q} ${syn.replace(/[,\n]+/g, " ")}`.slice(0, 200);
+  }
+  // Rebuild the request for exploreSearch with the expanded query + market filter,
+  // preserving auth headers so viewer/block-filter context still works.
+  const target = new URL(req.url);
+  if (expanded) target.searchParams.set("q", expanded);
+  target.searchParams.set("market", "1");
   const t0 = Date.now();
-  const res = await exploreSearch(req, env);
-  // Best-effort telemetry (no uid needed; search is public/guest-friendly).
+  const res = await exploreSearch(new Request(target.toString(), req), env);
   try {
-    track(env, "guest", "marketplace_search", "avamarketplace", { query_len: q.length, ai_search_ms: Date.now() - t0 });
+    track(env, "guest", "marketplace_search", "avamarketplace", { query_len: q.length, ai_search_ms: Date.now() - t0, expanded: expanded !== q });
   } catch { /* ignore */ }
   return res;
 }

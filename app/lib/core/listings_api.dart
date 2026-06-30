@@ -202,8 +202,14 @@ class ListingsApi {
   /// routes through search (FTS/AI), filtered to marketplace listings.
   static Future<List<ListingCard>> marketBrowse({String? country, String? category, String? q}) async {
     if (q != null && q.trim().isNotEmpty) {
-      final r = await search(q: q, category: category, country: country);
-      return r.where((c) => c.isMarketplace).toList();
+      // AI search endpoint (query expansion + marketplace filter, server-side).
+      final params = <String>[
+        'q=${Uri.encodeQueryComponent(q.trim())}', 'limit=40',
+        if (country != null && country.isNotEmpty) 'country=$country',
+        if (category != null && category.isNotEmpty) 'category=${Uri.encodeQueryComponent(category)}',
+      ].join('&');
+      final r = await ApiAuth.getSigned('$_base/marketplace/search?$params');
+      return _cards(_j(r.body));
     }
     final params = <String>[
       'market=1', 'limit=40',
