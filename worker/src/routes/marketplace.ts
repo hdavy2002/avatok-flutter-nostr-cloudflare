@@ -134,12 +134,17 @@ async function ensureDmThread(env: Env, a: string, b: string, context: string | 
   } catch { /* best-effort — InboxDO append still carries the message */ }
 }
 
-/** Append a marketplace voice/text message into a user's InboxDO thread. */
+/** Append a marketplace voice/text message into a user's InboxDO thread.
+ *  kind is "text": the app's sync/ingest layer surfaces normal text messages and
+ *  the chat_thread renderer special-cases the BODY envelope's {t:'marketplace_deal'}
+ *  to draw the deal card (this is how every body-envelope special — card/poll/
+ *  sticker/recept-ack — is delivered; a CUSTOM kind like 'marketplace_deal' was
+ *  NOT surfaced as a message, so the thread looked empty). */
 async function inboxAppend(env: Env, recipient: string, sender: string, conv: string, envelope: string, mediaRef: string | null): Promise<void> {
   const stub = (env as any).INBOX.get((env as any).INBOX.idFromName(recipient));
   await stub.fetch("https://inbox/append", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conv, sender, kind: "marketplace_deal", body: envelope, media_ref: mediaRef, scope: `to:${recipient}`, created_at: Date.now(), owner: recipient }),
+    body: JSON.stringify({ conv, sender, kind: "text", body: envelope, media_ref: mediaRef, scope: `to:${recipient}`, created_at: Date.now(), owner: recipient }),
   });
 }
 
