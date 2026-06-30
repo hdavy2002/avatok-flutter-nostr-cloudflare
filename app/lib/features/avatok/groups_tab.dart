@@ -45,11 +45,10 @@ class _GroupsTabState extends State<GroupsTab> {
   }
 
   Future<void> _load() async {
-    // One-time clean-slate: drop pre-server-backed (local-only) groups before the
-    // first paint so they don't flash up, then reconcile with the server.
-    await GroupApi.resetLocalOnce();
     // Paint the local list first, then reconcile with the server so groups the
-    // user was ADDED to (on this or another device) show up here.
+    // user was ADDED to (on this or another device) show up here. (The old
+    // one-time local wipe, GroupApi.resetLocalOnce, was removed in the
+    // group-safety fix — local-only groups are now ADOPTED by sync, not wiped.)
     final local = await _store.load();
     final archived = (await ChatFlagsStore().load())['archived'] ?? <String>{};
     List<Group> visible(List<Group> gs) =>
