@@ -217,7 +217,8 @@ function timeOfDayWord(tz: string | undefined | null): string {
 export function composeReceptionistPrompt(
   s: SettingsRow,
   ctx?: { callerName?: string | null; activationMode?: string | null; ownerName?: string | null;
-          gender?: string | null; engine?: "gemini" | "cf" | null; timeOfDay?: string | null },
+          gender?: string | null; engine?: "gemini" | "cf" | null; timeOfDay?: string | null;
+          greeting?: string | null },
 ): string {
   const me = (s.persona_name || "Ava").trim() || "Ava";  // Ava's own name (default Ava)
   const who = ((ctx?.ownerName || s.display_name || "the person you're assisting")).trim();
@@ -262,11 +263,18 @@ export function composeReceptionistPrompt(
   // a conversationalist. She already KNOWS the caller's name + number, so she never
   // asks for them; she greets once, lets them leave a ~50s message, confirms once,
   // and hangs up. No questions, no back-and-forth.
+  // Deterministic greeting (same template the CF engine speaks): when the caller
+  // route supplies it, Ava MUST open with this exact line so the spoken structure
+  // is identical across engines — only the voice/turn-taking engine changed.
+  const greetLine = (ctx?.greeting || "").trim();
+  const step1 = greetLine
+    ? `STEP 1 — OPEN by saying this greeting EXACTLY, word-for-word, and nothing else: "${greetLine}" Then stop talking and listen. Do NOT paraphrase, add to it, or ask anything.`
+    : `STEP 1 — GREET in ONE short, warm sentence: tell ${callerRef} that ${who} can't take the call right now and to please leave a short message — about 50 seconds — and ${subj}'ll get back to ${obj}. Then stop talking.`;
   const lines: string[] = [
     `You are ${me}, ${who}'s voicemail assistant. ${who} can't pick up, so you take a short voice message. THIS IS A VOICEMAIL, NOT A CONVERSATION.`,
     `You ALREADY KNOW the caller is ${callerRef}, and ${who} already has ${poss} number. So you must NEVER ask for the caller's name, their number, or how to reach them — you have all of it.`,
-    note ? `${who} left a note about ${poss} availability: "${note}". Weave it into your greeting naturally if it fits.` : ``,
-    `STEP 1 — GREET in ONE short, warm sentence: tell ${callerRef} that ${who} can't take the call right now and to please leave a short message — about 50 seconds — and ${subj}'ll get back to ${obj}. Then stop talking.`,
+    note && !greetLine ? `${who} left a note about ${poss} availability: "${note}". Weave it into your greeting naturally if it fits.` : ``,
+    step1,
     `STEP 2 — STAY SILENT and let them speak. Do NOT interrupt, do NOT ask anything, do NOT make small talk. Just listen to their whole message.`,
     `STEP 3 — When they finish, close with ONE short line in EXACTLY this shape and nothing more: "Got it — <one short clause capturing what they said>. I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!" Then ${endWith}. The ONLY thing you fill in is the brief clause about their message; the rest is fixed.`,
     `If you receive "[SYSTEM: time is up]": close with ONE short line: "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!" Then ${endWith}. Do not ask for anything more.`,
@@ -560,7 +568,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     file_search_store: s.file_search_store || null,
     // Caller-aware + status-aware system prompt: "Hi <caller>, <owner> is
     // travelling/busy. Can I take a message?" — composed server-side, locked.
-    system_prompt: composeReceptionistPrompt(s, { callerName, activationMode, ownerName, gender: ownerGender, engine: useCf ? "cf" : "gemini", timeOfDay: timeOfDayWord((req as any)?.cf?.timezone) }),
+    system_prompt: composeReceptionistPrompt(s, { callerName, activationMode, ownerName, gender: ownerGender, engine: useCf ? "cf" : "gemini", timeOfDay: timeOfDayWord((req as any)?.cf?.timezone), greeting }),
     owner_name: ownerName,
     ava_name: (s.persona_name || "Ava").trim() || "Ava", // transcript speaker label
 

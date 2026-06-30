@@ -304,7 +304,7 @@ export class ReceptionRoom {
     // dead-air gap). One short one-shot user turn makes her open immediately.
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[Caller connected — greet and offer to take a message now, in one short sentence.]" }] }],
+        turns: [{ role: "user", parts: [{ text: "[Caller connected — say your STEP 1 opening greeting now, exactly as instructed, then stop and listen.]" }] }],
         turnComplete: true,
       },
     });
