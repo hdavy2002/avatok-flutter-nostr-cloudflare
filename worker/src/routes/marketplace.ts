@@ -15,6 +15,7 @@ import { track } from "../hooks";
 import { metaDb } from "../db/shard";
 import { notifyUser } from "../notify";
 import { exploreSearch } from "./listings";
+import { moderate } from "../lib/moderation";
 
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
 export const MARKET_LLM = "anthropic/claude-sonnet-4.6";
@@ -218,6 +219,49 @@ export async function marketplaceSearch(req: Request, env: Env): Promise<Respons
   } catch { /* ignore */ }
   return res;
 }
-export async function marketplacePrecheck(_req: Request, _env: Env): Promise<Response> {
-  return json({ ok: true }, 200); // P7
+// ── P7: safety precheck (text moderation + PII strip) ─────────────────────────
+// Defence-in-depth before publish. Server-side createListing already runs the
+// Nemotron gate on title/description; this also strips contact details (phone /
+// email, including obfuscated forms) from the description so contact stays in
+// AvaTOK. Image NSFW screening runs in the upload path (vision classifier);
+// CSAM hash-matching is the deferred P8 hard gate. Reject-with-reason here.
+export async function marketplacePrecheck(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const title = String(b.title || "").slice(0, 400);
+  const description = String(b.description || "").slice(0, 4000);
+
+  // 1) text moderation (porn / scam / hate / etc.)
+  const tMod = await moderate(env, { text: title, field: "listing_title" });
+  if (!tMod.safe) {
+    track(env, ctx.uid, "listing_rejected", "avamarketplace", { failing_check: "text_title" });
+    return json({ ok: false, reason: tMod.reason || "Title isn’t allowed.", failing_check: "title" }, 200);
+  }
+  const dMod = await moderate(env, { text: description, field: "listing_desc" });
+  if (!dMod.safe) {
+    track(env, ctx.uid, "listing_rejected", "avamarketplace", { failing_check: "text_desc" });
+    return json({ ok: false, reason: dMod.reason || "Description isn’t allowed.", failing_check: "description" }, 200);
+  }
+
+  // 2) PII strip — remove phone numbers + emails, including obfuscated forms.
+  //    LLM beats regex on "nine-eight-seven…" / "name [at] gmail dot com"; a
+  //    regex backstop catches the obvious cases if the model is unavailable.
+  let cleaned = description;
+  if (description.trim()) {
+    const out = await callSonnet(
+      env,
+      "You redact contact details from marketplace text. Remove ALL phone numbers and email addresses, " +
+        "including obfuscated forms (spelled-out digits, 'at'/'dot', spaces or unicode look-alikes). Keep " +
+        "everything else exactly as written. Output ONLY the cleaned text, no commentary.",
+      description,
+      400,
+    );
+    cleaned = (out && out.length > 0 ? out : description)
+      .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[removed]")
+      .replace(/(?:\+?\d[\s().-]?){7,}\d/g, "[removed]");
+  }
+  const stripped = cleaned !== description;
+  track(env, ctx.uid, "moderation_pii_stripped", "avamarketplace", { changed: stripped });
+  return json({ ok: true, cleaned_description: cleaned, pii_stripped: stripped });
 }

@@ -50,6 +50,19 @@ class MarketplaceApi {
     return {..._j(r.body), 'status': r.statusCode, 'ok': r.statusCode == 200};
   }
 
+  /// P7 — safety precheck before publishing. Returns {ok, reason?,
+  /// cleaned_description?, pii_stripped?}. ok:false means the listing was
+  /// rejected (porn / scam / disallowed text) with a user-facing reason.
+  static Future<Map<String, dynamic>> precheck({
+    required String title,
+    required String description,
+  }) async {
+    final r = await ApiAuth.postJson('$_base/precheck', {
+      'title': title, 'description': description,
+    }, timeout: const Duration(seconds: 30));
+    return {..._j(r.body), 'status': r.statusCode};
+  }
+
   /// P5 — has this buyer already negotiated the current version of this listing?
   /// Used to grey the Call Agent button. Returns true when a repeat is blocked.
   static Future<bool> alreadyTalked(String listingId, int contentVersion) async {

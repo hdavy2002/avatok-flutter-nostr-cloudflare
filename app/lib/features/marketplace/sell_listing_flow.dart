@@ -91,6 +91,15 @@ class _SellListingFlowState extends State<SellListingFlow> {
       'type': _type, 'category': _category.text.trim(),
       'price_amount': int.tryParse(_price.text.trim()) ?? 0, 'price_currency': _currency,
     });
+    // P7 safety precheck: text moderation + PII strip BEFORE the listing is saved.
+    final pc = await MarketplaceApi.precheck(title: _title.text.trim(), description: _desc.text.trim());
+    if (pc['ok'] != true) {
+      Analytics.capture('listing_rejected', {'type': _type, 'reason': pc['reason']});
+      setState(() { _busy = false; _error = pc['reason']?.toString() ?? 'Your listing was rejected — please revise it.'; });
+      return;
+    }
+    final cleaned = pc['cleaned_description']?.toString();
+    if (cleaned != null && cleaned.isNotEmpty) _desc.text = cleaned;
     final id = await ListingsApi.createDraft(_type, _fields());
     if (id == null) {
       setState(() { _busy = false; _error = 'Could not save your listing.'; });
