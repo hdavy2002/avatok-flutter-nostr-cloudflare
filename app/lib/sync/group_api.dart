@@ -104,42 +104,58 @@ class GroupApi {
     }
   }
 
-  /// One-time "start fresh" migration: clear locally-cached groups exactly once
-  /// per account so pre-server-backed (local-only) groups don't linger after an
-  /// app update. Valid server groups are re-pulled by [sync] immediately after.
-  /// Idempotent — guarded by a per-account flag.
-  static const _resetFlag = 'groups_local_reset_v1';
-  static Future<void> resetLocalOnce() async {
-    try {
-      if (await DiskCache.read(_resetFlag) == '1') return;
-      final purged = (await GroupStore().load()).length;
-      await GroupStore().clear();
-      await DiskCache.write(_resetFlag, '1');
-      Analytics.capture('group_local_reset', {'purged': purged});
-    } catch (_) {/* best-effort; retried next launch if it failed */}
-  }
-
-  /// Pull all server `group` conversations and merge them into the local store so
-  /// a user who was ADDED to a group (on another device) sees it appear. Returns
-  /// the resulting local group list.
+  /// Pull server `group` conversations and MERGE them into the local store (so a
+  /// user added to a group elsewhere sees it appear), AND push any LOCAL-only
+  /// groups UP to the server so they survive a reinstall / new device.
+  ///
+  /// SAFETY (data-loss fix 2026-06-30): this NEVER deletes local groups. The old
+  /// `resetLocalOnce()` wiped local-only groups on first run, trusting the server
+  /// to refill them — but pre-server-backed groups were never on the server, so
+  /// they were permanently destroyed on update/reinstall (owner report). Removed.
+  /// Reconciliation is now strictly additive + upload-only.
   static Future<List<Group>> sync() async {
-    await resetLocalOnce(); // drop legacy local-only groups once, then reconcile
+    final serverIds = <String>{};
     try {
       final r = await ApiAuth.getSigned(kConversationsUrl);
-      if (r.statusCode != 200) return GroupStore().load();
-      final convs = ((jsonDecode(r.body) as Map<String, dynamic>)['conversations'] as List?) ?? const [];
-      var n = 0;
-      for (final c in convs) {
-        final m = (c as Map).cast<String, dynamic>();
-        if ((m['kind'] ?? '').toString() != 'group') continue;
-        final id = (m['id'] ?? '').toString();
-        if (id.isEmpty) continue;
-        await refresh(id); // hydrate members + title and upsert
-        n++;
+      if (r.statusCode == 200) {
+        final convs = ((jsonDecode(r.body) as Map<String, dynamic>)['conversations'] as List?) ?? const [];
+        for (final c in convs) {
+          final m = (c as Map).cast<String, dynamic>();
+          if ((m['kind'] ?? '').toString() != 'group') continue;
+          final id = (m['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+          serverIds.add(id);
+          await refresh(id); // hydrate members + title and upsert
+        }
       }
-      Analytics.capture('group_synced', {'server_group_count': n});
+      // Durability: any LOCAL group the server doesn't know about is a pre-
+      // server-backed local-only group — push it up (keeping its id so message
+      // history stays linked) so it can be restored after a fresh install.
+      final local = await GroupStore().load();
+      for (final g in local) {
+        if (g.id.isEmpty || serverIds.contains(g.id)) continue;
+        await _adopt(g);
+      }
+      Analytics.capture('group_synced',
+          {'server_group_count': serverIds.length, 'local_total': local.length});
     } catch (_) {/* best-effort; keep local */}
     return GroupStore().load();
+  }
+
+  /// Best-effort upload of a local-only group to the server, PRESERVING its id so
+  /// the conv-key (and message history) stays consistent. Idempotent server-side.
+  static Future<void> _adopt(Group g) async {
+    try {
+      final r = await ApiAuth.postJson(kConvAdoptUrl, {
+        'id': g.id,
+        'title': g.name,
+        'members': g.members.where((u) => u.isNotEmpty).toList(),
+      });
+      Analytics.capture(r.statusCode == 200 ? 'group_adopted' : 'group_adopt_failed',
+          {'gid': g.id, 'member_count': g.members.length, if (r.statusCode != 200) 'status': r.statusCode});
+    } catch (_) {
+      Analytics.capture('group_adopt_failed', {'gid': g.id, 'reason': 'exception'});
+    }
   }
 
   static Future<bool> addMembers(String conv, List<String> uids) async {

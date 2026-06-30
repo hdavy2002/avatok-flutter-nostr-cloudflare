@@ -142,6 +142,9 @@ const String kConvRemoveMemberUrl = 'https://$kSignalingHost/api/conversations/m
 const String kConvSetRoleUrl = 'https://$kSignalingHost/api/conversations/members/role';
 const String kConvLeaveUrl = 'https://$kSignalingHost/api/conversations/leave';
 const String kConvDeleteUrl = 'https://$kSignalingHost/api/conversations/delete';
+// Adopt a local-only (pre-server-backed) group UP to D1, preserving its id so a
+// reinstall/new-device can re-pull it. Idempotent; rejects ids already on server.
+const String kConvAdoptUrl = 'https://$kSignalingHost/api/conversations/adopt';
 
 /// Deterministic 1:1 conversation id — MUST match server authz.dmConvId.
 String dmConvId(String a, String b) {

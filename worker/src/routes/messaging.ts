@@ -627,6 +627,34 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   return json({ conv, kind: "group" });
 }
 
+// Adopt a client-side (pre-server-backed) group UP to D1, PRESERVING its id so the
+// conv-key / message history stays consistent. Data-loss fix (2026-06-30): old
+// builds kept groups local-only, so a reinstall lost them; the client now uploads
+// any local-only group here so it becomes durable + restorable. SAFE: if a
+// conversation with this id ALREADY exists it is left completely untouched (no
+// membership injection into someone else's group) — only brand-new ids are
+// created, with the caller as owner. Idempotent.
+export async function convAdopt(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const id = String(b.id || "");
+  if (!id) return json({ error: "id required" }, 400);
+  const existing = await env.DB_META.prepare("SELECT id FROM conversations WHERE id=?1").bind(id).first();
+  if (existing) return json({ conv: id, kind: "group", adopted: false, already: true });
+  const members: string[] = Array.isArray(b.members) ? b.members.map(String) : [];
+  const now = Date.now();
+  const stmts = [
+    env.DB_META.prepare("INSERT OR IGNORE INTO conversations (id, kind, title, created_by, created_at, updated_at) VALUES (?1,'group',?2,?3,?4,?4)")
+      .bind(id, b.title ? String(b.title) : null, ctx.uid, now),
+    env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'owner',?3)").bind(id, ctx.uid, now),
+    ...members.filter((u) => u && u !== ctx.uid).map((u) =>
+      env.DB_META.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(id, u, now)),
+  ];
+  await env.DB_META.batch(stmts);
+  return json({ conv: id, kind: "group", adopted: true });
+}
+
 // ---- group membership management --------------------------------------------
 // These power the Group Info screen: add members (from contacts), remove a
 // member, promote/demote admins, leave, and delete the whole group. Membership
