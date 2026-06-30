@@ -10,6 +10,7 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
+import { track } from "../hooks";
 
 const GAUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GTOKEN = "https://oauth2.googleapis.com/token";
@@ -19,6 +20,13 @@ const GCAL = "https://www.googleapis.com/calendar/v3";
 // both APIs; gcalAccessToken() is reused by lib/drive.ts. (Hybrid storage:
 // own files → Drive; shared chat media stays on encrypted R2.)
 const SCOPE = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file";
+// Backup/Drive connect (/api/ava/drive/connect) requests ONLY drive.file — a
+// NON-sensitive scope (the app can see only files IT created). That avoids the
+// Google "unverified app" screen, the 100-user OAuth cap, and any verification
+// review, so ANY user can connect their OWN Drive with their OWN email.
+// AvaCalendar keeps SCOPE (calendar.events is sensitive → would need verification
+// before going wide); when Calendar ships it can use its own scope the same way.
+const SCOPE_DRIVE = "https://www.googleapis.com/auth/drive.file";
 const REDIRECT = "https://api.avatok.ai/api/calendar/gcal/callback";
 
 // ---------------------------------------------------------------------------
@@ -61,18 +69,33 @@ export async function gcalConnect(req: Request, env: Env): Promise<Response> {
   // auth sheet auto-closes). The HMAC still signs only uid+exp, so the extra
   // segment doesn't affect verification. Without it (AvaCalendar web connect)
   // the callback keeps showing the "you can close this window" page.
-  const wantApp = new URL(req.url).searchParams.get("return") === "app";
+  const reqUrl = new URL(req.url);
+  const wantApp = reqUrl.searchParams.get("return") === "app";
+  // Backup/Drive flow → drive.file only (non-sensitive, no verification/cap).
+  // AvaCalendar (or an explicit ?scope=full) keeps the combined sensitive scope.
+  const driveOnly = (reqUrl.pathname.includes("/ava/drive/") ||
+      reqUrl.searchParams.get("scope") === "drive") &&
+    reqUrl.searchParams.get("scope") !== "full";
   const sig = await hmacHex(env, ctx.uid + "." + exp);
   const state = `${ctx.uid}.${exp}.${sig}${wantApp ? ".app" : ""}`;
   const u = new URL(GAUTH);
   u.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
   u.searchParams.set("redirect_uri", REDIRECT);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", SCOPE);
+  u.searchParams.set("scope", driveOnly ? SCOPE_DRIVE : SCOPE);
   u.searchParams.set("access_type", "offline");
   u.searchParams.set("prompt", "consent");          // always get a refresh_token
   u.searchParams.set("include_granted_scopes", "true"); // incremental consent
   u.searchParams.set("state", state);
+  // Server-truth telemetry: which scope each connect requested, so we can prove
+  // the Backup flow stays verification-free (drive.file only) and track adoption.
+  await track(env, ctx.uid, "gcal_connect_url", driveOnly ? "avastorage" : "avacalendar", {
+    drive_only: driveOnly,
+    scope_mode: driveOnly ? "drive.file" : "calendar.events+drive.file",
+    sensitive_scope: !driveOnly,
+    return_app: wantApp,
+    path: reqUrl.pathname,
+  });
   return json({ url: u.toString() });
 }
 
