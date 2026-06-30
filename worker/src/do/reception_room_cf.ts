@@ -65,7 +65,7 @@ const CF_ENDPOINT_MS = 2500;                // ~2.5s trailing silence ends a cal
                                             // cut off"). Voicemail callers pause to think; 2.5s tolerates that.
 const CF_MIN_TURN_BYTES = 8000;             // ~0.25s @16k PCM16 — below = noise, ignore
 const CF_MAX_TURN_BYTES = 16000 * 2 * 55;   // ~55s @16k PCM16 — force-process a long message
-const CF_MSG_WINDOW_MS = 50_000;            // caller's message window (starts AFTER the greeting)
+const CF_MSG_WINDOW_MS = 25_000;            // ~25s caller message window (after the greeting); whole call wrapped in ~35s (matches SOFT/HARD_CAP_MS)
 // Barge-in (greeting only): sustained caller speech (~300ms) over Ava's greeting lets
 // them start their message early. Relies on client-side echo cancellation.
 const CF_BARGE_BYTES = 16000 * 2 * 0.3;     // ~300ms of real speech

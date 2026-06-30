@@ -67,8 +67,8 @@ export const RECEPTIONIST_MODEL_DEFAULT = "gemini-3.1-flash-live-preview";
 // Voicemail budget (owner decision 2026-06-29): ~10s greeting + 50s message + 20s
 // wrap = ~80s total. The CF engine also runs a 50s message-window timer (starts
 // after the greeting) that makes Ava cut in with a "time's up" close.
-export const HARD_CAP_MS = 80_000; // force end
-export const SOFT_CAP_MS = 60_000; // begin wrap-up (greet + message elapsed)
+export const HARD_CAP_MS = 35_000; // force end — whole call wrapped in 35s (owner spec 2026-06-30)
+export const SOFT_CAP_MS = 30_000; // barge-in wrap-up at ~30s = ~5s greeting + ~25s message window
 const MAX_INSTRUCTIONS = 2000;
 const INIT_TTL_SEC = 300;           // caller must connect the WS within 5 min
 
@@ -269,7 +269,7 @@ export function composeReceptionistPrompt(
   const greetLine = (ctx?.greeting || "").trim();
   const step1 = greetLine
     ? `STEP 1 — OPEN by saying this greeting EXACTLY, word-for-word, and nothing else: "${greetLine}" Then stop talking and listen. Do NOT paraphrase, add to it, or ask anything.`
-    : `STEP 1 — GREET in ONE short, warm sentence: tell ${callerRef} that ${who} can't take the call right now and to please leave a short message — about 50 seconds — and ${subj}'ll get back to ${obj}. Then stop talking.`;
+    : `STEP 1 — GREET in ONE short, warm sentence: tell ${callerRef} that ${who} can't take the call right now and to please leave a message of about 25 seconds and ${subj}'ll get back to ${obj}. Then stop talking.`;
   const lines: string[] = [
     `You are ${me}, ${who}'s voicemail assistant. ${who} can't pick up, so you take a short voice message. THIS IS A VOICEMAIL, NOT A CONVERSATION.`,
     `You ALREADY KNOW the caller is ${callerRef}, and ${who} already has ${poss} number. So you must NEVER ask for the caller's name, their number, or how to reach them — you have all of it.`,
@@ -523,8 +523,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const gSubj = ownerGender === "male" ? "he" : ownerGender === "female" ? "she" : "they";
   const ownerLabel = ownerName || "your contact";
   const greeting = firstName
-    ? `Hey ${firstName}, ${ownerLabel} can't take the call right now — go ahead and leave a quick message and ${gSubj}'ll get back to you.`
-    : `Hi, ${ownerLabel} can't take the call right now — go ahead and leave a quick message and ${gSubj}'ll get back to you.`;
+    ? `Hey ${firstName}, ${ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${gSubj}'ll get back to you.`
+    : `Hi, ${ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${gSubj}'ll get back to you.`;
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   // v2: how the call was handed off. Standard 2-button incoming UI, so the
   // triggers are: rings (no answer), first_ring (answer-all), decline (callee

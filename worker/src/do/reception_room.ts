@@ -110,6 +110,9 @@ export class ReceptionRoom {
   private ownerEmail: string | null = null;
   private ownerPhone: string | null = null;
   private firstAudioSent = false;
+  // Set at the soft cap: stop feeding caller audio to Gemini so Ava can barge in
+  // and speak the wrap-up uninterrupted (see onSoftCap / onClientMessage).
+  private wrapping = false;
 
   private inText: string[] = [];   // caller transcript fragments (char counts)
   private outText: string[] = [];  // Ava transcript fragments (char counts)
@@ -318,6 +321,12 @@ export class ReceptionRoom {
     if (typeof d === "string") return; // no client-supplied control honored
     const bytes = d instanceof ArrayBuffer ? new Uint8Array(d) : null;
     if (!bytes) return;
+    // Wrap-up barge-in: once the time cap hits we STOP relaying the caller to
+    // Gemini so the model isn't held in "listening" mode by a caller who keeps
+    // talking — that's what let the old 80s call hard-cap in silence. With the mic
+    // gated, Gemini takes the floor and speaks the templated close. The message
+    // window is already over, so dropping these frames loses nothing.
+    if (this.wrapping) return;
     this.inBytes += bytes.byteLength; // server-truth mic throughput (vs client mic_bytes)
     // 2-WAY RECORDING: capture the CALLER's side too, so the voicemail isn't just
     // Ava. Only frames with real speech energy (skip silence/echo gaps so Ava's
@@ -449,11 +458,16 @@ export class ReceptionRoom {
   }
 
   private onSoftCap(): void {
-    // Nudge Ava to wrap up (the system prompt also knows the limit). The call is
-    // capped at 70s and this fires at 55s, so there are only seconds left.
+    // Time's up (fires at SOFT_CAP_MS=30s; hard end at 35s). BARGE IN: set wrapping
+    // so onClientMessage stops feeding the caller's mic to Gemini, then send the
+    // EXACT "[SYSTEM: time is up]" string the system prompt keys its wrap-up line
+    // on. With the mic gated, Ava reliably takes the floor and speaks the close
+    // ("That's all the time I have… I'll pass it on… have a great <day>!") even if
+    // the caller is still talking — the bug the owner hit on 2026-06-30.
+    this.wrapping = true;
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[SYSTEM: time's almost up — confirm the message in one sentence and say goodbye now.]" }] }],
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM: time is up]" }] }],
         turnComplete: true,
       },
     });
