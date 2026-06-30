@@ -39,12 +39,26 @@ class _MarketplaceBrowseState extends State<MarketplaceBrowse> {
   }
 
   void _load() {
-    _future = ListingsApi.marketBrowse(
-      country: _myCountryOnly && _country.isNotEmpty ? _country : '',
-      category: _category,
-      q: _search.text.trim(),
-    );
+    _future = _fetch();
     setState(() {});
+  }
+
+  /// Fetch listings; if "My country" yields nothing, auto-fall back to all
+  /// countries so the user always sees results instead of an empty grid.
+  Future<List<ListingCard>> _fetch() async {
+    final country = _myCountryOnly && _country.isNotEmpty ? _country : '';
+    final q = _search.text.trim();
+    final items = await ListingsApi.marketBrowse(country: country, category: _category, q: q);
+    if (items.isEmpty && country.isNotEmpty) {
+      final all = await ListingsApi.marketBrowse(country: '', category: _category, q: q);
+      if (all.isNotEmpty && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _myCountryOnly = false);
+        });
+        return all;
+      }
+    }
+    return items;
   }
 
   @override
