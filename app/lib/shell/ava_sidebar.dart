@@ -516,7 +516,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
         // _acct('billing', 'Billing', PhosphorIcons.creditCard(PhosphorIconsStyle.bold)),
         // _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
         _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
-        _acct('avastorage', 'View Storage', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
+        _acct('avastorage', 'Backup', PhosphorIcons.chartPieSlice(PhosphorIconsStyle.bold)),
         // (Contacts moved OUT of ACCOUNT to a featured tile below Library.)
         // _acct('diagnostics', 'Diagnostics', PhosphorIcons.bug(PhosphorIconsStyle.bold),
         //     onTap: () {

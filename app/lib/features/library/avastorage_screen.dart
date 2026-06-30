@@ -111,16 +111,18 @@ class _AvaStorageScreenState extends State<AvaStorageScreen> {
     return Scaffold(
       backgroundColor: Zine.paper,
       appBar: const ZineAppBar(
-        title: 'AvaStorage',
-        markWord: 'Storage',
-        tag: 'One pool, every app',
+        title: 'Backup',
+        markWord: 'Backup',
+        tag: 'Back up & restore',
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Zine.blueInk))
           : RefreshIndicator(
               color: Zine.blueInk,
               onRefresh: _load,
-              child: ListView(padding: const EdgeInsets.fromLTRB(18, 18, 18, 30), children: [
+              // Bottom padding includes the device safe-area inset + extra so the
+              // last ledger row (e.g. "Other") isn't chopped by the gesture nav bar.
+              child: ListView(padding: EdgeInsets.fromLTRB(18, 18, 18, 30 + MediaQuery.of(context).padding.bottom + 32), children: [
                 const _DriveSection(),
                 const SizedBox(height: 12),
                 const _BackupRestoreSection(),
