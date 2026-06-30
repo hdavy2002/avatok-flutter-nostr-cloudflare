@@ -300,15 +300,21 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // guardrails). Sender + each recipient (≤ sync cap) get the message indexed
   // into THEIR OWN brain. Voice notes (kind=audio) get Whisper-transcribed.
   try {
-    const isGroup = mem.length > 2;
-    const brainPayload = {
-      conv, kind, body: text ? text.slice(0, 2000) : null, media_ref: mediaRef,
-      group: isGroup, created_at: created,
-    };
-    void env.Q_BRAIN.send({ uid: ctx.uid, event_type: "message_stored", source_app: "avatok", payload: { ...brainPayload, peer: others[0] ?? null } });
-    if (recipients.length <= FANOUT_SYNC_MAX) {
-      for (const m of recipients) {
-        void env.Q_BRAIN.send({ uid: m, event_type: "message_received", source_app: "avatok", payload: { ...brainPayload, peer: ctx.uid } });
+    // [BRAIN-KILL-1] Honour the brainEnabled kill switch at the PRODUCER. The
+    // consumer re-checks guardrails, but enqueuing while the feature is OFF spends
+    // queue ops + risks ingestion the flag is meant to suppress. brainEnabled is
+    // false at launch, so this block ships dark — zero Q_BRAIN traffic from chat.
+    if ((await readConfig(env)).brainEnabled) {
+      const isGroup = mem.length > 2;
+      const brainPayload = {
+        conv, kind, body: text ? text.slice(0, 2000) : null, media_ref: mediaRef,
+        group: isGroup, created_at: created,
+      };
+      void env.Q_BRAIN.send({ uid: ctx.uid, event_type: "message_stored", source_app: "avatok", payload: { ...brainPayload, peer: others[0] ?? null } });
+      if (recipients.length <= FANOUT_SYNC_MAX) {
+        for (const m of recipients) {
+          void env.Q_BRAIN.send({ uid: m, event_type: "message_received", source_app: "avatok", payload: { ...brainPayload, peer: ctx.uid } });
+        }
       }
     }
   } catch { /* brain feed is best-effort, never blocks the send */ }
