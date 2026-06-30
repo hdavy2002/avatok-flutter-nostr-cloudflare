@@ -103,7 +103,7 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
     },
   };
   try {
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
     if (!res.ok) return null;
     const j: any = await res.json().catch(() => null);
     const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -135,6 +135,31 @@ async function deliverDealAudio(env: Env, a: {
   persona?: string;
 }): Promise<{ audioKey: string | null; bytes: number }> {
   const conv = dmConvId(a.sellerUid, a.buyerUid);
+  const text = a.outcome === "deal"
+    ? `Your agents agreed around ${a.agreed} ${a.currency} on "${a.listingTitle}". Say hello to take it forward — a voice replay of the negotiation follows.`
+    : `Your agents talked about "${a.listingTitle}" but didn't agree this time. A voice replay of the chat follows.`;
+
+  // ── PHASE 1 (fast, GUARANTEED): deliver the TEXT result into both threads
+  // FIRST. The voice render (Gemini TTS) is slow and can outlive the worker's
+  // background budget; doing it first would lose the whole message. The text
+  // envelope carries the full transcript so the result is never lost.
+  const textEnvelope = JSON.stringify({
+    t: "marketplace_deal", text, outcome: a.outcome, bubble: a.bubble,
+    agreed_price: a.agreed, currency: a.currency, listing_id: a.listingId, transcript: a.transcript,
+    has_audio: false, audio_key: null,
+  });
+  try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, textEnvelope, null); } catch { /* best-effort */ }
+  try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, textEnvelope, null); } catch { /* best-effort */ }
+  const title = a.outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating";
+  try {
+    await (env as any).Q_PUSH.send({ kind: "notify", to: a.sellerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
+    await (env as any).Q_PUSH.send({ kind: "notify", to: a.buyerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
+  } catch { /* push best-effort */ }
+  track(env, a.buyerUid, "deal_text_delivered", "avamarketplace", { listing_id: a.listingId, outcome: a.outcome });
+
+  // ── PHASE 2 (best-effort): render the voice note and deliver it as a follow-up
+  // message. If the render is slow and the worker is reaped here, the result is
+  // ALREADY in the thread (phase 1) — only the audio replay is missed.
   let audioKey: string | null = null;
   let bytes = 0;
   const wav = await renderNegotiationWav(env, a.transcript, a.persona);
@@ -145,23 +170,15 @@ async function deliverDealAudio(env: Env, a: {
       bytes = wav.length;
     } catch { audioKey = null; }
   }
-  const text = a.outcome === "deal"
-    ? `Your agents agreed around ${a.agreed} ${a.currency} on "${a.listingTitle}". Play the voice note and say hello to take it forward.`
-    : `Your agents talked about "${a.listingTitle}" but didn't agree this time. Play the voice note to hear how it went.`;
-  const envelope = JSON.stringify({
-    t: "marketplace_deal", text, outcome: a.outcome, bubble: a.bubble,
-    agreed_price: a.agreed, currency: a.currency, listing_id: a.listingId, transcript: a.transcript,
-    has_audio: !!audioKey, audio_key: audioKey,
-  });
-  // Drop the message into both threads (each attributed to the counterparty).
-  try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, envelope, audioKey); } catch { /* best-effort */ }
-  try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, envelope, audioKey); } catch { /* best-effort */ }
-  // FCM push both.
-  const title = a.outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating";
-  try {
-    await (env as any).Q_PUSH.send({ kind: "notify", to: a.sellerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
-    await (env as any).Q_PUSH.send({ kind: "notify", to: a.buyerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
-  } catch { /* push best-effort */ }
+  if (audioKey) {
+    const audioEnvelope = JSON.stringify({
+      t: "marketplace_deal", text: "🎙️ Voice replay of the negotiation", outcome: a.outcome, bubble: a.bubble,
+      agreed_price: a.agreed, currency: a.currency, listing_id: a.listingId, transcript: a.transcript,
+      has_audio: true, audio_key: audioKey,
+    });
+    try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, audioEnvelope, audioKey); } catch { /* best-effort */ }
+    try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, audioEnvelope, audioKey); } catch { /* best-effort */ }
+  }
   return { audioKey, bytes };
 }
 
