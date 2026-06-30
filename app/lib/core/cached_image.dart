@@ -61,9 +61,13 @@ class CachedImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (url.isEmpty) return _wrap(_broken());
-    final px = (cachePx ?? (width * 2).round()).clamp(64, 2048);
+    final safeW = (width.isFinite ? width : 240);
+    final px = (cachePx ?? (safeW * 2).round()).clamp(64, 2048);
     return _wrap(FutureBuilder<File?>(
-      future: AvatarCache.get(url, px),
+      // getAny is host-aware: avatok.ai images use the CF transform, other hosts
+      // (e.g. placeholders/test images) are cached raw — so EVERY image is
+      // cached on disk and never re-downloads on reopen.
+      future: AvatarCache.getAny(url, px),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) return _spinner();
         final f = snap.data;

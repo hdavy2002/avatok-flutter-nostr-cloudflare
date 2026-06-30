@@ -56,7 +56,7 @@ class CoverImage extends StatelessWidget {
     final u = url;
     if (u == null || u.isEmpty) return fallback;
     return FutureBuilder<File?>(
-      future: AvatarCache.get(u, 800),
+      future: AvatarCache.getAny(u, 800),
       builder: (context, snap) {
         final f = snap.data;
         if (f == null) return fallback;

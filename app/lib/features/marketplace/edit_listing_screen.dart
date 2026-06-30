@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
+import '../../core/cached_image.dart';
 import '../../core/config.dart';
 import '../../core/listings_api.dart';
 import 'sell_listing_flow.dart'
@@ -170,11 +171,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
               Wrap(spacing: 8, runSpacing: 8, children: [
                 for (var i = 0; i < _coverUrls.length; i++)
                   Stack(children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(_coverUrls[i], width: 84, height: 84, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(width: 84, height: 84, color: const Color(0x11000000), child: const Icon(Icons.broken_image))),
-                    ),
+                    CachedImage(_coverUrls[i], width: 84, height: 84, radius: BorderRadius.circular(8)),
                     Positioned(
                       right: 0, top: 0,
                       child: GestureDetector(
