@@ -177,6 +177,38 @@ class _SellListingFlowState extends State<SellListingFlow> {
         'cover_media': [for (final u in _coverUrls) {'type': 'image', 'url': u}],
       };
 
+  /// Required-field gate per step — Continue/Submit stays disabled until the
+  /// step is complete (pic 6). Photos require at least one image; social budget
+  /// is the one optional price.
+  bool _stepComplete(int step) {
+    switch (step) {
+      case 0:
+        return true; // type always has a value
+      case 1:
+        return _title.text.trim().isNotEmpty &&
+            _desc.text.trim().isNotEmpty &&
+            _location.text.trim().isNotEmpty;
+      case 2:
+        return _type == 'social' || (int.tryParse(_price.text.trim()) ?? 0) > 0;
+      case 3:
+        return _agentInstr.text.trim().isNotEmpty;
+      case 4:
+        return _coverUrls.isNotEmpty;
+      default:
+        return true;
+    }
+  }
+
+  String _stepHint(int step) {
+    switch (step) {
+      case 1: return 'Fill in title, description and location to continue.';
+      case 2: return 'Enter a price to continue.';
+      case 3: return 'Tell your agent how to negotiate to continue.';
+      case 4: return 'Add at least one photo to continue.';
+      default: return '';
+    }
+  }
+
   Future<void> _submit() async {
     setState(() { _busy = true; _error = null; });
     final sw = Stopwatch()..start();
@@ -228,17 +260,27 @@ class _SellListingFlowState extends State<SellListingFlow> {
           }
         },
         onStepCancel: () => setState(() => _step = _step > 0 ? _step - 1 : 0),
-        controlsBuilder: (context, details) => Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Row(children: [
-            FilledButton(
-              onPressed: _busy ? null : details.onStepContinue,
-              child: Text(_step < 5 ? 'Continue' : (_busy ? 'Submitting…' : 'Submit listing')),
-            ),
-            const SizedBox(width: 8),
-            if (_step > 0) TextButton(onPressed: details.onStepCancel, child: const Text('Back')),
-          ]),
-        ),
+        controlsBuilder: (context, details) {
+          final complete = _stepComplete(_step);
+          return Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                FilledButton(
+                  onPressed: (_busy || !complete) ? null : details.onStepContinue,
+                  child: Text(_step < 5 ? 'Continue' : (_busy ? 'Submitting…' : 'Submit listing')),
+                ),
+                const SizedBox(width: 8),
+                if (_step > 0) TextButton(onPressed: details.onStepCancel, child: const Text('Back')),
+              ]),
+              if (!complete && _stepHint(_step).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(_stepHint(_step), style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                ),
+            ]),
+          );
+        },
         steps: [
           Step(
             title: const Text('Type'),
@@ -274,9 +316,9 @@ class _SellListingFlowState extends State<SellListingFlow> {
             title: const Text('Details'),
             isActive: _step >= 1,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _field('Title', TextField(controller: _title, decoration: _box(hint: 'What are you listing?'))),
+              _field('Title', TextField(controller: _title, onChanged: (_) => setState(() {}), decoration: _box(hint: 'What are you listing?'))),
               const SizedBox(height: 14),
-              _field('Description', TextField(controller: _desc, maxLines: 4, decoration: _box(hint: 'Add the details buyers need'))),
+              _field('Description', TextField(controller: _desc, maxLines: 4, onChanged: (_) => setState(() {}), decoration: _box(hint: 'Add the details buyers need'))),
               const SizedBox(height: 14),
               _field('Category', DropdownButtonFormField<String>(
                 value: _category,
@@ -297,7 +339,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
                 onChanged: (v) => setState(() => _country = v ?? _country),
               )),
               const SizedBox(height: 14),
-              _field('Location', TextField(controller: _location, decoration: _box(hint: 'City or area'))),
+              _field('Location', TextField(controller: _location, onChanged: (_) => setState(() {}), decoration: _box(hint: 'City or area'))),
             ]),
           ),
           Step(
@@ -308,6 +350,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
                 child: _field(_type == 'social' ? 'Budget (optional)' : 'Price', TextField(
                   controller: _price,
                   keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
                   decoration: _box(hint: '0'),
                 )),
               ),
@@ -329,7 +372,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
             isActive: _step >= 3,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _label('Tell your agent how to negotiate for you'),
-              TextField(controller: _agentInstr, maxLines: 4, decoration: _box(hint: 'Your price stance, key facts, tone…')),
+              TextField(controller: _agentInstr, maxLines: 4, onChanged: (_) => setState(() {}), decoration: _box(hint: 'Your price stance, key facts, tone…')),
               const SizedBox(height: 4),
               Row(children: [
                 TextButton.icon(
