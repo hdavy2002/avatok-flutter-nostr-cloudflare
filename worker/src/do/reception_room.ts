@@ -401,7 +401,11 @@ export class ReceptionRoom {
       const calls = msg.toolCall.functionCalls;
       if (Array.isArray(calls) && calls.some((c: any) => c?.name === "end_call")) {
         this.ev("ava_recept_ended_by_agent", { ms: Date.now() - this.startedAt });
-        this.finalize("ava_ended");
+        // Gemini emits end_call right after the goodbye audio chunks; finalize()
+        // closes the caller socket, so hanging up instantly clips the tail of her
+        // line. Give the audio ~1.6s to drain to the caller, then end. The hard cap
+        // is the backstop if anything stalls.
+        setTimeout(() => { void this.finalize("ava_ended"); }, 1600);
         return;
       }
     }
@@ -465,6 +469,14 @@ export class ReceptionRoom {
     // ("That's all the time I have… I'll pass it on… have a great <day>!") even if
     // the caller is still talking — the bug the owner hit on 2026-06-30.
     this.wrapping = true;
+    // CRITICAL for a reliable barge-in under automatic VAD: tell Gemini the
+    // caller's audio stream has ENDED so it finalizes the still-open user turn and
+    // actually answers the wrap nudge. Gating the mic alone leaves the turn open
+    // forever (once we stop forwarding frames, no trailing-silence ever arrives for
+    // VAD to detect), so the model stays silent and the call hard-caps without a
+    // spoken close — exactly the owner's 2026-06-30 test. audioStreamEnd → turn
+    // ends → the "[SYSTEM: time is up]" instruction is spoken.
+    this.sendGem({ realtimeInput: { audioStreamEnd: true } });
     this.sendGem({
       clientContent: {
         turns: [{ role: "user", parts: [{ text: "[SYSTEM: time is up]" }] }],
@@ -529,12 +541,11 @@ export class ReceptionRoom {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
 
-    const sumT0 = Date.now();
-    const summary = await this.summarize(transcript, init).catch(() => null);
-    const summaryJson = summary ? JSON.stringify(summary) : null;
-    this.ev("ava_recept_summary_generated", {
-      ok: !!summary, latency_ms: Date.now() - sumT0, urgency: summary?.urgency ?? null,
-    });
+    // END-TO-END on gemini-3.1-flash-live (owner decision 2026-06-30): NO second
+    // model. We dropped the separate gemini-2.5-flash "what they said" summary —
+    // the owner gets the recording + the live transcript, with no LLM summary line.
+    const summary: any = null;
+    const summaryJson: string | null = null;
 
     // Persist session.
     try {
