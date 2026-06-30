@@ -49,10 +49,15 @@ export default {
     // Phase 7: refund/settlement SWEEP — catches missed DO alarms + settles
     // ended sessions (enqueue-only; the engine in avatok-api is idempotent, so
     // the system is alarm-precise AND cron-safe).
-    try {
-      const n = await moneySweep(env);
-      if (n) env.ANALYTICS?.writeDataPoint({ blobs: ["money_sweep"], doubles: [n], indexes: ["money"] });
-    } catch (e) { console.error("[money-sweep]", String(e)); }
+    // [MONEY-SWEEP-GATE-1] Only sweep when wallet top-ups are live. At launch
+    // Stripe is TEST + top-ups are off, so the sweep's 6 D1 reads/min × (prod +
+    // staging) buy nothing. Flip WALLET_TOPUP_ENABLED="1" when real money is on.
+    if (env.WALLET_TOPUP_ENABLED === "1") {
+      try {
+        const n = await moneySweep(env);
+        if (n) env.ANALYTICS?.writeDataPoint({ blobs: ["money_sweep"], doubles: [n], indexes: ["money"] });
+      } catch (e) { console.error("[money-sweep]", String(e)); }
+    }
     if ((event as any).cron === "* * * * *") return; // minute tick: sweep only
 
     // Phase 5: T-24h / T-60m / T-10m reminder ladder + gcal inbound-sync fallback.

@@ -53,9 +53,6 @@ export interface Env {
   CSAM_API_KEY?: string;
   CSAM_REPORT_URL?: string;      // where confirmed-CSAM reports are POSTed (NCMEC-filing service)
   CSAM_REPORT_KEY?: string;
-  // Bunny.net Stream (delete cascade removes a user's video collection).
-  BUNNY_API_KEY?: string;
-  BUNNY_LIBRARY_ID?: string;
   // Clerk Backend API (delete cascade removes the Clerk user; Phase 5 reminder
   // emails resolve addresses from Clerk — D1 stores only hashes). Gated.
   CLERK_SECRET_KEY?: string;
@@ -69,6 +66,10 @@ export interface Env {
   POSTHOG_PROJECT_ID?: string;
   // Stripe customer deletion (delete cascade; Phase 2). Gated.
   STRIPE_SECRET_KEY?: string;
+  // [MONEY-SWEEP-GATE-1] Phase 7 money sweep launch gate. "1" → run the minute
+  // refund/settlement sweep; unset (launch default) → skip it (Stripe is TEST,
+  // wallet top-ups off, so the 6 D1 reads/min buy nothing).
+  WALLET_TOPUP_ENABLED?: string;
   // Phase 9 — OpenAI Whisper voice-note transcription. Unset → voice notes are
   // simply not indexed (no transcript, no vector); everything else still works.
   OPENAI_API_KEY?: string;

@@ -395,8 +395,12 @@ queue = "analytics-staging"
 binding = "Q_MONEY"
 queue = "money-settlements-staging"
 
+# [MONEY-SWEEP-GATE-1] No minute money-sweep on staging — staging never settles
+# real money, so the per-minute cron invocation buys nothing. Reminders (15m) +
+# heavy cleanup (6h) stay. Prod keeps "* * * * *" but the handler no-ops the
+# sweep unless WALLET_TOPUP_ENABLED="1".
 [env.staging.triggers]
-crons = ["* * * * *", "*/15 * * * *", "0 */6 * * *"]  # minute = Phase 7 money sweep
+crons = ["*/15 * * * *", "0 */6 * * *"]
 
 [env.staging.vars]
 FCM_PROJECT = "avatok-e19ef"
