@@ -67,6 +67,11 @@ class RemoteConfig {
   /// AI Ringback Tones + Busy Tone — master switch (server panic off). Default
   /// mirrors kRingbackEnabledDefault so a fetch failure keeps the feature on.
   static bool get ringbackEnabled => _b('ringbackEnabled', kRingbackEnabledDefault);
+  /// AvaMarketplace (buy/sell/social + agent negotiation, Specs/AVAMARKETPLACE-
+  /// FINAL-PROPOSAL.md). Default OFF so the feature stays dark after a config
+  /// fetch failure and during phased rollout — flip `marketplaceEnabled: true`
+  /// in KV `platform_config` to surface the Marketplace menu + agent calls.
+  static bool get marketplaceEnabled => _b('marketplaceEnabled', false);
   static int get minAppBuild => (_cfg['minAppBuild'] as num?)?.toInt() ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

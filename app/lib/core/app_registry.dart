@@ -24,6 +24,10 @@ const kAppRegistry = <AppEntry>[
   // ---- standard ----
   AppEntry('avatok', 'AvaTOK', 'Messages & calls', Icons.chat_bubble, Color(0xFF08C4C4)),
   AppEntry('avalibrary', 'Library', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6)),
+  // AvaMarketplace (P1): buy/sell/social + agent negotiation. Routes to
+  // MarketplaceHub via AvaShell._openDest('marketplace'); the destination itself
+  // is gated by RemoteConfig.marketplaceEnabled so this stays dark until rollout.
+  AppEntry('marketplace', 'Marketplace', 'Buy, sell & social', Icons.storefront, Color(0xFFFF6036)),
   AppEntry('avastorage', 'View Storage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9)),
   AppEntry('avaapps', 'Connectors', 'Gmail, Docs, Drive & more', Icons.grid_view, Color(0xFF4F8DFD)),
   // AvaChat — direct AI chat with Ava (memory-aware, talks to your brain). Visible

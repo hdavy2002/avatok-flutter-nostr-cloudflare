@@ -31,6 +31,9 @@ import '../features/booking/avabooking_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
+import '../features/marketplace/marketplace_hub.dart';
+import '../features/marketplace/my_listings_screen.dart';
+import '../features/listings/create_listing_flow.dart';
 import '../features/identity/identity_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/profile/profile_setup_screen.dart';
@@ -147,7 +150,20 @@ class _AvaShellState extends State<AvaShell> {
     }
     switch (dest) {
       case 'explore':
-        return; // marketplace de-emphasised for the free messaging release
+      case 'marketplace':
+        // AvaMarketplace (P1): the buy/sell/social hub. Stays a no-op until the
+        // marketplaceEnabled kill switch flips on (Specs/AVAMARKETPLACE-FINAL-PROPOSAL.md).
+        if (!RemoteConfig.marketplaceEnabled) return;
+        _push(const MarketplaceHub());
+        return;
+      case 'createlisting':
+        if (!RemoteConfig.marketplaceEnabled) return;
+        _push(const CreateListingFlow());
+        return;
+      case 'mylistings':
+        if (!RemoteConfig.marketplaceEnabled) return;
+        _push(const MyListingsScreen());
+        return;
       case 'settings':
         // Reload on return — the preview switcher may have changed the account kind.
         _push(SettingsScreen(clerk: widget.clerk, onSignOut: widget.onSignOut, identity: _id))
