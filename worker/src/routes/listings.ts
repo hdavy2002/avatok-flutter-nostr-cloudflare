@@ -192,7 +192,7 @@ export async function fanout(env: Env, creatorId: string, title: string, body: s
 // creation pipeline
 // ---------------------------------------------------------------------------
 
-const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location"] as const;
+const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location", "expiry_days"] as const;
 
 function normFields(b: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -286,6 +286,12 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   const sets = keys.map((k, i) => `${k}=?${i + 2}`).join(", ");
   await metaDb(env).prepare(`UPDATE listings SET ${sets}, updated_at=?${keys.length + 2} WHERE id=?1`)
     .bind(id, ...keys.map((k) => f[k]), Date.now()).run();
+  // Renewing the expiry on a published/live marketplace listing recomputes the
+  // absolute expires_at from "now" so the renewed window actually takes effect.
+  if ("expiry_days" in f && Number(f.expiry_days) > 0 && MARKET_KINDS.has(String(row.kind)) && row.status !== "draft") {
+    await metaDb(env).prepare("UPDATE listings SET expires_at=?2 WHERE id=?1")
+      .bind(id, Date.now() + Number(f.expiry_days) * 86_400_000).run();
+  }
   if (row.status !== "draft") await ftsSync(env, id);
   return json({ ok: true });
 }
@@ -572,8 +578,11 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
     const tokens = q.toLowerCase().replace(/[^a-z0-9\s@_-]/g, " ").split(/\s+/).filter(Boolean).slice(0, 6);
     if (tokens.length) {
       // Marketplace search uses OR for broad recall (any keyword matches);
-      // creator search keeps AND for precision.
-      const match = tokens.map((t) => `"${t.replace(/"/g, "")}"*`).join(isMarket ? " OR " : " ");
+      // creator search keeps AND for precision. Marketplace also restricts the
+      // FTS match to the listing's own content columns so a seller's *name*
+      // can't spuriously match a product query (e.g. "car" hitting "John Carter").
+      const joined = tokens.map((t) => `"${t.replace(/"/g, "")}"*`).join(isMarket ? " OR " : " ");
+      const match = isMarket ? `{title description category} : (${joined})` : joined;
       const ids = await metaSession(env).prepare(
         "SELECT listing_id FROM listings_fts WHERE listings_fts MATCH ?1 LIMIT 200",
       ).bind(match).all();
