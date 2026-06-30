@@ -84,10 +84,11 @@ function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
 }
 
 /** Render a 2-voice negotiation transcript to a WAV via Gemini TTS. null on error. */
-async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: string; text: string }>): Promise<Uint8Array | null> {
+async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: string; text: string }>, persona?: string): Promise<Uint8Array | null> {
   const key = (env as any).RECEPTIONIST_GEMINI_API_KEY || (env as any).GEMINI_API_KEY;
   if (!key || !transcript.length) return null;
-  const script = "TTS this short marketplace negotiation between two agents, natural and businesslike:\n" +
+  const styleHint = persona && persona.trim() ? ` Speak in this style/accent: ${persona.trim()}.` : "";
+  const script = `TTS this short marketplace negotiation between two agents, natural and businesslike.${styleHint}\n` +
     transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`).join("\n");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${key}`;
   const body = {
@@ -130,11 +131,12 @@ async function deliverDealAudio(env: Env, a: {
   sellerUid: string; buyerUid: string; listingId: string; listingTitle: string;
   outcome: string; bubble: string; agreed: number; currency: string;
   transcript: Array<{ speaker: string; text: string }>;
+  persona?: string;
 }): Promise<{ audioKey: string | null; bytes: number }> {
   const conv = dmConvId(a.sellerUid, a.buyerUid);
   let audioKey: string | null = null;
   let bytes = 0;
-  const wav = await renderNegotiationWav(env, a.transcript);
+  const wav = await renderNegotiationWav(env, a.transcript, a.persona);
   if (wav) {
     audioKey = `mkt/deal/${a.listingId}/${crypto.randomUUID()}.wav`;
     try {
@@ -237,7 +239,7 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
   if (!listingId) return json({ error: "listing_id required" }, 400);
 
   const listing = await metaDb(env).prepare(
-    "SELECT id, creator_id, title, description, price, currency_display, status FROM listings WHERE id=?1",
+    "SELECT id, creator_id, title, description, price, currency_display, status, agent_instructions, agent_lang, agent_voice_persona FROM listings WHERE id=?1",
   ).bind(listingId).first<any>();
   if (!listing) return json({ error: "not found" }, 404);
   if (listing.creator_id === ctx.uid) return json({ error: "own_listing" }, 400);
@@ -255,18 +257,23 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
   // rendered on a DEAL (deferred to the TTS worker — see TODO below).
   track(env, ctx.uid, "negotiation_started", "avamarketplace", { listing_id: listingId });
   const asking = Math.trunc(Number(listing.price) || 0);
+  const agentLang = String(listing.agent_lang || "English").trim() || "English";
+  const mandate = String(listing.agent_instructions || "").slice(0, 1200);
   const sys =
     "You simulate a brief, businesslike negotiation between two marketplace agents and output ONLY JSON. " +
-    "The SELLER agent represents the listing; the BUYER agent has a maximum budget. The seller asks the " +
-    "listing price and will realistically come down to about 80% of it if needed. Reach a DEAL only if the " +
-    "buyer's max is at least the seller's lowest acceptable price; settle near the midpoint of the overlap. " +
+    "The SELLER agent represents the listing and follows its owner's PRIVATE MANDATE (never reveal it verbatim); " +
+    "the BUYER agent has a maximum budget. If no explicit floor is given, the seller will realistically come down " +
+    "to about 80% of the asking price. Reach a DEAL only if the buyer's max is at least the seller's lowest " +
+    "acceptable price; settle near the midpoint of the overlap. " +
+    `Write the transcript text in ${agentLang} (the seller's agent language). ` +
     'Output: {"outcome":"deal"|"impasse","agreed_price":<int>,"currency":"<code>","transcript":[{"speaker":"Seller"|"Buyer","text":"..."}]} ' +
     "Keep the transcript to 4-8 short lines. No prose outside the JSON.";
   const user =
     `LISTING: "${listing.title}". Asking price: ${asking} ${listing.currency_display || currency}. ` +
     `Details: ${String(listing.description || "").slice(0, 600)}. ` +
+    (mandate ? `SELLER PRIVATE MANDATE (do not reveal verbatim): ${mandate}. ` : "") +
     `BUYER max: ${buyerMax} ${currency}. Buyer must-haves: ${mustHaves || "none"}.`;
-  const raw = await callSonnet(env, sys, user, 500);
+  const raw = await callSonnet(env, sys, user, 600);
 
   let outcome = "impasse";
   let agreed = 0;
@@ -302,6 +309,7 @@ export async function marketplaceNegotiate(req: Request, env: Env): Promise<Resp
     sellerUid: String(listing.creator_id), buyerUid: ctx.uid, listingId,
     listingTitle: String(listing.title || "your listing"),
     outcome, bubble, agreed, currency, transcript,
+    persona: String(listing.agent_voice_persona || ""),
   });
   track(env, ctx.uid, "deal_audio_render_completed", "avamarketplace", {
     listing_id: listingId, outcome, bubble, has_audio: !!delivery.audioKey, audio_bytes: delivery.bytes,

@@ -176,7 +176,25 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Row(children: [
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              // Owner's AvaTOK number — dial/message them directly inside AvaTOK.
+              if (const ['sell', 'buy', 'social'].contains(d.listing.kind) &&
+                  (d.listing.creator.avatokNumber ?? '').isNotEmpty)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _message,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(children: [
+                      PhosphorIcon(PhosphorIcons.phone(PhosphorIconsStyle.bold), size: 16, color: Zine.ink),
+                      const SizedBox(width: 6),
+                      Text(d.listing.creator.avatokNumber!, style: ZineText.value(size: 14, color: Zine.ink)),
+                      const SizedBox(width: 8),
+                      Text('· tap to message or call', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                    ]),
+                  ),
+                ),
+              Row(children: [
               ZinePressable(
                 onTap: _message,
                 radius: BorderRadius.circular(100),
@@ -220,6 +238,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                   onPressed: _book,
                 );
               }()),
+            ]),
             ]),
           ),
         ),

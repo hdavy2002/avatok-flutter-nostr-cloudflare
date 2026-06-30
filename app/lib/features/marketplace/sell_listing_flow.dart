@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
+import '../../core/config.dart';
 import '../../core/listings_api.dart';
 import '../../core/marketplace_api.dart';
 
@@ -41,10 +46,29 @@ class _SellListingFlowState extends State<SellListingFlow> {
   String _agentLang = 'English';
   final _accent = TextEditingController();
   int _expiryDays = 30;
+  final List<String> _coverUrls = [];
+  bool _uploading = false;
 
   bool _busy = false;
   bool _aiBusy = false;
   String? _error;
+
+  Future<void> _pickCover() async {
+    if (_coverUrls.length >= 5 || _uploading) return;
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+    if (x == null) return;
+    setState(() => _uploading = true);
+    try {
+      final bytes = await x.readAsBytes();
+      final res = await ApiAuth.postBytes(kUploadPublicUrl, bytes,
+          extraHeaders: {'x-content-type': 'image/jpeg'}, timeout: const Duration(seconds: 60));
+      if (res.statusCode == 200) {
+        final url = (jsonDecode(res.body) as Map)['url']?.toString();
+        if (url != null && url.isNotEmpty && mounted) setState(() => _coverUrls.add(url));
+      }
+    } catch (_) {/* keep UI responsive */}
+    if (mounted) setState(() => _uploading = false);
+  }
 
   String get _exampleInstruction {
     switch (_type) {
@@ -82,6 +106,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
         'agent_lang': _agentLang,
         'agent_voice_persona': _accent.text.trim(),
         'expiry_days': _expiryDays,
+        'cover_media': [for (final u in _coverUrls) {'type': 'image', 'url': u}],
       };
 
   Future<void> _submit() async {
@@ -127,7 +152,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
       body: Stepper(
         currentStep: _step,
         onStepContinue: () {
-          if (_step < 4) {
+          if (_step < 5) {
             setState(() => _step++);
           } else {
             _submit();
@@ -139,7 +164,7 @@ class _SellListingFlowState extends State<SellListingFlow> {
           child: Row(children: [
             FilledButton(
               onPressed: _busy ? null : details.onStepContinue,
-              child: Text(_step < 4 ? 'Continue' : (_busy ? 'Submitting…' : 'Submit listing')),
+              child: Text(_step < 5 ? 'Continue' : (_busy ? 'Submitting…' : 'Submit listing')),
             ),
             const SizedBox(width: 8),
             if (_step > 0) TextButton(onPressed: details.onStepCancel, child: const Text('Back')),
@@ -240,8 +265,51 @@ class _SellListingFlowState extends State<SellListingFlow> {
             ]),
           ),
           Step(
-            title: const Text('Review'),
+            title: const Text('Photos'),
             isActive: _step >= 4,
+            content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Add up to 5 photos (optional).', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (var i = 0; i < _coverUrls.length; i++)
+                  Stack(children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(_coverUrls[i], width: 84, height: 84, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                              width: 84, height: 84, color: const Color(0x11000000),
+                              child: const Icon(Icons.broken_image))),
+                    ),
+                    Positioned(
+                      right: 0, top: 0,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _coverUrls.removeAt(i)),
+                        child: Container(
+                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          padding: const EdgeInsets.all(2),
+                          child: const Icon(Icons.close, size: 14, color: Colors.white)),
+                      ),
+                    ),
+                  ]),
+                if (_coverUrls.length < 5)
+                  GestureDetector(
+                    onTap: _uploading ? null : _pickCover,
+                    child: Container(
+                      width: 84, height: 84,
+                      decoration: BoxDecoration(
+                          border: Border.all(color: Colors.black26), borderRadius: BorderRadius.circular(8)),
+                      child: Center(
+                        child: _uploading
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.add_a_photo_outlined)),
+                    ),
+                  ),
+              ]),
+            ]),
+          ),
+          Step(
+            title: const Text('Review'),
+            isActive: _step >= 5,
             content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Listing expires in:'),
               Slider(

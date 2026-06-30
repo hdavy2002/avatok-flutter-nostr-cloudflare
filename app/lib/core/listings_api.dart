@@ -10,13 +10,14 @@ const String _base = 'https://$kSignalingHost/api';
 
 class ListingCreator {
   final String uid;
-  final String? handle, name, avatarUrl;
+  final String? handle, name, avatarUrl, avatokNumber;
   final bool kycVerified;
   ListingCreator.fromJson(Map<String, dynamic> j)
       : uid = (j['uid'] ?? '').toString(),
         handle = j['handle']?.toString(),
         name = j['name']?.toString(),
         avatarUrl = j['avatar_url']?.toString(),
+        avatokNumber = j['avatok_number']?.toString(),
         kycVerified = j['kyc_verified'] == true;
 }
 

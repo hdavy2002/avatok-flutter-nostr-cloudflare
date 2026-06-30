@@ -79,6 +79,7 @@ const CARD_SELECT = `
          l.translation_enabled, l.spoken_lang,
          l.rating_avg, l.rating_count, l.created_at,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
+         u.avatok_number_display AS creator_number,
          (SELECT k.status FROM kyc_status k WHERE k.uid = l.creator_id) AS creator_kyc
     FROM listings l LEFT JOIN users u ON u.uid = l.creator_id`;
 
@@ -115,6 +116,7 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>) {
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
+      avatok_number: r.creator_number ?? null,                        // owner's AvaTOK number (dial inside AvaTOK)
       kyc_verified: r.creator_kyc === "verified",                     // A4 trust badge
     },
   };
@@ -187,7 +189,7 @@ export async function fanout(env: Env, creatorId: string, title: string, body: s
 // creation pipeline
 // ---------------------------------------------------------------------------
 
-const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang"] as const;
+const EDITABLE = ["title", "description", "category", "price", "currency_display", "country", "adults_only", "badges", "cover_media", "starts_at", "duration_min", "capacity", "translation_enabled", "spoken_lang", "agent_instructions", "agent_lang", "agent_voice_persona", "location"] as const;
 
 function normFields(b: any): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -217,6 +219,13 @@ function normFields(b: any): Record<string, unknown> {
   // language of transmission, e.g. 'hi' for Hindi).
   if (b.translation_enabled !== undefined) out.translation_enabled = b.translation_enabled ? 1 : 0;
   if (b.spoken_lang !== undefined) out.spoken_lang = b.spoken_lang ? String(b.spoken_lang).slice(0, 12) : null;
+  // AvaMarketplace: the agent mandate + language/persona + type metadata.
+  if (b.agent_instructions !== undefined) out.agent_instructions = b.agent_instructions ? String(b.agent_instructions).slice(0, 2000) : null;
+  if (b.agent_lang !== undefined) out.agent_lang = b.agent_lang ? String(b.agent_lang).slice(0, 32) : null;
+  if (b.agent_voice_persona !== undefined) out.agent_voice_persona = b.agent_voice_persona ? String(b.agent_voice_persona).slice(0, 200) : null;
+  if (b.market_type !== undefined) out.market_type = b.market_type ? String(b.market_type).slice(0, 16) : null;
+  if (b.social_sub !== undefined) out.social_sub = b.social_sub ? String(b.social_sub).slice(0, 32) : null;
+  if (b.location !== undefined) out.location = b.location ? String(b.location).slice(0, 120) : null;
   return out;
 }
 
@@ -226,7 +235,7 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const kind = String(b.kind || "");
-  if (!KINDS.has(kind)) return json({ error: "kind must be live_event|consult" }, 400);
+  if (!KINDS.has(kind)) return json({ error: "kind must be live_event|consult|sell|buy|social" }, 400);
   const id = crypto.randomUUID();
   const now = Date.now();
   const f = normFields(b);
@@ -237,12 +246,15 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   if (blocked) return blocked;
   await metaDb(env).prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
-       country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16)`,
+       country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at,
+       agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, (f.category as string) ?? "teachers",
     f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
-    kind === "consult" ? (f.capacity ?? 1) : null, now).run();
+    kind === "consult" ? (f.capacity ?? 1) : null, now,
+    f.agent_instructions ?? null, f.agent_lang ?? null, f.agent_voice_persona ?? null,
+    f.market_type ?? (MARKET_KINDS.has(kind) ? kind : null), f.social_sub ?? null, f.location ?? null).run();
   track(env, ctx.uid, "listing_draft_created", APP, { kind });
   return json({ ok: true, listing_id: id, status: "draft" });
 }
