@@ -114,6 +114,26 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
   }
 }
 
+/**
+ * Create the DM thread (conversations + conversation_members rows) for both
+ * parties. WITHOUT this the chat list — which is driven by
+ * `conversations JOIN conversation_members` (GET /api/conversations) — never
+ * shows the thread, even though the message is in the InboxDO. This mirrors
+ * messaging.ts `ensureDm`, which every normal DM calls before appending.
+ */
+async function ensureDmThread(env: Env, a: string, b: string, context: string | null): Promise<void> {
+  const conv = dmConvId(a, b);
+  const now = Date.now();
+  const db = metaDb(env);
+  try {
+    await db.batch([
+      db.prepare("INSERT OR IGNORE INTO conversations (id, kind, created_by, created_at, updated_at, context) VALUES (?1,'dm',?2,?3,?3,?4)").bind(conv, a, now, context),
+      db.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, a, now),
+      db.prepare("INSERT OR IGNORE INTO conversation_members (conv_id, uid, role, joined_at) VALUES (?1,?2,'member',?3)").bind(conv, b, now),
+    ]);
+  } catch { /* best-effort — InboxDO append still carries the message */ }
+}
+
 /** Append a marketplace voice/text message into a user's InboxDO thread. */
 async function inboxAppend(env: Env, recipient: string, sender: string, conv: string, envelope: string, mediaRef: string | null): Promise<void> {
   const stub = (env as any).INBOX.get((env as any).INBOX.idFromName(recipient));
@@ -135,6 +155,8 @@ async function deliverDealAudio(env: Env, a: {
   persona?: string;
 }): Promise<{ audioKey: string | null; bytes: number }> {
   const conv = dmConvId(a.sellerUid, a.buyerUid);
+  // CREATE the DM thread for both parties FIRST, so it appears in the chat list.
+  await ensureDmThread(env, a.sellerUid, a.buyerUid, `event:${a.listingId}`);
   const text = a.outcome === "deal"
     ? `Your agents agreed around ${a.agreed} ${a.currency} on "${a.listingTitle}". Say hello to take it forward — a voice replay of the negotiation follows.`
     : `Your agents talked about "${a.listingTitle}" but didn't agree this time. A voice replay of the chat follows.`;
