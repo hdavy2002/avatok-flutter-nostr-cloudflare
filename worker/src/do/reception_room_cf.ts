@@ -59,7 +59,10 @@ const AURA_FEMALE = new Set([
 ]);
 // VOICEMAIL: a long endpoint so natural pauses don't cut the caller off mid-message;
 // a big max so a continuous monologue is still captured in one shot; a 50s window.
-const CF_ENDPOINT_MS = 1000;                // ~1s trailing silence ends the caller's message (interruptible close)
+const CF_ENDPOINT_MS = 2500;                // ~2.5s trailing silence ends a caller turn. Was 1000ms, which
+                                            // cut callers off at the first natural mid-message pause (PostHog
+                                            // 2026-06-30: ~20 chars captured from ~18s of audio → "message was
+                                            // cut off"). Voicemail callers pause to think; 2.5s tolerates that.
 const CF_MIN_TURN_BYTES = 8000;             // ~0.25s @16k PCM16 — below = noise, ignore
 const CF_MAX_TURN_BYTES = 16000 * 2 * 55;   // ~55s @16k PCM16 — force-process a long message
 const CF_MSG_WINDOW_MS = 50_000;            // caller's message window (starts AFTER the greeting)
@@ -268,6 +271,11 @@ export class ReceptionRoomCf {
     if (speech) {
       this.cfHadSpeech = true;
       this.cfTurnBuf.push(bytes); this.cfTurnBytes += bytes.byteLength;
+      // Active speech keeps the call alive: reset the inactivity timer so a long
+      // continuous message (after the first turn re-armed it via bumpIdle) is
+      // never finalized as "inactivity" mid-sentence. Only true trailing silence
+      // for IDLE_MS ends the call.
+      this.bumpIdle();
       if (this.cfEndpointTimer) { clearTimeout(this.cfEndpointTimer); this.cfEndpointTimer = null; }
       if (this.cfTurnBytes > CF_MAX_TURN_BYTES) void this.processCfTurn();
     } else if (this.cfHadSpeech && !this.cfEndpointTimer) {
@@ -322,8 +330,21 @@ export class ReceptionRoomCf {
     }
     if (this.finalized) return;
     if (this.cfTimeUp) { void this.finalize("time_up"); }              // 50s up → final close → end
-    else if (this.cfBarged) { this.cfBarged = false; this.bumpIdle(); } // caller resumed → keep listening
-    else { void this.finalize("ava_ended"); }                          // caller was done → end
+    else {
+      // VOICEMAIL FIX (2026-06-30): do NOT hang up after the caller's first
+      // endpointed turn. The old `finalize("ava_ended")` here ended the call the
+      // moment the caller paused, after a single Ava confirmation — so only the
+      // first phrase was ever transcribed (PostHog: in_chars≈20 from ~18s of
+      // audio, turns=1, cutoff=ava_ended → summary "message was cut off"). The
+      // close was meant to be interruptible only via barge-in, which a caller who
+      // politely waits for Ava never triggers. Now, after Ava's brief
+      // acknowledgement we ALWAYS return to listening so the caller can finish
+      // their message across natural pauses. The call still ends deterministically
+      // on the 50s time cap (above) or IDLE_MS of true trailing silence
+      // (bumpIdle → finalize("inactivity")). This matches the documented intent.
+      this.cfBarged = false;
+      this.bumpIdle();
+    }
   }
 
   private async cfAssistantTurn(userContent: string): Promise<void> {
