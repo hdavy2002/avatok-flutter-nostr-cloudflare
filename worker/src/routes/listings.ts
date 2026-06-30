@@ -43,7 +43,9 @@ import { notifyUser } from "../notify";
 import { emailBookingConfirmed } from "../cal/emails";
 
 const APP = "avaexplore";
-const KINDS = new Set(["live_event", "consult"]);
+// live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
+const KINDS = new Set(["live_event", "consult", "sell", "buy", "social"]);
+const MARKET_KINDS = new Set(["sell", "buy", "social"]);
 const CAPACITIES = new Set([1, 10, 20]);
 const FANOUT_DAILY_CAP = 2;       // A2 anti-spam
 const FANOUT_MAX_FOLLOWERS = 500;
@@ -193,7 +195,10 @@ function normFields(b: any): Record<string, unknown> {
   if (b.description !== undefined) out.description = String(b.description).slice(0, 8000);
   if (b.category !== undefined) out.category = String(b.category);
   if (b.price !== undefined) out.price = Math.max(0, Math.trunc(Number(b.price) || 0));
+  // AvaMarketplace sends price_amount/price_currency (major units, any ISO-4217).
+  if (b.price_amount !== undefined && b.price === undefined) out.price = Math.max(0, Math.trunc(Number(b.price_amount) || 0));
   if (b.currency_display !== undefined) out.currency_display = String(b.currency_display).slice(0, 8);
+  if (b.price_currency !== undefined && b.currency_display === undefined) out.currency_display = String(b.price_currency).slice(0, 8);
   if (b.country !== undefined) out.country = b.country ? String(b.country).slice(0, 2).toUpperCase() : null;
   if (b.adults_only !== undefined) out.adults_only = b.adults_only ? 1 : 0;
   if (b.badges !== undefined) out.badges = b.badges ? JSON.stringify(b.badges) : null;
@@ -277,32 +282,43 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (l.status !== "draft") return json({ error: "already published", status_now: l.status }, 409);
 
-  // Publish guards — KYC for BOTH live events and consult listings (§5 matrix).
-  const gate = await requireKyc(env, ctx.uid);
-  if (gate) return json({ error: gate.error, reason: "kyc" }, gate.status);
-
-  if (!l.title || !l.category) return json({ error: "title and category required" }, 400);
-  // Listing photos are mandatory: 1–5 (owner decision 2026-06-11).
-  const covers = parseJson(l.cover_media, [] as unknown[]);
-  if (!Array.isArray(covers) || covers.length < 1) {
-    return json({ error: "cover_required", detail: "Add at least one photo (up to 5) before publishing." }, 400);
-  }
-  if (covers.length > 5) return json({ error: "max 5 photos" }, 400);
-  const cat = await db.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(l.category).first();
-  if (!cat) return json({ error: "unknown category" }, 400);
-  if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
-
-  if (l.kind === "live_event") {
-    const start = Number(l.starts_at), dur = Number(l.duration_min);
-    if (!(start > Date.now()) || !(dur >= 5 && dur <= 480)) return json({ error: "starts_at (future) and duration_min (5–480) required" }, 400);
-    // Conflict engine: claim the creator's slot — occupied ⇒ 409 (greyed UX client-side).
-    const claim = await claimBlock(env, { userId: ctx.uid, sourceApp: APP, sourceRef: id, start, end: start + dur * 60_000, title: String(l.title) });
-    if (!claim.ok) return json({ error: "conflict", conflictWith: claim.conflict }, 409);
+  const isMarket = MARKET_KINDS.has(String(l.kind));
+  if (isMarket) {
+    // AvaMarketplace (buy/sell/social): no slots, availability, capacity or valid-
+    // category-id requirement; photos are optional so the flow is testable now.
+    // NOTE: the 3-factor identity gate (video+email+phone) is the pre-public-launch
+    // requirement and is intentionally NOT enforced here yet (testing phase).
+    if (!l.title) return json({ error: "title required" }, 400);
+    const mc = parseJson(l.cover_media, [] as unknown[]);
+    if (Array.isArray(mc) && mc.length > 5) return json({ error: "max 5 photos" }, 400);
+    if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
   } else {
-    if (!CAPACITIES.has(Number(l.capacity))) return json({ error: "capacity must be 1, 10 or 20" }, 400);
-    // Consult listings attach to availability_rules — there must be some.
-    const rules = await db.prepare("SELECT 1 FROM availability_rules WHERE user_id=?1 LIMIT 1").bind(ctx.uid).first();
-    if (!rules) return json({ error: "no_availability", detail: "Set your availability in AvaCalendar before publishing a consult listing." }, 409);
+    // Creator services (live_event/consult) — KYC + photos + valid category + slot/availability.
+    const gate = await requireKyc(env, ctx.uid);
+    if (gate) return json({ error: gate.error, reason: "kyc" }, gate.status);
+    if (!l.title || !l.category) return json({ error: "title and category required" }, 400);
+    // Listing photos are mandatory: 1–5 (owner decision 2026-06-11).
+    const covers = parseJson(l.cover_media, [] as unknown[]);
+    if (!Array.isArray(covers) || covers.length < 1) {
+      return json({ error: "cover_required", detail: "Add at least one photo (up to 5) before publishing." }, 400);
+    }
+    if (covers.length > 5) return json({ error: "max 5 photos" }, 400);
+    const cat = await db.prepare("SELECT 1 FROM listing_categories WHERE id=?1 AND active=1").bind(l.category).first();
+    if (!cat) return json({ error: "unknown category" }, 400);
+    if (!(Number(l.price) >= 0)) return json({ error: "bad price" }, 400);
+
+    if (l.kind === "live_event") {
+      const start = Number(l.starts_at), dur = Number(l.duration_min);
+      if (!(start > Date.now()) || !(dur >= 5 && dur <= 480)) return json({ error: "starts_at (future) and duration_min (5–480) required" }, 400);
+      // Conflict engine: claim the creator's slot — occupied ⇒ 409 (greyed UX client-side).
+      const claim = await claimBlock(env, { userId: ctx.uid, sourceApp: APP, sourceRef: id, start, end: start + dur * 60_000, title: String(l.title) });
+      if (!claim.ok) return json({ error: "conflict", conflictWith: claim.conflict }, 409);
+    } else {
+      if (!CAPACITIES.has(Number(l.capacity))) return json({ error: "capacity must be 1, 10 or 20" }, 400);
+      // Consult listings attach to availability_rules — there must be some.
+      const rules = await db.prepare("SELECT 1 FROM availability_rules WHERE user_id=?1 LIMIT 1").bind(ctx.uid).first();
+      if (!rules) return json({ error: "no_availability", detail: "Set your availability in AvaCalendar before publishing a consult listing." }, 409);
+    }
   }
 
   await db.prepare("UPDATE listings SET status='published', updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();

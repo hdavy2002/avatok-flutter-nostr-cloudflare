@@ -5,7 +5,6 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
-import '../../core/remote_config.dart';
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/zine.dart';
@@ -186,7 +185,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                 )),
               ),
               const SizedBox(width: 12),
-              if (RemoteConfig.marketplaceEnabled) ...[
+              if (const ['sell', 'buy', 'social'].contains(d.listing.kind)) ...[
                 ZinePressable(
                   onTap: _alreadyTalked ? () {} : _callAgent,
                   radius: BorderRadius.circular(100),
@@ -197,17 +196,30 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                 ),
                 const SizedBox(width: 12),
               ],
-              Expanded(child: ZineButton(
-                label: d.listing.status == 'live'
-                    ? 'Join now · ${d.listing.priceLabel}'
-                    : d.listing.kind == 'live_event'
-                        ? 'Book · ${d.listing.priceLabel}'
-                        : 'Book a session · ${d.listing.priceLabel}',
-                variant: d.listing.status == 'live' ? ZineButtonVariant.coral : ZineButtonVariant.lime,
-                fontSize: 18,
-                fullWidth: true,
-                onPressed: _book,
-              )),
+              Expanded(child: () {
+                final isMarket = const ['sell', 'buy', 'social'].contains(d.listing.kind);
+                if (isMarket) {
+                  // Marketplace listing: the primary action is to message the owner
+                  // directly (price is shown above; agents handle negotiation).
+                  return ZineButton(
+                    label: 'Message owner',
+                    variant: ZineButtonVariant.lime,
+                    fontSize: 18, fullWidth: true,
+                    onPressed: _message,
+                  );
+                }
+                return ZineButton(
+                  label: d.listing.status == 'live'
+                      ? 'Join now · ${d.listing.priceLabel}'
+                      : d.listing.kind == 'live_event'
+                          ? 'Book · ${d.listing.priceLabel}'
+                          : 'Book a session · ${d.listing.priceLabel}',
+                  variant: d.listing.status == 'live' ? ZineButtonVariant.coral : ZineButtonVariant.lime,
+                  fontSize: 18,
+                  fullWidth: true,
+                  onPressed: _book,
+                );
+              }()),
             ]),
           ),
         ),

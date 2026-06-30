@@ -31,9 +31,9 @@ import '../features/booking/avabooking_screen.dart';
 import '../features/calendar/avacalendar_screen.dart';
 import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
-import '../features/marketplace/marketplace_hub.dart';
 import '../features/marketplace/my_listings_screen.dart';
-import '../features/listings/create_listing_flow.dart';
+import '../features/marketplace/sell_listing_flow.dart';
+import '../features/explore/explore_home.dart';
 import '../features/identity/identity_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/profile/profile_setup_screen.dart';
@@ -151,17 +151,15 @@ class _AvaShellState extends State<AvaShell> {
     switch (dest) {
       case 'explore':
       case 'marketplace':
-        // AvaMarketplace (P1): the buy/sell/social hub. Stays a no-op until the
-        // marketplaceEnabled kill switch flips on (Specs/AVAMARKETPLACE-FINAL-PROPOSAL.md).
-        if (!RemoteConfig.marketplaceEnabled) return;
-        _push(const MarketplaceHub());
+        // AvaMarketplace landing = the AvaExplore browse grid (cards, categories,
+        // AI search). Always opens — the marketplaceEnabled flag gates the agent
+        // negotiation backend, not basic navigation.
+        _push(ExploreHome(onMenu: () => Navigator.of(context).maybePop()));
         return;
       case 'createlisting':
-        if (!RemoteConfig.marketplaceEnabled) return;
-        _push(const CreateListingFlow());
+        _push(const SellListingFlow());
         return;
       case 'mylistings':
-        if (!RemoteConfig.marketplaceEnabled) return;
         _push(const MyListingsScreen());
         return;
       case 'settings':

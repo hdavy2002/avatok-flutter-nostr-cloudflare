@@ -47,6 +47,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
   // ACCOUNT & SETTINGS section collapses by default (owner decision 2026-06-19,
   // revised) — the header is a bigger, tappable label that expands the group.
   bool _accountOpen = false;
+  // Marketplace group expanded by default so Browse / Create / My listings are
+  // visible without an extra tap.
+  bool _marketplaceOpen = true;
   String _displayName = '';
   String _handle = '';
   String _avatarUrl = ''; // the user's own profile photo (was never read → drawer showed initials)
@@ -100,6 +103,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
             // tiles in BOTH focus and non-focus modes (see _column), so always drop
             // them from the APPS list to avoid duplicates.
             .where((a) => a.id != 'avalibrary' && a.id != 'avachat' && a.id != 'avatok')
+            // Marketplace renders as its own expandable group (Browse / Create /
+            // My listings), not a plain app row.
+            .where((a) => a.id != 'marketplace')
             .toList();
         final body = SafeArea(child: _column(context, apps, focus));
         if (widget.permanent) {
@@ -218,6 +224,8 @@ class _AvaSidebarState extends State<AvaSidebar> {
               // Contacts — moved out of ACCOUNT to sit below Library; own colour.
               _special('invite', 'Contacts', 'Find & manage people',
                   PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.coral),
+              // AvaMarketplace — expandable group with its sub-pages.
+              _marketplaceSection(),
               // Team — AI receptionist + staff routing. HIDDEN from the sidebar
               // (owner decision 2026-06-28). Re-enable by un-commenting this row.
               // _special('team', 'Team', 'AI receptionist & staff',
@@ -358,6 +366,62 @@ class _AvaSidebarState extends State<AvaSidebar> {
       ),
     );
   }
+
+  /// AvaMarketplace expandable group: a header that toggles open, revealing the
+  /// Browse / Create listing / My listings sub-pages.
+  Widget _marketplaceSection() {
+    final headerActive = widget.current == 'marketplace';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(children: [
+        ZinePressable(
+          onTap: () => setState(() => _marketplaceOpen = !_marketplaceOpen),
+          color: headerActive ? Zine.lime : Zine.card,
+          radius: BorderRadius.circular(Zine.rSm),
+          boxShadow: Zine.shadowXs,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            ZineIconBadge(icon: PhosphorIcons.storefront(PhosphorIconsStyle.bold), color: Zine.coral),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Marketplace', style: ZineText.cardTitle(size: 15.5)),
+                const SizedBox(height: 1),
+                Text('Buy, sell & social', style: ZineText.tag(size: 10.5, color: Zine.inkSoft)),
+              ]),
+            ),
+            PhosphorIcon(
+                _marketplaceOpen
+                    ? PhosphorIcons.caretUp(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                size: 14, color: Zine.inkSoft),
+          ]),
+        ),
+        if (_marketplaceOpen) ...[
+          const SizedBox(height: 4),
+          _subRow('marketplace', 'Browse', PhosphorIcons.storefront(PhosphorIconsStyle.bold)),
+          _subRow('createlisting', 'Create listing', PhosphorIcons.plusCircle(PhosphorIconsStyle.bold)),
+          _subRow('mylistings', 'My listings', PhosphorIcons.tag(PhosphorIconsStyle.bold)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _subRow(String key, String label, IconData icon) => Padding(
+        padding: const EdgeInsets.only(left: 14, top: 3),
+        child: ZinePressable(
+          onTap: () => widget.onSelect(key),
+          radius: BorderRadius.circular(14),
+          boxShadow: const <BoxShadow>[],
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(children: [
+            ZineIconBadge(icon: icon, color: Zine.blue, size: 30),
+            const SizedBox(width: 11),
+            Expanded(child: Text(label, style: ZineText.value(size: 14))),
+            PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 12, color: Zine.inkSoft),
+          ]),
+        ),
+      );
 
   /// Parent/Enterprise tool group — empty for personal accounts.
   List<Widget> _managementSection() {
