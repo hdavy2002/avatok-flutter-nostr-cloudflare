@@ -67,8 +67,12 @@ export const RECEPTIONIST_MODEL_DEFAULT = "gemini-3.1-flash-live-preview";
 // Voicemail budget (owner decision 2026-06-29): ~10s greeting + 50s message + 20s
 // wrap = ~80s total. The CF engine also runs a 50s message-window timer (starts
 // after the greeting) that makes Ava cut in with a "time's up" close.
-export const HARD_CAP_MS = 35_000; // force end — whole call wrapped in ~35s (owner spec 2026-06-30)
-export const SOFT_CAP_MS = 25_000; // barge-in wrap-up at ~25s, leaving ~10s for Ava's spoken close before the hard stop
+// CF engine drives timing off CF_MSG_WINDOW_MS (25s caller message window, armed
+// AFTER the deterministic greeting) → it forces the templated time-up close and
+// self-finalizes at ~35s. These absolute caps are pure BACKSTOPS and MUST stay
+// above greeting(~5s)+25s message+close(~5s) so they never preempt the 25s window.
+export const HARD_CAP_MS = 42_000; // hard backstop — only catches a stall (CF normally ends ~35s)
+export const SOFT_CAP_MS = 38_000; // soft backstop — kept above the 25s message window + spoken close
 const MAX_INSTRUCTIONS = 2000;
 const INIT_TTL_SEC = 300;           // caller must connect the WS within 5 min
 
