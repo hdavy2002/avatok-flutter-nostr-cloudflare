@@ -86,6 +86,18 @@ export async function handleModeration(msg: ModerationMsg, env: Env): Promise<vo
       if (phash) await env.DB_MODERATION.prepare("UPDATE moderation_results SET phash=?2 WHERE hash=?1").bind(hash, phash).run();
     } else {
       const r = await classify(env, bytes);
+      // [MOD-FAILCLOSED-1] AI scan unavailable → FAIL CLOSED. When Gemma is the sole
+      // classifier (NSFW_API_URL unset, current prod state) and it throws — including
+      // when the AI Gateway spend limit is hit, which returns hard errors, not a
+      // graceful downgrade — classify() yields label "scan_error". Holding (flagged,
+      // no strike) is the safe posture: never auto-pass an unscanned image, and never
+      // CACHE a 0 result (that would mark it clean forever). It rescans on next run.
+      // (In the cheap+escalate path a Gemma error is absorbed by mergeMax keeping the
+      // external classifier's real score, so scan_error only surfaces with no signal.)
+      if (r.label === "scan_error") {
+        await setStatus(env, media_id, "flagged");
+        return;
+      }
       score = Math.max(r.nsfw, r.violence);
       label = r.nsfw >= r.violence ? `nsfw:${r.label}` : `violence:${r.label}`;
       await env.DB_MODERATION.prepare(
