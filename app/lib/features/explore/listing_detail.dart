@@ -304,7 +304,7 @@ class ListingDetailView extends StatelessWidget {
                   border: Zine.border,
                   boxShadow: Zine.shadowXs,
                 ),
-                child: Text(card.priceLabel, style: ZineText.value(size: 15, weight: FontWeight.w900)),
+                child: Text(card.displayPrice, style: ZineText.value(size: 15, weight: FontWeight.w900)),
               ),
             ]),
           ]),
