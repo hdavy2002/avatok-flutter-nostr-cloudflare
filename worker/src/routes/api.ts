@@ -68,6 +68,25 @@ export async function call(req: Request, env: Env): Promise<Response> {
   const clientName = (b.fromName ?? "").trim();
   const resolvedName = resolved || clientName || "AvaTOK";
   const nameSource = resolved ? "resolved" : (clientName ? "client" : "fallback");
+  // ── LIVE TAKEOVER ──────────────────────────────────────────────────────────
+  // If the caller (ctx.uid) is dialing the EXACT person (b.to) who is, RIGHT NOW,
+  // leaving them a message via their AI Receptionist, this isn't a cold call — the
+  // owner has reached the person being screened. Signal the active CF receptionist
+  // session to bow out ("here's <owner> now, connecting you") and CANCEL the
+  // voicemail; the call below then rings through so they connect live. Best-effort:
+  // a takeover hiccup must never block placing the call.
+  try {
+    const sess = await env.DB_META.prepare(
+      "SELECT id FROM receptionist_sessions WHERE owner_uid=?1 AND caller_uid=?2 AND status='active' ORDER BY created_at DESC LIMIT 1",
+    ).bind(ctx.uid, b.to).first<{ id: string }>();
+    if (sess?.id) {
+      const stub = env.RECEPTION_ROOM_CF.get(env.RECEPTION_ROOM_CF.idFromName(sess.id));
+      await stub.fetch("https://do/takeover", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ owner_name: resolvedName, call_id: b.callId }),
+      }).catch(() => {});
+    }
+  } catch { /* best-effort — takeover is an enhancement, never block the call */ }
   await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so

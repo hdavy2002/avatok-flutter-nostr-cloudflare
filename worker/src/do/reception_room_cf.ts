@@ -108,6 +108,10 @@ export class ReceptionRoomCf {
   private callerPeak = 0;
   private inBytes = 0;
   private turnCount = 0;
+  // Set when /api/call signals a live takeover (the owner dialed the caller who is
+  // being screened): finalize() then CANCELS the voicemail (no recording, summary,
+  // card or ack) and feedCfAudio stops processing — Ava just bows out.
+  private takenOver = false;
 
   // CF pipeline state
   private cfHistory: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
@@ -146,6 +150,11 @@ export class ReceptionRoomCf {
 
   async fetch(req: Request): Promise<Response> {
     if (req.headers.get("Upgrade") !== "websocket") {
+      // Control plane (not a WS): live-takeover signal from /api/call, acting on
+      // this DO's already-running in-memory session (same idFromName(sid)).
+      if (req.method === "POST" && new URL(req.url).pathname.endsWith("/takeover")) {
+        return this.handleTakeover(req);
+      }
       return new Response("expected websocket", { status: 426 });
     }
     const url = new URL(req.url);
@@ -249,7 +258,7 @@ export class ReceptionRoomCf {
 
   /** Full-duplex endpointing + barge-in detection. */
   private feedCfAudio(bytes: Uint8Array): void {
-    if (this.finalized || this.cfTimeUp) return; // FINAL (time-up) close in progress → ignore input
+    if (this.finalized || this.cfTimeUp || this.takenOver) return; // close/takeover in progress → ignore input
     const speech = callerHasSpeech(bytes);
     // (1) Ava is speaking → watch for the caller talking over her (barge-in).
     if (this.cfSpeaking) {
@@ -520,6 +529,35 @@ export class ReceptionRoomCf {
     this.finalize(reason);
   }
 
+  /** Live takeover: the owner dialed the caller who is mid-message. Ava bows out
+   *  with one short line and the voicemail is cancelled; /api/call rings the
+   *  owner's call through in parallel so they connect live. Acts on the in-memory
+   *  active session (this DO already holds the caller's WS). */
+  private async handleTakeover(req: Request): Promise<Response> {
+    if (!this.init || this.finalized) return new Response("no_active_session", { status: 409 });
+    if (this.takenOver) return new Response("ok"); // idempotent
+    this.takenOver = true;
+    let body: any = {};
+    try { body = await req.json(); } catch { /* tolerate empty body */ }
+    const ownerLabel = String(body.owner_name || this.init.owner_name || "your contact").trim();
+    // Stop the voicemail machinery so it can't race the bow-out.
+    if (this.softTimer) { clearTimeout(this.softTimer); this.softTimer = null; }
+    if (this.hardTimer) { clearTimeout(this.hardTimer); this.hardTimer = null; }
+    if (this.cfMsgTimer) { clearTimeout(this.cfMsgTimer); this.cfMsgTimer = null; }
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+    if (this.cfEndpointTimer) { clearTimeout(this.cfEndpointTimer); this.cfEndpointTimer = null; }
+    this.ev("ava_recept_takeover", { owner_uid: this.init.owner_uid, caller_uid: this.init.caller_uid, ms: Date.now() - this.startedAt });
+    // Forward hook for a seamless client auto-accept (harmless on current clients).
+    try { this.client?.send(JSON.stringify({ t: "takeover", peer: this.init.owner_uid, peer_name: ownerLabel, call_id: body.call_id ?? null })); } catch { /* caller gone */ }
+    // Speak one short bow-out line, THEN end. Async so /api/call isn't blocked on
+    // the ~3s of TTS; the DO isolate stays alive via the open caller WS.
+    void (async () => {
+      try { await this.cfSpeak(`Oh — here's ${ownerLabel} now. Connecting you!`); } catch { /* best-effort */ }
+      void this.finalize("owner_takeover");
+    })();
+    return new Response("ok");
+  }
+
   // -------------------------------------------------------------------------
   private async finalize(reason: string): Promise<void> {
     if (this.finalized) return;
@@ -542,7 +580,7 @@ export class ReceptionRoomCf {
 
     let recordingUrl: string | null = null;
     try {
-      if (this.pcmBytes > 0) {
+      if (!this.takenOver && this.pcmBytes > 0) {
         const callerGain = this.callerPeak > 0 ? Math.min(8, Math.max(1, 22000 / this.callerPeak)) : 1;
         const wav = pcm16ToWav(this.pcmOut, this.pcmBytes, 24000, callerGain);
         const phoneKey = (init.caller_phone || "unknown").replace(/[^\d+]/g, "") || "unknown";
@@ -555,9 +593,10 @@ export class ReceptionRoomCf {
       this.ev("ava_recept_delivery_failed", { stage: "r2", error_scrubbed: scrubSecrets(String(e)).slice(0, 200) });
     }
 
-    const summary = await this.cfSummarize(transcript).catch(() => null);
+    // Live takeover → voicemail CANCELLED: no summary, no card, no ack.
+    const summary = this.takenOver ? null : await this.cfSummarize(transcript).catch(() => null);
     const summaryJson = summary ? JSON.stringify(summary) : null;
-    this.ev("ava_recept_summary_generated", { ok: !!summary, urgency: summary?.urgency ?? null });
+    if (!this.takenOver) this.ev("ava_recept_summary_generated", { ok: !!summary, urgency: summary?.urgency ?? null });
 
     try {
       await this.env.DB_META.prepare(
@@ -567,13 +606,16 @@ export class ReceptionRoomCf {
     } catch { /* ignore */ }
 
     const hadConversation = this.firstAudioSent || this.inText.length > 0 || this.pcmBytes > 0;
-    try { await this.postMessage(init, summary, transcript, recordingUrl, durationS, hadConversation); } catch { /* best-effort */ }
-
-    this.ev("ava_recept_message_posted", {
-      caller_phone: init.caller_phone, duration_s: durationS, cutoff_reason: reason,
-      has_recording: !!recordingUrl, has_transcript: !!transcript,
-      in_chars: this.inText.join("").length, out_chars: this.outText.join("").length,
-    });
+    // On a live takeover the owner & caller are now talking directly, so we post
+    // NO voicemail card and send NO caller ack — the call is not a message.
+    if (!this.takenOver) {
+      try { await this.postMessage(init, summary, transcript, recordingUrl, durationS, hadConversation); } catch { /* best-effort */ }
+      this.ev("ava_recept_message_posted", {
+        caller_phone: init.caller_phone, duration_s: durationS, cutoff_reason: reason,
+        has_recording: !!recordingUrl, has_transcript: !!transcript,
+        in_chars: this.inText.join("").length, out_chars: this.outText.join("").length,
+      });
+    }
     this.ev("ava_recept_session_ended", {
       cutoff_reason: reason, duration_s: durationS, got_audio: this.firstAudioSent,
       ava_audio_bytes: this.avaBytes, recording_bytes: this.pcmBytes, caller_rec_bytes: this.callerRecBytes,
