@@ -12,6 +12,8 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { track } from "../hooks";
+import { metaDb } from "../db/shard";
+import { notifyUser } from "../notify";
 
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
 export const MARKET_LLM = "anthropic/claude-sonnet-4.6";
@@ -90,13 +92,113 @@ export async function marketplaceAiAssist(req: Request, env: Env): Promise<Respo
   return json({ ok: true, text });
 }
 
-// ── P5/P6/P7 handlers — declared here so index.ts always resolves its imports;
-//    their real bodies are filled in by the matching phase. ──────────────────
-export async function marketplaceNegotiate(_req: Request, _env: Env): Promise<Response> {
-  return json({ error: "not_implemented" }, 501); // P5
+// ── P5: agent↔agent negotiation ──────────────────────────────────────────────
+// Idempotent ledger so a buyer can negotiate a listing only once PER CONTENT
+// VERSION (an owner edit bumps the version and reopens the door — Specs §3 B).
+async function ensureLedger(env: Env): Promise<void> {
+  await metaDb(env).prepare(
+    `CREATE TABLE IF NOT EXISTS mkt_negotiations (
+       buyer_id TEXT, listing_id TEXT, content_version INTEGER,
+       outcome TEXT, agreed_price INTEGER, currency TEXT, created_at INTEGER,
+       PRIMARY KEY (buyer_id, listing_id, content_version)
+     )`,
+  ).run();
 }
-export async function marketplaceNegotiateState(_req: Request, _env: Env): Promise<Response> {
-  return json({ already_talked: false }, 200); // P5
+
+export async function marketplaceNegotiateState(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ already_talked: false }, 200);
+  const u = new URL(req.url);
+  const listingId = u.searchParams.get("listing_id") ?? "";
+  const version = Number(u.searchParams.get("content_version") ?? "0");
+  await ensureLedger(env);
+  const row = await metaDb(env).prepare(
+    "SELECT 1 FROM mkt_negotiations WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3",
+  ).bind(ctx.uid, listingId, version).first<any>();
+  return json({ already_talked: !!row });
+}
+
+export async function marketplaceNegotiate(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const listingId = String(b.listing_id || "");
+  const version = Number(b.content_version || 0);
+  const buyerMax = Math.max(0, Math.trunc(Number(b.buyer_max) || 0));
+  const currency = String(b.currency || "USD");
+  const mustHaves = String(b.must_haves || "");
+  if (!listingId) return json({ error: "listing_id required" }, 400);
+
+  const listing = await metaDb(env).prepare(
+    "SELECT id, creator_id, title, description, price, currency_display, status FROM listings WHERE id=?1",
+  ).bind(listingId).first<any>();
+  if (!listing) return json({ error: "not found" }, 404);
+  if (listing.creator_id === ctx.uid) return json({ error: "own_listing" }, 400);
+
+  await ensureLedger(env);
+  const seen = await metaDb(env).prepare(
+    "SELECT 1 FROM mkt_negotiations WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3",
+  ).bind(ctx.uid, listingId, version).first<any>();
+  if (seen) {
+    track(env, ctx.uid, "agent_call_blocked_already_talked", "avamarketplace", { listing_id: listingId, content_version: version });
+    return json({ ok: false, already_talked: true }, 200);
+  }
+
+  // Run the negotiation. The agents talk in TEXT (cheap Sonnet); audio is only
+  // rendered on a DEAL (deferred to the TTS worker — see TODO below).
+  track(env, ctx.uid, "negotiation_started", "avamarketplace", { listing_id: listingId });
+  const asking = Math.trunc(Number(listing.price) || 0);
+  const sys =
+    "You simulate a brief, businesslike negotiation between two marketplace agents and output ONLY JSON. " +
+    "The SELLER agent represents the listing; the BUYER agent has a maximum budget. The seller asks the " +
+    "listing price and will realistically come down to about 80% of it if needed. Reach a DEAL only if the " +
+    "buyer's max is at least the seller's lowest acceptable price; settle near the midpoint of the overlap. " +
+    'Output: {"outcome":"deal"|"impasse","agreed_price":<int>,"currency":"<code>","transcript":[{"speaker":"Seller"|"Buyer","text":"..."}]} ' +
+    "Keep the transcript to 4-8 short lines. No prose outside the JSON.";
+  const user =
+    `LISTING: "${listing.title}". Asking price: ${asking} ${listing.currency_display || currency}. ` +
+    `Details: ${String(listing.description || "").slice(0, 600)}. ` +
+    `BUYER max: ${buyerMax} ${currency}. Buyer must-haves: ${mustHaves || "none"}.`;
+  const raw = await callSonnet(env, sys, user, 500);
+
+  let outcome = "impasse";
+  let agreed = 0;
+  let transcript: Array<{ speaker: string; text: string }> = [];
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) {
+      const j = JSON.parse(m[0]);
+      outcome = j.outcome === "deal" ? "deal" : "impasse";
+      agreed = Math.trunc(Number(j.agreed_price) || 0);
+      if (Array.isArray(j.transcript)) {
+        transcript = j.transcript
+          .filter((t: any) => t && t.text)
+          .map((t: any) => ({ speaker: String(t.speaker || "Agent"), text: String(t.text) }));
+      }
+    }
+  } catch { /* impasse */ }
+
+  await metaDb(env).prepare(
+    "INSERT OR REPLACE INTO mkt_negotiations (buyer_id, listing_id, content_version, outcome, agreed_price, currency, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+  ).bind(ctx.uid, listingId, version, outcome, agreed, currency, Date.now()).run();
+
+  track(env, ctx.uid, "negotiation_outcome", "avamarketplace", {
+    listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: transcript.length,
+  });
+
+  if (outcome === "deal") {
+    // DEAL → notify both owners. NOTE (P5 follow-up): render the verbatim transcript
+    // to a 2-voice note via Gemini 2.5 multi-speaker TTS and drop it into both chat
+    // threads (the POC proved the render). Audio is skipped entirely on impasse to
+    // save TTS cost. For now both parties get an actionable notification.
+    const body = `Your agents agreed around ${agreed} ${currency}. Open the chat to take it forward.`;
+    try {
+      await notifyUser(env, listing.creator_id, { type: "marketplace_deal", title: "A buyer's agent reached a deal", body, data: { listing_id: listingId } });
+      await notifyUser(env, ctx.uid, { type: "marketplace_deal", title: "Your agent reached a deal", body, data: { listing_id: listingId } });
+    } catch { /* notify best-effort */ }
+    return json({ ok: true, outcome, agreed_price: agreed, currency, transcript });
+  }
+  return json({ ok: true, outcome, transcript });
 }
 export async function marketplaceSearch(_req: Request, _env: Env): Promise<Response> {
   return json({ listings: [] }, 200); // P6

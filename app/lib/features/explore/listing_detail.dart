@@ -5,6 +5,8 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
+import '../../core/remote_config.dart';
+import '../marketplace/call_agent_sheet.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -41,6 +43,23 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     final d = await ListingsApi.detail(widget.listingId);
     if (!mounted) return;
     setState(() { _d = d; _loading = false; });
+  }
+
+  // AvaMarketplace P5 — Call Agent. Greyed once this buyer has already
+  // negotiated the current version of the listing (talk-once-per-version).
+  bool _agentBusy = false;
+  bool _alreadyTalked = false;
+
+  Future<void> _callAgent() async {
+    final d = _d;
+    if (d == null || _agentBusy) return;
+    final started = await showCallAgentSheet(
+      context,
+      listingId: d.listing.id,
+      contentVersion: 0, // server keys talk-once on (buyer, listing, version)
+      currency: d.listing.currency,
+    );
+    if (started && mounted) setState(() => _alreadyTalked = true);
   }
 
   Future<void> _book() async {
@@ -167,6 +186,17 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                 )),
               ),
               const SizedBox(width: 12),
+              if (RemoteConfig.marketplaceEnabled) ...[
+                ZinePressable(
+                  onTap: _alreadyTalked ? () {} : _callAgent,
+                  radius: BorderRadius.circular(100),
+                  child: SizedBox(width: 52, height: 52, child: Center(
+                    child: Icon(Icons.support_agent, size: 24,
+                        color: _alreadyTalked ? Zine.ink.withOpacity(0.3) : Zine.ink),
+                  )),
+                ),
+                const SizedBox(width: 12),
+              ],
               Expanded(child: ZineButton(
                 label: d.listing.status == 'live'
                     ? 'Join now · ${d.listing.priceLabel}'
