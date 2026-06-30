@@ -2,6 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
 import '../../core/listings_api.dart';
+import 'edit_listing_screen.dart';
+
+/// Friendly status label (the raw 'published' shows as 'live' to owners).
+String _statusLabel(String s) {
+  switch (s) {
+    case 'published': return 'live';
+    case 'completed': return 'sold';
+    case 'cancelled': return 'archived';
+    default: return s;
+  }
+}
 
 /// AvaMarketplace P1 — owner's listings list. P4 enriches each row with edit /
 /// mark-sold / renew actions; here it loads and shows status so the screen is
@@ -73,41 +84,12 @@ class _MyListingRow extends StatelessWidget {
   }
 
   Future<void> _edit(BuildContext context) async {
-    final title = TextEditingController(text: card.title);
-    final desc = TextEditingController(text: card.description ?? '');
-    final price = TextEditingController(text: (card.price).toString());
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16, left: 16, right: 16, top: 16),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Edit listing', style: TextStyle(fontWeight: FontWeight.w600)),
-          TextField(controller: title, decoration: const InputDecoration(labelText: 'Title')),
-          TextField(controller: desc, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
-          TextField(controller: price, keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Price')),
-          const SizedBox(height: 12),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Save')),
-        ]),
-      ),
+    // Full Zine-themed editor (pic 5). Editing bumps the listing's content
+    // version server-side, reopening the talk-once-per-version gate (Specs §3 B).
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => EditListingScreen(listingId: card.id)),
     );
-    if (saved != true || !context.mounted) return;
-    // Editing bumps the listing's content version server-side, which reopens the
-    // talk-once-per-version negotiation gate (Specs §3 Rule B).
-    final ok = await ListingsApi.update(card.id, {
-      'title': title.text.trim(),
-      'description': desc.text.trim(),
-      'price_amount': int.tryParse(price.text.trim()) ?? card.price,
-    });
-    if (!context.mounted) return;
-    Analytics.capture('listing_edited', {'listing_id': card.id});
-    if (ok) {
-      onChanged();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save edits.')));
-    }
+    if (saved == true) onChanged();
   }
 
   @override
@@ -123,7 +105,7 @@ class _MyListingRow extends StatelessWidget {
               )
             : const Icon(Icons.inventory_2_outlined, size: 32),
         title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${card.priceLabel} · ${card.status}'),
+        subtitle: Text('${card.displayPrice} · ${_statusLabel(card.status)}'),
         trailing: PopupMenuButton<String>(
           onSelected: (v) {
             switch (v) {
