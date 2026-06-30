@@ -31,6 +31,21 @@ export class InboxDO {
     this.state = state;
     this.env = env;
     this.sql = state.storage.sql;
+    // [WS-AUTORESP-1] Let the runtime answer the client's 25s app-level
+    // {"type":"ping"} with {"type":"pong"} WITHOUT waking this hibernated DO.
+    // Previously every ping ran webSocketMessage → ~3,456 needless wakes/day per
+    // connected user (billed DO requests/duration). The string must match the
+    // client frame EXACTLY (sync_hub.dart sends jsonEncode({'type':'ping'})).
+    // The manual ping handler in webSocketMessage stays as a fallback for any
+    // differently-shaped ping; it just never fires for the common case now.
+    try {
+      this.state.setWebSocketAutoResponse(
+        new WebSocketRequestResponsePair(
+          JSON.stringify({ type: "ping" }),
+          JSON.stringify({ type: "pong" }),
+        ),
+      );
+    } catch { /* older runtimes without auto-response: manual handler covers it */ }
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS messages (
          id INTEGER PRIMARY KEY AUTOINCREMENT,
