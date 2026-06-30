@@ -47,9 +47,9 @@ class _AvaSidebarState extends State<AvaSidebar> {
   // ACCOUNT & SETTINGS section collapses by default (owner decision 2026-06-19,
   // revised) — the header is a bigger, tappable label that expands the group.
   bool _accountOpen = false;
-  // Marketplace group expanded by default so Browse / Create / My listings are
-  // visible without an extra tap.
-  bool _marketplaceOpen = true;
+  // Marketplace group COLLAPSED by default (owner decision 2026-06-30); tap the
+  // header to reveal Browse / Create / My listings / Archived.
+  bool _marketplaceOpen = false;
   String _displayName = '';
   String _handle = '';
   String _avatarUrl = ''; // the user's own profile photo (was never read → drawer showed initials)
@@ -402,6 +402,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
           _subRow('marketplace', 'Browse', PhosphorIcons.storefront(PhosphorIconsStyle.bold)),
           _subRow('createlisting', 'Create listing', PhosphorIcons.plusCircle(PhosphorIconsStyle.bold)),
           _subRow('mylistings', 'My listings', PhosphorIcons.tag(PhosphorIconsStyle.bold)),
+          _subRow('archived', 'Archived', PhosphorIcons.archive(PhosphorIconsStyle.bold)),
         ],
       ]),
     );

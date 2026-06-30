@@ -35,6 +35,9 @@ class ListingCard {
   // Voice translation: creator offers it + their transmission language.
   final bool translationEnabled;
   final String? spokenLang;
+  // AvaMarketplace: expiry + type + location.
+  final int? expiresAt;
+  final String? marketType, location;
   String? description; // only on the details endpoint
 
   ListingCard.fromJson(Map<String, dynamic> j)
@@ -60,8 +63,19 @@ class ListingCard {
         ratingAvg = (j['rating_avg'] as num?)?.toDouble(),
         translationEnabled = j['translation_enabled'] == true,
         spokenLang = j['spoken_lang']?.toString(),
+        expiresAt = (j['expires_at'] as num?)?.toInt(),
+        marketType = j['market_type']?.toString(),
+        location = j['location']?.toString(),
         creator = ListingCreator.fromJson((j['creator'] as Map?)?.cast<String, dynamic>() ?? const {}),
         description = j['description']?.toString();
+
+  bool get isMarketplace => (marketType ?? '').isNotEmpty || const ['sell', 'buy', 'social'].contains(kind);
+  bool get isExpired => expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
+  /// Marketplace price shows the listing's own currency in major units
+  /// (e.g. "3000 INR"); creator listings keep the USD-cents money() format.
+  String get displayPrice => isMarketplace
+      ? (price > 0 ? '$price $currency' : (kind == 'buy' ? 'Budget' : 'Free'))
+      : priceLabel;
 
   String? get coverUrl {
     for (final m in coverMedia) {
@@ -183,6 +197,23 @@ class ListingsApi {
     return _cards(_j(r.body));
   }
 
+  /// AvaMarketplace browse — buy/sell/social only. Country-filtered by default
+  /// (the user's detected country); pass country='' for all countries. A query
+  /// routes through search (FTS/AI), filtered to marketplace listings.
+  static Future<List<ListingCard>> marketBrowse({String? country, String? category, String? q}) async {
+    if (q != null && q.trim().isNotEmpty) {
+      final r = await search(q: q, category: category, country: country);
+      return r.where((c) => c.isMarketplace).toList();
+    }
+    final params = <String>[
+      'market=1', 'limit=40',
+      if (country != null && country.isNotEmpty) 'country=$country',
+      if (category != null && category.isNotEmpty) 'category=${Uri.encodeQueryComponent(category)}',
+    ].join('&');
+    final r = await ApiAuth.getSigned('$_base/explore?$params');
+    return _cards(_j(r.body));
+  }
+
   static Future<List<ListingCard>> liveNow() async {
     final r = await ApiAuth.getSigned('$_base/explore/live-now');
     return _cards(_j(r.body));
@@ -260,8 +291,8 @@ class ListingsApi {
     return r.statusCode == 200 ? _j(r.body)['listing_id']?.toString() : null;
   }
 
-  static Future<bool> cancel(String id) async =>
-      (await ApiAuth.deleteSigned('$_base/listings/$id')).statusCode == 200;
+  static Future<bool> cancel(String id, {bool permanent = false}) async =>
+      (await ApiAuth.deleteSigned('$_base/listings/$id${permanent ? '?permanent=true' : ''}')).statusCode == 200;
 
   static Future<List<ListingCard>> mine() async {
     final r = await ApiAuth.getSigned('$_base/listings/mine');

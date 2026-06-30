@@ -76,6 +76,7 @@ const CARD_SELECT = `
   SELECT l.id, l.creator_id, l.kind, l.title, l.description, l.category, l.price,
          l.currency_display, l.country, l.adults_only, l.badges, l.cover_media,
          l.starts_at, l.duration_min, l.capacity, l.status, l.joined_count,
+         l.expires_at, l.expiry_days, l.market_type, l.social_sub, l.location,
          l.translation_enabled, l.spoken_lang,
          l.rating_avg, l.rating_count, l.created_at,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
@@ -109,6 +110,8 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>) {
     cover_media: parseJson(r.cover_media, [] as unknown[]),
     starts_at: r.starts_at ?? null, duration_min: r.duration_min ?? null,
     capacity: r.capacity ?? null, status: r.status,
+    expires_at: r.expires_at ?? null, expiry_days: r.expiry_days ?? null,
+    market_type: r.market_type ?? null, social_sub: r.social_sub ?? null, location: r.location ?? null,
     translation_enabled: !!r.translation_enabled, spoken_lang: r.spoken_lang ?? null,
     joined_count: Number(r.joined_count ?? 0),
     rating_avg: r.rating_avg != null ? Number(r.rating_avg) : null,
@@ -226,6 +229,7 @@ function normFields(b: any): Record<string, unknown> {
   if (b.market_type !== undefined) out.market_type = b.market_type ? String(b.market_type).slice(0, 16) : null;
   if (b.social_sub !== undefined) out.social_sub = b.social_sub ? String(b.social_sub).slice(0, 32) : null;
   if (b.location !== undefined) out.location = b.location ? String(b.location).slice(0, 120) : null;
+  if (b.expiry_days !== undefined) out.expiry_days = b.expiry_days ? Math.max(1, Math.min(90, Math.trunc(Number(b.expiry_days) || 30))) : null;
   return out;
 }
 
@@ -247,14 +251,15 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   await metaDb(env).prepare(
     `INSERT INTO listings (id, creator_id, kind, title, description, category, price, currency_display,
        country, adults_only, badges, cover_media, starts_at, duration_min, capacity, status, created_at, updated_at,
-       agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22)`,
+       agent_instructions, agent_lang, agent_voice_persona, market_type, social_sub, location, expiry_days)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'draft',?16,?16,?17,?18,?19,?20,?21,?22,?23)`,
   ).bind(id, ctx.uid, kind, (f.title as string) ?? "Untitled", f.description ?? null, (f.category as string) ?? "teachers",
     f.price ?? 0, f.currency_display ?? "USD", f.country ?? null, f.adults_only ?? 0, f.badges ?? null,
     f.cover_media ?? null, f.starts_at ?? null, f.duration_min ?? null,
     kind === "consult" ? (f.capacity ?? 1) : null, now,
     f.agent_instructions ?? null, f.agent_lang ?? null, f.agent_voice_persona ?? null,
-    f.market_type ?? (MARKET_KINDS.has(kind) ? kind : null), f.social_sub ?? null, f.location ?? null).run();
+    f.market_type ?? (MARKET_KINDS.has(kind) ? kind : null), f.social_sub ?? null, f.location ?? null,
+    f.expiry_days ?? null).run();
   track(env, ctx.uid, "listing_draft_created", APP, { kind });
   return json({ ok: true, listing_id: id, status: "draft" });
 }
@@ -333,7 +338,17 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
     }
   }
 
-  await db.prepare("UPDATE listings SET status='published', updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
+  const pubNow = Date.now();
+  if (isMarket) {
+    // Marketplace listings carry an expiry (the user picked 1/5/10/20/30 days);
+    // expired listings drop out of browse and land in Archived. Re-publishing
+    // from a restored draft sets a fresh expiry here.
+    const expDays = Number(l.expiry_days) > 0 ? Number(l.expiry_days) : 30;
+    await db.prepare("UPDATE listings SET status='published', expires_at=?2, updated_at=?3 WHERE id=?1")
+      .bind(id, pubNow + expDays * 86_400_000, pubNow).run();
+  } else {
+    await db.prepare("UPDATE listings SET status='published', updated_at=?2 WHERE id=?1").bind(id, pubNow).run();
+  }
   // Ensure the channel row exists so follower counts etc. have a home.
   await db.prepare("INSERT INTO creator_profiles (user_id, updated_at) VALUES (?1,?2) ON CONFLICT(user_id) DO NOTHING").bind(ctx.uid, Date.now()).run();
   await ftsSync(env, id);
@@ -352,10 +367,17 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
   const to = String(b.status || "");
-  if (!["live", "completed", "cancelled"].includes(to)) return json({ error: "status must be live|completed|cancelled" }, 400);
+  if (!["live", "completed", "cancelled", "draft"].includes(to)) return json({ error: "status must be live|completed|cancelled|draft" }, 400);
   const db = metaDb(env);
   const l = await db.prepare("SELECT creator_id, status, title, kind FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  if (to === "draft") {
+    // RESTORE from Archived → back to an editable draft (clear expiry, drop from search).
+    await db.prepare("UPDATE listings SET status='draft', expires_at=NULL, updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
+    await ftsSync(env, id, true);
+    track(env, ctx.uid, "listing_restored", APP, {});
+    return json({ ok: true, status: "draft" });
+  }
   if (l.status === "draft") return json({ error: "publish first" }, 409);
   await db.prepare("UPDATE listings SET status=?2, updated_at=?3 WHERE id=?1").bind(id, to, Date.now()).run();
   if (to === "cancelled" || to === "completed") { await releaseBlocks(env, APP, id); await ftsSync(env, id, true); }
@@ -392,8 +414,29 @@ export async function cancelListing(req: Request, env: Env, id: string): Promise
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const db = metaDb(env);
-  const l = await db.prepare("SELECT creator_id FROM listings WHERE id=?1").bind(id).first<any>();
+  const l = await db.prepare("SELECT creator_id, cover_media FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
+  const permanent = new URL(req.url).searchParams.get("permanent") === "true";
+  if (permanent) {
+    // DELETE CASCADE — remove the listing from every side: search index, slot
+    // blocks, negotiation ledger, R2 cover media (best-effort), then the D1 row
+    // (the source of truth). AI Search de-index hooks here once that binding lands.
+    await ftsSync(env, id, true).catch(() => {});
+    await releaseBlocks(env, APP, id).catch(() => {});
+    try {
+      const covers = parseJson(l.cover_media, [] as any[]);
+      for (const c of Array.isArray(covers) ? covers : []) {
+        const url = String((c && (c as any).url) || "");
+        const key = url.split("/").filter(Boolean).pop();
+        if (key) await (env as any).BLOBS?.delete(key).catch(() => {});
+      }
+    } catch { /* media best-effort */ }
+    try { await db.prepare("DELETE FROM mkt_negotiations WHERE listing_id=?1").bind(id).run(); } catch { /* table may not exist */ }
+    await db.prepare("DELETE FROM listings WHERE id=?1").bind(id).run();
+    track(env, ctx.uid, "listing_deleted_permanent", APP, {});
+    return json({ ok: true, deleted: true });
+  }
+  // Soft remove → goes to Archived (restorable).
   await db.prepare("UPDATE listings SET status='cancelled', updated_at=?2 WHERE id=?1").bind(id, Date.now()).run();
   await releaseBlocks(env, APP, id);
   await ftsSync(env, id, true);
@@ -475,12 +518,17 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const u = new URL(req.url).searchParams;
   const where = ["l.status IN ('published','live')"];
   const binds: unknown[] = [];
+  // Hide expired marketplace listings (creator listings have no expiry → null shows).
+  binds.push(Date.now());
+  where.push(`(l.expires_at IS NULL OR l.expires_at > ?${binds.length})`);
   for (const [k, col] of [["kind", "l.kind"], ["category", "l.category"], ["country", "l.country"]] as const) {
     const v = u.get(k);
     if (v) { binds.push(v); where.push(`${col}=?${binds.length}`); }
   }
   const creator = u.get("creator");
   if (creator) { binds.push(creator); where.push(`l.creator_id=?${binds.length}`); }
+  // AvaMarketplace-only view (buy/sell/social), excludes creator services.
+  if (u.get("market") === "1") where.push("l.kind IN ('sell','buy','social')");
   blockFilter(uid, binds, where);
   const limit = Math.min(50, Math.max(1, Number(u.get("limit") || 20)));
   const offset = Math.max(0, Number(u.get("cursor") || 0));

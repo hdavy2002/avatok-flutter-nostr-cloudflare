@@ -33,6 +33,8 @@ import '../features/library/avalibrary_screen.dart';
 import '../features/library/avastorage_screen.dart';
 import '../features/marketplace/my_listings_screen.dart';
 import '../features/marketplace/sell_listing_flow.dart';
+import '../features/marketplace/archived_screen.dart';
+import '../features/marketplace/marketplace_browse.dart';
 import '../features/explore/explore_home.dart';
 import '../features/identity/identity_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -149,11 +151,13 @@ class _AvaShellState extends State<AvaShell> {
       return;
     }
     switch (dest) {
-      case 'explore':
       case 'marketplace':
-        // AvaMarketplace landing = the AvaExplore browse grid (cards, categories,
-        // AI search). Always opens — the marketplaceEnabled flag gates the agent
-        // negotiation backend, not basic navigation.
+        // AvaMarketplace landing = the dedicated buy/sell/social browse (cards
+        // with photo, price, country flag; country-default + AI search filter).
+        _push(const MarketplaceBrowse());
+        return;
+      case 'explore':
+        // Legacy AvaExplore creator grid (events/consults) — kept for deep links.
         _push(ExploreHome(onMenu: () => Navigator.of(context).maybePop()));
         return;
       case 'createlisting':
@@ -161,6 +165,9 @@ class _AvaShellState extends State<AvaShell> {
         return;
       case 'mylistings':
         _push(const MyListingsScreen());
+        return;
+      case 'archived':
+        _push(const ArchivedScreen());
         return;
       case 'settings':
         // Reload on return — the preview switcher may have changed the account kind.
