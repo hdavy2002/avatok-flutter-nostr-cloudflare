@@ -269,6 +269,14 @@ class_name = "ConversationDO"
 name = "INBOX"
 class_name = "InboxDO"
 
+# PartyKit realtime layer (ephemeral; replaces Ably). One DO per ROOM, holding the
+# room's hibernatable WebSockets for the live-only layer (typing, presence,
+# receipts, marketplace agent stream, viewer counts, …). No persistence — durable
+# delivery stays on InboxDO. Keyed by idFromName(`${type}:${id}`).
+[[durable_objects.bindings]]
+name = "PARTY"
+class_name = "PartyDO"
+
 # ---------------------------------------------------------------------------
 # Ava in-chat AI (Phase 0 — Foundations). Bindings wired now; the DO classes
 # are IMPLEMENTED by later phases (AvaAgentDO = P3 in-thread agent loop;
@@ -344,6 +352,13 @@ new_sqlite_classes = ["GroupCallRoom"]
 [[migrations]]
 tag = "v10"
 new_sqlite_classes = ["ReceptionRoomCf"]
+
+# PartyKit realtime layer (ephemeral; replaces Ably). SQLite-backed class so the
+# runtime gives it the hibernatable-WebSocket storage backend, though PartyDO
+# stores nothing — it's broadcast-only.
+[[migrations]]
+tag = "v11"
+new_sqlite_classes = ["PartyDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)

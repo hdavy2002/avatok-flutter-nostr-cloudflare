@@ -21,6 +21,35 @@ export async function wsInbox(req: Request, env: Env): Promise<Response> {
   return stub.fetch("https://inbox/ws", req);
 }
 
+// PartyKit realtime layer (ephemeral; replaces Ably). Upgrades a WebSocket into
+// the room's PartyDO. The room key comes from ?room=<type:id> (e.g. thread:<conv>,
+// listing:<id>, neg:<negId>, user:<uid>, conf:<groupId>). We pass the CLERK-
+// VERIFIED uid to the DO so presence/events are stamped from a real identity the
+// client can't spoof. Nothing here is durable — see do/party.ts.
+export async function wsParty(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return new Response(ctx.error, { status: ctx.status });
+  const room = (new URL(req.url).searchParams.get("room") || "").slice(0, 200);
+  if (!room) return new Response("room required", { status: 400 });
+  return env.PARTY.get(env.PARTY.idFromName(room)).fetch(
+    `https://party/ws?uid=${encodeURIComponent(ctx.uid)}&room=${encodeURIComponent(room)}`,
+    req,
+  );
+}
+
+// Server → room broadcast (e.g. the marketplace agent loop streaming negotiation
+// progress into neg:<negId> from the Worker). Ephemeral, best-effort. Returns
+// whether at least one socket was live in the room.
+export async function partyEmit(env: Env, room: string, event: Record<string, unknown>): Promise<boolean> {
+  try {
+    const r = await env.PARTY.get(env.PARTY.idFromName(room)).fetch("https://party/emit", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(event),
+    });
+    const j = (await r.json().catch(() => ({}))) as any;
+    return !!j.live;
+  } catch { return false; }
+}
+
 // ---- helpers ----------------------------------------------------------------
 // Fan-out rule (Scale proposal Phase 1): >FANOUT_SYNC_MAX recipients NEVER loop
 // synchronous DO calls in the router — they go through Q_PUSH ("fanout" kind,

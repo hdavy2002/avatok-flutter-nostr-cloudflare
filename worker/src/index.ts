@@ -31,7 +31,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
-import { wsInbox, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList } from "./routes/archive";
 import { ablyToken } from "./routes/ably";
 import { getConfig, putConfig } from "./routes/config";
@@ -116,6 +116,7 @@ export { CallRoom } from "./do/call_room";
 export { MeshRoom } from "./do/mesh_room";
 export { GroupCallRoom } from "./do/group_call_room"; // CF Realtime SFU group AUDIO (≤32)
 export { InboxDO } from "./do/inbox";
+export { PartyDO } from "./do/party"; // PartyKit realtime layer (ephemeral; replaces Ably)
 export { UserBrain } from "./do/user_brain";
 export { WalletDO } from "./do/wallet";
 export { StreamSessionDO } from "./do/stream_session";
@@ -237,6 +238,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
     // Cloudflare-native messaging — live socket → caller's InboxDO (Nostr deprecated).
     if (p === "/api/inbox" && req.headers.get("Upgrade") === "websocket") return await wsInbox(req, env);
+
+    // PartyKit realtime layer (ephemeral; replaces Ably) — one hibernatable
+    // WebSocket per room → PartyDO. Room passed as ?room=<type:id>.
+    if (p === "/api/party" && req.headers.get("Upgrade") === "websocket") return await wsParty(req, env);
 
     // Ava Receptionist call bridge → ReceptionRoom DO (thin router; the DO
     // validates the one-time rtc token from KV). Keyed by session id so caller +

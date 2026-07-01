@@ -65,6 +65,11 @@ export interface Env {
   // deprecated). Hibernatable WS + DO-local SQLite message log. Keyed by uid.
   INBOX: DurableObjectNamespace;
 
+  // Durable Object — PartyKit realtime layer (ephemeral; replaces Ably). One DO
+  // per ROOM (thread:<conv>, listing:<id>, neg:<negId>, user:<uid>, conf:<gid>).
+  // Holds the room's hibernatable WebSockets; broadcast-only, no persistence.
+  PARTY: DurableObjectNamespace;
+
   // ---- Ava in-chat AI bindings (Phase 0 — Foundations; part of the bindings
   // contract). The DO CLASSES are implemented by later phases (AvaAgentDO = P3,
   // BackupDO = P10), so the worker will not fully typecheck until those classes
