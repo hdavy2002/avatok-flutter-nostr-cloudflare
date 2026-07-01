@@ -1,5 +1,6 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
-import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg } from "./types";
+import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg } from "./types";
+import { handleMktAudio } from "./mkt_audio";
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
 import { handleBrain, purgeChurnedBrains } from "./brain";
@@ -33,6 +34,7 @@ export default {
           case "wallet-transactions": await handleWalletTx(msg.body as WalletTxMsg, env); break;
           case "agent-tasks": await handleAgent(msg.body as AgentMsg, env); break;
           case "chat-archive": await handleArchive(msg.body as ArchiveMsg, env); break;
+          case "mkt-audio": await handleMktAudio(msg.body as MktAudioMsg, env); break;
         }
         msg.ack(); ok++;
       } catch (e) {

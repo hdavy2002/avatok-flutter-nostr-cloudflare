@@ -219,31 +219,24 @@ async function deliverDealAudio(env: Env, a: {
   // already in both InboxDOs above, so this is pure "make it feel instant".
   void partyEmit(env, `thread:${conv}`, { t: "deal_ready", outcome: a.outcome, listing_id: a.listingId, conv });
 
-  // ── PHASE 2 (best-effort): render the voice note and deliver it as a follow-up
-  // message. If the render is slow and the worker is reaped here, the result is
-  // ALREADY in the thread (phase 1) — only the audio replay is missed.
-  let audioKey: string | null = null;
-  let bytes = 0;
-  const wav = await renderNegotiationWav(env, a.transcript, a.persona);
-  if (wav) {
-    audioKey = `mkt/deal/${a.listingId}/${crypto.randomUUID()}.wav`;
-    try {
-      await (env as any).BLOBS.put(audioKey, wav, { httpMetadata: { contentType: "audio/wav" } });
-      bytes = wav.length;
-    } catch { audioKey = null; }
-  }
-  if (audioKey) {
-    const audioEnvelope = JSON.stringify({
-      t: "marketplace_deal", text: "🎙️ Voice replay of the negotiation", outcome: a.outcome, bubble: a.bubble,
-      agreed_price: a.agreed, currency: a.currency, listing_id: a.listingId, transcript: a.transcript,
-      has_audio: true, audio_key: audioKey,
+  // ── PHASE 2: ENQUEUE the voice render (async → avatok-consumers `mkt-audio`).
+  // The Gemini multi-speaker TTS of a FULL multi-round transcript takes 30-60s,
+  // which does NOT fit this request's background budget — running it inline got
+  // the job reaped → "No audio". The consumer renders the FULL transcript with
+  // its own per-message budget, uploads the WAV, and appends the voice card to
+  // both InboxDOs + nudges the live thread. Robust at scale: renders fan out over
+  // the queue instead of hanging request paths. The text card (phase 1) already
+  // landed, so a slow/failed replay is never fatal.
+  let queued = false;
+  try {
+    await (env as any).Q_MKT_AUDIO?.send({
+      conv, sellerUid: a.sellerUid, buyerUid: a.buyerUid, listingId: a.listingId,
+      outcome: a.outcome, bubble: a.bubble, agreed: a.agreed, currency: a.currency,
+      transcript: a.transcript, persona: a.persona,
     });
-    try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, audioEnvelope, audioKey); } catch { /* best-effort */ }
-    try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, audioEnvelope, audioKey); } catch { /* best-effort */ }
-    // Live nudge for the voice-note follow-up too, so an open thread pulls it in.
-    void partyEmit(env, `thread:${conv}`, { t: "deal_ready", kind: "audio", listing_id: a.listingId, conv });
-  }
-  return { audioKey, bytes };
+    queued = true;
+  } catch { /* best-effort; text card already delivered */ }
+  return { audioKey: null as string | null, bytes: 0, queued };
 }
 
 // ── P3: AI writing help ──────────────────────────────────────────────────────
@@ -417,8 +410,11 @@ async function runNegotiationJob(env: Env, a: {
       outcome, bubble, agreed, currency, transcript,
       persona: String(listing.agent_voice_persona || ""),
     });
-    track(env, buyerUid, "deal_audio_render_completed", "avamarketplace", {
-      listing_id: listingId, outcome, bubble, has_audio: !!delivery.audioKey, audio_bytes: delivery.bytes,
+    // Audio is now rendered ASYNC by avatok-consumers (mkt-audio queue); this just
+    // records that the render was enqueued. The consumer emits mkt_audio_delivered
+    // / mkt_audio_render_failed with the actual result + bytes.
+    track(env, buyerUid, "deal_audio_queued", "avamarketplace", {
+      listing_id: listingId, outcome, bubble, queued: (delivery as any).queued === true,
     });
     // Also a bell notification so it shows in the notifications list, not just the thread.
     const body = outcome === "deal"

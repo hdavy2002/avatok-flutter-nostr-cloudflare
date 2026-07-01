@@ -159,6 +159,22 @@ queue = "chat-archive-dlq"
 max_batch_size = 10
 max_retries = 3
 
+# Marketplace agent-negotiation VOICE render (Gemini multi-speaker TTS of the
+# full transcript). Slow (30-60s) → runs here off the API request path. batch=1
+# so one slow render never starves the next; generous retries (the text card is
+# already delivered, so a failed replay is non-fatal).
+[[queues.consumers]]
+queue = "mkt-audio"
+max_batch_size = 1
+max_batch_timeout = 2
+max_retries = 3
+dead_letter_queue = "mkt-audio-dlq"
+
+[[queues.consumers]]
+queue = "mkt-audio-dlq"
+max_batch_size = 10
+max_retries = 2
+
 # Cross-script DO binding → avatok-api's ConversationDO (run the agent turn loop).
 [[durable_objects.bindings]]
 name = "CONVERSATION_DO"
@@ -170,6 +186,13 @@ script_name = "avatok-api"
 [[durable_objects.bindings]]
 name = "INBOX"
 class_name = "InboxDO"
+script_name = "avatok-api"
+
+# Cross-script DO binding -> avatok-api's PartyDO (marketplace voice render nudges
+# the live thread room with deal_ready so an open chat pulls the voice card in).
+[[durable_objects.bindings]]
+name = "PARTY"
+class_name = "PartyDO"
 script_name = "avatok-api"
 
 # Cross-script DO binding -> avatok-api's WalletDO (Phase 2: nightly recon reads

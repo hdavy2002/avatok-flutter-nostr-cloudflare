@@ -15,7 +15,9 @@ export interface Env {
   Q_ANALYTICS?: Queue;                // lifecycle events (e.g. account_deleted) → PostHog
   Q_MONEY?: Queue;                    // Phase 7 — sweep enqueues refund/settlement jobs
   CONVERSATION_DO?: DurableObjectNamespace; // cross-script → avatok-api ConversationDO (Phase 7)
-  INBOX?: DurableObjectNamespace; // cross-script → avatok-api InboxDO (large-group fanout)
+  INBOX?: DurableObjectNamespace; // cross-script → avatok-api InboxDO (large-group fanout + marketplace voice card)
+  PARTY?: DurableObjectNamespace; // cross-script → avatok-api PartyDO (marketplace voice deal_ready nudge)
+  Q_MKT_AUDIO?: Queue;            // marketplace negotiation voice render (async, this consumer)
   WALLET_DO?: DurableObjectNamespace; // cross-script → avatok-api WalletDO (nightly recon reads, Phase 2)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
   AI_SEARCH?: any;                    // sharded per-user AI Search (delete cascade per item id)
@@ -73,6 +75,20 @@ export interface Env {
   // Phase 9 — OpenAI Whisper voice-note transcription. Unset → voice notes are
   // simply not indexed (no transcript, no vector); everything else still works.
   OPENAI_API_KEY?: string;
+  // Marketplace agent-negotiation VOICE render (Gemini multi-speaker TTS).
+  // Prefers the receptionist project's key; falls back to the general one.
+  RECEPTIONIST_GEMINI_API_KEY?: string;
+  GEMINI_API_KEY?: string;
+}
+
+// Marketplace voice-render message (producer: avatok-api runNegotiationJob). The
+// text deal card is already delivered synchronously; this renders the FULL
+// transcript to a WAV async and appends the voice card to both InboxDOs.
+export interface MktAudioMsg {
+  conv: string; sellerUid: string; buyerUid: string; listingId: string;
+  outcome: string; bubble: string; agreed: number; currency: string;
+  transcript: Array<{ speaker: string; text: string }>;
+  persona?: string;
 }
 
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).
