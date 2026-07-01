@@ -104,7 +104,9 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
     },
   };
   try {
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    // 60s (was 20s): a multi-round multi-speaker TTS render routinely takes
+    // >20s, and the old cap aborted it EXACTLY at 20.000s → null → "No audio".
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
     if (!res.ok) return null;
     const j: any = await res.json().catch(() => null);
     const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
