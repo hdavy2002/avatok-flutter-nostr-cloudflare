@@ -7,6 +7,7 @@ import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/marketplace_api.dart';
+import '../avatok/contacts.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -73,10 +74,26 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     );
     if (started && mounted) {
       setState(() => _alreadyTalked = true);
+      // Materialise the seller as a contact NOW so the deal thread has somewhere to
+      // land. The negotiation result arrives ~30s later (often when this screen or
+      // the chat list isn't the active listener), so relying on the chat-list
+      // listener alone is racy — pre-creating the contact guarantees the thread
+      // appears (and surfaces the result even if it syncs while the app is elsewhere).
+      final c = d.listing.creator;
+      if (c.uid.isNotEmpty) {
+        await ContactsStore().add(Contact(
+          npub: c.uid,
+          name: c.name ?? c.handle ?? 'Seller',
+          avatarUrl: c.avatarUrl ?? '',
+          number: c.avatokNumber ?? '',
+          handle: c.handle ?? '',
+        ));
+      }
+      if (!mounted) return;
       // The negotiation runs in the background — let the buyer keep browsing.
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         duration: Duration(seconds: 5),
-        content: Text('Your agent is negotiating in the background — keep browsing. The result will arrive in your chat.'),
+        content: Text('Your agent is negotiating in the background — the result will arrive in your chat with this seller.'),
       ));
     }
   }
