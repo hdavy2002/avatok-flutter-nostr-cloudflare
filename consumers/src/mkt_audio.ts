@@ -127,7 +127,8 @@ export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
       agreed_price: m.agreed, currency: m.currency, listing_id: m.listingId, transcript: m.transcript,
       has_audio: true, audio_key: audioKey,
     });
-    await inboxAppend(env, m.sellerUid, m.buyerUid, m.conv, envelope, audioKey);
+    // Buyer-only for now (owner decision 2026-07-01): only the initiator sees the
+    // voice conversation. (Sender=seller so it renders as an incoming card.)
     await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, envelope, audioKey);
     await partyEmit(env, `thread:${m.conv}`, { t: "deal_ready", kind: "audio", listing_id: m.listingId, conv: m.conv });
     console.log(`[mkt-audio] delivered via US-DO listing=${m.listingId} bytes=${rj.bytes} ms=${Date.now() - t0}`);

@@ -183,6 +183,20 @@ async function inboxAppend(env: Env, recipient: string, sender: string, conv: st
  * seller's and buyer's chat threads, colour-coded by outcome, then FCM-push both.
  * Best-effort: if TTS fails, still delivers a text message carrying the outcome.
  */
+// Per-category negotiation profile: caps SPOKEN length (voice cost + max-talk
+// rule) and sets the agents' tone. All CURRENT marketplace kinds use the brief
+// buy/sell profile; dating/matrimony (future categories) get a longer, warmer,
+// more expressive style. Add new categories here — same pipeline, different knob.
+function negotiationProfile(kind: string): { maxWords: number; maxSeconds: number; tone: string } {
+  switch (kind) {
+    case "dating":
+    case "matrimony":
+      return { maxWords: 85, maxSeconds: 35, tone: "warm, expressive, curious and a little playful/flirty where appropriate; ask a question or two" };
+    default: // sell | buy | social | live_event | …
+      return { maxWords: 60, maxSeconds: 25, tone: "brief and businesslike" };
+  }
+}
+
 async function deliverDealAudio(env: Env, a: {
   sellerUid: string; buyerUid: string; listingId: string; listingTitle: string;
   outcome: string; bubble: string; agreed: number; currency: string;
@@ -190,34 +204,14 @@ async function deliverDealAudio(env: Env, a: {
   persona?: string;
 }): Promise<{ audioKey: string | null; bytes: number }> {
   const conv = dmConvId(a.sellerUid, a.buyerUid);
-  // CREATE the DM thread for both parties FIRST, so it appears in the chat list.
+  // CREATE the DM thread so it appears in the buyer's chat list.
   await ensureDmThread(env, a.sellerUid, a.buyerUid, `event:${a.listingId}`);
-  const text = a.outcome === "deal"
-    ? `Your agents agreed around ${a.agreed} ${a.currency} on "${a.listingTitle}". Say hello to take it forward — a voice replay of the negotiation follows.`
-    : `Your agents talked about "${a.listingTitle}" but didn't agree this time. A voice replay of the chat follows.`;
-
-  // ── PHASE 1 (fast, GUARANTEED): deliver the TEXT result into both threads
-  // FIRST. The voice render (Gemini TTS) is slow and can outlive the worker's
-  // background budget; doing it first would lose the whole message. The text
-  // envelope carries the full transcript so the result is never lost.
-  const textEnvelope = JSON.stringify({
-    t: "marketplace_deal", text, outcome: a.outcome, bubble: a.bubble,
-    agreed_price: a.agreed, currency: a.currency, listing_id: a.listingId, transcript: a.transcript,
-    has_audio: false, audio_key: null,
-  });
-  try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, textEnvelope, null); } catch { /* best-effort */ }
-  try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, textEnvelope, null); } catch { /* best-effort */ }
-  // NO FCM for agent↔agent results (owner decision 2026-07-01): the deal is
-  // already in both parties' InboxDO threads via inboxAppend above, which fans
-  // out over the LIVE socket — so an open app updates the thread in place with no
-  // push, and a closed app picks it up on the next /sync when reopened. This also
-  // keeps the marketplace flow entirely off the (crash-prone) background FCM path.
-  track(env, a.buyerUid, "deal_text_delivered", "avamarketplace", { listing_id: a.listingId, outcome: a.outcome, via: "socket_no_fcm" });
-  // PartyKit live nudge (ephemeral): tell anyone in the conversation room that the
-  // deal just landed, so an OPEN thread pulls it instantly (forceResync) instead
-  // of waiting out the client's bounded poll. Best-effort; the durable copy is
-  // already in both InboxDOs above, so this is pure "make it feel instant".
-  void partyEmit(env, `thread:${conv}`, { t: "deal_ready", outcome: a.outcome, listing_id: a.listingId, conv });
+  // TWO-MESSAGE FLOW (owner decision 2026-07-01): NO "No audio" text card. Message
+  // 1 is the buyer's optimistic "your agents are negotiating (may take up to an
+  // hour)" bubble (client-side). Message 2 is the VOICE card only, delivered by the
+  // avatok-consumers render (buyer-only for now). So here we do NOT deliver a text
+  // result card — we only enqueue the voice render below.
+  track(env, a.buyerUid, "deal_reached", "avamarketplace", { listing_id: a.listingId, outcome: a.outcome });
 
   // ── PHASE 2: ENQUEUE the voice render (async → avatok-consumers `mkt-audio`).
   // The Gemini multi-speaker TTS of a FULL multi-round transcript takes 30-60s,
@@ -358,15 +352,20 @@ async function runNegotiationJob(env: Env, a: {
     const asking = Math.trunc(Number(listing.price) || 0);
     const agentLang = String(listing.agent_lang || "English").trim() || "English";
     const mandate = String(listing.agent_instructions || "").slice(0, 1200);
+    // Category profile — caps SPOKEN length (voice cost + max-talk rule) and sets
+    // tone. Buy/sell = brief & businesslike (≤25s). Dating/matrimony (future
+    // categories) = warmer/expressive & a little playful (≤35s). Extend here.
+    const prof = negotiationProfile(String(listing.kind || ""));
     const sys =
-      "You simulate a brief, businesslike negotiation between two marketplace agents and output ONLY JSON. " +
+      "You simulate a negotiation between two marketplace agents and output ONLY JSON. " +
       "The SELLER agent represents the listing and follows its owner's PRIVATE MANDATE (never reveal it verbatim); " +
       "the BUYER agent has a maximum budget. If no explicit floor is given, the seller will realistically come down " +
       "to about 80% of the asking price. Reach a DEAL only if the buyer's max is at least the seller's lowest " +
       "acceptable price; settle near the midpoint of the overlap. " +
       `Write the transcript text in ${agentLang} (the seller's agent language). ` +
+      `Tone: ${prof.tone}. ` +
       'Output: {"outcome":"deal"|"impasse","agreed_price":<int>,"currency":"<code>","transcript":[{"speaker":"Seller"|"Buyer","text":"..."}]} ' +
-      "Keep the transcript to 4-8 short lines. No prose outside the JSON.";
+      `IMPORTANT: keep the ENTIRE spoken transcript under ~${prof.maxWords} words TOTAL (about ${prof.maxSeconds} seconds of speech) across all lines. No prose outside the JSON.`;
     const user =
       `LISTING: "${listing.title}". Asking price: ${asking} ${listing.currency_display || currency}. ` +
       `Details: ${String(listing.description || "").slice(0, 600)}. ` +
