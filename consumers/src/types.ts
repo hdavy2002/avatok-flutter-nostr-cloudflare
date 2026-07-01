@@ -89,6 +89,7 @@ export interface MktAudioMsg {
   outcome: string; bubble: string; agreed: number; currency: string;
   transcript: Array<{ speaker: string; text: string }>;
   persona?: string;
+  enqueuedAt?: number; // when avatok-api enqueued this; consumer detects backlog delay
 }
 
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).

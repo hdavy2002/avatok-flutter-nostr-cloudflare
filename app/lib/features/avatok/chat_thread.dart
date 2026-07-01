@@ -6212,28 +6212,61 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
   final AudioPlayer _player = AudioPlayer();
   bool _loading = false;
   bool _playing = false;
+  bool _sharing = false;
   bool _expanded = false;
+  Uint8List? _bytes; // cached downloaded audio (play + share reuse it)
 
   Map<String, dynamic> get _e => widget.extra;
   bool get _isDeal => _e['outcome'] == 'deal';
   String get _audioKey => (_e['audio_key'] ?? '').toString();
+  bool get _isMp3 => _audioKey.toLowerCase().endsWith('.mp3');
+  String get _mime => _isMp3 ? 'audio/mpeg' : 'audio/wav';
 
   @override
   void dispose() { _player.dispose(); super.dispose(); }
+
+  /// Download the audio once and cache it (play + share both use it).
+  Future<Uint8List?> _fetchBytes() async {
+    if (_bytes != null) return _bytes;
+    if (_audioKey.isEmpty) return null;
+    final url = 'https://$kSignalingHost/api/marketplace/audio?key=${Uri.encodeQueryComponent(_audioKey)}';
+    final r = await ApiAuth.getBytes(url);
+    if (r.statusCode != 200 || r.bodyBytes.isEmpty) return null;
+    _bytes = r.bodyBytes;
+    return _bytes;
+  }
 
   Future<void> _toggle() async {
     if (_playing) { await _player.stop(); if (mounted) setState(() => _playing = false); return; }
     if (_audioKey.isEmpty) return;
     setState(() => _loading = true);
     try {
-      final url = 'https://$kSignalingHost/api/marketplace/audio?key=${Uri.encodeQueryComponent(_audioKey)}';
-      final r = await ApiAuth.getBytes(url);
-      if (r.statusCode != 200 || r.bodyBytes.isEmpty) { if (mounted) setState(() => _loading = false); return; }
+      final b = await _fetchBytes();
+      if (b == null) { if (mounted) setState(() => _loading = false); return; }
       _player.onPlayerComplete.listen((_) { if (mounted) setState(() => _playing = false); });
-      await _player.play(BytesSource(r.bodyBytes, mimeType: 'audio/wav'));
+      await _player.play(BytesSource(b, mimeType: _mime));
       if (mounted) setState(() { _loading = false; _playing = true; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Save the voice note to a temp file and open the native share sheet, so the
+  /// user can send it to WhatsApp / Telegram / anywhere.
+  Future<void> _share() async {
+    if (_audioKey.isEmpty || _sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final b = await _fetchBytes();
+      if (b == null) { if (mounted) setState(() => _sharing = false); return; }
+      final dir = await getTemporaryDirectory();
+      final ext = _isMp3 ? 'mp3' : 'wav';
+      final f = File('${dir.path}/negotiation_${DateTime.now().millisecondsSinceEpoch}.$ext');
+      await f.writeAsBytes(b, flush: true);
+      await Share.shareXFiles([XFile(f.path, mimeType: _mime)],
+          text: 'Voice conversation from my AvaTOK agents');
+    } catch (_) {/* best-effort */} finally {
+      if (mounted) setState(() => _sharing = false);
     }
   }
 
@@ -6276,6 +6309,25 @@ class _MarketplaceDealCardState extends State<_MarketplaceDealCard> {
               ]),
             ),
           ),
+          if (_audioKey.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _sharing ? null : _share,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Zine.paper,
+                  border: Border.all(color: Zine.ink, width: 1.5),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_sharing ? Icons.hourglass_top : Icons.ios_share, color: Zine.ink, size: 16),
+                  const SizedBox(width: 5),
+                  const Text('Share', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+          ],
           const Spacer(),
           if (transcript.isNotEmpty)
             GestureDetector(

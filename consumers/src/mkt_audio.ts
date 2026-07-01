@@ -104,6 +104,17 @@ export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
   console.log(`[mkt-audio] start listing=${m.listingId} conv=${m.conv} lines=${(m.transcript || []).length}`);
   await track(env, m.buyerUid, "mkt_audio_start", { listing_id: m.listingId, conv: m.conv, lines: (m.transcript || []).length });
   try {
+    // ETA (owner ask): if this render sat in a BACKLOG before we picked it up,
+    // post a reassuring interim note so the buyer doesn't give up. The message's
+    // age in the queue is the backlog signal (deep queue → long wait).
+    const waitedMs = m.enqueuedAt ? Date.now() - m.enqueuedAt : 0;
+    if (waitedMs > 45000) {
+      const etaMin = Math.max(1, Math.round(waitedMs / 60000));
+      const note = JSON.stringify({ t: "text", body: `🕐 Your agents are busy right now — the voice conversation is taking a little longer than usual. It should arrive in about ${etaMin} minute${etaMin > 1 ? "s" : ""}. Feel free to leave and come back; it'll be waiting here.` });
+      try { await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, note, null); } catch { /* best-effort */ }
+      await partyEmit(env, `thread:${m.conv}`, { t: "deal_ready", kind: "eta", listing_id: m.listingId, conv: m.conv });
+      await track(env, m.buyerUid, "mkt_audio_eta_sent", { listing_id: m.listingId, conv: m.conv, waited_ms: waitedMs });
+    }
     // Render inside a US-PINNED PartyDO. Gemini's preview TTS returns audio from a
     // US egress but finishReason=OTHER (no audio) from Cloudflare's default egress;
     // a DO created with locationHint 'wnam' runs in the US so its request to Gemini

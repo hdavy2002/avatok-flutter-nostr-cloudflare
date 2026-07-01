@@ -226,7 +226,7 @@ async function deliverDealAudio(env: Env, a: {
     await (env as any).Q_MKT_AUDIO?.send({
       conv, sellerUid: a.sellerUid, buyerUid: a.buyerUid, listingId: a.listingId,
       outcome: a.outcome, bubble: a.bubble, agreed: a.agreed, currency: a.currency,
-      transcript: a.transcript, persona: a.persona,
+      transcript: a.transcript, persona: a.persona, enqueuedAt: Date.now(),
     });
     queued = true;
   } catch { /* best-effort; text card already delivered */ }
@@ -529,7 +529,9 @@ export async function marketplaceAudio(req: Request, env: Env): Promise<Response
   if (!key.startsWith("mkt/deal/")) return new Response("bad key", { status: 400 });
   const obj = await (env as any).BLOBS.get(key);
   if (!obj) return new Response("not found", { status: 404 });
+  // Serve the object's stored type (new deals are .mp3, older ones .wav).
+  const ct = obj.httpMetadata?.contentType || (key.endsWith(".mp3") ? "audio/mpeg" : "audio/wav");
   return new Response(obj.body, {
-    headers: { "content-type": "audio/wav", "cache-control": "private, max-age=86400" },
+    headers: { "content-type": ct, "cache-control": "private, max-age=86400" },
   });
 }

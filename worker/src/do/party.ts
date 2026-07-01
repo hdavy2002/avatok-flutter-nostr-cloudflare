@@ -23,10 +23,31 @@
 // agent_status, neg_stream, deal_ready, viewer, listing_update, conf_presence,
 // ava_stream, badge.
 import type { Env } from "../types";
+import { Mp3Encoder } from "@breezystack/lamejs";
 
 interface SockMeta { uid: string; room: string; since: number; events: number }
 
-/** Wrap 24kHz mono 16-bit PCM as a playable WAV (chat voice notes are WAV). */
+/** Encode 24kHz mono 16-bit PCM to MP3 (~10x smaller than WAV, universally
+ *  playable + shareable to WhatsApp/Telegram). Pure-JS LAME — runs in Workers. */
+function pcmToMp3(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
+  // PCM bytes → Int16 samples (little-endian). pcm is a fresh 0-offset buffer.
+  const samples = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 2));
+  const enc = new Mp3Encoder(1, sampleRate, 96); // mono, 96 kbps — plenty for speech
+  const chunks: Uint8Array[] = [];
+  const block = 1152;
+  for (let i = 0; i < samples.length; i += block) {
+    const buf = enc.encodeBuffer(samples.subarray(i, i + block));
+    if (buf.length) chunks.push(new Uint8Array(buf));
+  }
+  const tail = enc.flush();
+  if (tail.length) chunks.push(new Uint8Array(tail));
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0; for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+/** Wrap 24kHz mono 16-bit PCM as a playable WAV (kept for fallback / reference). */
 function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
   const ch = 1, bits = 16;
   const byteRate = (sampleRate * ch * bits) / 8, block = (ch * bits) / 8;
@@ -84,12 +105,14 @@ export class PartyDO {
     if (url.pathname.endsWith("/render-tts") && req.method === "POST") {
       const b = await req.json().catch(() => null) as { transcript?: Array<{ speaker: string; text: string }>; persona?: string; listingId?: string } | null;
       if (!b || !Array.isArray(b.transcript)) return new Response("bad", { status: 400 });
-      const wav = await this.renderTts(b.transcript, b.persona);
-      if (!wav) return new Response(JSON.stringify({ audio_key: null, bytes: 0 }), { headers: { "content-type": "application/json" } });
-      const audioKey = `mkt/deal/${b.listingId || "x"}/${crypto.randomUUID()}.wav`;
-      try { await (this.env as any).BLOBS.put(audioKey, wav, { httpMetadata: { contentType: "audio/wav" } }); }
+      const pcm = await this.renderTts(b.transcript, b.persona);
+      if (!pcm) return new Response(JSON.stringify({ audio_key: null, bytes: 0 }), { headers: { "content-type": "application/json" } });
+      // Encode to MP3 (~10x smaller than WAV, and shareable to WhatsApp/Telegram).
+      const mp3 = pcmToMp3(pcm);
+      const audioKey = `mkt/deal/${b.listingId || "x"}/${crypto.randomUUID()}.mp3`;
+      try { await (this.env as any).BLOBS.put(audioKey, mp3, { httpMetadata: { contentType: "audio/mpeg" } }); }
       catch { return new Response(JSON.stringify({ audio_key: null, bytes: 0, error: "r2" }), { headers: { "content-type": "application/json" } }); }
-      return new Response(JSON.stringify({ audio_key: audioKey, bytes: wav.length }), { headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ audio_key: audioKey, bytes: mp3.length }), { headers: { "content-type": "application/json" } });
     }
     return new Response("not found", { status: 404 });
   }
@@ -119,7 +142,7 @@ export class PartyDO {
       const bin = atob(data);
       const pcm = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) pcm[i] = bin.charCodeAt(i);
-      return pcmToWav(pcm);
+      return pcm; // raw 24kHz mono 16-bit PCM — caller encodes to MP3
     } catch (e) { console.error(`[party-tts] ${String(e)}`); return null; }
   }
 

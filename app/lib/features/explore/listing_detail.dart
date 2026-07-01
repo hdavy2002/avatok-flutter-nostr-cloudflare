@@ -141,8 +141,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
           rumorId: 'mkt_pending_${d.listing.id}',
           payload: jsonEncode({
             't': 'text',
-            'body': '🤝 Your agent is talking to $sellerName\'s agent about "${d.listing.title}". '
-                'The outcome — a voice note of the negotiation — will arrive in this chat shortly.',
+            'body': '🤝 Your agents are negotiating with $sellerName\'s agent about "${d.listing.title}". '
+                'This can take up to an hour — come back and check for the voice conversation.',
           }),
         );
         // Persist the preview subtitle too, so the thread shows the right
