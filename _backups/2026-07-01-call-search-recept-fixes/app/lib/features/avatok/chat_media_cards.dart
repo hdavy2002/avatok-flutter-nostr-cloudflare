@@ -288,8 +288,7 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
         borderRadius: BorderRadius.circular(14),
         child: Stack(alignment: Alignment.center, children: [
           if (_thumb != null)
-            Image.memory(_thumb!, width: widget.width, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink())
+            Image.memory(_thumb!, width: widget.width, fit: BoxFit.cover)
           else
             Container(
               width: widget.width,
@@ -465,8 +464,7 @@ class _ChatFileCardState extends State<ChatFileCard> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Stack(children: [
-            Image.memory(_pdfThumb!, width: widget.width, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+            Image.memory(_pdfThumb!, width: widget.width, fit: BoxFit.cover),
             Positioned(
               left: 0,
               right: 0,

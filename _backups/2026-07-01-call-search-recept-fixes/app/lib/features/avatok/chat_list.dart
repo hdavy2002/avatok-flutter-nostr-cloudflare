@@ -1206,8 +1206,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           child: FutureBuilder<Uint8List>(
             future: _myStatusThumb,
             builder: (_, s) => s.hasData
-                ? Image.memory(s.data!, width: sz, height: sz, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink())
+                ? Image.memory(s.data!, width: sz, height: sz, fit: BoxFit.cover)
                 : Avatar(seed: _id?.npub ?? 'me', name: 'You', size: sz),
           ),
         ),

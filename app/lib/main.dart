@@ -44,6 +44,16 @@ void main() async {
   // ceiling. Disk caches (avatar_cache/media) make re-decodes cheap.
   PaintingBinding.instance.imageCache.maximumSize = 300;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 64 << 20; // 64 MB
+  // One-time image-cache self-heal on this new build (owner request 2026-07-01):
+  // a corrupt cached avatar was crashing the image decoder ("Invalid image data")
+  // and freezing the app — reinstalling only "fixed" it by wiping the cache. Purge
+  // the on-disk image cache ONCE here (keyed to the build tag) + drop the in-memory
+  // cache, so testers never have to reinstall. Account/contacts/history untouched.
+  try {
+    await DiskCache.flushImageCachesOnce('img_cache_flush_0_1_17_20');
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+  } catch (_) {/* never block boot on a cache purge */}
   // Product analytics + error tracking (best-effort) — init FIRST so we can
   // capture a Firebase init failure instead of silently swallowing it.
   await Analytics.init();

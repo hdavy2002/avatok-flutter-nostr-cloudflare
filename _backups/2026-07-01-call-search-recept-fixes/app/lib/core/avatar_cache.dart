@@ -48,7 +48,7 @@ class AvatarCache {
       final f = File('${(await _dir()).path}/${_name(rawUrl, px)}');
       if (await f.exists() && await f.length() > 0) return f;
       final res = await http.get(Uri.parse(transformUrl(rawUrl, px))).timeout(const Duration(seconds: 15));
-      if (res.statusCode == 200 && _looksLikeImage(res.bodyBytes)) {
+      if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
         await f.writeAsBytes(res.bodyBytes, flush: true);
         return f;
       }
@@ -68,28 +68,11 @@ class AvatarCache {
       final host = Uri.parse(rawUrl).host;
       final fetchUrl = host.endsWith('avatok.ai') ? transformUrl(rawUrl, px) : rawUrl;
       final res = await http.get(Uri.parse(fetchUrl)).timeout(const Duration(seconds: 15));
-      if (res.statusCode == 200 && _looksLikeImage(res.bodyBytes)) {
+      if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
         await f.writeAsBytes(res.bodyBytes, flush: true);
         return f;
       }
     } catch (_) {/* fall through to null */}
     return null;
-  }
-
-  /// A 200 response can still be junk — an HTML error page, a WAF challenge, or a
-  /// truncated body — which then crashes the decoder ("Invalid image data") AND
-  /// poisons the disk cache (the reinstall-loop bug). Only cache bytes that start
-  /// with a known image magic number; anything else is treated as a cache miss
-  /// (caller falls back to initials/placeholder). Cheap header check, no decode.
-  static bool _looksLikeImage(Uint8List b) {
-    if (b.length < 12) return false;
-    if (b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return true;                 // JPEG
-    if (b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) return true; // PNG
-    if (b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46) return true;                 // GIF
-    if (b[0] == 0x52 && b[1] == 0x49 && b[2] == 0x46 && b[3] == 0x46 &&
-        b[8] == 0x57 && b[9] == 0x45 && b[10] == 0x42 && b[11] == 0x50) return true; // RIFF/WEBP
-    if (b[4] == 0x66 && b[5] == 0x74 && b[6] == 0x79 && b[7] == 0x70) return true; // ftyp (AVIF/HEIF)
-    if (b[0] == 0x42 && b[1] == 0x4D) return true;                                 // BMP
-    return false;
   }
 }

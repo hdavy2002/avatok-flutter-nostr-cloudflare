@@ -2618,7 +2618,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: InteractiveViewer(
               minScale: 0.8,
               maxScale: 5,
-              child: Center(child: Image.memory(bytes, errorBuilder: (_, __, ___) => const SizedBox.shrink())),
+              child: Center(child: Image.memory(bytes)),
             ),
           ),
           // X — close the viewer.
@@ -3051,8 +3051,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             child: Image.memory(bytes,
                 width: double.infinity,
                 height: 280,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                fit: BoxFit.cover),
           ),
           const SizedBox(height: 12),
           Row(children: [
@@ -4089,7 +4088,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               if (m.localBytes != null && m.media!.kind == MediaKind.image)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: Image.memory(m.localBytes!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  child: Image.memory(m.localBytes!, width: 44, height: 44, fit: BoxFit.cover),
                 )
               else
                 PhosphorIcon(
@@ -6093,7 +6092,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+              child: Image.memory(m.localBytes!, width: 220, fit: BoxFit.cover),
             ),
           );
         }
@@ -6107,7 +6106,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
-                    child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                    child: Image.memory(snap.data!, width: 220, fit: BoxFit.cover),
                   ),
                 );
               }

@@ -111,24 +111,4 @@ class DiskCache {
       if (await f.exists()) await f.delete();
     } catch (_) {/* best-effort */}
   }
-
-  /// One-time self-heal (owner request 2026-07-01): a past bad/truncated image
-  /// download got saved to the on-disk avatar cache and then crashed the image
-  /// decoder on render ("Invalid image data"), which is why a REINSTALL (which
-  /// wipes the cache) fixed it — briefly. Purge the on-disk IMAGE cache ONCE on
-  /// the first launch of a new build, keyed to [flag], so nobody has to reinstall.
-  /// Only the `avatars/` image cache is deleted — account, contacts, chat history
-  /// and secure data are all untouched (they live in `cache/<scope>/` and secure
-  /// storage). Best-effort; never blocks boot.
-  static Future<void> flushImageCachesOnce(String flag) async {
-    try {
-      if (await readGlobal(flag) == '1') return;
-      final base = await _baseDir();
-      final d = Directory('$base/avatars');
-      if (await d.exists()) {
-        try { await d.delete(recursive: true); } catch (_) {/* best-effort */}
-      }
-      await writeGlobal(flag, '1');
-    } catch (_) {/* never block boot on a cache purge */}
-  }
 }
