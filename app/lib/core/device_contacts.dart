@@ -116,7 +116,6 @@ class DeviceContact {
 class DeviceContactsService {
   static bool _syncing = false; // single-flight guard
   static int _lastSyncMs = 0; // throttle
-  static bool _watching = false; // OS change-listener registered once
   // Freshness comes from the OS contacts CHANGE LISTENER (startWatching) — we sync
   // the instant the address book actually changes, not on a timer. This is just a
   // safety net for platforms where the change callback doesn't fire: at most one
@@ -293,12 +292,10 @@ class DeviceContactsService {
       }
       removedCount = existingRows.keys.where((k) => !normSet.contains(k)).length;
       final writeT0 = DateTime.now().millisecondsSinceEpoch;
-      const _chunk = 500;
-      for (var i = 0; i < companions.length; i += _chunk) {
-        final end = (i + _chunk) < companions.length ? (i + _chunk) : companions.length;
-        await Db.I.upsertDeviceContacts(companions.sublist(i, end));
-        await Future<void>.delayed(Duration.zero);
-      }
+      // ONE write (not chunked): the watch() stream re-maps ALL rows on every DB
+      // change, so chunking would fire that heavy rebuild many times. The parse is
+      // already off the UI thread (isolate), so a single batch write is cheap here.
+      await Db.I.upsertDeviceContacts(companions);
       await Db.I.pruneDeviceContacts(normSet);
       final dbWriteMs = DateTime.now().millisecondsSinceEpoch - writeT0;
 
@@ -352,40 +349,23 @@ class DeviceContactsService {
     }
   }
 
-  /// Cold-start entry point (chat_list). Registers the OS change-listener so we
-  /// re-read ONLY when the address book actually changes, and reads NOW only if
-  /// the mirror is empty or stale — a normal cold start does zero contact reads
-  /// and repaints instantly from the mirror.
-  static Future<void> syncAndMatch([String? _ownerNpub]) async {
-    startWatching();
-    await ensureFresh(source: 'cold_start');
-  }
+  /// Back-compat no-op-ish: the address book is now read ON DEMAND only (when the
+  /// user actually opens a screen that shows contacts — Invite / Search). It is
+  /// NEVER read on cold start, resume, or an FCM push, so nothing contact-related
+  /// can ever block the app in the background. Delegates to [ensureFresh] but
+  /// callers on the cold-start/resume path have been removed.
+  static Future<void> syncAndMatch([String? _ownerNpub]) => ensureFresh(source: 'cold_start');
 
-  /// Read only when needed: empty mirror (first run) or older than the safety
-  /// interval. Otherwise a no-op — the change-listener keeps the mirror current.
+  /// Read the address book ONLY when a contacts screen needs it and the mirror is
+  /// empty or a day stale. Otherwise a no-op (repaints instantly from the mirror).
+  /// The heavy parse runs in a background isolate, so even when it does read, it
+  /// never blocks the UI thread.
   static Future<void> ensureFresh({String source = 'ensure'}) async {
     if (_syncing) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final empty = (await Db.I.deviceContactsOnce()).isEmpty;
     if (empty || now - _lastSyncMs > _minIntervalMs) {
       await refresh(force: true, source: source);
-    }
-  }
-
-  /// Register the OS address-book change listener ONCE. When contacts change on
-  /// the device, re-sync immediately — the mirror stays fresh with no polling and
-  /// no resume-triggered reads. Best-effort; safe to call repeatedly.
-  static void startWatching() {
-    if (_watching || (!Platform.isAndroid && !Platform.isIOS)) return;
-    _watching = true;
-    try {
-      FlutterContacts.addListener(() {
-        AvaLog.I.log('contacts', 'OS address book changed — re-syncing');
-        refresh(force: true, source: 'os_change');
-      });
-    } catch (e) {
-      _watching = false;
-      AvaLog.I.log('contacts', 'contacts change-listener unavailable: $e');
     }
   }
 

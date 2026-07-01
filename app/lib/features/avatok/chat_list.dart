@@ -403,13 +403,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // so live delivery resumes at once, and clear the unread badge.
       _inbox?.ensureConnected();
       PushService.clearMessageBadge();
-      // Re-sync the address book on every resume so newly-added phone contacts
-      // (and people who just joined AvaTOK) show up immediately. Throttled inside
-      // the service so it won't hammer the OS book on rapid foreground/background.
-      // No proactive re-read on resume — the OS change-listener keeps the mirror
-      // fresh. ensureFresh only reads if it's empty or a day stale (safety net).
-      DeviceContactsService.ensureFresh(source: 'resume')
-          .then((_) => _reconcileTelContacts());
+      // NOTE: the device address book is deliberately NOT read on resume/FCM. It's
+      // read on demand ONLY when the Invite/Search screen opens (device_contacts.
+      // ensureFresh), so nothing contact-related can freeze the app in the
+      // background. Tel-contact reconciliation piggybacks on that on-screen read.
     }
   }
 
@@ -482,10 +479,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     _contactsStore.refreshMissingAvatars().then((list) {
       if (mounted) setState(() => _contacts = list);
     });
-    // Sync the phone address book to our backend (per-user storage, reused by
-    // AvaContacts) and resolve who's already on AvaTok — best-effort, silent.
-    DeviceContactsService.syncAndMatch(id.npub)
-        .then((_) => _reconcileTelContacts());
+    // NOTE: the phone address book is NOT read on cold start — it's read on demand
+    // only when the user opens a contacts screen (Invite/Search). This keeps app
+    // startup instant and can never freeze the app in the background.
     // Register this device for incoming-call wake pushes (npub hashed at rest).
     Analytics.identify(id.npub); // attribute diagnostics/events to this npub every app open
     await PushService.registerToken(id.npub);
