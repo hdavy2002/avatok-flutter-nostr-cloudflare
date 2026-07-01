@@ -190,12 +190,12 @@ async function deliverDealAudio(env: Env, a: {
   });
   try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, textEnvelope, null); } catch { /* best-effort */ }
   try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, textEnvelope, null); } catch { /* best-effort */ }
-  const title = a.outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating";
-  try {
-    await (env as any).Q_PUSH.send({ kind: "notify", to: a.sellerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
-    await (env as any).Q_PUSH.send({ kind: "notify", to: a.buyerUid, fromName: "AvaMarketplace", title, body: text, data: { type: "marketplace_deal", conv, outcome: a.outcome, bubble: a.bubble, listing_id: a.listingId } });
-  } catch { /* push best-effort */ }
-  track(env, a.buyerUid, "deal_text_delivered", "avamarketplace", { listing_id: a.listingId, outcome: a.outcome });
+  // NO FCM for agent↔agent results (owner decision 2026-07-01): the deal is
+  // already in both parties' InboxDO threads via inboxAppend above, which fans
+  // out over the LIVE socket — so an open app updates the thread in place with no
+  // push, and a closed app picks it up on the next /sync when reopened. This also
+  // keeps the marketplace flow entirely off the (crash-prone) background FCM path.
+  track(env, a.buyerUid, "deal_text_delivered", "avamarketplace", { listing_id: a.listingId, outcome: a.outcome, via: "socket_no_fcm" });
 
   // ── PHASE 2 (best-effort): render the voice note and deliver it as a follow-up
   // message. If the render is slow and the worker is reaped here, the result is
