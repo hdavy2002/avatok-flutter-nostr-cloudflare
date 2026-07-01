@@ -101,6 +101,16 @@ class DeviceContact {
       );
 }
 
+/// A lightweight address-book entry — just the OS contact id + display name, with
+/// NO phone/email loaded. Used by the Invite screen's lazy list; the number/email
+/// is fetched on demand via [DeviceContactsService.contactDetail] on an invite tap.
+@immutable
+class ContactRef {
+  final String id;
+  final String name;
+  const ContactRef(this.id, this.name);
+}
+
 /// Local-first device-contacts pipeline.
 ///
 /// The whole point: the "Add contact" sheet must feel INSTANT. So the device
@@ -188,6 +198,41 @@ class DeviceContactsService {
   /// Reactive cache — the sheet binds to this so background sync repaints live.
   static Stream<List<DeviceContact>> watch() =>
       Db.I.watchDeviceContacts().map((rows) => rows.map(DeviceContact.fromRow).toList());
+
+  // ── LAZY address-book access (Invite screen) ───────────────────────────────
+  // The Invite screen must NOT slurp the whole book with all properties (phones/
+  // emails) into memory — on a 3000-contact phone that's the freeze. Instead we
+  // read a lightweight NAME-ONLY list (tiny, even for thousands), render it lazily
+  // (ListView.builder builds only what fits the screen), and fetch a single
+  // contact's number/email ON DEMAND the moment the user actually invites them.
+
+  /// Name-only address-book entries. `withProperties:false` ⇒ no phones/emails
+  /// loaded, so this is cheap + low-memory regardless of book size. Sorted by name.
+  static Future<List<ContactRef>> listRefs() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return const [];
+    if (!await FlutterContacts.requestPermission(readonly: true)) return const [];
+    final raw = await FlutterContacts.getContacts(
+        withProperties: false, withPhoto: false, withAccounts: false);
+    final out = <ContactRef>[
+      for (final c in raw) if (c.displayName.trim().isNotEmpty) ContactRef(c.id, c.displayName.trim()),
+    ];
+    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return out;
+  }
+
+  /// Fetch ONE contact's first phone + email on demand (for an invite tap).
+  static Future<({String phone, String email})> contactDetail(String id) async {
+    try {
+      final c = await FlutterContacts.getContact(id, withProperties: true, withPhoto: false, withAccounts: false);
+      if (c == null) return (phone: '', email: '');
+      return (
+        phone: c.phones.isNotEmpty ? c.phones.first.number.trim() : '',
+        email: c.emails.isNotEmpty ? c.emails.first.address.trim() : '',
+      );
+    } catch (_) {
+      return (phone: '', email: '');
+    }
+  }
 
   /// Background sync: read the device book → diff into SQLite → match against
   /// AvaTOK → annotate. [force] bypasses the throttle (cold start / pull-to-

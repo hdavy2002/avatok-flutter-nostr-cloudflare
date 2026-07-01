@@ -54,10 +54,11 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _flagsStore.load().then((f) { if (mounted) setState(() => _flags = f); });
     // Load cached device contacts instantly, then refresh + match in background.
-    // The cache stream repaints the list when freshly-synced rows / matches land.
+    // The cache stream repaints the list when device rows land. No full address-
+    // book read is triggered here — directory search is email/AvaTOK-number only,
+    // and the address book is read lazily only on the Invite screen.
     DeviceContactsService.cached().then((c) { if (mounted) setState(() => _device = c); });
     _deviceSub = DeviceContactsService.watch().listen((c) { if (mounted) setState(() => _device = c); });
-    DeviceContactsService.ensureFresh(source: 'search_screen');
   }
 
   @override

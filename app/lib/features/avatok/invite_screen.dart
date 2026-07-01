@@ -15,17 +15,12 @@ import '../../core/ui/zine_widgets.dart';
 
 /// AvaInvite — "invite your phone contacts to AvaTOK".
 ///
-/// Lists the device address book (instant from the per-account SQLite cache, then
-/// a background refresh folds in emails + WhatsApp flags + on-AvaTOK matches).
-/// Per contact:
-///   • Already on AvaTOK → a green-tick "On AvaTOK" badge (nothing to invite).
-///   • Otherwise → up to three channel buttons:
-///       – WhatsApp (only if the number is a WhatsApp contact) — deep-link prefill
-///       – SMS (always) — deep-link prefill carrying the inviter's name
-///       – Email (only if the contact has an email) — the SERVER sends it on the
-///         user's behalf (Reply-To = the inviter), then the button shows "Email Sent"
-/// A persistent "Sent" tag (from the InviteSends table) sits above each used icon
-/// so the user always sees who they've already reached, even after a restart.
+/// LAZY by design (owner decision 2026-07-01): we read a lightweight NAME-ONLY
+/// list of the address book (no phones/emails loaded), render it with a lazy
+/// ListView (only what fits the screen is built), and fetch a single contact's
+/// number/email ON DEMAND the moment the user taps to invite them. So even a
+/// 3000-contact phone opens instantly and never freezes — nothing heavy is loaded
+/// up front, and the address book is only touched when THIS screen is open.
 class InviteScreen extends StatefulWidget {
   const InviteScreen({super.key});
   @override
@@ -33,13 +28,12 @@ class InviteScreen extends StatefulWidget {
 }
 
 class _InviteScreenState extends State<InviteScreen> {
-  StreamSubscription<List<DeviceContact>>? _contactsSub;
   StreamSubscription<List<InviteSend>>? _sentSub;
   final _searchCtrl = TextEditingController();
 
-  List<DeviceContact> _all = const [];
-  Set<String> _sent = {}; // '<phoneNorm>|<channel>'
-  final Set<String> _sending = {}; // '<phoneNorm>|email' while the server call is in flight
+  List<ContactRef> _all = const [];
+  Set<String> _sent = {}; // '<contactId>|<channel>'
+  final Set<String> _sending = {}; // '<contactId>|email' while the server call is in flight
   bool _loaded = false;
   bool _permDenied = false;
   bool _softAsk = false;
@@ -62,39 +56,31 @@ class _InviteScreenState extends State<InviteScreen> {
     _myHandle = p.handle;
     _myName = p.displayName;
 
-    final cached = await DeviceContactsService.cached();
-    if (mounted) setState(() { _all = cached; _loaded = true; });
-
-    _contactsSub = DeviceContactsService.watch().listen((rows) {
-      if (mounted) setState(() { _all = rows; _loaded = true; });
-    });
+    // Persistent "Sent" tags (keyed by contact id).
     _sentSub = Db.I.watchInviteSends().listen((rows) {
       if (mounted) setState(() => _sent = {for (final r in rows) '${r.phoneNorm}|${r.channel}'});
     });
-    // Seed the sent-set immediately (before the stream's first emit).
     final seed = await Db.I.inviteSendsOnce();
     if (mounted) setState(() => _sent = {for (final r in seed) '${r.phoneNorm}|${r.channel}'});
 
     final status = await Permission.contacts.status;
     if (!status.isGranted) {
-      if (mounted) setState(() => _softAsk = true);
+      if (mounted) setState(() { _softAsk = true; _loaded = true; });
       Analytics.capture('contacts_soft_ask_shown', const {'source': 'invite_screen'});
       return;
     }
-    await _syncNow();
+    await _loadRefs();
   }
 
-  Future<void> _syncNow() async {
+  /// Read the lightweight name-only list (cheap, no properties). This is the ONLY
+  /// address-book read; numbers are fetched per-contact on an invite tap.
+  Future<void> _loadRefs() async {
     if (mounted) setState(() => _refreshing = true);
-    // Reads only if the mirror is empty/stale; the OS change-listener keeps it
-    // fresh otherwise, so opening this screen doesn't re-read the whole book.
-    await DeviceContactsService.ensureFresh(source: 'invite_screen');
+    final refs = await DeviceContactsService.listRefs();
     if (!mounted) return;
-    setState(() { _refreshing = false; _permDenied = false; _softAsk = false; });
+    setState(() { _all = refs; _refreshing = false; _loaded = true; _permDenied = false; _softAsk = false; });
     Analytics.capture('invite_screen_loaded', {
       'count': _all.length,
-      'on_avatok_count': _all.where((d) => d.onAvatok).length,
-      'with_email_count': _all.where((d) => !d.onAvatok && d.hasEmail).length,
       'open_ms': DateTime.now().difference(_openedAt).inMilliseconds,
     });
   }
@@ -108,62 +94,87 @@ class _InviteScreenState extends State<InviteScreen> {
       return;
     }
     Analytics.capture('contacts_permission', {'granted': true, 'source': 'invite_screen'});
-    await _syncNow();
+    await _loadRefs();
   }
 
   @override
   void dispose() {
-    _contactsSub?.cancel();
     _sentSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  List<DeviceContact> get _filtered {
+  // Filter by name only (light refs carry no phone/email). ListView.builder keeps
+  // rendering lazy, so we don't need to cap the list for performance.
+  List<ContactRef> get _filtered {
     final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return _all.take(200).toList();
-    final qDigits = q.replaceAll(RegExp(r'[^\d]'), '');
-    return _all.where((d) {
-      if (d.displayName.toLowerCase().contains(q)) return true;
-      if (d.email.toLowerCase().contains(q)) return true;
-      if (qDigits.isNotEmpty &&
-          d.phoneNorm.replaceAll(RegExp(r'[^\d]'), '').contains(qDigits)) return true;
-      return false;
-    }).take(200).toList();
+    if (q.isEmpty) return _all;
+    return _all.where((c) => c.name.toLowerCase().contains(q)).toList();
   }
 
-  bool _isSent(DeviceContact d, String channel) => _sent.contains('${d.phoneNorm}|$channel');
+  bool _isSent(ContactRef c, String channel) => _sent.contains('${c.id}|$channel');
 
-  // ── send actions ──────────────────────────────────────────────────────────
+  // ── send actions (fetch the number/email ON DEMAND) ─────────────────────────
 
-  Future<void> _whatsapp(DeviceContact d) async {
-    final text = DeviceContactsService.inviteText(d, myName: _myName, myHandle: _myHandle);
-    final ok = await _launch(DeviceContactsService.whatsappUri(d, text));
-    if (ok) await _recordSent(d, 'whatsapp');
-    _track(d, 'whatsapp', ok);
+  /// Build a throwaway DeviceContact from an on-demand detail fetch so we can
+  /// reuse the existing invite-link helpers. Returns null if the contact has no
+  /// usable value for [needEmail].
+  Future<DeviceContact?> _resolve(ContactRef c, {bool needEmail = false}) async {
+    final det = await DeviceContactsService.contactDetail(c.id);
+    if (needEmail) {
+      if (det.email.isEmpty) return null;
+    } else if (det.phone.isEmpty) {
+      return null;
+    }
+    return DeviceContact(
+      name: c.name,
+      rawPhone: det.phone,
+      phoneNorm: DeviceContactsService.normPhone(det.phone),
+      email: det.email,
+    );
   }
 
-  Future<void> _sms(DeviceContact d) async {
-    final text = DeviceContactsService.inviteText(d, myName: _myName, myHandle: _myHandle);
-    final ok = await _launch(DeviceContactsService.smsUri(d, text));
-    if (ok) await _recordSent(d, 'sms');
-    _track(d, 'sms', ok);
+  void _snack(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _email(DeviceContact d) async {
-    final key = '${d.phoneNorm}|email';
+  Future<void> _whatsapp(ContactRef c) async {
+    final dc = await _resolve(c);
+    if (dc == null) { _snack('No phone number saved for ${c.name}.'); return; }
+    final text = DeviceContactsService.inviteText(dc, myName: _myName, myHandle: _myHandle);
+    final ok = await _launch(DeviceContactsService.whatsappUri(dc, text));
+    if (ok) await _recordSent(c, 'whatsapp');
+    _track(c, 'whatsapp', ok);
+  }
+
+  Future<void> _sms(ContactRef c) async {
+    final dc = await _resolve(c);
+    if (dc == null) { _snack('No phone number saved for ${c.name}.'); return; }
+    final text = DeviceContactsService.inviteText(dc, myName: _myName, myHandle: _myHandle);
+    final ok = await _launch(DeviceContactsService.smsUri(dc, text));
+    if (ok) await _recordSent(c, 'sms');
+    _track(c, 'sms', ok);
+  }
+
+  Future<void> _email(ContactRef c) async {
+    final key = '${c.id}|email';
     if (_sending.contains(key)) return;
     setState(() => _sending.add(key));
-    final ok = await DeviceContactsService.sendInviteEmail(d, myName: _myName);
+    final dc = await _resolve(c, needEmail: true);
+    if (dc == null) {
+      if (mounted) setState(() => _sending.remove(key));
+      _snack('No email saved for ${c.name}.');
+      return;
+    }
+    final ok = await DeviceContactsService.sendInviteEmail(dc, myName: _myName);
     if (mounted) setState(() => _sending.remove(key));
     if (ok) {
-      await _recordSent(d, 'email');
-    } else if (mounted) {
+      await _recordSent(c, 'email');
+    } else {
       Analytics.capture('invite_send_failed', {'channel': 'email', 'reason': 'server'});
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't send the email — please try again")));
+      _snack("Couldn't send the email — please try again");
     }
-    _track(d, 'email', ok);
+    _track(c, 'email', ok);
   }
 
   Future<bool> _launch(Uri uri) async {
@@ -176,21 +187,13 @@ class _InviteScreenState extends State<InviteScreen> {
     }
   }
 
-  Future<void> _recordSent(DeviceContact d, String channel) async {
-    await Db.I.markInviteSent(d.phoneNorm, channel);
-    // The stream repaints, but seed locally so the tag is instant.
-    if (mounted) setState(() => _sent = {..._sent, '${d.phoneNorm}|$channel'});
+  Future<void> _recordSent(ContactRef c, String channel) async {
+    await Db.I.markInviteSent(c.id, channel);
+    if (mounted) setState(() => _sent = {..._sent, '${c.id}|$channel'});
   }
 
-  void _track(DeviceContact d, String channel, bool ok) {
-    Analytics.capture('invite_sent', {
-      'channel': channel,
-      'ok': ok,
-      'on_avatok': false,
-      'has_email': d.hasEmail,
-      'has_whatsapp': d.hasWhatsapp,
-      'source': 'invite_screen',
-    });
+  void _track(ContactRef c, String channel, bool ok) {
+    Analytics.capture('invite_sent', {'channel': channel, 'ok': ok, 'source': 'invite_screen'});
   }
 
   // ── build ─────────────────────────────────────────────────────────────────
@@ -213,13 +216,12 @@ class _InviteScreenState extends State<InviteScreen> {
                 const SizedBox(width: 12),
                 Expanded(child: Text('Invite friends', style: ZineText.appbar())),
                 if (_refreshing)
-                  const SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
               ]),
               const SizedBox(height: 12),
               ZineField(
                 controller: _searchCtrl,
-                hint: 'Search name, email or phone',
+                hint: 'Search by name',
                 leadIcon: PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                 onChanged: (v) => setState(() => _query = v),
               ),
@@ -236,22 +238,20 @@ class _InviteScreenState extends State<InviteScreen> {
       return _permissionPanel(
         title: 'Invite people you know',
         body: 'AvaTOK can check your contacts so you can invite friends by WhatsApp, '
-            'text or email — and see who\'s already here. Your contacts stay on your '
-            'device and sync privately.',
+            'text or email. Your contacts stay on your device — only the person you '
+            'tap to invite is ever used.',
         cta: 'Allow contacts',
       );
     }
     if (_permDenied && _all.isEmpty) {
       return _permissionPanel(
         title: 'Contacts access is off',
-        body: 'Allow AvaTOK to read your contacts so you can invite friends and see '
-            'who\'s already here.',
+        body: 'Allow AvaTOK to read your contacts so you can invite friends.',
         cta: 'Allow access',
       );
     }
     if (!_loaded) {
-      return const Center(child: SizedBox(
-          width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
+      return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
     }
     final items = _filtered;
     if (items.isEmpty) {
@@ -269,78 +269,45 @@ class _InviteScreenState extends State<InviteScreen> {
     );
   }
 
-  Widget _row(DeviceContact d) => Padding(
+  Widget _row(ContactRef c) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(children: [
           Container(
-            decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Zine.ink, width: 2)),
-            child: Avatar(
-                seed: d.onAvatok ? d.uid : d.phoneNorm,
-                name: d.displayName,
-                size: 42,
-                avatarUrl: d.avatarUrl.isEmpty ? null : d.avatarUrl),
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
+            child: Avatar(seed: c.id, name: c.name, size: 42),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(d.displayName, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.value(size: 15)),
-                const SizedBox(height: 2),
-                Text(d.hasEmail && !d.onAvatok ? d.email : d.subtitle,
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: ZineText.sub(size: 12.5)),
-              ],
-            ),
+            child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.value(size: 15)),
           ),
           const SizedBox(width: 8),
-          d.onAvatok ? _onAvatokBadge() : _channels(d),
+          _channels(c),
         ]),
       );
 
-  // Green-tick AvaTOK badge for people already on the network (no invite icons).
-  Widget _onAvatokBadge() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(
-          color: Zine.mint,
-          borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: Zine.ink, width: 1.5),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 13, color: Zine.mintInk),
-          const SizedBox(width: 4),
-          Text('AvaTOK', style: ZineText.tag(size: 10)),
-        ]),
-      );
-
-  Widget _channels(DeviceContact d) {
-    final sendingEmail = _sending.contains('${d.phoneNorm}|email');
+  Widget _channels(ContactRef c) {
+    final sendingEmail = _sending.contains('${c.id}|email');
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      if (d.hasWhatsapp)
-        _channelBtn(
-          icon: PhosphorIcons.whatsappLogo(PhosphorIconsStyle.fill),
-          color: const Color(0xFF25D366),
-          sent: _isSent(d, 'whatsapp'),
-          onTap: () => _whatsapp(d),
-        ),
+      _channelBtn(
+        icon: PhosphorIcons.whatsappLogo(PhosphorIconsStyle.fill),
+        color: const Color(0xFF25D366),
+        sent: _isSent(c, 'whatsapp'),
+        onTap: () => _whatsapp(c),
+      ),
       _channelBtn(
         icon: PhosphorIcons.chatCircleText(PhosphorIconsStyle.fill),
         color: Zine.blue,
-        sent: _isSent(d, 'sms'),
-        onTap: () => _sms(d),
+        sent: _isSent(c, 'sms'),
+        onTap: () => _sms(c),
       ),
-      if (d.hasEmail)
-        _channelBtn(
-          icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.fill),
-          color: Zine.lilac,
-          sent: _isSent(d, 'email'),
-          busy: sendingEmail,
-          sentLabel: 'Email Sent',
-          onTap: () => _email(d),
-        ),
+      _channelBtn(
+        icon: PhosphorIcons.envelopeSimple(PhosphorIconsStyle.fill),
+        color: Zine.lilac,
+        sent: _isSent(c, 'email'),
+        busy: sendingEmail,
+        sentLabel: 'Email Sent',
+        onTap: () => _email(c),
+      ),
     ]);
   }
 
@@ -360,8 +327,7 @@ class _InviteScreenState extends State<InviteScreen> {
           height: 14,
           child: sent
               ? Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold),
-                      size: 9, color: Zine.mintInk),
+                  PhosphorIcon(PhosphorIcons.check(PhosphorIconsStyle.bold), size: 9, color: Zine.mintInk),
                   const SizedBox(width: 2),
                   Text(sentLabel, style: ZineText.tag(size: 8.5).copyWith(color: Zine.mintInk)),
                 ])
@@ -381,8 +347,7 @@ class _InviteScreenState extends State<InviteScreen> {
                 boxShadow: Zine.shadowXs,
               ),
               child: busy
-                  ? const Padding(
-                      padding: EdgeInsets.all(11),
+                  ? const Padding(padding: EdgeInsets.all(11),
                       child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
                   : PhosphorIcon(icon, size: 19, color: Zine.ink),
             ),
@@ -396,24 +361,14 @@ class _InviteScreenState extends State<InviteScreen> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            ZineIconBadge(icon: PhosphorIcons.usersThree(PhosphorIconsStyle.bold), color: Zine.lilac, size: 34),
-            const SizedBox(width: 10),
-            Expanded(child: Text(title, style: ZineText.value(size: 16))),
-          ]),
-          const SizedBox(height: 12),
-          Text(body, style: ZineText.sub(size: 13)),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          PhosphorIcon(PhosphorIcons.addressBook(PhosphorIconsStyle.bold), size: 48, color: Zine.ink),
           const SizedBox(height: 16),
-          ZineButton(
-            label: _refreshing ? 'Loading…' : cta,
-            fullWidth: true,
-            fontSize: 16,
-            loading: _refreshing,
-            icon: PhosphorIcons.userPlus(PhosphorIconsStyle.bold),
-            trailingIcon: false,
-            onPressed: _refreshing ? null : _allowContacts,
-          ),
+          Text(title, textAlign: TextAlign.center, style: ZineText.cardTitle(size: 19)),
+          const SizedBox(height: 8),
+          Text(body, textAlign: TextAlign.center, style: ZineText.sub(size: 13.5)),
+          const SizedBox(height: 20),
+          ZineButton(label: cta, onPressed: _allowContacts),
         ]),
       ),
     );
