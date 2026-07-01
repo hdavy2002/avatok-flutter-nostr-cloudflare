@@ -55,7 +55,13 @@ class CallEntry {
         id: (r['entry_id'] ?? r['id'] ?? '').toString(),
         name: (r['name'] ?? '').toString(),
         seed: (r['seed'] ?? '').toString(),
-        video: r['video'] == true || ((r['video'] as num?)?.toInt() ?? 0) == 1,
+        // Tolerate `video` as a real bool (true/false) OR an int (0/1). The old
+        // form `(r['video'] as num?)` CRASHED when the server sent a JSON bool
+        // false: `false == true` is false, so it fell through to casting a bool
+        // to num? → "type 'bool' is not a subtype of type 'num?'", which killed
+        // the whole incoming frame (and with it any deal message in the same
+        // sync batch → blank thread). Guard the cast with `is num`.
+        video: r['video'] == true || (r['video'] is num && (r['video'] as num).toInt() == 1),
         dir: _dirOf((r['dir'] ?? 'outgoing').toString()),
         ts: (r['ts'] as num?)?.toInt() ?? 0,
       );

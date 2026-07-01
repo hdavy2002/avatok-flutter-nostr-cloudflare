@@ -382,7 +382,11 @@ class SyncHub {
           if (hideBulk.isNotEmpty) HiddenStore().mergeBulk(hideBulk);
         }
         for (final row in (m['messages'] as List? ?? const [])) {
-          _ingestMsg((row as Map).cast<String, dynamic>(), fromSync: true);
+          // Per-row guard: a single malformed message must not abort the loop and
+          // drop every message after it (e.g. a marketplace deal card).
+          try {
+            _ingestMsg((row as Map).cast<String, dynamic>(), fromSync: true);
+          } catch (_) {/* skip this row, keep ingesting the rest */}
         }
         for (final r in (m['receipts'] as List? ?? const [])) {
           _ingestReceipt((r as Map).cast<String, dynamic>());
@@ -393,7 +397,9 @@ class SyncHub {
           final calls = (m['calls'] as List? ?? const [])
               .map((e) => (e as Map).cast<String, dynamic>())
               .toList();
-          if (calls.isNotEmpty) unawaited(CallLogStore().applyServerSnapshot(calls));
+          if (calls.isNotEmpty) {
+            try { unawaited(CallLogStore().applyServerSnapshot(calls)); } catch (_) {/* bad call rows never abort the sync */}
+          }
         }
         // After a backlog/restore sync the local DB now holds conversations that
         // didn't exist when Ably started (the reinstall case: Ably came up against
@@ -420,7 +426,11 @@ class SyncHub {
         break;
       case 'call':
         // A new call-log entry recorded on another of MY devices → mirror it here.
-        unawaited(CallLogStore().applyRemoteAdd(CallEntry.fromServer(m)));
+        // Guarded: a malformed call frame must never crash the socket handler (and
+        // take a co-arriving deal message down with it).
+        try {
+          unawaited(CallLogStore().applyRemoteAdd(CallEntry.fromServer(m)));
+        } catch (_) {/* tolerate a bad call frame */}
         break;
       case 'call_del':
         // One call-log entry deleted on another of MY devices.
