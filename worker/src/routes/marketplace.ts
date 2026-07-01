@@ -90,8 +90,16 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
   const key = (env as any).RECEPTIONIST_GEMINI_API_KEY || (env as any).GEMINI_API_KEY;
   if (!key || !transcript.length) return null;
   const styleHint = persona && persona.trim() ? ` Speak in this style/accent: ${persona.trim()}.` : "";
+  // Keep the SPOKEN version SHORT. A full multi-round transcript makes the TTS
+  // model generate 40-60s of audio, which takes longer than the Worker's
+  // background (waitUntil) budget → the render is reaped before it finishes and
+  // NO audio is delivered. Cap to the opening exchange + the closing line so the
+  // clip is ~10-15s and reliably renders inside budget. The full text + the
+  // "Transcript" link already carry the complete negotiation.
+  const lines = transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`);
+  const spoken = lines.length > 6 ? [...lines.slice(0, 5), lines[lines.length - 1]] : lines;
   const script = `TTS this short marketplace negotiation between two agents, natural and businesslike.${styleHint}\n` +
-    transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`).join("\n");
+    spoken.join("\n");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${key}`;
   const body = {
     contents: [{ parts: [{ text: script }] }],
@@ -104,9 +112,11 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
     },
   };
   try {
-    // 60s (was 20s): a multi-round multi-speaker TTS render routinely takes
-    // >20s, and the old cap aborted it EXACTLY at 20.000s → null → "No audio".
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+    // 25s cap. With the SHORT (capped) script above the render finishes in
+    // ~10-15s, comfortably inside the Worker's background budget. (60s was worse:
+    // the long render outlived the budget and the whole job was reaped → no
+    // completion event, no audio at all.)
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
     if (!res.ok) return null;
     const j: any = await res.json().catch(() => null);
     const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
