@@ -409,11 +409,6 @@ CLERK_JWKS_URL = "https://clerk.avatok.ai/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.avatok.ai"
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
 PLAY_PACKAGE_ID = "ai.avatok.avatok_call"   # staging APK = applicationIdSuffix .staging, but the Play listing is the prod package
-# Mirrored from prod (2026-07-01) so staging is a true clone: AI Gateway routing,
-# the CF account id the receptionist CF-STT (Deepgram Nova) needs, and LiveKit.
-AI_GATEWAY_ID = "avatok-ai"
-CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
-LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
 
 [[env.staging.d1_databases]]
 binding = "DB_META"
@@ -518,12 +513,6 @@ max_retries = 3
 [env.staging.ai]
 binding = "AI"
 
-# AI Search (managed RAG) — mirrored from prod 2026-07-01 so env.AI_SEARCH is
-# bound on staging (was missing). Wrangler creates the 'default' namespace on deploy.
-[[env.staging.ai_search_namespaces]]
-binding = "AI_SEARCH"
-namespace = "default"
-
 [env.staging.observability]
 enabled = true
 
@@ -570,12 +559,6 @@ class_name = "ConversationDO"
 [[env.staging.durable_objects.bindings]]
 name = "INBOX"
 class_name = "InboxDO"
-
-# PartyKit realtime layer (mirrored from prod 2026-07-01) — ephemeral presence/
-# typing/receipts/reactions. Was missing on staging, degrading those features.
-[[env.staging.durable_objects.bindings]]
-name = "PARTY"
-class_name = "PartyDO"
 
 # Ava in-chat AI (Phase 0) — see prod section for the typecheck caveat.
 [[env.staging.durable_objects.bindings]]
@@ -635,9 +618,3 @@ new_sqlite_classes = ["GroupCallRoom"]
 [[env.staging.migrations]]
 tag = "v10"
 new_sqlite_classes = ["ReceptionRoomCf"]
-
-# PartyKit realtime DO (mirrored from prod 2026-07-01). SQLite-backed for the
-# hibernatable-WebSocket backend; PartyDO is broadcast-only (stores nothing).
-[[env.staging.migrations]]
-tag = "v11"
-new_sqlite_classes = ["PartyDO"]
