@@ -9,6 +9,7 @@ import '../../../core/api_auth.dart';
 import '../../../core/config.dart';
 import '../../../core/disk_cache.dart';
 import '../../../core/paid_feature.dart';
+import '../../../core/remote_config.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
 import '../../ava_guardian/guardian_settings.dart';
@@ -31,14 +32,28 @@ import '../settings_registry.dart';
 /// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init]
 /// (`registerGuardianSection()`) — the one sanctioned bootstrap append.
 void registerGuardianSection() {
-  SettingsSectionRegistry.register(
-    SettingsSection(
-      id: 'ava_guardian',
-      title: 'Guardian / safety',
-      order: 28, // just below "Ava delegate" (27), above "Tools & connectors" (30)
-      builder: (context) => const _GuardianCard(),
-    ),
-  );
+  // KV-driven hide (pro/live launch): register the section only while
+  // RemoteConfig.guardianEnabled is true. Bootstrap runs before the config
+  // fetch lands, so the default (kGuardianEnabledDefault=true) registers it
+  // immediately; when prod KV returns `guardianEnabled:false` the revision
+  // notifier fires and we unregister it. Re-runs on every config poll.
+  void sync() {
+    if (RemoteConfig.guardianEnabled) {
+      SettingsSectionRegistry.register(
+        SettingsSection(
+          id: 'ava_guardian',
+          title: 'Guardian / safety',
+          order: 28, // just below "Ava delegate" (27), above "Tools & connectors" (30)
+          builder: (context) => const _GuardianCard(),
+        ),
+      );
+    } else {
+      SettingsSectionRegistry.unregister('ava_guardian');
+    }
+  }
+
+  sync();
+  RemoteConfig.revision.addListener(sync);
 }
 
 /// Account-wide guardian DEFAULTS + parent-digest opt-in. Per-account on-device
