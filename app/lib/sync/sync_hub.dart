@@ -520,6 +520,35 @@ class SyncHub {
     _incoming.add(HubEvent(convKey, sender, myUid, mine, rumorId, body, createdSec));
   }
 
+  /// Inject a LOCALLY-created message (e.g. the optimistic "your agent is
+  /// negotiating…" bubble on Marketplace "Contact agent") as if it had just
+  /// arrived. Persists it, adds it to the in-memory thread, and — crucially —
+  /// emits it on [incoming] so the chat LIST materialises the peer's contact +
+  /// thread LIVE (via its `text` handler), instead of the write sitting silently
+  /// in storage until the next app reload. Shows as NOT mine so the list treats
+  /// it like an inbound and surfaces the thread with an unread nudge.
+  void injectLocal({
+    required String peerUid,
+    required String payload,
+    int? createdAt,
+    String? rumorId,
+  }) {
+    final myUid = _myUid ?? '';
+    final ts = createdAt ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final rid = rumorId ?? 'local_${peerUid}_$ts';
+    if (!_seen.add(rid)) return; // idempotent — don't double-insert on re-tap
+    final convKey = '1:$peerUid';
+    final list = _byConv.putIfAbsent(convKey, () => []);
+    if (!list.any((x) => x.rumorId == rid)) {
+      list.add(DmMessage(rumorId: rid, mine: false, payload: payload, createdAt: ts));
+      try {
+        Db.I.upsertMessage(MessagesCompanion.insert(
+            rumorId: rid, convKey: convKey, mine: false, payload: payload, createdAt: ts));
+      } catch (_) {}
+    }
+    _incoming.add(HubEvent(convKey, peerUid, myUid, false, rid, payload, ts));
+  }
+
   // Global (device-level, NOT account-scoped) queue of delete-for-everyone
   // redactions that arrived via a high-priority FCM 'del' push while the app was
   // backgrounded/killed. The background isolate has no AccountScope, so it parks

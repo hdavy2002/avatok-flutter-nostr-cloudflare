@@ -9,8 +9,8 @@ import 'dart:convert';
 
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/marketplace_api.dart';
-import '../../core/db.dart';
 import '../../core/chat_state.dart';
+import '../../sync/sync_hub.dart';
 import '../avatok/contacts.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/zine.dart';
@@ -92,22 +92,30 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
           number: c.avatokNumber ?? '',
           handle: c.handle ?? '',
         ));
-        // Drop an OPTIMISTIC local bubble into the seller thread NOW, so the chat
-        // appears immediately with content (never blank) — no dependency on any
-        // server sync. The negotiation result (a voice note of the two agents)
-        // lands in this same thread when it finishes.
+        // Drop an OPTIMISTIC status bubble into the seller thread NOW — pushed
+        // THROUGH SyncHub.injectLocal (NOT a silent DB write). A raw Db write
+        // sat invisible in storage until the next app reload (which is exactly
+        // why the thread looked like it never arrived); injectLocal emits it on
+        // the same stream a real inbound uses, so the chat LIST materialises the
+        // seller contact + thread LIVE the instant the buyer taps. Stable
+        // rumorId → re-taps are idempotent. The negotiation result (a voice note
+        // of the two agents) lands in this same thread when it finishes.
         final convKey = '1:${c.uid}';
         final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         final sellerName = c.name ?? 'the seller';
-        final body = jsonEncode({
-          't': 'text',
-          'body': '🤝 Your agent is talking to $sellerName\'s agent about "${d.listing.title}". '
-              'The outcome — a voice note of the negotiation — will arrive in this chat shortly.',
-        });
+        SyncHub.I.injectLocal(
+          peerUid: c.uid,
+          rumorId: 'mkt_pending_${d.listing.id}',
+          payload: jsonEncode({
+            't': 'text',
+            'body': '🤝 Your agent is talking to $sellerName\'s agent about "${d.listing.title}". '
+                'The outcome — a voice note of the negotiation — will arrive in this chat shortly.',
+          }),
+        );
+        // Persist the preview subtitle too, so the thread shows the right
+        // subtitle even on a COLD chat-list load (when the injectLocal live
+        // listener above wasn't mounted to record it).
         try {
-          await Db.I.upsertMessage(MessagesCompanion.insert(
-            rumorId: 'mkt_pending_${d.listing.id}_$nowSec',
-            convKey: convKey, mine: false, payload: body, createdAt: nowSec));
           await ChatPreviewStore().record(convKey, '🤝 Your agent is negotiating…', nowSec, false);
         } catch (_) {/* best-effort */}
       }
