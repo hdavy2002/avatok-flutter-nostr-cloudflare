@@ -43,10 +43,14 @@ class NostrKeys {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// npub → x-only pubkey hex (or null). A Clerk uid ("user_...") passes through
-  /// unchanged so call sites can treat the result as the opaque peer id.
+  /// npub → x-only pubkey hex (or null). Only a REAL Nostr npub (bech32, "npub1…"
+  /// — deprecated) is decoded; every other value (a Clerk uid "user_…", or any
+  /// other opaque peer id) passes through unchanged. Previously ONLY "user_…"
+  /// passed through, so any other uid form fell into the bech32 decoder, returned
+  /// null, and made its DM/marketplace thread render BLANK (chat_thread._setupDm
+  /// bails on a null peerHex). Passing through non-npub ids fixes that class of bug.
   static String? npubToHex(String npub) =>
-      npub.startsWith('user_') ? npub : decodeToHex(npub, 'npub');
+      npub.startsWith('npub1') ? decodeToHex(npub, 'npub') : npub;
 
   // ---- bech32 internals ----
 
