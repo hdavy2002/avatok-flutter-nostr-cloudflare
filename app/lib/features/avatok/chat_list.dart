@@ -68,6 +68,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   List<Group> _groups = [];
   NostrClient? _inbox;
   StreamSubscription? _inboxSub; // our listener on the shared client (cancel on dispose, don't kill the socket)
+  StreamSubscription? _contactsSub; // live refresh when a contact is added/removed anywhere
   int _tab = 0; // 0 = Chats, 1 = Updates, 2 = Groups, 3 = Calls
   int _notifUnread = 0;  // header bell badge (system + group-invite notifications)
   int _groupInvites = 0; // pending group invites → red count on the Groups footer icon
@@ -241,6 +242,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     PushService.clearMessageBadge(); // landing on the inbox clears the unread badge
+    // Live-refresh the list the instant ANY code adds/removes a contact (e.g. a
+    // marketplace seller materialised on "Contact agent") — no cold restart, no
+    // wait for resume. Keeps the thread visible the moment the buyer taps.
+    _contactsSub = ContactsStore.changes.listen((list) {
+      if (mounted) setState(() => _contacts = list);
+    });
     // Paint the last-known list immediately (no blank "No chats yet" flash when
     // returning to AvaTok); _bootstrap then refreshes from disk + relay.
     if (ChatListSnapshot.has) {
@@ -427,6 +434,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _inboxSub?.cancel(); // stop listening, but leave the shared SyncHub socket alive
+    _contactsSub?.cancel();
     super.dispose();
   }
 

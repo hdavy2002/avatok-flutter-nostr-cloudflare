@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -49,6 +50,14 @@ class ContactsStore {
   // some OEMs and was silently returning empty after restart → blank chat list).
   static const _key = 'avatok_contacts';
 
+  // Broadcast the fresh list after EVERY mutation so live UI (the chat list) can
+  // refresh the instant a contact is added/removed — e.g. a marketplace seller
+  // materialised on "Contact agent". Without this, add() wrote to disk but the
+  // already-open chat list held a stale in-memory snapshot and only picked it up
+  // on a cold restart, so the new thread "never appeared".
+  static final _changes = StreamController<List<Contact>>.broadcast();
+  static Stream<List<Contact>> get changes => _changes.stream;
+
   // Account-scoped: each logged-in Clerk account keeps its OWN contact list.
   // Previously this used a single global key, so contacts leaked between
   // accounts on the same device (e.g. a contact added by one user showed up for
@@ -75,6 +84,7 @@ class ContactsStore {
     cs.removeWhere((x) => x.npub == c.npub);
     cs.insert(0, c);
     await _save(cs);
+    _changes.add(cs); // live-refresh any open chat list
     _syncUp(cs); // push encrypted copy to the cross-device vault (best-effort)
     return cs;
   }
@@ -83,6 +93,7 @@ class ContactsStore {
     final cs = await load();
     cs.removeWhere((x) => x.npub == npub);
     await _save(cs);
+    _changes.add(cs);
     _syncUp(cs);
     return cs;
   }
@@ -102,6 +113,7 @@ class ContactsStore {
         : real;
     cs.insert(0, merged);
     await _save(cs);
+    _changes.add(cs);
     _syncUp(cs);
     return cs;
   }
