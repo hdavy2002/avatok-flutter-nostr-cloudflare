@@ -15,6 +15,7 @@ import { track } from "../hooks";
 import { metaDb } from "../db/shard";
 import { notifyUser } from "../notify";
 import { exploreSearch } from "./listings";
+import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { moderate } from "../lib/moderation";
 
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
@@ -200,6 +201,11 @@ async function deliverDealAudio(env: Env, a: {
   // push, and a closed app picks it up on the next /sync when reopened. This also
   // keeps the marketplace flow entirely off the (crash-prone) background FCM path.
   track(env, a.buyerUid, "deal_text_delivered", "avamarketplace", { listing_id: a.listingId, outcome: a.outcome, via: "socket_no_fcm" });
+  // PartyKit live nudge (ephemeral): tell anyone in the conversation room that the
+  // deal just landed, so an OPEN thread pulls it instantly (forceResync) instead
+  // of waiting out the client's bounded poll. Best-effort; the durable copy is
+  // already in both InboxDOs above, so this is pure "make it feel instant".
+  void partyEmit(env, `thread:${conv}`, { t: "deal_ready", outcome: a.outcome, listing_id: a.listingId, conv });
 
   // ── PHASE 2 (best-effort): render the voice note and deliver it as a follow-up
   // message. If the render is slow and the worker is reaped here, the result is
@@ -222,6 +228,8 @@ async function deliverDealAudio(env: Env, a: {
     });
     try { await inboxAppend(env, a.sellerUid, a.buyerUid, conv, audioEnvelope, audioKey); } catch { /* best-effort */ }
     try { await inboxAppend(env, a.buyerUid, a.sellerUid, conv, audioEnvelope, audioKey); } catch { /* best-effort */ }
+    // Live nudge for the voice-note follow-up too, so an open thread pulls it in.
+    void partyEmit(env, `thread:${conv}`, { t: "deal_ready", kind: "audio", listing_id: a.listingId, conv });
   }
   return { audioKey, bytes };
 }

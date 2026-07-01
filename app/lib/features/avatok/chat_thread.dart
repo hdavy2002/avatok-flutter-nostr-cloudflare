@@ -60,6 +60,7 @@ import '../../core/db.dart';
 import '../../core/device_contacts.dart';
 import '../../sync/dm.dart';
 import '../../sync/group_dm.dart';
+import '../../sync/party/party_hub.dart';
 import '../../sync/legacy_stubs.dart';
 import '../../sync/presence.dart';
 import '../../sync/sync_hub.dart';
@@ -207,6 +208,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String? _peerNpub; // 1:1 recipient npub for message notifications
   List<String> _memberNpubs = []; // group recipient npubs (excl me)
   String? _convKey; // '1:<hex>' or 'g:<gid>' for read state / unread badges
+  PartyRoom? _party;               // PartyKit live layer for this thread (ephemeral, gated)
+  StreamSubscription? _partySub;
   Identity? _meId;
   // Unknown-number receptionist thread (caller has no AvaTOK account). When set,
   // the thread is a read-only voicemail record keyed by the caller's phone.
@@ -293,6 +296,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       // is why ticks were stuck on "Sent" (owner report 2026-06-27).
       if (_dm != null) _dm!.sendReceipt('read', ts);
     });
+  }
+
+  /// PartyKit live layer for THIS conversation (ephemeral; gated by RemoteConfig
+  /// `partyEnabled` — a dormant no-op until the PartyDO is deployed + flipped on,
+  /// so this is safe to ship dark). Joins `thread:<serverConv>` and reacts to the
+  /// live events the Worker broadcasts. Today it handles the marketplace
+  /// `deal_ready` nudge — the instant the negotiation result lands in our InboxDO,
+  /// pull it NOW (forceResync) so the card appears without waiting out the poll.
+  /// Typing / receipt / reaction rendering hang off this same room next.
+  void _partyJoin(String myUid) {
+    final key = _convKey;
+    if (key == null || myUid.isEmpty) return;
+    final conv = serverConvFromKey(key, myUid);
+    if (conv == null) return;
+    try {
+      final room = PartyHub.I.join('thread:$conv');
+      _party = room;
+      _partySub = room.events.listen((e) {
+        if (e['t'] == 'deal_ready') {
+          try { SyncHub.I.forceResync(); } catch (_) {}
+        }
+      });
+    } catch (_) {/* party is best-effort */}
   }
 
   @override
@@ -399,6 +425,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _loadLastSeen();
     _peerNpub = seed; // contact npub, for message notifications
     _convKey = '1:$peerHex';
+    _partyJoin(id.uid); // PartyKit live layer (deal-ready nudge etc.); no-op until flag on
     _loadGuardian();
     _wireAblyExtras(); // Phase 4: live reactions/bursts + scroll-up history (DM)
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
@@ -1180,6 +1207,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _reactionOverlay?.remove();        // Phase 5: tear down a floating reaction pill if open
     _reactionOverlay = null;
     for (final s in _ablySubs) { s.cancel(); } // Phase 4: reactions/bursts/occupancy
+    _partySub?.cancel();               // PartyKit live layer
+    _party?.leave();
     _scroll.removeListener(_onScrollForHistory);
     _ctrl.dispose();
     _composerFocus.dispose();
@@ -4414,7 +4443,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 // Header actions — uniform 40px compact targets so they sit with
                 // EVEN spacing and don't leave a big gap after the last icon.
                 // Shield watchdog — green when Ava is watching this chat.
-                _shieldAction(),
+                // Hidden when Guardian is switched off (pro/live launch, KV
+                // `guardianEnabled:false`).
+                if (RemoteConfig.guardianEnabled) _shieldAction(),
                 _headerAction(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
                     () => setState(() { _searchMode = true; _searchQuery = ''; }),
                     color: Zine.blueInk),
