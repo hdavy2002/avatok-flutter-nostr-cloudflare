@@ -24,17 +24,22 @@ const kAppRegistry = <AppEntry>[
   // ---- standard ----
   AppEntry('avatok', 'AvaTOK', 'Messages & calls', Icons.chat_bubble, Color(0xFF08C4C4)),
   AppEntry('avalibrary', 'Library', 'Your files, everywhere', Icons.folder_open, Color(0xFF8B5CF6)),
+  // "App" (formerly "Connectors") — connect Gmail/Outlook so Ava can act on your
+  // mail. Placed ABOVE Marketplace (owner decision 2026-07-01, pro/live launch).
+  AppEntry('avaapps', 'App', 'Connect Gmail & Outlook', Icons.grid_view, Color(0xFF4F8DFD)),
   // AvaMarketplace (P1): buy/sell/social + agent negotiation. Routes to
   // MarketplaceHub via AvaShell._openDest('marketplace'); the destination itself
   // is gated by RemoteConfig.marketplaceEnabled so this stays dark until rollout.
   AppEntry('marketplace', 'Marketplace', 'Buy, sell & social', Icons.storefront, Color(0xFFFF6036)),
   AppEntry('avastorage', 'View Storage', 'Storage & usage', Icons.pie_chart, Color(0xFF0EA5E9)),
-  AppEntry('avaapps', 'Connectors', 'Gmail, Docs, Drive & more', Icons.grid_view, Color(0xFF4F8DFD)),
   // AvaChat — direct AI chat with Ava (memory-aware, talks to your brain). Visible
   // sidebar item (owner decision 2026-06-18). Routes to CompanionHome.
   AppEntry('avachat', 'AvaChat', 'Chat with Ava — your AI', Icons.auto_awesome, Color(0xFFA06AF0)),
-  // AvaWallet visible — users need it to top up Tokens (owner decision 2026-06-18).
-  AppEntry('avawallet', 'Wallet', 'Tokens & top-ups', Icons.account_balance_wallet, Color(0xFF10B981)),
+  // AvaWallet — HIDDEN for the pro/live launch (owner decision 2026-07-01):
+  // tier=hidden AND removed from _focusIds below, so it never shows in either the
+  // focus menu or the full standard menu. Kept registered so routes/deep-links
+  // still resolve. To restore: set tier back to standard + re-add to _focusIds.
+  AppEntry('avawallet', 'Wallet', 'Tokens & top-ups', Icons.account_balance_wallet, Color(0xFF10B981), tier: AppTier.hidden),
   // ---- hidden from the sidebar menu (owner decision 2026-06-17) ----
   AppEntry('explore', 'AvaExplore', 'Marketplace', Icons.storefront, Color(0xFFFF6036), tier: AppTier.hidden),
   AppEntry('verse', 'AvaVerse', 'Your dashboard', Icons.dashboard, Color(0xFF6C5CE7), tier: AppTier.hidden),
@@ -85,15 +90,15 @@ class AppRegistry {
   /// When focus mode is on (see `kFocusModeDefault`), the sidebar renders THIS
   /// set instead of `standard`, hiding non-AvaTOK apps. Fully reversible — no
   /// registry mutation. Order follows the registry's declaration order. P1
-  /// consumes it. AvaLibrary, AvaStorage and AvaWallet are shown in the menu —
-  /// the wallet is needed for Token top-ups (owner decision 2026-06-18).
+  /// consumes it. AvaLibrary and AvaStorage are shown in the menu. Wallet was
+  /// REMOVED for the pro/live launch (owner decision 2026-07-01) — re-add
+  /// 'avawallet' here (and restore its tier) to bring the menu tile back.
   static const Set<String> _focusIds = {
     'avatok',
     'avachat',
     'avalibrary',
     'avastorage',
     'avaapps',
-    'avawallet',
     // AvaMarketplace shows even in focus mode (owner decision 2026-06-30) so it's
     // reachable without turning focus mode off; the destination is still gated by
     // RemoteConfig.marketplaceEnabled.
