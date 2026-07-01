@@ -14,6 +14,42 @@ import 'config.dart';
 import 'db.dart';
 import 'referral_service.dart';
 
+/// Normalize a raw phone to the Worker's E.164-ish shape (digits/+ only, leading
+/// +). Top-level so it can run inside a background isolate.
+String _normPhoneIso(String raw) {
+  var t = raw.replaceAll(RegExp(r'[^\d+]'), '');
+  if (t.isEmpty) return t;
+  if (!t.startsWith('+')) t = '+$t';
+  return t;
+}
+
+/// Runs in a BACKGROUND ISOLATE (via `compute`): normalize + de-dupe the address
+/// book so the CPU-heavy regex/dedup never touches the UI thread. Input is plain,
+/// isolate-transferable maps `[{name, email, phones:[raw,...]}]`; output is one
+/// entry per unique normalized number `[{norm, raw, name, email}]` (first
+/// non-empty name/email wins).
+List<Map<String, String>> _parseDeviceContacts(List<Map<String, dynamic>> contacts) {
+  final byNorm = <String, Map<String, String>>{};
+  for (final c in contacts) {
+    final name = (c['name'] as String? ?? '').trim();
+    final email = (c['email'] as String? ?? '').trim();
+    for (final raw in (c['phones'] as List? ?? const [])) {
+      final rawNum = (raw as String? ?? '').trim();
+      if (rawNum.isEmpty) continue;
+      final norm = _normPhoneIso(rawNum);
+      if (norm.length < 4) continue; // junk
+      final existing = byNorm[norm];
+      if (existing == null) {
+        byNorm[norm] = {'norm': norm, 'raw': rawNum, 'name': name, 'email': email};
+      } else {
+        if ((existing['name'] ?? '').isEmpty && name.isNotEmpty) existing['name'] = name;
+        if ((existing['email'] ?? '').isEmpty && email.isNotEmpty) existing['email'] = email;
+      }
+    }
+  }
+  return byNorm.values.toList();
+}
+
 /// One phone number from the user's address book, optionally matched to an
 /// AvaTok account (uid) when that person already uses the app. Thin view over the
 /// [DeviceContactRow] SQLite cache so UI code never touches drift types directly.
@@ -79,12 +115,14 @@ class DeviceContact {
 /// failing sync is diagnosable per user (pull by their phone/email).
 class DeviceContactsService {
   static bool _syncing = false; // single-flight guard
-  static int _lastSyncMs = 0; // throttle resume-triggered refreshes
-  // The address book rarely changes, but a full read of a big book is ~10–20s
-  // and was running on EVERY resume (every couple of minutes) — a real drag.
-  // Throttle resume-triggered reads to once every few hours; cold start and
-  // pull-to-refresh pass force:true and always get a fresh read immediately.
-  static const _minIntervalMs = 3 * 60 * 60 * 1000; // ≤ one device re-read per 3h on resume
+  static int _lastSyncMs = 0; // throttle
+  static bool _watching = false; // OS change-listener registered once
+  // Freshness comes from the OS contacts CHANGE LISTENER (startWatching) — we sync
+  // the instant the address book actually changes, not on a timer. This is just a
+  // safety net for platforms where the change callback doesn't fire: at most one
+  // background re-read per DAY. `ensureFresh` reads only when the mirror is empty
+  // or older than this; `force:true` (pull-to-refresh) always reads now.
+  static const _minIntervalMs = 24 * 60 * 60 * 1000; // ≤ one safety re-read per day
 
   /// Normalize to the same E.164-ish shape the Worker's `normalizePhone` uses
   /// (strip everything but digits/+, force a leading +), so client and server
@@ -192,78 +230,59 @@ class DeviceContactsService {
         return;
       }
 
-      // 2) Read the device address book.
+      // 2) Read the device book — NO photos, NO accounts. WhatsApp-account
+      // detection was the costly part of the read; dropping it makes the read
+      // markedly smaller + faster (the Invite screen shows a WhatsApp option for
+      // everyone — wa.me works whether or not the person uses WhatsApp).
       final readT0 = DateTime.now().millisecondsSinceEpoch;
       final raw = await FlutterContacts.getContacts(
         withProperties: true,
         withPhoto: false,
-        // Accounts let us flag WhatsApp contacts on Android (account type
-        // `com.whatsapp`) so the Invite screen can show a WhatsApp icon only for
-        // people who actually use it. iOS has no equivalent — we show it anyway.
-        withAccounts: true,
+        withAccounts: false,
         deduplicateProperties: true,
       );
       rawContactCount = raw.length;
-      // phoneNorm -> (rawPhone, name, email, wa). First non-empty value wins per
-      // number; WhatsApp flag is OR-ed across the contacts that share the number.
-      final byNorm = <String, ({String raw, String name, String email, bool wa})>{};
-      var _processed = 0;
+      // Serialize to plain, isolate-transferable maps (light field copies), chunked
+      // so even this pass can't block the UI thread on a huge book.
+      final serial = <Map<String, dynamic>>[];
+      var _ser = 0;
       for (final c in raw) {
-        // A large address book (thousands of contacts) processed in one synchronous
-        // pass blocks the UI thread long enough to ANR ("AvaTOK isn't responding"),
-        // especially when an FCM-triggered resume re-runs this. Yield to the event
-        // loop every 250 contacts so the UI stays responsive during the parse.
-        if (++_processed % 250 == 0) await Future<void>.delayed(Duration.zero);
-        final name = c.displayName.trim();
-        final email = c.emails.isNotEmpty ? c.emails.first.address.trim() : '';
-        // Android: detect WhatsApp via the contact's linked accounts. iOS can't
-        // tell, so default to true (show the icon; wa.me handles non-users).
-        final wa = !Platform.isAndroid ||
-            c.accounts.any((a) => a.type.toLowerCase().contains('whatsapp'));
-        for (final p in c.phones) {
-          final rawNum = p.number.trim();
-          if (rawNum.isEmpty) continue;
-          phoneCountRaw++;
-          final norm = normPhone(rawNum);
-          if (norm.length < 4) continue; // junk
-          final existing = byNorm[norm];
-          if (existing == null) {
-            byNorm[norm] = (raw: rawNum, name: name, email: email, wa: wa);
-          } else {
-            byNorm[norm] = (
-              raw: existing.raw,
-              name: existing.name.isEmpty && name.isNotEmpty ? name : existing.name,
-              email: existing.email.isEmpty && email.isNotEmpty ? email : existing.email,
-              wa: existing.wa || wa,
-            );
-          }
-        }
+        serial.add({
+          'name': c.displayName,
+          'email': c.emails.isNotEmpty ? c.emails.first.address : '',
+          'phones': [for (final p in c.phones) p.number],
+        });
+        if (++_ser % 500 == 0) await Future<void>.delayed(Duration.zero);
       }
+      // Normalize + de-dupe in a BACKGROUND ISOLATE. The CPU-heavy regex/dedup
+      // never touches the UI thread, so a 20k-contact book can't freeze the app —
+      // works the same on any phone regardless of address-book size.
+      final parsed = await compute(_parseDeviceContacts, serial);
       deviceReadMs = DateTime.now().millisecondsSinceEpoch - readT0;
-      deviceCount = byNorm.length;
+      deviceCount = parsed.length;
+      phoneCountRaw = parsed.length;
 
-      // 3) Diff into SQLite: upsert all current numbers, prune deleted ones.
-      // We DON'T touch match columns here (Companion omits them ⇒ unchanged on
-      // replace would reset; so we read existing match state and carry it over).
+      // 3) Diff into SQLite: upsert current numbers, prune removed. Carry prior
+      // match/email state forward; write in chunks so a huge book is never one
+      // giant blocking transaction.
       final existingRows = {for (final r in await Db.I.deviceContactsOnce()) r.phoneNorm: r};
-      // Diff counts (how much the book churned since last sync) — useful to see
-      // whether "new contact not showing" is an ingest gap or a match gap.
-      newCount = byNorm.keys.where((k) => !existingRows.containsKey(k)).length;
-      removedCount = existingRows.keys.where((k) => !byNorm.containsKey(k)).length;
+      final normSet = <String>{};
+      newCount = 0;
       final nowMs = DateTime.now().millisecondsSinceEpoch;
       final companions = <DeviceContactsCacheCompanion>[];
-      byNorm.forEach((norm, v) {
+      for (final v in parsed) {
+        final norm = v['norm']!;
+        normSet.add(norm);
         final prev = existingRows[norm];
+        if (prev == null) newCount++;
+        final email = v['email'] ?? '';
         companions.add(DeviceContactsCacheCompanion.insert(
           phoneNorm: norm,
-          rawPhone: Value(v.raw),
-          name: Value(v.name),
-          // Fresh from the device read each sync (carry forward if this read
-          // somehow lost it, so an existing email/flag isn't wiped).
-          email: Value(v.email.isNotEmpty ? v.email : (prev?.email ?? '')),
-          hasWhatsapp: Value(v.wa ? 1 : (prev?.hasWhatsapp ?? 0)),
-          // Carry forward any prior match so a number we already know is on
-          // AvaTOK keeps its badge until the fresh match result arrives.
+          rawPhone: Value(v['raw'] ?? ''),
+          name: Value(v['name'] ?? ''),
+          email: Value(email.isNotEmpty ? email : (prev?.email ?? '')),
+          // No per-contact WhatsApp detection — wa.me works for anyone.
+          hasWhatsapp: const Value(1),
           uid: Value(prev?.uid ?? ''),
           handle: Value(prev?.handle ?? ''),
           avatarUrl: Value(prev?.avatarUrl ?? ''),
@@ -271,18 +290,20 @@ class DeviceContactsService {
           matchedAt: Value(prev?.matchedAt ?? 0),
           updatedAt: Value(nowMs),
         ));
-      });
+      }
+      removedCount = existingRows.keys.where((k) => !normSet.contains(k)).length;
       final writeT0 = DateTime.now().millisecondsSinceEpoch;
-      await Db.I.upsertDeviceContacts(companions);
-      await Db.I.pruneDeviceContacts(byNorm.keys.toSet());
+      const _chunk = 500;
+      for (var i = 0; i < companions.length; i += _chunk) {
+        final end = (i + _chunk) < companions.length ? (i + _chunk) : companions.length;
+        await Db.I.upsertDeviceContacts(companions.sublist(i, end));
+        await Future<void>.delayed(Duration.zero);
+      }
+      await Db.I.pruneDeviceContacts(normSet);
       final dbWriteMs = DateTime.now().millisecondsSinceEpoch - writeT0;
 
-      // 4) Ask the backend which numbers are on AvaTOK. We send ONE contact
-      // entry per number with the normalized phone in BOTH `name` and `phones`
-      // so we can map the result back precisely: the enhanced Worker echoes the
-      // matched `phone`; an older Worker echoes our `name` (= the phone) — either
-      // way we recover the phoneNorm key. Best-effort: offline keeps the cache.
-      final phones = byNorm.keys.toList();
+      // 4) Presence probe intentionally NOT done (privacy 2026-06-27).
+      final phones = normSet.toList();
       // PRIVACY (owner request 2026-06-27): the device address book is kept ONLY
       // for WhatsApp-style invites — we NO LONGER probe the backend for which
       // numbers are already on AvaTOK. Revealing that presence let anyone confirm
@@ -331,10 +352,42 @@ class DeviceContactsService {
     }
   }
 
-  /// Back-compat entry point — chat_list calls this on cold start. Forces a
-  /// full refresh regardless of the resume throttle.
-  static Future<void> syncAndMatch([String? _ownerNpub]) =>
-      refresh(force: true, source: 'cold_start');
+  /// Cold-start entry point (chat_list). Registers the OS change-listener so we
+  /// re-read ONLY when the address book actually changes, and reads NOW only if
+  /// the mirror is empty or stale — a normal cold start does zero contact reads
+  /// and repaints instantly from the mirror.
+  static Future<void> syncAndMatch([String? _ownerNpub]) async {
+    startWatching();
+    await ensureFresh(source: 'cold_start');
+  }
+
+  /// Read only when needed: empty mirror (first run) or older than the safety
+  /// interval. Otherwise a no-op — the change-listener keeps the mirror current.
+  static Future<void> ensureFresh({String source = 'ensure'}) async {
+    if (_syncing) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final empty = (await Db.I.deviceContactsOnce()).isEmpty;
+    if (empty || now - _lastSyncMs > _minIntervalMs) {
+      await refresh(force: true, source: source);
+    }
+  }
+
+  /// Register the OS address-book change listener ONCE. When contacts change on
+  /// the device, re-sync immediately — the mirror stays fresh with no polling and
+  /// no resume-triggered reads. Best-effort; safe to call repeatedly.
+  static void startWatching() {
+    if (_watching || (!Platform.isAndroid && !Platform.isIOS)) return;
+    _watching = true;
+    try {
+      FlutterContacts.addListener(() {
+        AvaLog.I.log('contacts', 'OS address book changed — re-syncing');
+        refresh(force: true, source: 'os_change');
+      });
+    } catch (e) {
+      _watching = false;
+      AvaLog.I.log('contacts', 'contacts change-listener unavailable: $e');
+    }
+  }
 
   /// Share the "join me on AvaTok" invite for [c] via the native share sheet.
   static Future<void> invite(DeviceContact c, {String? myHandle}) async {

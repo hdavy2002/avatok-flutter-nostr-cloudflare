@@ -86,7 +86,9 @@ class _InviteScreenState extends State<InviteScreen> {
 
   Future<void> _syncNow() async {
     if (mounted) setState(() => _refreshing = true);
-    await DeviceContactsService.refresh(force: true, source: 'invite_screen');
+    // Reads only if the mirror is empty/stale; the OS change-listener keeps it
+    // fresh otherwise, so opening this screen doesn't re-read the whole book.
+    await DeviceContactsService.ensureFresh(source: 'invite_screen');
     if (!mounted) return;
     setState(() { _refreshing = false; _permDenied = false; _softAsk = false; });
     Analytics.capture('invite_screen_loaded', {

@@ -406,7 +406,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // Re-sync the address book on every resume so newly-added phone contacts
       // (and people who just joined AvaTOK) show up immediately. Throttled inside
       // the service so it won't hammer the OS book on rapid foreground/background.
-      DeviceContactsService.refresh(source: 'resume')
+      // No proactive re-read on resume — the OS change-listener keeps the mirror
+      // fresh. ensureFresh only reads if it's empty or a day stale (safety net).
+      DeviceContactsService.ensureFresh(source: 'resume')
           .then((_) => _reconcileTelContacts());
     }
   }
