@@ -180,6 +180,23 @@ class SyncHub {
   /// reply lands within 4s. This is what fixes "I reopened the app and the
   /// message still wasn't there" — [ensureConnected] alone is fooled by a zombie
   /// `_ch` that is non-null but dead.
+  /// Force the InboxDO to REPLAY everything since our cursor right now. Used by
+  /// flows that are actively WAITING for a specific server-delivered message —
+  /// notably a marketplace agent-negotiation result, which (owner decision) has
+  /// NO FCM and so relies on the live socket broadcast; if that broadcast lands
+  /// while the socket is mid-churn it's missed, and nothing else pulls it until
+  /// the next app resume. Re-sending the cursor 'hello' makes the DO reply with a
+  /// fresh sync of everything after the cursor. Idempotent: _ingestMsg de-dupes
+  /// ids we've already seen, so calling this repeatedly is cheap and safe.
+  void forceResync() {
+    if (_ch == null) { ensureConnected(); return; } // socket down → reconnect (which sends hello)
+    try {
+      _send({'type': 'hello', 'cursor': _cursor});
+    } catch (_) {
+      ensureConnected();
+    }
+  }
+
   void onAppResumed() {
     if (ablyActive) _ably?.onResumed(); // nudge Ably; the InboxDO socket is probed below too
     if (!_wantConnected) return;

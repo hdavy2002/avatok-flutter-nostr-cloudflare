@@ -118,6 +118,15 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
         try {
           await ChatPreviewStore().record(convKey, '🤝 Your agent is negotiating…', nowSec, false);
         } catch (_) {/* best-effort */}
+        // The negotiation result lands in our InboxDO ~10-40s from now. With NO
+        // FCM (owner decision) and a socket that can churn, ACTIVELY pull it so
+        // the deal card + voice note appear on their own — a handful of bounded,
+        // idempotent cursor-resyncs over ~90s, then stop.
+        for (final s in const [8, 15, 25, 40, 60, 90]) {
+          Future.delayed(Duration(seconds: s), () {
+            try { SyncHub.I.forceResync(); } catch (_) {}
+          });
+        }
       }
       if (!mounted) return;
       // The negotiation runs in the background — let the buyer keep browsing.
