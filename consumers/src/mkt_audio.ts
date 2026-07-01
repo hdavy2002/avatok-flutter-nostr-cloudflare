@@ -56,10 +56,15 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
   // 90s: the consumer has its own per-message budget, so a full multi-round
   // render can take its time here (unlike the API Worker's request path).
   const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
-  if (!res.ok) throw new Error(`tts ${res.status}: ${(await res.text()).slice(0, 160)}`);
-  const j: any = await res.json().catch(() => null);
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`tts ${res.status}: ${raw.slice(0, 200)}`);
+  let j: any = null;
+  try { j = JSON.parse(raw); } catch { /* non-JSON body */ }
   const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (typeof data !== "string") return null;
+  if (typeof data !== "string") {
+    console.error(`[mkt-audio] no audio in TTS 200: finishReason=${j?.candidates?.[0]?.finishReason} keys=${JSON.stringify(Object.keys(j || {}))} raw=${raw.slice(0, 300)}`);
+    return null;
+  }
   return pcmToWav(b64ToBytes(data));
 }
 
@@ -84,29 +89,51 @@ async function partyEmit(env: Env, room: string, event: Record<string, unknown>)
   } catch { /* best-effort */ }
 }
 
-function track(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
+// AWAIT the analytics send: in a queue consumer a fire-and-forget promise is
+// dropped when the invocation ends, so the previous `void ...send()` telemetry
+// never flushed (which is why the consumer looked silent). Returns the promise.
+async function track(env: Env, uid: string, event: string, props: Record<string, unknown>): Promise<void> {
   try {
-    void env.Q_ANALYTICS?.send({ event, uid, ts: Date.now(),
+    await env.Q_ANALYTICS?.send({ event, uid, ts: Date.now(),
       props: { ...props, app_name: "avatok", service_name: "avatok-consumers", worker: true, account_id: uid } });
   } catch { /* best-effort */ }
 }
 
 export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
   const t0 = Date.now();
-  const wav = await renderNegotiationWav(env, m.transcript || [], m.persona);
-  if (!wav) {
-    track(env, m.buyerUid, "mkt_audio_render_failed", { listing_id: m.listingId, conv: m.conv });
-    return; // text card already delivered by avatok-api; the replay is best-effort
+  console.log(`[mkt-audio] start listing=${m.listingId} conv=${m.conv} lines=${(m.transcript || []).length}`);
+  await track(env, m.buyerUid, "mkt_audio_start", { listing_id: m.listingId, conv: m.conv, lines: (m.transcript || []).length });
+  try {
+    // Render inside a US-PINNED PartyDO. Gemini's preview TTS returns audio from a
+    // US egress but finishReason=OTHER (no audio) from Cloudflare's default egress;
+    // a DO created with locationHint 'wnam' runs in the US so its request to Gemini
+    // egresses from there. Fresh id per render → in-region + parallel at scale. The
+    // DO renders AND uploads the WAV to R2, returning the key.
+    const PARTY = env.PARTY!;
+    const stub = PARTY.get(PARTY.idFromName("ttsr-" + crypto.randomUUID()), { locationHint: "wnam" });
+    const rr = await stub.fetch("https://party/render-tts", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcript: m.transcript || [], persona: m.persona, listingId: m.listingId }),
+    });
+    const rj = (await rr.json().catch(() => ({}))) as { audio_key?: string | null; bytes?: number };
+    if (!rj.audio_key) {
+      console.log(`[mkt-audio] US-DO render returned no audio listing=${m.listingId} status=${rr.status}`);
+      await track(env, m.buyerUid, "mkt_audio_render_failed", { listing_id: m.listingId, conv: m.conv, reason: "do_null", status: rr.status });
+      return;
+    }
+    const audioKey = rj.audio_key;
+    const envelope = JSON.stringify({
+      t: "marketplace_deal", text: "🎙️ Voice replay of the negotiation", outcome: m.outcome, bubble: m.bubble,
+      agreed_price: m.agreed, currency: m.currency, listing_id: m.listingId, transcript: m.transcript,
+      has_audio: true, audio_key: audioKey,
+    });
+    await inboxAppend(env, m.sellerUid, m.buyerUid, m.conv, envelope, audioKey);
+    await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, envelope, audioKey);
+    await partyEmit(env, `thread:${m.conv}`, { t: "deal_ready", kind: "audio", listing_id: m.listingId, conv: m.conv });
+    console.log(`[mkt-audio] delivered via US-DO listing=${m.listingId} bytes=${rj.bytes} ms=${Date.now() - t0}`);
+    await track(env, m.buyerUid, "mkt_audio_delivered", { listing_id: m.listingId, conv: m.conv, bytes: rj.bytes ?? 0, ms: Date.now() - t0 });
+  } catch (e) {
+    console.error(`[mkt-audio] ERROR listing=${m.listingId}: ${String(e)}`);
+    await track(env, m.buyerUid, "mkt_audio_error", { listing_id: m.listingId, conv: m.conv, error: String(e).slice(0, 300), ms: Date.now() - t0 });
   }
-  const audioKey = `mkt/deal/${m.listingId}/${crypto.randomUUID()}.wav`;
-  await env.BLOBS.put(audioKey, wav, { httpMetadata: { contentType: "audio/wav" } });
-  const envelope = JSON.stringify({
-    t: "marketplace_deal", text: "🎙️ Voice replay of the negotiation", outcome: m.outcome, bubble: m.bubble,
-    agreed_price: m.agreed, currency: m.currency, listing_id: m.listingId, transcript: m.transcript,
-    has_audio: true, audio_key: audioKey,
-  });
-  try { await inboxAppend(env, m.sellerUid, m.buyerUid, m.conv, envelope, audioKey); } catch { /* best-effort */ }
-  try { await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, envelope, audioKey); } catch { /* best-effort */ }
-  await partyEmit(env, `thread:${m.conv}`, { t: "deal_ready", kind: "audio", listing_id: m.listingId, conv: m.conv });
-  track(env, m.buyerUid, "mkt_audio_delivered", { listing_id: m.listingId, conv: m.conv, bytes: wav.length, ms: Date.now() - t0 });
 }

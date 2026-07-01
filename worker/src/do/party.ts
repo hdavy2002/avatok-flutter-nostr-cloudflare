@@ -26,6 +26,22 @@ import type { Env } from "../types";
 
 interface SockMeta { uid: string; room: string; since: number; events: number }
 
+/** Wrap 24kHz mono 16-bit PCM as a playable WAV (chat voice notes are WAV). */
+function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
+  const ch = 1, bits = 16;
+  const byteRate = (sampleRate * ch * bits) / 8, block = (ch * bits) / 8;
+  const head = new ArrayBuffer(44);
+  const v = new DataView(head);
+  const w = (o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + pcm.length, true); w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, byteRate, true);
+  v.setUint16(32, block, true); v.setUint16(34, bits, true); w(36, "data"); v.setUint32(40, pcm.length, true);
+  const out = new Uint8Array(44 + pcm.length);
+  out.set(new Uint8Array(head), 0); out.set(pcm, 44);
+  return out;
+}
+
 export class PartyDO {
   private state: DurableObjectState;
   private env: Env;
@@ -60,7 +76,51 @@ export class PartyDO {
       const live = this.broadcast(JSON.stringify({ ...body, from: body.from ?? "server", ts: Date.now() }), null);
       return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
     }
+    // Gemini multi-speaker TTS render, run FROM THIS DO. The caller pins the DO to
+    // a US region (locationHint 'wnam'/'enam') so this outbound request egresses
+    // from the US — where the preview TTS model actually returns audio. From
+    // Cloudflare's default (non-US) egress it returns finishReason=OTHER with no
+    // audio. Renders, uploads the WAV to R2, returns { audio_key, bytes }.
+    if (url.pathname.endsWith("/render-tts") && req.method === "POST") {
+      const b = await req.json().catch(() => null) as { transcript?: Array<{ speaker: string; text: string }>; persona?: string; listingId?: string } | null;
+      if (!b || !Array.isArray(b.transcript)) return new Response("bad", { status: 400 });
+      const wav = await this.renderTts(b.transcript, b.persona);
+      if (!wav) return new Response(JSON.stringify({ audio_key: null, bytes: 0 }), { headers: { "content-type": "application/json" } });
+      const audioKey = `mkt/deal/${b.listingId || "x"}/${crypto.randomUUID()}.wav`;
+      try { await (this.env as any).BLOBS.put(audioKey, wav, { httpMetadata: { contentType: "audio/wav" } }); }
+      catch { return new Response(JSON.stringify({ audio_key: null, bytes: 0, error: "r2" }), { headers: { "content-type": "application/json" } }); }
+      return new Response(JSON.stringify({ audio_key: audioKey, bytes: wav.length }), { headers: { "content-type": "application/json" } });
+    }
     return new Response("not found", { status: 404 });
+  }
+
+  /** Render a 2-voice negotiation transcript to a WAV via Gemini TTS. null on error. */
+  private async renderTts(transcript: Array<{ speaker: string; text: string }>, persona?: string): Promise<Uint8Array | null> {
+    const key = (this.env as any).RECEPTIONIST_GEMINI_API_KEY || (this.env as any).GEMINI_API_KEY;
+    if (!key || !transcript.length) return null;
+    const styleHint = persona && persona.trim() ? ` Speak in this style/accent: ${persona.trim()}.` : "";
+    const script = `TTS this marketplace negotiation between two agents, natural and businesslike.${styleHint}\n` +
+      transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`).join("\n");
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${key}`;
+    const body = {
+      contents: [{ parts: [{ text: script }] }],
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
+        { speaker: "Seller", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } },
+        { speaker: "Buyer", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } },
+      ] } } },
+    };
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(90000) });
+      const raw = await res.text();
+      if (!res.ok) { console.error(`[party-tts] ${res.status}: ${raw.slice(0, 160)}`); return null; }
+      let j: any = null; try { j = JSON.parse(raw); } catch { /* */ }
+      const data = j?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (typeof data !== "string") { console.error(`[party-tts] no audio finishReason=${j?.candidates?.[0]?.finishReason}`); return null; }
+      const bin = atob(data);
+      const pcm = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) pcm[i] = bin.charCodeAt(i);
+      return pcmToWav(pcm);
+    } catch (e) { console.error(`[party-tts] ${String(e)}`); return null; }
   }
 
   private accept(uid: string, room: string): Response {
