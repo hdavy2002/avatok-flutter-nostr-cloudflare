@@ -272,6 +272,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                     card: d.listing, reviews: d.reviews,
                     creatorRating: d.creatorRating, creatorRatingCount: d.creatorRatingCount,
                     followerCount: d.followerCount, canReview: d.booked && !d.isOwner,
+                    viewers: _viewers,
                     onReview: _review,
                     onCreatorTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => CreatorChannelScreen(creatorUid: d.listing.creator.uid))),
@@ -365,10 +366,11 @@ class ListingDetailView extends StatelessWidget {
   final int creatorRatingCount, followerCount;
   final bool canReview;
   final VoidCallback? onReview, onCreatorTap;
+  final int viewers; // #7: live viewer count (PartyKit), 0 when none/off
   const ListingDetailView({
     super.key, required this.card, this.reviews = const [],
     this.creatorRating, this.creatorRatingCount = 0, this.followerCount = 0,
-    this.canReview = false, this.onReview, this.onCreatorTap,
+    this.canReview = false, this.onReview, this.onCreatorTap, this.viewers = 0,
   });
 
   @override
@@ -419,9 +421,9 @@ class ListingDetailView extends StatelessWidget {
           ]),
           // #7: live viewer count (PartyKit roster). Shown only when others are
           // here too; dormant/0 until partyEnabled is on.
-          if (_viewers > 1) ...[
+          if (viewers > 1) ...[
             const SizedBox(height: 6),
-            Text('👀 $_viewers people viewing now',
+            Text('👀 $viewers people viewing now',
                 style: ZineText.sub(size: 12, color: Zine.inkMute)),
           ],
           const SizedBox(height: 12),
