@@ -402,7 +402,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
         const SizedBox(height: 6),
         Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: ZineText.sub(size: 11, color: enabled ? null : Zine.inkMute)),
+            style: ZineText.sub(size: 11, color: enabled ? Zine.ink : Zine.inkMute)),
       ]),
     );
     return tile;
