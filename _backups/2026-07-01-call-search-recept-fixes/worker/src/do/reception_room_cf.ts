@@ -331,15 +331,7 @@ export class ReceptionRoomCf {
         in_bytes: this.inBytes, ava_bytes: this.pcmBytes, ms: Date.now() - this.startedAt,
       });
       this.cfBarged = false; // did the caller interrupt THIS close?
-      // At TIME-UP the current turn's buffer is often empty (the caller already
-      // paused), but EARLIER turns captured the real message into inText. Passing
-      // "[no message]" here made Ava close with "no message" even though the caller
-      // DID leave one (owner report 2026-07-01: "I left a message… then she said no
-      // message and exited"). Fall back to the ACCUMULATED transcript so her close
-      // references what was actually said. (inText already includes `heard`.)
-      const priorMsg = this.inText.join(" ").replace(/\s+/g, " ").trim();
-      const closeMsg = heard || priorMsg;
-      await this.cfAssistantTurn(closeMsg ? `Caller's message: "${closeMsg.slice(0, 500)}"` : "[the caller left no message]");
+      await this.cfAssistantTurn(heard ? `Caller's message: "${heard.slice(0, 500)}"` : "[the caller left no message]");
     } catch (e) {
       this.ev("ava_recept_cf_turn_error", { error_scrubbed: scrubSecrets(String(e)).slice(0, 160) });
     } finally {

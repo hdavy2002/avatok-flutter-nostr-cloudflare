@@ -237,16 +237,7 @@ class AvaNumber {
     final cached = await _readCache(_meCacheKey);
     if (cached != null && (cached['number'] ?? '').toString().isNotEmpty) {
       unawaited(_fetchJson('$kNumberBase/me').then((fresh) {
-        // Replica-lag guard (owner report 2026-07-01, the "asked to pick a SECOND
-        // number" bug): a just-assigned number is written to the PRIMARY D1, but a
-        // background /me can still hit a lagged replica and return NO number.
-        // Writing that empty response through wiped the cached number, so the next
-        // me() missed → the compulsory number gate re-appeared AFTER the profile
-        // step. Never let an empty response DOWNGRADE a known number — only refresh
-        // when the fresh copy also has one. A real release() clears the cache itself.
-        if (fresh != null && (fresh['number'] ?? '').toString().isNotEmpty) {
-          _writeCache(_meCacheKey, fresh);
-        }
+        if (fresh != null) _writeCache(_meCacheKey, fresh);
       }));
       return MyNumber.fromJson(cached);
     }
@@ -258,13 +249,7 @@ class AvaNumber {
   }
 
   static Future<bool> release() async {
-    try {
-      final ok = (await ApiAuth.postJson('$kNumberBase/release', {})).statusCode == 200;
-      // Clear the me-cache on a real release so the empty-response guard in me()
-      // doesn't keep preserving a number the account no longer holds.
-      if (ok) { try { await _ss.delete(key: scopedKey(_meCacheKey)); } catch (_) {} }
-      return ok;
-    } catch (_) { return false; }
+    try { return (await ApiAuth.postJson('$kNumberBase/release', {})).statusCode == 200; } catch (_) { return false; }
   }
 
   /// Persist the card the user chose to share + get the stable QR link.

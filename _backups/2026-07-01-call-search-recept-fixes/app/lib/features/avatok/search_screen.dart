@@ -79,27 +79,10 @@ class _SearchScreenState extends State<SearchScreen> {
     final q = _q;
     if (q.length < 2) { setState(() => _directory = []); return; }
     setState(() => _searchingDir = true);
-    // PARITY WITH "ADD A NEW CHAT" (owner report 2026-07-01): the header search
-    // used to come back empty for an exact email or AvaTOK number — only the
-    // private-number path resolved. Mirror the add-contact sheet's rule exactly:
-    // resolve a complete email OR an AvaTOK/phone number to the account, and merge
-    // that hit with any directory matches. Same `Directory.resolve` the new-chat
-    // sheet uses, so both surfaces now find people by email + AvaTOK number.
-    final isEmail = Directory.isCompleteEmail(q);
-    final isNumber = RegExp(r'^[+\d][\d\s()-]{3,}$').hasMatch(q);
-    final results = <Contact>[];
-    if (isEmail || isNumber) {
-      final hit = await Directory.resolve(q);
-      if (hit != null && hit.npub.isNotEmpty) results.add(hit);
-    }
-    // Any other directory matches (exact-key search; names removed server-side).
-    for (final c in await Directory.search(q)) {
-      if (!results.any((x) => x.npub == c.npub)) results.add(c);
-    }
+    final res = await Directory.search(q);
     if (!mounted) return;
-    setState(() { _directory = results; _searchingDir = false; });
-    Analytics.capture('people_search',
-        {'q_len': q.length, 'results': results.length, 'email': isEmail, 'number': isNumber});
+    setState(() { _directory = res; _searchingDir = false; });
+    Analytics.capture('people_search', {'q_len': q.length, 'results': res.length});
   }
 
   // GLOBAL message search — LOCAL first (instant), then ONLINE (fills what this

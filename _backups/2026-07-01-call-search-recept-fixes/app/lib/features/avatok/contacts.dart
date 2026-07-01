@@ -254,11 +254,6 @@ class Directory {
   static bool isCompleteEmail(String q) {
     final at = q.indexOf('@');
     if (at <= 0 || q.contains(' ')) return false;
-    // Bounds guard: `indexOf(pattern, start)` throws RangeError when start > length.
-    // For a short input like `a@` / `a@b`, `at + 2` could exceed the string length
-    // → `RangeError (start): ... 0..10: 11` crashing the Add-contact sheet & header
-    // search (PostHog 0.1.17). Not a complete email anyway, so bail early.
-    if (at + 2 >= q.length) return false;
     final dot = q.indexOf('.', at + 2); // need at least one char between @ and .
     return dot > at && dot < q.length - 1; // and at least one char after the dot
   }

@@ -61,20 +61,18 @@ const APP = "receptionist";
 // not exist on generativelanguage.googleapis.com. Vision is irrelevant here (audio).
 export const RECEPTIONIST_MODEL_DEFAULT = "gemini-3.1-flash-live-preview";
 
-// SITEWIDE VOICEMAIL TIMING RULE (owner decision 2026-07-01):
-//   1. GREETING — deterministic, spoken immediately; the message timer only arms
-//      AFTER it finishes, so the greeting is never counted against the message time.
-//   2. MESSAGE  — the caller gets exactly 25s to leave a message (CF_MSG_WINDOW_MS
-//      in do/reception_room_cf.ts), armed after the greeting.
-//   3. CLOSE    — UNTIMED. When the 25s elapses Ava gives her closing line and the
-//      DO ends the call only AFTER that close audio has fully streamed
-//      (processCfTurn → finalize). Her exit is NOT time-bound, so she never sounds
-//      cut off mid-sentence.
-// Because the close is untimed, these absolute caps are pure STALL backstops (a
-// dead session / stuck engine only) and are set FAR above any normal call so they
-// can NEVER clip Ava's close. Real dead-air still ends early via IDLE_MS/inactivity.
-export const HARD_CAP_MS = 120_000; // hard STALL backstop only — must never clip Ava's close
-export const SOFT_CAP_MS = 90_000;  // soft STALL backstop only (kept below HARD_CAP_MS)
+// 70-second cap (owner decision 2026-06-28): the call is ~1 minute. Ava begins
+// wrapping up at 55s and the call is force-ended at 70s — enough to take a short
+// message and say a graceful goodbye, no long introductions.
+// Voicemail budget (owner decision 2026-06-29): ~10s greeting + 50s message + 20s
+// wrap = ~80s total. The CF engine also runs a 50s message-window timer (starts
+// after the greeting) that makes Ava cut in with a "time's up" close.
+// CF engine drives timing off CF_MSG_WINDOW_MS (25s caller message window, armed
+// AFTER the deterministic greeting) → it forces the templated time-up close and
+// self-finalizes at ~35s. These absolute caps are pure BACKSTOPS and MUST stay
+// above greeting(~5s)+25s message+close(~5s) so they never preempt the 25s window.
+export const HARD_CAP_MS = 42_000; // hard backstop — only catches a stall (CF normally ends ~35s)
+export const SOFT_CAP_MS = 38_000; // soft backstop — kept above the 25s message window + spoken close
 const MAX_INSTRUCTIONS = 2000;
 const INIT_TTL_SEC = 300;           // caller must connect the WS within 5 min
 

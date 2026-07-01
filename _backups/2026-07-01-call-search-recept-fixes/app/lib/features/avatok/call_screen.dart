@@ -485,13 +485,7 @@ class _CallScreenState extends State<CallScreen> {
     });
   }
 
-  void _send(Map<String, dynamic> o) {
-    // Guard: `?.` covers a NULL socket but NOT an already-CLOSED sink. On hang-up
-    // (_hangup → _send 'bye') or after a dropped/reconnecting socket, the sink can
-    // be closed and `add` then throws `StateError: Cannot add event after closing`
-    // — which crashed the call screen on hang-up (PostHog 0.1.17). Swallow it.
-    try { _ws?.sink.add(jsonEncode(o)); } catch (_) {/* socket closed / gone */}
-  }
+  void _send(Map<String, dynamic> o) => _ws?.sink.add(jsonEncode(o));
 
   /// Parse the ICE candidate type ("typ host|srflx|relay|prflx") from a
   /// candidate SDP line, for STUN-vs-TURN reliance telemetry.
