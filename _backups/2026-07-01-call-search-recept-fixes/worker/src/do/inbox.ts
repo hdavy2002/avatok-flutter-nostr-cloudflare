@@ -396,14 +396,7 @@ export class InboxDO {
     );
     const live = this.broadcast(JSON.stringify({
       type: "call", entry_id: id, name: b.name ?? "", seed: b.seed ?? "",
-      // Emit `video` as an INTEGER (0/1), NOT a JS boolean. The deployed 0.1.17
-      // client parses this live frame with `r['video'] as num?` and CRASHES on a
-      // JSON bool ("type 'bool' is not a subtype of type 'num?'", CallEntry.fromServer
-      // → SyncHub._onFrame) — every call-log frame took the app down, which is why
-      // "any FCM (voicemail/missed) crashes the app": the FCM woke a sync that
-      // delivered this frame. The stored column + /sync snapshot are already 0/1;
-      // only this broadcast leaked a bool. Int parses cleanly on old AND new apps.
-      video: b.video ? 1 : 0, dir: String(b.dir ?? "outgoing"), ts: Math.floor(Number(b.ts) || 0),
+      video: !!b.video, dir: String(b.dir ?? "outgoing"), ts: Math.floor(Number(b.ts) || 0),
     }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
