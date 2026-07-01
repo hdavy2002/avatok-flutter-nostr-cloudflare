@@ -254,8 +254,14 @@ class Directory {
   static Future<List<Contact>> search(String query) async {
     final q = query.trim();
     if (q.length < 2) return [];
-    // Complete email → exact, privacy-preserving lookup (FTS never indexes email).
-    if (isCompleteEmail(q)) {
+    // Exact, privacy-preserving directory lookups go to /api/resolve:
+    //   • a complete email (FTS never indexes email),
+    //   • an AvaTOK NUMBER (digits) — previously these fell through to the name
+    //     search and never matched, so number search silently returned nothing,
+    //   • a raw uid (user_…).
+    final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
+    final looksNumeric = digits.length >= 6 && RegExp(r'^[+0-9\s()\-]+$').hasMatch(q);
+    if (isCompleteEmail(q) || q.startsWith('user_') || looksNumeric) {
       final c = await resolve(q);
       return c == null ? <Contact>[] : <Contact>[c];
     }
