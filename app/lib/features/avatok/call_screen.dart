@@ -604,6 +604,12 @@ class _CallScreenState extends State<CallScreen> {
           {'channel': 'signaling', if (t != null) 'type': t, 'call_id': widget.room});
       return;
     }
+    // Once the call is over, STOP processing signaling. A late offer/answer/
+    // candidate arriving during/after teardown hit an already-closed
+    // PeerConnection and threw an UNCAUGHT WebRTC error ("Unable to
+    // setRemoteDescription…", _onSignal) — the app crashed a few seconds AFTER
+    // the call ended. Ignoring late frames once _ended removes that race.
+    if (_ended) return;
     final d = jsonDecode(raw as String) as Map<String, dynamic>;
     // Peer geo (when the signaling server relays it) → both ends' country on one
     // telemetry row. Best-effort; harmless when absent.
@@ -631,17 +637,25 @@ class _CallScreenState extends State<CallScreen> {
         }
         break;
       case 'offer':
-        _remoteId = d['from'] as String;
-        final pc = _pc ?? await _newPC();
-        await pc.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
-        await _flushCandidates();
-        final ans = _tuned(await pc.createAnswer());
-        await pc.setLocalDescription(ans);
-        _send({'type': 'answer', 'to': _remoteId, 'sdp': ans.toMap()});
+        // Guard the whole negotiation: a stale/duplicate offer, or one landing as
+        // the PC closes, throws on setRemoteDescription and used to crash the app.
+        try {
+          _remoteId = d['from'] as String;
+          final pc = _pc ?? await _newPC();
+          await pc.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+          await _flushCandidates();
+          final ans = _tuned(await pc.createAnswer());
+          await pc.setLocalDescription(ans);
+          _send({'type': 'answer', 'to': _remoteId, 'sdp': ans.toMap()});
+        } catch (_) {/* stale/failed offer — ignore, never crash the call screen */}
         break;
       case 'answer':
-        await _pc?.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
-        await _flushCandidates();
+        // A late/duplicate answer after teardown throws ("Unable to
+        // setRemoteDescription…") on a closed PC — swallow it.
+        try {
+          await _pc?.setRemoteDescription(RTCSessionDescription(d['sdp']['sdp'], d['sdp']['type']));
+          await _flushCandidates();
+        } catch (_) {/* stale/failed answer — ignore */}
         break;
       case 'candidate':
         final c = d['candidate'];
@@ -650,7 +664,7 @@ class _CallScreenState extends State<CallScreen> {
         if (_pc == null || !_remoteSet) {
           _pendingCandidates.add(cand);
         } else {
-          await _pc!.addCandidate(cand);
+          try { await _pc!.addCandidate(cand); } catch (_) {/* stale candidate — ignore */}
         }
         break;
       case 'decline':
