@@ -5,8 +5,12 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
+import 'dart:convert';
+
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/marketplace_api.dart';
+import '../../core/db.dart';
+import '../../core/chat_state.dart';
 import '../avatok/contacts.dart';
 import '../../core/session_api.dart';
 import '../../core/ui/zine.dart';
@@ -88,12 +92,30 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
           number: c.avatokNumber ?? '',
           handle: c.handle ?? '',
         ));
+        // Drop an OPTIMISTIC local bubble into the seller thread NOW, so the chat
+        // appears immediately with content (never blank) — no dependency on any
+        // server sync. The negotiation result (a voice note of the two agents)
+        // lands in this same thread when it finishes.
+        final convKey = '1:${c.uid}';
+        final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        final sellerName = c.name ?? 'the seller';
+        final body = jsonEncode({
+          't': 'text',
+          'body': '🤝 Your agent is talking to $sellerName\'s agent about "${d.listing.title}". '
+              'The outcome — a voice note of the negotiation — will arrive in this chat shortly.',
+        });
+        try {
+          await Db.I.upsertMessage(MessagesCompanion.insert(
+            rumorId: 'mkt_pending_${d.listing.id}_$nowSec',
+            convKey: convKey, mine: false, payload: body, createdAt: nowSec));
+          await ChatPreviewStore().record(convKey, '🤝 Your agent is negotiating…', nowSec, false);
+        } catch (_) {/* best-effort */}
       }
       if (!mounted) return;
       // The negotiation runs in the background — let the buyer keep browsing.
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         duration: Duration(seconds: 5),
-        content: Text('Your agent is negotiating in the background — the result will arrive in your chat with this seller.'),
+        content: Text('Your agent is negotiating — the result will arrive in your chat with this seller.'),
       ));
     }
   }
