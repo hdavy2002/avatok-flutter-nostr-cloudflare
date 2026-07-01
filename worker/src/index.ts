@@ -339,8 +339,11 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);
       if (p === "/api/vault" && req.method === "POST") return await api.vaultPut(req, env);
       if (p === "/api/vault" && req.method === "GET") return await api.vaultGet(req, env);
-      if (p === "/api/resolve" && req.method === "GET") return await cached(req, ctx, () => api.resolve(req, env), 60);
-      if (p === "/api/search" && req.method === "GET") return await cached(req, ctx, () => api.search(req, env), 60);
+      // Two-tier cache: L1 = 60s per-colo edge response cache; L2 = 30-min KV
+      // read-through (survives across requests/colos, keyed by hashed query). The
+      // DB query behind a miss is now index-only. Hot entities → instant.
+      if (p === "/api/resolve" && req.method === "GET") return await cached(req, ctx, () => api.withSearchCache(req, env, () => api.resolve(req, env)), 60);
+      if (p === "/api/search" && req.method === "GET") return await cached(req, ctx, () => api.withSearchCache(req, env, () => api.search(req, env)), 60);
       if (p === "/api/handle/check" && req.method === "GET") return await cached(req, ctx, () => api.handleCheck(req, env), 10);
 
       // --- AvaTOK Number (virtual in-network number; Specs/AVATOK-NUMBER-FEATURE-SPEC.md) ---

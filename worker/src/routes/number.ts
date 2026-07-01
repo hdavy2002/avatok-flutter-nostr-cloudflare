@@ -188,7 +188,8 @@ export async function assign(req: Request, env: Env): Promise<Response> {
     ).bind(r.number, r.plan.iso2, ctx.uid, disp, now),
     // set as the user's network identity; real phone is hidden (not searchable)
     env.DB_META.prepare(
-      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, phone_discoverable=0, free_number_used=1, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
+      // number_norm = last 10 digits → indexed, format-tolerant number search.
+      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, number_norm=substr(?2,-10), phone_discoverable=0, free_number_used=1, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
     ).bind(ctx.uid, r.number, disp, crypto.randomUUID().replace(/-/g, ""), now),
     // clear any reservation
     env.DB_META.prepare("DELETE FROM number_reservations WHERE number=?1").bind(r.number),
@@ -260,7 +261,7 @@ export async function assignOwn(req: Request, env: Env): Promise<Response> {
        ON CONFLICT(number) DO UPDATE SET uid=?3, country=?2, display=?4, status='active', claimed_at=?5, released_at=NULL, updated_at=?5`,
     ).bind(number, plan.iso2, ctx.uid, disp, now),
     env.DB_META.prepare(
-      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, free_number_used=1, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
+      "UPDATE users SET avatok_number=?2, avatok_number_display=?3, number_norm=substr(?2,-10), free_number_used=1, share_token=COALESCE(share_token,?4), updated_at=?5 WHERE uid=?1",
     ).bind(ctx.uid, number, disp, crypto.randomUUID().replace(/-/g, ""), now),
     env.DB_META.prepare("DELETE FROM number_reservations WHERE number=?1").bind(number),
   ]);
@@ -417,7 +418,7 @@ export async function release(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
   await env.DB_META.batch([
     env.DB_META.prepare("UPDATE avatok_numbers SET status='released', uid=NULL, released_at=?2, updated_at=?2 WHERE uid=?1 AND status='active'").bind(ctx.uid, now),
-    env.DB_META.prepare("UPDATE users SET avatok_number=NULL, avatok_number_display=NULL, updated_at=?2 WHERE uid=?1").bind(ctx.uid, now),
+    env.DB_META.prepare("UPDATE users SET avatok_number=NULL, avatok_number_display=NULL, number_norm=NULL, updated_at=?2 WHERE uid=?1").bind(ctx.uid, now),
   ]);
   analytics(env, "number_released", ctx.uid, {}, req);
   return json({ ok: true });

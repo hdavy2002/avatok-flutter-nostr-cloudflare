@@ -274,6 +274,36 @@ function profOut(r: any) {
 // Resolve a query → uid + profile. Handles are retired; the network keys are the
 // AvaTOK number (exact), the real phone (exact, only if the owner made it public),
 // and email (exact, only if the owner allows email discovery).
+// Read-through KV cache for the people-directory (resolve + search). Popular
+// queries (an influencer/business searched thousands of times) return from edge
+// KV instead of hitting D1. Keyed by a hash of the endpoint+query so raw emails/
+// numbers never sit in KV as plaintext keys. TTL is MODERATE (30 min) so results
+// stay fresh and a discoverability change self-heals fast; empty/not-found are
+// cached only briefly so a just-joined user appears quickly and number probes are
+// cheap. Reuses the TOKENS namespace under a `srch:` prefix (TTL auto-evicts).
+export async function withSearchCache(req: Request, env: Env, handler: () => Promise<Response>): Promise<Response> {
+  const q = (new URL(req.url).searchParams.get("q") || "").trim();
+  if (q.length < 2) return handler();
+  const kv = (env as any).TOKENS;
+  const path = new URL(req.url).pathname;
+  let ck = "";
+  try { ck = "srch:" + (await sha256Hex(path + "|" + q.toLowerCase())); } catch { return handler(); }
+  try {
+    const hit = await kv?.get(ck);
+    if (hit != null) return new Response(hit, { status: 200, headers: { "content-type": "application/json", "x-cache": "HIT" } });
+  } catch { /* cache read best-effort */ }
+  const res = await handler();
+  try {
+    if (res.status === 200) {
+      const body = await res.clone().text();
+      // Empty/not-found → short TTL so new users show up fast + probes stay cheap.
+      const empty = body.includes('"results":[]') || body.includes('"uid":null');
+      await kv?.put(ck, body, { expirationTtl: empty ? 60 : 1800 });
+    }
+  } catch { /* cache write best-effort */ }
+  return res;
+}
+
 export async function resolve(req: Request, env: Env): Promise<Response> {
   const q = (new URL(req.url).searchParams.get("q") || "").trim();
   if (!q) return json({ error: "q required" }, 400);
@@ -295,13 +325,19 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
     // privacy rule still holds for everyone who hasn't turned it on). Guarded:
     // falls back to the AvaTOK-only query if the columns aren't migrated yet, so
     // a deploy-before-migration can NEVER break dialing.
-    let byNum: { uid: string } | null = null;
-    try {
-      byNum = await db.prepare(
-        "SELECT uid FROM users WHERE avatok_number=?1 OR (show_private_number=1 AND private_number=?1) LIMIT 1",
-      ).bind(digits).first<{ uid: string }>();
-    } catch {
-      byNum = await db.prepare("SELECT uid FROM users WHERE avatok_number=?1 LIMIT 1").bind(digits).first<{ uid: string }>();
+    // Format-tolerant + INDEXED. People type numbers with/without '+', country
+    // code and separators. avatok_number (canonical digits) and number_norm (last
+    // 10 digits) are BOTH indexed, so "+13022202211", "13022202211" and
+    // "3022202211" all resolve via an index lookup — no table scan.
+    const suffix = digits.slice(-10);
+    let byNum = await db.prepare(
+      "SELECT uid FROM users WHERE avatok_number=?1 OR number_norm=?2 ORDER BY (avatok_number=?1) DESC LIMIT 1",
+    ).bind(digits, suffix).first<{ uid: string }>();
+    if (!byNum) {
+      // Opt-in private number (rare) — guarded in case the columns predate migration.
+      try {
+        byNum = await db.prepare("SELECT uid FROM users WHERE show_private_number=1 AND private_number=?1 LIMIT 1").bind(digits).first<{ uid: string }>();
+      } catch { /* columns may not exist */ }
     }
     if (byNum) return json({ uid: byNum.uid, profile: profOut(await fetchProf(byNum.uid)) });
   }
@@ -311,16 +347,41 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
 // People discovery by name / bio (prefix + substring LIKE). No handle. Users who
 // set "who can add me = nobody" are excluded from discovery.
 export async function search(req: Request, env: Env): Promise<Response> {
-  const q = (new URL(req.url).searchParams.get("q") || "").trim().toLowerCase();
+  const raw = (new URL(req.url).searchParams.get("q") || "").trim();
+  const q = raw.toLowerCase();
   if (q.length < 2) return json({ results: [] });
+  const db = metaSession(env);
+  const shape = (r: any) => ({ uid: r.uid, name: r.display_name, first_name: r.first_name ?? null, last_name: r.last_name ?? null, avatar_url: r.avatar_url, number: r.avatok_number_display ?? null, bio: r.bio ?? null });
+
+  // NUMERIC query → AvaTOK-number lookup. Clients send typed numbers to this
+  // endpoint, where they used to match no name and silently returned nothing.
+  // Format-tolerant (with/without '+', country code, spaces) via a last-10-digits
+  // suffix match, exact preferred.
+  const digits = raw.replace(/[^0-9]/g, "");
+  if (digits.length >= 6 && /^[+0-9\s()\-]+$/.test(raw)) {
+    const suffix = digits.slice(-10);
+    // Indexed: avatok_number (exact) + number_norm (last-10) are both indexed.
+    const nr = await db.prepare(
+      `SELECT uid, display_name, first_name, last_name, avatar_url, bio, avatok_number_display FROM users
+         WHERE (who_can_add IS NULL OR who_can_add<>'nobody')
+           AND (avatok_number=?1 OR number_norm=?2)
+         ORDER BY (avatok_number=?1) DESC LIMIT 10`,
+    ).bind(digits, suffix).all();
+    return json({ results: (nr.results ?? []).map(shape) });
+  }
+
+  // Name PREFIX search, INDEXED via the COLLATE NOCASE indexes on display/first/
+  // last name (a `lower(col) LIKE` wrapper or a leading-'%' substring can't use an
+  // index → full scan at scale; a `col LIKE 'x%' COLLATE NOCASE` prefix can).
   const safe = q.replace(/[%_]/g, "");
   const pre = safe + "%";
-  const sub = "%" + safe + "%";
-  const rs = await metaSession(env).prepare(
+  const rs = await db.prepare(
     `SELECT uid, display_name, first_name, last_name, avatar_url, bio, avatok_number_display FROM users
-      WHERE who_can_add<>'nobody' AND (lower(display_name) LIKE ?1 OR lower(first_name) LIKE ?1 OR lower(last_name) LIKE ?1 OR lower(bio) LIKE ?2) LIMIT 20`,
-  ).bind(pre, sub).all();
-  return json({ results: (rs.results ?? []).map((r: any) => ({ uid: r.uid, name: r.display_name, first_name: r.first_name ?? null, last_name: r.last_name ?? null, avatar_url: r.avatar_url, number: r.avatok_number_display ?? null, bio: r.bio ?? null })) });
+      WHERE (who_can_add IS NULL OR who_can_add<>'nobody')
+        AND (display_name LIKE ?1 COLLATE NOCASE OR first_name LIKE ?1 COLLATE NOCASE OR last_name LIKE ?1 COLLATE NOCASE)
+      LIMIT 20`,
+  ).bind(pre).all();
+  return json({ results: (rs.results ?? []).map(shape) });
 }
 
 // ---- contacts: /api/contacts/sync /api/contacts/match (auth) /list ----
