@@ -298,6 +298,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    // Opening a thread nudges a catch-up sync: a server-injected message (e.g. a
+    // marketplace agent-deal card, or a receptionist card) is appended directly to
+    // the InboxDO and only arrives on a fresh sync — if the socket wasn't connected
+    // when it landed, the thread would look empty. This probes/reconnects so the
+    // missing message pulls in right as you open the chat.
+    try { SyncHub.I.onAppResumed(); } catch (_) {}
     // Phase 5: tick a lightweight clock so relative timestamps, day separators
     // and the "last seen" header stay live without the user reloading the thread.
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
