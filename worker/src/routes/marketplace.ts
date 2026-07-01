@@ -154,7 +154,11 @@ async function inboxAppend(env: Env, recipient: string, sender: string, conv: st
     const out: any = await res.json().catch(() => ({}));
     // Definitive proof the row landed in the recipient's InboxDO (msg_id) vs a
     // silent failure — distinguishes "delivery broken" from "app didn't render".
-    track(env, recipient, "mkt_inbox_appended", "avamarketplace", { ok: res.ok, status: res.status, msg_id: out?.id ?? null, recipient, sender, conv });
+    // `live` (from the InboxDO append) = was the recipient's socket connected at
+    // delivery, i.e. did the deal get broadcast in realtime. false ⇒ it only
+    // sits in storage until a resync pulls it — the exact case the client-side
+    // bounded forceResync() after Contact-agent now covers (no FCM).
+    track(env, recipient, "mkt_inbox_appended", "avamarketplace", { ok: res.ok, status: res.status, msg_id: out?.id ?? null, live: out?.live ?? null, recipient, sender, conv });
   } catch (e) {
     track(env, recipient, "mkt_inbox_append_error", "avamarketplace", { recipient, conv, error: String((e as any)?.message ?? e).slice(0, 160) });
     throw e;
