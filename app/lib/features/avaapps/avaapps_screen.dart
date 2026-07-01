@@ -348,24 +348,30 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
 
   Widget _appTile(AvaCatalogApp app) {
     final on = _connected.contains(app.slug);
-    return GestureDetector(
+    // Pro/live launch: only allow-listed connectors (Gmail + Outlook) are live;
+    // the rest are greyed with a "Soon" badge and tap to a coming-soon notice.
+    final enabled = isAppEnabled(app.slug);
+    final tile = GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _onTap(app),
+      onTap: () => enabled ? _onTap(app) : _showComingSoon(app),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Stack(clipBehavior: Clip.none, children: [
-          Container(
-            width: 64, height: 64,
-            decoration: BoxDecoration(
-              color: Colors.white, // white plate makes brand colors pop
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Zine.ink, width: 2),
-              boxShadow: Zine.shadowXs,
+          Opacity(
+            opacity: enabled ? 1 : 0.4,
+            child: Container(
+              width: 64, height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white, // white plate makes brand colors pop
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Zine.ink, width: 2),
+                boxShadow: Zine.shadowXs,
+              ),
+              clipBehavior: Clip.antiAlias,
+              padding: const EdgeInsets.all(11),
+              child: _appLogo(app),
             ),
-            clipBehavior: Clip.antiAlias,
-            padding: const EdgeInsets.all(11),
-            child: _appLogo(app),
           ),
-          if (on)
+          if (on && enabled)
             Positioned(
               right: -4, top: -4,
               child: Container(
@@ -378,12 +384,36 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
                 child: const Icon(Icons.check, size: 10, color: Colors.white),
               ),
             ),
+          if (!enabled)
+            Positioned(
+              right: -6, top: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Zine.inkMute,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Zine.ink, width: 1.5),
+                ),
+                child: Text('Soon',
+                    style: ZineText.sub(size: 8.5, color: Colors.white)),
+              ),
+            ),
         ]),
         const SizedBox(height: 6),
         Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center, style: ZineText.sub(size: 11)),
+            textAlign: TextAlign.center,
+            style: ZineText.sub(size: 11, color: enabled ? null : Zine.inkMute)),
       ]),
     );
+    return tile;
+  }
+
+  /// Greyed connector tapped — tell the user it's on the way (no server call).
+  void _showComingSoon(AvaCatalogApp app) {
+    Analytics.capture('avaapps_coming_soon', {'slug': app.slug});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${app.name} is coming soon. Gmail and Outlook are '
+            'available now.')));
   }
 
   /// The real, colorful brand logo, served local-first from [AppIconCache] so it

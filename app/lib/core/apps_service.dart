@@ -27,6 +27,17 @@ const List<AvaApp> kAvaApps = [
   AvaApp('googlecalendar', 'Google Calendar', Icons.event, Color(0xFF4285F4)),
 ];
 
+/// Connectors the user can actually connect in the pro/live launch. Everything
+/// else in the Composio catalog renders greyed with a "Soon" badge and is not
+/// tappable (owner decision 2026-07-01: ship Gmail + Outlook only). Widen this
+/// set (or drive it from KV) to open more connectors later.
+/// NOTE: Outlook's OAuth connect still needs the Composio `outlook` toolkit +
+/// the Worker connect route to accept it — enabling it here only ungreys the UI.
+const Set<String> kEnabledAppSlugs = {'gmail', 'outlook'};
+
+/// Whether [slug] is connectable now (vs greyed "coming soon"). Case-insensitive.
+bool isAppEnabled(String slug) => kEnabledAppSlugs.contains(slug.toLowerCase());
+
 /// Talks to the Worker's AvaApps routes (Composio). The Worker holds the Composio
 /// key; the client forwards the user's own Gemini key (for the model) per request.
 class AppsService {
