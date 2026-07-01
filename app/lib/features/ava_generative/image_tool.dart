@@ -23,12 +23,25 @@ library;
 
 import 'dart:convert';
 
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_ai_store.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/ava_tools/ava_tool.dart';
 import '../../core/config.dart';
+import '../../core/remote_config.dart';
 import '../../identity/identity.dart';
+
+/// Canned, on-device "coming soon" reply for image generation while the feature
+/// is switched OFF (RemoteConfig.imageGenEnabled == false, e.g. the pro/live
+/// build). Returned WITHOUT any network call so repeat asks never hit the
+/// server — the "cache" is this const. Shape matches a worker `blocked` result
+/// so ImageRequestSheet + the image.generate tool surface it unchanged.
+const Map<String, Object?> kImageGenComingSoon = {
+  'blocked': true,
+  'reason': 'coming_soon',
+  'message': 'Image generation is coming soon — hang tight, it’s on the way!',
+};
 
 /// Build the full `/api/ava/image` URL from the API origin + the Phase-0 path
 /// (mirrors AvaTurnController._turnUrl so the path is never re-declared).
@@ -49,6 +62,13 @@ Future<Map<String, Object?>> requestAvaImage({
   String? editMediaRef,
   Duration timeout = const Duration(seconds: 30),
 }) async {
+  // Feature switched OFF (pro/live build): short-circuit to the canned reply with
+  // NO network call. Both the manual sheet and the in-chat image.generate tool
+  // funnel through here, so this one guard covers every entry point.
+  if (!RemoteConfig.imageGenEnabled) {
+    Analytics.capture('ava_image_coming_soon', {'convKey': convKey});
+    return Map<String, Object?>.from(kImageGenComingSoon);
+  }
   final myUid = AccountScope.id;
   if (myUid == null || myUid.isEmpty) {
     return {'error': 'no_account_scope'};
