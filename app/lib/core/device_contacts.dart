@@ -207,7 +207,13 @@ class DeviceContactsService {
       // phoneNorm -> (rawPhone, name, email, wa). First non-empty value wins per
       // number; WhatsApp flag is OR-ed across the contacts that share the number.
       final byNorm = <String, ({String raw, String name, String email, bool wa})>{};
+      var _processed = 0;
       for (final c in raw) {
+        // A large address book (thousands of contacts) processed in one synchronous
+        // pass blocks the UI thread long enough to ANR ("AvaTOK isn't responding"),
+        // especially when an FCM-triggered resume re-runs this. Yield to the event
+        // loop every 250 contacts so the UI stays responsive during the parse.
+        if (++_processed % 250 == 0) await Future<void>.delayed(Duration.zero);
         final name = c.displayName.trim();
         final email = c.emails.isNotEmpty ? c.emails.first.address.trim() : '';
         // Android: detect WhatsApp via the contact's linked accounts. iOS can't
