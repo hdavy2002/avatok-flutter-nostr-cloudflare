@@ -11,7 +11,7 @@ import { readConfig } from "./config";            // groupInvitesEnabled kill sw
 import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
 import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
-import { ablyPublish, ablyConfigured, canonicalMsgId } from "./ably"; // Ably realtime fan-out (migration)
+import { canonicalMsgId } from "../util"; // canonical, chronologically-sortable message id
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -230,17 +230,6 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const fromName = await senderDisplayName(env, ctx.uid);
   const preview = msgPreview(kind, text, mediaRef);
 
-  // Ably realtime fan-out (migration): publish the SAME moderated payload to the
-  // conversation's Ably channel so every subscribed iOS/Android client gets it
-  // instantly via Ably's global edge — replacing the flaky per-user InboxDO
-  // socket. Server-side publish (AFTER moderation/blocks/brain above) keeps
-  // messages server-readable. Best-effort: never blocks the send, and offline
-  // recipients still get the FCM wake below. No-op until ABLY_API_KEY is set, so
-  // this is safe to ship dark and flip on per the rollout plan.
-  if (ablyConfigured(env)) {
-    void ablyPublish(env, `msg:${conv}`, "msg", payload, { clientId: ctx.uid, id: mid });
-  }
-
   // Phase 1 (ABLY-R2-1): durable R2 archive. Enqueue the moderated message so a
   // consumer writes the body to R2 (BACKUP_R2, chat/<conv>/<mid>.json) + indexes
   // it in D1 (message_index). This is the "never lose a chat" + AI-search source
@@ -256,26 +245,11 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     } catch { /* best-effort; the message still delivered live + via InboxDO */ }
   }
 
-  // Phase 2 (ABLY-R2-2): Ably-first delivery. When Ably is the primary transport
-  // the live message is ALREADY out (the publish above), so we DON'T block the
-  // response on per-recipient InboxDO hops. We hand the durable InboxDO fan-out
-  // (desktop continuity + offline FCM) to the queue and return immediately — this
-  // removes the N-DO-hop latency that made sends feel slow. The delete-for-everyone
-  // path keeps its precise synchronous delivery + telemetry (so a redaction is
-  // never merely eventually-consistent). Flag-gated (MSG_TRANSPORT=ably).
-  const ablyFirst = env.MSG_TRANSPORT === "ably" && ablyConfigured(env) && !delTarget;
+  // Delivery: a small fan-out is delivered synchronously in parallel; a large one
+  // is handed to Queues (the router never loops >FANOUT_SYNC_MAX synchronous DO
+  // calls). The delete-for-everyone path keeps precise synchronous delivery + telemetry.
   let deliveryPath = "sync";
-  if (ablyFirst) {
-    deliveryPath = "ably_async";
-    const sends: Promise<unknown>[] = [];
-    for (let i = 0; i < recipients.length; i += FANOUT_QUEUE_CHUNK) {
-      sends.push(env.Q_PUSH.send({
-        kind: "fanout", payload, fromName, preview,
-        recipients: recipients.slice(i, i + FANOUT_QUEUE_CHUNK),
-      }));
-    }
-    await Promise.all(sends);
-  } else if (recipients.length <= FANOUT_SYNC_MAX) {
+  if (recipients.length <= FANOUT_SYNC_MAX) {
     // Small fan-out: deliver in PARALLEL (was sequential awaits).
     let delLive = 0, delPush = 0; // delete-for-everyone delivery-path counters
     await Promise.all(recipients.map(async (m) => {
@@ -320,7 +294,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   try {
     void env.Q_ANALYTICS.send({ event: "chat_message_sent", uid: ctx.uid, ts: Date.now(),
       props: { conv, kind, path: deliveryPath, recipients: recipients.length,
-        group: mem.length > 2, ably: ablyConfigured(env), archived: env.CHAT_ARCHIVE === "1",
+        group: mem.length > 2, archived: env.CHAT_ARCHIVE === "1",
         latency_ms: Date.now() - created, account_id: ctx.uid,
         app_name: "avatok", service_name: "avatok-api", worker: true } });
   } catch { /* best-effort */ }

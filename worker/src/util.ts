@@ -211,3 +211,11 @@ export function hexToNpub(h: string): string | null {
   if (!five) return null;
   return bech32Encode("npub", five);
 }
+
+/** Canonical, chronologically-sortable message id: 13-digit zero-padded epoch ms
+ *  + a short random suffix → lexical sort == time order, collision-safe. Used as
+ *  the message serial, the R2 archive key, and the client dedupe key. (Relocated
+ *  from the deleted routes/ably.ts — it was never Ably-specific.) */
+export function canonicalMsgId(createdMs: number): string {
+  return `${String(createdMs).padStart(13, "0")}.${crypto.randomUUID().slice(0, 8)}`;
+}

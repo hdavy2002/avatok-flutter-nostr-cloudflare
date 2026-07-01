@@ -190,15 +190,8 @@ export interface Env {
   // default + fallback. Set via `wrangler secret put LIVEKIT_REGIONS`.
   LIVEKIT_REGIONS?: string;
 
-  // Ably realtime (iOS/Android messaging transport — Ably migration 2026-06-27).
-  // ONE Ably API key, format "<keyName>:<keySecret>". Used to (a) mint short-lived
-  // client JWTs (/api/ably/token) and (b) server-publish moderated messages to
-  // Ably (ablyPublish). Unset ⇒ /api/ably/token returns 503 (flag-gated).
-  ABLY_API_KEY?: string;
-
-  // Ably-transport + R2-archive rollout flags (Specs/ABLY-TRANSPORT-R2-ARCHIVE-PROPOSAL.md).
+  // R2-archive rollout flag (Specs/ABLY-TRANSPORT-R2-ARCHIVE-PROPOSAL.md).
   CHAT_ARCHIVE?: string;     // "1" → enqueue every sent message to R2 + D1 message_index (Phase 1)
-  MSG_TRANSPORT?: string;    // "ably" → Ably is the PRIMARY live path; InboxDO fan-out moves off the hot path (Phase 2)
   PARTY_ENABLED?: string;    // "1" → PartyKit realtime layer on (client opens party sockets); dark otherwise
   MSG_STATE_STORE?: string;  // "d1" → owner-private state (read/hide/call-log) reads+writes go to D1 (Phase 5)
 
