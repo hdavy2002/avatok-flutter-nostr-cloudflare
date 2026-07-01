@@ -403,6 +403,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // so live delivery resumes at once, and clear the unread badge.
       _inbox?.ensureConnected();
       PushService.clearMessageBadge();
+      // Re-read the LOCALLY-SAVED contacts on every resume so anything added while
+      // we were backgrounded shows up on return — e.g. a marketplace seller
+      // materialised by "Contact agent", or a tel-contact. The list is otherwise
+      // kept in memory and only reloads on a full cold start, so a seller saved
+      // while the app was away would stay invisible until the app was killed and
+      // relaunched. This is a cheap on-disk read of OUR OWN contact cache — it does
+      // NOT touch the device address book (that stays on-demand, Invite/Search only).
+      _contactsStore.load().then((list) {
+        if (mounted && list.length != _contacts.length) setState(() => _contacts = list);
+      });
       // NOTE: the device address book is deliberately NOT read on resume/FCM. It's
       // read on demand ONLY when the Invite/Search screen opens (device_contacts.
       // ensureFresh), so nothing contact-related can freeze the app in the
