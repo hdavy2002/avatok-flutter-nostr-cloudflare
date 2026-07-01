@@ -6,6 +6,7 @@ import 'package:pointycastle/export.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/config.dart';
+import 'party/party_hub.dart';
 import 'sync_hub.dart';
 
 /// Ephemeral presence (typing / online / read receipts).
@@ -25,10 +26,18 @@ class PresenceChannel {
   WebSocketChannel? _ws;
   final List<StreamSubscription> _ablySubs = [];
   final _events = StreamController<Map<String, dynamic>>.broadcast();
+  PartyRoom? _party; // PartyKit path (replaces Ably)
+  StreamSubscription? _partySub;
+  StreamSubscription? _partyPresSub;
 
   PresenceChannel(this.roomId, this.me, {this.convKey, this.peerUid});
 
-  /// True when this channel should delegate to the Ably transport.
+  /// True when this channel should delegate to the PartyKit transport (the
+  /// ephemeral layer's new home now that Ably is retired). Takes precedence over
+  /// the legacy signaling WS; [_ablyMode] stays for any residual Ably build.
+  bool get _partyMode => convKey != null && PartyHub.I.enabled;
+
+  /// True when this channel should delegate to the Ably transport (legacy).
   bool get _ablyMode => convKey != null && SyncHub.I.ablyActive;
 
   Stream<Map<String, dynamic>> get events => _events.stream;
@@ -44,6 +53,7 @@ class PresenceChannel {
   static String roomForGroup(String gid) => 'pg-$gid';
 
   void connect() {
+    if (_partyMode) { _connectParty(); return; }
     if (_ablyMode) { _connectAbly(); return; }
     final id = 'pr-${DateTime.now().microsecondsSinceEpoch}';
     _ws = WebSocketChannel.connect(Uri.parse('wss://$kSignalingHost/room/$roomId?id=$id'));
@@ -77,22 +87,56 @@ class PresenceChannel {
     }));
   }
 
+  /// PartyKit path: join the conversation's presence room and re-emit its events
+  /// in the SAME `{'type': ...}` map shape the UI already parses — so chat_thread/
+  /// chat_list need no change. Room = `presence:<roomId>` (both peers derive the
+  /// same hashed roomId, so they meet). Online/last-seen is derived from the
+  /// party's presence ROSTER (a socket open == that user is present).
+  void _connectParty() {
+    final room = PartyHub.I.join('presence:$roomId');
+    _party = room;
+    _partySub = room.events.listen((e) {
+      final t = e['t'];
+      final who = (e['from'] ?? e['who'] ?? '').toString();
+      if (t == 'typing') {
+        _events.add({'type': 'typing', 'on': e['on'] == true, 'who': who});
+      } else if (t == 'read' || t == 'delivered') {
+        _events.add({'type': t, 'ts': (e['ts'] as num?)?.toInt() ?? 0, 'who': who});
+      } else if (t == 'liveloc' || t == 'livestop') {
+        _events.add({...e, 'type': t, 'who': who});
+      }
+    });
+    _partyPresSub = room.presence.listen((roster) {
+      final p = peerUid;
+      if (p == null || p.isEmpty) return;
+      final online = roster.contains(p);
+      _events.add(online
+          ? {'type': 'online', 'who': p}
+          : {'type': 'offline', 'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000, 'who': p});
+    });
+  }
+
   void sendTyping(bool on) {
+    if (_partyMode) { _party?.send({'t': 'typing', 'on': on}); return; }
     if (_ablyMode) { SyncHub.I.ably?.setTyping(convKey!, on); return; }
     _send({'type': 'typing', 'on': on, 'who': me});
   }
 
   void sendRead(int ts) {
+    if (_partyMode) { _party?.send({'t': 'read', 'ts': ts}); return; }
     if (_ablyMode) { SyncHub.I.ably?.sendReceipt(convKey!, 'read', ts); return; }
     _send({'type': 'read', 'ts': ts, 'who': me});
   }
 
   void sendDelivered(int ts) {
+    if (_partyMode) { _party?.send({'t': 'delivered', 'ts': ts}); return; }
     if (_ablyMode) { SyncHub.I.ably?.sendReceipt(convKey!, 'delivered', ts); return; }
     _send({'type': 'delivered', 'ts': ts, 'who': me});
   }
 
   void sendOnline() {
+    // Party presence is implicit (a socket open == online), so no explicit send.
+    if (_partyMode) return;
     if (_ablyMode) { SyncHub.I.ably?.setOnline(true); return; }
     _send({'type': 'online', 'who': me});
   }
@@ -102,6 +146,9 @@ class PresenceChannel {
   /// online window. (Ably presence leave is account-global, so per-thread dispose
   /// does NOT leave — only an explicit offline does.)
   void sendOffline(int ts) {
+    // Party presence is roster-based (leave fires when the socket closes), so no
+    // explicit offline send is needed.
+    if (_partyMode) return;
     if (_ablyMode) { SyncHub.I.ably?.setOnline(false); return; }
     _send({'type': 'offline', 'ts': ts, 'who': me});
   }
@@ -131,6 +178,15 @@ class PresenceChannel {
       _send({'type': 'livestop', 'id': id, 'who': me});
 
   void _send(Map<String, dynamic> o) {
+    // Party mode: relay over the party room. Translate the legacy `type` key to
+    // the party `t` key and drop `who` (the server stamps the verified sender).
+    if (_partyMode) {
+      final p = Map<String, dynamic>.from(o)..remove('who');
+      final ty = p.remove('type');
+      if (ty != null) p['t'] = ty;
+      _party?.send(p);
+      return;
+    }
     // Ably mode has no signaling WS; live-location frames (the only remaining
     // _send callers in that mode) are dropped here rather than opening a socket.
     if (_ablyMode) return;
@@ -140,6 +196,9 @@ class PresenceChannel {
   void dispose() {
     for (final s in _ablySubs) { s.cancel(); }
     _ablySubs.clear();
+    _partySub?.cancel();
+    _partyPresSub?.cancel();
+    _party?.leave();
     try { _ws?.sink.close(); } catch (_) {}
     _events.close();
   }
