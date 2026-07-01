@@ -251,47 +251,20 @@ class Directory {
   /// Names collide (many "John"s), so email is the reliable way to find a
   /// specific person. A complete email is resolved exactly (hash-based, stays
   /// private); anything else (name / @handle / partial text) uses the FTS index.
+  /// Directory discovery is EXACT-KEY only (owner decision 2026-07-01): a complete
+  /// email, an AvaTOK NUMBER (any format), or a raw uid. NAME search was removed —
+  /// at scale a name matches thousands of people, so it's noise. A plain name query
+  /// returns nothing here (device-contact matches still show separately).
   static Future<List<Contact>> search(String query) async {
     final q = query.trim();
     if (q.length < 2) return [];
-    // Exact, privacy-preserving directory lookups go to /api/resolve:
-    //   • a complete email (FTS never indexes email),
-    //   • an AvaTOK NUMBER (digits) — previously these fell through to the name
-    //     search and never matched, so number search silently returned nothing,
-    //   • a raw uid (user_…).
     final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
     final looksNumeric = digits.length >= 6 && RegExp(r'^[+0-9\s()\-]+$').hasMatch(q);
     if (isCompleteEmail(q) || q.startsWith('user_') || looksNumeric) {
       final c = await resolve(q);
       return c == null ? <Contact>[] : <Contact>[c];
     }
-    try {
-      final r = await http
-          .get(Uri.parse('$kSearchUrl?q=${Uri.encodeQueryComponent(q)}'))
-          .timeout(const Duration(seconds: 8));
-      if (r.statusCode != 200) return [];
-      final j = jsonDecode(r.body) as Map<String, dynamic>;
-      final list = (j['results'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-      return list
-          .map((p) {
-            final first = (p['first_name'] ?? '').toString();
-            final last = (p['last_name'] ?? '').toString();
-            final assembled = [first, last].where((s) => s.isNotEmpty).join(' ').trim();
-            final nm = (p['name'] ?? '').toString().isNotEmpty ? p['name'].toString() : assembled;
-            final id = (p['uid'] ?? p['npub'] ?? '').toString();
-            return Contact(
-              npub: id,
-              name: nm.isNotEmpty ? nm : ((p['email'] ?? '').toString().isNotEmpty ? p['email'].toString() : _short(id)),
-              email: (p['email'] ?? '').toString(),
-              avatarUrl: (p['avatar_url'] ?? '').toString(),
-              number: (p['number'] ?? '').toString(),
-            );
-          })
-          .where((c) => c.npub.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return [];
-    }
+    return [];
   }
 
   /// Handle format: 3–20 chars, lowercase letters/digits/underscore, starts with

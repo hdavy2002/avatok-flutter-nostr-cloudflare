@@ -319,7 +319,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   Padding(padding: const EdgeInsets.all(28),
                       child: Center(child: ZineEmptyState(
                           icon: PhosphorIcons.binoculars(PhosphorIconsStyle.bold),
-                          text: 'No matches.\nTo find someone by email, type their full email address.'))),
+                          text: 'No matches.\nFind people by their full email address or AvaTOK number.'))),
                 if (_q.isEmpty && _device.isEmpty)
                   Padding(padding: const EdgeInsets.all(28),
                       child: Center(child: ZineEmptyState(

@@ -346,21 +346,23 @@ export async function resolve(req: Request, env: Env): Promise<Response> {
 
 // People discovery by name / bio (prefix + substring LIKE). No handle. Users who
 // set "who can add me = nobody" are excluded from discovery.
+//
+// DISCOVERY IS EXACT-KEY ONLY (owner decision 2026-07-01): email (via /api/resolve)
+// and AvaTOK number. NAME SEARCH IS INTENTIONALLY REMOVED — at millions of users a
+// name matches thousands of people (useless), and name matching is a scan/cost with
+// no product value. So this endpoint only resolves an AvaTOK NUMBER; a non-numeric
+// query returns nothing.
 export async function search(req: Request, env: Env): Promise<Response> {
   const raw = (new URL(req.url).searchParams.get("q") || "").trim();
-  const q = raw.toLowerCase();
-  if (q.length < 2) return json({ results: [] });
+  if (raw.length < 2) return json({ results: [] });
   const db = metaSession(env);
   const shape = (r: any) => ({ uid: r.uid, name: r.display_name, first_name: r.first_name ?? null, last_name: r.last_name ?? null, avatar_url: r.avatar_url, number: r.avatok_number_display ?? null, bio: r.bio ?? null });
 
-  // NUMERIC query → AvaTOK-number lookup. Clients send typed numbers to this
-  // endpoint, where they used to match no name and silently returned nothing.
-  // Format-tolerant (with/without '+', country code, spaces) via a last-10-digits
-  // suffix match, exact preferred.
+  // AvaTOK-number lookup — format-tolerant + INDEXED (avatok_number exact OR
+  // number_norm last-10). "+13022202211", "13022202211", "3022202211" all resolve.
   const digits = raw.replace(/[^0-9]/g, "");
   if (digits.length >= 6 && /^[+0-9\s()\-]+$/.test(raw)) {
     const suffix = digits.slice(-10);
-    // Indexed: avatok_number (exact) + number_norm (last-10) are both indexed.
     const nr = await db.prepare(
       `SELECT uid, display_name, first_name, last_name, avatar_url, bio, avatok_number_display FROM users
          WHERE (who_can_add IS NULL OR who_can_add<>'nobody')
@@ -370,18 +372,8 @@ export async function search(req: Request, env: Env): Promise<Response> {
     return json({ results: (nr.results ?? []).map(shape) });
   }
 
-  // Name PREFIX search, INDEXED via the COLLATE NOCASE indexes on display/first/
-  // last name (a `lower(col) LIKE` wrapper or a leading-'%' substring can't use an
-  // index → full scan at scale; a `col LIKE 'x%' COLLATE NOCASE` prefix can).
-  const safe = q.replace(/[%_]/g, "");
-  const pre = safe + "%";
-  const rs = await db.prepare(
-    `SELECT uid, display_name, first_name, last_name, avatar_url, bio, avatok_number_display FROM users
-      WHERE (who_can_add IS NULL OR who_can_add<>'nobody')
-        AND (display_name LIKE ?1 COLLATE NOCASE OR first_name LIKE ?1 COLLATE NOCASE OR last_name LIKE ?1 COLLATE NOCASE)
-      LIMIT 20`,
-  ).bind(pre).all();
-  return json({ results: (rs.results ?? []).map(shape) });
+  // Not a number → no directory results (name search removed by design).
+  return json({ results: [] });
 }
 
 // ---- contacts: /api/contacts/sync /api/contacts/match (auth) /list ----
