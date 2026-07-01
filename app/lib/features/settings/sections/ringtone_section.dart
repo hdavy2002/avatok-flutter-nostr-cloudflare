@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ava_log.dart';
+import '../../../core/remote_config.dart';
 import '../../../core/ringtone_api.dart';
 import '../../../core/ringtone_catalog.dart';
 import '../../../core/ui/zine.dart';
@@ -19,14 +20,28 @@ import '../settings_registry.dart';
 ///
 /// Registered via [SettingsSectionRegistry] from [AvaBootstrap.init].
 void registerRingtoneSection() {
-  SettingsSectionRegistry.register(
-    SettingsSection(
-      id: 'ai_ringback',
-      title: 'Ringback tone',
-      order: 26,
-      builder: (context) => const _RingtoneCard(),
-    ),
-  );
+  // KV-driven hide (pro/live launch): show the Ringback-tone section only while
+  // RemoteConfig.ringbackEnabled is true. Mirrors the guardian pattern — the
+  // default registers it at bootstrap; a prod KV `ringbackEnabled:false` fires
+  // the revision notifier and we unregister it. Ringback PLAYBACK is separately
+  // gated in call_screen.dart by the same flag.
+  void sync() {
+    if (RemoteConfig.ringbackEnabled) {
+      SettingsSectionRegistry.register(
+        SettingsSection(
+          id: 'ai_ringback',
+          title: 'Ringback tone',
+          order: 26,
+          builder: (context) => const _RingtoneCard(),
+        ),
+      );
+    } else {
+      SettingsSectionRegistry.unregister('ai_ringback');
+    }
+  }
+
+  sync();
+  RemoteConfig.revision.addListener(sync);
 }
 
 class _RingtoneCard extends StatefulWidget {
