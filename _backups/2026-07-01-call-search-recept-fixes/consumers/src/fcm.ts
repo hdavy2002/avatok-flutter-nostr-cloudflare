@@ -21,18 +21,6 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   }
 
   const payload = buildPayload(msg);
-  // DEMO KILL-SWITCH (owner request 2026-07-01, demo): when DEMO_MUTE_NONCALL_PUSH="1",
-  // suppress EVERY push except incoming calls + call-status, so a live demo isn't
-  // interrupted by message / voicemail / reminder banners or silent sync wakes. We
-  // gate on the OUTGOING payload type (not msg.kind) so a call delivered via the
-  // relay path — kind:"relay-event", event_kind 25050 → type:"call" — still rings.
-  // Reversible: set the var to "0" (or delete it) in consumers/wrangler.toml and
-  // redeploy avatok-consumers to restore all notifications.
-  if ((env as any).DEMO_MUTE_NONCALL_PUSH === "1" &&
-      payload.data.type !== "call" && payload.data.type !== "call-status") {
-    await capturePush(env, "push_muted_demo", uid, { kind: msg.kind, type: payload.data.type });
-    return;
-  }
   for (const t of tokens) {
     if (t.platform === "apns") await sendApns(env, t.token, payload);
     else await sendFcm(env, t.token, payload, uid); // 'fcm' (Android) — default

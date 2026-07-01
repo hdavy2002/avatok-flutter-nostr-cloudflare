@@ -239,10 +239,6 @@ crons = ["* * * * *", "*/15 * * * *", "0 */6 * * *"]  # minute = Phase 7 money s
 
 [vars]
 FCM_PROJECT = "avatok-e19ef"
-# DEMO kill-switch (2026-07-01): "1" = suppress all non-call pushes (message /
-# voicemail / reminders / silent sync wakes); incoming calls + call-status still
-# ring. Set to "0" (or remove) + redeploy avatok-consumers to restore notifications.
-DEMO_MUTE_NONCALL_PUSH = "1"
 # Workers AI daily budget alarm (Scale Phase 0): cron emails ALERT_EMAIL once/day
 # when ai_spend.calls exceeds this.
 AI_DAILY_CALL_BUDGET = "5000"
