@@ -413,8 +413,9 @@ async function runNegotiationJob(env: Env, a: {
       ? `Your agents agreed around ${agreed} ${currency}.`
       : `Your agents talked but didn't agree this time.`;
     try {
-      await notifyUser(env, String(listing.creator_id), { type: "marketplace_deal", title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing", body, data: { listing_id: listingId, outcome, bubble } });
-      await notifyUser(env, buyerUid, { type: "marketplace_deal", title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating", body, data: { listing_id: listingId, outcome, bubble } });
+      // push:false — bell entry only, NO FCM (delivered live over socket + PartyKit).
+      await notifyUser(env, String(listing.creator_id), { type: "marketplace_deal", title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing", body, data: { listing_id: listingId, outcome, bubble } }, { push: false });
+      await notifyUser(env, buyerUid, { type: "marketplace_deal", title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating", body, data: { listing_id: listingId, outcome, bubble } }, { push: false });
     } catch { /* notify best-effort */ }
   } catch (e) {
     // A rare failure shouldn't burn the buyer's single chance — release the slot
