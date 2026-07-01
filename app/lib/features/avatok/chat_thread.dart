@@ -314,11 +314,42 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final room = PartyHub.I.join('thread:$conv');
       _party = room;
       _partySub = room.events.listen((e) {
-        if (e['t'] == 'deal_ready') {
-          try { SyncHub.I.forceResync(); } catch (_) {}
+        final t = e['t'];
+        if (t == 'deal_ready') {
+          try { SyncHub.I.forceResync(); } catch (_) {} // marketplace card lands instantly
+        } else if (t == 'reaction') {
+          _applyPartyReaction(e); // live per-message reaction (#4)
+        } else if (t == 'burst') {
+          final em = e['emoji']?.toString();
+          if (em != null && em.isNotEmpty) _spawnBurst(em); // floating-emoji burst
         }
       });
     } catch (_) {/* party is best-effort */}
+  }
+
+  /// Apply a peer's live reaction (PartyKit) to the aggregate count + "reacted by"
+  /// set on the target bubble — same logic the retired Ably path used.
+  void _applyPartyReaction(Map<String, dynamic> e) {
+    final mid = e['mid']?.toString();
+    final emoji = e['emoji']?.toString();
+    if (mid == null || emoji == null) return;
+    final add = e['add'] == true;
+    final who = (e['from'] ?? '').toString();
+    final whoName = (e['whoName'] ?? '').toString();
+    if (whoName.isNotEmpty && who.isNotEmpty && _memberNames[who] != whoName) {
+      _memberNames[who] = whoName;
+    }
+    final i = _msgs.indexWhere((m) => m.evId == mid);
+    if (i < 0) return;
+    setState(() {
+      final msg = _msgs[i];
+      final c = msg.reactCounts;
+      c[emoji] = ((c[emoji] ?? 0) + (add ? 1 : -1)).clamp(0, 9999);
+      if (c[emoji] == 0) c.remove(emoji);
+      final by = msg.reactBy.putIfAbsent(emoji, () => <String>{});
+      if (add) { by.add(who); } else { by.remove(who); }
+      if (by.isEmpty) msg.reactBy.remove(emoji);
+    });
   }
 
   @override
@@ -774,6 +805,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _sendBurst(String emoji) {
     HapticFeedback.lightImpact();
     if (_convKey != null) SyncHub.I.ably?.sendBurst(_convKey!, emoji);
+    _party?.send({'t': 'burst', 'emoji': emoji}); // PartyKit (replaces Ably burst)
     _spawnBurst(emoji); // optimistic local animation (peers see it via the burst stream)
   }
 
@@ -3729,6 +3761,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         t.sendReaction(_convKey!, myUid, m.evId!, prev, add: false, whoName: _fromNameTag); // retract the old one
       }
       t.sendReaction(_convKey!, myUid, m.evId!, emoji, add: adding, whoName: _fromNameTag);
+    }
+    // PartyKit live reaction (the reaction's home now that Ably is retired).
+    final p = _party;
+    final mid = m.evId;
+    if (p != null && mid != null) {
+      if (prev != null && prev != emoji) {
+        p.send(<String, dynamic>{'t': 'reaction', 'mid': mid, 'emoji': prev, 'add': false, 'whoName': _fromNameTag});
+      }
+      p.send(<String, dynamic>{'t': 'reaction', 'mid': mid, 'emoji': emoji, 'add': adding, 'whoName': _fromNameTag});
     }
   }
 
