@@ -37,6 +37,7 @@ import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
 import { hold, refund } from "../ledger";
 import { LANGS as TRL_LANGS, RATE_PER_MIN as TRL_RATE } from "./translate";
 import { track, brainFact } from "../hooks";
+import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { recordView, trackImpressions, geoOf } from "./insights";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { notifyUser } from "../notify";
@@ -286,6 +287,9 @@ export async function updateListing(req: Request, env: Env, id: string): Promise
   const sets = keys.map((k, i) => `${k}=?${i + 2}`).join(", ");
   await metaDb(env).prepare(`UPDATE listings SET ${sets}, updated_at=?${keys.length + 2} WHERE id=?1`)
     .bind(id, ...keys.map((k) => f[k]), Date.now()).run();
+  // #8: live listing update — nudge anyone viewing this listing to refresh
+  // (price / details changed). Ephemeral, best-effort.
+  void partyEmit(env, `listing:${id}`, { t: "listing_update" });
   // Renewing the expiry on a published/live marketplace listing recomputes the
   // absolute expires_at from "now" so the renewed window actually takes effect.
   if ("expiry_days" in f && Number(f.expiry_days) > 0 && MARKET_KINDS.has(String(row.kind)) && row.status !== "draft") {
@@ -386,6 +390,7 @@ export async function setListingStatus(req: Request, env: Env, id: string): Prom
   }
   if (l.status === "draft") return json({ error: "publish first" }, 409);
   await db.prepare("UPDATE listings SET status=?2, updated_at=?3 WHERE id=?1").bind(id, to, Date.now()).run();
+  void partyEmit(env, `listing:${id}`, { t: "listing_update", status: to }); // #8: live SOLD/status change
   if (to === "cancelled" || to === "completed") { await releaseBlocks(env, APP, id); await ftsSync(env, id, true); }
   if (to === "live") {
     const who = await nameOf(env, ctx.uid);

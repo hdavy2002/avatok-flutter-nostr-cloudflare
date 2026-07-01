@@ -5,8 +5,10 @@ import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/listings_api.dart';
 import '../../core/money_api.dart';
+import 'dart:async';
 import 'dart:convert';
 
+import '../../sync/party/party_hub.dart';
 import '../marketplace/call_agent_sheet.dart';
 import '../../core/marketplace_api.dart';
 import '../../core/chat_state.dart';
@@ -37,11 +39,42 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   ListingDetail? _d;
   bool _loading = true;
 
+  // PartyKit live layer for this listing (ephemeral; gated by partyEnabled).
+  PartyRoom? _lparty;
+  StreamSubscription? _lpartyEvents;
+  StreamSubscription? _lpartyPresence;
+  int _viewers = 0; // #7: how many people are viewing this listing right now
+
   @override
   void initState() {
     super.initState();
     _load();
+    _joinListingParty();
     Analytics.capture('listing_detail_viewed', {'listing_id': widget.listingId});
+  }
+
+  /// Join this listing's party room so we get a LIVE viewer count (#7) and pull a
+  /// fresh copy the instant the seller changes the price / marks it SOLD (#8).
+  /// No-op until partyEnabled is flipped on (dormant room).
+  void _joinListingParty() {
+    try {
+      final room = PartyHub.I.join('listing:${widget.listingId}');
+      _lparty = room;
+      _lpartyPresence = room.presence.listen((roster) {
+        if (mounted) setState(() => _viewers = roster.length);
+      });
+      _lpartyEvents = room.events.listen((e) {
+        if (e['t'] == 'listing_update' && mounted) _load(); // price/SOLD changed → refresh
+      });
+    } catch (_) {/* best-effort live layer */}
+  }
+
+  @override
+  void dispose() {
+    _lpartyEvents?.cancel();
+    _lpartyPresence?.cancel();
+    _lparty?.leave();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -384,6 +417,13 @@ class ListingDetailView extends StatelessWidget {
               ),
             ]),
           ]),
+          // #7: live viewer count (PartyKit roster). Shown only when others are
+          // here too; dormant/0 until partyEnabled is on.
+          if (_viewers > 1) ...[
+            const SizedBox(height: 6),
+            Text('👀 $_viewers people viewing now',
+                style: ZineText.sub(size: 12, color: Zine.inkMute)),
+          ],
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, children: [
             ZineSticker(card.kind == 'live_event' ? '🎥 Live event' : '🗓 ${card.capacity == 1 ? '1:1 session' : 'Group session (${card.capacity})'}'),
