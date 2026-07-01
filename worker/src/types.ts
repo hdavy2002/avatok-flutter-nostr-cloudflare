@@ -198,6 +198,7 @@ export interface Env {
   // Ably-transport + R2-archive rollout flags (Specs/ABLY-TRANSPORT-R2-ARCHIVE-PROPOSAL.md).
   CHAT_ARCHIVE?: string;     // "1" → enqueue every sent message to R2 + D1 message_index (Phase 1)
   MSG_TRANSPORT?: string;    // "ably" → Ably is the PRIMARY live path; InboxDO fan-out moves off the hot path (Phase 2)
+  PARTY_ENABLED?: string;    // "1" → PartyKit realtime layer on (client opens party sockets); dark otherwise
   MSG_STATE_STORE?: string;  // "d1" → owner-private state (read/hide/call-log) reads+writes go to D1 (Phase 5)
 
   // Cloudflare AI Gateway (2026-06-18). When set, all Workers-AI + Google image

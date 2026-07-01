@@ -122,6 +122,9 @@ const String kNostrRelayUrl = 'wss://relay.avatok.ai/';
 // Per-user InboxDO WebSocket + HTTP send/sync/receipt. Auth = Clerk JWT, passed
 // as ?token= on the socket and as the Authorization bearer on HTTP.
 const String kInboxWsUrl = 'wss://$kSignalingHost/api/inbox';
+// PartyKit realtime layer (ephemeral; replaces Ably). One socket per room:
+// wss://host/api/party?room=<type:id>&token=<clerk jwt>. See sync/party/party_hub.dart.
+const String kPartyWsUrl = 'wss://$kSignalingHost/api/party';
 const String kMsgSendUrl = 'https://$kSignalingHost/api/msg/send';
 const String kMsgSyncUrl = 'https://$kSignalingHost/api/msg/sync';
 const String kMsgReceiptUrl = 'https://$kSignalingHost/api/msg/receipt';

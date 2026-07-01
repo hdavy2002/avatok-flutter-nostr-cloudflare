@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../sync/party/party_hub.dart';
 import '../sync/transport/ava_transport.dart' show RuntimeMessagingProvider;
 import 'ava_log.dart';
 import 'config.dart';
@@ -67,6 +68,18 @@ class RemoteConfig {
   /// AI Ringback Tones + Busy Tone — master switch (server panic off). Default
   /// mirrors kRingbackEnabledDefault so a fetch failure keeps the feature on.
   static bool get ringbackEnabled => _b('ringbackEnabled', kRingbackEnabledDefault);
+  /// In-chat AI image generation (ChatAVA "make an image"). Server kill switch
+  /// mirrors the compile default [kGenerativeEnabledDefault]. When false the
+  /// client short-circuits every image request to a canned "coming soon" reply
+  /// WITHOUT a network call (see ava_generative/image_tool.dart). Live (pro)
+  /// build sets `imageGenEnabled:false` in prod KV; staging keeps it true so the
+  /// side-by-side test APK still exercises generation.
+  static bool get imageGenEnabled => _b('imageGenEnabled', kGenerativeEnabledDefault);
+  /// Guardian (scam/grooming/deepfake safety) surfaces + settings section.
+  /// Mirrors the compile default [kGuardianEnabledDefault]. When false the
+  /// Guardian settings section is not registered and the per-chat shield icon is
+  /// hidden. Live (pro) build sets `guardianEnabled:false` in prod KV.
+  static bool get guardianEnabled => _b('guardianEnabled', kGuardianEnabledDefault);
   /// AvaMarketplace (buy/sell/social + agent negotiation, Specs/AVAMARKETPLACE-
   /// FINAL-PROPOSAL.md). Default OFF so the feature stays dark after a config
   /// fetch failure and during phased rollout — flip `marketplaceEnabled: true`
@@ -100,6 +113,9 @@ class RemoteConfig {
           final mp = m['messagingProvider'];
           RuntimeMessagingProvider.value =
               (mp is String && mp.isNotEmpty) ? mp : null;
+          // PartyKit realtime layer master switch (replaces Ably). Ships dark
+          // until the PartyDO is deployed + this flag flipped on server-side.
+          PartyHub.I.setEnabled(m['partyEnabled'] == true);
           revision.value++;
         }
       }
