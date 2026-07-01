@@ -403,6 +403,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // so live delivery resumes at once, and clear the unread badge.
       _inbox?.ensureConnected();
       PushService.clearMessageBadge();
+      // Ship any telemetry the background FCM isolate parked while we were away
+      // (including background crashes, which are otherwise invisible).
+      PushService.drainPendingBgTelemetry();
       // Re-read the LOCALLY-SAVED contacts on every resume so anything added while
       // we were backgrounded shows up on return — e.g. a marketplace seller
       // materialised by "Contact agent", or a tel-contact. The list is otherwise

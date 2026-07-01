@@ -34,6 +34,39 @@ const _msgChannel = AndroidNotificationChannel(
   description: 'New message notifications', importance: Importance.high,
 );
 
+// The BACKGROUND FCM isolate is a SEPARATE Dart isolate with none of the app's
+// startup wiring. `_local` here is a fresh, UNINITIALIZED plugin instance, and
+// calling `_local.show()` on it without `initialize()` throws natively — which
+// is why the app appeared to "crash on every FCM" while backgrounded. Worse, the
+// bg isolate has no PostHog, so those crashes were INVISIBLE in telemetry. The
+// two helpers below fix both: idempotently initialize `_local` in whichever
+// isolate is about to show a banner, and durably record bg events/errors to a
+// device-level queue the main isolate ships to PostHog on next foreground.
+bool _localReady = false;
+Future<void> _ensureLocalInit() async {
+  if (_localReady) return;
+  try {
+    await _local.initialize(const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ));
+    await _local
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_msgChannel);
+    _localReady = true;
+  } catch (_) {/* leave false so the next push retries init */}
+}
+
+const _kPendingBgTelemetry = 'pending_bg_telemetry';
+Future<void> _bgTrack(String event, Map<String, dynamic> props) async {
+  try {
+    final raw = await DiskCache.readGlobal(_kPendingBgTelemetry);
+    final list = (raw == null || raw.isEmpty) ? <dynamic>[] : (jsonDecode(raw) as List);
+    list.add({'event': event, 'props': props, 'ts': DateTime.now().millisecondsSinceEpoch});
+    if (list.length > 60) list.removeRange(0, list.length - 60); // cap the queue
+    await DiskCache.writeGlobal(_kPendingBgTelemetry, jsonEncode(list));
+  } catch (_) {/* best-effort; telemetry must never itself crash the handler */}
+}
+
 // --- Unread app-icon badge (red dot + count, WhatsApp-style) ----------------
 // Device-level (NOT per-account): the launcher badge is one OS-level affordance
 // for the whole phone, and it's a transient count cleared the moment the app is
@@ -81,6 +114,7 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
   final group = (d['groupName'] ?? 'a group').toString();
   final conv = (d['conv'] ?? '').toString();
   final count = await _bumpBadge();
+  await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
   await _local.show(
     8001,
     'Added to a group',
@@ -103,28 +137,48 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   final d = message.data;
-  if (d['type'] == 'message') {
-    await _showMessageNotif(d);
-  } else if (d['type'] == 'group_invite') {
-    await _showGroupInviteNotif(d);
-  } else if (d['type'] == 'del') {
-    // Delete-for-everyone — silent. Park it for the app to apply on next foreground.
-    await _queuePendingDelete(d);
-  } else if (d['type'] == 'hide') {
-    // Delete-for-me / Undo on another of MY devices — silent. Park it.
-    await _queuePendingHide(d);
-  } else if (d['type'] == 'call_del' || d['type'] == 'call_clear') {
-    // Call-log delete/clear from another of MY devices — silent wake. The isolate
-    // has no AccountScope, so park it for SyncHub.drainPendingCallOps on foreground.
-    await _queuePendingCallOp(d);
-  } else if (d['type'] == 'call-status') {
-    // Caller cancelled / call ended before we answered → stop ringing.
-    final callId = (d['callId'] ?? '').toString();
-    if (callId.isNotEmpty && _terminalCallStatus((d['status'] ?? '').toString())) {
-      await FlutterCallkitIncoming.endCall(callId);
+  final type = (d['type'] ?? '').toString();
+  // Record EVERY background push the instant it arrives (durably — the main
+  // isolate ships it to PostHog on foreground). This alone makes "did the FCM
+  // even reach the device, and of what type" queryable instead of invisible.
+  await _bgTrack('fcm_bg_received', {
+    'type': type,
+    'callId': (d['callId'] ?? '').toString(),
+    'keys': d.keys.toList(),
+  });
+  // Whole-handler guard: a throw in the bg isolate used to look like a hard app
+  // crash (and take down any co-processing). Now it's caught + reported, never fatal.
+  try {
+    if (type == 'message') {
+      await _showMessageNotif(d);
+    } else if (type == 'group_invite') {
+      await _showGroupInviteNotif(d);
+    } else if (type == 'del') {
+      // Delete-for-everyone — silent. Park it for the app to apply on next foreground.
+      await _queuePendingDelete(d);
+    } else if (type == 'hide') {
+      // Delete-for-me / Undo on another of MY devices — silent. Park it.
+      await _queuePendingHide(d);
+    } else if (type == 'call_del' || type == 'call_clear') {
+      // Call-log delete/clear from another of MY devices — silent wake. The isolate
+      // has no AccountScope, so park it for SyncHub.drainPendingCallOps on foreground.
+      await _queuePendingCallOp(d);
+    } else if (type == 'call-status') {
+      // Caller cancelled / call ended before we answered → stop ringing.
+      final callId = (d['callId'] ?? '').toString();
+      if (callId.isNotEmpty && _terminalCallStatus((d['status'] ?? '').toString())) {
+        await FlutterCallkitIncoming.endCall(callId);
+      }
+    } else {
+      await _showIncoming(d);
     }
-  } else {
-    await _showIncoming(d);
+    await _bgTrack('fcm_bg_handled', {'type': type});
+  } catch (e, st) {
+    await _bgTrack('fcm_bg_error', {
+      'type': type,
+      'error': e.toString(),
+      'stack': st.toString().split('\n').take(8).join(' | '),
+    });
   }
 }
 
@@ -245,6 +299,7 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
           summaryText: count > 1 ? '$count new messages' : null,
         )
       : null;
+  await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
   await _local.show(
     8000, // fixed id → the message notification updates in place (one banner)
     who,
@@ -325,6 +380,28 @@ class PushService {
   static String? _openedCallId;
   static int _openedAt = 0;
 
+  /// Ship telemetry the BACKGROUND FCM isolate parked to a device-level queue
+  /// (every push it received, every push it handled, and — crucially — any error
+  /// it hit) up to PostHog now that we're in the main isolate with Analytics
+  /// live. Called on cold start and whenever the app foregrounds. This is what
+  /// makes previously-invisible background crashes queryable.
+  static Future<void> drainPendingBgTelemetry() async {
+    try {
+      final raw = await DiskCache.readGlobal(_kPendingBgTelemetry);
+      if (raw == null || raw.isEmpty) return;
+      final list = (jsonDecode(raw) as List);
+      await DiskCache.writeGlobal(_kPendingBgTelemetry, '[]'); // clear before send
+      for (final e in list) {
+        final m = (e as Map);
+        Analytics.capture((m['event'] ?? 'fcm_bg').toString(), {
+          ...((m['props'] as Map?)?.cast<String, dynamic>() ?? const {}),
+          'bg_ts': m['ts'],
+          'source': 'bg_isolate',
+        });
+      }
+    } catch (_) {/* best-effort */}
+  }
+
   static Future<void> init() async {
     // Desktop (macOS) test build: no APNs and no native incoming-call UI
     // (flutter_callkit_incoming is mobile-only). Skip push/CallKit wiring so the
@@ -350,6 +427,10 @@ class PushService {
     await _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_msgChannel);
+    _localReady = true; // main isolate is now initialized → _ensureLocalInit no-ops
+    // Ship any telemetry the BACKGROUND isolate parked (incl. bg crashes) now that
+    // Analytics is live — so background failures stop being invisible.
+    await drainPendingBgTelemetry();
     // Cold-started by tapping a message notification? Route to the inbox.
     final launch = await _local.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp ?? false) {
@@ -358,6 +439,13 @@ class PushService {
     FirebaseMessaging.onMessage.listen((m) {
       final d = m.data;
       AvaLog.I.log('push', 'FCM received (foreground) type=${d['type']} callId=${d['callId'] ?? ''}');
+      Analytics.capture('fcm_fg_received', {
+        'type': (d['type'] ?? '').toString(),
+        'callId': (d['callId'] ?? '').toString(),
+      });
+      // Any background pushes that arrived (and any bg crash) just before we came
+      // to the foreground get shipped now too.
+      drainPendingBgTelemetry();
       // Server-relayed call status → update the active CallScreen.
       if (d['type'] == 'call-status') {
         final callId = (d['callId'] ?? '').toString();
