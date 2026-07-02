@@ -65,12 +65,12 @@ export async function transferCoins(
   ref: string,
   commissionOverride?: number,
 ): Promise<{ ok: boolean; status: number; body: any; sellerNet: number; commission: number }> {
-  const debit = await walletOp(env, buyer, { op: "spend", uid: buyer, amount, app_name: app, counterparty_npub: seller, ref });
+  const debit = await walletOp(env, buyer, { op: "spend", uid: buyer, amount, app_name: app, counterparty_uid: seller, ref });
   if (debit.status !== 200) return { ok: false, status: debit.status, body: debit.body, sellerNet: 0, commission: 0 };
   const rate = commissionOverride ?? await commissionRate(env, app);
   const commission = Math.round(amount * rate);
   const sellerNet = amount - commission;
-  await walletOp(env, seller, { op: "earn", uid: seller, amount: sellerNet, commission, app_name: app, counterparty_npub: buyer, ref });
+  await walletOp(env, seller, { op: "earn", uid: seller, amount: sellerNet, commission, app_name: app, counterparty_uid: buyer, ref });
   return { ok: true, status: 200, body: debit.body, sellerNet, commission };
 }
 
@@ -291,7 +291,7 @@ async function creditTopup(
 
 // POST /api/wallet/spend — DISABLED 2026-06-18 (financial hardening).
 //
-// This endpoint accepted a CLIENT-SUPPLIED `amount` (and an arbitrary `to_npub`),
+// This endpoint accepted a CLIENT-SUPPLIED `amount` (and an arbitrary `to_uid`),
 // which a re-coded client could use to UNDERPAY for goods/features. No client
 // flow uses it: every real purchase already goes through a dedicated,
 // SERVER-PRICED endpoint where the amount is derived from server records, never
@@ -339,7 +339,7 @@ export async function walletTransactions(req: Request, env: Env): Promise<Respon
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const rs = await env.DB_WALLET.withSession("first-unconstrained").prepare(
-    "SELECT id, type, amount, balance_after, app_name, counterparty_npub, commission, ref, created_at FROM wallet_transactions WHERE uid=?1 ORDER BY created_at DESC LIMIT 100",
+    "SELECT id, type, amount, balance_after, app_name, counterparty_uid, commission, ref, created_at FROM wallet_transactions WHERE uid=?1 ORDER BY created_at DESC LIMIT 100",
   ).bind(ctx.uid).all();
   return json({ transactions: rs.results ?? [] });
 }

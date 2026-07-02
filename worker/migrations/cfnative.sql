@@ -1,7 +1,7 @@
 -- Cloudflare-native pivot (2026-06-09) — uid-keyed core (Nostr deprecated).
--- Identity is now the Clerk user id (uid). These tables REPLACE the npub-keyed
--- identity/messaging surfaces going forward; the legacy npub tables (profiles,
--- clerk_nostr_link, blocks, mutes, push_tokens) are dropped in the housekeeping
+-- Identity is now the Clerk user id (uid). These tables REPLACE the uid-keyed
+-- identity/messaging surfaces going forward; the legacy uid tables (profiles,
+-- clerk_account_link, blocks, mutes, push_tokens) are dropped in the housekeeping
 -- re-key pass once every route is migrated. Additive here so the in-flight worker
 -- keeps serving until the new worker version ships.
 -- Apply: wrangler d1 execute avatok-meta --remote --file=migrations/cfnative.sql

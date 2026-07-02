@@ -70,7 +70,7 @@ export async function sessionOp(env: Env, key: string, op: object): Promise<any>
 
 async function displayName(env: Env, uid: string): Promise<string> {
   try {
-    const r = await metaDb(env).prepare("SELECT name, handle FROM profiles WHERE npub=?1 OR clerk_user_id=?1").bind(uid).first<any>();
+    const r = await metaDb(env).prepare("SELECT name, handle FROM profiles WHERE uid=?1 OR clerk_user_id=?1").bind(uid).first<any>();
     return r?.name || r?.handle || "Someone";
   } catch { return "Someone"; }
 }
@@ -78,7 +78,7 @@ async function displayName(env: Env, uid: string): Promise<string> {
 /** Creator block list (A5): creator→buyer row in `blocks` refuses tokens/booking. */
 export async function creatorBlocked(env: Env, creatorId: string, uid: string): Promise<boolean> {
   try {
-    const r = await metaDb(env).prepare("SELECT 1 FROM blocks WHERE uid=?1 AND blocked_npub=?2").bind(creatorId, uid).first();
+    const r = await metaDb(env).prepare("SELECT 1 FROM blocks WHERE uid=?1 AND blocked_uid=?2").bind(creatorId, uid).first();
     return !!r;
   } catch { return false; }
 }
@@ -136,7 +136,7 @@ export async function liveStart(req: Request, env: Env): Promise<Response> {
     db.prepare("UPDATE listings SET status='live', updated_at=?2 WHERE id=?1").bind(id, now),
     db.prepare("UPDATE live_sessions SET state='live', started_at=COALESCE(started_at,?2), last_disconnect_at=NULL, updated_at=?2 WHERE listing_id=?1").bind(id, now),
   ]);
-  await sessionOp(env, `live:${id}`, { op: "init", creator_npub: ctx.uid });
+  await sessionOp(env, `live:${id}`, { op: "init", creator_uid: ctx.uid });
   await sessionOp(env, `live:${id}`, { op: "schedule", sid: id, kind: "live_event", starts_at: startsAt, ends_at: endsAt, host_id: ctx.uid });
   await sessionOp(env, `live:${id}`, { op: "host-live", live: true });
 
@@ -287,7 +287,7 @@ export async function liveState(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const s = await sessionOp(env, `live:${id}`, { op: "state" });
   // Earnings-so-far for the creator HUD: ticket revenue + donations.
-  if (s?.host_id === ctx.uid || s?.creator_npub === ctx.uid) {
+  if (s?.host_id === ctx.uid || s?.creator_uid === ctx.uid) {
     const o = await metaDb(env).prepare(
       "SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS gross FROM orders WHERE listing_id=?1 AND status IN ('held','free','settled')",
     ).bind(id).first<any>();

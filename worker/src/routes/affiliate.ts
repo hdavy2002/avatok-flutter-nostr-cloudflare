@@ -731,7 +731,7 @@ export async function payAffiliateOnTopup(env: Env, referredUid: string, coins: 
     // Money first (WalletDO op_id dedupe = idempotent), then the reporting row.
     await walletOp(env, attr.affiliate_uid, {
       op: "earn", uid: attr.affiliate_uid, amount: aff, commission: 0,
-      app_name: APP, counterparty_npub: referredUid, ref: topupId, op_id: commId,
+      app_name: APP, counterparty_uid: referredUid, ref: topupId, op_id: commId,
       ledger: {
         debit: ACCT_PLATFORM_FEES, credit: acctUser(attr.affiliate_uid),
         type: "affiliate_topup_commission", ref: topupId,

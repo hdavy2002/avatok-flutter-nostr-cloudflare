@@ -3,7 +3,7 @@
 // queue). All dual-auth. The Agent Inbox is the single agent surface.
 //   GET  /api/agent/personas            list my personas
 //   PUT  /api/agent/personas/:app       upsert a persona (moderated on save)
-//   POST /api/agent/converse            start an agent↔agent conversation { app, peer_npub }
+//   POST /api/agent/converse            start an agent↔agent conversation { app, peer_uid }
 //   GET  /api/agent/inbox               my inbox
 //   GET  /api/agent/inbox/:id           one inbox item (with transcript)
 //   POST /api/agent/approve             approve / dismiss / undo an inbox item { id, action }
@@ -56,13 +56,13 @@ export async function upsertPersona(req: Request, env: Env, app: string): Promis
   return json({ ok: true, app, moderation });
 }
 
-// POST /api/agent/converse { app, peer_npub } — reserve a slot, create the convo, enqueue.
+// POST /api/agent/converse { app, peer_uid } — reserve a slot, create the convo, enqueue.
 export async function converse(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as any;
-  const app = String(b.app || ""); const peer = String(b.peer_npub || "");
-  if (!app || !peer) return json({ error: "app + peer_npub required" }, 400);
+  const app = String(b.app || ""); const peer = String(b.peer_uid || "");
+  if (!app || !peer) return json({ error: "app + peer_uid required" }, 400);
   if (peer === ctx.uid) return json({ error: "cannot converse with yourself" }, 400);
 
   const mine = await metaDb(env).prepare("SELECT enabled, moderation FROM agent_personas WHERE uid=?1 AND app_name=?2").bind(ctx.uid, app).first<any>();
@@ -78,12 +78,12 @@ export async function converse(req: Request, env: Env): Promise<Response> {
   const cid = crypto.randomUUID();
   const now = Date.now();
   await metaDb(env).prepare(
-    `INSERT INTO agent_conversations (id, uid, app_name, peer_npub, status, turns, created_at, updated_at, expires_at)
+    `INSERT INTO agent_conversations (id, uid, app_name, peer_uid, status, turns, created_at, updated_at, expires_at)
      VALUES (?1,?2,?3,?4,'active',0,?5,?5,?6)`,
   ).bind(cid, ctx.uid, app, peer, now, now + 30 * 86_400_000).run();
 
   // Enqueue the conversation task (runs in ConversationDO via the agent-tasks consumer).
-  try { await env.Q_AGENT.send({ type: "converse", conversation_id: cid, uid: ctx.uid, app, peer_npub: peer }); } catch { /* will retry */ }
+  try { await env.Q_AGENT.send({ type: "converse", conversation_id: cid, uid: ctx.uid, app, peer_uid: peer }); } catch { /* will retry */ }
   track(env, ctx.uid, "agent_conversation_started", app, { remaining: rb.remaining });
   return json({ ok: true, conversation_id: cid, status: "active" });
 }

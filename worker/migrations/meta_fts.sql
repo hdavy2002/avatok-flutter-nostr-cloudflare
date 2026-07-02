@@ -2,7 +2,7 @@
 -- /api/search). External-content table mirrors `profiles`; triggers keep it in
 -- sync; MATCH is index-backed and supports prefix queries (e.g. `dav*`).
 CREATE VIRTUAL TABLE IF NOT EXISTS profiles_fts USING fts5(
-  npub UNINDEXED,
+  uid UNINDEXED,
   handle,
   display_name,
   content=profiles,
@@ -10,24 +10,24 @@ CREATE VIRTUAL TABLE IF NOT EXISTS profiles_fts USING fts5(
 );
 
 -- One-time backfill of existing rows.
-INSERT INTO profiles_fts(rowid, npub, handle, display_name)
-  SELECT rowid, npub, handle, display_name FROM profiles
+INSERT INTO profiles_fts(rowid, uid, handle, display_name)
+  SELECT rowid, uid, handle, display_name FROM profiles
   WHERE rowid NOT IN (SELECT rowid FROM profiles_fts);
 
 -- Keep FTS in sync with profiles.
 CREATE TRIGGER IF NOT EXISTS profiles_ai AFTER INSERT ON profiles BEGIN
-  INSERT INTO profiles_fts(rowid, npub, handle, display_name)
-  VALUES (new.rowid, new.npub, new.handle, new.display_name);
+  INSERT INTO profiles_fts(rowid, uid, handle, display_name)
+  VALUES (new.rowid, new.uid, new.handle, new.display_name);
 END;
 
 CREATE TRIGGER IF NOT EXISTS profiles_ad AFTER DELETE ON profiles BEGIN
-  INSERT INTO profiles_fts(profiles_fts, rowid, npub, handle, display_name)
-  VALUES ('delete', old.rowid, old.npub, old.handle, old.display_name);
+  INSERT INTO profiles_fts(profiles_fts, rowid, uid, handle, display_name)
+  VALUES ('delete', old.rowid, old.uid, old.handle, old.display_name);
 END;
 
 CREATE TRIGGER IF NOT EXISTS profiles_au AFTER UPDATE ON profiles BEGIN
-  INSERT INTO profiles_fts(profiles_fts, rowid, npub, handle, display_name)
-  VALUES ('delete', old.rowid, old.npub, old.handle, old.display_name);
-  INSERT INTO profiles_fts(rowid, npub, handle, display_name)
-  VALUES (new.rowid, new.npub, new.handle, new.display_name);
+  INSERT INTO profiles_fts(profiles_fts, rowid, uid, handle, display_name)
+  VALUES ('delete', old.rowid, old.uid, old.handle, old.display_name);
+  INSERT INTO profiles_fts(rowid, uid, handle, display_name)
+  VALUES (new.rowid, new.uid, new.handle, new.display_name);
 END;

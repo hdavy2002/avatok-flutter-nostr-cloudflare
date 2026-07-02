@@ -47,7 +47,7 @@ export async function postCommunity(req: Request, env: Env): Promise<Response> {
   const id = String(b.id || crypto.randomUUID());
   const now = Date.now();
   await metaDb(env).prepare(
-    `INSERT INTO communities (id, name, description, avatar_url, owner_npub, created_at)
+    `INSERT INTO communities (id, name, description, avatar_url, owner_uid, created_at)
      VALUES (?1,?2,?3,?4,?5,?6)
      ON CONFLICT(id) DO UPDATE SET name=?2, description=?3, avatar_url=?4`,
   ).bind(id, b.name, b.description ?? null, b.avatar_url ?? null, ctx.uid, now).run();

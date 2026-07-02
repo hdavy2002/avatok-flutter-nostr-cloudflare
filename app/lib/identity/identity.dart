@@ -50,11 +50,9 @@ class AccountScope {
 /// Persists the local key material in platform secure storage (Keychain /
 /// EncryptedSharedPreferences). It NEVER leaves the device in plaintext. The key
 /// is namespaced per Clerk account so two accounts on one phone don't share an
-/// identity. (Storage-key names retain the historical `ava_nostr_priv` prefix so
-/// existing installs keep reading the same stored value — renaming it would
-/// orphan that material, which is still the legacy vault key.)
+/// identity.
 class IdentityStore {
-  static const _legacyKey = 'ava_nostr_priv';
+  static const _unscopedKey = 'ava_device_key';
   // In-memory cache. flutter_secure_storage reads are slow on some devices
   // (notably Samsung), and load() is called from many screens — re-reading the
   // encrypted key every time added ~1s+ to cold-start. Cache it per account; the
@@ -71,27 +69,16 @@ class IdentityStore {
             );
 
   String get _key => (AccountScope.id == null || AccountScope.id!.isEmpty)
-      ? _legacyKey
-      : 'ava_nostr_priv_${AccountScope.id}';
+      ? _unscopedKey
+      : 'ava_device_key_${AccountScope.id}';
 
   Future<Identity?> load() async {
     final scope = AccountScope.id ?? '';
     if (_cached != null && _cachedScope == scope) {
-      ApiAuth.identity = _cached; // keep the legacy-key accessor in sync
+      ApiAuth.identity = _cached; // keep the key accessor in sync
       return _cached;
     }
-    final key = _key;
-    var priv = await _storage.read(key: key);
-    // One-time migration: the first account to log in after namespacing claims
-    // the pre-namespacing key, so the existing user keeps their key material.
-    if ((priv == null || priv.isEmpty) && key != _legacyKey) {
-      final legacy = await _storage.read(key: _legacyKey);
-      if (legacy != null && legacy.isNotEmpty) {
-        await _storage.write(key: key, value: legacy);
-        await _storage.delete(key: _legacyKey);
-        priv = legacy;
-      }
-    }
+    final priv = await _storage.read(key: _key);
     if (priv == null || priv.isEmpty) return null;
     final id = Identity.fromPrivateKey(priv);
     ApiAuth.identity = id; // keep the legacy-key accessor in sync

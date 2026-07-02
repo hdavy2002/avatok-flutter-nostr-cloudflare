@@ -123,7 +123,7 @@ export async function referralClaim(req: Request, env: Env): Promise<Response> {
   // Credit the INVITER into the 7-day hold (reversible). Idempotent by op_id.
   const credit = await walletOp(env, referrer, {
     op: "earn", uid: referrer, amount: REWARD_COINS, commission: 0,
-    app_name: APP, counterparty_npub: referred, ref: `referral:${referred}`,
+    app_name: APP, counterparty_uid: referred, ref: `referral:${referred}`,
     op_id: `referral:${referred}`,
     ledger: { credit: `user:${referrer}`, type: "referral", ref: `referral:${referred}`,
       meta: JSON.stringify({ title: `Referral reward (+${REWARD_COINS} coins)` }) },

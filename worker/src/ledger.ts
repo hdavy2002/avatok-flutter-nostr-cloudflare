@@ -119,12 +119,12 @@ export async function donation(env: Env, buyer: string, creator: string, amount:
   const meta = JSON.stringify({ title: opts?.title ?? "Live donation", gross: amount, fee, net, fee_rate: rate });
   // 1. Debit the buyer (gross) — carries the buyer→creator donation row.
   const d = await walletOp(env, buyer, {
-    op: "spend", uid: buyer, amount, type: "spend", app_name: "avalive", counterparty_npub: creator, ref, op_id: `${ref}:spend`,
+    op: "spend", uid: buyer, amount, type: "spend", app_name: "avalive", counterparty_uid: creator, ref, op_id: `${ref}:spend`,
     ledger: { debit: acctUser(buyer), credit: acctUser(creator), type: "donation", ref, meta },
   });
   if (d.status !== 200) return { ok: false, status: d.status, body: d.body, net: 0, fee: 0 };
   // 2. Credit the creator the NET, spendable immediately (no hold).
-  await walletOp(env, creator, { op: "credit", uid: creator, amount: net, type: "donation", app_name: "avalive", counterparty_npub: buyer, ref, op_id: `${ref}:credit` });
+  await walletOp(env, creator, { op: "credit", uid: creator, amount: net, type: "donation", app_name: "avalive", counterparty_uid: buyer, ref, op_id: `${ref}:credit` });
   // 3. Ledger-only fee row balances the creator's account (gross in − fee out = net).
   if (fee > 0) await sendLedgerRow(env, `${ref}:fee`, acctUser(creator), ACCT_PLATFORM_FEES, fee, "fee", ref, { title: "Donation fee", gross: amount, fee_rate: rate });
   return { ok: true, status: 200, body: { ok: true, gross: amount, net, fee, buyer_balance: d.body?.balance }, net, fee };

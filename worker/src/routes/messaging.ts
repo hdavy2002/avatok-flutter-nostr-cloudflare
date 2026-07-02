@@ -64,7 +64,7 @@ async function blockersOf(env: Env, sender: string, candidates: string[]): Promi
   for (let i = 0; i < candidates.length; i += BLOCKS_CHUNK) {
     const chunk = candidates.slice(i, i + BLOCKS_CHUNK);
     const rs = await env.DB_META.prepare(
-      `SELECT uid FROM blocks WHERE blocked_npub = ?1 AND uid IN (${chunk.map((_, j) => `?${j + 2}`).join(",")})`,
+      `SELECT uid FROM blocks WHERE blocked_uid = ?1 AND uid IN (${chunk.map((_, j) => `?${j + 2}`).join(",")})`,
     ).bind(sender, ...chunk).all<{ uid: string }>();
     for (const r of rs.results ?? []) out.add(r.uid);
   }

@@ -7,7 +7,7 @@
 
 -- Mirror of each user's current balance (eventually-consistent; DO is source of truth).
 CREATE TABLE IF NOT EXISTS wallet_balances (
-  npub        TEXT PRIMARY KEY,
+  uid        TEXT PRIMARY KEY,
   balance     INTEGER NOT NULL DEFAULT 0,   -- coins
   held        INTEGER NOT NULL DEFAULT 0,   -- coins in 7-day earning hold (not yet spendable)
   updated_at  INTEGER NOT NULL
@@ -16,24 +16,24 @@ CREATE TABLE IF NOT EXISTS wallet_balances (
 -- Append-only audit ledger.
 CREATE TABLE IF NOT EXISTS wallet_transactions (
   id                TEXT PRIMARY KEY,        -- uuid
-  npub              TEXT NOT NULL,
+  uid              TEXT NOT NULL,
   type              TEXT NOT NULL,           -- 'topup'|'spend'|'earn'|'hold_release'|'refund'|'gift'|'payout'
   amount            INTEGER NOT NULL,        -- signed: +credit / -debit (coins)
   balance_after     INTEGER,                 -- balance snapshot after applying (best-effort)
   app_name          TEXT,                    -- which app drove it
-  counterparty_npub TEXT,                    -- the other side (creator/buyer), if any
+  counterparty_uid TEXT,                    -- the other side (creator/buyer), if any
   commission        INTEGER NOT NULL DEFAULT 0, -- coins taken as commission (on earns)
   ref               TEXT,                    -- free-form reference (listing id, stream id, session id) — NO PII
   status            TEXT NOT NULL DEFAULT 'settled', -- 'settled'|'pending'|'reversed'
   created_at        INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_wtx_npub ON wallet_transactions(npub, created_at);
+CREATE INDEX IF NOT EXISTS idx_wtx_uid ON wallet_transactions(uid, created_at);
 CREATE INDEX IF NOT EXISTS idx_wtx_type ON wallet_transactions(type, created_at);
 
 -- Stripe top-up sessions (real-money in). status flips on webhook.
 CREATE TABLE IF NOT EXISTS topup_records (
   id                TEXT PRIMARY KEY,        -- uuid
-  npub              TEXT NOT NULL,
+  uid              TEXT NOT NULL,
   stripe_session_id TEXT,                    -- Checkout Session id
   amount_coins      INTEGER NOT NULL,
   amount_cents      INTEGER NOT NULL,        -- USD cents charged (coins * 1)
@@ -42,13 +42,13 @@ CREATE TABLE IF NOT EXISTS topup_records (
   created_at        INTEGER NOT NULL,
   paid_at           INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_topup_npub ON topup_records(npub, created_at);
+CREATE INDEX IF NOT EXISTS idx_topup_uid ON topup_records(uid, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_topup_session ON topup_records(stripe_session_id);
 
 -- 7-day earnings hold (§10.1). Cron releases matured holds → spendable.
 CREATE TABLE IF NOT EXISTS earning_holds (
   id            TEXT PRIMARY KEY,
-  npub          TEXT NOT NULL,
+  uid          TEXT NOT NULL,
   amount        INTEGER NOT NULL,            -- coins held
   source_app    TEXT,
   source_tx_id  TEXT,
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS earning_holds (
   created_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_holds_release ON earning_holds(released, available_at);
-CREATE INDEX IF NOT EXISTS idx_holds_npub ON earning_holds(npub, released);
+CREATE INDEX IF NOT EXISTS idx_holds_uid ON earning_holds(uid, released);
 
 -- Per-app commission rates (§10.1). Seeded; editable.
 CREATE TABLE IF NOT EXISTS commission_rates (

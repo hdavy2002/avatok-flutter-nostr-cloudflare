@@ -6,7 +6,7 @@
 -- A creator's linked payout destination (bank account → Wise recipient).
 CREATE TABLE IF NOT EXISTS payout_accounts (
   id                 TEXT PRIMARY KEY,
-  npub               TEXT NOT NULL,
+  uid               TEXT NOT NULL,
   label              TEXT,                  -- user label, e.g. "HDFC ****1234"
   country            TEXT NOT NULL DEFAULT 'IN',
   currency           TEXT NOT NULL DEFAULT 'INR',
@@ -18,13 +18,13 @@ CREATE TABLE IF NOT EXISTS payout_accounts (
   created_at         INTEGER NOT NULL,
   updated_at         INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_payacct_npub ON payout_accounts(npub, status);
+CREATE INDEX IF NOT EXISTS idx_payacct_uid ON payout_accounts(uid, status);
 
 -- Withdrawal requests. Lifecycle: requested → quoted → transferred → funded →
 -- (webhook) completed | failed. Coins debited from WalletDO at request time.
 CREATE TABLE IF NOT EXISTS payout_requests (
   id               TEXT PRIMARY KEY,
-  npub             TEXT NOT NULL,
+  uid             TEXT NOT NULL,
   account_id       TEXT NOT NULL,
   amount_coins     INTEGER NOT NULL,
   amount_cents     INTEGER NOT NULL,         -- USD cents (coins * 1)
@@ -36,6 +36,6 @@ CREATE TABLE IF NOT EXISTS payout_requests (
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_payreq_npub ON payout_requests(npub, created_at);
+CREATE INDEX IF NOT EXISTS idx_payreq_uid ON payout_requests(uid, created_at);
 CREATE INDEX IF NOT EXISTS idx_payreq_status ON payout_requests(status, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payreq_transfer ON payout_requests(wise_transfer_id);

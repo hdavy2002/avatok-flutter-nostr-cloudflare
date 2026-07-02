@@ -6,7 +6,7 @@
  *
  * To shard the relay later (Rulebook target: DB_RELAY_0..15):
  *   1. Add DB_RELAY_0..15 bindings to wrangler.toml + Env.
- *   2. Decide the axis (time-bucket recommended over author npub%16, because
+ *   2. Decide the axis (time-bucket recommended over author uid%16, because
  *      gift-wrap authors are random and feeds span many authors).
  *   3. Implement relayDbFor() to return the right shard; backfill is a no-op
  *      pre-launch.

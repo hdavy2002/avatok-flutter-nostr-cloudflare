@@ -67,11 +67,11 @@ export async function requireStripeKyc(env: Env, uid: string): Promise<AuthFail 
 }
 
 // Hard block — does `owner` block `other`? (recipient blocks sender → no delivery)
-// Consolidated on the `blocks` table (uid renamed; blocked_npub holds a uid value),
+// Consolidated on the `blocks` table (uid renamed; blocked_uid holds a uid value),
 // which social.ts manages — so the messaging gate honours the same block list.
 export async function blocks(env: Env, owner: string, other: string): Promise<boolean> {
   const r = await env.DB_META
-    .prepare("SELECT 1 FROM blocks WHERE uid = ?1 AND blocked_npub = ?2")
+    .prepare("SELECT 1 FROM blocks WHERE uid = ?1 AND blocked_uid = ?2")
     .bind(owner, other).first();
   return !!r;
 }

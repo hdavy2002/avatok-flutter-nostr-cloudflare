@@ -6,7 +6,7 @@
 
 CREATE TABLE IF NOT EXISTS brain_entities (
   id          TEXT PRIMARY KEY,
-  npub        TEXT NOT NULL,
+  uid        TEXT NOT NULL,
   entity_type TEXT NOT NULL,           -- person|project|company|place|task|goal|interest|event|community
   name        TEXT NOT NULL,
   summary     TEXT,
@@ -17,13 +17,13 @@ CREATE TABLE IF NOT EXISTS brain_entities (
   last_seen   INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_brain_ent_user ON brain_entities(npub, entity_type);
-CREATE INDEX IF NOT EXISTS idx_brain_ent_name ON brain_entities(npub, name);
-CREATE INDEX IF NOT EXISTS idx_brain_ent_importance ON brain_entities(npub, importance DESC);
+CREATE INDEX IF NOT EXISTS idx_brain_ent_user ON brain_entities(uid, entity_type);
+CREATE INDEX IF NOT EXISTS idx_brain_ent_name ON brain_entities(uid, name);
+CREATE INDEX IF NOT EXISTS idx_brain_ent_importance ON brain_entities(uid, importance DESC);
 
 CREATE TABLE IF NOT EXISTS brain_relationships (
   id              TEXT PRIMARY KEY,
-  npub            TEXT NOT NULL,
+  uid            TEXT NOT NULL,
   from_entity_id  TEXT NOT NULL,
   to_entity_id    TEXT NOT NULL,
   relationship    TEXT NOT NULL,
@@ -32,13 +32,13 @@ CREATE TABLE IF NOT EXISTS brain_relationships (
   first_seen      INTEGER NOT NULL,
   last_seen       INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_brain_rel_user ON brain_relationships(npub);
+CREATE INDEX IF NOT EXISTS idx_brain_rel_user ON brain_relationships(uid);
 CREATE INDEX IF NOT EXISTS idx_brain_rel_from ON brain_relationships(from_entity_id);
 CREATE INDEX IF NOT EXISTS idx_brain_rel_to ON brain_relationships(to_entity_id);
 
 CREATE TABLE IF NOT EXISTS brain_facts (
   id          TEXT PRIMARY KEY,
-  npub        TEXT NOT NULL,
+  uid        TEXT NOT NULL,
   fact_type   TEXT NOT NULL,           -- preference|habit|goal|deadline|decision|reminder|insight
   content     TEXT NOT NULL,
   scope       TEXT NOT NULL DEFAULT 'public',
@@ -49,24 +49,24 @@ CREATE TABLE IF NOT EXISTS brain_facts (
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_brain_facts_user ON brain_facts(npub, fact_type);
-CREATE INDEX IF NOT EXISTS idx_brain_facts_recent ON brain_facts(npub, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_brain_facts_user ON brain_facts(uid, fact_type);
+CREATE INDEX IF NOT EXISTS idx_brain_facts_recent ON brain_facts(uid, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS brain_daily_summaries (
   id          TEXT PRIMARY KEY,
-  npub        TEXT NOT NULL,
+  uid        TEXT NOT NULL,
   date        TEXT NOT NULL,           -- YYYY-MM-DD
   summary     TEXT NOT NULL,
   highlights  TEXT,                    -- JSON array
   created_at  INTEGER NOT NULL,
-  UNIQUE(npub, date)
+  UNIQUE(uid, date)
 );
-CREATE INDEX IF NOT EXISTS idx_brain_daily ON brain_daily_summaries(npub, date DESC);
+CREATE INDEX IF NOT EXISTS idx_brain_daily ON brain_daily_summaries(uid, date DESC);
 
 -- Short-TTL catch-up buffer (NOT a permanent source of truth). Pruned by cron.
 CREATE TABLE IF NOT EXISTS brain_events (
   id          TEXT PRIMARY KEY,
-  npub        TEXT NOT NULL,
+  uid        TEXT NOT NULL,
   event_type  TEXT NOT NULL,
   source_app  TEXT NOT NULL,
   payload     TEXT NOT NULL,           -- JSON; PUBLIC content only server-side
@@ -75,11 +75,11 @@ CREATE TABLE IF NOT EXISTS brain_events (
   created_at  INTEGER NOT NULL,
   expires_at  INTEGER NOT NULL         -- created_at + 30d
 );
-CREATE INDEX IF NOT EXISTS idx_brain_events_user ON brain_events(npub, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_brain_events_user ON brain_events(uid, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_brain_events_unprocessed ON brain_events(processed, created_at) WHERE processed = 0;
 CREATE INDEX IF NOT EXISTS idx_brain_events_expiry ON brain_events(expires_at);
 
 -- NOTE: Vectorize vectors are stored ONE PER ENTITY with a deterministic id
--- `<npub>:ent:<brain_entities.id>`, updated in place. So a user's vector ids are
+-- `<uid>:ent:<brain_entities.id>`, updated in place. So a user's vector ids are
 -- derivable from brain_entities — no separate vector-id table is needed, and the
 -- vector count is bounded by entity count (not event count).

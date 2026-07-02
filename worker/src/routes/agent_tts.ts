@@ -38,9 +38,9 @@ async function toBytes(out: any): Promise<Uint8Array | null> {
 }
 
 async function loadConversation(env: Env, cid: string) {
-  return metaDb(env).prepare("SELECT uid, peer_npub, transcript, status FROM agent_conversations WHERE id=?1").bind(cid).first<any>();
+  return metaDb(env).prepare("SELECT uid, peer_uid, transcript, status FROM agent_conversations WHERE id=?1").bind(cid).first<any>();
 }
-function isParty(c: any, uid: string): boolean { return c && (c.uid === uid || c.peer_npub === uid); }
+function isParty(c: any, uid: string): boolean { return c && (c.uid === uid || c.peer_uid === uid); }
 
 // POST /api/agent/tts { conversation_id }
 export async function agentTts(req: Request, env: Env): Promise<Response> {
@@ -63,7 +63,7 @@ export async function agentTts(req: Request, env: Env): Promise<Response> {
 
   // Voices are tied to the uid, not the relative speaker, so the render is identical
   // for both parties. transcript speaker 'you' = conversation owner (c.uid).
-  const voiceYou = voiceFor(c.uid), voiceThem = voiceFor(c.peer_npub);
+  const voiceYou = voiceFor(c.uid), voiceThem = voiceFor(c.peer_uid);
   const parts: Uint8Array[] = [];
   let calls = 0;
   for (const m of transcript) {

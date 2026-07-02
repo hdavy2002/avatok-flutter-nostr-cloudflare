@@ -45,7 +45,7 @@ async function loadBooking(env: Env, id: string): Promise<Bk | null> {
 
 async function nameOf(env: Env, uid: string): Promise<string> {
   try {
-    const r = await metaDb(env).prepare("SELECT name, handle FROM profiles WHERE npub=?1 OR clerk_user_id=?1").bind(uid).first<any>();
+    const r = await metaDb(env).prepare("SELECT name, handle FROM profiles WHERE uid=?1 OR clerk_user_id=?1").bind(uid).first<any>();
     return r?.name || r?.handle || "Someone";
   } catch { return "Someone"; }
 }

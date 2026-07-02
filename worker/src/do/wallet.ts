@@ -180,7 +180,7 @@ export class WalletDO {
     const txType = b.type === "payout" || b.type === "refund" ? b.type : "spend";
     const result = { ok: true, ...this.snap(), free_used: freeUsed, paid_used: paidUsed };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: txType, amount: -amount, balance_after: this.snap().spendable, app_name: b.app_name, counterparty_npub: b.counterparty_npub, ref: b.ref }, b);
+    await this.audit(uid, { type: txType, amount: -amount, balance_after: this.snap().spendable, app_name: b.app_name, counterparty_uid: b.counterparty_uid, ref: b.ref }, b);
     this.broadcast();
     return json(result);
   }
@@ -199,7 +199,7 @@ export class WalletDO {
     await this.state.storage.setAlarm(availableAt);
     const result = { ok: true, balance: cur.balance, held, available_at: availableAt };
     this.recordOp(b.op_id, result);
-    await this.audit(uid, { type: "earn", amount, balance_after: cur.balance, app_name: b.app_name, counterparty_npub: b.counterparty_npub, commission: Math.trunc(Number(b.commission || 0)), ref: b.ref, hold_until: availableAt }, b);
+    await this.audit(uid, { type: "earn", amount, balance_after: cur.balance, app_name: b.app_name, counterparty_uid: b.counterparty_uid, commission: Math.trunc(Number(b.commission || 0)), ref: b.ref, hold_until: availableAt }, b);
     this.broadcast();
     return json(result);
   }

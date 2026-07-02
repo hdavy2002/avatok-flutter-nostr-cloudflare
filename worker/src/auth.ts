@@ -52,28 +52,28 @@ export async function verifyClerk(env: Env, bearer: string | null): Promise<Cler
   return { clerkUserId: String(payload.sub) };
 }
 
-// ---- Tier-2 gate, KV-cached (spec §4 / §10.4: verified:{npub}, 1h TTL) ----
+// ---- Tier-2 gate, KV-cached (spec §4 / §10.4: verified:{uid}, 1h TTL) ----
 // requireVerifiedKV is the canonical Tier-2 check for new routes. It reads the KV
 // cache first (one fast lookup), falling back to the source of truth in D1
-// (clerk_nostr_link.tier) and back-filling the cache. Returns true iff verified.
+// (clerk_account_link.tier) and back-filling the cache. Returns true iff verified.
 const VERIFIED_TTL = 3600; // 1 hour
 
-export async function setVerifiedCache(env: Env, npub: string, verified: boolean): Promise<void> {
+export async function setVerifiedCache(env: Env, uid: string, verified: boolean): Promise<void> {
   try {
-    if (verified) await env.TOKENS.put(`verified:${npub}`, "1", { expirationTtl: VERIFIED_TTL });
-    else await env.TOKENS.delete(`verified:${npub}`);
+    if (verified) await env.TOKENS.put(`verified:${uid}`, "1", { expirationTtl: VERIFIED_TTL });
+    else await env.TOKENS.delete(`verified:${uid}`);
   } catch { /* best-effort cache */ }
 }
 
-export async function requireVerifiedKV(env: Env, npub: string): Promise<boolean> {
+export async function requireVerifiedKV(env: Env, uid: string): Promise<boolean> {
   try {
-    const cached = await env.TOKENS.get(`verified:${npub}`);
+    const cached = await env.TOKENS.get(`verified:${uid}`);
     if (cached === "1") return true;
   } catch { /* fall through to D1 */ }
   const row = await metaSession(env)
-    .prepare("SELECT tier FROM clerk_nostr_link WHERE npub=?1")
-    .bind(npub).first<{ tier: string }>();
+    .prepare("SELECT tier FROM clerk_account_link WHERE uid=?1")
+    .bind(uid).first<{ tier: string }>();
   const verified = row?.tier === "verified";
-  if (verified) await setVerifiedCache(env, npub, true);
+  if (verified) await setVerifiedCache(env, uid, true);
   return verified;
 }

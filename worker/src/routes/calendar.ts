@@ -1,7 +1,7 @@
 // AvaCalendar — Phase 5 (PHASE-05.md). ONE availability engine for the whole
 // platform: slots + bookings now ride the calendar_blocks conflict engine
 // (src/cal/engine.ts); every scheduling write is overlap-checked + policy-checked
-// server-side. Keyed by Clerk uid (npub columns are legacy mirrors, still
+// server-side. Keyed by Clerk uid (uid columns are legacy mirrors, still
 // written for old readers until the cleanup migration drops them).
 //
 //   POST   /api/calendar/slots            → create a bookable slot (claims a block)
@@ -29,7 +29,7 @@ const APP = "avacalendar";
 
 async function nameOf(env: Env, uid: string): Promise<string> {
   try {
-    const r = await metaDb(env).prepare("SELECT name, handle FROM profiles WHERE npub=?1 OR clerk_user_id=?1").bind(uid).first<any>();
+    const r = await metaDb(env).prepare("SELECT name, handle FROM profiles WHERE uid=?1 OR clerk_user_id=?1").bind(uid).first<any>();
     return r?.name || r?.handle || "an AvaTOK user";
   } catch { return "an AvaTOK user"; }
 }
@@ -51,7 +51,7 @@ export async function createSlot(req: Request, env: Env): Promise<Response> {
   if (!claim.ok) return json({ error: "conflict", conflictWith: claim.conflict }, 409);
 
   await metaDb(env).prepare(
-    `INSERT INTO calendar_slots (id, host_npub, host_uid, title, description, start_at, end_at, price_coins, capacity, booked_count, status, created_at)
+    `INSERT INTO calendar_slots (id, host_uid, host_uid, title, description, start_at, end_at, price_coins, capacity, booked_count, status, created_at)
      VALUES (?1,?2,?2,?3,?4,?5,?6,?7,?8,0,'open',?9)`,
   ).bind(id, ctx.uid, String(b.title), b.description ?? null, start, end, Math.max(0, Math.trunc(Number(b.price_coins || 0))), Math.max(1, Math.trunc(Number(b.capacity || 1))), Date.now()).run();
   try { await gcalExport(env, ctx.uid, claim.id, "upsert"); } catch { /* best-effort */ }
@@ -137,7 +137,7 @@ export async function bookSlot(req: Request, env: Env): Promise<Response> {
 
   const now = Date.now();
   const mk = (owner: string, role: string) => metaDb(env).prepare(
-    `INSERT INTO calendar_events (id, booking_id, slot_id, owner_npub, owner_uid, role, host_npub, host_uid, attendee_npub, attendee_uid, title, start_at, end_at, price_coins, paid, status, source, created_at)
+    `INSERT INTO calendar_events (id, booking_id, slot_id, owner_uid, owner_uid, role, host_uid, host_uid, attendee_uid, attendee_uid, title, start_at, end_at, price_coins, paid, status, source, created_at)
      VALUES (?1,?2,?3,?4,?4,?5,?6,?6,?7,?7,?8,?9,?10,?11,?12,'confirmed',?13,?14)`,
   ).bind(crypto.randomUUID(), bookingId, slotId, owner, role, slot.host_uid, ctx.uid, slot.title, slot.start_at, slot.end_at, price, price > 0 ? 1 : 0, isAgent ? "agent" : "user", now);
 

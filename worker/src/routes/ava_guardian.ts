@@ -391,7 +391,7 @@ async function recentFlagCount(env: Env, uid: string, conv: string, peer: string
 async function blockSender(env: Env, recipient: string, sender: string): Promise<void> {
   try {
     await env.DB_META
-      .prepare("INSERT OR IGNORE INTO blocks (uid, blocked_npub, created_at) VALUES (?1,?2,?3)")
+      .prepare("INSERT OR IGNORE INTO blocks (uid, blocked_uid, created_at) VALUES (?1,?2,?3)")
       .bind(recipient, sender, Date.now()).run();
   } catch { /* best-effort */ }
 }

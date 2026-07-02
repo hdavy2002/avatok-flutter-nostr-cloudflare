@@ -73,13 +73,13 @@ export async function streamWebhook(req: Request, env: Env, ctx: ExecutionContex
   }
 
   // Persist lifecycle (best-effort; table is additive — see migrations/stream.sql).
-  // live_streams.npub holds the creator's uid VALUE — the column keeps its name to
-  // avoid colliding with Cloudflare Stream's own `uid` (= the stream id) column.
+  // live_streams.broadcaster_uid holds the creator's Clerk uid; the PK `uid` is
+  // Cloudflare Stream's own id (the stream id) — a different value.
   try {
     await env.DB_META.prepare(
-      `INSERT INTO live_streams (uid, live_input, npub, state, updated_at)
+      `INSERT INTO live_streams (uid, live_input, broadcaster_uid, state, updated_at)
        VALUES (?1,?2,?3,?4,?5)
-       ON CONFLICT(uid) DO UPDATE SET state=?4, updated_at=?5, live_input=COALESCE(?2,live_input), npub=COALESCE(NULLIF(?3,''),npub)`,
+       ON CONFLICT(uid) DO UPDATE SET state=?4, updated_at=?5, live_input=COALESCE(?2,live_input), broadcaster_uid=COALESCE(NULLIF(?3,''),broadcaster_uid)`,
     ).bind(uid || liveInput || crypto.randomUUID(), liveInput, creatorUid, state || (readyToStream ? "ready" : "unknown"), Date.now()).run();
   } catch (e) {
     console.warn("live_streams write skipped (run migrations/stream.sql):", String(e));

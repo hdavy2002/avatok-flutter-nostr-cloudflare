@@ -62,7 +62,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
   // Resolve the caller's real name SERVER-SIDE (Clerk first name → app
   // display_name/handle) instead of trusting the client. The client was sending
   // the raw uid, so the callee's incoming-call screen showed "user_xxx…" / an
-  // npub instead of the person's name. Fall back to the client value, then the
+  // uid instead of the person's name. Fall back to the client value, then the
   // app name. nameFor is KV-cached, so this adds no per-call DB round-trip.
   const resolved = await nameFor(env, ctx.uid).catch(() => null);
   const clientName = (b.fromName ?? "").trim();
@@ -90,7 +90,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
   await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so
-  // the "incoming call shows uid/npub" fix is measurable and call volume/route is
+  // the "incoming call shows uid/uid" fix is measurable and call volume/route is
   // visible. Best-effort; telemetry must never block placing a call.
   try {
     void env.Q_ANALYTICS.send({

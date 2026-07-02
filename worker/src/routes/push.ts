@@ -19,7 +19,7 @@ export async function postCall(req: Request, env: Env): Promise<Response> {
 }
 
 // POST /notify  { to: uid | uid[], fromName?, preview?, title?, body?, data? }
-// The chat client (push_service.notifyMessage) sends { to: [npub,...], fromName,
+// The chat client (push_service.notifyMessage) sends { to: [uid,...], fromName,
 // preview } — so we MUST forward fromName + preview (the consumer's buildPayload
 // reads them to render the WhatsApp-style sender + expandable message banner) and
 // fan out one push PER recipient. The old code dropped fromName/preview (banner

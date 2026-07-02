@@ -42,9 +42,9 @@ export class StreamSessionDO {
     this.state = state;
     this.sql = state.storage.sql;
     this.sql.exec(
-      "CREATE TABLE IF NOT EXISTS meta (k INTEGER PRIMARY KEY, creator_npub TEXT, pending INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, gifters INTEGER NOT NULL DEFAULT 0)",
+      "CREATE TABLE IF NOT EXISTS meta (k INTEGER PRIMARY KEY, creator_uid TEXT, pending INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, gifters INTEGER NOT NULL DEFAULT 0)",
     );
-    this.sql.exec("INSERT OR IGNORE INTO meta (k, creator_npub, pending, total, gifters) VALUES (1, NULL, 0, 0, 0)");
+    this.sql.exec("INSERT OR IGNORE INTO meta (k, creator_uid, pending, total, gifters) VALUES (1, NULL, 0, 0, 0)");
     // Phase 7 session + room state (DO storage — survives hibernation).
     this.sql.exec(
       "CREATE TABLE IF NOT EXISTS session (k INTEGER PRIMARY KEY, sid TEXT, kind TEXT, starts_at INTEGER, ends_at INTEGER, host_id TEXT, wait_min INTEGER NOT NULL DEFAULT 20, slow_mode_sec INTEGER NOT NULL DEFAULT 0, pinned TEXT, donations_total INTEGER NOT NULL DEFAULT 0, donations_count INTEGER NOT NULL DEFAULT 0, host_live INTEGER NOT NULL DEFAULT 0)",
@@ -65,7 +65,7 @@ export class StreamSessionDO {
     switch (body.op) {
       // ---- legacy gifts path (unchanged) ----
       case "init": {
-        this.sql.exec("UPDATE meta SET creator_npub=?1 WHERE k=1", String(body.creator_npub || ""));
+        this.sql.exec("UPDATE meta SET creator_uid=?1 WHERE k=1", String(body.creator_uid || ""));
         return json({ ok: true });
       }
       case "gift": {
@@ -84,7 +84,7 @@ export class StreamSessionDO {
           "UPDATE session SET sid=?1, kind=?2, starts_at=?3, ends_at=?4, host_id=?5, wait_min=?6 WHERE k=1",
           String(body.sid), String(body.kind), Number(body.starts_at), Number(body.ends_at), String(body.host_id), Math.trunc(Number(body.wait_min ?? 20)) || 20,
         );
-        this.sql.exec("UPDATE meta SET creator_npub=COALESCE(NULLIF(creator_npub,''),?1) WHERE k=1", String(body.host_id));
+        this.sql.exec("UPDATE meta SET creator_uid=COALESCE(NULLIF(creator_uid,''),?1) WHERE k=1", String(body.host_id));
         const wait = (Math.trunc(Number(body.wait_min ?? 20)) || 20) * 60_000;
         await this.armAlarm(Number(body.starts_at) + wait, "money_noshow");
         await this.armAlarm(Number(body.ends_at) + END_GRACE_MS, "money_end");
@@ -130,10 +130,10 @@ export class StreamSessionDO {
       }
       case "stats":
       case "state": {
-        const m = this.sql.exec("SELECT creator_npub, pending, total, gifters FROM meta WHERE k=1").one() as any;
+        const m = this.sql.exec("SELECT creator_uid, pending, total, gifters FROM meta WHERE k=1").one() as any;
         const s = this.sess();
         return json({
-          creator_npub: m.creator_npub, gifts_total: Number(m.total), gifters: Number(m.gifters),
+          creator_uid: m.creator_uid, gifts_total: Number(m.total), gifters: Number(m.gifters),
           sid: s.sid, kind: s.kind, starts_at: s.starts_at, ends_at: s.ends_at, host_id: s.host_id,
           watching: this.state.getWebSockets().length, roster: this.roster(),
           slow_mode_sec: Number(s.slow_mode_sec), pinned: s.pinned, host_live: Number(s.host_live) === 1,
@@ -265,9 +265,9 @@ export class StreamSessionDO {
   }
 
   private async flushGifts(): Promise<void> {
-    const m = this.sql.exec("SELECT creator_npub, pending FROM meta WHERE k=1").one() as any;
+    const m = this.sql.exec("SELECT creator_uid, pending FROM meta WHERE k=1").one() as any;
     const pending = Number(m.pending);
-    const creator = m.creator_npub as string | null;
+    const creator = m.creator_uid as string | null;
     if (!creator || pending <= 0) return;
     const commission = Math.round(pending * GIFT_COMMISSION);
     const net = pending - commission;

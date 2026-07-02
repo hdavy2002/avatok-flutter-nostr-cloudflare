@@ -321,7 +321,7 @@ export async function adminUserSearch(req: Request, env: Env): Promise<Response>
   if (!q) return json({ error: "q required" }, 400);
   const M = metaDb(env); const W = env.DB_WALLET;
 
-  // Resolve to a user row by uid | handle | npub | email (hashed).
+  // Resolve to a user row by uid | handle | uid | email (hashed).
   let user: any = null;
   try {
     if (q.includes("@") && q.includes(".")) {

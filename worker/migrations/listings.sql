@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS creator_profiles (
 );
 
 -- A2 follow system. (Named creator_follows — a legacy Nostr `follows` table
--- already exists in avatok-meta with npub columns.)
+-- already exists in avatok-meta with uid columns.)
 CREATE TABLE IF NOT EXISTS creator_follows (
   follower_id TEXT NOT NULL,
   creator_id  TEXT NOT NULL,

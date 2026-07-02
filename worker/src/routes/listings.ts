@@ -520,7 +520,7 @@ export async function exploreCategories(env: Env): Promise<Response> {
 function blockFilter(uid: string | null, binds: unknown[], where: string[]): void {
   if (!uid) return;
   binds.push(uid);
-  where.push(`l.creator_id NOT IN (SELECT blocked_npub FROM blocks WHERE uid=?${binds.length})`);
+  where.push(`l.creator_id NOT IN (SELECT blocked_uid FROM blocks WHERE uid=?${binds.length})`);
 }
 
 // GET /api/explore?kind=&category=&country=&cursor=&limit=
@@ -800,10 +800,10 @@ export async function blockCreator(req: Request, env: Env, id: string): Promise<
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (req.method === "DELETE") {
-    await metaDb(env).prepare("DELETE FROM blocks WHERE uid=?1 AND blocked_npub=?2").bind(ctx.uid, id).run();
+    await metaDb(env).prepare("DELETE FROM blocks WHERE uid=?1 AND blocked_uid=?2").bind(ctx.uid, id).run();
     return json({ ok: true, blocked: false });
   }
-  await metaDb(env).prepare("INSERT OR IGNORE INTO blocks (uid, blocked_npub, created_at) VALUES (?1,?2,?3)").bind(ctx.uid, id, Date.now()).run();
+  await metaDb(env).prepare("INSERT OR IGNORE INTO blocks (uid, blocked_uid, created_at) VALUES (?1,?2,?3)").bind(ctx.uid, id, Date.now()).run();
   // Blocking also unfollows.
   await metaDb(env).prepare("DELETE FROM creator_follows WHERE follower_id=?1 AND creator_id=?2").bind(ctx.uid, id).run();
   track(env, ctx.uid, "creator_blocked", APP, {});
@@ -831,7 +831,7 @@ export async function report(req: Request, env: Env): Promise<Response> {
     reportedUid = rv.author_id;
   }
   await moderationDb(env).prepare(
-    `INSERT INTO user_reports (id, reporter_npub, reported_npub, content_kind, content_id, category, description, status, priority, created_at)
+    `INSERT INTO user_reports (id, reporter_uid, reported_uid, content_kind, content_id, category, description, status, priority, created_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,'open',3,?8)`,
   ).bind(crypto.randomUUID(), ctx.uid, reportedUid, targetType, targetId,
     String(b.reason || "other").slice(0, 60), b.description ? String(b.description).slice(0, 2000) : null, Date.now()).run();
@@ -856,7 +856,7 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   if (l.creator_id === ctx.uid) return json({ error: "cannot book your own listing" }, 400);
   // Phase 7 A5 — creator block list: a blocked buyer cannot book this creator.
   {
-    const blocked = await db.prepare("SELECT 1 FROM blocks WHERE uid=?1 AND blocked_npub=?2").bind(l.creator_id, ctx.uid).first().catch(() => null);
+    const blocked = await db.prepare("SELECT 1 FROM blocks WHERE uid=?1 AND blocked_uid=?2").bind(l.creator_id, ctx.uid).first().catch(() => null);
     if (blocked) return json({ error: "listing not available" }, 404);
   }
 
@@ -941,7 +941,7 @@ export async function bookListing(req: Request, env: Env, id: string): Promise<R
   const now = Date.now();
   const bkKind = l.kind === "live_event" ? "live_event" : (Number(l.capacity || 1) > 1 ? "consult_group" : "consult_1to1");
   const mkEvent = (owner: string, role: string) => db.prepare(
-    `INSERT INTO calendar_events (id, booking_id, slot_id, owner_npub, owner_uid, role, host_npub, host_uid, attendee_npub, attendee_uid, title, start_at, end_at, price_coins, paid, status, source, created_at)
+    `INSERT INTO calendar_events (id, booking_id, slot_id, owner_uid, owner_uid, role, host_uid, host_uid, attendee_uid, attendee_uid, title, start_at, end_at, price_coins, paid, status, source, created_at)
      VALUES (?1,?2,?3,?4,?4,?5,?6,?6,?7,?7,?8,?9,?10,?11,?12,'confirmed','user',?13)`,
   ).bind(crypto.randomUUID(), bookingId, id, owner, role, l.creator_id, ctx.uid, l.title, start, end, amount, amount > 0 ? 1 : 0, now);
   await db.batch([

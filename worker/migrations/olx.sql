@@ -6,7 +6,7 @@
 -- Classifieds (physical OR the public side of a digital product).
 CREATE TABLE IF NOT EXISTS olx_listings (
   id           TEXT PRIMARY KEY,
-  seller_npub  TEXT NOT NULL,
+  seller_uid  TEXT NOT NULL,
   kind         TEXT NOT NULL DEFAULT 'physical', -- 'physical'|'digital'
   title        TEXT NOT NULL,
   description  TEXT,                              -- auto-generated 2-page body
@@ -18,14 +18,14 @@ CREATE TABLE IF NOT EXISTS olx_listings (
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_olx_seller ON olx_listings(seller_npub, created_at);
+CREATE INDEX IF NOT EXISTS idx_olx_seller ON olx_listings(seller_uid, created_at);
 CREATE INDEX IF NOT EXISTS idx_olx_browse ON olx_listings(kind, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_olx_cat ON olx_listings(category, status);
 
 -- Digital product detail (the deliverable file in the private avatok-digital bucket).
 CREATE TABLE IF NOT EXISTS olx_digital_products (
   listing_id   TEXT PRIMARY KEY,
-  seller_npub  TEXT NOT NULL,
+  seller_uid  TEXT NOT NULL,
   r2_key       TEXT NOT NULL,                     -- key in avatok-digital (private)
   file_name    TEXT,
   mime         TEXT,
@@ -37,13 +37,13 @@ CREATE TABLE IF NOT EXISTS olx_digital_products (
 CREATE TABLE IF NOT EXISTS olx_purchases (
   id            TEXT PRIMARY KEY,
   listing_id    TEXT NOT NULL,
-  buyer_npub    TEXT NOT NULL,
-  seller_npub   TEXT NOT NULL,
+  buyer_uid    TEXT NOT NULL,
+  seller_uid   TEXT NOT NULL,
   price_coins   INTEGER NOT NULL,
   commission    INTEGER NOT NULL DEFAULT 0,
   status        TEXT NOT NULL DEFAULT 'paid',     -- 'paid'|'downloaded'|'refunded'
   downloaded_at INTEGER,
   created_at    INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_olxp_buyer ON olx_purchases(buyer_npub, created_at);
+CREATE INDEX IF NOT EXISTS idx_olxp_buyer ON olx_purchases(buyer_uid, created_at);
 CREATE INDEX IF NOT EXISTS idx_olxp_listing ON olx_purchases(listing_id);

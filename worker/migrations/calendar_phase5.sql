@@ -1,7 +1,7 @@
 -- Phase 5 — AvaCalendar + AvaBooking (PHASE-05.md). DB_META (avatok-meta).
 --
--- Part A: npub → Clerk uid migration. The pre-pivot tables are keyed by
--- host_npub/owner_npub/attendee_npub; since the Cloudflare-native pivot the
+-- Part A: uid → Clerk uid migration. The pre-pivot tables are keyed by
+-- host_uid/owner_uid/attendee_uid; since the Cloudflare-native pivot the
 -- routes already WRITE Clerk uids into those columns, so the backfill is a
 -- straight copy. New *_uid columns become the canonical keys; the *_npub
 -- columns stay (read-only legacy) until a later cleanup migration drops them.
@@ -15,13 +15,13 @@
 -- A. uid columns + backfill
 -- ---------------------------------------------------------------------------
 ALTER TABLE calendar_slots  ADD COLUMN host_uid TEXT;
-UPDATE calendar_slots SET host_uid = host_npub WHERE host_uid IS NULL;
+UPDATE calendar_slots SET host_uid = host_uid WHERE host_uid IS NULL;
 CREATE INDEX IF NOT EXISTS idx_slots_host_uid ON calendar_slots(host_uid, start_at);
 
 ALTER TABLE calendar_events ADD COLUMN owner_uid TEXT;
 ALTER TABLE calendar_events ADD COLUMN host_uid TEXT;
 ALTER TABLE calendar_events ADD COLUMN attendee_uid TEXT;
-UPDATE calendar_events SET owner_uid = owner_npub, host_uid = host_npub, attendee_uid = attendee_npub
+UPDATE calendar_events SET owner_uid = owner_uid, host_uid = host_uid, attendee_uid = attendee_uid
  WHERE owner_uid IS NULL;
 CREATE INDEX IF NOT EXISTS idx_cev_owner_uid ON calendar_events(owner_uid, start_at);
 

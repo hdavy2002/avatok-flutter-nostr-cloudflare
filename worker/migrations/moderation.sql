@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS blocked_media_hashes (
   hash_value             TEXT NOT NULL,
   category               TEXT NOT NULL,
   source                 TEXT NOT NULL,   -- 'admin_confirmed'|'photodna'|'stopncii'
-  original_uploader_npub TEXT,
+  original_uploader_uid TEXT,
   created_at             INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_blocked_hash ON blocked_media_hashes(hash_value);
@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS moderation_results (
 -- User reports (spec §8.6). Priority drives SLA routing.
 CREATE TABLE IF NOT EXISTS user_reports (
   id             TEXT PRIMARY KEY,
-  reporter_npub  TEXT NOT NULL,
-  reported_npub  TEXT NOT NULL,
+  reporter_uid  TEXT NOT NULL,
+  reported_uid  TEXT NOT NULL,
   content_kind   TEXT NOT NULL,
   content_id     TEXT NOT NULL,
   category       TEXT NOT NULL,
@@ -39,4 +39,4 @@ CREATE TABLE IF NOT EXISTS user_reports (
   outcome        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_reports_status ON user_reports(status, priority);
-CREATE INDEX IF NOT EXISTS idx_reports_target ON user_reports(reported_npub);
+CREATE INDEX IF NOT EXISTS idx_reports_target ON user_reports(reported_uid);

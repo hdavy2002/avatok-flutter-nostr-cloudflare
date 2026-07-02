@@ -127,7 +127,7 @@ class PlatformApi {
   static Future<Map<String, dynamic>> savePersona(String app, {required String personaPrompt, String? lookingFor, String? boundaries, bool autoApprove = false, bool enabled = true}) async =>
       _json((await ApiAuth.putJson('$kAgentBase/personas/$app', {'persona_prompt': personaPrompt, if (lookingFor != null) 'looking_for': lookingFor, if (boundaries != null) 'boundaries': boundaries, 'auto_approve': autoApprove, 'enabled': enabled})).body);
   static Future<Map<String, dynamic>> converse({required String app, required String peerNpub}) async =>
-      _json((await ApiAuth.postJson('$kAgentBase/converse', {'app': app, 'peer_npub': peerNpub})).body);
+      _json((await ApiAuth.postJson('$kAgentBase/converse', {'app': app, 'peer_uid': peerNpub})).body);
   static Future<List<Map<String, dynamic>>> inbox() async =>
       _list(_json((await ApiAuth.getSigned('$kAgentBase/inbox')).body), 'inbox');
   static Future<Map<String, dynamic>> inboxItem(String id) async =>

@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS user_media (
   id                TEXT PRIMARY KEY,
-  npub              TEXT NOT NULL,
+  uid              TEXT NOT NULL,
   media_type        TEXT NOT NULL,        -- 'image'|'audio'|'video'
   storage           TEXT NOT NULL,        -- 'blossom'|'bunny'
   visibility        TEXT NOT NULL,        -- 'public'|'private'  (which upload path)
@@ -22,14 +22,14 @@ CREATE TABLE IF NOT EXISTS user_media (
   -- 'skipped' for private encrypted media (ciphertext is unscannable by design).
   moderation_status TEXT DEFAULT 'pending'
 );
-CREATE INDEX IF NOT EXISTS idx_media_npub ON user_media(npub, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_media_uid ON user_media(uid, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_media_key  ON user_media(key);
 
 -- Perceptual hashes for the "gets smarter for free" blocklist (spec §8.3).
 CREATE TABLE IF NOT EXISTS user_media_hashes (
   id          TEXT PRIMARY KEY,
   media_id    TEXT NOT NULL,
-  npub        TEXT NOT NULL,
+  uid        TEXT NOT NULL,
   frame_index INTEGER NOT NULL,
   phash       TEXT NOT NULL,
   created_at  INTEGER NOT NULL

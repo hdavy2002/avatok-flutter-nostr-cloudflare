@@ -40,16 +40,16 @@ WHERE category IS NULL;
 UPDATE user_media SET source_kind = 'sent' WHERE source_kind IS NULL;
 
 -- Helpful indexes for the folder tree + storage SUM.
-CREATE INDEX IF NOT EXISTS idx_media_lib ON user_media(npub, original_app, category, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_media_folder ON user_media(npub, folder_id);
+CREATE INDEX IF NOT EXISTS idx_media_lib ON user_media(uid, original_app, category, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_media_folder ON user_media(uid, folder_id);
 
 -- User folders (system folders app→category are virtual, never stored).
 CREATE TABLE IF NOT EXISTS library_folders (
   id         TEXT PRIMARY KEY,
-  npub       TEXT NOT NULL,
+  uid       TEXT NOT NULL,
   app        TEXT NOT NULL,            -- which app root this folder hangs under
   name       TEXT NOT NULL,
   parent_id  TEXT,                     -- NULL = top-level user folder under the app
   created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_folders_tree ON library_folders(npub, app, parent_id);
+CREATE INDEX IF NOT EXISTS idx_folders_tree ON library_folders(uid, app, parent_id);

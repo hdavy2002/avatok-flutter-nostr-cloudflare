@@ -5,9 +5,9 @@
 CREATE TABLE IF NOT EXISTS live_streams (
   uid         TEXT PRIMARY KEY,   -- Cloudflare Stream video/live-input uid
   live_input  TEXT,               -- live input id
-  npub        TEXT,               -- broadcaster (from webhook meta, if provided)
+  broadcaster_uid TEXT,          -- broadcaster (Clerk uid, from webhook meta)
   state       TEXT NOT NULL,      -- 'connected'|'disconnected'|'ready'|'unknown'
   updated_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_live_streams_state ON live_streams(state);
-CREATE INDEX IF NOT EXISTS idx_live_streams_npub ON live_streams(npub);
+CREATE INDEX IF NOT EXISTS idx_live_streams_broadcaster ON live_streams(broadcaster_uid);

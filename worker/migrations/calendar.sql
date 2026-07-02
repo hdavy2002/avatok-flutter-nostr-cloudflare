@@ -5,7 +5,7 @@
 -- Bookable slots a host offers.
 CREATE TABLE IF NOT EXISTS calendar_slots (
   id           TEXT PRIMARY KEY,
-  host_npub    TEXT NOT NULL,
+  host_uid    TEXT NOT NULL,
   title        TEXT NOT NULL,
   description  TEXT,
   start_at     INTEGER NOT NULL,      -- ms epoch
@@ -16,18 +16,18 @@ CREATE TABLE IF NOT EXISTS calendar_slots (
   status       TEXT NOT NULL DEFAULT 'open', -- 'open'|'closed'|'cancelled'
   created_at   INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_slots_host ON calendar_slots(host_npub, start_at);
+CREATE INDEX IF NOT EXISTS idx_slots_host ON calendar_slots(host_uid, start_at);
 CREATE INDEX IF NOT EXISTS idx_slots_open ON calendar_slots(status, start_at);
 
--- Confirmed bookings, mirrored: one row per party (owner_npub = whose calendar).
+-- Confirmed bookings, mirrored: one row per party (owner_uid = whose calendar).
 CREATE TABLE IF NOT EXISTS calendar_events (
   id            TEXT PRIMARY KEY,     -- uuid (distinct per party row)
   booking_id    TEXT NOT NULL,        -- shared id linking the host+attendee rows
   slot_id       TEXT NOT NULL,
-  owner_npub    TEXT NOT NULL,        -- whose calendar this row belongs to
+  owner_uid    TEXT NOT NULL,        -- whose calendar this row belongs to
   role          TEXT NOT NULL,        -- 'host'|'attendee'
-  host_npub     TEXT NOT NULL,
-  attendee_npub TEXT NOT NULL,
+  host_uid     TEXT NOT NULL,
+  attendee_uid TEXT NOT NULL,
   title         TEXT NOT NULL,
   start_at      INTEGER NOT NULL,
   end_at        INTEGER NOT NULL,
@@ -39,6 +39,6 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   reminded_30   INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_cev_owner ON calendar_events(owner_npub, start_at);
+CREATE INDEX IF NOT EXISTS idx_cev_owner ON calendar_events(owner_uid, start_at);
 CREATE INDEX IF NOT EXISTS idx_cev_remind ON calendar_events(status, start_at);
 CREATE INDEX IF NOT EXISTS idx_cev_booking ON calendar_events(booking_id);
