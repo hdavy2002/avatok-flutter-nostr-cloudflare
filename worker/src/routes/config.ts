@@ -119,6 +119,10 @@ export interface PlatformConfig {
   // plausibility (+ photo moderation) server-side. Default OFF (ships dark; ON at
   // launch). Client mirror: RemoteConfig.profileCompletionGate.
   profileCompletionGate: boolean;
+  // P8 backup/restore durability (Specs/MASTER-PROMPT-LAUNCH-READINESS-2026-07-02, Phase 8).
+  chatArchiveV2: boolean;   // batched R2 cold archive on InboxDO append (dark until verified)
+  restoreV2: boolean;       // new-phone restore lazily pages older history from R2 (dark)
+  driveAutoBackup: boolean; // daily auto-backup to the user's OWN Google Drive — ships ON, ALL users
   // P5: per-user daily cap on DISTINCT marketplace agent conversations (UTC day).
   // Tunable via KV without redeploy. The per-listing talk-once dedupe is separate
   // and does NOT consume quota (re-opening the same listing's result is free).
@@ -177,6 +181,9 @@ const DEFAULTS: PlatformConfig = {
   listingLivenessGate: false,      // P4: block listing create/publish unless liveness-verified — dark, flip ON at launch
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
+  chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified
+  restoreV2: false,               // P8 Stage 2: R2 lazy-older restore paging — dark
+  driveAutoBackup: true,          // P8 Stage 3: daily Drive backup for EVERY user (no premium gate)
   agentDailyCap: 10,               // P5: 10 marketplace agent conversations/user/UTC-day
   minAppBuild: 0,
 };

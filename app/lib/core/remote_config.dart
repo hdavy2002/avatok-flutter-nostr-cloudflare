@@ -63,6 +63,11 @@ class RemoteConfig {
   /// ON at launch. When on, an incomplete profile is routed to the Profile screen
   /// before the app, and the save shows a hold state while the server vets. Mirrors config.ts.
   static bool get profileCompletionGate => _b('profileCompletionGate', false);
+  /// P8 Stage 3: daily auto-backup to the user's OWN Google Drive — ON for ALL
+  /// users (no premium gate). Flip OFF in KV to disable the daily job.
+  static bool get driveAutoBackup => _b('driveAutoBackup', true);
+  /// P8 Stage 2: lazily page older history from R2 beyond the hot window. Dark.
+  static bool get restoreV2 => _b('restoreV2', false);
   /// ChatAVA "talk to Ava by voice" — the hands-free Gemini Live call
   /// (LiveVoiceController). Owner kill switch (2026-06-27): default OFF so the
   /// feature stays dark after a config-fetch failure and can't burn the shared

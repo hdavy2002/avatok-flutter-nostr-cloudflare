@@ -15,6 +15,7 @@ import '../../core/ava_contracts.dart';
 import '../../core/config.dart';
 import '../../core/db.dart';
 import '../../core/drive_service.dart';
+import '../../core/remote_config.dart';
 import '../../identity/identity.dart';
 
 /// BackupService (Phase 10 — Backup & Sync).
@@ -319,21 +320,27 @@ class BackupService {
   /// Never throws — safe to fire-and-forget on app launch. With this in place the
   /// device + backup are the durable copy, so the InboxDO can safely shed history.
   Future<void> maybeAutoBackup() async {
+    if (!RemoteConfig.driveAutoBackup) return; // P8: flag-gated (default ON)
     try {
       final key = scopedKey(_kLastAuto);
       final last = int.tryParse(await _s.read(key: key) ?? '') ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - last < 20 * 3600 * 1000) return; // ~once per day
-      var r = await syncToR2();
-      if (!r.ok && r.reason == 'premium_required') {
-        r = await backupToDrive(); // free lane for non-premium users
-      }
-      if (r.ok) {
+      // P8 (owner decision 2026-07-02): EVERY user auto-backs-up to their OWN
+      // Google Drive — no premium gate. Premium users ALSO mirror to our R2 as a
+      // best-effort extra (a `premium_required` there is fine and expected).
+      final drive = await backupToDrive();
+      final r2 = await syncToR2();
+      if (drive.ok || r2.ok) {
         await _s.write(key: key, value: now.toString());
         // Media pass (incremental — already-uploaded blobs are skipped, so the
         // steady-state daily cost is one Drive list call). Soft-fail.
         await backupMediaToDrive();
       }
+      Analytics.capture('drive_auto_backup', {
+        'drive_ok': drive.ok, 'r2_ok': r2.ok,
+        if (!drive.ok) 'drive_reason': drive.reason,
+      });
     } catch (_) { /* best-effort; retry next launch */ }
   }
 
