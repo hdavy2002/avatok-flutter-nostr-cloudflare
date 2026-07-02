@@ -16,8 +16,9 @@ import { chargeFeature } from "../feature_pricing";
 import { trackUserContact } from "../hooks";
 import { contactFor } from "../lib/identity";
 import {
-  GOOGLE_TOOLKITS, connectToolkits, connectedToolkits, disconnectToolkit,
+  GOOGLE_TOOLKITS, connectToolkits, disconnectToolkit,
   listToolkits, runAppsToolLoop, executeTool, newAppsRunStats,
+  cachedConnectedToolkits, invalidateConnCache,
 } from "../lib/composio";
 import { toolkitOf, isExecutableTool, coerceArgs } from "../lib/capabilities";
 import { renderData } from "../lib/genui";
@@ -38,12 +39,16 @@ export async function avaAppsStatus(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!env.COMPOSIO_API_KEY) return json({ ok: true, connected: [], configured: false });
   const s0 = Date.now();
+  // Phase 1: served from the 5-min KV cache; `?fresh=1` bypasses+refreshes (the
+  // client passes it right after an OAuth return so a new connection shows now).
+  const fresh = new URL(req.url).searchParams.get("fresh") === "1";
   try {
-    const connected = await connectedToolkits(env, ctx.uid);
+    const { email, phone } = await contactFor(env, ctx.uid);
+    const emit = (event: string, props: Record<string, unknown>) => trackUserContact(env, ctx.uid, email, phone, event, "avaapps", props);
+    const connected = await cachedConnectedToolkits(env, ctx.uid, { fresh, emit });
     // Phase 0: measure the server-side status fetch so the screen-open latency
     // budget is visible (paired with the client `avaapps_screen_open`).
-    const { email, phone } = await contactFor(env, ctx.uid);
-    trackUserContact(env, ctx.uid, email, phone, "avaapps_status_ok", "avaapps", { status_fetch_ms: Date.now() - s0, connected_count: connected.length });
+    trackUserContact(env, ctx.uid, email, phone, "avaapps_status_ok", "avaapps", { status_fetch_ms: Date.now() - s0, connected_count: connected.length, fresh });
     return json({ ok: true, connected, configured: true });
   } catch (e: any) {
     const detail = String(e?.message ?? e).slice(0, 200);
@@ -67,6 +72,9 @@ export async function avaAppsConnect(req: Request, env: Env): Promise<Response> 
   const { email, phone } = await contactFor(env, ctx.uid);
   try {
     const oauthUrls = await connectToolkits(env, ctx.uid, slugs);
+    // Phase 1: a connection may have just completed — drop the conn cache so the
+    // next /status reflects it (client also calls /status?fresh=1 post-OAuth).
+    await invalidateConnCache(env, ctx.uid, (e, p) => trackUserContact(env, ctx.uid, email, phone, e, "avaapps", p));
     trackUserContact(env, ctx.uid, email, phone, "ava_app_connect", "avaapps", { slugs });
     return json({ ok: true, oauthUrls });
   } catch (e: any) {
@@ -88,6 +96,8 @@ export async function avaAppsDisconnect(req: Request, env: Env): Promise<Respons
   try {
     const removed = await disconnectToolkit(env, ctx.uid, slug);
     const { email, phone } = await contactFor(env, ctx.uid);
+    // Phase 1: reflect the removal immediately on the next status/run.
+    await invalidateConnCache(env, ctx.uid, (e, p) => trackUserContact(env, ctx.uid, email, phone, e, "avaapps", p));
     trackUserContact(env, ctx.uid, email, phone, "ava_app_disconnect", "avaapps", { slug, removed });
     return json({ ok: true, removed });
   } catch (e: any) {
@@ -120,6 +130,8 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
     stats.composio_retries++;
     trackUserContact(env, ctx.uid, email, phone, "avaapps_composio_retry", "avaapps", { attempt, status });
   };
+  // Phase 1: cache telemetry (conn/decls) carries the same email/phone enrichment.
+  stats.emit = (event: string, props: Record<string, unknown>) => trackUserContact(env, ctx.uid, email, phone, event, "avaapps", props);
   try {
     const answer = await runAppsToolLoop(env, ctx.uid, query, undefined, undefined, stats);
     await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
@@ -226,7 +238,8 @@ export async function avaGenuiAction(req: Request, env: Env): Promise<Response> 
     // Gate: connected toolkit + real, executable tool slug. (validate_ms covers
     // both the connected-account lookup and the catalog membership check.)
     const v0 = Date.now();
-    const connected = await connectedToolkits(env, ctx.uid);
+    // Phase 1: the connected-toolkit gate reads the 5-min KV cache.
+    const connected = await cachedConnectedToolkits(env, ctx.uid);
     if (!connected.includes(toolkit)) {
       trackUserContact(env, ctx.uid, email, phone, "genui_action_exec", "avaai", { gid, tool, toolkit, ok: false, stage: "blocked_not_connected", validate_ms: Date.now() - v0, ms: Date.now() - t0 });
       return json({ error: "app not connected", toolkit }, 403);

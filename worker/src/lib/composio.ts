@@ -37,6 +37,9 @@ export interface AppsRunStats {
   composio_retries: number;    // transient Composio retries observed
   setup_ms: number;            // connectedToolkits + geminiTools setup time
   onRetry?: (attempt: number, status: number) => void;
+  // Phase 1: emit cache telemetry (conn/decls) with user email enrichment. Set
+  // by the route so cache events carry the same contact fields as run events.
+  emit?: (event: string, props: Record<string, unknown>) => void;
 }
 export function newAppsRunStats(): AppsRunStats {
   return {
@@ -233,6 +236,83 @@ export async function connectedToolkits(env: Env, userId: string, onRetry?: (att
   return [...out];
 }
 
+// ---- Phase 1: server-side KV caches (fixes review #6 + #8) -------------------
+// Master flag: unset/"on" = caches enabled (safe — every miss/read-error falls
+// through to Composio, so a stale/absent KV entry can never fail a request);
+// "off" = bypass every new cache (telemetry logs cache:"bypass").
+function kvCacheOn(env: Env): boolean {
+  return String((env as any).AVAAPPS_KV_CACHE ?? "on").toLowerCase() !== "off";
+}
+type CacheEmit = (event: string, props: Record<string, unknown>) => void;
+
+// connectedToolkits(uid) cached in KV (key `avaapps:conn:<uid>`, TTL 300s). This
+// data is read on EVERY run and every screen open (#8) but changes only on
+// connect/disconnect — so a 5-min cache removes a Composio round trip from the
+// hot path. `fresh` bypasses the read+refreshes (the client passes ?fresh=1 right
+// after an OAuth return so a just-connected app shows immediately). ANY KV error
+// falls through to the live Composio call — the cache is never load-bearing.
+export async function cachedConnectedToolkits(
+  env: Env, userId: string,
+  opts?: { fresh?: boolean; onRetry?: (a: number, s: number) => void; emit?: CacheEmit },
+): Promise<string[]> {
+  const on = kvCacheOn(env);
+  const key = `avaapps:conn:${userId}`;
+  const t0 = Date.now();
+  if (on && !opts?.fresh) {
+    try {
+      const c = await env.TOKENS.get(key, "json");
+      if (Array.isArray(c)) { opts?.emit?.("avaapps_conn_cache", { cache: "hit", ms: Date.now() - t0 }); return c as string[]; }
+    } catch { /* fall through to live fetch */ }
+  }
+  const live = await connectedToolkits(env, userId, opts?.onRetry);
+  if (on) { try { await env.TOKENS.put(key, JSON.stringify(live), { expirationTtl: 300 }); } catch { /* best-effort */ } }
+  opts?.emit?.("avaapps_conn_cache", { cache: !on ? "bypass" : (opts?.fresh ? "bypass" : "miss"), ms: Date.now() - t0 });
+  return live;
+}
+
+// Delete the connectedToolkits cache for a user — called on connect/disconnect
+// success so the change is reflected on the very next status/run.
+export async function invalidateConnCache(env: Env, userId: string, emit?: CacheEmit): Promise<void> {
+  try { await env.TOKENS.delete(`avaapps:conn:${userId}`); emit?.("avaapps_conn_cache", { cache: "invalidated" }); } catch { /* best-effort */ }
+}
+
+// Build (or read from KV) the curated function declarations for ONE toolkit.
+// Key `avaapps:decls:<slug>:v1`, TTL 24h. The declarations are static per
+// toolkit (they only change when the CURATED list below changes) yet were
+// re-fetched from Composio on every query (#6). ⚠️ BUMP the `:v1` suffix if the
+// CURATED tool list for a toolkit changes, or stale decls will be served for up
+// to 24h. Any KV/Composio error returns [] or the live fetch — never throws.
+async function declsForToolkit(
+  env: Env, slug: string, on: boolean,
+  onRetry?: (a: number, s: number) => void, emit?: CacheEmit,
+): Promise<any[]> {
+  const key = `avaapps:decls:${slug}:v1`;
+  const t0 = Date.now();
+  if (on) {
+    try {
+      const cached = await env.TOKENS.get(key, "json");
+      if (Array.isArray(cached)) { emit?.("avaapps_decls_cache", { toolkit: slug, cache: "hit", ms: Date.now() - t0 }); return cached; }
+    } catch { /* fall through */ }
+  }
+  const allow = CURATED[slug];
+  let j: any;
+  try { j = await cfetch(env, `/tools?toolkit_slug=${slug}&limit=50`, { onRetry }); }
+  catch { emit?.("avaapps_decls_cache", { toolkit: slug, cache: "error", ms: Date.now() - t0 }); return []; }
+  const items: any[] = j.items ?? [];
+  const picked = allow ? items.filter((t) => allow.includes(String(t.slug))) : items.slice(0, 6);
+  const decls = picked.map((t: any) => {
+    const params = t.input_parameters ?? t.inputParameters;
+    return {
+      name: t.slug,
+      description: String(t.description ?? t.name ?? "").slice(0, 1024),
+      parameters: params ? sanitize(params) : { type: "object", properties: {} },
+    };
+  });
+  if (on) { try { await env.TOKENS.put(key, JSON.stringify(decls), { expirationTtl: 86400 }); } catch { /* best-effort */ } }
+  emit?.("avaapps_decls_cache", { toolkit: slug, cache: on ? "miss" : "bypass", ms: Date.now() - t0 });
+  return decls;
+}
+
 // Start (or reuse) an OAuth connection for each requested toolkit the user hasn't
 // connected yet. Returns the redirect URLs the client should open.
 export async function connectToolkits(env: Env, userId: string, slugs: string[]): Promise<Record<string, string>> {
@@ -295,24 +375,15 @@ export function sanitize(node: any): any {
 
 // Build Gemini function declarations for the given (connected) toolkits, limited
 // to the curated action tools so the set stays small + the model picks well.
-export async function geminiTools(env: Env, slugs: string[], onRetry?: (attempt: number, status: number) => void): Promise<any[]> {
-  const decls: any[] = [];
-  for (const slug of slugs) {
-    const allow = CURATED[slug];
-    let j: any;
-    try { j = await cfetch(env, `/tools?toolkit_slug=${slug}&limit=50`, { onRetry }); } catch { continue; }
-    const items: any[] = j.items ?? [];
-    const picked = allow ? items.filter((t) => allow.includes(String(t.slug))) : items.slice(0, 6);
-    for (const t of picked) {
-      const params = t.input_parameters ?? t.inputParameters;
-      decls.push({
-        name: t.slug,
-        description: String(t.description ?? t.name ?? "").slice(0, 1024),
-        parameters: params ? sanitize(params) : { type: "object", properties: {} },
-      });
-    }
-  }
-  return decls;
+export async function geminiTools(
+  env: Env, slugs: string[],
+  onRetry?: (attempt: number, status: number) => void, emit?: CacheEmit,
+): Promise<any[]> {
+  const on = kvCacheOn(env);
+  // Phase 1 (#6 + parallelize): decls for DIFFERENT toolkits fetch concurrently
+  // (Promise.all), each served from the per-toolkit KV cache when warm.
+  const perToolkit = await Promise.all(slugs.map((slug) => declsForToolkit(env, slug, on, onRetry, emit)));
+  return perToolkit.flat();
 }
 
 // Execute one Composio tool for the user. Tool execution is the slow path (it
@@ -542,16 +613,19 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
   const primaryModel = orAgentModel(env);
   if (stats) stats.model = primaryModel;
   const onRetry = stats?.onRetry;
+  const emit = stats?.emit;
   const orKey = (env as any).OPENROUTER_API_KEY ?? "";
   if (!orKey) return "Ava apps are temporarily unavailable.";
   const t0 = Date.now();
-  const toolkits = await connectedToolkits(env, userId, onRetry);
+  // Phase 1: connectedToolkits via the 5-min KV cache; decls via the 24h
+  // per-toolkit cache (parallel across toolkits inside geminiTools).
+  const toolkits = await cachedConnectedToolkits(env, userId, { onRetry, emit });
   if (stats) stats.toolkits = toolkits;
   if (toolkits.length === 0) {
     if (stats) stats.setup_ms = Date.now() - t0;
     return "You're premium ✓ — now I just need access. Open Account & Settings → Connectors, pick Gmail (or Docs, Drive, Calendar) and follow the connection steps. Once that's done, ask me again and I'll work with your email.";
   }
-  const decls = await geminiTools(env, toolkits, onRetry);
+  const decls = await geminiTools(env, toolkits, onRetry, emit);
   if (stats) stats.setup_ms = Date.now() - t0;
   const tools = toOpenAITools(decls);
   const sys = "You are Ava, operating the user's connected Google apps (Gmail, Docs, Sheets, Drive, Calendar) via tools. Use the tools to fulfil the request, then reply briefly and clearly with the outcome (and key details like links or subjects). If a tool fails, say so plainly.";
@@ -664,7 +738,8 @@ export async function runAgentLoop(
   let appDecls: any[] = [];
   if (opts?.apps) {
     try {
-      const toolkits = await connectedToolkits(env, userId);
+      // Phase 1: chat @ava shares the same 5-min conn cache + 24h decl cache.
+      const toolkits = await cachedConnectedToolkits(env, userId);
       if (toolkits.length) appDecls = await geminiTools(env, toolkits);
     } catch { /* apps optional */ }
   }
