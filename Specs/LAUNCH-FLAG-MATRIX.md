@@ -83,3 +83,45 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 - **Ably** is functionally removed; only a single dead `'AblyException'` suppression string
   remained in `app/lib/main.dart` (removed in `[P0-CLEAN-3]`). Remaining `Ably` grep hits are
   history comments and the `ABLY-R2` archive rollout phase names (a real feature, not Ably).
+
+## Telemetry doctrine (STANDING RULE — added Phase 13-D)
+
+Every pipeline in this app emits, at minimum:
+
+- `<name>_started` / `<name>_ok` / `<name>_error`, each with `{ms}` and the user's `email`
+  where available (rides every event via `Analytics._base` on the client / `account_id` + email
+  on the Worker).
+- Every `_error` event carries enough context to debug **without a reproduction**: the relevant
+  ids (call_id, conv, msg_id, listing_id, session id), the pipeline `stage`, and any upstream
+  `status`/error string.
+- Latency-sensitive paths additionally emit a `*_ms` metric (e.g. `msg_delivery_latency`,
+  `ttfm_ms`, `sync_catchup.ms`, `call_setup_ms`, `hub_connected.connect_ms`).
+- **Add events, never delete existing ones.** Disambiguate a reused event name with a `stage`
+  property (e.g. `call_push_sent` `stage:enqueue` vs `stage:fcm_send`) rather than renaming.
+
+Pipelines to audit against this rule as they land: P4 liveness (`liveness_*`), P6 safety
+(`safety_scan*`), P8 backup/restore (`restore_result`, archive writes), P11 profile vetting
+(`profile_vet_*`), P12 receptionist status (`recept_status_*`). They are **not built yet**, so
+there is nothing to backfill today — each phase wires its own events to this shape.
+
+## Phase 13 status (live sync + LTE latency), 2026-07-02
+
+**Done this pass (dark/additive; no flag flips):**
+- **A — measurement:** `msg_delivery_latency{ms,via:live}` (InboxDO now stamps `server_ts` on the
+  live `msg` frame), `sync_catchup{messages,ms,cursor_gap,trigger}`, `ttfm_ms` (per foreground),
+  `hub_connected{connect_ms,cellular}` (+ auto `net`).
+- **B — delays:** resume probe reconnects immediately when the socket is >10s idle (else keeps the
+  4s ping); zombie window 60s→30s; foreground FCM `message` now kicks a `push`-labelled cursor
+  sync (`syncFromPush`); PartyKit delivery-hint wired both ends (`thread:<conv>` `{t:'new'}`),
+  **dark behind `PARTY_ENABLED`**.
+- **C — call latency:** `call_setup_ms` added to `call_connected`.
+
+**Deferred within Phase 13 (need protocol / live-call refactors — do as a focused follow-up,
+verified on device):**
+- **B7 login fast-path** (newest page first, backfill older): needs an InboxDO sync-ordering
+  change (`?newest=1` mode) — not risked on the durable layer without a build.
+- **B8 flip:** `PARTY_ENABLED=1` staging → 24h clean `party_*` → prod (human-gated soak).
+- **C9 ICE pre-warm** (create the RTCPeerConnection at call-screen open, not at dial):
+  `iceCandidatePoolSize:2` already set; moving PC creation earlier is a live-call-path refactor.
+- **C10 audio-first on constrained cellular** (start low-res/audio-only, upgrade after stabilise):
+  reuses the existing `call_video_upgraded` path; deferred with C9.
