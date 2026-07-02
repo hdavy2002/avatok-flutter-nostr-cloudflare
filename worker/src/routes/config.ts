@@ -114,6 +114,11 @@ export interface PlatformConfig {
   // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
   // in Guardian settings; child accounts cannot opt out.
   safetyScanEnabled: boolean;
+  // P11: mandatory + AI-vetted profile completion. When ON, `/api/me` reports
+  // profile_complete and the profile save route enforces completeness + real-name
+  // plausibility (+ photo moderation) server-side. Default OFF (ships dark; ON at
+  // launch). Client mirror: RemoteConfig.profileCompletionGate.
+  profileCompletionGate: boolean;
   // P5: per-user daily cap on DISTINCT marketplace agent conversations (UTC day).
   // Tunable via KV without redeploy. The per-listing talk-once dedupe is separate
   // and does NOT consume quota (re-opening the same listing's result is free).
@@ -171,6 +176,7 @@ const DEFAULTS: PlatformConfig = {
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
   listingLivenessGate: false,      // P4: block listing create/publish unless liveness-verified — dark, flip ON at launch
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
+  profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   agentDailyCap: 10,               // P5: 10 marketplace agent conversations/user/UTC-day
   minAppBuild: 0,
 };

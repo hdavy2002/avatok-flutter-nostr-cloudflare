@@ -55,6 +55,7 @@ Covers 100% of `PlatformConfig` keys in `worker/src/routes/config.ts` (interface
 | `groupInvitesEnabled` | bool | `false` | `false` | — pending-membership invites off until migration+test |
 | `listingLivenessGate` | bool | `false` | `true` | **P4** — block listing create/publish unless liveness-verified; ships dark |
 | `safetyScanEnabled` | bool | `true` | `true` | **P6** — always-on Nemotron per-message safety scan + red bubbles; ships ON |
+| `profileCompletionGate` | bool | `false` | `true` | **P11** — mandatory + AI-vetted profile; ships dark |
 | `agentDailyCap` | number | `10` | `10` | **P5** — marketplace agent conversations/user/UTC-day (0 disables) |
 | `minAppBuild` | number | `0` | `0` | — min build gate; bump when forcing upgrade |
 
@@ -73,7 +74,6 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 | `chatArchiveV2` | bool | `false` | `true` | P8 Stage 1 — R2 cold archive |
 | `restoreV2` | bool | `false` | `true` | P8 Stage 2 — new-phone restore |
 | `driveAutoBackup` | bool | `false` | `true` | P8 Stage 3 — daily Drive backup |
-| `profileCompletionGate` | bool | `false` | `true` | P11 — mandatory + AI-vetted profile |
 
 ## Notes
 
@@ -105,6 +105,26 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
   server pipeline + a client challenge screen, unverifiable without a build/device.
 - The `CreateListingFlow` (creator-services composer) already gates server-side via `requireKyc`;
   its client explainer can reuse `_openListingComposer` when that path is wired.
+
+## Phase 11 status (profile completeness + AI vetting), 2026-07-02
+
+**Done this pass (server, behind `profileCompletionGate`, default OFF; guardWrite Nemotron on
+name/bio already ran):**
+- `/api/me` now returns `profile_complete` (photo + first + last + birth year + gender + About;
+  phone optional).
+- Profile save (`api.ts:profileUpsert`) enforces, when the gate is ON: **completeness** (400
+  `profile_incomplete` + `missing[]`), then **real-name plausibility** via `gemini-2.5-flash-lite`
+  (`vetRealName`, few-shot per the plan — "Midnight Rod" implausible, "Satish"/"Al Wu" pass; min
+  length 2), 400 `implausible_name` with a kind message. **FAIL CLOSED**: model outage → 400
+  `vet_unavailable` "try again in a minute". `brainFact('profile_updated')` feeds the receptionist/
+  AvaBrain. Telemetry `profile_vet_started/passed/rejected/error`. Client flag mirror added.
+
+**Deferred within P11 (documented follow-up):**
+- **Photo moderation** (Rekognition `DetectModerationLabels` on the avatar, reject Explicit
+  Nudity/Sexual): needs a helper + the image-byte fetch from R2/URL — not wired this pass.
+- **Client UX**: completeness gate (red fields + `Scrollable.ensureVisible` to the first missing
+  field), the "Ava is checking your profile…" hold state, and existing-user routing to Profile
+  on login when `profile_complete=false`. Server gate is bypass-proof already; this is the polish.
 
 ## Phase 7 status (AvaBrain), 2026-07-02
 

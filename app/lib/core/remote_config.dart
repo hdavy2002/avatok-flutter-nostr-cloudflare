@@ -59,6 +59,10 @@ class RemoteConfig {
   /// P4: require video-liveness verification before creating/publishing a listing.
   /// Ships dark (default OFF); flip ON at launch. Mirrors config.ts.
   static bool get listingLivenessGate => _b('listingLivenessGate', false);
+  /// P11: mandatory + AI-vetted profile completion. Ships dark (default OFF); flip
+  /// ON at launch. When on, an incomplete profile is routed to the Profile screen
+  /// before the app, and the save shows a hold state while the server vets. Mirrors config.ts.
+  static bool get profileCompletionGate => _b('profileCompletionGate', false);
   /// ChatAVA "talk to Ava by voice" — the hands-free Gemini Live call
   /// (LiveVoiceController). Owner kill switch (2026-06-27): default OFF so the
   /// feature stays dark after a config-fetch failure and can't burn the shared

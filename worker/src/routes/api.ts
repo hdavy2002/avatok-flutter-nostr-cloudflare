@@ -12,8 +12,9 @@ import { metaSession } from "../db/shard";
 import { requireUser, isFail } from "../authz";
 import { verifyClerk } from "../auth";
 import { nameFor } from "../lib/identity";
-import { brainFact } from "../hooks";
+import { brainFact, track } from "../hooks";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
+import { readConfig } from "./config"; // P11: profileCompletionGate
 import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
@@ -164,6 +165,44 @@ export async function handleCheck(_req: Request, _env: Env): Promise<Response> {
   return json({ deprecated: true, valid: false, available: false, reason: "Handles are retired. Use your AvaTOK number, phone, or email." }, 410);
 }
 
+// P11: real-name plausibility via gemini-2.5-flash-lite. Returns {plausible,reason}.
+// `ok:false` = the model call itself failed → the caller FAILS CLOSED (a bad public
+// profile must not pass just because a model was down). Encodes the policy with
+// few-shot examples: fragments/invented/object-innuendo names are implausible;
+// legitimately short real names (Al, Bo, Li, Ng, Wu) pass. min length 2.
+async function vetRealName(env: Env, first: string, last: string): Promise<{ ok: boolean; plausible: boolean; reason: string }> {
+  const full = `${first} ${last}`.trim();
+  if (!full) return { ok: true, plausible: false, reason: "Please enter your first and last name." };
+  const key = (env as any).GEMINI_API_KEY as string | undefined;
+  if (!key) return { ok: false, plausible: false, reason: "" }; // no key → fail closed
+  const prompt =
+    "You judge whether a submitted first+last name is a plausible REAL human name for a social app. " +
+    "Real names from many cultures can be 2 letters (Al, Bo, Li, Ng, Wu) — judge INTENT, not raw length; min length 2. " +
+    "Examples: \"Sat\" -> implausible (fragment). \"Satish\" -> plausible. \"Satisy\" -> implausible (misspelled/invented). " +
+    "\"Midnight Rod\", \"Black Stick\" -> implausible (object/innuendo, not a human name). \"Al Wu\" -> plausible. " +
+    `Name: "${full}". Respond with ONLY JSON: {"plausible": <true|false>, "reason": "<short kind sentence, only when implausible>"}.`;
+  try {
+    const r = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 80 } }),
+      },
+    );
+    if (!r.ok) return { ok: false, plausible: false, reason: "" };
+    const j = (await r.json()) as any;
+    const txt = String(j?.candidates?.[0]?.content?.parts?.[0]?.text ?? "");
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return { ok: false, plausible: false, reason: "" };
+    const parsed = JSON.parse(m[0]) as { plausible?: boolean; reason?: string };
+    const plausible = parsed.plausible === true;
+    return { ok: true, plausible, reason: plausible ? "" : (parsed.reason || "Please use your real name — it helps people trust who they're talking to.") };
+  } catch {
+    return { ok: false, plausible: false, reason: "" }; // network/parse error → fail closed
+  }
+}
+
 export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
@@ -205,6 +244,41 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
     { text: bio, field: "bio" },
   ]);
   if (blocked) return blocked;
+
+  // P11: mandatory + AI-vetted profile (behind profileCompletionGate; dark until
+  // launch). Runs while the client shows a hold state. Completeness THEN real-name
+  // plausibility. Phone is the ONLY optional field. FAIL CLOSED on model outage.
+  let gateOn = false;
+  try { gateOn = (await readConfig(env)).profileCompletionGate === true; } catch { gateOn = false; }
+  if (gateOn) {
+    track(env, ctx.uid, "profile_vet_started", "profile", {});
+    // Completeness: photo, first, last, birth year, gender, About all required.
+    const missing: string[] = [];
+    if (!avatarUrl) missing.push("photo");
+    if (!firstName) missing.push("first_name");
+    if (!lastName) missing.push("last_name");
+    if (!birthYear) missing.push("birth_year");
+    if (!gender) missing.push("gender");
+    if (!bio) missing.push("about");
+    if (missing.length) {
+      track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "incomplete", field: missing[0] });
+      return json({ error: "profile_incomplete", missing, message: "Please complete every field (only your phone number is optional)." }, 400);
+    }
+    // Real-name plausibility (gemini-2.5-flash-lite). Fail closed on model error.
+    const nm = await vetRealName(env, firstName!, lastName!);
+    if (!nm.ok) {
+      track(env, ctx.uid, "profile_vet_error", "profile", { stage: "realname_model" });
+      return json({ error: "vet_unavailable", field: "first_name", message: "We couldn't check your profile just now — please try again in a minute." }, 400);
+    }
+    if (!nm.plausible) {
+      track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "realname", field: "first_name" });
+      return json({ error: "implausible_name", field: "first_name", message: nm.reason }, 400);
+    }
+    // NOTE: photo moderation (Rekognition DetectModerationLabels on avatarUrl) is a
+    // documented follow-up — the helper + image-byte fetch aren't wired yet.
+    track(env, ctx.uid, "profile_vet_passed", "profile", {});
+  }
+
   await db.prepare(
     `INSERT INTO users (uid, display_name, first_name, last_name, avatar_url, email_hash, phone_hash, birth_year, bio, gender, created_at, updated_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?10,?11,?9,?9)
@@ -217,6 +291,13 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
   // Feed a non-empty self-description to AvaBrain so Ava can personalise. Scoped
   // 'private'; the brain consumer still honours the user's AvaBrain consent toggle.
   if (bio) brainFact(env, ctx.uid, "profile_bio", "profile", { bio }, "private");
+  // P11: feed the profile summary so the receptionist + AvaBrain know their owner
+  // (name, gender→pronouns, About). Scoped private; the brain consumer still honours
+  // the AvaBrain consent toggle.
+  brainFact(env, ctx.uid, "profile_updated", "profile", {
+    name, first_name: firstName, last_name: lastName, gender, birth_year: birthYear,
+    ...(bio ? { about: bio } : {}),
+  }, "private");
   return json({ ok: true, profile: { uid: ctx.uid, name, first_name: firstName, last_name: lastName, email: b.email || "", phone: b.phone || "" } });
 }
 
@@ -231,11 +312,16 @@ export async function me(req: Request, env: Env): Promise<Response> {
     "SELECT display_name, first_name, last_name, avatar_url, birth_year, bio, gender, avatok_number, avatok_number_display, phone_discoverable, email_discoverable, who_can_add, share_token FROM users WHERE uid=?1",
   ).bind(uid).first<any>();
   if (!prof) return json({ found: false, clerk_enabled: true, uid });
+  // P11: completeness = photo + first + last + birth year + gender + About (phone
+  // is the only optional field). The client routes an incomplete profile to the
+  // Profile screen before the app when profileCompletionGate is ON.
+  const profileComplete = !!(prof.avatar_url && prof.first_name && prof.last_name
+    && prof.birth_year && prof.gender && prof.bio);
   return json({
     found: true, clerk_enabled: true, uid,
     display_name: prof.display_name ?? null, first_name: prof.first_name ?? null, last_name: prof.last_name ?? null,
     avatar_url: prof.avatar_url ?? null, birth_year: prof.birth_year ?? null, bio: prof.bio ?? null,
-    gender: prof.gender ?? null,
+    gender: prof.gender ?? null, profile_complete: profileComplete,
     avatok_number: prof.avatok_number ?? null, avatok_number_display: prof.avatok_number_display ?? null,
     phone_discoverable: !!prof.phone_discoverable, email_discoverable: prof.email_discoverable !== 0,
     who_can_add: prof.who_can_add ?? "everyone", share_token: prof.share_token ?? null,
