@@ -17,6 +17,15 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     // same blind spot behind the "no device registered" incident, seen from the
     // delivery side. Now queryable per recipient.
     await capturePush(env, "push_no_device", uid, { kind: msg.kind, call_id: msg.callId ?? null });
+    // P1: a call to a device-less callee can never ring — tell the caller so the
+    // Ava takeover fires immediately instead of waiting out the ring window.
+    if (msg.kind === "call" && msg.callId) {
+      await capturePush(env, "call_push_sent", uid, {
+        stage: "fcm_send", call_id: msg.callId, to_uid: uid,
+        fcm_message_id: null, ok: false, error: "no_device", devices: 0,
+      });
+      await relayRingAck(env, msg.callId, false);
+    }
     return;
   }
 
@@ -33,10 +42,46 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     await capturePush(env, "push_muted_demo", uid, { kind: msg.kind, type: payload.data.type });
     return;
   }
+  // P1 (Phase 1): for INCOMING CALLS, instrument the true FCM hand-off and relay the
+  // outcome to the caller's CallRoom so a push-confirmation gate is possible. The
+  // enqueue-time `call_push_sent` (api.ts) can't know fcm_message_id/ok/error — only
+  // here, at the actual messages:send, can we. We aggregate across the callee's
+  // devices: the push "succeeded" if ANY device accepted it.
+  const isCall = payload.data.type === "call";
+  const callId = payload.data.callId || msg.callId || "";
+  let anyOk = false, firstMsgId = "", lastErr = "";
   for (const t of tokens) {
-    if (t.platform === "apns") await sendApns(env, t.token, payload);
-    else await sendFcm(env, t.token, payload, uid); // 'fcm' (Android) — default
+    if (t.platform === "apns") { await sendApns(env, t.token, payload); continue; }
+    const r = await sendFcm(env, t.token, payload, uid); // 'fcm' (Android) — default
+    if (r.ok) { anyOk = true; if (!firstMsgId && r.messageId) firstMsgId = r.messageId; }
+    else if (r.error) lastErr = r.error;
   }
+  if (isCall) {
+    // The real FCM-hand-off event (stage:'fcm_send' distinguishes it from the
+    // enqueue-time event of the same name in api.ts). Includes failures.
+    await capturePush(env, "call_push_sent", uid, {
+      stage: "fcm_send", call_id: callId, to_uid: uid,
+      fcm_message_id: firstMsgId || null, ok: anyOk,
+      error: anyOk ? null : (lastErr || "no_delivery"), devices: tokens.length,
+    });
+    // receptTakeoverGuard: tell the caller (the only peer in the room during ring)
+    // whether the callee's phone could ring. Best-effort; never blocks delivery.
+    await relayRingAck(env, callId, anyOk);
+  }
+}
+
+// P1 ring-ack: POST the incoming-call push outcome to the callee's CallRoom DO
+// (cross-script binding), which broadcasts {type:'ring-ack', ok} to the connected
+// caller. Inert unless the client honors it (receptTakeoverGuard ON). Never throws.
+async function relayRingAck(env: Env, callId: string, ok: boolean): Promise<void> {
+  if (!env.CALL_ROOMS || !callId) return;
+  try {
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+    await stub.fetch("https://call-room/control", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ring-ack", ok, callId }),
+    });
+  } catch { /* best-effort — a signaling hiccup must never block a push */ }
 }
 
 // Best-effort single-event PostHog capture so push-delivery failures are
@@ -158,11 +203,14 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
   return { highPriority: true, data: { type, fromPub: msg.from_pubkey ?? "", event_id: msg.event_id ?? "" } };
 }
 
-async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string): Promise<void> {
+// Returns the per-token send outcome so the caller can aggregate call-push results
+// (P1). Existing failure telemetry is preserved (additive) — this only adds a
+// return value and a success-path message-id parse.
+async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string): Promise<{ ok: boolean; messageId?: string; error?: string }> {
   if (!env.FCM_SERVICE_ACCOUNT) {
     console.warn("FCM_SERVICE_ACCOUNT unset; cannot send");
     await capturePush(env, "push_send_failed", uid, { reason: "no_service_account" });
-    return;
+    return { ok: false, error: "no_service_account" };
   }
   let res: Response;
   try {
@@ -205,7 +253,16 @@ async function sendFcm(env: Env, token: string, payload: { data: Record<string, 
       console.error("FCM send failed (token KEPT):", res.status, txt.slice(0, 300));
       await capturePush(env, "push_send_failed", uid, { status: res.status, error: txt.slice(0, 180) });
     }
+    return { ok: false, error: `http_${res.status}` };
   }
+  // Success — FCM returns { name: "projects/<p>/messages/<id>" }. Extract the id
+  // so call_push_sent carries fcm_message_id for end-to-end delivery tracing.
+  let messageId = "";
+  try {
+    const j = (await res.json()) as { name?: string };
+    messageId = (j?.name ?? "").split("/").pop() ?? "";
+  } catch { /* body already consumed / not JSON — ok stays true */ }
+  return { ok: true, messageId };
 }
 
 // --- OAuth: service-account JWT → access token (cached in KV ~55 min) ---

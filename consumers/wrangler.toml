@@ -202,6 +202,14 @@ name = "WALLET_DO"
 class_name = "WalletDO"
 script_name = "avatok-api"
 
+# Cross-script DO binding -> avatok-api's CallRoom (P1 ring-ack control-plane: the
+# push consumer POSTs the incoming-call FCM outcome so the caller's takeover
+# countdown can gate on it when receptTakeoverGuard is ON — ships dark otherwise).
+[[durable_objects.bindings]]
+name = "CALL_ROOMS"
+class_name = "CallRoom"
+script_name = "avatok-api"
+
 # Calendar reminders re-enqueue to the push queue (Phase 3). This Worker is both a
 # producer (cron reminders) and consumer (push-notifications) of this queue.
 [[queues.producers]]
@@ -408,6 +416,11 @@ script_name = "avatok-api-staging"
 [[env.staging.durable_objects.bindings]]
 name = "WALLET_DO"
 class_name = "WalletDO"
+script_name = "avatok-api-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "CALL_ROOMS"
+class_name = "CallRoom"
 script_name = "avatok-api-staging"
 
 [[env.staging.queues.producers]]

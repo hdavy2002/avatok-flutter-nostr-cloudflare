@@ -97,6 +97,10 @@ export async function call(req: Request, env: Env): Promise<Response> {
     void env.Q_ANALYTICS.send({
       event: "call_push_sent", uid: ctx.uid, ts: Date.now(),
       props: {
+        // stage:'enqueue' — the push was handed to Q_PUSH here; the true FCM
+        // hand-off (fcm_message_id/ok/error) is emitted by the consumer with
+        // stage:'fcm_send' (P1). Same event name, disambiguated by `stage`.
+        stage: "enqueue",
         to: b.to, call_id: b.callId, call_type: b.kind ?? "audio",
         name_source: nameSource, devices: n,
         app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,

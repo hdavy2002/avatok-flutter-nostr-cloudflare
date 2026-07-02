@@ -24,6 +24,30 @@ export class CallRoom {
 
   async fetch(req: Request): Promise<Response> {
     if (req.headers.get("Upgrade") !== "websocket") {
+      // P1 ring-ack control-plane (Phase 1, receptTakeoverGuard). A server worker
+      // (the FCM push consumer) POSTs the outcome of the incoming-call push so the
+      // CALLER — the only peer in the room during ring — learns whether the callee's
+      // phone could ring. Broadcast to every connected socket (only the caller is
+      // here pre-answer); the client ignores unknown frames when the flag is OFF.
+      // No sockets connected → harmless no-op. Never persists anything.
+      if (req.method === "POST") {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const type = typeof body.type === "string" ? body.type : "";
+        if (type === "ring-ack") {
+          const frame = JSON.stringify({
+            type: "ring-ack",
+            ok: body.ok === true,
+            ...(typeof body.callId === "string" ? { callId: body.callId } : {}),
+          });
+          let sent = 0;
+          for (const w of this.state.getWebSockets()) {
+            try { w.send(frame); sent++; } catch { /* peer gone */ }
+          }
+          return Response.json({ ok: true, sent });
+        }
+        return Response.json({ error: "unknown control type" }, { status: 400 });
+      }
       return new Response("expected websocket", { status: 426 });
     }
     const url = new URL(req.url);

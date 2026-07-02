@@ -17,6 +17,7 @@ export interface Env {
   CONVERSATION_DO?: DurableObjectNamespace; // cross-script → avatok-api ConversationDO (Phase 7)
   INBOX?: DurableObjectNamespace; // cross-script → avatok-api InboxDO (large-group fanout + marketplace voice card)
   PARTY?: DurableObjectNamespace; // cross-script → avatok-api PartyDO (marketplace voice deal_ready nudge)
+  CALL_ROOMS?: DurableObjectNamespace; // cross-script → avatok-api CallRoom (P1 ring-ack control-plane)
   Q_MKT_AUDIO?: Queue;            // marketplace negotiation voice render (async, this consumer)
   WALLET_DO?: DurableObjectNamespace; // cross-script → avatok-api WalletDO (nightly recon reads, Phase 2)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
