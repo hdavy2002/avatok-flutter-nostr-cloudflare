@@ -56,6 +56,9 @@ Covers 100% of `PlatformConfig` keys in `worker/src/routes/config.ts` (interface
 | `listingLivenessGate` | bool | `false` | `true` | **P4** — block listing create/publish unless liveness-verified; ships dark |
 | `safetyScanEnabled` | bool | `true` | `true` | **P6** — always-on Nemotron per-message safety scan + red bubbles; ships ON |
 | `profileCompletionGate` | bool | `false` | `true` | **P11** — mandatory + AI-vetted profile; ships dark |
+| `chatArchiveV2` | bool | `false` | `true` | **P8** — batched R2 cold archive; server gate is Worker var `CHAT_ARCHIVE_V2=1` |
+| `restoreV2` | bool | `false` | `true` | **P8** — R2 lazy-older restore paging (`/api/archive/page`); dark |
+| `driveAutoBackup` | bool | `true` | `true` | **P8** — daily Drive backup for **ALL** users (no premium); ships ON |
 | `agentDailyCap` | number | `10` | `10` | **P5** — marketplace agent conversations/user/UTC-day (0 disables) |
 | `minAppBuild` | number | `0` | `0` | — min build gate; bump when forcing upgrade |
 
@@ -71,9 +74,6 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 
 | Flag | Type | Default at add | Launch value | Owner phase |
 |---|---|---|---|---|
-| `chatArchiveV2` | bool | `false` | `true` | P8 Stage 1 — R2 cold archive |
-| `restoreV2` | bool | `false` | `true` | P8 Stage 2 — new-phone restore |
-| `driveAutoBackup` | bool | `false` | `true` | P8 Stage 3 — daily Drive backup |
 
 ## Notes
 
@@ -148,6 +148,40 @@ name/bio already ran):**
 - **Client UX**: completeness gate (red fields + `Scrollable.ensureVisible` to the first missing
   field), the "Ava is checking your profile…" hold state, and existing-user routing to Profile
   on login when `profile_complete=false`. Server gate is bypass-proof already; this is the polish.
+
+## Phase 8 status (backup & restore durability), 2026-07-02
+
+Context: another agent (`fcd745e [BACKUP-RESTORE-1]`) already built a **whole-DB-blob** backup path
+(key escrow, safe `Db.reset()` swap, incremental media to Drive, restore from Drive/R2). Owner
+directive 2026-07-02: **all users back up to their own Google Drive — no premium gate.** This pass
+fills the plan's gaps on top of that, without a second competing system.
+
+**Done this pass:**
+- **De-premiumed daily backup**: `BackupService.maybeAutoBackup` now backs up to the user's **own
+  Google Drive for EVERY user** (premium *also* mirrors to R2 as a best-effort extra) — previously
+  premium→R2 with Drive only as fallback. Gated by `driveAutoBackup` (**ON**). `drive_auto_backup`
+  telemetry added. (The Drive backup/restore UI buttons were already free; only R2 cross-device
+  *sync* stays premium.)
+- **Batched R2 cold archive** (Stage 1, `chatArchiveV2`): InboxDO now buffers appends and flushes
+  to `archive/<uid>/<yyyy-mm>/<firstId>.jsonl` in `BACKUP_R2` every **100 messages or 5 minutes**
+  (alarm), **one R2 PUT per batch** (fixes the per-message-PUT cost of the legacy `CHAT_ARCHIVE`
+  lane). High-water tracked in a DO `meta_kv` table; idempotent; never blocks delivery.
+  **Server gate = Worker var `CHAT_ARCHIVE_V2=1`** (cheap per-wake, like `INBOX_RETENTION_DAYS`) —
+  the `chatArchiveV2` platform flag is the launch/matrix indicator that maps to setting it.
+- **Retention safety** (Stage 1): the InboxDO prune now, when the archive is on, **only drops rows
+  with `id <= archive high-water`** (never an un-archived row); the alarm flushes the archive
+  *before* pruning. When the archive is off, the device + Drive/R2 blob remain the durable copy
+  (original age-only prune).
+- **`/api/archive/page`** (Stage 2 reader): new uid-scoped route reads older history from the
+  batched jsonl segments (newest-first, `id < before`, optional `conv`). Registered in `index.ts`.
+
+**Deferred within P8 (documented follow-up):**
+- **Client scroll pager**: wiring `/api/archive/page` into `chat_thread.dart` scroll-up (load older
+  than the local hot window on demand), behind `restoreV2`. Server side is ready; this is UI
+  integration on a serialized file.
+- **Backfill job**: a one-time paced walk of existing DO history into the archive (the forward path
+  archives new appends; existing pre-enable history isn't backfilled yet).
+- **Reactions/receipts/tombstones as follow-up jsonl lines** (v1 archives the message envelope only).
 
 ## Phase 7 status (AvaBrain), 2026-07-02
 

@@ -32,7 +32,7 @@ import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveI
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
-import { archiveList } from "./routes/archive";
+import { archiveList, archivePage } from "./routes/archive";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
@@ -265,6 +265,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/sync" && req.method === "GET") return await syncMsg(req, env);
       // Phase 3 (ABLY-R2-3): deep history from R2/D1 (older than Ably's window).
       if (p === "/api/msg/archive" && req.method === "GET") return await archiveList(req, env);
+      if (p === "/api/archive/page" && req.method === "GET") return await archivePage(req, env); // P8 Stage 2: batched-jsonl pager
       if (p === "/api/msg/receipt" && req.method === "POST") return await receiptMsg(req, env);
       if (p === "/api/msg/read" && req.method === "POST") return await readMsg(req, env);
       if (p === "/api/msg/hide" && req.method === "POST") return await hideMsg(req, env);

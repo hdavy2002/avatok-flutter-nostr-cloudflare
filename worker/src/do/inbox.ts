@@ -22,6 +22,11 @@ import { type MessageScope, scopeAudience } from "../lib/ava_kinds";
 const SYNC_LIMIT = 500;
 
 const DAY_MS = 86_400_000;
+// P8 Stage 1 (chatArchiveV2): batch message appends into R2 cold-archive jsonl.
+// R2 PUT ops are the cost driver, not bytes — so we flush on whichever comes first:
+const ARCHIVE_FLUSH_COUNT = 100;      // …every 100 newly-appended messages, or…
+const ARCHIVE_FLUSH_MS = 5 * 60_000;  // …every 5 minutes (the alarm cadence when on).
+const ARCHIVE_BATCH_MAX = 1000;       // rows read per flush (bounds a backfill burst)
 
 export class InboxDO {
   private state: DurableObjectState;
@@ -125,19 +130,79 @@ export class InboxDO {
     // their own InboxDO so all of their devices (iPhone/Mac/PC) sync the same hide/
     // Undo via /sync + the live 'hide' broadcast. Never set on a peer's inbox.
     try { this.sql.exec(`ALTER TABLE messages ADD COLUMN hidden INTEGER`); } catch { /* already present */ }
+    // P8 Stage 1: tiny durable KV for the archive owner uid + high-water (last
+    // archived message id). Kept in DO-SQLite so it survives hibernation cheaply.
+    try { this.sql.exec(`CREATE TABLE IF NOT EXISTS meta_kv (k TEXT PRIMARY KEY, v TEXT)`); } catch { /* present */ }
     // Retention: turn the per-user inbox into a RELAY + offline buffer instead of a
     // permanent archive (the device keeps history locally + in Drive/R2 backup).
     // Controlled by INBOX_RETENTION_DAYS — UNSET/0 = disabled (keep forever, current
     // behavior). When enabled, a daily alarm prunes aged-out messages. We set the
     // alarm once on construction (only if none pending) so enabling the env var and
     // redeploying starts pruning without per-request cost.
-    if (this.retentionMs() > 0) {
+    if (this.retentionMs() > 0 || this.archiveOn()) {
       this.state.blockConcurrencyWhile(async () => {
         if ((await this.state.storage.getAlarm()) == null) {
-          await this.state.storage.setAlarm(Date.now() + DAY_MS);
+          // Faster cadence when the batched archive is on (it flushes on the alarm).
+          await this.state.storage.setAlarm(Date.now() + (this.archiveOn() ? ARCHIVE_FLUSH_MS : DAY_MS));
         }
       });
     }
+  }
+
+  // ── P8 Stage 1: batched R2 cold archive ────────────────────────────────────
+  private _archivePending = 0; // appends since last flush (in-memory; reset on hibernation — the alarm still flushes)
+
+  private archiveOn(): boolean {
+    // Gated by a cheap Worker var (like INBOX_RETENTION_DAYS/CHAT_ARCHIVE) so we
+    // never pay a per-wake KV read. Maps to the `chatArchiveV2` launch flag.
+    return (this.env as unknown as { CHAT_ARCHIVE_V2?: string }).CHAT_ARCHIVE_V2 === "1" && !!this.env.BACKUP_R2;
+  }
+  private getMeta(k: string): string | null {
+    try { return String((this.sql.exec(`SELECT v FROM meta_kv WHERE k=?`, k).one() as { v: string }).v); }
+    catch { return null; }
+  }
+  private setMeta(k: string, v: string): void {
+    try { this.sql.exec(`INSERT INTO meta_kv (k,v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v=?`, k, v, v); }
+    catch { /* best-effort */ }
+  }
+  private archiveHw(): number { return Number(this.getMeta("archive_hw") || 0) || 0; }
+
+  /** Flush new (id > high-water) rows to a per-user R2 jsonl segment. Idempotent by
+   *  high-water; never throws (durability, not delivery). One R2 PUT per batch. */
+  private async flushArchive(): Promise<void> {
+    if (!this.archiveOn()) return;
+    const owner = this.getMeta("owner");
+    if (!owner) return;
+    const hw = this.archiveHw();
+    let rows: Record<string, unknown>[] = [];
+    try {
+      rows = this.sql.exec(
+        `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden
+           FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`, hw, ARCHIVE_BATCH_MAX,
+      ).toArray() as Record<string, unknown>[];
+    } catch { return; }
+    if (!rows.length) return;
+    const firstId = Number(rows[0].id);
+    const lastId = Number(rows[rows.length - 1].id);
+    const jsonl = rows.map((r) => JSON.stringify({ t: "msg", ...r })).join("\n") + "\n";
+    const d = new Date();
+    const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const key = `archive/${owner}/${ym}/${firstId}.jsonl`;
+    try {
+      await this.env.BACKUP_R2.put(key, jsonl, { httpMetadata: { contentType: "application/x-ndjson" } });
+    } catch { return; } // leave high-water unchanged → retried next flush (idempotent by firstId key)
+    this.setMeta("archive_hw", String(lastId));
+    this._archivePending = 0;
+    try {
+      void this.env.Q_ANALYTICS.send({
+        event: "chat_archive_flush", uid: owner, ts: Date.now(),
+        props: { count: rows.length, first_id: firstId, last_id: lastId, bytes: jsonl.length, key,
+          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: owner },
+      });
+    } catch { /* best-effort */ }
+    // Backfill: more than a batch waiting → keep draining (best-effort; the alarm
+    // re-drives it too).
+    if (rows.length >= ARCHIVE_BATCH_MAX) { void this.flushArchive(); }
   }
 
   /** Retention window in ms (0 = disabled). */
@@ -152,19 +217,26 @@ export class InboxDO {
     const ms = this.retentionMs();
     if (ms <= 0) return;
     const cutoff = Date.now() - ms;
+    // P8 Stage 1 safety: when the batched archive is ON, NEVER drop a row that
+    // hasn't been durably archived yet — only prune id <= the archive high-water.
+    // (When the archive is off, the device + Drive/R2 blob remain the durable copy,
+    // so the original age-only prune stands.)
+    const hwGuard = this.archiveOn() ? ` AND id <= ${this.archiveHw()}` : "";
     this.sql.exec(
       `DELETE FROM messages
-         WHERE (stored_at IS NOT NULL AND stored_at < ?1)
-            OR (stored_at IS NULL AND created_at > 1000000000000 AND created_at < ?1)`,
+         WHERE ((stored_at IS NOT NULL AND stored_at < ?1)
+            OR (stored_at IS NULL AND created_at > 1000000000000 AND created_at < ?1))${hwGuard}`,
       cutoff,
     );
   }
 
-  /** Daily retention alarm — prune + reschedule while retention is enabled. */
+  /** Retention/archive alarm — flush the R2 archive (when on) BEFORE pruning so
+   *  the high-water covers everything eligible, then prune, then reschedule. */
   async alarm(): Promise<void> {
+    if (this.archiveOn()) { try { await this.flushArchive(); } catch { /* best-effort */ } }
     this.prune();
-    if (this.retentionMs() > 0) {
-      await this.state.storage.setAlarm(Date.now() + DAY_MS);
+    if (this.retentionMs() > 0 || this.archiveOn()) {
+      await this.state.storage.setAlarm(Date.now() + (this.archiveOn() ? ARCHIVE_FLUSH_MS : DAY_MS));
     }
   }
 
@@ -295,6 +367,17 @@ export class InboxDO {
       created_at: created, server_ts: Date.now(), audience,
     });
     const live = this.broadcast(frame);
+    // P8 Stage 1: feed the batched R2 archive (dark unless CHAT_ARCHIVE_V2=1). Flush
+    // on the 100-message threshold; the alarm covers the 5-minute time bound. The
+    // R2 write runs after the response via waitUntil — never blocks delivery.
+    if (this.archiveOn()) {
+      if (!this.getMeta("owner")) this.setMeta("owner", b.owner);
+      this._archivePending++;
+      if (this._archivePending >= ARCHIVE_FLUSH_COUNT) {
+        this._archivePending = 0;
+        void this.flushArchive(); // best-effort; the 5-min alarm is the backstop
+      }
+    }
     return new Response(JSON.stringify({ id, live }), { headers: { "content-type": "application/json" } });
   }
 

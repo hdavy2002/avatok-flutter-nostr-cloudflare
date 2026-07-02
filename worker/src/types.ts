@@ -192,6 +192,7 @@ export interface Env {
 
   // R2-archive rollout flag (Specs/ABLY-TRANSPORT-R2-ARCHIVE-PROPOSAL.md).
   CHAT_ARCHIVE?: string;     // "1" → enqueue every sent message to R2 + D1 message_index (Phase 1)
+  CHAT_ARCHIVE_V2?: string;  // "1" → InboxDO batched R2 jsonl cold archive (P8 chatArchiveV2)
   PARTY_ENABLED?: string;    // "1" → PartyKit realtime layer on (client opens party sockets); dark otherwise
   MSG_STATE_STORE?: string;  // "d1" → owner-private state (read/hide/call-log) reads+writes go to D1 (Phase 5)
 
