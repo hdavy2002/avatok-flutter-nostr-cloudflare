@@ -129,6 +129,15 @@ class _CallScreenState extends State<CallScreen> {
   String _receptMode = 'rings';    // rings | first_ring
   int _receptRings = 5;            // Mode A ring count (RemoteConfig-driven)
   StreamSubscription? _statusSub;
+  // P1 receptTakeoverGuard: when ON, defer arming the no-answer/Ava timer until the
+  // server confirms the incoming-call FCM push outcome via a {type:'ring-ack'} frame
+  // (see worker consumers/src/fcm.ts + do/call_room.ts). Ships dark (flag OFF) → the
+  // window is armed immediately, exactly like before.
+  bool _takeoverGuard = false;     // snapshot of RemoteConfig.receptTakeoverGuard at initState
+  Duration? _pendingRingWindow;    // no-answer window computed by _probeReceptionist
+  Timer? _ringAckFallback;         // fires at 5s if no ring-ack arrives → arm the window anyway
+  bool _ringAckHandled = false;    // one-shot: the first ring-ack (or the fallback) wins
+  bool? _pendingAckResult;         // ring-ack that landed before the config probe finished
   // ICE candidates that arrive before the remote description is set must be
   // buffered — addCandidate throws otherwise and the dropped candidate is often
   // the very one that would have connected the call (esp. over cellular/TURN).
@@ -169,6 +178,7 @@ class _CallScreenState extends State<CallScreen> {
     // ~1 min — the "screen took over and the call cut" report (issue 6). Released
     // on every teardown path in [_end]. Best-effort: never let it block a call.
     try { WakelockPlus.enable(); } catch (_) {}
+    _takeoverGuard = RemoteConfig.receptTakeoverGuard; // P1: snapshot once per call
     _telemetry = CallTelemetry(callId: widget.room, video: widget.video, outgoing: widget.outgoing);
     _telemetry.started(); // funnel root: started → connected → ended
     // Wi-Fi ⇆ cellular handoff: don't wait for the transport to time out — restart
@@ -493,6 +503,21 @@ class _CallScreenState extends State<CallScreen> {
     try { _ws?.sink.add(jsonEncode(o)); } catch (_) {/* socket closed / gone */}
   }
 
+  /// P1 low-LTE resilience: prefer dropping FPS over resolution on the video sender
+  /// so faces stay sharp when the uplink collapses. No-op for audio-only calls;
+  /// best-effort (older WebRTC may ignore the field). (Phase 1, one-way-audio pass.)
+  Future<void> _preferResolutionOnVideo(RTCPeerConnection pc) async {
+    try {
+      final senders = await pc.getSenders();
+      for (final s in senders) {
+        if (s.track?.kind != 'video') continue;
+        final params = s.parameters;
+        params.degradationPreference = RTCDegradationPreference.MAINTAIN_RESOLUTION;
+        await s.setParameters(params);
+      }
+    } catch (_) {/* best-effort — parameter unsupported / sender gone */}
+  }
+
   /// Parse the ICE candidate type ("typ host|srflx|relay|prflx") from a
   /// candidate SDP line, for STUN-vs-TURN reliance telemetry.
   static String _candTypeOf(String? cand) {
@@ -513,6 +538,7 @@ class _CallScreenState extends State<CallScreen> {
       if (CallDiag.turnOnly || forceRelay) 'iceTransportPolicy': 'relay',
     });
     _stream!.getTracks().forEach((t) => pc.addTrack(t, _stream!));
+    if (widget.video) await _preferResolutionOnVideo(pc); // P1: FPS drops, not resolution
     _telemetry.onIceGatheringStart();
     pc.onIceCandidate = (c) {
       _telemetry.onLocalCandidate(_candTypeOf(c.candidate));
@@ -667,6 +693,11 @@ class _CallScreenState extends State<CallScreen> {
           try { await _pc!.addCandidate(cand); } catch (_) {/* stale candidate — ignore */}
         }
         break;
+      case 'ring-ack':
+        // P1: the server reports the incoming-call FCM outcome (ok = the callee's
+        // phone could be woken). Only meaningful when receptTakeoverGuard is ON.
+        _onRingAck(d['ok'] == true);
+        break;
       case 'decline':
         // Audio decline → try Ava first (she takes a message); fall back to a
         // plain "declined" if the callee has no receptionist. Mirrors the
@@ -770,6 +801,7 @@ class _CallScreenState extends State<CallScreen> {
       await _stream?.addTrack(track);
       _local.srcObject = _stream;
       if (_stream != null) await _pc?.addTrack(track, _stream!);
+      if (_pc != null) await _preferResolutionOnVideo(_pc!); // P1: keep resolution on the new video sender
       // Adding a track REQUIRES renegotiation. Without a fresh offer the peer
       // never learns about the new video m-line — the camera button "did
       // nothing" and the far side stayed audio-only (issue 5). Send a new offer
@@ -848,21 +880,62 @@ class _CallScreenState extends State<CallScreen> {
       if (!mounted || _connected || _ended || cfg == null) return;
       _receptMode = (cfg['mode'] ?? 'rings').toString();
       _receptRings = (cfg['rings'] as num?)?.toInt() ?? 5;
-      if (_receptMode == 'first_ring') {
-        _ringTimeout?.cancel();
-        _ringTimeout = Timer(const Duration(seconds: 6), () {
-          if (mounted && !_connected) _onNoAnswer();
-        });
-      } else {
-        // Map ring count to a window (~5s/ring ≈ real ring cadence), capped so a
-        // misconfig can't hang. e.g. 3 rings → ~15s before Ava takes over.
-        final secs = (_receptRings * 5).clamp(12, 45);
-        _ringTimeout?.cancel();
-        _ringTimeout = Timer(Duration(seconds: secs), () {
-          if (mounted && !_connected) _onNoAnswer();
-        });
-      }
+      final Duration window = _receptMode == 'first_ring'
+          // "first_ring" = Ava answers almost immediately (still a short beat so a
+          // fast human pickup wins the race).
+          ? const Duration(seconds: 6)
+          // Map ring count to a window (~5s/ring ≈ real ring cadence). P1: raise the
+          // FLOOR from 12s → 20s so a callee whose push actually lands gets a real
+          // chance to answer before Ava takes over. Capped so a misconfig can't hang.
+          : Duration(seconds: (_receptRings * 5).clamp(20, 45));
+      _armNoAnswerWindow(window);
     } catch (_) {/* keep default window */}
+  }
+
+  /// Arm the no-answer → Ava timer for [window]. With `receptTakeoverGuard` OFF this
+  /// arms immediately (legacy behavior). With it ON, hold until the server's
+  /// {type:'ring-ack'} reports the incoming-call push outcome: ok → arm the window;
+  /// failed → hand to Ava now (the callee's phone can't ring); no ack within 5s →
+  /// fall back to arming the window anyway. (P1, Phase 1.)
+  void _armNoAnswerWindow(Duration window) {
+    if (!_takeoverGuard) { _startRingWindow(window); return; }
+    _pendingRingWindow = window;
+    // A ring-ack can arrive before this async config probe finishes — apply it now.
+    if (_pendingAckResult != null) { _applyRingAck(_pendingAckResult!); return; }
+    _ringAckHandled = false;
+    _ringAckFallback?.cancel();
+    _ringAckFallback = Timer(const Duration(seconds: 5), () {
+      if (_ringAckHandled || !mounted || _connected || _ended) return;
+      _ringAckHandled = true;
+      Analytics.capture('call_ring_ack', {'call_id': widget.room, 'source': 'fallback'});
+      _startRingWindow(window);
+    });
+  }
+
+  void _startRingWindow(Duration window) {
+    _ringTimeout?.cancel();
+    _ringTimeout = Timer(window, () { if (mounted && !_connected) _onNoAnswer(); });
+  }
+
+  /// Server ring-ack landed. If the config probe hasn't computed the window yet,
+  /// stash the result so [_armNoAnswerWindow] applies it; otherwise act now.
+  void _onRingAck(bool ok) {
+    if (!_takeoverGuard || _connected || _ended) return;
+    if (_pendingRingWindow == null) { _pendingAckResult = ok; return; }
+    _applyRingAck(ok);
+  }
+
+  void _applyRingAck(bool ok) {
+    if (_ringAckHandled) return;
+    _ringAckHandled = true;
+    _ringAckFallback?.cancel();
+    Analytics.capture('call_ring_ack', {'call_id': widget.room, 'ok': ok, 'source': 'server'});
+    if (ok) {
+      _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 20));
+    } else if (mounted && !_connected) {
+      // Push failed — the callee can't ring. Ava takes the message immediately.
+      _onNoAnswer();
+    }
   }
 
   /// Callee declined the call with decline-to-Ava enabled. Stop ringing and
@@ -880,6 +953,12 @@ class _CallScreenState extends State<CallScreen> {
     // bye/peer-left from cancelling the ring can't tear down the live session.
     _receptionistActive = true;
     try {
+      // P1 takeover-race teardown: the caller has committed to Ava. Broadcast an
+      // explicit bye over the still-open signaling socket FIRST, so a callee that
+      // just answered (already joined the room, so the call-status 'cancel' below —
+      // which only dismisses a still-RINGING callee — wouldn't reach them) tears its
+      // side down instead of sitting in a dead 1:1 the caller has abandoned.
+      _send({'type': 'bye'});
       // Free the WebRTC mic so the PCM recorder can capture (no double-grab).
       try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
       try { await _pc?.close(); } catch (_) {}
@@ -951,6 +1030,7 @@ class _CallScreenState extends State<CallScreen> {
     if (widget.outgoing && !_connected) _notifyCalleeCanceled();
     _timer?.cancel();
     _ringTimeout?.cancel();
+    _ringAckFallback?.cancel(); // P1
     _failTimer?.cancel();
     _wsReconnectTimer?.cancel();
     _relayFallbackTimer?.cancel();

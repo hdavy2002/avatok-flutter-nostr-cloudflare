@@ -46,6 +46,14 @@ export interface PlatformConfig {
   // way — /start just points the call's WS at the chosen DO. One KV flip switches
   // every NEW call, instantly reversible, so the two can be A/B'd for cost.
   receptionistUseCf: boolean;
+  // P1 call-reliability (Specs/MASTER-PROMPT-LAUNCH-READINESS-2026-07-02.md, Phase 1).
+  // When ON, the caller's Ava-takeover countdown does NOT start until the server
+  // confirms the incoming-call FCM push outcome over the CallRoom socket
+  // ({type:'ring-ack', ok}). ok:true → give the callee the full ring window;
+  // ok:false (push failed, callee can't ring) → hand to Ava immediately; no
+  // ring-ack within 5s → fall back to today's timer. Default OFF (ships dark;
+  // flip after a device test). Client mirror: RemoteConfig.receptTakeoverGuard.
+  receptTakeoverGuard: boolean;
   // AvaAffiliate (Specs/proposals/PROPOSAL-AVA-AFFILIATE.md). OFF stops
   // registration, attribution + the settlement step (redirects keep working).
   avaAffiliateEnabled: boolean;      // master switch (default OFF until launch)
@@ -125,6 +133,7 @@ const DEFAULTS: PlatformConfig = {
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
   receptionistRings: 4,            // v2 Mode A: auto-handoff after 4 unanswered rings
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
+  receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
 
   avaAffiliateEnabled: false,      // launch gate — flip ON after A5 fraud checks
   affiliateAssetKitEnabled: false, // v2 asset kit (Gemini) — defined, not built

@@ -33,6 +33,7 @@ Covers 100% of `PlatformConfig` keys in `worker/src/routes/config.ts` (interface
 | `receptionistEnabled` | bool | `true` | `true` | — AI receptionist ON (P2/P12 refine) |
 | `receptionistRings` | number | `4` | `4` | — tunable; P1 raises min ring window in client |
 | `receptionistUseCf` | bool | `false` | `false` | — engine = Gemini Live (default) |
+| `receptTakeoverGuard` | bool | `false` | `true` (after device test) | **P1** — gate Ava takeover on FCM ring-ack; ships dark |
 | `avaAffiliateEnabled` | bool | `false` | `false` | — flip after affiliate fraud checks (post-launch) |
 | `affiliateAssetKitEnabled` | bool | `false` | `false` | — v2 asset kit, not built |
 | `aiEnabled` | bool | `true` | `true` | — master Ava switch / panic button |
@@ -66,7 +67,6 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 
 | Flag | Type | Default at add | Launch value | Owner phase |
 |---|---|---|---|---|
-| `receptTakeoverGuard` | bool | `false` | `true` (after device test) | P1 — gate Ava takeover on push-confirm |
 | `listingLivenessGate` | bool | `false` | `true` | P4 — block listing creation unless liveness-verified |
 | `agentDailyCap` | number | `10` | `10` | P5 — per-user daily marketplace agent-conversation cap |
 | `safetyScanEnabled` | bool | `true` (ships ON) | `true` | P6 — per-message Nemotron safety scan + red bubbles |

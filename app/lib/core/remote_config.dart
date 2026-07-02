@@ -52,6 +52,10 @@ class RemoteConfig {
   static bool get billingEnabled => _b('billingEnabled', false);
   /// AI receptionist (Gemini Live) — ON for the free launch. Mirrors KV.
   static bool get receptionistEnabled => _b('receptionistEnabled', true);
+  /// P1 call-reliability: gate the caller's Ava-takeover countdown on the server's
+  /// ring-ack (incoming-call FCM push outcome). Ships dark (default OFF); flip in
+  /// KV after a device test. Mirrors config.ts `receptTakeoverGuard`.
+  static bool get receptTakeoverGuard => _b('receptTakeoverGuard', false);
   /// ChatAVA "talk to Ava by voice" — the hands-free Gemini Live call
   /// (LiveVoiceController). Owner kill switch (2026-06-27): default OFF so the
   /// feature stays dark after a config-fetch failure and can't burn the shared
