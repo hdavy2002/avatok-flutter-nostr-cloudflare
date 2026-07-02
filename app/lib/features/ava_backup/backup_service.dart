@@ -183,17 +183,11 @@ class BackupService {
     try {
       final blob = await buildEncryptedBlob();
       if (blob.isEmpty) return const BackupResult(ok: false, reason: 'empty');
-      // Signed PUT with a raw byte body. ApiAuth exposes no signed-PUT-bytes
-      // helper and is frozen (Phase 2), so build the same auth headers it would:
-      // a NIP-98 (kind-27235) signature over the URL+method+body, plus the
-      // optional Clerk bearer. Mirrors ApiAuth._headers for the PUT method.
-      final headers = <String, String>{'Content-Type': 'application/octet-stream'};
-      final nip98 = ApiAuth.nip98('PUT', _backupUrl, body: blob);
-      if (nip98 != null) headers['X-Nostr-Auth'] = nip98;
-      try {
-        final bearer = await ApiAuth.clerkBearer?.call();
-        if (bearer != null && bearer.isNotEmpty) headers['Authorization'] = 'Bearer $bearer';
-      } catch (_) {/* Clerk optional */}
+      // Signed PUT with a raw byte body. Clerk-only auth (Nostr/NIP-98 removed):
+      // reuse ApiAuth's header builder (Clerk Bearer + trace id), overriding the
+      // content type for the raw-bytes body.
+      final headers = await ApiAuth.signedHeaders('PUT', _backupUrl,
+          body: blob, extra: {'Content-Type': 'application/octet-stream'});
       final res = await http
           .put(Uri.parse(_backupUrl), headers: headers, body: blob)
           .timeout(const Duration(seconds: 90));
