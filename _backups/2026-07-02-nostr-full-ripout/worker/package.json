@@ -9,7 +9,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@breezystack/lamejs": "^1.2.7"
+    "@breezystack/lamejs": "^1.2.7",
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.5.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250510.0",

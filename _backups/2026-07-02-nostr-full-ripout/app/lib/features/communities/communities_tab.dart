@@ -36,7 +36,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
     // Reconcile with the backend (other devices may have added me).
     final id = widget.identity;
     if (id != null) {
-      final remote = await CommunityStore.fetchForMember(id.uid);
+      final remote = await CommunityStore.fetchForMember(id.npub);
       if (remote.isNotEmpty) {
         final byId = {for (final c in local) c.id: c};
         for (final r in remote) {
@@ -87,8 +87,8 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
       id: Community.newId(),
       name: nameCtrl.text.trim(),
       about: aboutCtrl.text.trim(),
-      owner: id.uid,
-      members: [id.uid],
+      owner: id.npub,
+      members: [id.npub],
       groups: [ann.id],
     );
     await _store.upsert(comm);
@@ -119,7 +119,7 @@ class _CommunitiesTabState extends State<CommunitiesTab> {
       ),
     );
     if (code == null || code.isEmpty) return;
-    final joined = await CommunityStore.join(code, id.uid);
+    final joined = await CommunityStore.join(code, id.npub);
     if (joined != null) {
       await _store.upsert(joined);
       if (mounted) setState(() => _communities = [joined, ..._communities.where((c) => c.id != joined.id)]);

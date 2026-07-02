@@ -140,7 +140,7 @@ class ContactsStore {
     final id = ApiAuth.identity;
     final local = await load();
     if (id == null) return local;
-    final keyMat = await AccountKey.I.ensureHex(); // restores from escrow / mints + escrows the key
+    final keyMat = await AccountKey.I.ensureHex(); // restores from escrow / seeds + escrows the key
     final blob = await Vault.get('contacts');
     if (blob == null) return local;
     final plain = keyMat == null ? null : await Vault.decrypt(blob, keyMat);

@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import '../../core/brain_api.dart';
 import '../../core/library_api.dart';
-import '../../core/account_key.dart';
 import '../../core/vault.dart';
 import '../../identity/identity.dart';
 import '../../core/api_auth.dart';
@@ -22,8 +21,7 @@ class PrivateIngest {
       return "Can't read this file on this device.";
     }
     // Unwrap the decryption material (encrypted to me) → reconstruct the handle.
-    final keyMat = await AccountKey.I.ensureHex();
-    final clear = keyMat == null ? null : await Vault.decrypt(item.encBlob!, keyMat);
+    final clear = await Vault.decrypt(item.encBlob!, id.privHex);
     if (clear == null) return "Couldn't unlock this file's key on this device.";
     final mat = jsonDecode(clear) as Map<String, dynamic>;
     final media = ChatMedia(

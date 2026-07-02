@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/analytics.dart';
-import '../../core/account_key.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
@@ -191,12 +190,12 @@ class MediaService {
   /// keys (E2E boundary preserved). Best-effort: failure never blocks the chat.
   static Future<void> recordReceived(ChatMedia m, {String app = 'avatok'}) async {
     try {
+      final id = ApiAuth.identity;
       String? encBlob;
-      final keyMat = await AccountKey.I.ensureHex();
-      if (keyMat != null) {
+      if (id != null) {
         // Wrap just the decryption material (key/nonce/mac) — not the bytes.
         final material = jsonEncode({'k': m.keyB64, 'n': m.nonceB64, 'mac': m.macB64});
-        encBlob = await Vault.encrypt(material, keyMat);
+        encBlob = await Vault.encrypt(material, id.privHex);
       }
       await LibraryApi.record(
         key: m.id, mime: m.contentType, size: m.size, name: m.name,

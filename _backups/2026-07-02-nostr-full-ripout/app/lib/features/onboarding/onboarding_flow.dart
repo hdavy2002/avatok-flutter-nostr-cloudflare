@@ -131,7 +131,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       });
     }
     // Attach this person's whole onboarding journey to their npub.
-    Analytics.identify(id.uid);
+    Analytics.identify(id.npub);
     Analytics.capture('onboarding_started', const {});
     Analytics.capture('onboarding_step_viewed', {'step_index': 0, 'step_name': _stepNames[0]});
   }
@@ -146,7 +146,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     setState(() { _handleAvail = null; _handleMsg = null; _checkingHandle = v.trim().isNotEmpty; });
     if (v.trim().isEmpty) { setState(() => _checkingHandle = false); return; }
     _handleDebounce = Timer(const Duration(milliseconds: 400), () async {
-      final res = await Directory.checkHandle(_handleCtrl.text, npub: _id?.uid);
+      final res = await Directory.checkHandle(_handleCtrl.text, npub: _id?.npub);
       if (!mounted) return;
       setState(() { _checkingHandle = false; _handleAvail = res.ok; _handleMsg = res.message; });
     });
@@ -173,7 +173,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     await GuestSession.upgradeIfAny();
     // Publish to the directory so the name + email are immediately searchable.
     final r = await Directory.registerProfile(
-      npub: id.uid, name: name, firstName: first, lastName: last, email: email,
+      npub: id.npub, name: name, firstName: first, lastName: last, email: email,
       accountKind: _selectedKind?.wire,
     );
     if (!mounted) return;
@@ -202,7 +202,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final id = _id;
     if (id != null) {
       // Person properties so every chart can break down by account type, age, gender.
-      Analytics.identify(id.uid, properties: {
+      Analytics.identify(id.npub, properties: {
         'account_kind': kind.wire,
         if (_ageGroup != null) 'age_group': _ageGroup!,
         if (_gender != null) 'gender': _gender!,

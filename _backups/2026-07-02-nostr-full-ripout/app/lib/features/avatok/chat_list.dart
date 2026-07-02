@@ -26,6 +26,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../../core/onboarding_store.dart';
 import '../../core/admin_tools.dart';
 import '../../identity/identity.dart';
+import '../../identity/nostr_keys.dart';
 import '../../sync/group_api.dart';
 import '../../sync/legacy_stubs.dart';
 import '../../sync/sync_hub.dart';
@@ -120,7 +121,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // npub (they have no AvaTOK account). Must match SyncHub's `g:recept_…` key.
     final tel = telPhone(c.seed);
     if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
-    return '1:${c.seed}';
+    return '1:${NostrKeys.npubToHex(c.seed) ?? c.seed}';
   }
 
   /// Chat-list timestamp: HH:mm today, 'Yesterday', else d/m.
@@ -165,7 +166,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// True if [npub] (a contact's npub) currently has a live status.
   bool _hasStatus(String npub) {
-    return _statusAuthorHex.contains(npub);
+    final hex = NostrKeys.npubToHex(npub);
+    return hex != null && _statusAuthorHex.contains(hex);
   }
 
   void _openChat(Chat c) {
@@ -387,7 +389,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       final tel = telPhone(c.npub);
       final k = tel != null
           ? receptTelConvKey(_id?.uid ?? '', tel)
-          : '1:${c.npub}';
+          : '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
       final pv = previews[k];
       final ts = pv?.ts ?? 0;
       rows.add((convKey: k, ts: ts, json: jsonEncode({
@@ -502,8 +504,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // only when the user opens a contacts screen (Invite/Search). This keeps app
     // startup instant and can never freeze the app in the background.
     // Register this device for incoming-call wake pushes (npub hashed at rest).
-    Analytics.identify(id.uid); // attribute diagnostics/events to this npub every app open
-    await PushService.registerToken(id.uid);
+    Analytics.identify(id.npub); // attribute diagnostics/events to this npub every app open
+    await PushService.registerToken(id.npub);
     // Email is the human-facing id: publish email → npub so others find me by email.
     try {
       final cu = await widget.clerk.currentUser();
@@ -514,7 +516,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
       if (cu?.email != null && cu!.email!.isNotEmpty) {
         await Directory.registerProfile(
-            npub: id.uid, email: cu.email!, name: cu.label, phone: prof.phone);
+            npub: id.npub, email: cu.email!, name: cu.label, phone: prof.phone);
       }
     } catch (_) {/* not signed in / offline */}
     _startInbox(id);
@@ -602,7 +604,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
                 });
               }
-              _ensureContact(u.senderPub);
+              _ensureContact(NostrKeys.npub(u.senderPub));
             }
           }
         } else if (t == 'text' || t == 'media' || t == 'gtext' || t == 'gmedia') {
@@ -637,7 +639,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               if (mounted) _previewStore.load().then((p) { if (mounted) setState(() => _previews = p); });
             });
           }
-          if (env['gid'] == null) _ensureContact(u.senderPub);
+          if (env['gid'] == null) _ensureContact(NostrKeys.npub(u.senderPub));
           // Send a delivered receipt for recent 1:1 messages (not history replays).
           final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
           if (env['gid'] == null && u.createdAt > nowSec - 300) {
@@ -690,7 +692,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   final Set<String> _autoAdding = {}; // npubs currently being auto-added (dedupe)
   Future<void> _ensureContact(String npub) async {
-    if (npub.isEmpty || npub == _id?.uid) return;
+    if (npub.isEmpty || npub == _id?.npub) return;
     if (_contacts.any((c) => c.npub == npub) || !_autoAdding.add(npub)) return;
     final placeholder = Contact(
         npub: npub,
@@ -759,7 +761,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       final list = await _contactsStore.mergeTel(e164, real);
       // Move the voicemail cards into the real DM thread.
       final from = receptTelConvKey(myUid, e164);
-      final to = '1:${d.uid}';
+      final to = '1:${NostrKeys.npubToHex(d.uid) ?? d.uid}';
       final hadHistory = _previews[from] != null;
       try {
         await Db.I.rekeyConversation(from, to);
@@ -794,7 +796,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     final c = await showAddContactSheet(context);
     if (c == null || !mounted) return;
     // Don't let someone add their own account (e.g. their other email).
-    if (c.npub.isEmpty || c.npub == _id?.uid) {
+    if (c.npub.isEmpty || c.npub == _id?.npub) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("That's your own account — you can't add yourself")));
       return;
@@ -950,7 +952,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     String contactKey(Contact c) {
       final tel = telPhone(c.npub);
       if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
-      return '1:${c.npub}';
+      return '1:${NostrKeys.npubToHex(c.npub) ?? ''}';
     }
     final contactChats = _contacts.where((c) {
       final k = contactKey(c);
@@ -1001,8 +1003,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       drawer: AvaSidebar(
         enabledApps: _enabledApps,
         accountKind: _accountKind,
-        name: (_clerkName?.isNotEmpty ?? false) ? _clerkName! : (_id?.shortId ?? 'Account'),
-        seed: _id?.uid ?? 'avatok',
+        name: (_clerkName?.isNotEmpty ?? false) ? _clerkName! : (_id?.shortNpub ?? 'Account'),
+        seed: _id?.npub ?? 'avatok',
         current: 'avatok',
         onSelect: (d) {
           Navigator.pop(context); // close drawer
@@ -1206,12 +1208,12 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             builder: (_, s) => s.hasData
                 ? Image.memory(s.data!, width: sz, height: sz, fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => const SizedBox.shrink())
-                : Avatar(seed: _id?.uid ?? 'me', name: 'You', size: sz),
+                : Avatar(seed: _id?.npub ?? 'me', name: 'You', size: sz),
           ),
         ),
       );
     } else {
-      inner = Avatar(seed: _id?.uid ?? 'me', name: 'You', size: sz);
+      inner = Avatar(seed: _id?.npub ?? 'me', name: 'You', size: sz);
     }
     return GestureDetector(
       onTap: _openStatuses,

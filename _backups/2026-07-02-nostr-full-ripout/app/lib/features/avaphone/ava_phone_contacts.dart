@@ -7,6 +7,7 @@ import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
 import '../../core/ice_cache.dart';
 import '../../core/device_contacts.dart';
+import '../../identity/nostr_keys.dart';
 import '../avatok/add_by_link_sheet.dart';
 import '../avatok/call_screen.dart';
 import '../avatok/chat_thread.dart';
@@ -50,7 +51,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     setState(() { _all = cs; _blocked = flags['blocked'] ?? {}; _loaded = true; });
   }
 
-  String _key(Contact c) => '1:${c.npub}';
+  String _key(Contact c) => '1:${NostrKeys.npubToHex(c.npub) ?? c.npub}';
   bool _isBlocked(Contact c) => _blocked.contains(_key(c));
 
   Future<void> _toggleBlock(Contact c) async {

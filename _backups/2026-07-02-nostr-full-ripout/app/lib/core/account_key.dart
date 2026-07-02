@@ -12,14 +12,18 @@ import 'api_auth.dart';
 import 'config.dart';
 
 /// The Account Encryption Key (aek): the recoverable key the cross-device vault
-/// (contacts + prefs + private media) is encrypted with. A single random 32-byte
-/// key per account, ESCROWED server-side (/api/keybackup) WRAPPED under the
-/// account's Clerk uid, so a reinstall / new phone pulls it back and every
-/// uid-keyed vault blob decrypts again — no data loss, no passphrase
-/// (Specs/ARCH-REMOVE-NOSTR-ABLY-AND-DATA-DURABILITY.md, Part C).
+/// (contacts + prefs) is encrypted with. It is ESCROWED server-side
+/// (/api/keybackup) under the account's Clerk uid, so a reinstall / new phone
+/// pulls it back and every uid-keyed vault blob decrypts again — no data loss,
+/// no passphrase (Specs/ARCH-REMOVE-NOSTR-ABLY-AND-DATA-DURABILITY.md, Part C).
 ///
-/// Representations: 32 raw bytes (source of truth) ⇄ hex (vault key material,
-/// 64-char) ⇄ base64 (escrow wire form).
+/// Representations:
+///  • 32 raw bytes — the source of truth.
+///  • escrow wire form: base64(bytes) — what /api/keybackup stores.
+///  • VAULT KEY MATERIAL: hex(bytes), a 64-char hex string. For EXISTING users the
+///    aek is SEEDED from their current Nostr privHex, so hex(aek) == privHex and
+///    their existing vault stays decryptable with ZERO re-encryption. New users
+///    get a random key. Either way the key is escrowed, so it survives reinstall.
 class AccountKey {
   static final AccountKey I = AccountKey._();
   AccountKey._();
@@ -36,8 +40,8 @@ class AccountKey {
   String get _key => scopedKey(_base);
 
   /// Vault key material (64-char hex) for the current account, or null when
-  /// offline AND nothing is cached (caller then skips the vault op).
-  /// Order: local → server escrow (restore) → mint random + escrow.
+  /// offline AND nothing is cached (caller then skips the vault op, as before).
+  /// Order: local → server escrow (restore) → seed from legacy key / mint + escrow.
   Future<String?> ensureHex() async {
     final scope = AccountScope.id ?? '';
     if (_cachedHex != null && _cachedScope == scope) return _cachedHex;
@@ -46,7 +50,9 @@ class AccountKey {
     final local = await _read();
     if (local != null && local.isNotEmpty) { _cache(local, scope); return local; }
 
-    // 2) restore from escrow (returning user on a fresh install / new phone)
+    // 2) restore from escrow (returning user on a fresh install / new phone).
+    //    Takes precedence over seeding, so a reinstall pulls the ORIGINAL key back
+    //    even though the local Nostr key was regenerated.
     final restored = await _fetchEscrow();
     if (restored != null) {
       await _write(restored);
@@ -55,9 +61,11 @@ class AccountKey {
       return restored;
     }
 
-    // 3) first time on this account anywhere: mint a random key and escrow it so
-    //    future reinstalls restore the vault.
-    final hexKey = _randomHex();
+    // 3) first time on this account anywhere: seed from the current Nostr privHex
+    //    (so the vault already written under it keeps decrypting — no re-encrypt),
+    //    else mint a random key. Then escrow it so future reinstalls are safe.
+    final legacy = (ApiAuth.identity?.privHex ?? '').toLowerCase();
+    final hexKey = _isHex64(legacy) ? legacy : _randomHex();
     await _write(hexKey);
     _cache(hexKey, scope);
     unawaited(_escrow(hexKey)); // best-effort; retried on the next launch if it fails
@@ -100,6 +108,8 @@ class AccountKey {
       Analytics.capture('key_backup_failed', {'err': e.toString()});
     }
   }
+
+  static bool _isHex64(String s) => RegExp(r'^[0-9a-f]{64}$').hasMatch(s);
 
   static String _randomHex() {
     final rnd = Random.secure();

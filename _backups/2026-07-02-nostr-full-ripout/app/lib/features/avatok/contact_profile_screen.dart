@@ -9,6 +9,7 @@ import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
+import '../../identity/nostr_keys.dart';
 import '../profile/qr_share.dart';
 import 'contacts.dart';
 
@@ -50,8 +51,8 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   @override
   void initState() {
     super.initState();
-    final peerHex = widget.npub;
-    if (peerHex.isNotEmpty) {
+    final peerHex = NostrKeys.npubToHex(widget.npub);
+    if (peerHex != null) {
       GroupStore().load().then((groups) {
         if (mounted) setState(() => _shared = groups.where((g) => g.members.contains(peerHex)).toList());
       });

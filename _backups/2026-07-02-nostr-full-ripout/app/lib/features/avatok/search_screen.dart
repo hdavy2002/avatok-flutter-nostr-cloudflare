@@ -15,6 +15,7 @@ import '../../core/group_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../identity/identity.dart';
+import '../../identity/nostr_keys.dart';
 import 'chat_thread.dart';
 import 'contacts.dart';
 import 'data.dart';
@@ -183,7 +184,7 @@ class _SearchScreenState extends State<SearchScreen> {
     if (convKey.startsWith('1:')) {
       final hex = convKey.substring(2);
       for (final c in widget.contacts) {
-        if (c.npub == hex) {
+        if ((NostrKeys.npubToHex(c.npub) ?? c.npub) == hex) {
           return Chat(name: c.name.isEmpty ? 'Contact' : c.name, seed: c.seed, last: '', time: '');
         }
       }
@@ -192,7 +193,7 @@ class _SearchScreenState extends State<SearchScreen> {
     return null;
   }
 
-  String _hexKey(String npub) => '1:$npub';
+  String _hexKey(String npub) => '1:${NostrKeys.npubToHex(npub) ?? npub}';
 
   void _openContactChat(String npub, String name, String seed) {
     final chat = Chat(name: name.isEmpty ? 'Contact' : name, seed: seed, last: '', time: '');

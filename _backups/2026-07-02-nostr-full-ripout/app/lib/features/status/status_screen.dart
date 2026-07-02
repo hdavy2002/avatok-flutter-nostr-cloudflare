@@ -168,7 +168,7 @@ class _StatusScreenState extends State<StatusScreen> {
               Stack(clipBehavior: Clip.none, children: [
                 Container(
                   decoration: BoxDecoration(shape: BoxShape.circle, border: Zine.border),
-                  child: Avatar(seed: widget.identity?.uid ?? 'me', name: 'You', size: 46),
+                  child: Avatar(seed: widget.identity?.npub ?? 'me', name: 'You', size: 46),
                 ),
                 Positioned(
                   right: -4, bottom: -4,

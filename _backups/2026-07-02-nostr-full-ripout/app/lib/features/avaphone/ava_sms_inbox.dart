@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
 import '../../core/chat_state.dart';
+import '../../identity/nostr_keys.dart';
 import '../avatok/chat_thread.dart';
 import '../avatok/contacts.dart';
 import '../avatok/data.dart';
@@ -51,7 +52,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
     });
   }
 
-  String _key(Contact c) => '1:${c.npub}';
+  String _key(Contact c) => '1:${NostrKeys.npubToHex(c.npub) ?? c.npub}';
 
   String _fmt(int secs) {
     if (secs <= 0) return '';

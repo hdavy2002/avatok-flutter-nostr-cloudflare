@@ -55,6 +55,7 @@ import '../../core/ui/zine_widgets.dart';
 import '../../core/group_store.dart';
 import '../../core/message_store.dart';
 import '../../identity/identity.dart';
+import '../../identity/nostr_keys.dart';
 import '../../core/db.dart';
 import '../../core/device_contacts.dart';
 import '../../sync/dm.dart';
@@ -389,7 +390,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     });
     _idStore.load().then((id) {
       if (!mounted || id == null) return;
-      setState(() { _myNpub = id.uid; _myName = id.shortId; _meId = id; });
+      setState(() { _myNpub = id.npub; _myName = id.shortNpub; _meId = id; });
       _setupDm(id);
     });
     ProfileStore().load().then((p) {
@@ -430,8 +431,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final seed = widget.chat.seed;
     final tel = telPhone(seed);
     if (tel != null) { _setupTelThread(id, tel); return; } // unknown-number voicemail
-    final peerHex = seed;
-    if (peerHex.isEmpty) return; // no addressable peer id → keep local echo
+    final peerHex = NostrKeys.npubToHex(seed);
+    if (peerHex == null) return; // demo contact → keep local echo
     _realMode = true;
     setState(() => _msgs.clear()); // drop demo seed; history loads from relay
     _nostr = SyncHub.I.ensure(id.uid, id.uid); // shared app-lifetime client (no per-thread socket/REQ)
@@ -439,8 +440,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _dm!.messages.listen(_onDm);
     _dm!.sendStatus.listen(_onSendStatus);
     _dm!.start();
-    _presenceMe = id.shortId;
-    _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, peerHex), id.shortId,
+    _presenceMe = id.shortNpub;
+    _presence = PresenceChannel(PresenceChannel.roomFor1on1(id.uid, peerHex), id.shortNpub,
         convKey: '1:$peerHex', peerUid: peerHex)..connect();
     _presence!.events.listen(_onPresence);
     _presence!.sendRead(DateTime.now().millisecondsSinceEpoch ~/ 1000);
@@ -528,7 +529,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_isGroup) {
       final contacts = await ContactsStore().load();
       final names = <String, String>{};
-      for (final c in contacts) { names[c.npub] = c.name; }
+      for (final c in contacts) { final h = NostrKeys.npubToHex(c.npub); if (h != null) names[h] = c.name; }
       if (_meId != null) names[_meId!.uid] = 'You';
       // Merge (don't replace): keep any names already learned from early
       // live reactions / messages (keyed by uid) — Phase 5.
@@ -548,12 +549,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _gdm = AvaGroupDm(group: g);
     _gdm!.messages.listen(_onGroupMsg);
     _gdm!.start();
-    _presenceMe = id.shortId;
-    _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortId,
+    _presenceMe = id.shortNpub;
+    _presence = PresenceChannel(PresenceChannel.roomForGroup(g.id), id.shortNpub,
         convKey: 'g:${g.id}')..connect();
     _presence!.events.listen(_onPresence);
     _startPresenceHeartbeat();
-    _memberNpubs = g.members.where((m) => m != id.uid).toList();
+    _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
     _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
@@ -4061,8 +4062,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// forward the media with no caption.
   Future<void> _doForward(_Msg m, Contact c, {String? caption}) async {
     final id = _meId;
-    final peerHex = c.npub;
-    if (id == null || peerHex.isEmpty) return;
+    final peerHex = NostrKeys.npubToHex(c.npub);
+    if (id == null || peerHex == null) return;
     final Map<String, dynamic> payload;
     if (m.media != null) {
       payload = {...m.media!.toEnvelope(), 'forwarded': true};

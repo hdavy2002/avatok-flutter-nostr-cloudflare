@@ -8,33 +8,33 @@ import 'api_auth.dart';
 import 'config.dart';
 
 /// Client-side encrypted "vault" sync. Stores opaque blobs on the server keyed
-/// by (uid, kind) so per-user data (contacts, prefs, private media) follows the
-/// user to any device. The blob is encrypted with the account key material
-/// ([AccountKey]) — a key the user's devices restore from escrow — so only the
-/// user's devices can read it; the server stores ciphertext only.
+/// by (npub, kind) so per-user data — currently the contact list — follows the
+/// user to any device. The blob is encrypted with a key DERIVED FROM the user's
+/// Nostr private key, so only the user's devices (which restore that key) can
+/// read it; the server stores ciphertext only.
 class Vault {
   static final _aes = AesGcm.with256bits();
 
-  /// Deterministic 256-bit key from the key material hex — same on every device
+  /// Deterministic 256-bit key from the private key hex — same on every device
   /// that restores the key, so blobs written on one device decrypt on another.
-  static SecretKey _key(String keyMaterial) {
+  static SecretKey _key(String privHex) {
     final d = SHA256Digest().process(
-        Uint8List.fromList(utf8.encode('avatok-vault-v1:$keyMaterial')));
+        Uint8List.fromList(utf8.encode('avatok-vault-v1:$privHex')));
     return SecretKey(d.sublist(0, 32));
   }
 
-  static Future<String> encrypt(String plain, String keyMaterial) async {
-    final box = await _aes.encrypt(utf8.encode(plain), secretKey: _key(keyMaterial));
+  static Future<String> encrypt(String plain, String privHex) async {
+    final box = await _aes.encrypt(utf8.encode(plain), secretKey: _key(privHex));
     return 'v1.${base64Url.encode(box.nonce)}.${base64Url.encode(box.cipherText)}.${base64Url.encode(box.mac.bytes)}';
   }
 
-  static Future<String?> decrypt(String blob, String keyMaterial) async {
+  static Future<String?> decrypt(String blob, String privHex) async {
     try {
       final p = blob.split('.');
       if (p.length != 4 || p[0] != 'v1') return null;
       final clear = await _aes.decrypt(
         SecretBox(base64Url.decode(p[2]), nonce: base64Url.decode(p[1]), mac: Mac(base64Url.decode(p[3]))),
-        secretKey: _key(keyMaterial),
+        secretKey: _key(privHex),
       );
       return utf8.decode(clear);
     } catch (_) {
