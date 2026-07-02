@@ -33,6 +33,8 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   /// "as of <time>" label shown while a cached answer is being revalidated
   /// (stale-while-revalidate); cleared once the fresh answer lands.
   String? _answerAsOf;
+  /// Live per-step status line during a streaming run ("Checking Gmail…").
+  String? _status;
 
   /// Memoized logo futures (one per url) so scroll / search rebuilds reuse the
   /// in-flight or cached fetch instead of re-requesting + flashing the fallback.
@@ -47,6 +49,9 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    // Phase 5: prefetch — warm the server conn/decl caches for the first query.
+    // ignore: unawaited_futures
+    AppsService.I.warm();
   }
 
   @override
@@ -239,10 +244,10 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     final t0 = DateTime.now();
     // ignore: unawaited_futures
     Analytics.capture('avaapps_query_submitted', {'query_chars': query.length});
-    setState(() { _running = true; _answer = null; _answerAsOf = null; });
+    setState(() { _running = true; _answer = null; _answerAsOf = null; _status = null; });
     // Phase 2: stale-while-revalidate — if we have a cached answer for this
     // exact read-only query, show it instantly with an "as of <time>" label,
-    // then refresh in the background and replace it with the fresh result.
+    // then refresh (below) and replace it with the fresh result.
     if (kAvaAppsDeviceCache) {
       final snap = await AvaAppsCache.readRun(query);
       if (snap != null && mounted) {
@@ -254,15 +259,43 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       }
     }
     try {
-      final a = await AppsService.I.run(query);
+      String a;
+      if (kAvaAppsStreaming) {
+        // Phase 5: stream the answer live; fall back to non-streaming on any
+        // SSE error (automatic — the user never sees the difference).
+        try {
+          var streamStarted = false;
+          a = await AppsService.I.runStreaming(query,
+            onStatus: (s) { if (mounted) setState(() => _status = s); },
+            onDelta: (d) {
+              if (!mounted) return;
+              setState(() {
+                if (!streamStarted) { streamStarted = true; _answer = ''; _answerAsOf = null; _status = null; }
+                _answer = (_answer ?? '') + d;
+              });
+            });
+        } catch (_) {
+          // ignore: unawaited_futures
+          Analytics.capture('avaapps_run_stream_fallback', {'ms': DateTime.now().difference(t0).inMilliseconds});
+          a = await AppsService.I.run(query);
+        }
+      } else {
+        a = await AppsService.I.run(query);
+      }
       // Phase 4: server asked to confirm a send/delete before executing.
       final pending = AppsService.I.lastPendingAction;
       if (pending != null && pending['confirm_token'] != null) {
-        if (mounted) setState(() { _answer = a; _answerAsOf = null; });
+        if (mounted) setState(() { _answer = a; _answerAsOf = null; _status = null; });
         final done = await _confirmPending(pending);
         if (mounted && done != null) setState(() { _answer = done; });
-      } else if (mounted) {
-        setState(() { _answer = a; _answerAsOf = null; });
+      } else {
+        if (mounted) setState(() { _answer = a; _answerAsOf = null; _status = null; });
+        // Phase 5: persist streamed read answers so SWR works next time (the
+        // non-streaming run() already writes its own; this covers the stream).
+        if (kAvaAppsDeviceCache && AppsService.isReadOnly(query)) {
+          // ignore: unawaited_futures
+          AvaAppsCache.writeRun(query, a);
+        }
       }
       // ignore: unawaited_futures
       Analytics.capture('avaapps_result_rendered', {
@@ -274,7 +307,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       Analytics.capture('avaapps_bg_refresh_error', {'kind': 'run_result', 'ms': DateTime.now().difference(t0).inMilliseconds});
       rethrow;
     } finally {
-      if (mounted) setState(() => _running = false);
+      if (mounted) setState(() { _running = false; _status = null; });
     }
   }
 
@@ -417,6 +450,14 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               ),
             ]),
           ),
+          if (_status != null && (_answer == null || _answer!.isEmpty)) ...[
+            const SizedBox(height: 14),
+            Row(children: [
+              const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.8)),
+              const SizedBox(width: 8),
+              Text(_status!, style: ZineText.sub(size: 12.5, color: Zine.inkMute)),
+            ]),
+          ],
           if (_answer != null) ...[
             const SizedBox(height: 14),
             ZineCard(

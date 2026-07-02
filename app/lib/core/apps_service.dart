@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import 'analytics.dart';
 import 'api_auth.dart';
@@ -38,6 +39,10 @@ const Set<String> kEnabledAppSlugs = {'gmail', 'outlook'};
 
 /// Whether [slug] is connectable now (vs greyed "coming soon"). Case-insensitive.
 bool isAppEnabled(String slug) => kEnabledAppSlugs.contains(slug.toLowerCase());
+
+/// Phase 5: use the SSE streaming `/run?stream=1` path (with automatic fallback
+/// to the non-streaming call on any error). Flip to false to force non-streaming.
+const bool kAvaAppsStreaming = true;
 
 /// Talks to the Worker's AvaApps routes (Composio). The Worker holds the Composio
 /// key; the client forwards the user's own Gemini key (for the model) per request.
@@ -155,6 +160,70 @@ class AppsService {
     } catch (e) {
       Analytics.appsUnavailable(endpoint: AvaApi.appsRun, code: e.runtimeType.toString());
       return 'Couldn\'t reach the app just now.';
+    }
+  }
+
+  /// Public read-only classifier (mirrors the private [_isReadOnly]) so callers
+  /// (e.g. the streaming path) can decide whether an answer is cacheable.
+  static bool isReadOnly(String q) => _isReadOnly(q.trim().toLowerCase());
+
+  /// Phase 5: fire-and-forget prefetch. Pings `/status?warm=1` so the Worker
+  /// pre-warms the connection + tool-declaration KV caches for this user before
+  /// the first query. Server-side rate-limited to 1/min; never blocks the UI.
+  Future<void> warm() async {
+    try {
+      await ApiAuth.getSigned('${_url(AvaApi.appsStatus)}?warm=1', timeout: const Duration(seconds: 20));
+    } catch (_) {/* best-effort */}
+  }
+
+  /// Phase 5: streaming run over SSE (`/run?stream=1`). [onStatus] fires for each
+  /// step status line ("Checking Gmail…"); [onDelta] for each answer fragment.
+  /// Returns the full answer and sets [lastPendingAction]. THROWS on any transport
+  /// error so the caller can fall back to the non-streaming [run].
+  Future<String> runStreaming(String query, {required void Function(String) onDelta, void Function(String)? onStatus}) async {
+    lastPendingAction = null;
+    final url = '${_url(AvaApi.appsRun)}?stream=1';
+    final bytes = utf8.encode(jsonEncode({'query': query, 'source': 'screen'}));
+    final headers = await ApiAuth.signedHeaders('POST', url, body: bytes, extra: const {});
+    final client = http.Client();
+    final buf = StringBuffer();
+    try {
+      final req = http.Request('POST', Uri.parse(url))
+        ..headers.addAll(headers)
+        ..bodyBytes = bytes;
+      final resp = await client.send(req).timeout(const Duration(seconds: 90));
+      // Quota (429) comes back as JSON, not SSE — return its friendly message
+      // WITHOUT throwing, so we don't fall back and double-count the quota.
+      if (resp.statusCode == 429) {
+        final body = await resp.stream.bytesToString();
+        try { return (jsonDecode(body)['error'] ?? 'Ava needs a breather — try again shortly.').toString(); }
+        catch (_) { return 'Ava needs a breather — try again shortly.'; }
+      }
+      if (resp.statusCode != 200) throw Exception('stream http ${resp.statusCode}');
+      final lines = resp.stream.transform(utf8.decoder).transform(const LineSplitter());
+      String finalAnswer = '';
+      await for (final line in lines) {
+        final t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        final payload = t.substring(5).trim();
+        if (payload.isEmpty || payload == '[DONE]') continue;
+        try {
+          final j = jsonDecode(payload) as Map<String, dynamic>;
+          final status = j['status'] as String?;
+          if (status != null && status.isNotEmpty) onStatus?.call(status);
+          final delta = j['delta'] as String?;
+          if (delta != null && delta.isNotEmpty) { buf.write(delta); onDelta(delta); }
+          if (j['done'] == true) {
+            finalAnswer = (j['answer'] ?? buf.toString()).toString();
+            lastPendingAction = (j['pending_action'] is Map)
+                ? (j['pending_action'] as Map).cast<String, dynamic>()
+                : null;
+          }
+        } catch (_) {/* skip a malformed SSE line */}
+      }
+      return finalAnswer.isNotEmpty ? finalAnswer : buf.toString();
+    } finally {
+      client.close();
     }
   }
 
