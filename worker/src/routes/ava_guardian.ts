@@ -647,6 +647,20 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     await recordFlag(env, { uid, conv, peer: senderUid, category, severity, detail });
     flagged++;
 
+    // F6: dedicated safety_flag annotation frame over the recipient's InboxDO — the
+    // chat marks THAT bubble red directly, without parsing the private-warning
+    // message. Live-only (offline recipients still get the warning + the durable
+    // ava_guardian_flags row). The SENDER never receives this. Best-effort.
+    try {
+      if (env.INBOX && flaggedClientId) {
+        const stub = env.INBOX.get(env.INBOX.idFromName(uid));
+        void stub.fetch("https://inbox/event", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "safety_flag", conv, msg_id: flaggedClientId, category }),
+        });
+      }
+    } catch { /* best-effort — the private warning + red bubble still fire */ }
+
     // Telemetry: a flag was raised. WHO→WHO (sender→recipient + emails), WHAT
     // (category/severity/detail), WHERE (country/IP), and the classifier used.
     void trackUser(env, uid, await emailFor(env, uid).catch(() => null), "guardian_flag", "guardian", {
