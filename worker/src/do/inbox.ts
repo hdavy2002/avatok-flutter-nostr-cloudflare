@@ -173,7 +173,12 @@ export class InboxDO {
     if (!this.archiveOn()) return;
     const owner = this.getMeta("owner");
     if (!owner) return;
+    const t0 = Date.now();
     const hw = this.archiveHw();
+    // F3: a flush that starts from high-water 0 IS the one-time backfill of this
+    // user's existing DO-SQLite history — same idempotent, high-water-gated, paced
+    // (ARCHIVE_BATCH_MAX) mechanism, so no separate job is needed.
+    const isBackfill = hw === 0;
     let rows: Record<string, unknown>[] = [];
     try {
       rows = this.sql.exec(
@@ -193,15 +198,17 @@ export class InboxDO {
     } catch { return; } // leave high-water unchanged → retried next flush (idempotent by firstId key)
     this.setMeta("archive_hw", String(lastId));
     this._archivePending = 0;
+    const done = rows.length < ARCHIVE_BATCH_MAX; // this batch drained the tail
     try {
       void this.env.Q_ANALYTICS.send({
-        event: "chat_archive_flush", uid: owner, ts: Date.now(),
-        props: { count: rows.length, first_id: firstId, last_id: lastId, bytes: jsonl.length, key,
+        event: isBackfill ? "archive_backfill" : "chat_archive_flush", uid: owner, ts: Date.now(),
+        props: { count: rows.length, msgs: rows.length, ms: Date.now() - t0, done,
+          first_id: firstId, last_id: lastId, bytes: jsonl.length, key,
           app_name: "avatok", service_name: "avatok-api", worker: true, account_id: owner },
       });
     } catch { /* best-effort */ }
-    // Backfill: more than a batch waiting → keep draining (best-effort; the alarm
-    // re-drives it too).
+    // Backfill/large batch: more than a batch waiting → keep draining (best-effort;
+    // the alarm re-drives it too).
     if (rows.length >= ARCHIVE_BATCH_MAX) { void this.flushArchive(); }
   }
 

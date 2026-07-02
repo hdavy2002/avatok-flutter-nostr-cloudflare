@@ -54,6 +54,14 @@ export async function partyEmit(env: Env, room: string, event: Record<string, un
 // Fan-out rule (Scale proposal Phase 1): >FANOUT_SYNC_MAX recipients NEVER loop
 // synchronous DO calls in the router — they go through Q_PUSH ("fanout" kind,
 // consumers append + FCM offline). ≤ the cap, deliveries run in PARALLEL.
+// F3: log the legacy-archive suppression exactly once per isolate (not per message).
+let _legacyArchiveSuppressLogged = false;
+function archiveLegacySuppressedOnce(): void {
+  if (_legacyArchiveSuppressLogged) return;
+  _legacyArchiveSuppressLogged = true;
+  console.warn("archive_legacy_suppressed: CHAT_ARCHIVE_V2=1 → legacy per-message CHAT_ARCHIVE lane disabled (no double-write)");
+}
+
 const FANOUT_SYNC_MAX = 25;
 const FANOUT_QUEUE_CHUNK = 80; // recipients per queue message (well under 128KB)
 const BLOCKS_CHUNK = 90;       // D1 100-bound-param limit (SCALE_AUDIT P0-2)
@@ -232,10 +240,14 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
 
   // Phase 1 (ABLY-R2-1): durable R2 archive. Enqueue the moderated message so a
   // consumer writes the body to R2 (BACKUP_R2, chat/<conv>/<mid>.json) + indexes
-  // it in D1 (message_index). This is the "never lose a chat" + AI-search source
-  // of truth, DECOUPLED from the per-user InboxDO. Best-effort + flag-gated
-  // (CHAT_ARCHIVE=1) so it ships dark; archives are idempotent on `mid`.
-  if (env.CHAT_ARCHIVE === "1" && env.Q_ARCHIVE) {
+  // it in D1 (message_index). This is the LEGACY per-message archive lane.
+  // F3 MUTUAL EXCLUSION: when the P8 batched jsonl archive is on (CHAT_ARCHIVE_V2),
+  // the legacy per-message lane is force-disabled in CODE so a misconfigured KV/var
+  // can NEVER double-write. The batched lane (InboxDO) is the cost-correct successor.
+  if (env.CHAT_ARCHIVE === "1" && env.CHAT_ARCHIVE_V2 === "1") {
+    archiveLegacySuppressedOnce(); // log once per isolate
+  }
+  if (env.CHAT_ARCHIVE === "1" && env.CHAT_ARCHIVE_V2 !== "1" && env.Q_ARCHIVE) {
     try {
       void env.Q_ARCHIVE.send({
         conv, serial: mid, sender: ctx.uid, kind,
