@@ -36,6 +36,11 @@ export interface AppsRunStats {
   tool_ms: number[];           // per-tool-exec latency
   composio_retries: number;    // transient Composio retries observed
   setup_ms: number;            // connectedToolkits + geminiTools setup time
+  // Phase 3 (token diet):
+  routed_model: string;        // model actually used as PRIMARY this run
+  route_reason: string;        // "simple" | "complex"
+  ctx_trim: boolean;           // context trimming active this run
+  chars_saved: number;         // chars removed from replayed tool results
   onRetry?: (attempt: number, status: number) => void;
   // Phase 1: emit cache telemetry (conn/decls) with user email enrichment. Set
   // by the route so cache events carry the same contact fields as run events.
@@ -46,7 +51,62 @@ export function newAppsRunStats(): AppsRunStats {
     steps: 0, toolkits: [], tools_called: [], model: "", fallback_used: false,
     prompt_tokens: 0, completion_tokens: 0, result_chars: 0,
     step_ms: [], tool_ms: [], composio_retries: 0, setup_ms: 0,
+    routed_model: "", route_reason: "complex", ctx_trim: false, chars_saved: 0,
   };
+}
+
+// ---- Phase 3: token-diet helpers --------------------------------------------
+// Read-only tool slugs eligible for the short-TTL result cache. This list
+// contains ZERO write/send/create/update/delete tools — a mutating tool must
+// NEVER be served from cache. Keep it in sync with CURATED (reads only).
+const READ_TOOL_SLUGS = new Set<string>([
+  "GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL_GET_CONTACTS",
+  "GOOGLEDRIVE_FIND_FILE",
+  "GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_FIND_EVENT",
+  "GOOGLECALENDAR_FIND_FREE_SLOTS", "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+  "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+  "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+]);
+function resultCacheOn(env: Env): boolean {
+  return String((env as any).AVAAPPS_RESULT_CACHE ?? "on").toLowerCase() !== "off";
+}
+function ctxTrimOn(env: Env): boolean {
+  return String((env as any).AVAAPPS_CTX_TRIM ?? "on").toLowerCase() !== "off";
+}
+// Deterministic FNV-1a hash of the normalized args (sorted keys) — a stable KV
+// key component so identical read requests collide onto one cache entry.
+function stableStringify(v: any): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  return `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stableStringify(v[k])).join(",")}}`;
+}
+function hashArgs(args: unknown): string {
+  const s = stableStringify(args ?? {});
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+  return h.toString(16);
+}
+// Compact one-line stand-in for a tool result that a LATER step no longer needs
+// verbatim (the model already consumed it). ≤300 chars. Preserves the tool name
+// + a record count + a few ids so the model can still reference it if asked.
+function summarizeToolResult(name: string, result: any): string {
+  let count: number | undefined;
+  let ids: string[] = [];
+  try {
+    if (result && typeof result === "object") {
+      if (Array.isArray(result.messages)) {
+        count = typeof result.count === "number" ? result.count : result.messages.length;
+        ids = result.messages.slice(0, 3).map((m: any) => String(m?.messageId ?? m?.id ?? "")).filter(Boolean);
+      } else if (typeof result._total === "number") {
+        count = result._total;
+      }
+    }
+  } catch { /* best-effort */ }
+  let s = `[trimmed] ${name}`;
+  if (count != null) s += ` → ${count} items`;
+  if (ids.length) s += `; ids: ${ids.join(",")}…`;
+  s += "; full result already consumed in an earlier step";
+  return s.slice(0, 300);
 }
 
 /// The Google set shipped by default in AvaApps (Composio toolkit slugs).
@@ -389,13 +449,35 @@ export async function geminiTools(
 // Execute one Composio tool for the user. Tool execution is the slow path (it
 // hits the user's Google account), so it gets a longer timeout — but it is a
 // side-effecting POST, so it is NEVER auto-retried (retries: 0).
-export async function executeTool(env: Env, userId: string, slug: string, args: unknown): Promise<any> {
-  return cfetch(env, `/tools/execute/${slug}`, {
+export async function executeTool(
+  env: Env, userId: string, slug: string, args: unknown,
+  opts?: { emit?: (event: string, props: Record<string, unknown>) => void },
+): Promise<any> {
+  // Phase 3: short-TTL (90s) KV cache for idempotent READ tools ONLY. A repeat
+  // "check my inbox" within 90s returns instantly with no Composio call and no
+  // LLM tool round trip. Writes are never in READ_TOOL_SLUGS, so a send/create/
+  // delete is never cached. KV errors fall through to a live execute.
+  const cacheable = resultCacheOn(env) && READ_TOOL_SLUGS.has(String(slug).toUpperCase());
+  const key = cacheable ? `avaapps:res:${userId}:${slug}:${hashArgs(args)}` : "";
+  if (cacheable) {
+    try {
+      const c = await env.TOKENS.get(key, "json");
+      if (c !== null && c !== undefined) { opts?.emit?.("avaapps_result_cache", { tool: slug, cache: "hit" }); return c; }
+    } catch { /* fall through to live execute */ }
+  }
+  const r = await cfetch(env, `/tools/execute/${slug}`, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, arguments: args ?? {} }),
     timeoutMs: 30000,
     retries: 0,
   });
+  if (cacheable) {
+    // Only cache a SUCCESSFUL read (never persist a tool-level failure).
+    const ok = !(r && (r.successful === false || r.error));
+    if (ok) { try { await env.TOKENS.put(key, JSON.stringify(r), { expirationTtl: 90 }); } catch { /* best-effort */ } }
+    opts?.emit?.("avaapps_result_cache", { tool: slug, cache: resultCacheOn(env) ? "miss" : "bypass" });
+  }
+  return r;
 }
 
 // ---- the AI ⇄ Composio function-calling loop --------------------------------
@@ -412,6 +494,21 @@ const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OR_FALLBACK_MODEL = "google/gemini-2.5-flash";
 function orAgentModel(env: Env): string {
   return (env as any).OPENROUTER_AGENT_MODEL || "google/gemini-3.5-flash";
+}
+// Phase 3 model routing (heuristic, NOT another LLM call): a short, single-verb
+// read ("check my inbox", "list today's events") is routed to the cheaper
+// fallback model as PRIMARY; anything compound/long stays on the smart model.
+// Env override AVAAPPS_SIMPLE_MODEL. The existing error-fallback still applies.
+function isSimpleRead(q: string): boolean {
+  const t = (q || "").toLowerCase().trim();
+  if (t.length >= 120) return false;
+  if (/\band\b/.test(t)) return false; // compound → treat as complex
+  const verb = /\b(check|read|show|list|see|view|get|fetch|any|what'?s|whats)\b/;
+  const noun = /\b(email|emails|inbox|mail|calendar|schedule|agenda|event|events|file|files|doc|docs|drive|sheet|sheets)\b/;
+  return verb.test(t) && noun.test(t);
+}
+function simpleModel(env: Env): string {
+  return (env as any).AVAAPPS_SIMPLE_MODEL || OR_FALLBACK_MODEL;
 }
 function orHeaders(key: string): Record<string, string> {
   return {
@@ -610,8 +707,11 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
   // compatibility (unused). Tools execute on our Composio key.
   // [stats] (Phase 0): optional out-param the route fills with timing/token/tool
   // metrics; populated best-effort and NEVER changes control flow or output.
-  const primaryModel = orAgentModel(env);
-  if (stats) stats.model = primaryModel;
+  // Phase 3: route a short single-verb read to the cheaper model; keep the smart
+  // model for compound/long requests. Error-fallback (below) is unchanged.
+  const simple = isSimpleRead(query);
+  const primaryModel = simple ? simpleModel(env) : orAgentModel(env);
+  if (stats) { stats.model = primaryModel; stats.routed_model = primaryModel; stats.route_reason = simple ? "simple" : "complex"; }
   const onRetry = stats?.onRetry;
   const emit = stats?.emit;
   const orKey = (env as any).OPENROUTER_API_KEY ?? "";
@@ -637,7 +737,28 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
     { role: "user", content: userText },
   ];
 
+  // Phase 3 context trimming: once a tool result has been consumed by a later
+  // LLM step it no longer needs to be replayed verbatim — we shrink its `content`
+  // in place to a ≤300-char summary before the NEXT step, cutting the quadratic
+  // token growth. We NEVER trim the most recent step's results (the model still
+  // needs them) and NEVER delete a tool message (OpenAI requires one tool message
+  // per tool_call id) — only the content string is replaced.
+  const doTrim = ctxTrimOn(env);
+  if (stats) stats.ctx_trim = doTrim;
+  const toolRecs: Array<{ msg: any; summary: string; step: number; trimmed: boolean; fullLen: number }> = [];
+
   for (let step = 0; step < 6; step++) {
+    // Trim results from steps <= step-2 (i.e. everything OLDER than the most
+    // recent step's results) before this step's LLM call.
+    if (doTrim && step >= 2) {
+      for (const rec of toolRecs) {
+        if (rec.trimmed || rec.step > step - 2) continue;
+        rec.msg.content = rec.summary;
+        rec.trimmed = true;
+        if (stats) stats.chars_saved += Math.max(0, rec.fullLen - rec.summary.length);
+      }
+    }
+
     let r: { text: string; calls: OrCall[]; usage?: OrUsage };
     const s0 = Date.now();
     try { r = await orStep(env, primaryModel, messages, tools); }
@@ -661,14 +782,16 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
       const x0 = Date.now();
       let result: any;
       try {
-        const rr = await executeTool(env, userId, c.name, c.args ?? {});
+        const rr = await executeTool(env, userId, c.name, c.args ?? {}, { emit });
         result = trimToolResult(c.name, rr);
       } catch (e: any) {
         result = { error: String(e?.message ?? e).slice(0, 200) };
       }
       const content = JSON.stringify(result);
       if (stats) { stats.tool_ms.push(Date.now() - x0); stats.result_chars += content.length; }
-      messages.push({ role: "tool", tool_call_id: c.id, name: c.name, content });
+      const toolMsg = { role: "tool", tool_call_id: c.id, name: c.name, content };
+      messages.push(toolMsg);
+      toolRecs.push({ msg: toolMsg, summary: summarizeToolResult(c.name, result), step, trimmed: false, fullLen: content.length });
     }
   }
   return "I worked through several steps but didn't finish — try narrowing the request.";

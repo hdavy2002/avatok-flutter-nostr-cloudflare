@@ -144,6 +144,9 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
       prompt_tokens: stats.prompt_tokens, completion_tokens: stats.completion_tokens,
       result_chars: stats.result_chars, setup_ms: stats.setup_ms,
       composio_retries: stats.composio_retries,
+      // Phase 3 (token diet): routing + context-trim savings.
+      routed_model: stats.routed_model, route_reason: stats.route_reason,
+      ctx_trim: stats.ctx_trim, chars_saved: stats.chars_saved,
       // Flattened per-step LLM latency (step_0_ms…): PostHog filters/aggregates
       // flat numeric props far better than array elements, so we expose both —
       // the array `step_ms` for ad-hoc inspection and flat keys for dashboards.
