@@ -289,7 +289,10 @@ export class InboxDO {
     const frame = JSON.stringify({
       type: "msg", id, conv: b.conv, sender: b.sender, kind: b.kind || "text",
       body: b.body ?? null, media_ref: b.media_ref ?? null, client_id: b.client_id ?? null,
-      created_at: created, audience,
+      // created_at is the SENDER's clock (unreliable for latency math). server_ts is
+      // the InboxDO append/broadcast instant — the recipient computes
+      // msg_delivery_latency = now - server_ts against it (P13-A). Additive field.
+      created_at: created, server_ts: Date.now(), audience,
     });
     const live = this.broadcast(frame);
     return new Response(JSON.stringify({ id, live }), { headers: { "content-type": "application/json" } });

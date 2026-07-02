@@ -458,10 +458,12 @@ class PushService {
         return;
       }
       if (d['type'] == 'message') {
-        // App is open: the live InboxDO socket should already have it. But if the
-        // socket was dropped (mobile DNS), this FCM wake forces a reconnect + sync
-        // so the message lands immediately instead of waiting for a manual refresh.
-        SyncHub.I.ensureConnected();
+        // App is open: the live InboxDO socket should already have it. But the
+        // socket may be half-open (mobile DNS) and lying. P13-B: the push PROVES
+        // there's something new — kick a cursor sync even if the socket looks
+        // alive, so the message lands immediately instead of after the zombie
+        // watchdog eventually notices.
+        SyncHub.I.syncFromPush();
         return;
       }
       if (d['type'] == 'group_invite') {

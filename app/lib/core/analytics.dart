@@ -54,6 +54,8 @@ class Analytics {
   static String? _clerkUid;
   static int _seq = 0; // session_seq — monotonic per app session
   static String _net = 'unknown'; // wifi|cell|offline
+  /// P13: true when the last-known transport is cellular (for latency dashboards).
+  static bool get isCellular => _net == 'cell';
 
   /// The email currently attached to telemetry ('' / null = not yet known).
   static String? get currentEmail => _email;

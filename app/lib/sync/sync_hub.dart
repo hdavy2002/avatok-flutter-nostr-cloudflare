@@ -70,6 +70,12 @@ class SyncHub {
   // platform/email already ride every event via Analytics._base.
   int _reconnects = 0;            // cumulative reconnect attempts this session
   int _connectedAt = 0;          // ms epoch of the current connection (0 = down)
+  // P13-A latency instrumentation.
+  int _openStartedAt = 0;        // _open() start → hub_connected connect_ms
+  int _syncStartedAt = 0;        // last 'hello' send → sync_catchup ms
+  String _syncTrigger = 'login'; // login|resume|reconnect|zombie|push — labels the next sync
+  int _foregroundAt = 0;         // last foreground/login instant → ttfm_ms base
+  bool _ttfmEmitted = true;      // reset false on foreground; true after first msg render
   final Map<String, int> _frameCounts = {}; // frames received this connection, by type
 
   final Map<String, List<DmMessage>> _byConv = {};
@@ -112,6 +118,8 @@ class SyncHub {
 
   void ensureConnected() {
     if (!_wantConnected) return;
+    // P13-A: first cold connect of a session is a ttfm baseline too (login case).
+    if (_foregroundAt == 0) { _foregroundAt = DateTime.now().millisecondsSinceEpoch; _ttfmEmitted = false; }
     unawaited(drainPendingDeletes()); // a foreground wake also flushes queued deletes
     unawaited(drainPendingHides());   // …and queued hide/undo ops
     unawaited(drainPendingCallOps()); // …and queued call-log deletes/clears
@@ -138,22 +146,59 @@ class SyncHub {
   void forceResync() {
     if (_ch == null) { ensureConnected(); return; } // socket down → reconnect (which sends hello)
     try {
+      _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A
       _send({'type': 'hello', 'cursor': _cursor});
     } catch (_) {
       ensureConnected();
     }
   }
 
+  /// P13-B: a data push proves there's something new — kick a cursor sync even if
+  /// the socket looks alive (it may be half-open and lying). Called from the FCM
+  /// message handlers. If the socket is up we re-send 'hello' (labelled 'push');
+  /// if it's down, [ensureConnected] reconnects (which syncs).
+  void syncFromPush() {
+    _syncTrigger = 'push';
+    if (_ch == null) { ensureConnected(); return; }
+    try {
+      _syncStartedAt = DateTime.now().millisecondsSinceEpoch;
+      _send({'type': 'hello', 'cursor': _cursor});
+    } catch (_) { ensureConnected(); }
+  }
+
+  /// P13-A: emit time-to-first-message once per foreground, when the first message
+  /// frame (live or a non-empty sync) is about to render.
+  void _maybeEmitTtfm() {
+    if (_ttfmEmitted || _foregroundAt <= 0) return;
+    _ttfmEmitted = true;
+    Analytics.capture('ttfm_ms', {'ms': DateTime.now().millisecondsSinceEpoch - _foregroundAt});
+  }
+
   void onAppResumed() {
     if (!_wantConnected) return;
-    if (_ch == null) { ensureConnected(); return; }
+    // P13-A: time-to-first-message is measured from every foreground.
+    _foregroundAt = DateTime.now().millisecondsSinceEpoch;
+    _ttfmEmitted = false;
+    if (_ch == null) { _syncTrigger = 'resume'; ensureConnected(); return; }
+    final idle = DateTime.now().millisecondsSinceEpoch - _lastRecvAt;
+    // P13-B: a socket idle >10s on resume is very likely half-open — don't burn 4s
+    // pinging and waiting, reconnect NOW so the cursor sync pulls what we missed.
+    if (idle > 10000) {
+      AvaLog.I.log('hub', 'resume with ${idle}ms idle socket — reconnecting immediately');
+      Analytics.capture('inbox_resume_reconnect', {'idle_ms': idle, 'immediate': true});
+      _syncTrigger = 'resume';
+      _onClosed('resume_idle');
+      return;
+    }
+    // Freshly-active socket (<10s idle): keep the light ping probe.
     final probedAt = DateTime.now().millisecondsSinceEpoch;
     _send({'type': 'ping'});
     Timer(const Duration(seconds: 4), () {
       if (!_wantConnected || _ch == null) return;
       if (_lastRecvAt < probedAt) {
         AvaLog.I.log('hub', 'no reply 4s after resume — reconnecting socket');
-        Analytics.capture('inbox_resume_reconnect', const {});
+        Analytics.capture('inbox_resume_reconnect', {'immediate': false});
+        _syncTrigger = 'resume';
         _onClosed('resume_probe'); // schedules an immediate-ish reconnect + cursor catch-up
       }
     });
@@ -162,6 +207,7 @@ class SyncHub {
   Future<void> _open() async {
     if (_connecting || _ch != null || !_wantConnected) return;
     _connecting = true;
+    _openStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A connect_ms base
     try {
       final token = await ApiAuth.clerkBearer?.call();
       if (token == null || token.isEmpty) {
@@ -202,7 +248,13 @@ class SyncHub {
       _connectedAt = DateTime.now().millisecondsSinceEpoch;
       _lastRecvAt = _connectedAt; // fresh connection counts as just-heard-from
       _frameCounts.clear();
-      Analytics.capture('hub_connected', {'cursor': _cursor, 'reconnects': _reconnects});
+      Analytics.capture('hub_connected', {
+        'cursor': _cursor, 'reconnects': _reconnects,
+        // P13-A: how long the socket took to establish (ensureConnected → open),
+        // and whether we're on cellular ('net' rides every event automatically).
+        'connect_ms': _openStartedAt > 0 ? _connectedAt - _openStartedAt : 0,
+        'cellular': Analytics.isCellular,
+      });
       // Resume from the PERSISTED cursor (once per account) so we don't
       // re-download the entire backlog on every launch — the server returns
       // only messages with id > cursor. SQLite already holds the rest.
@@ -211,17 +263,20 @@ class SyncHub {
         _cursor = int.tryParse(raw ?? '') ?? 0;
         _cursorUid = _myUid;
       }
+      _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A sync_catchup base
       _send({'type': 'hello', 'cursor': _cursor}); // request backlog since cursor
       _pingTimer?.cancel();
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
         // Zombie-socket watchdog: if we've received NOTHING (not even a pong)
-        // for ~60s, the socket is half-open — tear it down and reconnect so the
+        // for ~30s, the socket is half-open — tear it down and reconnect so the
         // 'hello' cursor sync pulls whatever we missed, instead of silently
-        // stalling live delivery for minutes (the 5-min-message bug).
+        // stalling live delivery for minutes (the 5-min-message bug). P13-B:
+        // window tightened 60s → 30s (with a 25s ping, that's one missed pong).
         final now = DateTime.now().millisecondsSinceEpoch;
-        if (_lastRecvAt > 0 && now - _lastRecvAt > 60000) {
+        if (_lastRecvAt > 0 && now - _lastRecvAt > 30000) {
           AvaLog.I.log('hub', 'no frames for ${now - _lastRecvAt}ms — dead socket, reconnecting');
           Analytics.capture('inbox_zombie_reconnect', {'idle_ms': now - _lastRecvAt});
+          _syncTrigger = 'zombie';
           _onClosed('zombie');
           return;
         }
@@ -261,6 +316,9 @@ class SyncHub {
 
   void _scheduleReconnect() {
     if (_reconnectTimer?.isActive ?? false) return;
+    // P13-A: label the sync that this reconnect will produce (unless a more
+    // specific trigger — zombie/resume/push — was already set for this cycle).
+    if (_syncTrigger == 'login') _syncTrigger = 'reconnect';
     _retry++;
     _reconnects++;
     final secs = (1 << (_retry > 5 ? 5 : _retry)).clamp(2, 30);
@@ -365,9 +423,31 @@ class SyncHub {
           }
         }
         // After a backlog/restore sync the local DB now holds conversations that
-
+        // P13-A sync_catchup: one row per (re)connect cursor sync.
+        {
+          final msgs = (m['messages'] as List? ?? const []).length;
+          if (msgs > 0) _maybeEmitTtfm();
+          Analytics.capture('sync_catchup', {
+            'messages': msgs,
+            'ms': _syncStartedAt > 0 ? DateTime.now().millisecondsSinceEpoch - _syncStartedAt : 0,
+            'cursor_gap': msgs,
+            'trigger': _syncTrigger,
+          });
+          _syncTrigger = 'login'; // reset; the next cycle re-labels itself
+        }
         break;
       case 'msg':
+        _maybeEmitTtfm();
+        // P13-A msg_delivery_latency: now − InboxDO append instant (server_ts).
+        {
+          final st = (m['server_ts'] as num?)?.toInt();
+          if (st != null && st > 0) {
+            final lat = DateTime.now().millisecondsSinceEpoch - st;
+            if (lat >= 0 && lat < 600000) {
+              Analytics.capture('msg_delivery_latency', {'ms': lat, 'via': 'live'});
+            }
+          }
+        }
         _ingestMsg(m);
         break;
       case 'receipt':
