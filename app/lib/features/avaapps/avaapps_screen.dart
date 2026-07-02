@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/analytics.dart';
 import '../../core/app_icon_cache.dart';
 import '../../core/apps_service.dart';
+import '../../core/avaapps_cache.dart';
 import '../../core/money_api.dart';
 import '../../core/paid_feature.dart';
 import '../../core/ui/zine.dart';
