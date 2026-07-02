@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../sync/party/party_hub.dart';
-import '../sync/transport/ava_transport.dart' show RuntimeMessagingProvider;
 import 'ava_log.dart';
 import 'config.dart';
 import 'feature_flags.dart';
@@ -106,13 +105,6 @@ class RemoteConfig {
         final m = jsonDecode(res.body);
         if (m is Map<String, dynamic>) {
           _cfg = m;
-          // Ably-transport runtime kill switch: the Worker returns
-          // `messagingProvider` ('ably' | 'inbox') driven by its MSG_TRANSPORT
-          // env. This overrides the compile-time default and lets us cut mobile
-          // over to Ably — or roll back — within one poll, no APK release.
-          final mp = m['messagingProvider'];
-          RuntimeMessagingProvider.value =
-              (mp is String && mp.isNotEmpty) ? mp : null;
           // PartyKit realtime layer master switch (replaces Ably). Ships dark
           // until the PartyDO is deployed + this flag flipped on server-side.
           PartyHub.I.setEnabled(m['partyEnabled'] == true);

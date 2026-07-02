@@ -1,7 +1,7 @@
 name: avatok_call
 description: AvaTok calling test shell (P2P WebRTC over Cloudflare signaling).
 publish_to: 'none'
-version: 0.1.17+22
+version: 0.1.17+23
 
 environment:
   sdk: '>=3.6.0 <4.0.0'
@@ -26,13 +26,6 @@ dependencies:
   # teardown path. NATIVE plugin — must be validated by a CI APK build.
   wakelock_plus: ^1.2.8
   web_socket_channel: ^3.0.1
-  # Ably realtime — the iOS/Android messaging transport (Ably migration, 2026-06-27).
-  # Wraps Ably's native cocoa/java SDKs → iOS + Android ONLY (no desktop/macOS/web);
-  # the runtime selector useAblyTransport() (sync/transport/ava_transport.dart) keeps
-  # every other platform on the legacy InboxDO socket. NATIVE plugin — must be
-  # validated by a CI APK build (this repo can't compile headless). Powers instant
-  # delivery + native presence/typing/read-receipts.
-  ably_flutter: ^1.2.39
   # Bumped 11.3.1 → 12.0.1: the `cactus` on-device-AI plugin requires
   # permission_handler ^12.0.1. The APIs this app uses (Permission.microphone/
   # camera/contacts/notification, .request(), .isGranted, .denied/.deniedForever)

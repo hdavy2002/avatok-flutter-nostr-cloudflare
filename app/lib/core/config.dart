@@ -174,33 +174,6 @@ String? serverConvFromKey(String convKey, String myUid) {
   return null;
 }
 
-// ── Ably realtime (iOS/Android messaging transport — Ably migration) ─────────
-// The Worker mints a SHORT-LIVED Ably JWT from the Clerk session (no API key on
-// device), setting clientId = AccountScope.id and room-scoped capabilities.
-// Channel names below MUST match the capability scoping in worker routes/ably.ts.
-const String kAblyTokenUrl = 'https://$kSignalingHost/api/ably/token';
-
-/// Durable message channel for a conversation (server conv id from serverConvFromKey).
-String ablyMsgChannel(String serverConv) => 'msg:$serverConv';
-
-/// Ephemeral typing channel — never persisted.
-String ablyTypingChannel(String serverConv) => 'typing:$serverConv';
-
-/// Receipts / tombstones (delivered/read, delete-for-everyone) — side channel,
-/// kept OUT of the message channel by design.
-String ablyMetaChannel(String serverConv) => 'meta:$serverConv';
-
-/// Per-user presence channel (online / last-seen). One per account.
-String ablyPresenceChannel(String uid) => 'presence:$uid';
-
-/// Phase 4 — per-message reactions (live). Persisted via /api/msg/react.
-String ablyReactChannel(String serverConv) => 'react:$serverConv';
-
-/// Phase 4 — ephemeral floating-emoji bursts (never persisted).
-String ablyBurstChannel(String serverConv) => 'burst:$serverConv';
-
-/// Phase 4 — room presence used purely for live occupancy counts.
-String ablyRoomChannel(String serverConv) => 'room:$serverConv';
 
 /// Account backup: export your relay data → download link (media excluded). (NIP-98)
 const String kBackupUrl = 'https://$kSignalingHost/api/backup';

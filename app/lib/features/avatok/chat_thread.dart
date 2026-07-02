@@ -173,15 +173,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   // Presence: typing + read receipts (ephemeral, over the signaling WS).
   PresenceChannel? _presence;
-  // Phase 4 (ABLY-R2): live reactions / floating bursts / occupancy + scroll-up
-  // history. All gated on SyncHub.I.ably (no-ops on the legacy/desktop transport).
-  final List<StreamSubscription> _ablySubs = [];
-  int _occupancy = 0;                       // live members present (groups)
-  final List<_BurstFx> _burstFx = [];       // active floating-emoji animations
+  // Floating-emoji bursts (live reactions + bursts ride PartyKit — see _partyJoin).
+  final List<_BurstFx> _burstFx = [];       // active floating-emoji animations (PartyKit bursts)
   int _burstSeq = 0;
-  bool _loadingOlder = false;               // scroll-up history guard
-  String? _archiveCursor;                   // next 'before' serial for paging
-  bool _archiveExhausted = false;
   // Live location (WhatsApp-style): one session per share id. The pin moves via
   // ephemeral 'liveloc' presence frames; the durable 't:'live'' bubble anchors
   // it. _liveBroadcaster is non-null only while *I* am actively sharing.
@@ -458,7 +452,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _convKey = '1:$peerHex';
     _partyJoin(id.uid); // PartyKit live layer (deal-ready nudge etc.); no-op until flag on
     _loadGuardian();
-    _wireAblyExtras(); // Phase 4: live reactions/bursts + scroll-up history (DM)
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
@@ -564,7 +557,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _memberNpubs = g.members.where((m) => m != id.uid).map((h) => NostrKeys.npub(h)).toList();
     _convKey = 'g:${g.id}';
     _loadGuardian();
-    _wireAblyExtras(); // Phase 4: live reactions/bursts/occupancy + scroll-up history (group)
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
@@ -720,76 +712,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _myTypingOff = Timer(const Duration(seconds: 2), () => _presence?.sendTyping(false));
   }
 
-  // ── Phase 4 (ABLY-R2): live reactions / bursts / occupancy + scroll-up ──────
-  // All no-ops when SyncHub.I.ably is null (legacy/desktop transport) — the chat
-  // keeps its existing behaviour untouched.
-  void _wireAblyExtras() {
-    final t = SyncHub.I.ably;
-    if (t == null || _convKey == null) return;
-    final ck = _convKey!;
-    // Live per-message reactions from peers → bump the aggregate count on the bubble.
-    _ablySubs.add(t.reactions.listen((e) {
-      if (e.convKey != ck) return;
-      // Phase 5: learn the reactor's name from the live frame so the "reacted by"
-      // sheet can name them even if they've never sent a message in this thread.
-      if (e.whoName.isNotEmpty && e.who.isNotEmpty && _memberNames[e.who] != e.whoName) {
-        _memberNames[e.who] = e.whoName;
-      }
-      final i = _msgs.indexWhere((m) => m.evId == e.targetSerial);
-      if (i < 0) return;
-      setState(() {
-        final msg = _msgs[i];
-        final c = msg.reactCounts;
-        c[e.emoji] = ((c[e.emoji] ?? 0) + (e.add ? 1 : -1)).clamp(0, 9999);
-        if (c[e.emoji] == 0) c.remove(e.emoji);
-        // Phase 5: track WHO reacted so the "reacted by" sheet can name them.
-        final by = msg.reactBy.putIfAbsent(e.emoji, () => <String>{});
-        if (e.add) { by.add(e.who); } else { by.remove(e.who); }
-        if (by.isEmpty) msg.reactBy.remove(e.emoji);
-      });
-    }));
-    // Ephemeral floating-emoji bursts from peers → animate.
-    _ablySubs.add(t.bursts.listen((e) { if (e.convKey == ck) _spawnBurst(e.emoji); }));
-    // Live occupancy (groups): how many members are present right now.
-    if (widget.chat.group) {
-      _ablySubs.add(t.occupancy.listen((e) {
-        if (e.convKey == ck && mounted) setState(() => _occupancy = e.present);
-      }));
-      t.watchOccupancy(ck);
-    }
-    // Scroll-to-top → load older history from the R2 archive.
-    _scroll.addListener(_onScrollForHistory);
-  }
-
-  void _onScrollForHistory() {
-    if (!_scroll.hasClients || _loadingOlder || _archiveExhausted) return;
-    if (_scroll.position.pixels <= 80) _loadOlderHistory();
-  }
-
-  Future<void> _loadOlderHistory() async {
-    final t = SyncHub.I.ably;
-    final myUid = _meId?.uid;
-    if (t == null || myUid == null || _convKey == null) return;
-    if (widget.chat.group) return; // group archive replay uses a different render path (follow-up)
-    _loadingOlder = true;
-    try {
-      final page = await t.history(_convKey!, myUid, beforeSerial: _archiveCursor, limit: 30);
-      if (!mounted) return;
-      var added = 0;
-      for (final tm in page.messages) {
-        if (_seenEv.contains(tm.rumorId)) continue; // already on screen (dedupe by client_id)
-        _seenEv.add(tm.rumorId);
-        _onDm(DmMessage(rumorId: tm.rumorId, mine: tm.mine, payload: tm.payload, createdAt: tm.createdAt), seed: true);
-        added++;
-      }
-      setState(() {
-        _archiveCursor = page.nextBefore;
-        if (page.nextBefore == null || added == 0) _archiveExhausted = true;
-      });
-    } catch (_) {/* keep what we have */} finally {
-      _loadingOlder = false;
-    }
-  }
 
   void _spawnBurst(String emoji) {
     if (!mounted) return;
@@ -804,8 +726,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // Send an ephemeral floating-emoji burst to everyone in the room + animate locally.
   void _sendBurst(String emoji) {
     HapticFeedback.lightImpact();
-    if (_convKey != null) SyncHub.I.ably?.sendBurst(_convKey!, emoji);
-    _party?.send({'t': 'burst', 'emoji': emoji}); // PartyKit (replaces Ably burst)
+    _party?.send({'t': 'burst', 'emoji': emoji}); // PartyKit floating-emoji burst
     _spawnBurst(emoji); // optimistic local animation (peers see it via the burst stream)
   }
 
@@ -1238,10 +1159,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _clockTimer?.cancel();              // Phase 5: live clock
     _reactionOverlay?.remove();        // Phase 5: tear down a floating reaction pill if open
     _reactionOverlay = null;
-    for (final s in _ablySubs) { s.cancel(); } // Phase 4: reactions/bursts/occupancy
     _partySub?.cancel();               // PartyKit live layer
     _party?.leave();
-    _scroll.removeListener(_onScrollForHistory);
     _ctrl.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
@@ -3754,15 +3673,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _sfx.play(AssetSource('sounds/$file.wav'));
       }
     }
-    // Phase 4: publish live + persist durably (Ably transport only; no-op on legacy).
-    final t = SyncHub.I.ably;
-    final myUid = _meId?.uid;
-    if (t != null && myUid != null && _convKey != null && m.evId != null) {
-      if (prev != null && prev != emoji) {
-        t.sendReaction(_convKey!, myUid, m.evId!, prev, add: false, whoName: _fromNameTag); // retract the old one
-      }
-      t.sendReaction(_convKey!, myUid, m.evId!, emoji, add: adding, whoName: _fromNameTag);
-    }
     // PartyKit live reaction (the reaction's home now that Ably is retired).
     final p = _party;
     final mid = m.evId;
@@ -4471,7 +4381,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       Text(
                           (_peerTyping
                               ? (c.group ? '${_typingWho ?? "Someone"} is typing…' : 'typing…')
-                              : (c.group ? (_occupancy > 0 ? '$_occupancy online · ${c.members} members' : '${c.members} members · tap to manage')
+                              : (c.group ? '${c.members} members · tap to manage'
                                   : (_peerOnline ? 'online' : _relLastSeen()))).toUpperCase(),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ZineText.tag(size: 9,
@@ -4737,7 +4647,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             icon: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), color: Zine.ink, size: 26),
             onPressed: _attach),
         // Phase 4: tap = send a 🎉 burst to the room; long-press picks the emoji.
-        if (SyncHub.I.ably != null)
+        if (_party != null)
           GestureDetector(
             onLongPress: _pickBurstEmoji,
             child: IconButton(
