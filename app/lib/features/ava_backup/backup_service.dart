@@ -339,7 +339,7 @@ class BackupService {
       }
       Analytics.capture('drive_auto_backup', {
         'drive_ok': drive.ok, 'r2_ok': r2.ok,
-        if (!drive.ok) 'drive_reason': drive.reason,
+        if (!drive.ok) 'drive_reason': drive.reason ?? 'unknown',
       });
     } catch (_) { /* best-effort; retry next launch */ }
   }
