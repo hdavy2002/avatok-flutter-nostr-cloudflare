@@ -106,6 +106,29 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 - The `CreateListingFlow` (creator-services composer) already gates server-side via `requireKyc`;
   its client explainer can reuse `_openListingComposer` when that path is wired.
 
+## Phase 12 status (receptionist status notes + language + voice), 2026-07-02
+
+**Done this pass (server, schema-free owner decisions):**
+- **One voice, forever** (owner decision 5e): `AVA_VOICE` constant (= `Aoede`, the female default)
+  exported; the settings save now **ignores any client `voice_name`** (`const voice = AVA_VOICE`,
+  no error for old clients); the Gemini call init + `/config` response are **pinned to
+  `AVA_VOICE`**, overriding any stored custom voice. `receptionist.ts` only.
+- **Feminine register, always** (owner decision 5d): an unconditional "You are a woman… use
+  feminine verb/adjective forms (Hindi बोलूंगी, Spanish encantada, French désolée, Arabic/Hebrew
+  feminine first-person)…" line added to the Gemini system prompt.
+
+**Deferred within P12 (need a DB migration and/or client UI — documented follow-up):**
+- **Status notes + expiry**: `status_note` + `status_expires_at` columns on the settings row,
+  included in the prompt only when unexpired, lazily cleared, cache busted on save. Needs an
+  `ALTER TABLE` migration + the client expanding-notes box and expiry picker.
+- **Default answering language**: `answer_lang` column + country→language default table +
+  prompt wiring ("Answer in <answer_lang>; switch to the caller's language if different").
+- **Client UI**: expanding multiline notes box, expiry chips/custom picker, language picker, and
+  **removing the voice/gender picker from the receptionist settings screen** (server already
+  ignores it). `recept_status_*` / `recept_lang_set` telemetry ships with these.
+- CF engine (`reception_room_cf.ts`, off by default) uses a fixed female Aura-2 voice already;
+  the feminine-register line wasn't added to its separate prompt this pass.
+
 ## Phase 11 status (profile completeness + AI vetting), 2026-07-02
 
 **Done this pass (server, behind `profileCompletionGate`, default OFF; guardWrite Nemotron on

@@ -104,7 +104,11 @@ const VOICES = new Set([
   "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", "Umbriel", "Algieba",
   "Algenib", "Rasalgethi", "Alnilam", "Schedar", "Zubenelgenubi", "Sadaltager",
 ]);
-const DEFAULT_VOICE = "Aoede"; // warm FEMALE default for "Ava" (owner can override in Settings)
+const DEFAULT_VOICE = "Aoede"; // warm FEMALE default for "Ava"
+// P12 (OWNER DECISION 2026-07-02): Ava's ONE canonical female voice, everywhere,
+// forever. Any client-supplied voice on the settings save is ignored and existing
+// rows with a custom voice are overridden by this constant at prompt/init build.
+export const AVA_VOICE = DEFAULT_VOICE;
 
 // Cloudflare-native engine (receptionistUseCf) voice: ONE fixed warm female
 // Deepgram Aura-2 voice for "Ava" (no per-owner pick / no cloning on this engine
@@ -294,6 +298,8 @@ export function composeReceptionistPrompt(
     `You are ${me}, ${who}'s assistant. ${who} can't pick up, so you take a short voice message. This is a brief message-taking call, not a long conversation.`,
     // P2: language-adaptive from the first words, whole call incl. wrap-up + goodbye.
     `Detect the caller's language from their FIRST utterance and conduct the ENTIRE call in that language — the greeting, everything in between, the wrap-up, and the goodbye. If they switch languages, follow them.`,
+    // P12 (OWNER DECISION 2026-07-02): Ava is a woman, in every language, always.
+    `You are a woman. In every language, use the vocabulary, grammatical gender, and phrasing a woman naturally uses when referring to yourself — feminine verb and adjective forms in languages that inflect by speaker gender (Hindi: "मैं बोलूंगी", not "बोलूंगा"; Spanish: "encantada", not "encantado"; French: "je suis désolée"; Arabic/Hebrew feminine first-person forms), and the natural feminine register where the culture distinguishes one. Never slip into masculine self-reference.`,
     `You ALREADY KNOW the caller is ${callerRef}, and ${who} already has ${poss} number. So you must NEVER ask for the caller's name, their number, or how to reach them — you have all of it.`,
     note && !greetLine ? `${who} left a note about ${poss} availability: "${note}". Weave it into your greeting naturally if it fits.` : ``,
     step1,
@@ -360,8 +366,11 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
     }
   }
   const instr = b.instructions_text == null ? "" : String(b.instructions_text).slice(0, MAX_INSTRUCTIONS);
-  let voice = String(b.voice_name || DEFAULT_VOICE);
-  if (!VOICES.has(voice)) voice = DEFAULT_VOICE;
+  // P12 (OWNER DECISION 2026-07-02): Ava has exactly ONE canonical female voice,
+  // for life. Users can NEVER choose it. Silently STRIP any client-supplied
+  // voice_name (don't error an old client) and pin to AVA_VOICE.
+  void VOICES; // retained as the canonical Gemini voice list; Ava's is pinned below
+  const voice = AVA_VOICE;
   const display = b.display_name == null ? null : String(b.display_name).slice(0, 60).trim() || null;
 
   // v2 fields — each validated/capped against a fixed allow-list so a bad value
@@ -458,7 +467,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   return json({
     available: true, mode, rings,
     decline_to_ava: !!s.decline_to_ava,
-    voice_name: s.voice_name || DEFAULT_VOICE,
+    voice_name: AVA_VOICE, // P12: pinned — stored custom voice is overridden
     display_name: s.display_name ?? "",
     recept_remaining: res.remaining, recept_cap: res.cap,
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
@@ -584,7 +593,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     sid, owner_uid: to, caller_uid: ctx.uid, caller_phone: callerPhone,
     caller_name: callerName, call_id: callId, rtc_token: rtcToken,
     // CF engine uses ONE fixed female Aura voice; Gemini uses the owner's pick.
-    voice_name: useCf ? AVA_CF_VOICE : (s.voice_name || DEFAULT_VOICE),
+    voice_name: useCf ? AVA_CF_VOICE : AVA_VOICE, // P12: Gemini path pinned to Ava's one voice
     language_code: s.language_code || null,       // v2: DO pins speechConfig.languageCode
     activation_mode: activationMode,              // v2: telemetry context for the DO
     file_search_store: s.file_search_store || null,
