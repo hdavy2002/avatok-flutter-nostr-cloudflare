@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'account_storage.dart';
 import 'api_auth.dart';
 import 'vault.dart';
+import 'account_key.dart';
 
 /// Syncs the user's preferences across devices via the encrypted vault
 /// (kind 'settings'). One blob bundles everything device-local that the user
@@ -36,8 +37,10 @@ class PrefsSync {
       if (v != null && v.isNotEmpty) map['g:$k'] = v;
     }
     if (map.isEmpty) return;
+    final keyMat = await AccountKey.I.ensureHex();
+    if (keyMat == null) return;
     try {
-      final blob = await Vault.encrypt(jsonEncode(map), id.privHex);
+      final blob = await Vault.encrypt(jsonEncode(map), keyMat);
       await Vault.put('settings', blob);
     } catch (_) {/* best-effort */}
   }
@@ -49,7 +52,8 @@ class PrefsSync {
     if (id == null) return;
     final blob = await Vault.get('settings');
     if (blob == null) return;
-    final plain = await Vault.decrypt(blob, id.privHex);
+    final keyMat = await AccountKey.I.ensureHex();
+    final plain = keyMat == null ? null : await Vault.decrypt(blob, keyMat);
     if (plain == null) return;
     Map<String, dynamic> map;
     try {

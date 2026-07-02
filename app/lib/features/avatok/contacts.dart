@@ -10,6 +10,7 @@ import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
 import '../../core/vault.dart';
+import '../../core/account_key.dart';
 
 /// A saved AvaTok contact. `npub` holds the routing id (Clerk uid). Handles are
 /// retired — the network identity shown is the AvaTOK number (or real phone).
@@ -123,9 +124,11 @@ class ContactsStore {
   Future<void> _syncUp(List<Contact> cs) async {
     final id = ApiAuth.identity;
     if (id == null) return;
+    final keyMat = await AccountKey.I.ensureHex();
+    if (keyMat == null) return; // no account key yet (offline) — the next sync carries it
     try {
       final blob = await Vault.encrypt(
-          jsonEncode(cs.map((c) => c.toJson()).toList()), id.privHex);
+          jsonEncode(cs.map((c) => c.toJson()).toList()), keyMat);
       await Vault.put('contacts', blob);
     } catch (_) {/* best-effort */}
   }
@@ -137,9 +140,10 @@ class ContactsStore {
     final id = ApiAuth.identity;
     final local = await load();
     if (id == null) return local;
+    final keyMat = await AccountKey.I.ensureHex(); // restores from escrow / seeds + escrows the key
     final blob = await Vault.get('contacts');
     if (blob == null) return local;
-    final plain = await Vault.decrypt(blob, id.privHex);
+    final plain = keyMat == null ? null : await Vault.decrypt(blob, keyMat);
     if (plain == null) return local;
     List<Contact> remote;
     try {

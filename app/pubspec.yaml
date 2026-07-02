@@ -1,7 +1,7 @@
 name: avatok_call
 description: AvaTok calling test shell (P2P WebRTC over Cloudflare signaling).
 publish_to: 'none'
-version: 0.1.17+21
+version: 0.1.17+22
 
 environment:
   sdk: '>=3.6.0 <4.0.0'

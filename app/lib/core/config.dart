@@ -70,6 +70,7 @@ const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert
 // removed to fix a concurrent-edit "already declared" compile error.
 
 const String kVaultUrl = 'https://$kSignalingHost/api/vault'; // GET/POST — encrypted cross-device blobs (contacts)
+const String kKeyBackupUrl = 'https://$kSignalingHost/api/keybackup'; // GET/POST — account key escrow (durable restore)
 const String kResolveUrl = 'https://$kSignalingHost/api/resolve'; // GET ?q= (public)
 const String kSearchUrl = 'https://$kSignalingHost/api/search';   // GET ?q= (public)
 const String kHandleCheckUrl = 'https://$kSignalingHost/api/handle/check'; // GET ?q= (DEPRECATED — handles retired)
