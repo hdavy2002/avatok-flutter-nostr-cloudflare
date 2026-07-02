@@ -14,6 +14,7 @@ import { verifyClerk } from "../auth";
 import { nameFor } from "../lib/identity";
 import { brainFact } from "../hooks";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
+import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
@@ -244,6 +245,13 @@ const VAULT_MAX = 600_000;
 export async function vaultPut(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // Abuse limit (Phase 3): cap vault writes per account + per source IP. Generous
+  // for legit sync (contacts/settings/apps blobs), tight enough to stop scripted abuse.
+  const ip = req.headers.get("CF-Connecting-IP") || "0.0.0.0";
+  const rlU = await rateLimit(env, `vault_put:${ctx.uid}`, 120, 3600);
+  if (rlU) return rlU;
+  const rlI = await rateLimit(env, `vault_put_ip:${ip}`, 600, 3600);
+  if (rlI) return rlI;
   const b = (await req.json().catch(() => ({}))) as { kind?: string; blob?: string };
   const kind = (b.kind || "").trim().toLowerCase();
   const blob = typeof b.blob === "string" ? b.blob : "";
@@ -259,6 +267,8 @@ export async function vaultPut(req: Request, env: Env): Promise<Response> {
 export async function vaultGet(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const rlU = await rateLimit(env, `vault_get:${ctx.uid}`, 600, 3600);
+  if (rlU) return rlU;
   const kind = (new URL(req.url).searchParams.get("kind") || "").trim().toLowerCase();
   if (!VAULT_KINDS.has(kind)) return json({ error: "bad kind" }, 400);
   const r = await metaSession(env).prepare(

@@ -32,7 +32,7 @@ import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveI
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
-import { archiveList } from "./routes/archive";
+import { archiveList, archiveWrite, type ArchiveMsg } from "./routes/archive";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
@@ -146,14 +146,16 @@ export default {
   async queue(batch: MessageBatch, env: Env): Promise<void> {
     for (const msg of batch.messages) {
       try {
-        if (batch.queue.startsWith("money-dlq")) {
+        if (batch.queue.startsWith("chat-archive")) {
+          await archiveWrite(env, msg.body as ArchiveMsg);
+        } else if (batch.queue.startsWith("money-dlq")) {
           await moneyDlq(env, msg.body);
         } else {
           await runMoney(env, msg.body as MoneyMsg);
         }
         msg.ack();
       } catch (e) {
-        console.error(`[${batch.queue}] settlement retry:`, String(e));
+        console.error(`[${batch.queue}] consume retry:`, String(e));
         msg.retry();
       }
     }
