@@ -195,6 +195,10 @@ export interface Env {
   PARTY_ENABLED?: string;    // "1" → PartyKit realtime layer on (client opens party sockets); dark otherwise
   MSG_STATE_STORE?: string;  // "d1" → owner-private state (read/hide/call-log) reads+writes go to D1 (Phase 5)
 
+  // Account key-escrow master (SECRET: `wrangler secret put KEY_WRAP_MASTER`). Wraps
+  // each account's aek in key_backup so a D1 dump alone never exposes a usable key.
+  KEY_WRAP_MASTER?: string;
+
   // Cloudflare AI Gateway (2026-06-18). When set, all Workers-AI + Google image
   // calls route through this gateway for cost logging, caching, and a hard spend
   // cap. AI_GATEWAY_ID = the gateway name/id; AI_GATEWAY_TOKEN = optional

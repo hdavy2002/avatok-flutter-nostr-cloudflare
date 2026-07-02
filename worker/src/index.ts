@@ -36,6 +36,7 @@ import { archiveList } from "./routes/archive";
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
+import * as keybk from "./routes/keybackup";
 import * as team from "./routes/team";
 import { subscribeCheckout, subscribeAndroidVerify, subscribeCancel } from "./routes/subscribe";
 import { referralClaim, referralSummary } from "./routes/referral";
@@ -340,6 +341,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/me" && req.method === "GET") return await api.me(req, env);
       if (p === "/api/vault" && req.method === "POST") return await api.vaultPut(req, env);
       if (p === "/api/vault" && req.method === "GET") return await api.vaultGet(req, env);
+      // Account key escrow — makes the aek (and thus every uid-keyed vault blob)
+      // recoverable on reinstall / new phone. See routes/keybackup.ts.
+      if (p === "/api/keybackup" && req.method === "POST") return await keybk.keyBackupPut(req, env);
+      if (p === "/api/keybackup" && req.method === "GET") return await keybk.keyBackupGet(req, env);
       // Two-tier cache: L1 = 60s per-colo edge response cache; L2 = 30-min KV
       // read-through (survives across requests/colos, keyed by hashed query). The
       // DB query behind a miss is now index-only. Hot entities → instant.
