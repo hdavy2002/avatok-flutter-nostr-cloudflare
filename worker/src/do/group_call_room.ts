@@ -26,6 +26,13 @@ const MAX_GROUP = 32;
 const ACTIVE_SPEAKERS = 6;
 // A member counts as "speaking" above this smoothed level (0..1).
 const SPEAKING_FLOOR = 0.04;
+// P3-A hysteresis: enter the active set after N consecutive reports above the
+// floor, leave only after M below it — stops rapid swap of the lower slots.
+const SPEAKER_ENTER_HITS = 2;
+const SPEAKER_LEAVE_MISSES = 4;
+// P3-A: coalesce active-speaker set changes in this window before broadcasting a
+// new {t:'speakers'} frame, so level flapping can't thrash SDP renegotiation.
+const SPEAKER_COALESCE_MS = 1500;
 // Zombie sweep: evict a socket with no level/heartbeat for this long.
 const STALE_MS = 45_000;
 const SWEEP_MS = 15_000;
@@ -39,11 +46,16 @@ interface Att {
   level: number; // smoothed 0..1
   ts: number; // last activity
   born: number;
+  hot?: number;       // P3-A: consecutive reports above the floor (hysteresis in)
+  cold?: number;      // P3-A: consecutive reports below the floor (hysteresis out)
+  speaking?: boolean; // P3-A: debounced speaking state (drives the active set)
 }
 
 export class GroupCallRoom {
   private state: DurableObjectState;
   private speakers: string[] = [];
+  private pendingSince = 0;            // P3-A: start of the current coalesce window (0 = none)
+  private lastSpeakerBroadcastAt = 0;  // P3-A: for churn_ms in the speakers frame
 
   constructor(state: DurableObjectState, _env: Env) {
     this.state = state;
@@ -112,6 +124,15 @@ export class GroupCallRoom {
         const v = typeof data.v === "number" && isFinite(data.v) ? Math.max(0, Math.min(1, data.v)) : 0;
         // Exponential smoothing so a single spike doesn't flap the speaker set.
         att.level = att.level * 0.6 + v * 0.4;
+        // P3-A hysteresis: require 2 consecutive hits to start speaking, 4 misses
+        // to stop — the smoothed level alone still flapped slots 2–3.
+        if (att.level >= SPEAKING_FLOOR) {
+          att.hot = (att.hot ?? 0) + 1; att.cold = 0;
+          if ((att.hot ?? 0) >= SPEAKER_ENTER_HITS) att.speaking = true;
+        } else {
+          att.cold = (att.cold ?? 0) + 1; att.hot = 0;
+          if ((att.cold ?? 0) >= SPEAKER_LEAVE_MISSES) att.speaking = false;
+        }
         (ws as any).serializeAttachment(att);
         this.recomputeSpeakers();
         break;
@@ -186,21 +207,33 @@ export class GroupCallRoom {
     }
   }
 
-  // Compute the top-N loudest and broadcast only when the set changes.
+  // Compute the top-N debounced talkers and broadcast — COALESCED so a change that
+  // reverts within SPEAKER_COALESCE_MS never hits the wire (prevents SDP
+  // renegotiation thrash). Uses the hysteresis `speaking` flag, not the raw level.
   private recomputeSpeakers(exclude?: WebSocket): void {
     const live: { uid: string; level: number }[] = [];
     for (const ws of this.state.getWebSockets()) {
       if (ws === exclude) continue;
       const a = this.att(ws);
-      if (a && a.level >= SPEAKING_FLOOR) live.push({ uid: a.uid, level: a.level });
+      if (a && a.speaking && a.level >= SPEAKING_FLOOR) live.push({ uid: a.uid, level: a.level });
     }
     live.sort((x, y) => y.level - x.level);
     const next = live.slice(0, ACTIVE_SPEAKERS).map((s) => s.uid).sort();
     const changed = next.length !== this.speakers.length ||
       next.some((u, i) => u !== this.speakers[i]);
-    if (!changed) return;
+    const now = Date.now();
+    if (!changed) { this.pendingSince = 0; return; } // flap resolved to the same set → no broadcast
+    // Start (or continue) the coalesce window; only flush once it has elapsed. Level
+    // reports arrive ~4×/s, so the next report after the window does the flush.
+    if (this.pendingSince === 0) this.pendingSince = now;
+    if (now - this.pendingSince < SPEAKER_COALESCE_MS) return;
+    const churnMs = this.lastSpeakerBroadcastAt > 0 ? now - this.lastSpeakerBroadcastAt : 0;
+    this.pendingSince = 0;
+    this.lastSpeakerBroadcastAt = now;
     this.speakers = next;
-    const msg = JSON.stringify({ t: "speakers", uids: next });
+    // churn_ms + size ride the frame so the CLIENT emits sfu_speaker_set_changed
+    // (this DO has no analytics binding).
+    const msg = JSON.stringify({ t: "speakers", uids: next, size: next.length, churn_ms: churnMs });
     for (const ws of this.state.getWebSockets()) {
       if (ws === exclude) continue;
       try { ws.send(msg); } catch { /* gone */ }

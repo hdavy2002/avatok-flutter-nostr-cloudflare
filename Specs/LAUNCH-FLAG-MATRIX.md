@@ -106,6 +106,27 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 - The `CreateListingFlow` (creator-services composer) already gates server-side via `requireKyc`;
   its client explainer can reuse `_openListingComposer` when that path is wired.
 
+## Phase 3 status (CF-SFU group audio), 2026-07-02
+
+**Stage A done (dark — `groupAudioSfuEnabled` stays `false`, no flip, no LiveKit deletion):**
+- `worker/src/do/group_call_room.ts`: active-speaker **hysteresis** (enter after 2 hits, leave
+  after 4 misses) + **coalescing** (a set change that reverts within 1.5s never broadcasts) —
+  kills SDP-renegotiation thrash. The `{t:'speakers'}` frame now carries `size` + `churn_ms`.
+- `app/lib/features/conference/sfu_group_call_screen.dart`: **adaptive level reporting** (250ms
+  while speaking, 500ms idle); telemetry `sfu_join`, `sfu_leave`, `sfu_speaker_set_changed
+  {size,churn_ms}`, `sfu_pull_error`, and a per-call `sfu_call_summary {peak_participants,
+  avg_speakers,duration_s,speaker_changes}`.
+
+**Deferred / human-gated (NOT done this session):**
+- **Secrets check** (`CALLS_APP_ID`/`CALLS_APP_SECRET`, app id `shiny-thunder-2e45`): must be
+  verified/set via wrangler CLI (write-only secrets) — a shell/owner step.
+- **Pull-side Opus tuning** (`avaMicConstraints` on pulled transceivers): deferred — munging the
+  SFU pull-answer SDP is risky on the live media path without a build; publish-side `tuneOpusSdp`
+  already applies.
+- **Stage B** (multi-device SFU test with `groupAudioSfuEnabled:true` in STAGING) and **Stage C**
+  (prod flip + `conferenceEnabled:false` + LiveKit deletion + cancel subscription) — both HUMAN-
+  IN-LOOP, do not run without the owner.
+
 ## Phase 6 status (per-message safety scanning), 2026-07-02
 
 Much of P6 pre-existed: `guardianScan` is wired into the send path (`messaging.ts:333`), records

@@ -16,6 +16,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../core/analytics.dart';
 import '../../core/audio_tuning.dart';
 import '../../core/ava_log.dart';
 import 'sfu_group_call_api.dart';
@@ -52,6 +53,11 @@ class _SfuGroupCallScreenState extends State<SfuGroupCallScreen> {
   Timer? _levelTimer;
   bool _muted = false;
   bool _speaker = true; // audio call defaults to loudspeaker
+  // P3-A telemetry: per-call summary.
+  int _joinedAt = 0;
+  int _peakParticipants = 0;
+  int _speakerChanges = 0;
+  final List<int> _activeSpeakerSamples = [];
   bool _connected = false;
   bool _ended = false;
   String _status = 'Connecting…';
@@ -110,6 +116,8 @@ class _SfuGroupCallScreenState extends State<SfuGroupCallScreen> {
 
       _openWs(join);
       _startLevelReporting();
+      _joinedAt = DateTime.now().millisecondsSinceEpoch;
+      Analytics.capture('sfu_join', {'gid': widget.gid, 'starter': widget.starter});
       if (mounted) setState(() => _status = 'Connected');
     } catch (e) {
       AvaLog.I.log('groupcall', 'connect failed: $e');
@@ -143,7 +151,16 @@ class _SfuGroupCallScreenState extends State<SfuGroupCallScreen> {
         _applyRoster((d['roster'] as List?) ?? const []);
         break;
       case 'speakers':
-        await _applySpeakers(((d['uids'] as List?) ?? const []).map((e) => e.toString()).toList());
+        final uids = ((d['uids'] as List?) ?? const []).map((e) => e.toString()).toList();
+        // P3-A: the DO coalesces set changes and rides size + churn_ms on the frame.
+        _speakerChanges++;
+        _activeSpeakerSamples.add(uids.length);
+        Analytics.capture('sfu_speaker_set_changed', {
+          'gid': widget.gid,
+          'size': (d['size'] as num?)?.toInt() ?? uids.length,
+          'churn_ms': (d['churn_ms'] as num?)?.toInt() ?? 0,
+        });
+        await _applySpeakers(uids);
         break;
       case 'left':
         final uid = d['uid']?.toString();
@@ -169,6 +186,7 @@ class _SfuGroupCallScreenState extends State<SfuGroupCallScreen> {
         };
       }
     }
+    if (_roster.length > _peakParticipants) _peakParticipants = _roster.length; // P3-A summary
     if (mounted) setState(() {});
   }
 
@@ -209,6 +227,7 @@ class _SfuGroupCallScreenState extends State<SfuGroupCallScreen> {
       if (mid != null) _pulled[uid] = _RemotePull(mid);
     } catch (e) {
       AvaLog.I.log('groupcall', 'pull $uid failed: $e');
+      Analytics.capture('sfu_pull_error', {'gid': widget.gid, 'error': e.toString()});
     }
   }
 
@@ -218,21 +237,32 @@ class _SfuGroupCallScreenState extends State<SfuGroupCallScreen> {
     await SfuGroupCallApi.close(widget.gid, _sessionId!, [p.mid]);
   }
 
-  // Report our smoothed mic level ~4×/sec so the DO can pick active speakers.
+  // P3-A adaptive level reporting: sample every 250ms WHILE we're above the local
+  // speech floor, else every 500ms — halves idle uplink chatter (31 quiet members
+  // no longer ping 4×/sec) without slowing the response when someone starts talking.
+  static const double _localSpeechFloor = 0.04;
   void _startLevelReporting() {
     _levelTimer?.cancel();
-    _levelTimer = Timer.periodic(const Duration(milliseconds: 250), (_) async {
-      if (_pc == null || _muted) { _send({'t': 'level', 'v': 0}); return; }
-      try {
-        final stats = await _pc!.getStats();
-        double level = 0;
-        for (final r in stats) {
-          final v = r.values['audioLevel'];
-          if (v is num && r.type == 'media-source') level = v.toDouble();
-        }
-        _send({'t': 'level', 'v': level});
-      } catch (_) {/* ignore a sampling miss */}
-    });
+    _tickLevel();
+  }
+
+  void _tickLevel() {
+    if (_ended) return;
+    void reschedule(double lvl) {
+      if (_ended) return;
+      final next = lvl >= _localSpeechFloor ? 250 : 500;
+      _levelTimer = Timer(Duration(milliseconds: next), _tickLevel);
+    }
+    if (_pc == null || _muted) { _send({'t': 'level', 'v': 0}); reschedule(0); return; }
+    _pc!.getStats().then((stats) {
+      double level = 0;
+      for (final r in stats) {
+        final v = r.values['audioLevel'];
+        if (v is num && r.type == 'media-source') level = v.toDouble();
+      }
+      _send({'t': 'level', 'v': level});
+      reschedule(level);
+    }).catchError((_) { reschedule(0); });
   }
 
   Future<void> _toggleMute() async {
@@ -259,6 +289,17 @@ class _SfuGroupCallScreenState extends State<SfuGroupCallScreen> {
     } catch (_) {}
     try { await _stream?.dispose(); } catch (_) {}
     try { await _pc?.close(); } catch (_) {}
+    // P3-A per-call summary telemetry.
+    final durS = _joinedAt > 0 ? ((DateTime.now().millisecondsSinceEpoch - _joinedAt) / 1000).round() : 0;
+    final avg = _activeSpeakerSamples.isEmpty
+        ? 0.0
+        : _activeSpeakerSamples.reduce((a, b) => a + b) / _activeSpeakerSamples.length;
+    Analytics.capture('sfu_leave', {'gid': widget.gid, 'duration_s': durS});
+    Analytics.capture('sfu_call_summary', {
+      'gid': widget.gid, 'peak_participants': _peakParticipants,
+      'avg_speakers': double.parse(avg.toStringAsFixed(2)),
+      'duration_s': durS, 'speaker_changes': _speakerChanges,
+    });
     if (mounted) Navigator.of(context).maybePop();
   }
 
