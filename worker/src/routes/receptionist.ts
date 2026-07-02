@@ -73,8 +73,22 @@ export const RECEPTIONIST_MODEL_DEFAULT = "gemini-3.1-flash-live-preview";
 // Because the close is untimed, these absolute caps are pure STALL backstops (a
 // dead session / stuck engine only) and are set FAR above any normal call so they
 // can NEVER clip Ava's close. Real dead-air still ends early via IDLE_MS/inactivity.
-export const HARD_CAP_MS = 120_000; // hard STALL backstop only — must never clip Ava's close
-export const SOFT_CAP_MS = 90_000;  // soft STALL backstop only (kept below HARD_CAP_MS)
+// P2 receptionist timeline (Specs/MASTER-PROMPT-LAUNCH-READINESS-2026-07-02, Phase 2).
+// THE RELAY KEEPS TIME, never the model — these are absolute, server-authoritative
+// points measured from Gemini session open (see do/reception_room.ts):
+//   0–5s   greet + invite a message      (GREETING_PHASE_MS)
+//   5–25s  caller's message / Ava answers follow-ups (MESSAGE_WINDOW_MS)
+//   40s    relay injects the "~20s left, wrap up" cue, ONCE (WRAP_CUE_AT_MS)
+//   60s    relay closes after Ava's current turn finishes (SESSION_CLOSE_MS)
+//   90s    hard STALL backstop only — must NEVER clip a normal close (HARD_CAP_MS)
+export const GREETING_PHASE_MS = 5_000;
+export const MESSAGE_WINDOW_MS = 25_000;
+export const WRAP_CUE_AT_MS = 40_000;
+export const SESSION_CLOSE_MS = 60_000;
+export const HARD_CAP_MS = 90_000;
+// Back-compat: the client + settings routes read soft_cap_ms/hard_cap_ms. soft_cap
+// now carries the SESSION-CLOSE deadline (the wrap point the client can surface).
+export const SOFT_CAP_MS = SESSION_CLOSE_MS;
 const MAX_INSTRUCTIONS = 2000;
 const INIT_TTL_SEC = 300;           // caller must connect the WS within 5 min
 
@@ -275,15 +289,17 @@ export function composeReceptionistPrompt(
   const greetLine = (ctx?.greeting || "").trim();
   const step1 = greetLine
     ? `STEP 1 — OPEN by saying this greeting EXACTLY, word-for-word, and nothing else: "${greetLine}" Then stop talking and listen. Do NOT paraphrase, add to it, or ask anything.`
-    : `STEP 1 — GREET in ONE short, warm sentence: tell ${callerRef} that ${who} can't take the call right now and to please leave a message of about 25 seconds and ${subj}'ll get back to ${obj}. Then stop talking.`;
+    : `STEP 1 — GREET in ONE short, warm sentence: tell ${callerRef} that ${who} can't take the call right now and invite ${obj} to leave a message — mention they have about half a minute — and ${subj}'ll get back to ${obj}. Then stop talking.`;
   const lines: string[] = [
-    `You are ${me}, ${who}'s voicemail assistant. ${who} can't pick up, so you take a short voice message. THIS IS A VOICEMAIL, NOT A CONVERSATION.`,
+    `You are ${me}, ${who}'s assistant. ${who} can't pick up, so you take a short voice message. This is a brief message-taking call, not a long conversation.`,
+    // P2: language-adaptive from the first words, whole call incl. wrap-up + goodbye.
+    `Detect the caller's language from their FIRST utterance and conduct the ENTIRE call in that language — the greeting, everything in between, the wrap-up, and the goodbye. If they switch languages, follow them.`,
     `You ALREADY KNOW the caller is ${callerRef}, and ${who} already has ${poss} number. So you must NEVER ask for the caller's name, their number, or how to reach them — you have all of it.`,
     note && !greetLine ? `${who} left a note about ${poss} availability: "${note}". Weave it into your greeting naturally if it fits.` : ``,
     step1,
-    `STEP 2 — STAY SILENT and let them speak. Do NOT interrupt, do NOT ask anything, do NOT make small talk. Just listen to their whole message.`,
-    `STEP 3 — When they finish, close with ONE short line in EXACTLY this shape and nothing more: "Got it — <one short clause capturing what they said>. I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!" Then ${endWith}. The ONLY thing you fill in is the brief clause about their message; the rest is fixed.`,
-    `If you receive "[SYSTEM: time is up]": close with ONE short line: "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!" Then ${endWith}. Do not ask for anything more.`,
+    `STEP 2 — LISTEN. Let ${obj} speak without interrupting. After ${subj} has left the message you MAY briefly answer a direct follow-up question or two if asked — warmly and concisely — but never start new topics or drag the call out.`,
+    `STEP 3 — Acknowledge and close warmly, in your OWN natural words (do NOT read a fixed script), including all four of: (1) that you heard them, (2) a one-clause summary of their message, (3) a promise to pass it on to ${who}, and (4) a warm goodbye such as "have a great ${tod}${firstSuffix}". Then ${endWith}.`,
+    `When you receive a system note that time is nearly up (e.g. "[SYSTEM: 20 seconds remain …]"), warmly say that's about all the time you have, give your one-line summary, and say goodbye — do NOT ask new questions. Then ${endWith}.`,
     `If they leave no message: "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!" Then ${endWith}.`,
     `If asked who you are, say only "I'm ${who}'s assistant" and steer back to taking the message. Never debate, never chat, never answer off-topic questions. Refuse anything illegal or harmful. If asked, you may say the call is recorded.`,
   ].filter(Boolean);
@@ -584,6 +600,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     greeting,                                     // CF engine speaks this immediately (no LLM)
     model: useCf ? "cf-workers-ai" : ((env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT),
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
+    wrap_cue_ms: WRAP_CUE_AT_MS, // P2: relay injects the wrap cue here (once)
     started_at: now,
   };
   await env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
