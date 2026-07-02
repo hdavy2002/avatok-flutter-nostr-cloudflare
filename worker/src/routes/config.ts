@@ -104,6 +104,11 @@ export interface PlatformConfig {
   // router is unaffected (pending users simply aren't members yet). Flip ON in KV
   // after the migration + a test; no redeploy.
   groupInvitesEnabled: boolean;
+  // P4: gate ALL listing creation/publish on video-liveness verification
+  // (kyc_status='verified'). Browsing stays free. Default OFF (ships dark; flip ON
+  // at launch). Fail-closed on the server route — a direct API call from an
+  // unverified user is rejected 403 liveness_required.
+  listingLivenessGate: boolean;
   // P5: per-user daily cap on DISTINCT marketplace agent conversations (UTC day).
   // Tunable via KV without redeploy. The per-listing talk-once dedupe is separate
   // and does NOT consume quota (re-opening the same listing's result is free).
@@ -159,6 +164,7 @@ const DEFAULTS: PlatformConfig = {
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
+  listingLivenessGate: false,      // P4: block listing create/publish unless liveness-verified — dark, flip ON at launch
   agentDailyCap: 10,               // P5: 10 marketplace agent conversations/user/UTC-day
   minAppBuild: 0,
 };

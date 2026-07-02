@@ -42,6 +42,7 @@ import { recordView, trackImpressions, geoOf } from "./insights";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { notifyUser } from "../notify";
 import { emailBookingConfirmed } from "../cal/emails";
+import { readConfig } from "./config"; // P4: listingLivenessGate
 
 const APP = "avaexplore";
 // live_event/consult = creator services; sell/buy/social = AvaMarketplace listings.
@@ -234,6 +235,25 @@ function normFields(b: any): Record<string, unknown> {
   return out;
 }
 
+// P4 video-liveness gate (the REAL, bypass-proof gate): when listingLivenessGate is
+// ON, NO user may create/publish ANY listing unless kyc_status='verified'. Browsing
+// stays free. Returns a 403 Response to short-circuit, or null to proceed. Fail
+// CLOSED — if the kyc lookup throws we treat the user as unverified (a listing can
+// wait; a bad actor cannot slip through on an infra hiccup).
+async function livenessGate(env: Env, uid: string, listingKind: string, listingId: string | null): Promise<Response | null> {
+  let on = false;
+  try { on = (await readConfig(env)).listingLivenessGate === true; } catch { on = false; }
+  if (!on) return null;
+  let verified = false;
+  try {
+    const row = await metaDb(env).prepare("SELECT status FROM kyc_status WHERE uid=?1").bind(uid).first<{ status: string }>();
+    verified = row?.status === "verified";
+  } catch { verified = false; } // fail closed
+  if (verified) return null;
+  track(env, uid, "listing_blocked_unverified", APP, { listing_id: listingId, listing_kind: listingKind });
+  return json({ error: "liveness_required" }, 403);
+}
+
 // POST /api/listings — create a draft.
 export async function createListing(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
@@ -241,6 +261,9 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
   const kind = String(b.kind || "");
   if (!KINDS.has(kind)) return json({ error: "kind must be live_event|consult|sell|buy|social" }, 400);
+  // P4: no listing (of any kind) without video-liveness verification (flag-gated).
+  const gate = await livenessGate(env, ctx.uid, kind, null);
+  if (gate) return gate;
   const id = crypto.randomUUID();
   const now = Date.now();
   const f = normFields(b);
@@ -308,6 +331,11 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   const l = await db.prepare("SELECT * FROM listings WHERE id=?1").bind(id).first<any>();
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (l.status !== "draft") return json({ error: "already published", status_now: l.status }, 409);
+
+  // P4: liveness gate covers publish AND edit-to-republish (a re-publish always
+  // funnels back through here). Applies to EVERY kind when the flag is on.
+  const lg = await livenessGate(env, ctx.uid, String(l.kind), id);
+  if (lg) return lg;
 
   const isMarket = MARKET_KINDS.has(String(l.kind));
   if (isMarket) {

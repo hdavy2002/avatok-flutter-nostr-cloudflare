@@ -53,6 +53,7 @@ Covers 100% of `PlatformConfig` keys in `worker/src/routes/config.ts` (interface
 | `teamIvrEnabled` | bool | `false` | `false` | — Team Receptionist IVR off until dogfood |
 | `ivrAiFrontDesk` | bool | `false` | `false` | — tap-menu default; AI front desk future |
 | `groupInvitesEnabled` | bool | `false` | `false` | — pending-membership invites off until migration+test |
+| `listingLivenessGate` | bool | `false` | `true` | **P4** — block listing create/publish unless liveness-verified; ships dark |
 | `agentDailyCap` | number | `10` | `10` | **P5** — marketplace agent conversations/user/UTC-day (0 disables) |
 | `minAppBuild` | number | `0` | `0` | — min build gate; bump when forcing upgrade |
 
@@ -68,7 +69,6 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 
 | Flag | Type | Default at add | Launch value | Owner phase |
 |---|---|---|---|---|
-| `listingLivenessGate` | bool | `false` | `true` | P4 — block listing creation unless liveness-verified |
 | `safetyScanEnabled` | bool | `true` (ships ON) | `true` | P6 — per-message Nemotron safety scan + red bubbles |
 | `chatArchiveV2` | bool | `false` | `true` | P8 Stage 1 — R2 cold archive |
 | `restoreV2` | bool | `false` | `true` | P8 Stage 2 — new-phone restore |
@@ -83,6 +83,28 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 - **Ably** is functionally removed; only a single dead `'AblyException'` suppression string
   remained in `app/lib/main.dart` (removed in `[P0-CLEAN-3]`). Remaining `Ably` grep hits are
   history comments and the `ABLY-R2` archive rollout phase names (a real feature, not Ably).
+
+## Phase 4 status (video liveness gate), 2026-07-02
+
+**Done this pass (dark behind `listingLivenessGate`, default OFF):**
+- **Server gate (the real, bypass-proof gate):** `worker/src/routes/listings.ts` `livenessGate()`
+  helper checks `kyc_status='verified'` and returns 403 `liveness_required` from BOTH
+  `createListing` and `publishListing` (covers create AND edit-to-republish, every kind).
+  **Fail-closed** — a kyc lookup error is treated as unverified. Emits `listing_blocked_unverified`.
+  This closes the gap where marketplace kinds were intentionally ungated (`listings.ts:316`).
+- **Client UX:** marketplace composer entry (`marketplace_hub.dart`) checks
+  `RemoteConfig.listingLivenessGate` + `IdentityApi` verification; unverified → friendly
+  explainer → routes to the existing `IdentityScreen` (Rekognition FaceLiveness). Emits
+  `liveness_gate_shown`. Uses the existing verification pipeline.
+
+**Deferred within Phase 4 (documented follow-up — do with the on-device liveness run):**
+- The ADDED turn-left/turn-right/read-a-phrase challenge pre-roll (`worker/src/routes/liveness.ts`
+  machinery + Workers-AI head-pose vision + STT phrase check, provider `rekognition+challenges`).
+  Rekognition already covers presence/closeness/anti-spoof (the plan says do NOT re-implement it),
+  so the gate ships on Rekognition alone; the extra gestures are an enhancement needing a new
+  server pipeline + a client challenge screen, unverifiable without a build/device.
+- The `CreateListingFlow` (creator-services composer) already gates server-side via `requireKyc`;
+  its client explainer can reuse `_openListingComposer` when that path is wired.
 
 ## Telemetry doctrine (STANDING RULE — added Phase 13-D)
 
