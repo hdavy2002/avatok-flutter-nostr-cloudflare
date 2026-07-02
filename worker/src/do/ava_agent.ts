@@ -294,7 +294,19 @@ export class AvaAgentDO {
   // Server-side Vectorize RAG, uid-scoped (HARD tenant isolation in ava_memory.ts).
   // Returns flattened context lines; never throws (→ []).
   private async brainSearch(uid: string, query: string): Promise<string[]> {
-    return brainSearchLines(this.env, uid, query, 5);
+    // P7: retrieval over the user's OWN memory only. Tenant isolation is enforced
+    // in ava_memory.ts by a HARD `filter: { uid }` on the Vectorize query — a user
+    // can NEVER retrieve another user's vectors (the one non-negotiable security
+    // invariant of AvaBrain). This wrapper only adds retrieval observability.
+    const t0 = Date.now();
+    const lines = await brainSearchLines(this.env, uid, query, 5);
+    try {
+      trackUser(this.env, uid, null, "ava_memory_context", "avaai", {
+        hits: lines.length, sources_used: lines.length,
+        retrieval_ms: Date.now() - t0, query_len: query.length,
+      });
+    } catch { /* best-effort — telemetry never blocks a turn */ }
+    return lines;
   }
 
   // ---- generation -------------------------------------------------------------

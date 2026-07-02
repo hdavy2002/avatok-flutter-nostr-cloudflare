@@ -106,6 +106,32 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 - The `CreateListingFlow` (creator-services composer) already gates server-side via `requireKyc`;
   its client explainer can reuse `_openListingComposer` when that path is wired.
 
+## Phase 7 status (AvaBrain), 2026-07-02
+
+**Audit findings:**
+- **Retrieval already exists and is uid-safe.** ChatAva (`do/ava_agent.ts:brainSearch`) calls
+  `brainSearchLines` (`lib/ava_memory.ts`), which queries Vectorize with a **HARD `filter:{uid}`**
+  ("never optional", `ava_memory.ts:72-74`). Cross-uid retrieval is impossible by construction —
+  this is the phase's one non-negotiable security invariant, and it holds today.
+- Two RAG lanes exist: server Vectorize (uid-filtered) and BYO Gemini File-Search stores keyed
+  per-uid (`ava_rag.ts` `ava_rag:<uid>` → `avatok-<uid>`).
+- **Ingestion**: message ingestion is gated by `brainEnabled` at the producer (`messaging.ts:310`),
+  so it ships dark today. Library/file, call-summary, and receptionist ingestion paths were NOT
+  fully traced this pass — list as follow-ups before flipping.
+
+**Done this pass:** `ava_memory_context` telemetry extended in `brainSearch`
+(`{hits, sources_used, retrieval_ms, query_len}`) with the tenant-isolation invariant documented
+inline.
+
+**Deferred (human decisions / larger work):**
+- **`brainEnabled: true` flip** (DEFAULTS + KV): **NOT flipped** — this is privacy-sensitive (it
+  turns on ingestion of users' messages/files into AvaBrain). Owner decision + a clean ingestion
+  verification first.
+- **Guardrail toggles**: master AvaBrain switch + per-app toggles (messaging/library/marketplace/
+  receptionist), default ON, `scopedKey('avabrain_<app>')`, synced to a server prefs row the
+  ingestion pipeline consults. Sizeable client-UI + server-prefs feature — not built this pass.
+- `avabrain_toggle_changed` event ships with the toggles.
+
 ## Phase 3 status (CF-SFU group audio), 2026-07-02
 
 **Stage A done (dark — `groupAudioSfuEnabled` stays `false`, no flip, no LiveKit deletion):**
