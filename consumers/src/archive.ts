@@ -23,12 +23,33 @@ function previewOf(kind: string, body?: string | null, mediaRef?: string | null)
   return t.slice(0, 280);
 }
 
+let _indexReady = false;
+async function ensureIndexTable(env: Env): Promise<void> {
+  if (_indexReady) return;
+  await env.DB_META.prepare(
+    `CREATE TABLE IF NOT EXISTS message_index (
+       conv       TEXT NOT NULL,
+       serial     TEXT NOT NULL,
+       sender     TEXT NOT NULL,
+       kind       TEXT NOT NULL,
+       preview    TEXT,
+       media_ref  TEXT,
+       client_id  TEXT,
+       r2_key     TEXT NOT NULL,
+       created_at INTEGER NOT NULL,
+       PRIMARY KEY (conv, serial)
+     )`,
+  ).run();
+  _indexReady = true;
+}
+
 export async function handleArchive(msg: ArchiveMsg, env: Env): Promise<void> {
   // Phase 4 reactions ride the same queue; route them to their own table.
   if (msg.type === "reaction") { await archiveReaction(msg, env); return; }
 
   const { conv, serial, sender, kind, body, media_ref, client_id, created_at } = msg;
   if (!conv || !serial) return;
+  await ensureIndexTable(env); // self-create the deep-archive index on first use
 
   const key = archiveKey(conv, serial);
 

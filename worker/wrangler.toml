@@ -185,14 +185,6 @@ queue = "money-dlq"
 max_batch_size = 10
 max_retries = 3
 
-# Deep chat archive (Phase 3): consume enqueued messages → R2 body + D1 message_index.
-[[queues.consumers]]
-queue = "chat-archive"
-max_batch_size = 100
-max_batch_timeout = 5
-max_retries = 3
-dead_letter_queue = "chat-archive-dlq"
-
 # ---------------------------------------------------------------------------
 # Workers AI — image moderation on the /upload/public path only.
 # ---------------------------------------------------------------------------
@@ -521,12 +513,6 @@ dead_letter_queue = "money-dlq-staging"
 [[env.staging.queues.consumers]]
 queue = "money-dlq-staging"
 max_batch_size = 10
-max_retries = 3
-
-[[env.staging.queues.consumers]]
-queue = "chat-archive-staging"
-max_batch_size = 100
-max_batch_timeout = 5
 max_retries = 3
 
 [env.staging.ai]
