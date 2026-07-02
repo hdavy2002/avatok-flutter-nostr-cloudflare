@@ -17,7 +17,7 @@ import { trackUserContact } from "../hooks";
 import { contactFor } from "../lib/identity";
 import {
   GOOGLE_TOOLKITS, connectToolkits, connectedToolkits, disconnectToolkit,
-  listToolkits, runAppsToolLoop, executeTool,
+  listToolkits, runAppsToolLoop, executeTool, newAppsRunStats,
 } from "../lib/composio";
 import { toolkitOf, isExecutableTool, coerceArgs } from "../lib/capabilities";
 import { renderData } from "../lib/genui";
@@ -37,11 +37,19 @@ export async function avaAppsStatus(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!env.COMPOSIO_API_KEY) return json({ ok: true, connected: [], configured: false });
+  const s0 = Date.now();
   try {
     const connected = await connectedToolkits(env, ctx.uid);
+    // Phase 0: measure the server-side status fetch so the screen-open latency
+    // budget is visible (paired with the client `avaapps_screen_open`).
+    const { email, phone } = await contactFor(env, ctx.uid);
+    trackUserContact(env, ctx.uid, email, phone, "avaapps_status_ok", "avaapps", { status_fetch_ms: Date.now() - s0, connected_count: connected.length });
     return json({ ok: true, connected, configured: true });
   } catch (e: any) {
-    return json({ error: "status failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
+    const detail = String(e?.message ?? e).slice(0, 200);
+    const { email, phone } = await contactFor(env, ctx.uid);
+    trackUserContact(env, ctx.uid, email, phone, "avaapps_run_error", "avaapps", { stage: "status", detail, duration_ms: Date.now() - s0, source: "screen" });
+    return json({ error: "status failed", detail }, 502);
   }
 }
 
@@ -99,16 +107,50 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const query = String(b.query ?? "").trim();
   if (!query) return json({ error: "query required" }, 400);
+  // Where the run originated ("screen" = AvaApps tab, "chat" = in-chat @ava).
+  const source = (String(b.source ?? "screen") === "chat") ? "chat" : "screen";
 
   const { email, phone } = await contactFor(env, ctx.uid);
+  // Phase 0 telemetry: one start event, then exactly one ok|error with full
+  // timing/token/tool breakdown from the loop's stats out-param.
+  const t0 = Date.now();
+  trackUserContact(env, ctx.uid, email, phone, "avaapps_run_start", "avaapps", { query_chars: query.length, source });
+  const stats = newAppsRunStats();
+  stats.onRetry = (attempt: number, status: number) => {
+    stats.composio_retries++;
+    trackUserContact(env, ctx.uid, email, phone, "avaapps_composio_retry", "avaapps", { attempt, status });
+  };
   try {
-    const answer = await runAppsToolLoop(env, ctx.uid, query);
+    const answer = await runAppsToolLoop(env, ctx.uid, query, undefined, undefined, stats);
     await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
+    // Keep the legacy event (never rename/delete) AND the new rich run_ok.
     trackUserContact(env, ctx.uid, email, phone, "ava_apps_run", "avaapps", { answer_len: answer.length });
+    trackUserContact(env, ctx.uid, email, phone, "avaapps_run_ok", "avaapps", {
+      duration_ms: Date.now() - t0, source,
+      steps: stats.steps, toolkits: stats.toolkits, tools_called: stats.tools_called,
+      model: stats.model, fallback_used: stats.fallback_used,
+      prompt_tokens: stats.prompt_tokens, completion_tokens: stats.completion_tokens,
+      result_chars: stats.result_chars, setup_ms: stats.setup_ms,
+      composio_retries: stats.composio_retries,
+      // Flattened per-step LLM latency (step_0_ms…): PostHog filters/aggregates
+      // flat numeric props far better than array elements, so we expose both —
+      // the array `step_ms` for ad-hoc inspection and flat keys for dashboards.
+      step_ms: stats.step_ms,
+      ...Object.fromEntries(stats.step_ms.map((ms, i) => [`step_${i}_ms`, ms])),
+      tool_ms: stats.tool_ms,
+      answer_len: answer.length,
+    });
     return json({ ok: true, answer });
   } catch (e: any) {
-    trackUserContact(env, ctx.uid, email, phone, "ai_error", "avaapps", { route: "run", detail: String(e?.message ?? e).slice(0, 200) });
-    return json({ error: "apps run failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
+    // Classify the failure stage from where the loop threw (best-effort).
+    const detail = String(e?.message ?? e).slice(0, 200);
+    const stage = /openrouter/i.test(detail) ? "llm"
+      : /composio.*tools\/execute/i.test(detail) ? "tool_exec"
+      : /composio/i.test(detail) ? "status"
+      : "run";
+    trackUserContact(env, ctx.uid, email, phone, "ai_error", "avaapps", { route: "run", detail });
+    trackUserContact(env, ctx.uid, email, phone, "avaapps_run_error", "avaapps", { stage, detail, duration_ms: Date.now() - t0, source });
+    return json({ error: "apps run failed", detail }, 502);
   }
 }
 

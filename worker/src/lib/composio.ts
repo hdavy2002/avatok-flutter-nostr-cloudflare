@@ -12,8 +12,39 @@
 // tools/execute/{slug} {user_id, arguments}.
 
 import type { Env } from "../types";
+import { trackUserContact } from "../hooks";
+import { contactFor } from "./identity";
 
 const B = "https://backend.composio.dev/api/v3";
+
+// ---- AvaApps run telemetry (Phase 0 — instrumentation only) -----------------
+// A mutable out-param the caller (avaAppsRun route) passes into runAppsToolLoop
+// so it can emit ONE rich `avaapps_run_ok` after the loop finishes with full
+// timing + token + tool breakdown, instead of instrumenting the loop from
+// outside. Every field is optional-safe (0/[] defaults) so a missing metric
+// never throws. `onRetry` lets the loop attribute a Composio retry to the user.
+export interface AppsRunStats {
+  steps: number;               // LLM steps executed (orStep round-trips)
+  toolkits: string[];          // connected toolkits used this run
+  tools_called: string[];      // tool slugs the model actually invoked
+  model: string;               // primary model used
+  fallback_used: boolean;      // did any step fall back to OR_FALLBACK_MODEL
+  prompt_tokens: number;       // summed across steps (OpenRouter usage)
+  completion_tokens: number;   // summed across steps
+  result_chars: number;        // total chars of tool results fed back
+  step_ms: number[];           // per-step LLM latency
+  tool_ms: number[];           // per-tool-exec latency
+  composio_retries: number;    // transient Composio retries observed
+  setup_ms: number;            // connectedToolkits + geminiTools setup time
+  onRetry?: (attempt: number, status: number) => void;
+}
+export function newAppsRunStats(): AppsRunStats {
+  return {
+    steps: 0, toolkits: [], tools_called: [], model: "", fallback_used: false,
+    prompt_tokens: 0, completion_tokens: 0, result_chars: 0,
+    step_ms: [], tool_ms: [], composio_retries: 0, setup_ms: 0,
+  };
+}
 
 /// The Google set shipped by default in AvaApps (Composio toolkit slugs).
 export const GOOGLE_TOOLKITS = ["gmail", "googledocs", "googlesheets", "googledrive", "googlecalendar"];
@@ -95,9 +126,9 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 async function cfetch(
   env: Env,
   path: string,
-  init?: RequestInit & { timeoutMs?: number; retries?: number },
+  init?: RequestInit & { timeoutMs?: number; retries?: number; onRetry?: (attempt: number, status: number) => void },
 ): Promise<any> {
-  const { timeoutMs = 15000, retries, ...rest } = init ?? {};
+  const { timeoutMs = 15000, retries, onRetry, ...rest } = init ?? {};
   const method = String(rest.method ?? "GET").toUpperCase();
   const idempotent = method === "GET";
   const maxRetries = retries ?? (idempotent ? 2 : 0);
@@ -118,6 +149,7 @@ async function cfetch(
       // Retry transient upstream errors (429/5xx) on idempotent reads.
       if (!res.ok && (res.status === 429 || res.status >= 500) && attempt < maxRetries) {
         lastErr = new Error(`composio ${path} ${res.status}`);
+        try { onRetry?.(attempt, res.status); } catch { /* telemetry best-effort */ }
         await sleep(250 * (attempt + 1) * (attempt + 1)); // 250ms, 1s
         continue;
       }
@@ -128,6 +160,7 @@ async function cfetch(
       lastErr = e;
       // Network error / timeout (AbortError) — retry idempotent reads, else bail.
       if (attempt >= maxRetries) throw e;
+      try { onRetry?.(attempt, 0); } catch { /* telemetry best-effort */ }
       await sleep(250 * (attempt + 1) * (attempt + 1));
     }
   }
@@ -190,8 +223,8 @@ export async function disconnectToolkit(env: Env, userId: string, slug: string):
 }
 
 // Toolkit slugs the user already has an ACTIVE connection for.
-export async function connectedToolkits(env: Env, userId: string): Promise<string[]> {
-  const j = await cfetch(env, `/connected_accounts?user_ids=${encodeURIComponent(userId)}&statuses=ACTIVE&limit=50`);
+export async function connectedToolkits(env: Env, userId: string, onRetry?: (attempt: number, status: number) => void): Promise<string[]> {
+  const j = await cfetch(env, `/connected_accounts?user_ids=${encodeURIComponent(userId)}&statuses=ACTIVE&limit=50`, { onRetry });
   const out = new Set<string>();
   for (const it of (j.items ?? [])) {
     const s = it?.toolkit?.slug ?? it?.toolkit_slug;
@@ -262,12 +295,12 @@ export function sanitize(node: any): any {
 
 // Build Gemini function declarations for the given (connected) toolkits, limited
 // to the curated action tools so the set stays small + the model picks well.
-export async function geminiTools(env: Env, slugs: string[]): Promise<any[]> {
+export async function geminiTools(env: Env, slugs: string[], onRetry?: (attempt: number, status: number) => void): Promise<any[]> {
   const decls: any[] = [];
   for (const slug of slugs) {
     const allow = CURATED[slug];
     let j: any;
-    try { j = await cfetch(env, `/tools?toolkit_slug=${slug}&limit=50`); } catch { continue; }
+    try { j = await cfetch(env, `/tools?toolkit_slug=${slug}&limit=50`, { onRetry }); } catch { continue; }
     const items: any[] = j.items ?? [];
     const picked = allow ? items.filter((t) => allow.includes(String(t.slug))) : items.slice(0, 6);
     for (const t of picked) {
@@ -352,10 +385,13 @@ function assistantToolMsg(text: string, calls: OrCall[]): any {
 
 // One non-streamed OpenRouter step. Returns the assistant text + normalised tool
 // calls. Throws on transport/HTTP failure so the caller can fall back.
+// OpenRouter token usage for one step (Phase 0 telemetry). Present on the
+// response body as `usage` — captured so run_ok can report real token spend.
+type OrUsage = { prompt_tokens: number; completion_tokens: number };
 async function orStep(
   env: Env, model: string, messages: any[], tools: any[],
   opts?: { toolChoice?: any },
-): Promise<{ text: string; calls: OrCall[] }> {
+): Promise<{ text: string; calls: OrCall[]; usage?: OrUsage }> {
   const key = (env as any).OPENROUTER_API_KEY ?? "";
   const body: any = { model, messages };
   if (tools.length) body.tools = tools;
@@ -370,7 +406,9 @@ async function orStep(
     name: String(tc?.function?.name ?? ""),
     args: parseToolArgs(tc?.function?.arguments),
   })).filter((c: OrCall) => c.name);
-  return { text, calls };
+  const u = out?.usage ?? {};
+  const usage: OrUsage = { prompt_tokens: Number(u?.prompt_tokens ?? 0) || 0, completion_tokens: Number(u?.completion_tokens ?? 0) || 0 };
+  return { text, calls, usage };
 }
 
 // Streamed OpenRouter step (stream:true). Fires onText(fragment) for each content
@@ -495,15 +533,26 @@ function capArrays(obj: any, maxItems: number, depth = 0): void {
   }
 }
 
-export async function runAppsToolLoop(env: Env, userId: string, query: string, context?: string, _keyOverride?: string): Promise<string> {
+export async function runAppsToolLoop(env: Env, userId: string, query: string, context?: string, _keyOverride?: string, stats?: AppsRunStats): Promise<string> {
   // Routed through OpenRouter (OpenAI tool-calling) on a Gemini model. The old
   // BYOK/direct-Gemini key path is gone; _keyOverride kept only for signature
   // compatibility (unused). Tools execute on our Composio key.
+  // [stats] (Phase 0): optional out-param the route fills with timing/token/tool
+  // metrics; populated best-effort and NEVER changes control flow or output.
+  const primaryModel = orAgentModel(env);
+  if (stats) stats.model = primaryModel;
+  const onRetry = stats?.onRetry;
   const orKey = (env as any).OPENROUTER_API_KEY ?? "";
   if (!orKey) return "Ava apps are temporarily unavailable.";
-  const toolkits = await connectedToolkits(env, userId);
-  if (toolkits.length === 0) return "You're premium ✓ — now I just need access. Open Account & Settings → Connectors, pick Gmail (or Docs, Drive, Calendar) and follow the connection steps. Once that's done, ask me again and I'll work with your email.";
-  const decls = await geminiTools(env, toolkits);
+  const t0 = Date.now();
+  const toolkits = await connectedToolkits(env, userId, onRetry);
+  if (stats) stats.toolkits = toolkits;
+  if (toolkits.length === 0) {
+    if (stats) stats.setup_ms = Date.now() - t0;
+    return "You're premium ✓ — now I just need access. Open Account & Settings → Connectors, pick Gmail (or Docs, Drive, Calendar) and follow the connection steps. Once that's done, ask me again and I'll work with your email.";
+  }
+  const decls = await geminiTools(env, toolkits, onRetry);
+  if (stats) stats.setup_ms = Date.now() - t0;
   const tools = toOpenAITools(decls);
   const sys = "You are Ava, operating the user's connected Google apps (Gmail, Docs, Sheets, Drive, Calendar) via tools. Use the tools to fulfil the request, then reply briefly and clearly with the outcome (and key details like links or subjects). If a tool fails, say so plainly.";
   const userText = context && context.trim()
@@ -515,9 +564,16 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
   ];
 
   for (let step = 0; step < 6; step++) {
-    let r: { text: string; calls: OrCall[] };
-    try { r = await orStep(env, orAgentModel(env), messages, tools); }
-    catch { r = await orStep(env, OR_FALLBACK_MODEL, messages, tools); }
+    let r: { text: string; calls: OrCall[]; usage?: OrUsage };
+    const s0 = Date.now();
+    try { r = await orStep(env, primaryModel, messages, tools); }
+    catch { r = await orStep(env, OR_FALLBACK_MODEL, messages, tools); if (stats) stats.fallback_used = true; }
+    if (stats) {
+      stats.steps = step + 1;
+      stats.step_ms.push(Date.now() - s0);
+      stats.prompt_tokens += r.usage?.prompt_tokens ?? 0;
+      stats.completion_tokens += r.usage?.completion_tokens ?? 0;
+    }
 
     if (r.calls.length === 0) {
       if (r.text) return r.text;
@@ -527,6 +583,8 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
     messages.push(assistantToolMsg(r.text, r.calls));
 
     for (const c of r.calls) {
+      if (stats) stats.tools_called.push(c.name);
+      const x0 = Date.now();
       let result: any;
       try {
         const rr = await executeTool(env, userId, c.name, c.args ?? {});
@@ -534,7 +592,9 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
       } catch (e: any) {
         result = { error: String(e?.message ?? e).slice(0, 200) };
       }
-      messages.push({ role: "tool", tool_call_id: c.id, name: c.name, content: JSON.stringify(result) });
+      const content = JSON.stringify(result);
+      if (stats) { stats.tool_ms.push(Date.now() - x0); stats.result_chars += content.length; }
+      messages.push({ role: "tool", tool_call_id: c.id, name: c.name, content });
     }
   }
   return "I worked through several steps but didn't finish — try narrowing the request.";
