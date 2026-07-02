@@ -9,7 +9,7 @@
 //   POST /api/ava/apps/run      { query }            → { answer }
 
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, CORS } from "../util";
 import { requireUser, isFail } from "../authz";
 import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { chargeFeature } from "../feature_pricing";
@@ -18,8 +18,73 @@ import { contactFor } from "../lib/identity";
 import {
   GOOGLE_TOOLKITS, connectToolkits, disconnectToolkit,
   listToolkits, runAppsToolLoop, executeTool, newAppsRunStats,
-  cachedConnectedToolkits, invalidateConnCache,
+  cachedConnectedToolkits, invalidateConnCache, geminiTools,
 } from "../lib/composio";
+import type { AppsRunStats } from "../lib/composio";
+
+// Phase 5: approximate per-user hourly quota on /run. KV increments are NOT
+// atomic — we accept approximate counting (a burst can slip a few over) rather
+// than standing up a Durable Object just for a rate limit. Returns the new count
+// and whether the limit is exceeded. Best-effort: a KV error never blocks a run.
+async function checkRunQuota(env: Env, uid: string): Promise<{ over: boolean; count: number; limit: number }> {
+  const limit = Number((env as any).AVAAPPS_RUNS_PER_HOUR ?? 30) || 30;
+  const hour = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, ""); // yyyymmddhh
+  const key = `avaapps:quota:${uid}:${hour}`;
+  try {
+    const cur = Number(await env.TOKENS.get(key)) || 0;
+    const next = cur + 1;
+    // TTL 2h so the hourly bucket self-expires.
+    await env.TOKENS.put(key, String(next), { expirationTtl: 7200 });
+    return { over: next > limit, count: next, limit };
+  } catch { return { over: false, count: 0, limit }; }
+}
+
+// Phase 5: SSE variant of /run. Reuses the exact framing of avaGeminiStream
+// (`data: {json}\n\n` … `data: [DONE]\n\n`, text/event-stream): status lines per
+// step, then answer deltas, then a final `{done, answer, pending_action?}`. On
+// any SSE error the client falls back to the non-streaming path automatically.
+function streamAppsRun(
+  env: Env, uid: string, email: string | null, phone: string | null,
+  query: string, source: string, stats: AppsRunStats, t0: number,
+): Response {
+  const enc = new TextEncoder();
+  const out = new ReadableStream({
+    async start(controller) {
+      const send = (obj: unknown) => { try { controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`)); } catch { /* closed */ } };
+      let streamedAny = false;
+      let firstAt = 0;
+      const onDelta = (t: string) => { if (t) { if (!streamedAny) { firstAt = Date.now(); streamedAny = true; } send({ delta: t }); } };
+      const onStatus = (s: string) => send({ status: s });
+      let answer = "";
+      try {
+        answer = await runAppsToolLoop(env, uid, query, undefined, undefined, stats, { onDelta, onStatus });
+      } catch (e: any) {
+        const detail = String(e?.message ?? e).slice(0, 200);
+        trackUserContact(env, uid, email, phone, "avaapps_run_error", "avaapps", { stage: "llm", detail, duration_ms: Date.now() - t0, source });
+        if (!streamedAny) send({ delta: "Something went wrong running that." });
+      }
+      // Canned / non-streamed answers (no-toolkits, confirm prompt, partial
+      // results, non-streamed fallback) weren't streamed — send them now.
+      if (!streamedAny && answer) send({ delta: answer });
+      await chargeFeature(env, uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
+      const total = Date.now() - t0;
+      trackUserContact(env, uid, email, phone, "avaapps_run_stream_ok", "avaapps", {
+        ttfb_ms: firstAt ? firstAt - t0 : total, total_ms: total, source,
+        steps: stats.steps, toolkits: stats.toolkits, tools_called: stats.tools_called,
+        model: stats.model, routed_model: stats.routed_model, route_reason: stats.route_reason,
+        fallback_used: stats.fallback_used, ctx_trim: stats.ctx_trim, chars_saved: stats.chars_saved,
+        composio_retries: stats.composio_retries, answer_len: answer.length,
+        ...(stats.step_cap_hit ? { step_cap_hit: true } : {}),
+      });
+      send({ done: true, answer, ...(stats.pendingAction ? { pending_action: stats.pendingAction } : {}) });
+      try { controller.enqueue(enc.encode("data: [DONE]\n\n")); } catch { /* ignore */ }
+      controller.close();
+    },
+  });
+  return new Response(out, {
+    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", ...CORS },
+  });
+}
 import { toolkitOf, isExecutableTool, coerceArgs } from "../lib/capabilities";
 import { renderData } from "../lib/genui";
 
@@ -46,6 +111,19 @@ export async function avaAppsStatus(req: Request, env: Env): Promise<Response> {
     const { email, phone } = await contactFor(env, ctx.uid);
     const emit = (event: string, props: Record<string, unknown>) => trackUserContact(env, ctx.uid, email, phone, event, "avaapps", props);
     const connected = await cachedConnectedToolkits(env, ctx.uid, { fresh, emit });
+    // Phase 5: prefetch warm-up (`?warm=1`, fired-and-forgotten by the client on
+    // screen open) — pre-populates the per-toolkit decl KV so the first query
+    // skips those hops. Rate-limited to 1/min/uid; never blocks the client.
+    if (new URL(req.url).searchParams.get("warm") === "1" && connected.length) {
+      const w0 = Date.now();
+      const wkey = `avaapps:warm:${ctx.uid}:${new Date().toISOString().slice(0, 16).replace(/[-T:]/g, "")}`; // minute bucket
+      let allow = true;
+      try { if (await env.TOKENS.get(wkey)) allow = false; else await env.TOKENS.put(wkey, "1", { expirationTtl: 60 }); } catch { /* best-effort */ }
+      if (allow) {
+        try { await geminiTools(env, connected, undefined, emit); } catch { /* warm is best-effort */ }
+        trackUserContact(env, ctx.uid, email, phone, "avaapps_warm", "avaapps", { warmed: connected, ms: Date.now() - w0 });
+      }
+    }
     // Phase 0: measure the server-side status fetch so the screen-open latency
     // budget is visible (paired with the client `avaapps_screen_open`).
     trackUserContact(env, ctx.uid, email, phone, "avaapps_status_ok", "avaapps", { status_fetch_ms: Date.now() - s0, connected_count: connected.length, fresh });
@@ -147,6 +225,15 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   if (!query) return json({ error: "query required" }, 400);
   // Where the run originated ("screen" = AvaApps tab, "chat" = in-chat @ava).
   const source = (String(b.source ?? "screen") === "chat") ? "chat" : "screen";
+
+  // Phase 5: per-user hourly quota (premium gate already passed). Caps worst-case
+  // OpenRouter+Composio spend from a loop-spamming premium user.
+  const quota = await checkRunQuota(env, ctx.uid);
+  if (quota.over) {
+    trackUserContact(env, ctx.uid, email, phone, "avaapps_quota_hit", "avaapps", { count: quota.count, limit: quota.limit, source });
+    return json({ error: "Ava needs a breather — you've reached this hour's limit. Please try again shortly.", reason: "quota", retry_after_s: 600 }, 429);
+  }
+
   // Phase 0 telemetry: one start event, then exactly one ok|error with full
   // timing/token/tool breakdown from the loop's stats out-param.
   const t0 = Date.now();
@@ -158,6 +245,12 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   };
   // Phase 1: cache telemetry (conn/decls) carries the same email/phone enrichment.
   stats.emit = (event: string, props: Record<string, unknown>) => trackUserContact(env, ctx.uid, email, phone, event, "avaapps", props);
+
+  // Phase 5: SSE streaming variant (`?stream=1`). Non-stream path below unchanged.
+  if (new URL(req.url).searchParams.get("stream") === "1") {
+    return streamAppsRun(env, ctx.uid, email, phone, query, source, stats, t0);
+  }
+
   try {
     const answer = await runAppsToolLoop(env, ctx.uid, query, undefined, undefined, stats);
     await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));

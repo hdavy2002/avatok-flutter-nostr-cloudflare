@@ -793,7 +793,22 @@ function capArrays(obj: any, maxItems: number, depth = 0): void {
   }
 }
 
-export async function runAppsToolLoop(env: Env, userId: string, query: string, context?: string, _keyOverride?: string, stats?: AppsRunStats): Promise<string> {
+// Friendly step-status label for the streaming UI ("Checking Gmail…").
+function statusFor(slug: string): string {
+  const s = (slug || "").toUpperCase();
+  if (s.startsWith("GMAIL")) return "Checking Gmail…";
+  if (s.startsWith("GOOGLECALENDAR")) return "Checking your calendar…";
+  if (s.startsWith("GOOGLEDRIVE")) return "Looking in Drive…";
+  if (s.startsWith("GOOGLEDOCS")) return "Working in Docs…";
+  if (s.startsWith("GOOGLESHEETS")) return "Working in Sheets…";
+  return "Working…";
+}
+
+export async function runAppsToolLoop(
+  env: Env, userId: string, query: string, context?: string, _keyOverride?: string,
+  stats?: AppsRunStats,
+  stream?: { onDelta?: (t: string) => void | Promise<void>; onStatus?: (s: string) => void },
+): Promise<string> {
   // Routed through OpenRouter (OpenAI tool-calling) on a Gemini model. The old
   // BYOK/direct-Gemini key path is gone; _keyOverride kept only for signature
   // compatibility (unused). Tools execute on our Composio key.
@@ -853,12 +868,22 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
 
     let r: { text: string; calls: OrCall[]; usage?: OrUsage };
     const s0 = Date.now();
-    try { r = await orStep(env, primaryModel, messages, tools); }
-    catch (e: any) {
-      // Phase 4: log the PRIMARY-model failure reason BEFORE falling back, so the
-      // fallback no longer hides the root cause.
-      if (stats) { stats.fallback_used = true; stats.emit?.("avaapps_model_fallback", { primary_model: primaryModel, error: String(e?.message ?? e).slice(0, 200) }); }
-      r = await orStep(env, OR_FALLBACK_MODEL, messages, tools);
+    if (stream?.onDelta) {
+      // Phase 5: stream this step's text live (reusing orStreamStep); on transport
+      // failure fall back to a reliable non-streamed step.
+      try { r = await orStreamStep(env, primaryModel, messages, tools, stream.onDelta); }
+      catch (e: any) {
+        if (stats) { stats.fallback_used = true; stats.emit?.("avaapps_model_fallback", { primary_model: primaryModel, error: String(e?.message ?? e).slice(0, 200) }); }
+        r = await orStep(env, OR_FALLBACK_MODEL, messages, tools);
+      }
+    } else {
+      try { r = await orStep(env, primaryModel, messages, tools); }
+      catch (e: any) {
+        // Phase 4: log the PRIMARY-model failure reason BEFORE falling back, so the
+        // fallback no longer hides the root cause.
+        if (stats) { stats.fallback_used = true; stats.emit?.("avaapps_model_fallback", { primary_model: primaryModel, error: String(e?.message ?? e).slice(0, 200) }); }
+        r = await orStep(env, OR_FALLBACK_MODEL, messages, tools);
+      }
     }
     if (stats) {
       stats.steps = step + 1;
@@ -893,6 +918,8 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
 
     for (const c of r.calls) {
       if (stats) stats.tools_called.push(c.name);
+      // Phase 5: surface a live status line per tool ("Checking Gmail…").
+      try { stream?.onStatus?.(statusFor(c.name)); } catch { /* best-effort */ }
       const x0 = Date.now();
       let result: any;
       try {
