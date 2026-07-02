@@ -308,7 +308,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _party = room;
       _partySub = room.events.listen((e) {
         final t = e['t'];
-        if (t == 'deal_ready') {
+        if (t == 'new') {
+          // P13-B PartyKit delivery hint: a peer just sent to this thread. Do a
+          // targeted cursor sync NOW instead of waiting for the hub frame. Hint
+          // only — InboxDO is the source of truth, so a missed hint is harmless.
+          try { SyncHub.I.syncFromPush(); } catch (_) {}
+        } else if (t == 'deal_ready') {
           try { SyncHub.I.forceResync(); } catch (_) {} // marketplace card lands instantly
         } else if (t == 'reaction') {
           _applyPartyReaction(e); // live per-message reaction (#4)

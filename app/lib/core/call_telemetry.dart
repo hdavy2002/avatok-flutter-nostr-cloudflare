@@ -171,6 +171,10 @@ class CallTelemetry {
         'call_id': callId,
         'call_id_hash': callId.hashCode.toString(),
         'setup_ms': setupMs,
+        // P13-C: dial-tap → first remote frame. For outgoing calls _t0 is the
+        // CallScreen construct instant (≈ dial tap), so this IS the setup latency
+        // we optimise on LTE; explicit alias so dashboards can chart it plainly.
+        'call_setup_ms': setupMs,
         'ice_type': _iceType,
         'remote_ice_type': _remoteIceType,
         'relay_used': _iceType == 'relay',

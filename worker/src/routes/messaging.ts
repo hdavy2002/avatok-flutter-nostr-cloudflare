@@ -335,6 +335,14 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     colo: _cf.colo ?? null, ip: req.headers.get("CF-Connecting-IP"),
   } });
 
+  // P13-B PartyKit delivery hint (dark until PARTY_ENABLED=1): nudge anyone with
+  // this thread open to do a targeted fetch instantly, instead of waiting on the
+  // hub frame. HINT ONLY — InboxDO stays the source of truth, so a lost hint
+  // changes nothing. Best-effort; never blocks the send. Zero cost while dark.
+  if (env.PARTY_ENABLED === "1") {
+    void partyEmit(env, `thread:${conv}`, { t: "new", conv, seq: mine.id });
+  }
+
   return json({ id: mine.id, conv, created_at: created });
 }
 
