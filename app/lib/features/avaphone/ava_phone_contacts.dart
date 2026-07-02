@@ -50,7 +50,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     setState(() { _all = cs; _blocked = flags['blocked'] ?? {}; _loaded = true; });
   }
 
-  String _key(Contact c) => '1:${c.npub}';
+  String _key(Contact c) => '1:${c.uid}';
   bool _isBlocked(Contact c) => _blocked.contains(_key(c));
 
   Future<void> _toggleBlock(Contact c) async {
@@ -68,7 +68,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
 
   void _viewContact(Contact c) {
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => ContactProfileScreen(name: c.name, npub: c.npub)));
+      builder: (_) => ContactProfileScreen(name: c.name, uid: c.uid)));
   }
 
   /// AvaTOK-number contacts only — phone-only entries never appear here.
@@ -116,7 +116,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 10),
         ListTile(
-          leading: PhoneTheme.ring(Avatar(seed: c.npub, name: c.name, size: 44,
+          leading: PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 44,
               avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
           title: Text(c.name.isNotEmpty ? c.name : c.number, style: PhoneTheme.value(size: 15.5)),
           subtitle: Text(c.number, style: PhoneTheme.sub(size: 12.5)),
@@ -146,7 +146,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
           title: Text('Delete contact', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
-          onTap: () async { Navigator.pop(ctx); final l = await _store.remove(c.npub); if (mounted) setState(() => _all = l); }),
+          onTap: () async { Navigator.pop(ctx); final l = await _store.remove(c.uid); if (mounted) setState(() => _all = l); }),
         const SizedBox(height: 8),
       ])),
     );
@@ -156,13 +156,13 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     IceCache.prefetch();
     Analytics.capture('avaphone_contact_call', const {});
     Navigator.push(context, MaterialPageRoute(builder: (_) => CallScreen(
-        room: 'avatok-${c.npub}', title: c.name.isNotEmpty ? c.name : c.number,
-        seed: c.npub, video: false, outgoing: true, avatarUrl: c.avatarUrl)));
+        room: 'avatok-${c.uid}', title: c.name.isNotEmpty ? c.name : c.number,
+        seed: c.uid, video: false, outgoing: true, avatarUrl: c.avatarUrl)));
   }
 
   void _message(Contact c) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(
-      chat: Chat(name: c.name.isNotEmpty ? c.name : c.number, seed: c.npub,
+      chat: Chat(name: c.name.isNotEmpty ? c.name : c.number, seed: c.uid,
           avatarUrl: c.avatarUrl, last: '', time: ''))));
   }
 
@@ -281,7 +281,7 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           child: Row(children: [
-            PhoneTheme.ring(Avatar(seed: c.npub, name: c.name, size: 46,
+            PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 46,
                 avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
             const SizedBox(width: 12),
             Expanded(
@@ -348,14 +348,14 @@ class _AddAvatokSheetState extends State<_AddAvatokSheet> {
     Contact? hit;
     try { hit = await Directory.resolve(q); } catch (_) { hit = null; }
     if (!mounted) return;
-    if (hit == null || hit.npub.isEmpty) {
+    if (hit == null || hit.uid.isEmpty) {
       setState(() { _resolving = false; _error = 'No AvaTOK account on that number'; });
       return;
     }
     // Ensure the saved contact carries the dialed AvaTOK number for display.
     final saved = hit.number.isNotEmpty
         ? hit
-        : Contact(npub: hit.npub, name: hit.name, email: hit.email, avatarUrl: hit.avatarUrl, number: q);
+        : Contact(uid: hit.uid, name: hit.name, email: hit.email, avatarUrl: hit.avatarUrl, number: q);
     Navigator.pop(context, saved);
   }
 

@@ -216,7 +216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     // Background directory publish — fire-and-forget, retried on the next save.
     if (fullName.isNotEmpty || _bio.text.trim().isNotEmpty || email.isNotEmpty) {
-      unawaited(Directory.registerProfile(npub: id.uid, name: fullName, firstName: first, lastName: last,
+      unawaited(Directory.registerProfile(uid: id.uid, name: fullName, firstName: first, lastName: last,
           email: email, avatarUrl: _avatarUrl, birthYear: _birthYearValue, bio: _bio.text.trim(), gender: _gender));
     }
   }
@@ -305,7 +305,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await AvatarCache.putBytes(url, 192, bytes); // instant display (avatar requests ~192px)
     final p = await _store.load();
     await _store.save(p.copyWith(avatarUrl: url));
-    await Directory.registerProfile(npub: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: url);
+    await Directory.registerProfile(uid: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: url);
     if (!mounted) return;
     setState(() { _avatarUrl = url; _photoBusy = false; });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo updated')));
@@ -317,7 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _photoBusy = true);
     final p = await _store.load();
     await _store.save(p.copyWith(avatarUrl: ''));
-    await Directory.registerProfile(npub: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: '');
+    await Directory.registerProfile(uid: id.uid, name: _fullName, firstName: _name.text.trim(), lastName: _last.text.trim(), avatarUrl: '');
     if (!mounted) return;
     setState(() { _avatarUrl = ''; _photoBusy = false; });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Photo removed')));

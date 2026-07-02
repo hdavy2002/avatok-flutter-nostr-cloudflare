@@ -4,7 +4,7 @@ import 'api_auth.dart';
 import 'config.dart';
 
 /// Client for AvaBrain (`/api/brain/*`). All calls are dual-auth (NIP-98 + Clerk)
-/// via [ApiAuth]; the server derives the npub from the signature and routes to the
+/// via [ApiAuth]; the server derives the uid from the signature and routes to the
 /// caller's own UserBrain DO.
 ///
 /// Privacy note: DM content is end-to-end encrypted, so the server brain never

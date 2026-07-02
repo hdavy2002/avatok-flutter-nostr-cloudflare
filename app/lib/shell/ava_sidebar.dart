@@ -77,7 +77,7 @@ class _AvaSidebarState extends State<AvaSidebar> {
     FocusMode.load();
   }
 
-  /// Real display name if set, else the short npub passed in.
+  /// Real display name if set, else the short uid passed in.
   String get _name => _displayName.isNotEmpty ? _displayName : widget.name;
   String get _sub => _handle.isNotEmpty ? '@$_handle · View public profile' : 'View public profile';
 

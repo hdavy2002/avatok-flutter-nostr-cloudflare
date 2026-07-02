@@ -30,13 +30,13 @@ class Messages extends Table {
 /// Saved contacts.
 @DataClassName('ContactRow')
 class Contacts extends Table {
-  TextColumn get npub => text()();
+  TextColumn get uid => text()();
   TextColumn get name => text().withDefault(const Constant(''))();
   TextColumn get handle => text().withDefault(const Constant(''))();
   TextColumn get email => text().withDefault(const Constant(''))();
   TextColumn get avatarUrl => text().withDefault(const Constant(''))();
   @override
-  Set<Column> get primaryKey => {npub};
+  Set<Column> get primaryKey => {uid};
 }
 
 /// Per-conversation chat-list projection — ONE persisted row per conversation
@@ -121,7 +121,7 @@ class AppDb extends _$AppDb {
   AppDb() : super(_open());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   // v2: Chats gained [json]. v3: WalletLedgerCache (Phase 2 wallet). v4:
   // DeviceContactsCache (instant add-contact + on-AvaTOK match). v5: contact
@@ -144,6 +144,12 @@ class AppDb extends _$AppDb {
             await m.addColumn(deviceContactsCache, deviceContactsCache.email);
             await m.addColumn(deviceContactsCache, deviceContactsCache.hasWhatsapp);
             await m.createTable(inviteSends);
+          }
+          if (from < 6) {
+            // npub → uid rename (Nostr removal). Renamed in place so existing
+            // on-device contact rows are preserved across the update.
+            await m.renameColumn(contacts, 'npub', contacts.uid);
+            await m.renameColumn(deviceContactsCache, 'npub', deviceContactsCache.uid);
           }
         },
       );

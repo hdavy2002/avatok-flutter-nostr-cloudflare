@@ -44,9 +44,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final names = <String, String>{};
     final avatars = <String, String>{};
     for (final c in contacts) {
-      if (c.npub.isEmpty) continue;
-      names[c.npub] = c.name;
-      if (c.avatarUrl.isNotEmpty) avatars[c.npub] = c.avatarUrl;
+      if (c.uid.isEmpty) continue;
+      names[c.uid] = c.name;
+      if (c.avatarUrl.isNotEmpty) avatars[c.uid] = c.avatarUrl;
     }
     if (id != null) names[id.uid] = 'You';
     if (mounted) setState(() { _id = id; _contacts = contacts; _names.addAll(names); _avatars.addAll(avatars); });
@@ -220,7 +220,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
 
   void _pickToAdd() {
     final candidates = _contacts.where((c) =>
-        !c.isPhoneOnly && c.npub.isNotEmpty && !_group.members.contains(c.npub)).toList();
+        !c.isPhoneOnly && c.uid.isNotEmpty && !_group.members.contains(c.uid)).toList();
     Analytics.capture('group_add_picker_opened', {'gid': _group.id, 'candidate_count': candidates.length});
     showModalBottomSheet(
       context: context,
@@ -250,7 +250,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   ),
                   title: Text(c.name, style: ZineText.value(size: 15)),
                   trailing: PhosphorIcon(PhosphorIcons.plusCircle(PhosphorIconsStyle.fill), color: Zine.blueInk),
-                  onTap: () { Navigator.pop(ctx); _addMember(c.npub); },
+                  onTap: () { Navigator.pop(ctx); _addMember(c.uid); },
                 ),
             ])),
         ]),

@@ -85,7 +85,7 @@ class _AddByLinkSheetState extends State<_AddByLinkSheet> {
     if (c == null) return;
     final name = c.name.isNotEmpty ? c.name : [c.firstName, c.lastName].where((s) => s.isNotEmpty).join(' ').trim();
     final contact = Contact(
-      npub: c.uid,
+      uid: c.uid,
       name: name.isNotEmpty ? name : (c.email.isNotEmpty ? c.email : c.number),
       email: c.email,
       avatarUrl: c.avatarUrl,

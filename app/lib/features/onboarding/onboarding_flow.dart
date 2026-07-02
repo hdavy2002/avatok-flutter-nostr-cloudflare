@@ -130,7 +130,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         _handleMsg = 'Reserved for you ✓';
       });
     }
-    // Attach this person's whole onboarding journey to their npub.
+    // Attach this person's whole onboarding journey to their uid.
     Analytics.identify(id.uid);
     Analytics.capture('onboarding_started', const {});
     Analytics.capture('onboarding_step_viewed', {'step_index': 0, 'step_name': _stepNames[0]});
@@ -146,7 +146,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     setState(() { _handleAvail = null; _handleMsg = null; _checkingHandle = v.trim().isNotEmpty; });
     if (v.trim().isEmpty) { setState(() => _checkingHandle = false); return; }
     _handleDebounce = Timer(const Duration(milliseconds: 400), () async {
-      final res = await Directory.checkHandle(_handleCtrl.text, npub: _id?.uid);
+      final res = await Directory.checkHandle(_handleCtrl.text, uid: _id?.uid);
       if (!mounted) return;
       setState(() { _checkingHandle = false; _handleAvail = res.ok; _handleMsg = res.message; });
     });
@@ -173,7 +173,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     await GuestSession.upgradeIfAny();
     // Publish to the directory so the name + email are immediately searchable.
     final r = await Directory.registerProfile(
-      npub: id.uid, name: name, firstName: first, lastName: last, email: email,
+      uid: id.uid, name: name, firstName: first, lastName: last, email: email,
       accountKind: _selectedKind?.wire,
     );
     if (!mounted) return;

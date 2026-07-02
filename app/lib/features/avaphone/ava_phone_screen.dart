@@ -169,7 +169,7 @@ class _CallsTabState extends State<_CallsTab> {
     if (!mounted) return;
     setState(() {
       _calls = calls;
-      _byNpub = {for (final c in contacts) c.npub: c};
+      _byNpub = {for (final c in contacts) c.uid: c};
       _loaded = true;
     });
   }
@@ -295,7 +295,7 @@ class _CallsTabState extends State<_CallsTab> {
 
   void _viewContact(CallEntry c) {
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => ContactProfileScreen(name: c.name, npub: c.seed)));
+      builder: (_) => ContactProfileScreen(name: c.name, uid: c.seed)));
   }
 
   @override
@@ -576,7 +576,7 @@ class _DialpadSheetState extends State<_DialpadSheet> {
     Contact? hit;
     try { hit = await Directory.resolve(q); } catch (_) { hit = null; }
     if (!mounted) return;
-    if (hit == null || hit.npub.isEmpty) {
+    if (hit == null || hit.uid.isEmpty) {
       Analytics.capture('avaphone_dial_unreachable', {'len': q.length});
       setState(() { _dialing = false; _status = 'No AvaTOK account on that number'; });
       return;
@@ -587,9 +587,9 @@ class _DialpadSheetState extends State<_DialpadSheet> {
     Navigator.pop(context); // close the dialpad
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => CallScreen(
-        room: 'avatok-${c.npub}',
+        room: 'avatok-${c.uid}',
         title: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : q),
-        seed: c.npub, video: false, outgoing: true, avatarUrl: c.avatarUrl),
+        seed: c.uid, video: false, outgoing: true, avatarUrl: c.avatarUrl),
     ));
   }
 

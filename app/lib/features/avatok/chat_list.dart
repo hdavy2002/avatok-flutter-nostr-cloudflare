@@ -117,7 +117,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   String _keyOf(Chat c) {
     if (c.gid != null) return 'g:${c.gid}';
     // Unknown-number receptionist threads key by the caller's phone, NOT by an
-    // npub (they have no AvaTOK account). Must match SyncHub's `g:recept_…` key.
+    // uid (they have no AvaTOK account). Must match SyncHub's `g:recept_…` key.
     final tel = telPhone(c.seed);
     if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
     return '1:${c.seed}';
@@ -163,9 +163,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     }
   }
 
-  /// True if [npub] (a contact's npub) currently has a live status.
-  bool _hasStatus(String npub) {
-    return _statusAuthorHex.contains(npub);
+  /// True if [uid] (a contact's uid) currently has a live status.
+  bool _hasStatus(String uid) {
+    return _statusAuthorHex.contains(uid);
   }
 
   void _openChat(Chat c) {
@@ -225,7 +225,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   }
 
   Future<void> _removeContact(Chat c) async {
-    final list = await _contactsStore.remove(c.seed); // Contact.seed == npub
+    final list = await _contactsStore.remove(c.seed); // Contact.seed == uid
     if (mounted) setState(() => _contacts = list);
   }
 
@@ -348,7 +348,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               members: List.filled((m['mc'] as num?)?.toInt() ?? 0, '')));
         } else {
           contacts.add(Contact(
-              npub: (m['s'] ?? '').toString(),
+              uid: (m['s'] ?? '').toString(),
               name: (m['n'] ?? '').toString(),
               avatarUrl: (m['a'] ?? '').toString()));
         }
@@ -384,14 +384,14 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       })));
     }
     for (final c in contacts) {
-      final tel = telPhone(c.npub);
+      final tel = telPhone(c.uid);
       final k = tel != null
           ? receptTelConvKey(_id?.uid ?? '', tel)
-          : '1:${c.npub}';
+          : '1:${c.uid}';
       final pv = previews[k];
       final ts = pv?.ts ?? 0;
       rows.add((convKey: k, ts: ts, json: jsonEncode({
-        'k': k, 'g': false, 'n': c.name, 'a': c.avatarUrl, 's': c.npub,
+        'k': k, 'g': false, 'n': c.name, 'a': c.avatarUrl, 's': c.uid,
         'gid': '', 'mc': 0,
         'pv': pv?.text ?? '', 'ts': ts, 'me': pv?.me ?? false,
         'u': _unread[k] ?? 0, 'f': flagsFor(k),
@@ -501,10 +501,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // NOTE: the phone address book is NOT read on cold start — it's read on demand
     // only when the user opens a contacts screen (Invite/Search). This keeps app
     // startup instant and can never freeze the app in the background.
-    // Register this device for incoming-call wake pushes (npub hashed at rest).
-    Analytics.identify(id.uid); // attribute diagnostics/events to this npub every app open
+    // Register this device for incoming-call wake pushes (uid hashed at rest).
+    Analytics.identify(id.uid); // attribute diagnostics/events to this uid every app open
     await PushService.registerToken(id.uid);
-    // Email is the human-facing id: publish email → npub so others find me by email.
+    // Email is the human-facing id: publish email → uid so others find me by email.
     try {
       final cu = await widget.clerk.currentUser();
       final prof = await ProfileStore().load();
@@ -514,7 +514,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
       if (cu?.email != null && cu!.email!.isNotEmpty) {
         await Directory.registerProfile(
-            npub: id.uid, email: cu.email!, name: cu.label, phone: prof.phone);
+            uid: id.uid, email: cu.email!, name: cu.label, phone: prof.phone);
       }
     } catch (_) {/* not signed in / offline */}
     _startInbox(id);
@@ -688,19 +688,19 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     _syncingGroups.remove(gid);
   }
 
-  final Set<String> _autoAdding = {}; // npubs currently being auto-added (dedupe)
-  Future<void> _ensureContact(String npub) async {
-    if (npub.isEmpty || npub == _id?.uid) return;
-    if (_contacts.any((c) => c.npub == npub) || !_autoAdding.add(npub)) return;
+  final Set<String> _autoAdding = {}; // uids currently being auto-added (dedupe)
+  Future<void> _ensureContact(String uid) async {
+    if (uid.isEmpty || uid == _id?.uid) return;
+    if (_contacts.any((c) => c.uid == uid) || !_autoAdding.add(uid)) return;
     final placeholder = Contact(
-        npub: npub,
-        name: npub.length > 14 ? '${npub.substring(0, 10)}…${npub.substring(npub.length - 4)}' : npub);
+        uid: uid,
+        name: uid.length > 14 ? '${uid.substring(0, 10)}…${uid.substring(uid.length - 4)}' : uid);
     var list = await _contactsStore.add(placeholder);
     if (mounted) setState(() => _contacts = list);
     try {
-      final resolved = await Directory.resolve(npub);
-      if (resolved != null && resolved.npub == npub) {
-        list = await _contactsStore.add(resolved); // de-dupes on npub
+      final resolved = await Directory.resolve(uid);
+      if (resolved != null && resolved.uid == uid) {
+        list = await _contactsStore.add(resolved); // de-dupes on uid
         if (mounted) setState(() => _contacts = list);
       }
     } catch (_) {/* placeholder stands */}
@@ -713,20 +713,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   /// thread via "Save to contacts". No-op if already present.
   Future<void> _ensureTelContact(String phone, String? callerName) async {
     final e164 = DeviceContactsService.normPhone(phone);
-    final npub = telNpub(e164);
-    if (e164.isEmpty || _contacts.any((c) => c.npub == npub) || !_autoAdding.add(npub)) return;
+    final uid = telNpub(e164);
+    if (e164.isEmpty || _contacts.any((c) => c.uid == uid) || !_autoAdding.add(uid)) return;
     final name = (callerName != null && callerName.trim().isNotEmpty)
         ? callerName.trim()
         : formatTelDisplay(e164);
     final list = await _contactsStore.add(
-        Contact(npub: npub, name: name, phone: e164, handle: kProvisionalContactHandle));
+        Contact(uid: uid, name: name, phone: e164, handle: kProvisionalContactHandle));
     if (mounted) setState(() => _contacts = list);
   }
 
   /// Auto-promote provisional `tel:<E.164>` receptionist contacts to real AvaTOK
   /// accounts once the device-contacts match sync discovers that number IS on
   /// AvaTOK (i.e. the caller is in the owner's address book and has since joined,
-  /// or was already a user). Folds the synthetic row into the real npub via
+  /// or was already a user). Folds the synthetic row into the real uid via
   /// [ContactsStore.mergeTel] and moves the voicemail history into the proper DM
   /// thread so nothing is lost. Privacy-safe: it only acts on numbers the match
   /// endpoint already returned (never probes arbitrary numbers). Called after a
@@ -744,7 +744,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (matched.isEmpty) return;
     var changed = false;
     for (final c in provisional) {
-      final e164 = telPhone(c.npub);
+      final e164 = telPhone(c.uid);
       if (e164 == null) continue;
       final d = matched[e164];
       if (d == null || d.uid == myUid) continue;
@@ -754,7 +754,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       final name = namedByUser
           ? c.name
           : (d.displayName.isNotEmpty ? d.displayName : formatTelDisplay(e164));
-      final real = Contact(npub: d.uid, name: name, handle: d.handle,
+      final real = Contact(uid: d.uid, name: name, handle: d.handle,
           avatarUrl: d.avatarUrl, phone: e164);
       final list = await _contactsStore.mergeTel(e164, real);
       // Move the voicemail cards into the real DM thread.
@@ -794,7 +794,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     final c = await showAddContactSheet(context);
     if (c == null || !mounted) return;
     // Don't let someone add their own account (e.g. their other email).
-    if (c.npub.isEmpty || c.npub == _id?.uid) {
+    if (c.uid.isEmpty || c.uid == _id?.uid) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("That's your own account — you can't add yourself")));
       return;
@@ -948,9 +948,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // Groups are surfaced ONLY in the dedicated Groups tab (owner decision
     // 2026-06-28) — they no longer appear in the main Chats thread list.
     String contactKey(Contact c) {
-      final tel = telPhone(c.npub);
+      final tel = telPhone(c.uid);
       if (tel != null) return receptTelConvKey(_id?.uid ?? '', tel);
-      return '1:${c.npub}';
+      return '1:${c.uid}';
     }
     final contactChats = _contacts.where((c) {
       final k = contactKey(c);

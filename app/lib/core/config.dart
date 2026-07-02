@@ -22,7 +22,7 @@ const String kGoogleServerClientId =
 /// ticket (the app redeems it via strategy=ticket). Avoids Clerk native One Tap.
 const String kGoogleAuthUrl = '$kApiBase/auth/google';
 
-/// Worker endpoint to register a device's push token against an npub. (NIP-98)
+/// Worker endpoint to register a device's push token against an uid. (NIP-98)
 const String kRegisterUrl = 'https://$kSignalingHost/api/register';
 
 /// Worker endpoint to ring a callee (sends a high-priority FCM wake push). (NIP-98)
@@ -64,7 +64,7 @@ const String kIceUrl = 'https://$kSignalingHost/api/ice';
 /// POST $kConferenceBase/<gid>/start|join|end · GET $kConferenceBase/<gid>/status
 const String kConferenceBase = 'https://$kSignalingHost/api/conference';
 
-/// AvaTok public directory (NIP-05-style) — find people by @handle / name / npub.
+/// AvaTok public directory (NIP-05-style) — find people by @handle / name / uid.
 const String kProfileUrl = 'https://$kSignalingHost/api/profile'; // POST upsert (NIP-98)
 // NOTE: kMeUrl is declared once above (account-recovery section) — duplicate here
 // removed to fix a concurrent-edit "already declared" compile error.

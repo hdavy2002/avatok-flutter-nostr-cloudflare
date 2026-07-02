@@ -14,8 +14,8 @@ class Community {
   final String id;
   final String name;
   final String about;
-  final String owner; // owner npub
-  final List<String> members; // npubs
+  final String owner; // owner uid
+  final List<String> members; // uids
   final List<String> groups; // channel group ids
   const Community({
     required this.id,
@@ -100,9 +100,9 @@ class CommunityStore {
   }
 
   /// Join an existing community by id.
-  static Future<Community?> join(String id, String npub) async {
+  static Future<Community?> join(String id, String uid) async {
     try {
-      // npub derived server-side from the NIP-98 signature.
+      // uid derived server-side from the NIP-98 signature.
       final res = await ApiAuth.postJson(kCommunityJoinUrl, {'id': id},
           timeout: const Duration(seconds: 10));
       if (res.statusCode != 200) return null;
@@ -115,10 +115,10 @@ class CommunityStore {
   }
 
   /// Fetch all communities this member belongs to from the backend.
-  static Future<List<Community>> fetchForMember(String npub) async {
+  static Future<List<Community>> fetchForMember(String uid) async {
     try {
       final res = await http
-          .get(Uri.parse('$kCommunitiesUrl?member=${Uri.encodeQueryComponent(npub)}'))
+          .get(Uri.parse('$kCommunitiesUrl?member=${Uri.encodeQueryComponent(uid)}'))
           .timeout(const Duration(seconds: 10));
       if (res.statusCode != 200) return [];
       final j = jsonDecode(res.body) as Map<String, dynamic>;

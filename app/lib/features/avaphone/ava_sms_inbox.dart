@@ -51,7 +51,7 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
     });
   }
 
-  String _key(Contact c) => '1:${c.npub}';
+  String _key(Contact c) => '1:${c.uid}';
 
   String _fmt(int secs) {
     if (secs <= 0) return '';
@@ -74,8 +74,8 @@ class _AvaSmsInboxState extends State<AvaSmsInbox> {
 
   void _open(Contact c) {
     final chat = Chat(
-      name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : c.npub),
-      seed: c.npub, avatarUrl: c.avatarUrl,
+      name: c.name.isNotEmpty ? c.name : (c.number.isNotEmpty ? c.number : c.uid),
+      seed: c.uid, avatarUrl: c.avatarUrl,
       last: '', time: '',
     );
     Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)))
@@ -182,14 +182,14 @@ class _SmsRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           PhoneTheme.ring(Avatar(
-              seed: contact.npub, name: contact.name, size: 48,
+              seed: contact.uid, name: contact.name, size: 48,
               avatarUrl: contact.avatarUrl.isEmpty ? null : contact.avatarUrl)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Flexible(
-                  child: Text(contact.name.isNotEmpty ? contact.name : (contact.number.isNotEmpty ? contact.number : contact.npub),
+                  child: Text(contact.name.isNotEmpty ? contact.name : (contact.number.isNotEmpty ? contact.number : contact.uid),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: PhoneTheme.value(size: 15)),
                 ),
@@ -251,7 +251,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
     Contact? hit;
     try { hit = await Directory.resolve(q); } catch (_) { hit = null; }
     if (!mounted) return;
-    if (hit == null || hit.npub.isEmpty) {
+    if (hit == null || hit.uid.isEmpty) {
       setState(() { _resolving = false; _error = 'No AvaTOK account on that number'; });
       return;
     }
@@ -338,7 +338,7 @@ class _ComposeSheetState extends State<_ComposeSheet> {
                   final c = saved[i];
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: PhoneTheme.ring(Avatar(seed: c.npub, name: c.name, size: 40,
+                    leading: PhoneTheme.ring(Avatar(seed: c.uid, name: c.name, size: 40,
                         avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl)),
                     title: Text(c.name.isNotEmpty ? c.name : c.number, style: PhoneTheme.value(size: 14.5)),
                     subtitle: Text(c.number, style: PhoneTheme.sub(size: 12)),

@@ -11,7 +11,7 @@ import 'feature_flags.dart';
 /// Central client-side analytics for AvaTOK → PostHog (EU region, project 139917).
 ///
 /// Everything here is best-effort: a telemetry failure must never throw into the
-/// app or block a user action. The client identifies the person by their npub
+/// app or block a user action. The client identifies the person by their uid
 /// (device identity); the Worker (`worker/src/hooks.ts`) stamps events with the
 /// Clerk user id (`user_…`). Those are DIFFERENT distinct_ids, so client and
 /// server events used to land on separate people. We bridge them two ways once
@@ -61,20 +61,20 @@ class Analytics {
   // Email is persisted per-account so it survives app restarts and is reloaded
   // at identify() time — this is what guarantees a user's errors carry their
   // email EVEN when Clerk's currentUser() momentarily returns null on a session
-  // (the symptom behind "the 502 had no email"). Keyed by npub so a shared phone
+  // (the symptom behind "the 502 had no email"). Keyed by uid so a shared phone
   // never leaks one account's email onto another's events.
   static const FlutterSecureStorage _sec = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
-  static String _emailKey(String npub) => 'ph_email_$npub';
+  static String _emailKey(String uid) => 'ph_email_$uid';
 
-  static Future<void> _persistEmail(String? npub, String email) async {
-    if (npub == null || npub.isEmpty) return;
-    try { await _sec.write(key: _emailKey(npub), value: email); } catch (_) {}
+  static Future<void> _persistEmail(String? uid, String email) async {
+    if (uid == null || uid.isEmpty) return;
+    try { await _sec.write(key: _emailKey(uid), value: email); } catch (_) {}
   }
 
-  static Future<String?> _loadEmail(String npub) async {
-    try { return await _sec.read(key: _emailKey(npub)); } catch (_) { return null; }
+  static Future<String?> _loadEmail(String uid) async {
+    try { return await _sec.read(key: _emailKey(uid)); } catch (_) { return null; }
   }
 
   /// Add to MaterialApp.navigatorObservers to auto-capture a screen on each route.
@@ -161,8 +161,8 @@ class Analytics {
       await Posthog().setup(config);
       _ready = true;
       // Stream every diagnostic log line live to PostHog (batched/flushed by the
-      // SDK), keyed to the person via identify(npub). No manual upload, no
-      // app-owned DB. Pull a user's logs by resolving their email -> npub.
+      // SDK), keyed to the person via identify(uid). No manual upload, no
+      // app-owned DB. Pull a user's logs by resolving their email -> uid.
       AvaLog.I.sink = (e) => capture('diag_log', {
             'tag': e.tag,
             'level': e.level,
@@ -215,19 +215,19 @@ class Analytics {
         ...?p,
       };
 
-  /// Attach all subsequent events to this person (call when the npub exists).
+  /// Attach all subsequent events to this person (call when the uid exists).
   /// Pass [email]/[phone] when known so they become person properties + ride
   /// every event; if not yet known, call [setUserKeys] later.
-  static Future<void> identify(String npub,
+  static Future<void> identify(String uid,
       {Map<String, Object>? properties, String? email, String? phone}) async {
-    _accountId = npub;
+    _accountId = uid;
     if (email != null && email.isNotEmpty) {
       _email = email;
-      await _persistEmail(npub, email);
+      await _persistEmail(uid, email);
     } else if (_email == null || _email!.isEmpty) {
       // No email passed (e.g. the app-open identify before Clerk responds) —
       // reload the last-known email for this account so events carry it now.
-      final saved = await _loadEmail(npub);
+      final saved = await _loadEmail(uid);
       if (saved != null && saved.isNotEmpty) _email = saved;
     }
     if (phone != null && phone.isNotEmpty) _phone = phone;
@@ -235,7 +235,7 @@ class Analytics {
     if (k is String && k.isNotEmpty) accountKind = k;
     if (!_ready) return;
     try {
-      await Posthog().identify(userId: npub, userProperties: _base(properties));
+      await Posthog().identify(userId: uid, userProperties: _base(properties));
     } catch (_) {}
   }
 
@@ -255,8 +255,8 @@ class Analytics {
     } catch (_) {}
   }
 
-  /// Link this person's npub distinct_id to their Clerk uid (`user_…`) so the
-  /// client (identified by npub) and the Worker (which stamps the Clerk uid) land
+  /// Link this person's uid distinct_id to their Clerk uid (`user_…`) so the
+  /// client (identified by uid) and the Worker (which stamps the Clerk uid) land
   /// on ONE person in PostHog — closing the cross-stack debugging gap. Also keeps
   /// [_clerkUid] so it rides every subsequent event as a `clerk_uid` property.
   /// Idempotent and best-effort: no-op when unchanged or analytics isn't ready.

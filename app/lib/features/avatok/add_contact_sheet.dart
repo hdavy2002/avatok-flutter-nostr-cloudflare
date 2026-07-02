@@ -92,7 +92,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
     if (!mounted || _query.trim() != q) return; // a newer query superseded this
     setState(() {
       _resolving = false;
-      _resolvedHit = (hit != null && hit.npub.isNotEmpty) ? hit : null;
+      _resolvedHit = (hit != null && hit.uid.isNotEmpty) ? hit : null;
       _resolvedMiss = _resolvedHit == null;
     });
   }
@@ -220,7 +220,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
         child: ListTile(
           leading: Container(
             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
-            child: Avatar(seed: c.npub, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+            child: Avatar(seed: c.uid, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
           ),
           title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 14.5)),
           subtitle: Text('On AvaTOK — tap to add & message', style: ZineText.sub(size: 12.5)),
@@ -233,7 +233,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
         contentPadding: EdgeInsets.zero,
         leading: Container(
           decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
-          child: Avatar(seed: c.npub, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
+          child: Avatar(seed: c.uid, name: c.name, size: 40, avatarUrl: c.avatarUrl.isEmpty ? null : c.avatarUrl),
         ),
         title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 14.5)),
         subtitle: Text(c.subtitle, style: ZineText.sub(size: 12.5)),

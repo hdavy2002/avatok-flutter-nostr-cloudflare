@@ -12,30 +12,30 @@ import '../../core/disk_cache.dart';
 import '../../core/vault.dart';
 import '../../core/account_key.dart';
 
-/// A saved AvaTok contact. `npub` holds the routing id (Clerk uid). Handles are
+/// A saved AvaTok contact. `uid` holds the routing id (Clerk uid). Handles are
 /// retired — the network identity shown is the AvaTOK number (or real phone).
 @immutable
 class Contact {
-  final String npub;
+  final String uid;
   final String name;
   final String handle; // DEPRECATED (handles retired); kept for cache back-compat
   final String email;
   final String avatarUrl; // canonical blossom URL of their photo ('' = initials)
   final String phone; // E.164 (WhatsApp-style phone contacts) — '' if unknown
   final String number; // AvaTOK number display, e.g. '+233 24 555 0148' — '' if none
-  const Contact({required this.npub, required this.name, this.handle = '', this.email = '', this.avatarUrl = '', this.phone = '', this.number = ''});
+  const Contact({required this.uid, required this.name, this.handle = '', this.email = '', this.avatarUrl = '', this.phone = '', this.number = ''});
 
-  String get seed => npub; // deterministic avatar seed
+  String get seed => uid; // deterministic avatar seed
   String get atHandle => handle.isEmpty ? '' : '@$handle';
   /// A phone-only caller saved from the AI Receptionist — keyed by a synthetic
-  /// `tel:<E.164>` id because they have no AvaTOK account / npub yet.
-  bool get isPhoneOnly => npub.startsWith('tel:');
+  /// `tel:<E.164>` id because they have no AvaTOK account / uid yet.
+  bool get isPhoneOnly => uid.startsWith('tel:');
   /// Human-friendly subtitle — AvaTOK number first, then phone, then email.
   String get subtitle => number.isNotEmpty ? number : (phone.isNotEmpty ? phone : email);
 
-  Map<String, dynamic> toJson() => {'npub': npub, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl, 'phone': phone, 'number': number};
+  Map<String, dynamic> toJson() => {'uid': uid, 'name': name, 'handle': handle, 'email': email, 'avatarUrl': avatarUrl, 'phone': phone, 'number': number};
   factory Contact.fromJson(Map<String, dynamic> j) => Contact(
-        npub: (j['npub'] ?? '').toString(),
+        uid: (j['uid'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
         handle: (j['handle'] ?? '').toString(),
         email: (j['email'] ?? '').toString(),
@@ -79,10 +79,10 @@ class ContactsStore {
   Future<void> _save(List<Contact> cs) =>
       DiskCache.write(_key, jsonEncode(cs.map((c) => c.toJson()).toList()));
 
-  /// Add (or update) a contact; de-dupes on npub. Returns the new list.
+  /// Add (or update) a contact; de-dupes on uid. Returns the new list.
   Future<List<Contact>> add(Contact c) async {
     final cs = await load();
-    cs.removeWhere((x) => x.npub == c.npub);
+    cs.removeWhere((x) => x.uid == c.uid);
     cs.insert(0, c);
     await _save(cs);
     _changes.add(cs); // live-refresh any open chat list
@@ -90,9 +90,9 @@ class ContactsStore {
     return cs;
   }
 
-  Future<List<Contact>> remove(String npub) async {
+  Future<List<Contact>> remove(String uid) async {
     final cs = await load();
-    cs.removeWhere((x) => x.npub == npub);
+    cs.removeWhere((x) => x.uid == uid);
     await _save(cs);
     _changes.add(cs);
     _syncUp(cs);
@@ -106,10 +106,10 @@ class ContactsStore {
   /// thread and its receptionist cards stay intact through the merge.
   Future<List<Contact>> mergeTel(String e164, Contact real) async {
     final cs = await load();
-    cs.removeWhere((x) => x.npub == 'tel:$e164');
-    cs.removeWhere((x) => x.npub == real.npub);
+    cs.removeWhere((x) => x.uid == 'tel:$e164');
+    cs.removeWhere((x) => x.uid == real.uid);
     final merged = real.phone.isEmpty
-        ? Contact(npub: real.npub, name: real.name, handle: real.handle,
+        ? Contact(uid: real.uid, name: real.name, handle: real.handle,
             email: real.email, avatarUrl: real.avatarUrl, phone: e164, number: real.number)
         : real;
     cs.insert(0, merged);
@@ -134,7 +134,7 @@ class ContactsStore {
   }
 
   /// Pull the encrypted contact list from the vault (on login / new device) and
-  /// merge it with anything saved locally (union by npub). On any failure the
+  /// merge it with anything saved locally (union by uid). On any failure the
   /// local list is left untouched. Returns the resulting list.
   Future<List<Contact>> pullAndMerge() async {
     final id = ApiAuth.identity;
@@ -154,11 +154,11 @@ class ContactsStore {
     } catch (_) {
       return local;
     }
-    final byNpub = <String, Contact>{for (final c in local) c.npub: c};
+    final byNpub = <String, Contact>{for (final c in local) c.uid: c};
     for (final c in remote) {
-      byNpub[c.npub] = c;
+      byNpub[c.uid] = c;
     }
-    final merged = byNpub.values.where((c) => c.npub.isNotEmpty).toList();
+    final merged = byNpub.values.where((c) => c.uid.isNotEmpty).toList();
     await _save(merged);
     // If the merge added anything the server didn't have, push the superset back.
     if (merged.length != remote.length) _syncUp(merged);
@@ -173,10 +173,10 @@ class ContactsStore {
     var changed = false;
     for (var i = 0; i < cs.length; i++) {
       final c = cs[i];
-      if (c.avatarUrl.isNotEmpty || c.npub.isEmpty) continue;
-      final r = await Directory.resolve(c.npub);
+      if (c.avatarUrl.isNotEmpty || c.uid.isEmpty) continue;
+      final r = await Directory.resolve(c.uid);
       if (r != null && r.avatarUrl.isNotEmpty) {
-        cs[i] = Contact(npub: c.npub, name: c.name, handle: c.handle, email: c.email, avatarUrl: r.avatarUrl);
+        cs[i] = Contact(uid: c.uid, name: c.name, handle: c.handle, email: c.email, avatarUrl: r.avatarUrl);
         changed = true;
       }
     }
@@ -185,7 +185,7 @@ class ContactsStore {
   }
 }
 
-/// Thin client for the AvaTok directory Worker (handle/npub resolve + search).
+/// Thin client for the AvaTok directory Worker (handle/uid resolve + search).
 class Directory {
   /// Resolve `@handle`, `handle`, or `npub1…` → a Contact, or null if unknown.
   static Future<Contact?> resolve(String query) async {
@@ -196,7 +196,7 @@ class Directory {
     final kind = q.startsWith('@')
         ? 'handle'
         : q.startsWith('npub1')
-            ? 'npub'
+            ? 'uid'
             : q.contains('@')
                 ? 'email'
                 : RegExp(r'^[+\d]').hasMatch(q)
@@ -216,8 +216,8 @@ class Directory {
       // addressing id. Accept it at the top level OR nested under `profile`
       // (older worker shape) so a contact ALWAYS gets a routable id — a missing
       // id here was leaving DMs stuck on "waiting to reach phone".
-      final npub = j['uid'] ?? j['npub'] ?? p?['uid'];
-      if (npub == null) {
+      final uid = j['uid'] ?? j['uid'] ?? p?['uid'];
+      if (uid == null) {
         // Server said found:false (or a shape we can't address) — the exact case
         // that silently broke delivery. Track it so we catch regressions early.
         Analytics.capture('contact_resolve',
@@ -232,19 +232,19 @@ class Directory {
           ? (p?['name'] ?? p?['display_name']).toString()
           : assembled;
       return Contact(
-        npub: npub.toString(),
+        uid: uid.toString(),
         name: name.isNotEmpty
             ? name
-            : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(npub.toString())),
+            : ((p?['email'] ?? '').toString().isNotEmpty ? p!['email'].toString() : _short(uid.toString())),
         email: (p?['email'] ?? '').toString(),
         avatarUrl: (p?['avatar_url'] ?? j['avatar_url'] ?? '').toString(),
         number: (p?['number'] ?? '').toString(),
       );
     } catch (e) {
-      // Even with no directory hit, a raw npub is still addable.
+      // Even with no directory hit, a raw uid is still addable.
       if (q.startsWith('npub1')) {
-        Analytics.capture('contact_resolve', {'kind': 'npub', 'found': true, 'reason': 'offline_fallback'});
-        return Contact(npub: q, name: _short(q));
+        Analytics.capture('contact_resolve', {'kind': 'uid', 'found': true, 'reason': 'offline_fallback'});
+        return Contact(uid: q, name: _short(q));
       }
       Analytics.capture('contact_resolve', {'kind': kind, 'found': false, 'reason': 'error'});
       return null;
@@ -302,17 +302,17 @@ class Directory {
   /// endpoint is unreachable (e.g. not yet deployed), a well-formatted handle is
   /// soft-allowed — the database's UNIQUE constraint still rejects duplicates on
   /// save, so correctness never depends on the check succeeding.
-  static Future<({bool ok, String? message})> checkHandle(String handle, {String? npub}) async {
+  static Future<({bool ok, String? message})> checkHandle(String handle, {String? uid}) async {
     final h = handle.trim().toLowerCase().replaceAll('@', '');
     if (h.isEmpty) return (ok: false, message: null);
     if (!isValidHandle(h)) {
       return (ok: false, message: '3–20 characters: letters, numbers or _, starting with a letter.');
     }
     try {
-      // Pass our own npub so a handle we already own reads as available (yours)
+      // Pass our own uid so a handle we already own reads as available (yours)
       // rather than "taken" — fixes being blocked by your own handle on re-onboard.
-      final mine = (npub != null && npub.isNotEmpty)
-          ? '&npub=${Uri.encodeQueryComponent(npub)}'
+      final mine = (uid != null && uid.isNotEmpty)
+          ? '&uid=${Uri.encodeQueryComponent(uid)}'
           : '';
       final r = await http
           .get(Uri.parse('$kHandleCheckUrl?q=${Uri.encodeQueryComponent(h)}$mine'))
@@ -338,7 +338,7 @@ class Directory {
   /// Returns whether the upsert succeeded plus the HTTP status (409 = handle
   /// taken) so callers like onboarding can react; other callers can ignore it.
   static Future<({bool ok, int status})> registerProfile(
-      {required String npub, String handle = '', String name = '', String email = '', String phone = '',
+      {required String uid, String handle = '', String name = '', String email = '', String phone = '',
        String firstName = '', String lastName = '',
        String? encryptedNsecBackup, String? backupMethod, String? accountKind, String? avatarUrl,
        int? birthYear, String? bio, String? gender}) async {
@@ -380,6 +380,6 @@ class Directory {
     }
   }
 
-  static String _short(String npub) =>
-      npub.length > 16 ? '${npub.substring(0, 10)}…${npub.substring(npub.length - 4)}' : npub;
+  static String _short(String uid) =>
+      uid.length > 16 ? '${uid.substring(0, 10)}…${uid.substring(uid.length - 4)}' : uid;
 }

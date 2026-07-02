@@ -11,14 +11,14 @@ import 'contacts.dart';
 /// Helpers + UI for "unknown number" threads — a caller the AI Receptionist
 /// took a message from who is NOT (yet) one of the owner's AvaTOK contacts.
 ///
-/// A phone-only caller has no AvaTOK account, so there is no Clerk uid / npub to
+/// A phone-only caller has no AvaTOK account, so there is no Clerk uid / uid to
 /// key a [Contact] on. We mint a SYNTHETIC id `tel:<E.164>` instead. That id:
 ///   • de-dupes correctly (one entry per distinct number), and
 ///   • lets the SAME conversation survive a later "Save to contacts" (the thread
 ///     keeps its messages because the conv key is derived from the number, not
 ///     from whether a contact row exists).
 /// If that person later joins AvaTOK we can [ContactsStore.mergeTel] the
-/// `tel:` row into their real npub.
+/// `tel:` row into their real uid.
 ///
 /// CONV KEY: the Worker delivers the receptionist card under server conv
 /// `recept_<owner>__tel:<phone>`; SyncHub maps any non-`dm_` conv to a `g:`
@@ -35,8 +35,8 @@ const String kProvisionalContactHandle = '__recept_unsaved__';
 /// Synthetic contact id for a phone-only caller.
 String telNpub(String e164) => 'tel:$e164';
 
-/// True when [npub] is a synthetic phone-only id.
-bool isTelNpub(String npub) => npub.startsWith('tel:');
+/// True when [uid] is a synthetic phone-only id.
+bool isTelNpub(String uid) => uid.startsWith('tel:');
 
 /// The E.164 number behind a synthetic id, or null if [s] isn't one.
 String? telPhone(String s) => s.startsWith('tel:') ? s.substring(4) : null;
@@ -62,7 +62,7 @@ bool isReceptTelConv(String convKey) =>
 
 /// A provisional auto-created receptionist row (not yet saved by the owner).
 bool isProvisionalContact(Contact c) =>
-    isTelNpub(c.npub) && c.handle == kProvisionalContactHandle;
+    isTelNpub(c.uid) && c.handle == kProvisionalContactHandle;
 
 /// True when the caller behind [e164] is a real, owner-known contact — either an
 /// explicitly-saved phone contact or one promoted to a real AvaTOK account — as
@@ -71,8 +71,8 @@ bool isProvisionalContact(Contact c) =>
 bool callerIsSaved(List<Contact> contacts, String e164) {
   final tel = telNpub(e164);
   for (final c in contacts) {
-    if (c.npub == tel) return c.handle != kProvisionalContactHandle;
-    if (!c.isPhoneOnly && c.phone == e164) return true; // promoted to real npub
+    if (c.uid == tel) return c.handle != kProvisionalContactHandle;
+    if (!c.isPhoneOnly && c.phone == e164) return true; // promoted to real uid
   }
   return false;
 }
@@ -152,7 +152,7 @@ class _SavePhoneContactSheetState extends State<_SavePhoneContactSheet> {
     setState(() => _saving = true);
     final e164 = DeviceContactsService.normPhone(widget.phone);
     final name = _name.text.trim().isEmpty ? formatTelDisplay(e164) : _name.text.trim();
-    final contact = Contact(npub: telNpub(e164), name: name, phone: e164);
+    final contact = Contact(uid: telNpub(e164), name: name, phone: e164);
     try {
       await ContactsStore().add(contact);
       if (_alsoDevice) {

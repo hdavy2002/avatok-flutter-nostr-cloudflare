@@ -198,8 +198,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   _Msg? _editing;
   final _starStore = StarStore();
   Set<String> _starred = {};
-  String? _peerNpub; // 1:1 recipient npub for message notifications
-  List<String> _memberNpubs = []; // group recipient npubs (excl me)
+  String? _peerNpub; // 1:1 recipient uid for message notifications
+  List<String> _memberUids = []; // group recipient uids (excl me)
   String? _convKey; // '1:<hex>' or 'g:<gid>' for read state / unread badges
   PartyRoom? _party;               // PartyKit live layer for this thread (ephemeral, gated)
   StreamSubscription? _partySub;
@@ -447,7 +447,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_sharePresence) _presence!.sendOnline();
     _startPresenceHeartbeat();
     _loadLastSeen();
-    _peerNpub = seed; // contact npub, for message notifications
+    _peerNpub = seed; // contact uid, for message notifications
     _convKey = '1:$peerHex';
     _partyJoin(id.uid); // PartyKit live layer (deal-ready nudge etc.); no-op until flag on
     _loadGuardian();
@@ -528,7 +528,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (_isGroup) {
       final contacts = await ContactsStore().load();
       final names = <String, String>{};
-      for (final c in contacts) { names[c.npub] = c.name; }
+      for (final c in contacts) { names[c.uid] = c.name; }
       if (_meId != null) names[_meId!.uid] = 'You';
       // Merge (don't replace): keep any names already learned from early
       // live reactions / messages (keyed by uid) — Phase 5.
@@ -553,7 +553,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         convKey: 'g:${g.id}')..connect();
     _presence!.events.listen(_onPresence);
     _startPresenceHeartbeat();
-    _memberNpubs = g.members.where((m) => m != id.uid).toList();
+    _memberUids = g.members.where((m) => m != id.uid).toList();
     _convKey = 'g:${g.id}';
     _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
@@ -1463,7 +1463,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _jump();
       if (_convKey != null) DraftStore().set(_convKey!, '');
       _schedulePersist();
-      PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK', preview: t);
+      PushService.notifyMessage(_memberUids, _myName ?? 'AvaTOK', preview: t);
       return;
     }
     if (_realMode && _dm != null) {
@@ -1535,12 +1535,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     IceCache.prefetch(); // warm TURN creds in parallel with the FCM ring
     final video = kind == 'video';
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
-    final to = widget.chat.seed; // for real contacts this is their npub
+    final to = widget.chat.seed; // for real contacts this is their uid
     AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
     // The callee's default ringtone (AI Ringback) — comes back on the /api/call
     // response so the caller hears it locally while ringing.
     String ringbackUrl = '';
-    // Ring the callee's phone via FCM wake (real npub contacts only).
+    // Ring the callee's phone via FCM wake (real uid contacts only).
     if (to.startsWith('user_')) {
       try {
         // 'from' is derived server-side from the NIP-98 signature.
@@ -1581,7 +1581,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         });
       }
     } else {
-      AvaLog.I.log('call', 'NOT ringing — contact seed is not an npub ($to)');
+      AvaLog.I.log('call', 'NOT ringing — contact seed is not an uid ($to)');
     }
     if (!mounted) { _dialing = false; return; }
     // From here the CallScreen mounts (gLiveCallScreens > 0 guards re-entry),
@@ -1837,7 +1837,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   void _notifyRecipients() {
     if (_isGroup) {
-      PushService.notifyMessage(_memberNpubs, _myName ?? 'AvaTOK');
+      PushService.notifyMessage(_memberUids, _myName ?? 'AvaTOK');
     } else if (_peerNpub != null) {
       PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK');
     }
@@ -2100,7 +2100,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             for (final c in contacts)
               ListTile(contentPadding: EdgeInsets.zero, leading: Avatar(seed: c.seed, name: c.name, size: 40),
                 title: Text(c.name, style: ZineText.value(size: 15)),
-                onTap: () { Navigator.pop(ctx); _sendSpecial('card', {'name': c.name, 'npub': c.npub, 'handle': c.handle}, '👤 ${c.name}'); }),
+                onTap: () { Navigator.pop(ctx); _sendSpecial('card', {'name': c.name, 'uid': c.uid, 'handle': c.handle}, '👤 ${c.name}'); }),
           ])),
         ]))));
   }
@@ -2181,7 +2181,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               shape: BoxShape.circle,
               border: Border.all(color: Zine.ink, width: 2),
             ),
-            child: Avatar(seed: (e['npub'] ?? 'c').toString(), name: (e['name'] ?? '').toString(), size: 36),
+            child: Avatar(seed: (e['uid'] ?? 'c').toString(), name: (e['name'] ?? '').toString(), size: 36),
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -2700,9 +2700,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Future<void> _addSharedContact(Map e) async {
-    final npub = (e['npub'] ?? '').toString();
-    if (!npub.startsWith('user_')) return;
-    await ContactsStore().add(Contact(npub: npub, name: (e['name'] ?? 'Contact').toString(), handle: (e['handle'] ?? '').toString()));
+    final uid = (e['uid'] ?? '').toString();
+    if (!uid.startsWith('user_')) return;
+    await ContactsStore().add(Contact(uid: uid, name: (e['name'] ?? 'Contact').toString(), handle: (e['handle'] ?? '').toString()));
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e['name']} added')));
   }
 
@@ -3638,7 +3638,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (widget.chat.group) { _openGroupInfo(); return; }
     if (!widget.chat.seed.startsWith('user_')) return;
     Navigator.push(context, MaterialPageRoute(
-        builder: (_) => ContactProfileScreen(name: widget.chat.name, npub: widget.chat.seed, me: _meId)));
+        builder: (_) => ContactProfileScreen(name: widget.chat.name, uid: widget.chat.seed, me: _meId)));
   }
 
   static const _reactionSounds = {
@@ -4061,7 +4061,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// forward the media with no caption.
   Future<void> _doForward(_Msg m, Contact c, {String? caption}) async {
     final id = _meId;
-    final peerHex = c.npub;
+    final peerHex = c.uid;
     if (id == null || peerHex.isEmpty) return;
     final Map<String, dynamic> payload;
     if (m.media != null) {
@@ -4083,7 +4083,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         'to': peerHex, 'kind': 'text', 'body': jsonEncode(payload),
         'client_id': 'fwd_${DateTime.now().millisecondsSinceEpoch}',
       });
-      PushService.notifyMessage([c.npub], _myName ?? 'AvaTOK');
+      PushService.notifyMessage([c.uid], _myName ?? 'AvaTOK');
     } catch (_) {}
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Forwarded to ${c.name}')));
   }

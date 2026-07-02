@@ -212,7 +212,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         displayName: fullName, email: email, phone: phone, avatarUrl: _avatarUrl,
         bio: bio, birthYear: by, gender: _gender));
     await Directory.registerProfile(
-        npub: id.uid, name: fullName, firstName: first, lastName: last,
+        uid: id.uid, name: fullName, firstName: first, lastName: last,
         email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio, gender: _gender);
     Analytics.capture('profile_completed', {
       'has_photo': true, 'via': 'mandatory_gate', 'email': email,

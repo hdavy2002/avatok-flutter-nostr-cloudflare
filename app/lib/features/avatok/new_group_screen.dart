@@ -31,18 +31,18 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
   /// Only real AvaTOK accounts can be group members — phone-only receptionist
   /// contacts (no account) are excluded from the picker.
   List<Contact> get _selectable =>
-      widget.contacts.where((c) => !c.isPhoneOnly && c.npub.isNotEmpty).toList();
+      widget.contacts.where((c) => !c.isPhoneOnly && c.uid.isNotEmpty).toList();
 
   bool _creating = false;
 
   Future<void> _create() async {
     if (_creating) return;
     setState(() => _creating = true);
-    // Members are Clerk uids (Contact.npub). Phone-only callers have no account
+    // Members are Clerk uids (Contact.uid). Phone-only callers have no account
     // and can't be group members, so they're excluded.
     final memberUids = widget.contacts
-        .where((c) => _picked.contains(c.npub) && !c.isPhoneOnly && c.npub.isNotEmpty)
-        .map((c) => c.npub)
+        .where((c) => _picked.contains(c.uid) && !c.isPhoneOnly && c.uid.isNotEmpty)
+        .map((c) => c.uid)
         .toList();
     // Create the group SERVER-SIDE so membership exists in D1 — this is what makes
     // messages fan out to everyone and makes the group appear (with an offline
@@ -114,7 +114,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                     itemCount: _selectable.length,
                     itemBuilder: (_, i) {
                       final c = _selectable[i];
-                      final on = _picked.contains(c.npub);
+                      final on = _picked.contains(c.uid);
                       return CheckboxListTile(
                         value: on,
                         activeColor: Zine.ink,
@@ -122,7 +122,7 @@ class _NewGroupScreenState extends State<NewGroupScreen> {
                         side: const BorderSide(color: Zine.ink, width: 2),
                         controlAffinity: ListTileControlAffinity.trailing,
                         onChanged: (v) => setState(() =>
-                            v == true ? _picked.add(c.npub) : _picked.remove(c.npub)),
+                            v == true ? _picked.add(c.uid) : _picked.remove(c.uid)),
                         secondary: Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,

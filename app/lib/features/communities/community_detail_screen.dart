@@ -43,7 +43,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   }
 
   /// Community members resolved to Clerk uids (the addressing id). Phone-only and
-  /// the legacy self-as-npub entry are skipped; GroupApi adds me as owner.
+  /// the legacy self-as-uid entry are skipped; GroupApi adds me as owner.
   List<String> get _memberUids =>
       _c.members.where((m) => m.startsWith('user_')).toList();
 
@@ -287,7 +287,7 @@ class _MemberPickerState extends State<_MemberPicker> {
   final Set<String> _picked = {};
   @override
   Widget build(BuildContext context) {
-    final selectable = widget.contacts.where((c) => !widget.already.contains(c.npub)).toList();
+    final selectable = widget.contacts.where((c) => !widget.already.contains(c.uid)).toList();
     return SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Padding(
@@ -313,9 +313,9 @@ class _MemberPickerState extends State<_MemberPicker> {
             itemCount: selectable.length,
             itemBuilder: (_, i) {
               final c = selectable[i];
-              final on = _picked.contains(c.npub);
+              final on = _picked.contains(c.uid);
               return ListTile(
-                onTap: () => setState(() => on ? _picked.remove(c.npub) : _picked.add(c.npub)),
+                onTap: () => setState(() => on ? _picked.remove(c.uid) : _picked.add(c.uid)),
                 leading: Container(
                   decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Zine.ink, width: 2)),
                   child: Avatar(seed: c.seed, name: c.name, size: 42),

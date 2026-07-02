@@ -119,7 +119,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       final c = d.listing.creator;
       if (c.uid.isNotEmpty) {
         await ContactsStore().add(Contact(
-          npub: c.uid,
+          uid: c.uid,
           name: c.name ?? c.handle ?? 'Seller',
           avatarUrl: c.avatarUrl ?? '',
           number: c.avatokNumber ?? '',

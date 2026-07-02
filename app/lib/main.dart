@@ -289,7 +289,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       AvaLog.I.log('boot', 'clerk currentUser (online) ${DateTime.now().difference(t0).inMilliseconds}ms signedIn=${cu != null}');
       AccountScope.id = cu?.id; // scope the Nostr identity to this account
       if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
-      // Bridge telemetry: link the npub distinct_id to the Clerk uid the Worker
+      // Bridge telemetry: link the uid distinct_id to the Clerk uid the Worker
       // stamps, so client + server events land on one person in PostHog.
       if (cu?.id != null && cu!.id.isNotEmpty) unawaited(Analytics.aliasClerk(cu.id));
       signedIn = cu != null;
@@ -310,7 +310,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       final cu = await _clerk.currentUser();
       AvaLog.I.log('boot', 'clerk validate (bg) ${DateTime.now().difference(t0).inMilliseconds}ms signedIn=${cu != null}');
       if (cu == null) { await _signOut(); return; } // session revoked server-side
-      // Bridge npub ↔ Clerk uid for cross-stack telemetry joins (every app open
+      // Bridge uid ↔ Clerk uid for cross-stack telemetry joins (every app open
       // hits this background-validate path).
       if (cu.id.isNotEmpty) unawaited(Analytics.aliasClerk(cu.id));
       if (cu.id != AccountScope.id) { // account changed under us — re-route
@@ -380,7 +380,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // bounced back through onboarding on the next launch.
     if (apps.isNotEmpty) await _onb.setEnabledApps(apps);
     await _onb.setDone();
-    try { await _idStore.load(); } catch (_) {} // migrates the guest npub forward
+    try { await _idStore.load(); } catch (_) {} // migrates the guest uid forward
 
     // Keep their reserved @handle on the profile, then merge it server-side.
     if (guestHandle != null && guestHandle.isNotEmpty) {

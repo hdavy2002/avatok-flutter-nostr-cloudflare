@@ -369,7 +369,7 @@ class AvaProfileMemory {
 
   static final Map<String, List<String>> _lexicon = {
     'AI': ['ai', 'llm', 'model', 'gpt', 'gemini', 'gemma', 'inference', 'embedding', 'embeddings'],
-    'Nostr': ['nostr', 'relay', 'relays', 'npub'],
+    'Nostr': ['nostr', 'relay', 'relays', 'uid'],
     'Cloudflare': ['cloudflare', 'worker', 'workers', 'd1', 'r2', 'vectorize', 'wrangler'],
     'Coding': ['code', 'bug', 'api', 'flutter', 'dart', 'deploy', 'function', 'database'],
     'Startup': ['startup', 'founder', 'business', 'revenue', 'pricing', 'investor', 'investors'],

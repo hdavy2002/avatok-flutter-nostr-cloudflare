@@ -64,7 +64,7 @@ class DeepLinks {
             ? card.name
             : [card.firstName, card.lastName].where((s) => s.isNotEmpty).join(' ').trim();
         final contact = Contact(
-          npub: card.uid,
+          uid: card.uid,
           name: name.isNotEmpty ? name : (card.email.isNotEmpty ? card.email : card.number),
           email: card.email,
           avatarUrl: card.avatarUrl,

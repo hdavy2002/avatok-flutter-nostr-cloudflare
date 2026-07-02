@@ -21,7 +21,7 @@ class CallsScreen extends StatefulWidget {
 class _CallsScreenState extends State<CallsScreen> {
   final _store = CallLogStore();
   List<CallEntry> _calls = [];
-  Map<String, String> _avatars = {}; // npub → photo URL (from contacts)
+  Map<String, String> _avatars = {}; // uid → photo URL (from contacts)
   bool _loaded = false;
   StreamSubscription<void>? _changeSub;
 
@@ -43,7 +43,7 @@ class _CallsScreenState extends State<CallsScreen> {
   Future<void> _load() async {
     final c = await _store.load();
     final contacts = await ContactsStore().load();
-    final avatars = {for (final x in contacts) if (x.avatarUrl.isNotEmpty) x.npub: x.avatarUrl};
+    final avatars = {for (final x in contacts) if (x.avatarUrl.isNotEmpty) x.uid: x.avatarUrl};
     if (mounted) setState(() { _calls = c; _avatars = avatars; _loaded = true; });
   }
 

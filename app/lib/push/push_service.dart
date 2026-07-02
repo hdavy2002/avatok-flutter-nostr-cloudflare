@@ -604,9 +604,9 @@ class PushService {
   }
 
   /// Best-effort: nudge recipients that a new message arrived (content-less).
-  static void notifyMessage(List<String> npubs, String fromName, {String? preview}) {
-    if (npubs.isEmpty) return;
-    final body = <String, dynamic>{'to': npubs, 'fromName': fromName};
+  static void notifyMessage(List<String> uids, String fromName, {String? preview}) {
+    if (uids.isEmpty) return;
+    final body = <String, dynamic>{'to': uids, 'fromName': fromName};
     final p = (preview ?? '').trim();
     // Include a short preview so the recipient can read the message from the
     // notification shade (WhatsApp-style). Capped server-side too.
@@ -718,8 +718,8 @@ class PushService {
     ));
   }
 
-  /// Register this device's FCM token against the user's npub.
-  static Future<void> registerToken(String npub) async {
+  /// Register this device's FCM token against the user's uid.
+  static Future<void> registerToken(String uid) async {
     try {
       var token = await FirebaseMessaging.instance.getToken();
       if (token == null) {
@@ -750,7 +750,7 @@ class PushService {
     }
   }
 
-  /// POST the current token to the server (npub is derived server-side from the
+  /// POST the current token to the server (uid is derived server-side from the
   /// NIP-98 signature). Used by registerToken AND by onTokenRefresh.
   static Future<void> _postToken(String token) async {
     final res = await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});

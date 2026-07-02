@@ -44,6 +44,8 @@ export class StreamSessionDO {
     this.sql.exec(
       "CREATE TABLE IF NOT EXISTS meta (k INTEGER PRIMARY KEY, creator_uid TEXT, pending INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, gifters INTEGER NOT NULL DEFAULT 0)",
     );
+    // In-place migration for DOs created before the npub→uid rename (harmless no-op otherwise).
+    try { this.sql.exec("ALTER TABLE meta RENAME COLUMN creator_npub TO creator_uid"); } catch { /* already migrated / fresh DO */ }
     this.sql.exec("INSERT OR IGNORE INTO meta (k, creator_uid, pending, total, gifters) VALUES (1, NULL, 0, 0, 0)");
     // Phase 7 session + room state (DO storage — survives hibernation).
     this.sql.exec(

@@ -17,7 +17,7 @@ import 'contacts.dart';
 /// — discovery catches up a moment later). Fully skippable ("Maybe later").
 ///
 /// Returns the chosen handle on success, or null if the user skipped.
-Future<String?> showHandlePromptSheet(BuildContext context, {required String npub}) {
+Future<String?> showHandlePromptSheet(BuildContext context, {required String uid}) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
@@ -26,13 +26,13 @@ Future<String?> showHandlePromptSheet(BuildContext context, {required String npu
       side: BorderSide(color: Zine.ink, width: Zine.bw),
       borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
     ),
-    builder: (_) => _HandlePromptSheet(npub: npub),
+    builder: (_) => _HandlePromptSheet(uid: uid),
   );
 }
 
 class _HandlePromptSheet extends StatefulWidget {
-  final String npub;
-  const _HandlePromptSheet({required this.npub});
+  final String uid;
+  const _HandlePromptSheet({required this.uid});
   @override
   State<_HandlePromptSheet> createState() => _HandlePromptSheetState();
 }
@@ -63,7 +63,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
     setState(() { _available = null; _msg = null; _checking = v.trim().isNotEmpty; });
     if (v.trim().isEmpty) { setState(() => _checking = false); return; }
     _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final res = await Directory.checkHandle(_ctrl.text, npub: widget.npub);
+      final res = await Directory.checkHandle(_ctrl.text, uid: widget.uid);
       if (!mounted) return;
       setState(() { _checking = false; _available = res.ok; _msg = res.message; });
     });
@@ -81,7 +81,7 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
       await ProfileStore().save(prof.copyWith(handle: handle));
       // Publish to the directory in the BACKGROUND — don't block closing the sheet.
       unawaited(Directory.registerProfile(
-          npub: widget.npub, handle: handle, name: prof.displayName));
+          uid: widget.uid, handle: handle, name: prof.displayName));
     } catch (_) {/* local save is best-effort; the field is still set in UI */}
     Analytics.capture('handle_prompt_set', {'len': handle.length});
     if (!mounted) return;

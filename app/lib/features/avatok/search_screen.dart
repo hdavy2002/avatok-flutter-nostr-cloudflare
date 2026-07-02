@@ -89,11 +89,11 @@ class _SearchScreenState extends State<SearchScreen> {
     final results = <Contact>[];
     if (isEmail || isNumber) {
       final hit = await Directory.resolve(q);
-      if (hit != null && hit.npub.isNotEmpty) results.add(hit);
+      if (hit != null && hit.uid.isNotEmpty) results.add(hit);
     }
     // Any other directory matches (exact-key search; names removed server-side).
     for (final c in await Directory.search(q)) {
-      if (!results.any((x) => x.npub == c.npub)) results.add(c);
+      if (!results.any((x) => x.uid == c.uid)) results.add(c);
     }
     if (!mounted) return;
     setState(() { _directory = results; _searchingDir = false; });
@@ -183,7 +183,7 @@ class _SearchScreenState extends State<SearchScreen> {
     if (convKey.startsWith('1:')) {
       final hex = convKey.substring(2);
       for (final c in widget.contacts) {
-        if (c.npub == hex) {
+        if (c.uid == hex) {
           return Chat(name: c.name.isEmpty ? 'Contact' : c.name, seed: c.seed, last: '', time: '');
         }
       }
@@ -192,9 +192,9 @@ class _SearchScreenState extends State<SearchScreen> {
     return null;
   }
 
-  String _hexKey(String npub) => '1:$npub';
+  String _hexKey(String uid) => '1:$uid';
 
-  void _openContactChat(String npub, String name, String seed) {
+  void _openContactChat(String uid, String name, String seed) {
     final chat = Chat(name: name.isEmpty ? 'Contact' : name, seed: seed, last: '', time: '');
     Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(chat: chat)));
   }
@@ -214,13 +214,13 @@ class _SearchScreenState extends State<SearchScreen> {
 
     // --- AvaTok contacts (local) ---
     final contactHits = widget.contacts.where((c) =>
-        _matches(c.name) || _matches(c.email) || _matches(c.handle) || _matches(c.npub)).toList();
+        _matches(c.name) || _matches(c.email) || _matches(c.handle) || _matches(c.uid)).toList();
 
     // --- Groups ---
     final groupHits = widget.groups.where((g) => _matches(g.name)).toList();
 
     // --- Device contacts (phone address book) ---
-    final knownNpubs = widget.contacts.map((c) => c.npub).toSet();
+    final knownUids = widget.contacts.map((c) => c.uid).toSet();
     final deviceHits = _device.where((d) {
       if (_q.isEmpty) return true;
       final nameHit = d.name.toLowerCase().contains(ql);
@@ -229,7 +229,7 @@ class _SearchScreenState extends State<SearchScreen> {
       return nameHit || phoneHit;
     }).toList();
     // Split into on-AvaTok (already a contact?) vs invitable.
-    final onAvatok = deviceHits.where((d) => d.onAvatok && !knownNpubs.contains(d.uid)).toList();
+    final onAvatok = deviceHits.where((d) => d.onAvatok && !knownUids.contains(d.uid)).toList();
     final invitable = deviceHits.where((d) => !d.onAvatok).toList();
 
     final showChats = _scope == _Scope.all || _scope == _Scope.chats;
@@ -324,7 +324,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   if (_searchingDir)
                     const Padding(padding: EdgeInsets.all(12),
                         child: LinearProgressIndicator(color: Zine.blueInk, backgroundColor: Zine.paper2)),
-                  for (final c in _directory.where((c) => !knownNpubs.contains(c.npub))) _avatokRow(c),
+                  for (final c in _directory.where((c) => !knownUids.contains(c.uid))) _avatokRow(c),
                 ],
                 if (showContacts && invitable.isNotEmpty) ...[
                   _section('Invite to AvaTok'),
@@ -376,7 +376,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   // An AvaTok contact (local or directory) row with status badges.
   Widget _avatokRow(Contact c) {
-    final k = _hexKey(c.npub);
+    final k = _hexKey(c.uid);
     final blocked = _flags['blocked']!.contains(k);
     final archived = _flags['archived']!.contains(k);
     final muted = _flags['muted']!.contains(k);
@@ -385,7 +385,7 @@ class _SearchScreenState extends State<SearchScreen> {
       title: Text(c.name.isNotEmpty ? c.name : c.subtitle, style: ZineText.value(size: 15)),
       subtitle: Text(c.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: ZineText.sub(size: 12.5)),
       trailing: _badges(blocked: blocked, archived: archived, muted: muted),
-      onTap: () => _openContactChat(c.npub, c.name, c.seed),
+      onTap: () => _openContactChat(c.uid, c.name, c.seed),
     );
   }
 

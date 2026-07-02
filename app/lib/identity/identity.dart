@@ -11,7 +11,7 @@ import '../core/api_auth.dart';
 /// that the messaging/backup layers address by. [privHex] is opaque local key
 /// material retained ONLY as a legacy vault-decryption key (see AccountKey's
 /// dual-key set); [pubHex] is a derived, non-secret id kept for status
-/// attribution and as a uid fallback. (Nostr — npub/nsec/secp keys — removed
+/// attribution and as a uid fallback. (Nostr — uid/nsec/secp keys — removed
 /// 2026-07-02.)
 class Identity {
   final String privHex;

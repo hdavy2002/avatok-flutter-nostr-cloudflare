@@ -20,10 +20,10 @@ import 'contacts.dart';
 /// The network identity shown is the contact's AvaTOK number.
 class ContactProfileScreen extends StatefulWidget {
   final String name;
-  final String npub; // contact routing id (Clerk uid)
+  final String uid; // contact routing id (Clerk uid)
   final String? handle; // DEPRECATED; ignored
   final Identity? me;
-  const ContactProfileScreen({super.key, required this.name, required this.npub, this.handle, this.me});
+  const ContactProfileScreen({super.key, required this.name, required this.uid, this.handle, this.me});
   @override
   State<ContactProfileScreen> createState() => _ContactProfileScreenState();
 }
@@ -37,10 +37,10 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   /// A name that is really just the raw routing id (e.g. "user_3FcSU…tojL") is
   /// no name at all — show a friendly label resolved from the saved contact or
   /// the directory instead of a wall of base-62. Empty / equal-to-id also count.
-  static bool _looksLikeRawId(String name, String npub) {
+  static bool _looksLikeRawId(String name, String uid) {
     final n = name.trim();
     if (n.isEmpty) return true;
-    if (n == npub) return true;
+    if (n == uid) return true;
     if (n.startsWith('user_')) return true;
     // Shortened form the UI renders, e.g. "user_3FcSU…tojL".
     if (n.contains('…') && n.startsWith('user')) return true;
@@ -50,7 +50,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   @override
   void initState() {
     super.initState();
-    final peerHex = widget.npub;
+    final peerHex = widget.uid;
     if (peerHex.isNotEmpty) {
       GroupStore().load().then((groups) {
         if (mounted) setState(() => _shared = groups.where((g) => g.members.contains(peerHex)).toList());
@@ -58,7 +58,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     }
     // If we were handed a raw id instead of a real name, recover one. Prefer the
     // user's OWN saved contact name (e.g. "JDee"), then the directory profile.
-    if (_looksLikeRawId(widget.name, widget.npub)) {
+    if (_looksLikeRawId(widget.name, widget.uid)) {
       _recoverName();
     }
     // Resolve the contact's AvaTOK number for display (best-effort).
@@ -66,7 +66,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
     // refines them). The saved contact usually already has the AvaTOK number, so
     // we show it right away instead of a raw "user_…" id.
     ContactsStore().load().then((cs) {
-      final m = cs.where((c) => c.npub == widget.npub).toList();
+      final m = cs.where((c) => c.uid == widget.uid).toList();
       if (mounted && m.isNotEmpty) {
         setState(() {
           if (m.first.number.isNotEmpty) _number = m.first.number;
@@ -74,14 +74,14 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         });
       }
     });
-    Directory.resolve(widget.npub).then((c) {
+    Directory.resolve(widget.uid).then((c) {
       if (!mounted || c == null) return;
       setState(() {
         if (c.number.isNotEmpty) _number = c.number;
         if (c.email.isNotEmpty) _email = c.email;
         // Directory name is a fallback when no saved contact matched.
-        if (_looksLikeRawId(_name, widget.npub) &&
-            c.name.isNotEmpty && !_looksLikeRawId(c.name, widget.npub)) {
+        if (_looksLikeRawId(_name, widget.uid) &&
+            c.name.isNotEmpty && !_looksLikeRawId(c.name, widget.uid)) {
           _name = c.name;
         }
       });
@@ -91,8 +91,8 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   Future<void> _recoverName() async {
     try {
       final contacts = await ContactsStore().load();
-      final match = contacts.where((c) => c.npub == widget.npub).toList();
-      if (match.isNotEmpty && !_looksLikeRawId(match.first.name, widget.npub)) {
+      final match = contacts.where((c) => c.uid == widget.uid).toList();
+      if (match.isNotEmpty && !_looksLikeRawId(match.first.name, widget.uid)) {
         if (mounted) setState(() => _name = match.first.name);
       }
     } catch (_) {/* best-effort — directory resolve still runs as a fallback */}
@@ -101,7 +101,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
   /// The big title: a real name when we have one, otherwise the AvaTOK number,
   /// and only as a last resort a neutral "AvaTOK user" — never a raw user_… id.
   String get _displayName {
-    if (!_looksLikeRawId(_name, widget.npub)) return _name;
+    if (!_looksLikeRawId(_name, widget.uid)) return _name;
     if (_number.isNotEmpty) return _number;
     return 'AvaTOK user';
   }
@@ -124,7 +124,7 @@ class _ContactProfileScreenState extends State<ContactProfileScreen> {
         Center(
           child: Container(
             decoration: BoxDecoration(shape: BoxShape.circle, border: Zine.border, boxShadow: Zine.shadowSm),
-            child: Avatar(seed: widget.npub, name: _displayName, size: 96),
+            child: Avatar(seed: widget.uid, name: _displayName, size: 96),
           ),
         ),
         const SizedBox(height: 14),

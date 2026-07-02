@@ -12,7 +12,7 @@ import 'library_ingest.dart';
 class LibraryItem {
   final String id;
   final String category; // image|video|document|audio|other
-  final String key; // content-addressed R2 path (u/<npub>/<kind>/<hash>)
+  final String key; // content-addressed R2 path (u/<uid>/<kind>/<hash>)
   final String displayUrl;
   final String? thumbnailUrl;
   final String mime;
@@ -103,7 +103,7 @@ class AppNode {
 }
 
 /// Client for the AvaLibrary cross-app file manager. Dual-auth via [ApiAuth];
-/// the server scopes everything to the caller's npub. Tree is cached local-first
+/// the server scopes everything to the caller's uid. Tree is cached local-first
 /// (account-scoped) so the screen paints instantly before the network returns.
 class LibraryApi {
   static const _s = FlutterSecureStorage(mOptions: MacOsOptions(useDataProtectionKeyChain: false), 

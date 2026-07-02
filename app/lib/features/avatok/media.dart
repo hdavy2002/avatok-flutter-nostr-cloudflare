@@ -115,7 +115,7 @@ class MediaService {
     AvaLog.I.log('media', 'upload ok kind=${kind.name} ${bytes.length}B key=${_short((j['key'] ?? j['hash'] ?? '').toString())}');
     final media = ChatMedia(
       kind: kind,
-      // `key` is the per-user R2 path (u/<npub>/<hash>); downloadUrl is built from it.
+      // `key` is the per-user R2 path (u/<uid>/<hash>); downloadUrl is built from it.
       id: (j['key'] ?? j['hash'] ?? j['id']).toString(),
       keyB64: base64Encode(keyBytes),
       nonceB64: base64Encode(nonce),
