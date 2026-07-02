@@ -112,13 +112,8 @@ bool _isTransientNetworkError(Object error) {
     'HandshakeException',
     'TimeoutException',
     'HttpException',
-    // Ably realtime is a best-effort presence/online-status transport being
-    // retired in favour of PartyKit. Its lifecycle races ("not currently
-    // attached", "detached or failed state", presence enter/leave on a
-    // reconnecting channel) surfaced here as UNCAUGHT and polluted the crash
-    // dashboard (hundreds/week on 0.1.17) — none of them break the app. Treat
-    // every AblyException as a transient, non-fatal transport error.
-    'AblyException',
+    // (Ably was fully removed; its transient-error suppression entry was dropped
+    // in [P0-CLEAN-3]. PartyKit is the ephemeral realtime layer now.)
   ];
   for (final t in typeMarkers) {
     if (type.contains(t)) return true;
