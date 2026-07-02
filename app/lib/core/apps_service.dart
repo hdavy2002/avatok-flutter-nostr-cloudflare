@@ -60,10 +60,15 @@ class AppsService {
 
   Future<bool> aiConnected() => _ai.isConnected();
 
-  /// Which toolkit slugs the user has connected (OAuth complete).
-  Future<Set<String>> status() async {
+  /// Which toolkit slugs the user has connected (OAuth complete). [fresh] adds
+  /// `?fresh=1` so the Worker bypasses its 5-min connection cache and re-reads
+  /// from Composio — used right after an OAuth return so a just-connected app
+  /// lights up immediately instead of waiting out the cache TTL.
+  Future<Set<String>> status({bool fresh = false}) async {
     try {
-      final res = await ApiAuth.getSigned(_url(AvaApi.appsStatus), timeout: const Duration(seconds: 20));
+      final base = _url(AvaApi.appsStatus);
+      final url = fresh ? '$base?fresh=1' : base;
+      final res = await ApiAuth.getSigned(url, timeout: const Duration(seconds: 20));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (j['connected'] as List?)?.map((e) => e.toString().toLowerCase()) ?? const [];
       return list.toSet();

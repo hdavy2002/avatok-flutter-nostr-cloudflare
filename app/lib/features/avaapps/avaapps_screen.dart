@@ -60,15 +60,16 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _awaitingConnect) {
       _awaitingConnect = false;
-      _load();
+      // Just returned from an OAuth tab → force-refresh past the server cache.
+      _load(fresh: true);
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool fresh = false}) async {
     final t0 = DateTime.now();
     final results = await Future.wait([
       AppsService.I.catalog(),
-      AppsService.I.status(),
+      AppsService.I.status(fresh: fresh),
       MoneyApi.balance(),
     ]);
     if (!mounted) return;
@@ -191,7 +192,8 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     ]) {
       await Future.delayed(delay);
       if (!mounted) return;
-      final connected = await AppsService.I.status();
+      // Post-OAuth poll → bypass the server connection cache each attempt.
+      final connected = await AppsService.I.status(fresh: true);
       if (!mounted) return;
       final justConnected =
           connected.contains(app.slug) && !_connected.contains(app.slug);
