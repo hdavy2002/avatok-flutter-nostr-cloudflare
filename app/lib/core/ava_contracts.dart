@@ -88,6 +88,7 @@ class AvaApi {
   static const String driveBackupEnsure = '/api/ava/drive/backup/ensure';
   static const String driveBackupUpload = '/api/ava/drive/backup/upload';
   static const String driveBackupDownload = '/api/ava/drive/backup/download';
+  static const String driveBackupList = '/api/ava/drive/backup/list';
 
   /// AvaChat — talk-to-Ava conversation history (cloud backup in D1).
   static const String chatHistory = '/api/ava/chat/history';

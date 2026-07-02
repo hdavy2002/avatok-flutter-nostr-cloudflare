@@ -102,7 +102,7 @@ import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill } from "./route
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun, avaGenuiAction } from "./routes/ava_apps"; // AvaApps (Composio)
 import { avaGenuiThumb } from "./routes/genui_thumb"; // GenUI preview-thumbnail proxy
 import { avaEmailList, avaEmailGet, avaEmailSpam, avaEmailTrash, avaEmailReply } from "./routes/ava_email"; // in-chat email (Composio Gmail)
-import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, driveBackupUploadRoute, driveBackupDownloadRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
+import { driveStatus, driveListRoute, driveUploadRoute, driveBackupEnsureRoute, driveBackupUploadRoute, driveBackupDownloadRoute, driveBackupListRoute } from "./routes/ava_drive"; // AvaTOK Drive storage
 import { avaChatHistorySave, avaChatHistoryGet, avaChatHistoryMeta } from "./routes/ava_chat_history"; // AvaChat history (D1)
 import { avaThreadTurn } from "./routes/ava_thread";    // P3
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
@@ -320,6 +320,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/drive/backup/ensure" && req.method === "POST") return await driveBackupEnsureRoute(req, env);
       if (p === "/api/ava/drive/backup/upload" && req.method === "POST") return await driveBackupUploadRoute(req, env);
       if (p === "/api/ava/drive/backup/download" && req.method === "GET") return await driveBackupDownloadRoute(req, env);
+      if (p === "/api/ava/drive/backup/list" && req.method === "GET") return await driveBackupListRoute(req, env);
       if (p === "/api/ava/chat/history/meta" && req.method === "POST") return await avaChatHistoryMeta(req, env);
       if (p === "/api/ava/chat/history" && req.method === "POST") return await avaChatHistorySave(req, env);
       if (p === "/api/ava/chat/history" && req.method === "GET") return await avaChatHistoryGet(req, env);

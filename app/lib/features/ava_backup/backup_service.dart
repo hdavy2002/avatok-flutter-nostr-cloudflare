@@ -9,9 +9,11 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/account_storage.dart';
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_contracts.dart';
 import '../../core/config.dart';
+import '../../core/db.dart';
 import '../../core/drive_service.dart';
 import '../../identity/identity.dart';
 
@@ -69,19 +71,83 @@ class BackupService {
     bits: 256,
   );
 
-  // ── passphrase (per-account, secure storage) ──────────────────────────────
+  // ── passphrase (per-account, secure storage + SERVER ESCROW) ──────────────
+  //
+  // NEW-PHONE RESTORE FIX: the passphrase used to live ONLY in secure storage,
+  // which does not survive an uninstall (Android keystore) or exist on a new
+  // device — so the one scenario backups exist for (reinstall / new phone) was
+  // exactly the one where the blob could no longer be decrypted. The passphrase
+  // is now ALSO escrowed server-side (POST /api/keybackup?kind=bk), wrapped
+  // under KEY_WRAP_MASTER per account — the same model as the aek escrow. The
+  // user's Drive holds the ciphertext, our D1 holds the wrapped key; neither
+  // alone can read a backup, and a Clerk sign-in recovers both. The server
+  // NEVER overwrites an existing bk escrow (first write wins), so a freshly
+  // generated local passphrase can never orphan the backups already in Drive —
+  // instead the client ADOPTS the escrowed value below.
 
-  /// The account's backup passphrase, generating + persisting a random one on
-  /// first use. Account-scoped so a parent + each child keep distinct keys.
+  static String get _escrowUrl => '$kKeyBackupUrl?kind=bk';
+
+  /// The escrowed passphrase for this account, or null (none / offline).
+  Future<String?> _escrowFetch() async {
+    try {
+      final r = await ApiAuth.getSigned(_escrowUrl, timeout: const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (j['found'] != true) return null;
+      final b64 = (j['aek'] ?? '').toString();
+      if (b64.isEmpty) return null;
+      final p = utf8.decode(base64.decode(b64));
+      return p.isEmpty ? null : p;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Escrow [p] server-side (idempotent; the server keeps the FIRST value).
+  Future<void> _escrowPut(String p) async {
+    try {
+      await ApiAuth.postJson(_escrowUrl, {'aek': base64.encode(utf8.encode(p))},
+          timeout: const Duration(seconds: 15));
+    } catch (_) {/* best-effort — retried on every backup */}
+  }
+
+  // Per-session memo so a media backup of N files does ONE escrow round-trip,
+  // not N (the escrow GET is rate-limited). Invalidated on account switch.
+  String? _passMemo;
+  String? _passMemoScope;
+
+  /// The account's backup passphrase. Resolution order keeps every device on
+  /// ONE key per account: local value → server escrow (adopt) → generate new
+  /// (store + escrow). Called on every backup so escrow/local converge even if
+  /// an earlier escrow attempt was offline.
   Future<String> _passphrase() async {
     final key = scopedKey(_kPassKey);
+    final scope = AccountScope.id ?? 'default';
+    if (_passMemo != null && _passMemoScope == scope) return _passMemo!;
     var p = await _s.read(key: key);
+    // Reconcile with the escrow. If the server already holds a (different)
+    // passphrase, the ESCROWED one wins — it is the only key that can open the
+    // backups already sitting in Drive/R2, and the server refuses overwrites.
+    final escrowed = await _escrowFetch();
+    if (escrowed != null && escrowed.isNotEmpty) {
+      if (p != escrowed) {
+        await _s.write(key: key, value: escrowed);
+        if (p != null && p.isNotEmpty) {
+          Analytics.capture('backup_key_adopted_from_escrow', {'had_local': true});
+        }
+        p = escrowed;
+      }
+      _passMemo = p; _passMemoScope = scope;
+      return p!;
+    }
     if (p == null || p.isEmpty) {
       final r = Random.secure();
       final bytes = Uint8List.fromList(List<int>.generate(32, (_) => r.nextInt(256)));
       p = base64Url.encode(bytes);
       await _s.write(key: key, value: p);
     }
+    await _escrowPut(p); // no escrow yet (or offline GET) → publish ours
+    _passMemo = p; _passMemoScope = scope;
     return p;
   }
 
@@ -153,11 +219,21 @@ class BackupService {
     return Uint8List.fromList(await f.readAsBytes());
   }
 
-  /// Overwrite the on-device SQLite with restored bytes. The caller is expected
-  /// to close/reopen [Db.I] after this (account-scoped DB rebuilds on access).
+  /// Overwrite the on-device SQLite with restored bytes — SAFELY:
+  ///  1. close the open drift handle (an open connection flushing stale pages
+  ///     over the new file was the old corruption risk),
+  ///  2. remove any -wal/-shm sidecars (a stale WAL would be replayed over the
+  ///     restored bytes on next open),
+  ///  3. write the file, then let the next [Db.I] access reopen it fresh.
+  /// No app restart needed any more.
   Future<void> importPlain(Uint8List plain) async {
     if (plain.isEmpty) return;
+    await Db.reset();
     final f = await _dbFile();
+    for (final ext in const ['-wal', '-shm', '-journal']) {
+      final side = File('${f.path}$ext');
+      try { if (await side.exists()) await side.delete(); } catch (_) {/* best-effort */}
+    }
     await f.writeAsBytes(plain, flush: true);
   }
 
@@ -252,7 +328,12 @@ class BackupService {
       if (!r.ok && r.reason == 'premium_required') {
         r = await backupToDrive(); // free lane for non-premium users
       }
-      if (r.ok) await _s.write(key: key, value: now.toString());
+      if (r.ok) {
+        await _s.write(key: key, value: now.toString());
+        // Media pass (incremental — already-uploaded blobs are skipped, so the
+        // steady-state daily cost is one Drive list call). Soft-fail.
+        await backupMediaToDrive();
+      }
     } catch (_) { /* best-effort; retry next launch */ }
   }
 
@@ -298,6 +379,139 @@ class BackupService {
     final scope = (AccountScope.id == null || AccountScope.id!.isEmpty) ? 'default' : AccountScope.id!;
     return 'avatok-backup-$scope.avbk';
   }
+
+  // ── media backup / restore (Drive, incremental) ───────────────────────────
+  //
+  // Chat media plaintext is cached per account on-device (MediaService →
+  // <appSupport>/media/<scope>/<hash>) and its ciphertext lives content-
+  // addressed on R2, with per-blob keys riding inside message envelopes (in the
+  // DB backup). So after a DB restore, media CAN lazily re-download from R2 —
+  // this Drive lane is the belt-and-braces copy for the day an R2 blob is gone.
+  // Each cache file is encrypted with the SAME escrowed backup key (AVBK1) and
+  // uploaded once: content-addressed names make the backup incremental — files
+  // already listed in Drive are skipped. Per-file cap keeps the Worker's
+  // base64-JSON proxy well inside its memory/time limits; capped-out files are
+  // still recoverable from R2.
+
+  static const int _kMediaMaxBytes = 40 * 1024 * 1024; // per-file cap (40 MB)
+
+  String _scopeId() =>
+      (AccountScope.id == null || AccountScope.id!.isEmpty) ? 'default' : AccountScope.id!;
+
+  /// Drive name prefix for this account's media blobs.
+  String _mediaPrefix() => 'avatok-media-${_scopeId()}-';
+
+  /// The per-account media cache dir (mirrors MediaService._cacheDir).
+  Future<Directory> _mediaDir() async {
+    final base = await getApplicationSupportDirectory();
+    return Directory('${base.path}/media/${_scopeId()}');
+  }
+
+  /// Incrementally back up the media cache to Drive. Skips files already in
+  /// the avatok-backup folder and files over [_kMediaMaxBytes]. Never throws.
+  Future<MediaBackupResult> backupMediaToDrive() async {
+    var uploaded = 0, skipped = 0, failed = 0, tooBig = 0;
+    try {
+      if (!await DriveService.I.ensureBackupFolder()) {
+        return const MediaBackupResult(ok: false, reason: 'no_token');
+      }
+      final dir = await _mediaDir();
+      if (!await dir.exists()) return const MediaBackupResult(ok: true);
+      final prefix = _mediaPrefix();
+      final existing = <String>{
+        for (final f in await DriveService.I.backupList(prefix: prefix)) f.name,
+      };
+      await for (final ent in dir.list()) {
+        if (ent is! File) continue;
+        final base = ent.uri.pathSegments.last;
+        final driveName = '$prefix$base.avbm';
+        if (existing.contains(driveName)) { skipped++; continue; }
+        try {
+          final len = await ent.length();
+          if (len == 0) { skipped++; continue; }
+          if (len > _kMediaMaxBytes) { tooBig++; continue; }
+          final blob = await _encrypt(Uint8List.fromList(await ent.readAsBytes()));
+          final ok = await DriveService.I.backupUpload(driveName, blob);
+          ok ? uploaded++ : failed++;
+        } catch (_) { failed++; }
+      }
+      Analytics.capture('media_backup_result', {
+        'uploaded': uploaded, 'skipped': skipped, 'failed': failed, 'too_big': tooBig,
+      });
+      return MediaBackupResult(
+        ok: failed == 0, reason: failed == 0 ? null : 'partial',
+        uploaded: uploaded, skipped: skipped, failed: failed, tooBig: tooBig,
+      );
+    } catch (e) {
+      Analytics.capture('media_backup_result', {'ok': false, 'err': e.toString()});
+      return MediaBackupResult(
+        ok: false, reason: 'media_error',
+        uploaded: uploaded, skipped: skipped, failed: failed, tooBig: tooBig,
+      );
+    }
+  }
+
+  /// Pull every media blob for this account back from Drive into the local
+  /// cache (download → decrypt → write). Files already cached are skipped, so
+  /// this is safe to run right after a DB restore on a new phone. Never throws.
+  Future<MediaBackupResult> restoreMediaFromDrive() async {
+    var restored = 0, skipped = 0, failed = 0;
+    try {
+      final prefix = _mediaPrefix();
+      final files = await DriveService.I.backupList(prefix: prefix);
+      if (files.isEmpty) return const MediaBackupResult(ok: true);
+      final dir = await _mediaDir();
+      if (!await dir.exists()) await dir.create(recursive: true);
+      for (final f in files) {
+        var base = f.name.substring(prefix.length);
+        if (base.endsWith('.avbm')) base = base.substring(0, base.length - 5);
+        if (base.isEmpty) continue;
+        final out = File('${dir.path}/$base');
+        try {
+          if (await out.exists() && await out.length() > 0) { skipped++; continue; }
+          final blob = await DriveService.I.backupDownload(f.name);
+          if (blob == null || blob.isEmpty) { failed++; continue; }
+          final plain = await _decrypt(Uint8List.fromList(blob));
+          await out.writeAsBytes(plain, flush: true);
+          restored++;
+        } catch (_) { failed++; }
+      }
+      Analytics.capture('media_restore_result', {
+        'restored': restored, 'skipped': skipped, 'failed': failed,
+      });
+      return MediaBackupResult(
+        ok: failed == 0, reason: failed == 0 ? null : 'partial',
+        uploaded: restored, skipped: skipped, failed: failed,
+      );
+    } catch (e) {
+      Analytics.capture('media_restore_result', {'ok': false, 'err': e.toString()});
+      return MediaBackupResult(
+        ok: false, reason: 'media_error',
+        uploaded: restored, skipped: skipped, failed: failed,
+      );
+    }
+  }
+
+  /// Full Drive backup: the DB blob first (the critical piece — it holds the
+  /// media envelope keys), then the incremental media pass.
+  Future<BackupResult> backupAllToDrive() async {
+    final db = await backupToDrive();
+    if (!db.ok) return db;
+    final media = await backupMediaToDrive();
+    // Media problems never fail the backup as a whole (R2 still covers those
+    // files); surface a soft reason so the UI can mention it.
+    return BackupResult(ok: true, reason: media.ok ? null : 'media_partial');
+  }
+
+  /// Full Drive restore: DB first (envelope keys + chats), then media back
+  /// into the cache. DB failure aborts; media failure is soft (R2 re-download
+  /// still works lazily).
+  Future<BackupResult> restoreAllFromDrive() async {
+    final db = await restoreFromDrive();
+    if (!db.ok) return db;
+    final media = await restoreMediaFromDrive();
+    return BackupResult(ok: true, reason: media.ok ? null : 'media_partial');
+  }
 }
 
 /// Result of a backup/restore op.
@@ -306,8 +520,25 @@ class BackupResult {
 
   /// Machine reason on failure: 'empty' | 'premium_required' | 'no_token' |
   /// 'no_backup' | 'network' | 'http_<code>' | 'drive_*' | 'restore_failed:*'.
+  /// 'media_partial' rides on an OK result when the DB part succeeded but some
+  /// media blobs failed (they remain recoverable from R2).
   final String? reason;
   const BackupResult({required this.ok, this.reason});
+}
+
+/// Result of a media backup/restore pass. [uploaded] doubles as "restored"
+/// on the restore path.
+class MediaBackupResult {
+  final bool ok;
+  final String? reason; // 'no_token' | 'partial' | 'media_error'
+  final int uploaded;
+  final int skipped;
+  final int failed;
+  final int tooBig;
+  const MediaBackupResult({
+    required this.ok, this.reason,
+    this.uploaded = 0, this.skipped = 0, this.failed = 0, this.tooBig = 0,
+  });
 }
 
 /// Manifest metadata for a stored backup.

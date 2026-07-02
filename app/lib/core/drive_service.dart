@@ -121,6 +121,31 @@ class DriveService {
     }
   }
 
+  /// List file names (with sizes) in the avatok-backup folder, optionally
+  /// filtered by a name prefix. Used by the incremental media backup to skip
+  /// already-uploaded blobs and by restore to discover what to pull back.
+  Future<List<({String name, int size})>> backupList({String? prefix}) async {
+    try {
+      final qs = (prefix == null || prefix.isEmpty)
+          ? ''
+          : '?prefix=${Uri.encodeQueryComponent(prefix)}';
+      final res = await ApiAuth.getSigned('${_url(AvaApi.driveBackupList)}$qs',
+          timeout: const Duration(seconds: 30));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final files = (j['files'] as List?) ?? const [];
+      return files.map((e) {
+        final m = (e as Map).cast<String, dynamic>();
+        return (
+          name: m['name']?.toString() ?? '',
+          size: int.tryParse(m['size']?.toString() ?? '0') ?? 0,
+        );
+      }).toList();
+    } catch (e) {
+      AvaLog.I.log('drive', 'backupList failed: $e');
+      return const [];
+    }
+  }
+
   /// Download the named backup blob from the avatok-backup folder; null if none.
   Future<Uint8List?> backupDownload(String name) async {
     try {

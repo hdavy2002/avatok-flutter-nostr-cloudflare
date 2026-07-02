@@ -277,7 +277,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           icon: PhosphorIcons.cloudArrowUp(PhosphorIconsStyle.bold),
           trailingIcon: false,
           loading: _busy,
-          onPressed: _busy ? null : () => _run(BackupService.I.backupToDrive, 'Backed up to Drive.', name: 'drive_backup'),
+          onPressed: _busy ? null : () => _run(BackupService.I.backupAllToDrive, 'Chats + media backed up to Drive.', name: 'drive_backup'),
         ),
       ),
       const SizedBox(width: 10),
@@ -291,7 +291,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           trailingIcon: false,
           onPressed: _busy
               ? null
-              : () => _run(BackupService.I.restoreFromDrive, 'Restored from Drive. Reopen the app.', name: 'drive_restore'),
+              : () => _run(BackupService.I.restoreAllFromDrive, 'Chats + media restored from Drive.', name: 'drive_restore'),
         ),
       ),
     ]);
@@ -334,7 +334,7 @@ class _BackupSyncCardState extends State<_BackupSyncCard> {
           Expanded(
             child: PaidFeature(
               actionLabel: 'Restore from sync',
-              onRun: () => _run(BackupService.I.restoreFromR2, 'Restored from sync. Reopen the app.', name: 'r2_restore'),
+              onRun: () => _run(BackupService.I.restoreFromR2, 'Restored from sync.', name: 'r2_restore'),
               child: _pillLabel('Restore', PhosphorIcons.cloudArrowDown(PhosphorIconsStyle.bold), Zine.card),
             ),
           ),

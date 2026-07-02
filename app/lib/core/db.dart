@@ -350,4 +350,17 @@ class Db {
     }
     return _i!;
   }
+
+  /// Close the open handle so the NEXT [I] access reopens the file fresh.
+  /// Used by backup restore: the SQLite file is about to be REPLACED on disk,
+  /// and writing under an open drift connection risks the old handle flushing
+  /// stale pages over the restored bytes. Await this BEFORE overwriting.
+  static Future<void> reset() async {
+    final db = _i;
+    _i = null;
+    _scope = null;
+    if (db != null) {
+      try { await db.close(); } catch (_) {/* already closed */}
+    }
+  }
 }

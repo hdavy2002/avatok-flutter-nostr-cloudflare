@@ -586,8 +586,11 @@ class _DriveSectionState extends State<_DriveSection> {
 /// FREE Google-Drive lane: the on-device SQLite (the source of truth) is
 /// CLIENT-SIDE ENCRYPTED (AES-256-GCM, per-account key in secure storage) and
 /// uploaded to the user's OWN Google Drive "avatok-backup" folder, so neither
-/// AvaTOK nor Google can read it and it survives a reinstall. Restore downloads
-/// the blob, decrypts, and overwrites the local DB (the user reopens the app).
+/// AvaTOK nor Google can read it and it survives a reinstall (the backup key is
+/// escrowed server-side — /api/keybackup?kind=bk — so a NEW PHONE can decrypt).
+/// Backup + restore also cover the media cache (incremental, encrypted blobs in
+/// the same folder). Restore downloads, decrypts, and safely swaps the local DB
+/// (drift handle closed + WAL cleared first — no manual app restart).
 /// Drive connection itself is handled by [_DriveSection] above; this panel gates
 /// on that connection and points there when not connected yet.
 class _BackupRestoreSection extends StatefulWidget {
@@ -650,10 +653,14 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
     final sw = Stopwatch()..start();
     Analytics.capture('storage_backup_started', const {});
     try {
-      final res = await BackupService.I.backupToDrive();
+      final res = await BackupService.I.backupAllToDrive();
       Analytics.capture('storage_backup_result',
           {'ok': res.ok, if (res.reason != null) 'reason': res.reason!, 'ms': sw.elapsedMilliseconds});
-      _snack(res.ok ? 'Backed up to your Google Drive ✓' : _reason(res.reason));
+      _snack(res.ok
+          ? (res.reason == 'media_partial'
+              ? 'Backed up ✓ (some media will retry on the next backup)'
+              : 'Chats + media backed up to your Google Drive ✓')
+          : _reason(res.reason));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -672,8 +679,8 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
         title: Text('Restore from Google Drive?', style: ZineText.cardTitle()),
         content: Text(
           'This replaces the data on this device with your latest Drive backup '
-          '(chats and history). Anything newer on this device that has not been '
-          'backed up will be overwritten. You will be asked to reopen the app.',
+          '(chats, history and media). Anything newer on this device that has '
+          'not been backed up will be overwritten.',
           style: ZineText.sub(size: 14),
         ),
         actions: [
@@ -695,11 +702,13 @@ class _BackupRestoreSectionState extends State<_BackupRestoreSection> {
     final sw = Stopwatch()..start();
     Analytics.capture('storage_restore_started', const {});
     try {
-      final res = await BackupService.I.restoreFromDrive();
+      final res = await BackupService.I.restoreAllFromDrive();
       Analytics.capture('storage_restore_result',
           {'ok': res.ok, if (res.reason != null) 'reason': res.reason!, 'ms': sw.elapsedMilliseconds});
       _snack(res.ok
-          ? 'Restored from Drive — please reopen the app to finish.'
+          ? (res.reason == 'media_partial'
+              ? 'Chats restored ✓ — remaining media re-downloads inside chats.'
+              : 'Chats + media restored from your Drive ✓')
           : _reason(res.reason));
     } finally {
       if (mounted) setState(() => _busy = false);

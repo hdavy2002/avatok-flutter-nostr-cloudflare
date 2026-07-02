@@ -176,6 +176,36 @@ export async function driveBackupUpload(env: Env, uid: string, name: string, byt
   return r.json();
 }
 
+/** List files in the avatok-backup folder, optionally filtered by a name
+ *  prefix (paginates; used by the incremental media backup to skip blobs that
+ *  are already uploaded, and by restore to discover what to pull). */
+export async function driveBackupList(
+  env: Env, uid: string, prefix?: string,
+): Promise<{ name: string; size: number }[]> {
+  const at = await gcalAccessToken(env, uid);
+  if (!at) return [];
+  const folderId = await ensureBackupFolder(at);
+  const safe = (prefix ?? "").replace(/'/g, "");
+  const q = `trashed=false and '${folderId}' in parents` + (safe ? ` and name contains '${safe}'` : "");
+  const out: { name: string; size: number }[] = [];
+  let pageToken = "";
+  for (let page = 0; page < 20; page++) { // hard stop: 20 pages × 200 = 4000 files
+    const url = `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(name,size)&pageSize=200` +
+      (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "");
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${at}` } });
+    if (!r.ok) break;
+    const j: any = await r.json();
+    for (const f of j?.files ?? []) {
+      const name = String(f?.name ?? "");
+      // `contains` matches anywhere; enforce a true prefix match ourselves.
+      if (!safe || name.startsWith(safe)) out.push({ name, size: Number(f?.size ?? 0) });
+    }
+    pageToken = j?.nextPageToken ?? "";
+    if (!pageToken) break;
+  }
+  return out;
+}
+
 /** Download a named backup blob from the avatok-backup folder; null if absent. */
 export async function driveBackupDownload(env: Env, uid: string, name: string): Promise<Uint8Array | null> {
   const at = await gcalAccessToken(env, uid);

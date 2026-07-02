@@ -13,7 +13,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import {
   driveList, driveUpload, driveUsage,
-  driveEnsureBackupFolder, driveBackupUpload, driveBackupDownload,
+  driveEnsureBackupFolder, driveBackupUpload, driveBackupDownload, driveBackupList,
   type DriveBucket,
 } from "../lib/drive";
 
@@ -52,6 +52,18 @@ export async function driveBackupEnsureRoute(req: Request, env: Env): Promise<Re
     return json(await driveEnsureBackupFolder(env, ctx.uid));
   } catch (e: any) {
     return json({ ready: false, error: String(e?.message ?? e).slice(0, 160) }, 502);
+  }
+}
+
+// GET /api/ava/drive/backup/list?prefix=... → { ok, files: [{name,size}] }
+export async function driveBackupListRoute(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const prefix = (new URL(req.url).searchParams.get("prefix") ?? "").trim();
+  try {
+    return json({ ok: true, files: await driveBackupList(env, ctx.uid, prefix || undefined) });
+  } catch (e: any) {
+    return json({ error: "list failed", detail: String(e?.message ?? e).slice(0, 160) }, 502);
   }
 }
 
