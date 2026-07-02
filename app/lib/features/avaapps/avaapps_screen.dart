@@ -30,6 +30,9 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   String _filter = '';
   bool _loading = true, _running = false, _premium = false;
   String? _answer;
+  /// "as of <time>" label shown while a cached answer is being revalidated
+  /// (stale-while-revalidate); cleared once the fresh answer lands.
+  String? _answerAsOf;
 
   /// Memoized logo futures (one per url) so scroll / search rebuilds reuse the
   /// in-flight or cached fetch instead of re-requesting + flashing the fallback.
@@ -67,6 +70,22 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
 
   Future<void> _load({bool fresh = false}) async {
     final t0 = DateTime.now();
+    // Phase 2: render the last-known connection status INSTANTLY from the
+    // per-account device cache (zero awaited network), then refresh in the
+    // background (stale-while-revalidate). Skipped on a forced fresh reload.
+    if (!fresh && kAvaAppsDeviceCache) {
+      final snap = await AvaAppsCache.readStatus();
+      if (snap != null && mounted) {
+        setState(() {
+          _connected = (snap.json as List).map((e) => e.toString()).toSet();
+          _loading = false;
+        });
+        // ignore: unawaited_futures
+        Analytics.capture('avaapps_snapshot_render', {
+          'kind': 'status', 'age_s': snap.ageSeconds, 'cache': 'hit',
+        });
+      }
+    }
     final results = await Future.wait([
       AppsService.I.catalog(),
       AppsService.I.status(fresh: fresh),
@@ -81,12 +100,15 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
       _premium = bal['premium'] == 1 || bal['premium'] == true;
       _loading = false;
     });
+    final ms = DateTime.now().difference(t0).inMilliseconds;
     // Phase 0 telemetry: screen-open latency + how many apps are connected.
     // ignore: unawaited_futures
     Analytics.capture('avaapps_screen_open', {
-      'status_fetch_ms': DateTime.now().difference(t0).inMilliseconds,
-      'connected_count': connected.length,
+      'status_fetch_ms': ms, 'connected_count': connected.length,
     });
+    // Phase 2: the background revalidation completed.
+    // ignore: unawaited_futures
+    Analytics.capture('avaapps_bg_refresh_ok', {'kind': 'status', 'ms': ms});
   }
 
   /// Instant local filter. Matches name OR slug from the first keystroke, and
@@ -217,15 +239,32 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     final t0 = DateTime.now();
     // ignore: unawaited_futures
     Analytics.capture('avaapps_query_submitted', {'query_chars': query.length});
-    setState(() { _running = true; _answer = null; });
+    setState(() { _running = true; _answer = null; _answerAsOf = null; });
+    // Phase 2: stale-while-revalidate — if we have a cached answer for this
+    // exact read-only query, show it instantly with an "as of <time>" label,
+    // then refresh in the background and replace it with the fresh result.
+    if (kAvaAppsDeviceCache) {
+      final snap = await AvaAppsCache.readRun(query);
+      if (snap != null && mounted) {
+        setState(() { _answer = snap.json?.toString(); _answerAsOf = snap.ageLabel; });
+        // ignore: unawaited_futures
+        Analytics.capture('avaapps_snapshot_render', {
+          'kind': 'run_result', 'age_s': snap.ageSeconds, 'cache': 'hit',
+        });
+      }
+    }
     try {
       final a = await AppsService.I.run(query);
-      if (mounted) setState(() => _answer = a);
+      if (mounted) setState(() { _answer = a; _answerAsOf = null; });
       // ignore: unawaited_futures
       Analytics.capture('avaapps_result_rendered', {
         'total_ms': DateTime.now().difference(t0).inMilliseconds,
         'answer_len': a.length,
       });
+    } catch (_) {
+      // ignore: unawaited_futures
+      Analytics.capture('avaapps_bg_refresh_error', {'kind': 'run_result', 'ms': DateTime.now().difference(t0).inMilliseconds});
+      rethrow;
     } finally {
       if (mounted) setState(() => _running = false);
     }
@@ -349,7 +388,17 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac, size: 30),
                 const SizedBox(width: 12),
-                Expanded(child: SelectableText(_answer!, style: ZineText.value(size: 14.5))),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (_answerAsOf != null) ...[
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.6, color: Zine.inkMute)),
+                      const SizedBox(width: 6),
+                      Text('as of $_answerAsOf · refreshing…', style: ZineText.sub(size: 11, color: Zine.inkMute)),
+                    ]),
+                    const SizedBox(height: 6),
+                  ],
+                  SelectableText(_answer!, style: ZineText.value(size: 14.5)),
+                ])),
               ]),
             ),
           ],

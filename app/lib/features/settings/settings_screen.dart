@@ -10,6 +10,7 @@ import '../avatok/number_settings_screen.dart';
 import '../avatok/privacy_screen.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_ai_store.dart';
+import '../../core/avaapps_cache.dart';
 import '../../core/brain_consent.dart';
 import '../../core/config.dart';
 import '../../core/drive_service.dart';
@@ -331,7 +332,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           fontSize: 17,
           icon: PhosphorIcons.signOut(PhosphorIconsStyle.bold),
           trailingIcon: false,
-          onPressed: () async { await widget.clerk.signOut(); widget.onSignOut(); },
+          onPressed: () async {
+            // Phase 2: wipe this account's AvaApps device snapshots before the
+            // session ends so cached email/calendar data doesn't linger.
+            await AvaAppsCache.clearCurrentAccount();
+            await widget.clerk.signOut();
+            widget.onSignOut();
+          },
         ),
         const SizedBox(height: 18),
         Center(child: Text('AVATOK · YOU OWN IT ALL', style: ZineText.kicker(size: 10, color: Zine.inkMute))),
