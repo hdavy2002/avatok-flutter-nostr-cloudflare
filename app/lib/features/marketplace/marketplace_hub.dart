@@ -1,9 +1,48 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
+import '../../core/remote_config.dart';
+import '../identity/identity_api.dart';
+import '../identity/identity_screen.dart';
 import '../explore/explore_home.dart';
 import 'my_listings_screen.dart';
 import 'sell_listing_flow.dart';
+
+/// P4: before opening the listing composer, ensure the seller is video-liveness
+/// verified when [RemoteConfig.listingLivenessGate] is ON. Browsing stays free;
+/// only creating a listing needs this. The server route is the real gate (403
+/// liveness_required) — this is the friendly UX that sends people to verify first.
+Future<void> _openListingComposer(BuildContext context) async {
+  Analytics.capture('listing_pipeline_opened', {'via': 'hub'});
+  if (RemoteConfig.listingLivenessGate) {
+    var verified = await IdentityApi.cachedVerified(); // instant paint
+    if (!verified) verified = (await IdentityApi.status())?.verified ?? false;
+    if (!context.mounted) return;
+    if (!verified) {
+      Analytics.capture('liveness_gate_shown', {'via': 'marketplace_hub'});
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Quick verification'),
+          content: const Text(
+            'To keep the marketplace safe, we verify every seller is a real person — '
+            'it takes about a minute. Browsing stays free; this is only to post a listing.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Not now')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Verify now')),
+          ],
+        ),
+      );
+      if (go == true && context.mounted) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const IdentityScreen()));
+      }
+      return;
+    }
+  }
+  if (!context.mounted) return;
+  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SellListingFlow()));
+}
 
 /// AvaMarketplace P1 — the hub the sidebar "Marketplace" entry opens.
 /// Three destinations: Browse (the existing ExploreHome grid), Create Listing
@@ -35,12 +74,7 @@ class MarketplaceHub extends StatelessWidget {
             icon: Icons.add_box_outlined,
             title: 'Create listing',
             subtitle: 'Sell, buy or post a social listing',
-            onTap: () {
-              Analytics.capture('listing_pipeline_opened', {'via': 'hub'});
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const SellListingFlow(),
-              ));
-            },
+            onTap: () => _openListingComposer(context),
           ),
           const SizedBox(height: 12),
           _Tile(
