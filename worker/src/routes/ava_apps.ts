@@ -115,12 +115,38 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
   if (!premium) return premiumUpsell(env, ctx.uid, "apps_run");
 
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const { email, phone } = await contactFor(env, ctx.uid);
+
+  // Phase 4: confirm-token execution path — the client sends { confirm_token }
+  // after the user approves a pending send/delete. Look up the stored action,
+  // verify it belongs to THIS user, execute exactly once (idempotency in
+  // executeTool covers a double-tap), and clear the token.
+  const confirmToken = String(b.confirm_token ?? "").trim();
+  if (confirmToken) {
+    let stored: any = null;
+    try { stored = await env.TOKENS.get(`avaapps:confirm:${confirmToken}`, "json"); } catch { /* treat as expired */ }
+    if (!stored || stored.uid !== ctx.uid) {
+      trackUserContact(env, ctx.uid, email, phone, "avaapps_send_confirm_expired", "avaapps", { has_token: !!confirmToken });
+      return json({ error: "confirmation expired", reason: "confirm_expired" }, 410);
+    }
+    try {
+      const r = await executeTool(env, ctx.uid, String(stored.tool), stored.args ?? {}, { emit: (e, p) => trackUserContact(env, ctx.uid, email, phone, e, "avaapps", p) });
+      try { await env.TOKENS.delete(`avaapps:confirm:${confirmToken}`); } catch { /* best-effort */ }
+      await chargeFeature(env, ctx.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
+      const ok = !(r && (r.successful === false || r.error));
+      trackUserContact(env, ctx.uid, email, phone, "avaapps_send_confirm_accepted", "avaapps", { tool: stored.tool, ok });
+      return json({ ok, answer: ok ? outcomeText(String(stored.tool)) : `That didn't go through: ${String((r as any)?.error ?? "the app rejected it").slice(0, 160)}` }, ok ? 200 : 502);
+    } catch (e: any) {
+      const detail = String(e?.message ?? e).slice(0, 200);
+      trackUserContact(env, ctx.uid, email, phone, "avaapps_run_error", "avaapps", { stage: "tool_exec", detail, duration_ms: 0, source: "confirm" });
+      return json({ error: "confirm failed", detail }, 502);
+    }
+  }
+
   const query = String(b.query ?? "").trim();
   if (!query) return json({ error: "query required" }, 400);
   // Where the run originated ("screen" = AvaApps tab, "chat" = in-chat @ava).
   const source = (String(b.source ?? "screen") === "chat") ? "chat" : "screen";
-
-  const { email, phone } = await contactFor(env, ctx.uid);
   // Phase 0 telemetry: one start event, then exactly one ok|error with full
   // timing/token/tool breakdown from the loop's stats out-param.
   const t0 = Date.now();
@@ -154,8 +180,13 @@ export async function avaAppsRun(req: Request, env: Env): Promise<Response> {
       ...Object.fromEntries(stats.step_ms.map((ms, i) => [`step_${i}_ms`, ms])),
       tool_ms: stats.tool_ms,
       answer_len: answer.length,
+      // Phase 4 signals (present only when they occurred).
+      ...(stats.pendingAction ? { pending_confirm: stats.pendingAction.tool } : {}),
+      ...(stats.step_cap_hit ? { step_cap_hit: true } : {}),
     });
-    return json({ ok: true, answer });
+    // Phase 4: when the loop stopped for confirmation, hand the client the
+    // structured pending_action so it can render a confirm card.
+    return json({ ok: true, answer, ...(stats.pendingAction ? { pending_action: stats.pendingAction } : {}) });
   } catch (e: any) {
     // Classify the failure stage from where the loop threw (best-effort).
     const detail = String(e?.message ?? e).slice(0, 200);

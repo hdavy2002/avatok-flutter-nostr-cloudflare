@@ -41,6 +41,12 @@ export interface AppsRunStats {
   route_reason: string;        // "simple" | "complex"
   ctx_trim: boolean;           // context trimming active this run
   chars_saved: number;         // chars removed from replayed tool results
+  // Phase 4: when the model tries a send/delete-type tool and confirm-before-send
+  // is on, the loop stops and surfaces this instead of executing. The route
+  // returns it to the client, which renders a confirm card and re-runs with the
+  // confirm_token to actually execute.
+  pendingAction?: { tool: string; human_summary: string; args_digest: string; confirm_token: string };
+  step_cap_hit?: boolean;      // the loop hit the 6-step cap and returned partial
   onRetry?: (attempt: number, status: number) => void;
   // Phase 1: emit cache telemetry (conn/decls) with user email enrichment. Set
   // by the route so cache events carry the same contact fields as run events.
@@ -72,6 +78,38 @@ function resultCacheOn(env: Env): boolean {
 }
 function ctxTrimOn(env: Env): boolean {
   return String((env as any).AVAAPPS_CTX_TRIM ?? "on").toLowerCase() !== "off";
+}
+// ---- Phase 4: robustness & safety flags/helpers -----------------------------
+// Idempotency for write tools defaults ON (additive safety: only dedupes an
+// IDENTICAL write within a 10-min window).
+function idempotencyOn(env: Env): boolean {
+  return String((env as any).AVAAPPS_IDEMPOTENCY ?? "on").toLowerCase() !== "off";
+}
+// Confirm-before-send defaults OFF. Rationale: master rulebook rule 4 (a behavior
+// change must preserve current behavior unless flag-enabled, and must never break
+// the live app). Enabling requires the client to render the confirm card, so the
+// owner flips AVAAPPS_CONFIRM_SENDS=on only after the client ships. Where the
+// phase prompt said "default ON", the master prompt wins on conflict.
+function confirmSendsOn(env: Env): boolean {
+  return String((env as any).AVAAPPS_CONFIRM_SENDS ?? "off").toLowerCase() === "on";
+}
+function paginateOn(env: Env): boolean {
+  return String((env as any).AVAAPPS_PAGINATE ?? "off").toLowerCase() === "on";
+}
+// A tool that SENDS/DELETES/creates a calendar event — the class we confirm.
+function isSendType(slug: string): boolean {
+  return /SEND|DELETE|REMOVE|TRASH|CREATE_EVENT|QUICK_ADD/i.test(slug || "");
+}
+// A short, human sentence describing a pending write, for the confirm card.
+function humanSummaryFor(tool: string, args: any): string {
+  const t = (tool || "").toUpperCase();
+  const a = args && typeof args === "object" ? args : {};
+  const to = a.recipient_email ?? a.to ?? a.recipient ?? a.email;
+  const subject = a.subject ?? a.title ?? a.summary;
+  if (/GMAIL_SEND_EMAIL|GMAIL_REPLY/.test(t)) return `Send an email${to ? ` to ${to}` : ""}${subject ? ` — subject: “${String(subject).slice(0, 80)}”` : ""}?`;
+  if (/CREATE_EVENT|QUICK_ADD/.test(t)) return `Add “${String(subject ?? a.text ?? "event").slice(0, 80)}” to your calendar?`;
+  if (/DELETE|REMOVE|TRASH/.test(t)) return `Delete this item? This can’t be undone.`;
+  return `Run ${tool}?`;
 }
 // Deterministic FNV-1a hash of the normalized args (sorted keys) — a stable KV
 // key component so identical read requests collide onto one cache entry.
@@ -107,6 +145,40 @@ function summarizeToolResult(name: string, result: any): string {
   if (ids.length) s += `; ids: ${ids.join(",")}…`;
   s += "; full result already consumed in an earlier step";
   return s.slice(0, 300);
+}
+
+// ---- Phase 4: bounded pagination for search-type reads ----------------------
+const PAGINATABLE = new Set<string>(["GMAIL_FETCH_EMAILS", "GOOGLECALENDAR_EVENTS_LIST", "GOOGLEDRIVE_FIND_FILE"]);
+function isSearchLike(q: string): boolean {
+  return /\b(find|search|look for|from |since |before |after |about )\b/i.test(q || "");
+}
+function primaryArrayRef(data: any): any[] | null {
+  if (!data || typeof data !== "object") return null;
+  for (const k of ["messages", "events", "files", "items", "emails"]) {
+    if (Array.isArray(data[k])) return data[k];
+  }
+  return null;
+}
+// Auto-fetch up to 2 more pages (3 total) for a list/search read that returned a
+// next-page token, merging into the first result's primary array, capped at 30
+// items. Best-effort + defensive: any error stops paging and returns what we
+// have. Only reached when AVAAPPS_PAGINATE is on.
+async function paginateRead(
+  env: Env, userId: string, name: string, args: any, first: any,
+): Promise<{ result: any; pages: number }> {
+  let pages = 1;
+  let token = first?.data?.nextPageToken ?? first?.data?.next_page_token;
+  const baseArr = primaryArrayRef(first?.data);
+  while (token && pages < 3 && baseArr && baseArr.length < 30) {
+    let more: any;
+    try { more = await executeTool(env, userId, name, { ...(args || {}), page_token: token }); }
+    catch { break; }
+    const moreArr = primaryArrayRef(more?.data);
+    if (moreArr) { for (const it of moreArr) { if (baseArr.length >= 30) break; baseArr.push(it); } }
+    pages++;
+    token = more?.data?.nextPageToken ?? more?.data?.next_page_token;
+  }
+  return { result: first, pages };
 }
 
 /// The Google set shipped by default in AvaApps (Composio toolkit slugs).
@@ -457,7 +529,8 @@ export async function executeTool(
   // "check my inbox" within 90s returns instantly with no Composio call and no
   // LLM tool round trip. Writes are never in READ_TOOL_SLUGS, so a send/create/
   // delete is never cached. KV errors fall through to a live execute.
-  const cacheable = resultCacheOn(env) && READ_TOOL_SLUGS.has(String(slug).toUpperCase());
+  const isRead = READ_TOOL_SLUGS.has(String(slug).toUpperCase());
+  const cacheable = isRead && resultCacheOn(env);
   const key = cacheable ? `avaapps:res:${userId}:${slug}:${hashArgs(args)}` : "";
   if (cacheable) {
     try {
@@ -465,18 +538,37 @@ export async function executeTool(
       if (c !== null && c !== undefined) { opts?.emit?.("avaapps_result_cache", { tool: slug, cache: "hit" }); return c; }
     } catch { /* fall through to live execute */ }
   }
+
+  // Phase 4: idempotency for WRITE tools. A network timeout AFTER Composio
+  // accepted the call (0 retries) could otherwise double-send on a client retry.
+  // We key on uid+tool+normalized-args+10-min bucket: an identical write inside
+  // the same window returns the stored result WITHOUT re-executing (at-most-once
+  // per 10-min window for identical args). RESIDUAL RISK: if Composio accepted
+  // the call but we timed out BEFORE storing the key, a retry can still re-send —
+  // this narrows, not eliminates, the double-send window.
+  const idemOn = !isRead && idempotencyOn(env);
+  const bucket = Math.floor(Date.now() / 600000); // 10-min bucket
+  const idemKey = idemOn ? `avaapps:idem:${hashArgs({ u: userId, t: slug, a: args ?? {}, b: bucket })}` : "";
+  if (idemOn) {
+    try {
+      const dup = await env.TOKENS.get(idemKey, "json");
+      if (dup !== null && dup !== undefined) { opts?.emit?.("avaapps_idem_dedupe", { tool: slug }); return dup; }
+    } catch { /* fall through to live execute */ }
+  }
+
   const r = await cfetch(env, `/tools/execute/${slug}`, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, arguments: args ?? {} }),
     timeoutMs: 30000,
     retries: 0,
   });
+  const ok = !(r && (r.successful === false || r.error));
   if (cacheable) {
     // Only cache a SUCCESSFUL read (never persist a tool-level failure).
-    const ok = !(r && (r.successful === false || r.error));
     if (ok) { try { await env.TOKENS.put(key, JSON.stringify(r), { expirationTtl: 90 }); } catch { /* best-effort */ } }
     opts?.emit?.("avaapps_result_cache", { tool: slug, cache: resultCacheOn(env) ? "miss" : "bypass" });
   }
+  if (idemOn && ok) { try { await env.TOKENS.put(idemKey, JSON.stringify(r), { expirationTtl: 86400 }); } catch { /* best-effort */ } }
   return r;
 }
 
@@ -762,7 +854,12 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
     let r: { text: string; calls: OrCall[]; usage?: OrUsage };
     const s0 = Date.now();
     try { r = await orStep(env, primaryModel, messages, tools); }
-    catch { r = await orStep(env, OR_FALLBACK_MODEL, messages, tools); if (stats) stats.fallback_used = true; }
+    catch (e: any) {
+      // Phase 4: log the PRIMARY-model failure reason BEFORE falling back, so the
+      // fallback no longer hides the root cause.
+      if (stats) { stats.fallback_used = true; stats.emit?.("avaapps_model_fallback", { primary_model: primaryModel, error: String(e?.message ?? e).slice(0, 200) }); }
+      r = await orStep(env, OR_FALLBACK_MODEL, messages, tools);
+    }
     if (stats) {
       stats.steps = step + 1;
       stats.step_ms.push(Date.now() - s0);
@@ -777,12 +874,35 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
     }
     messages.push(assistantToolMsg(r.text, r.calls));
 
+    // Phase 4: confirm-before-send. If the model wants to SEND/DELETE/create an
+    // event and confirmation is enabled, stop and surface a pending_action; the
+    // client confirms and re-runs with the confirm_token (route executes it).
+    if (confirmSendsOn(env)) {
+      const sendCall = r.calls.find((c) => isSendType(c.name));
+      if (sendCall) {
+        const token = crypto.randomUUID();
+        try { await env.TOKENS.put(`avaapps:confirm:${token}`, JSON.stringify({ uid: userId, tool: sendCall.name, args: sendCall.args ?? {} }), { expirationTtl: 300 }); } catch { /* best-effort */ }
+        const human = humanSummaryFor(sendCall.name, sendCall.args);
+        if (stats) {
+          stats.pendingAction = { tool: sendCall.name, human_summary: human, args_digest: JSON.stringify(sendCall.args ?? {}).slice(0, 300), confirm_token: token };
+          stats.emit?.("avaapps_send_confirm_shown", { tool: sendCall.name });
+        }
+        return `${human}`;
+      }
+    }
+
     for (const c of r.calls) {
       if (stats) stats.tools_called.push(c.name);
       const x0 = Date.now();
       let result: any;
       try {
-        const rr = await executeTool(env, userId, c.name, c.args ?? {}, { emit });
+        let rr = await executeTool(env, userId, c.name, c.args ?? {}, { emit });
+        // Phase 4: bounded pagination for search-type list reads (flag-gated).
+        if (paginateOn(env) && PAGINATABLE.has(String(c.name).toUpperCase()) && isSearchLike(query)) {
+          const pg = await paginateRead(env, userId, c.name, c.args ?? {}, rr);
+          rr = pg.result;
+          if (pg.pages > 1 && stats) stats.emit?.("avaapps_paginate", { tool: c.name, pages: pg.pages });
+        }
         result = trimToolResult(c.name, rr);
       } catch (e: any) {
         result = { error: String(e?.message ?? e).slice(0, 200) };
@@ -794,7 +914,10 @@ export async function runAppsToolLoop(env: Env, userId: string, query: string, c
       toolRecs.push({ msg: toolMsg, summary: summarizeToolResult(c.name, result), step, trimmed: false, fullLen: content.length });
     }
   }
-  return "I worked through several steps but didn't finish — try narrowing the request.";
+  // Phase 4: partial results at the step cap instead of a bare give-up string.
+  if (stats) { stats.step_cap_hit = true; stats.emit?.("avaapps_step_cap_hit", { steps: stats.steps, tools_called: stats.tools_called }); }
+  const digest = toolRecs.slice(-4).map((rec) => rec.summary).join("\n");
+  return `I got as far as ${toolRecs.length} tool step${toolRecs.length === 1 ? "" : "s"} but didn't fully finish.\n\nHere's what I found so far:\n${digest || "(no results gathered yet)"}\n\nAsk me to continue with a narrower request.`;
 }
 
 // Heuristic: does this request clearly ask Ava to CREATE/EDIT an image? Used to
