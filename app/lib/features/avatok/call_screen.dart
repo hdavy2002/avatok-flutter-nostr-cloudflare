@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -557,6 +558,7 @@ class _CallScreenState extends State<CallScreen> {
         _relayFallbackTimer?.cancel(); // connected — no relay fallback needed
         _ringback.stop(); // call answered — silence the ringback
         _telemetry.connected(pc);
+        HapticFeedback.mediumImpact(); // P9: tactile "call connected" cue
         if (mounted) setState(() { _connected = true; _phase = 'connected'; });
       }
     };

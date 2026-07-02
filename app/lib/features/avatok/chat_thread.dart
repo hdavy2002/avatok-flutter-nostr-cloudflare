@@ -1362,6 +1362,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    HapticFeedback.selectionClick(); // P9: subtle send confirmation
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final expire = _disappearSecs > 0 ? now + _disappearSecs : null;
 

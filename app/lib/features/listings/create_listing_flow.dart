@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -216,6 +217,7 @@ class _CreateListingFlowState extends State<CreateListingFlow> {
     if (!mounted) return;
     if (r.isEmpty) {
       Analytics.capture('listing_published_client', {'kind': _kind});
+      HapticFeedback.mediumImpact(); // P9: tactile publish confirmation
       Navigator.pop(context, true);
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Published! Your listing is live in AvaExplore.')));
