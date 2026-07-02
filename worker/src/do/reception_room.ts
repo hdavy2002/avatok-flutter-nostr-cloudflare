@@ -86,11 +86,28 @@ interface InitBlob {
   caller_phone: string | null; caller_name: string | null; call_id: string | null;
   rtc_token: string; voice_name: string; file_search_store: string | null;
   system_prompt: string; model: string;
-  soft_cap_ms: number; hard_cap_ms: number; started_at: number;
+  soft_cap_ms: number; hard_cap_ms: number; wrap_cue_ms?: number; started_at: number;
   // v2
   language_code?: string | null; activation_mode?: string | null;
   owner_name?: string | null; // owner's display name, for the caller-side ack
   ava_name?: string | null;   // Ava's persona name, for transcript speaker labels
+}
+
+// P2: ultra-cheap language guess from Unicode script ranges (no model call). Feeds
+// ONLY the detected_lang telemetry dimension — it never drives call behavior (the
+// model detects language itself from the caller's first words per the system prompt).
+function guessLangFromText(s: string): string {
+  if (!s) return "und";
+  if (/[ऀ-ॿ]/.test(s)) return "hi";  // Devanagari (Hindi/Marathi/…)
+  if (/[؀-ۿ]/.test(s)) return "ar";  // Arabic
+  if (/[֐-׿]/.test(s)) return "he";  // Hebrew
+  if (/[぀-ヿ]/.test(s)) return "ja";  // Hiragana/Katakana
+  if (/[가-힯]/.test(s)) return "ko";  // Hangul
+  if (/[一-鿿]/.test(s)) return "zh";  // CJK Han
+  if (/[Ѐ-ӿ]/.test(s)) return "ru";  // Cyrillic
+  if (/[฀-๿]/.test(s)) return "th";  // Thai
+  if (/[a-zA-Z]/.test(s)) return "und-latn";   // Latin script (specific language unknown)
+  return "und";
 }
 
 export class ReceptionRoom {
@@ -101,9 +118,14 @@ export class ReceptionRoom {
   private gem: WebSocket | null = null;
   private init: InitBlob | null = null;
   private startedAt = 0;
-  private softTimer: ReturnType<typeof setTimeout> | null = null;
-  private hardTimer: ReturnType<typeof setTimeout> | null = null;
+  private wrapCueTimer: ReturnType<typeof setTimeout> | null = null; // P2: 40s wrap cue
+  private closeTimer: ReturnType<typeof setTimeout> | null = null;    // P2: 60s session close
+  private hardTimer: ReturnType<typeof setTimeout> | null = null;     // P2: 90s stall backstop
   private finalized = false;
+  // P2 wrap/close state.
+  private wrapCueInjected = false; // the 40s wrap cue is injected exactly once
+  private closePending = false;    // 60s reached while Ava was mid-utterance → close on her next turnComplete
+  private avaSpeaking = false;     // true between an Ava audio chunk and her turnComplete
 
   // Owner contact, resolved once so EVERY event carries email/phone (support
   // pulls a user's receptionist calls by email/phone). v2 telemetry spec.
@@ -111,7 +133,7 @@ export class ReceptionRoom {
   private ownerPhone: string | null = null;
   private firstAudioSent = false;
   // Set at the soft cap: stop feeding caller audio to Gemini so Ava can barge in
-  // and speak the wrap-up uninterrupted (see onSoftCap / onClientMessage).
+  // and speak the wrap-up uninterrupted (see onWrapCue / onClientMessage).
   private wrapping = false;
 
   private inText: string[] = [];   // caller transcript fragments (char counts)
@@ -196,8 +218,11 @@ export class ReceptionRoom {
       this.failHard("gemini_connect_failed");
     });
 
-    // Call-length caps (authoritative, server-side): soft wrap-up + hard end.
-    this.softTimer = setTimeout(() => this.onSoftCap(), init.soft_cap_ms);
+    // P2 timeline (authoritative, server-side — THE RELAY KEEPS TIME, not the
+    // model): inject the wrap cue at ~40s, close after the current turn at ~60s,
+    // and keep the 90s hard cap as a pure stall backstop.
+    this.wrapCueTimer = setTimeout(() => this.onWrapCue(), init.wrap_cue_ms ?? 40_000);
+    this.closeTimer = setTimeout(() => this.onSessionClose(), init.soft_cap_ms);
     this.hardTimer = setTimeout(() => this.finalize("hard_cap"), init.hard_cap_ms);
 
     return new Response(null, { status: 101, webSocket: client });
@@ -428,6 +453,7 @@ export class ReceptionRoom {
       // throughput both ways. in_bytes≈0 across turns ⇒ the caller wasn't heard.
       if (sc.turnComplete === true) {
         this.turnCount++;
+        this.avaSpeaking = false; // P2: Ava's turn is done
         this.ev("ava_recept_turn", {
           turn: this.turnCount,
           in_chars: this.inText.join("").length,
@@ -436,6 +462,9 @@ export class ReceptionRoom {
           ava_bytes: this.pcmBytes,
           ms: Date.now() - this.startedAt,
         });
+        // P2: the 60s session close arrived mid-utterance and waited — her turn is
+        // now complete, so close cleanly without clipping her last word.
+        if (this.closePending) { void this.finalize("time_up_wrap"); return; }
       }
       const parts = sc.modelTurn?.parts;
       if (Array.isArray(parts)) {
@@ -443,6 +472,7 @@ export class ReceptionRoom {
           const data = p?.inlineData?.data;
           if (typeof data === "string") {
             const pcm = b64decode(data);
+            this.avaSpeaking = true; // P2: Ava is mid-utterance until turnComplete
             if (this.pcmBytes < ReceptionRoom.MAX_REC_BYTES) {
               this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength;
             }
@@ -461,31 +491,41 @@ export class ReceptionRoom {
     }
   }
 
-  private onSoftCap(): void {
-    // Time's up (fires at SOFT_CAP_MS=30s; hard end at 35s). BARGE IN: set wrapping
-    // so onClientMessage stops feeding the caller's mic to Gemini, then send the
-    // EXACT "[SYSTEM: time is up]" string the system prompt keys its wrap-up line
-    // on. With the mic gated, Ava reliably takes the floor and speaks the close
-    // ("That's all the time I have… I'll pass it on… have a great <day>!") even if
-    // the caller is still talking — the bug the owner hit on 2026-06-30.
+  // P2 WRAP CUE (fires at wrap_cue_ms ≈ 40s, ONCE). BARGE IN: set wrapping so
+  // onClientMessage stops feeding the caller's mic to Gemini, then inject the
+  // self-describing wrap instruction so Ava warmly says time is nearly up, gives a
+  // one-line summary and says goodbye — in the caller's own language. The relay
+  // keeps time; the model is never asked to count seconds.
+  private onWrapCue(): void {
+    if (this.finalized || this.wrapCueInjected) return;
+    this.wrapCueInjected = true;
     this.wrapping = true;
-    // CRITICAL for a reliable barge-in under automatic VAD: tell Gemini the
-    // caller's audio stream has ENDED so it finalizes the still-open user turn and
-    // actually answers the wrap nudge. Gating the mic alone leaves the turn open
-    // forever (once we stop forwarding frames, no trailing-silence ever arrives for
-    // VAD to detect), so the model stays silent and the call hard-caps without a
-    // spoken close — exactly the owner's 2026-06-30 test. audioStreamEnd → turn
-    // ends → the "[SYSTEM: time is up]" instruction is spoken.
+    // CRITICAL under automatic VAD: end the caller's still-open turn so the model
+    // actually answers the wrap nudge (gating the mic alone leaves the turn open
+    // forever → silence → hard cap without a spoken close, the 2026-06-30 bug).
     this.sendGem({ realtimeInput: { audioStreamEnd: true } });
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[SYSTEM: time is up]" }] }],
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM: 20 seconds remain. Warmly say this is about all the time you have, give a one-line summary of their message, and say goodbye. Do not ask new questions.]" }] }],
         turnComplete: true,
       },
     });
     try { this.client?.send(JSON.stringify({ t: "softcap" })); } catch { /* ignore */ }
     metric(this.env, "ava_recept_softcap", [1]);
-    this.ev("ava_recept_softcap", { at_ms: Date.now() - this.startedAt });
+    this.ev("ava_recept_wrap_cue", { at_ms: Date.now() - this.startedAt });
+  }
+
+  // P2 SESSION CLOSE (fires at soft_cap_ms ≈ 60s). Never hard-cut mid-word: if Ava
+  // is mid-utterance, mark closePending and let onGeminiMessage close on her next
+  // turnComplete; otherwise close now. Either way cutoff_reason = 'time_up_wrap'.
+  private onSessionClose(): void {
+    if (this.finalized) return;
+    if (this.avaSpeaking) {
+      this.closePending = true;
+      this.ev("ava_recept_close_deferred", { at_ms: Date.now() - this.startedAt });
+      return;
+    }
+    void this.finalize("time_up_wrap");
   }
 
   private sendGem(obj: unknown): void {
@@ -504,7 +544,8 @@ export class ReceptionRoom {
   private async finalize(reason: string): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;
-    if (this.softTimer) clearTimeout(this.softTimer);
+    if (this.wrapCueTimer) clearTimeout(this.wrapCueTimer);
+    if (this.closeTimer) clearTimeout(this.closeTimer);
     if (this.hardTimer) clearTimeout(this.hardTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
     try { this.gem?.close(); } catch { /* ignore */ }
@@ -624,7 +665,11 @@ export class ReceptionRoom {
       summary_tok_in: this.sumTokIn, summary_tok_out: this.sumTokOut, summary_usd: round6(summaryUsd),
       est_usd: round6(estUsd),
       in_rate_usd_min: inRate, out_rate_usd_min: outRate,
-      cutoff_reason: reason,
+      cutoff_reason: reason, // now includes 'time_up_wrap' (P2 timed close)
+      // P2: did the 40s wrap cue fire, and the caller's detected language (cheap
+      // script heuristic over the transcript; owner language_code wins if set).
+      wrap_cue_injected: this.wrapCueInjected,
+      detected_lang: init.language_code || guessLangFromText(this.inText.join(" ")),
     });
     // Aggregate metric (USD micro-cents so the integer counter stays meaningful).
     metric(this.env, "ava_recept_cost_usd_micro", [Math.round(estUsd * 1e6)]);
