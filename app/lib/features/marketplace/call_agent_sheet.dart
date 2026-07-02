@@ -14,12 +14,14 @@ Future<bool> showCallAgentSheet(
   required String listingId,
   required int contentVersion,
   required String currency,
+  VoidCallback? onMessageSeller, // P5: wired to the owner-DM path on daily-limit
 }) async {
   final maxCtrl = TextEditingController();
   final mustCtrl = TextEditingController();
   String cur = kMarketCurrencies.contains(currency) ? currency : 'USD';
   bool busy = false;
   String? error;
+  bool dailyLimited = false; // P5: hit the 10/day agent-conversation cap
 
   InputDecoration box(String? hint) => InputDecoration(
         hintText: hint,
@@ -79,6 +81,20 @@ Future<bool> showCallAgentSheet(
             Padding(padding: const EdgeInsets.only(top: 10),
                 child: Text(error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600))),
           const SizedBox(height: 18),
+          if (dailyLimited)
+            SizedBox(
+              height: 52, width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFC4F24D), foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: const BorderSide(color: Colors.black, width: 2)),
+                ),
+                onPressed: () { Navigator.of(ctx).pop(false); onMessageSeller?.call(); },
+                child: const Text('Message seller',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ),
+            )
+          else
           SizedBox(
             height: 52, width: double.infinity,
             child: FilledButton(
@@ -99,6 +115,19 @@ Future<bool> showCallAgentSheet(
                 if (!ctx.mounted) return;
                 if (res['already_talked'] == true) {
                   setState(() { busy = false; error = 'Your agent has already talked to this listing. Use Message to reach the seller.'; });
+                  return;
+                }
+                // P5: per-user daily cap of 10 agent conversations. The server is
+                // the truth (a client counter would break across devices).
+                if (res['status'] == 429 || res['error'] == 'agent_daily_limit') {
+                  final cap = (res['cap'] as num?)?.toInt() ?? 10;
+                  setState(() {
+                    busy = false;
+                    dailyLimited = true;
+                    error = "You've chatted with $cap listing agents today — that's the daily limit. "
+                        "It resets at midnight UTC. You can still message the seller directly.";
+                  });
+                  Analytics.capture('agent_daily_limit_shown', {'listing_id': listingId, 'cap': cap});
                   return;
                 }
                 if (res['ok'] == true) {

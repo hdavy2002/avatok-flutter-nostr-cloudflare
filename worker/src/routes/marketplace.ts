@@ -17,6 +17,7 @@ import { notifyUser } from "../notify";
 import { exploreSearch } from "./listings";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { moderate } from "../lib/moderation";
+import { readConfig } from "./config"; // P5: agentDailyCap
 
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
 export const MARKET_LLM = "anthropic/claude-sonnet-4.6";
@@ -281,6 +282,10 @@ async function ensureLedger(env: Env): Promise<void> {
        PRIMARY KEY (buyer_id, listing_id, content_version)
      )`,
   ).run();
+  // P5: index the daily-cap count query (per buyer, by day).
+  await metaDb(env).prepare(
+    "CREATE INDEX IF NOT EXISTS idx_mkt_neg_buyer_created ON mkt_negotiations (buyer_id, created_at)",
+  ).run();
 }
 
 export async function marketplaceNegotiateState(req: Request, env: Env): Promise<Response> {
@@ -320,6 +325,25 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
   if (seen) {
     track(env, ctx.uid, "agent_call_blocked_already_talked", "avamarketplace", { listing_id: listingId, content_version: version });
     return json({ ok: false, already_talked: true }, 200);
+  }
+
+  // P5: per-user daily cap on DISTINCT listings negotiated today (UTC). The
+  // per-listing dedupe above already returned for a re-open, so this only counts
+  // NEW distinct listings. Cap is a KV-tunable flag (no redeploy). cap<=0 disables.
+  {
+    const cap = Math.max(0, Math.trunc(Number((await readConfig(env)).agentDailyCap ?? 10)));
+    if (cap > 0) {
+      const dayStartMs = Math.floor(Date.now() / 86_400_000) * 86_400_000; // UTC midnight
+      const usedRow = await metaDb(env).prepare(
+        "SELECT COUNT(DISTINCT listing_id) AS n FROM mkt_negotiations WHERE buyer_id=?1 AND created_at>=?2",
+      ).bind(ctx.uid, dayStartMs).first<{ n: number }>();
+      const used = usedRow?.n ?? 0;
+      if (used >= cap) {
+        const resetsAt = new Date(dayStartMs + 86_400_000).toISOString();
+        track(env, ctx.uid, "agent_daily_limit_hit", "avamarketplace", { listing_id: listingId, used, cap });
+        return json({ error: "agent_daily_limit", used, cap, resets_at: resetsAt }, 429);
+      }
+    }
   }
 
   // Reserve the talk-once slot NOW (outcome 'pending') so repeat taps are blocked

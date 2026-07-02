@@ -53,6 +53,7 @@ Covers 100% of `PlatformConfig` keys in `worker/src/routes/config.ts` (interface
 | `teamIvrEnabled` | bool | `false` | `false` | — Team Receptionist IVR off until dogfood |
 | `ivrAiFrontDesk` | bool | `false` | `false` | — tap-menu default; AI front desk future |
 | `groupInvitesEnabled` | bool | `false` | `false` | — pending-membership invites off until migration+test |
+| `agentDailyCap` | number | `10` | `10` | **P5** — marketplace agent conversations/user/UTC-day (0 disables) |
 | `minAppBuild` | number | `0` | `0` | — min build gate; bump when forcing upgrade |
 
 ## Secret-derived key
@@ -68,7 +69,6 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 | Flag | Type | Default at add | Launch value | Owner phase |
 |---|---|---|---|---|
 | `listingLivenessGate` | bool | `false` | `true` | P4 — block listing creation unless liveness-verified |
-| `agentDailyCap` | number | `10` | `10` | P5 — per-user daily marketplace agent-conversation cap |
 | `safetyScanEnabled` | bool | `true` (ships ON) | `true` | P6 — per-message Nemotron safety scan + red bubbles |
 | `chatArchiveV2` | bool | `false` | `true` | P8 Stage 1 — R2 cold archive |
 | `restoreV2` | bool | `false` | `true` | P8 Stage 2 — new-phone restore |

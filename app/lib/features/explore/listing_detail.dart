@@ -108,6 +108,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
       listingId: d.listing.id,
       contentVersion: 0, // server keys talk-once on (buyer, listing, version)
       currency: d.listing.currency,
+      onMessageSeller: _message, // P5: daily-limit fallback → owner-DM path
     );
     if (started && mounted) {
       setState(() => _alreadyTalked = true);

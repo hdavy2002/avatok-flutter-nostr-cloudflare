@@ -104,6 +104,10 @@ export interface PlatformConfig {
   // router is unaffected (pending users simply aren't members yet). Flip ON in KV
   // after the migration + a test; no redeploy.
   groupInvitesEnabled: boolean;
+  // P5: per-user daily cap on DISTINCT marketplace agent conversations (UTC day).
+  // Tunable via KV without redeploy. The per-listing talk-once dedupe is separate
+  // and does NOT consume quota (re-opening the same listing's result is free).
+  agentDailyCap: number;
   minAppBuild: number;
 }
 
@@ -155,6 +159,7 @@ const DEFAULTS: PlatformConfig = {
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
+  agentDailyCap: 10,               // P5: 10 marketplace agent conversations/user/UTC-day
   minAppBuild: 0,
 };
 
@@ -191,7 +196,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // Whitelist merge — unknown keys are rejected so a typo can't ship a dead flag.
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...DEFAULTS, ...current };
-  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings"]);
+  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
