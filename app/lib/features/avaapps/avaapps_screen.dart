@@ -65,6 +65,7 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   }
 
   Future<void> _load() async {
+    final t0 = DateTime.now();
     final results = await Future.wait([
       AppsService.I.catalog(),
       AppsService.I.status(),
@@ -72,11 +73,18 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     ]);
     if (!mounted) return;
     final bal = results[2] as Map<String, dynamic>;
+    final connected = results[1] as Set<String>;
     setState(() {
       _all = results[0] as List<AvaCatalogApp>;
-      _connected = results[1] as Set<String>;
+      _connected = connected;
       _premium = bal['premium'] == 1 || bal['premium'] == true;
       _loading = false;
+    });
+    // Phase 0 telemetry: screen-open latency + how many apps are connected.
+    // ignore: unawaited_futures
+    Analytics.capture('avaapps_screen_open', {
+      'status_fetch_ms': DateTime.now().difference(t0).inMilliseconds,
+      'connected_count': connected.length,
     });
   }
 
@@ -204,10 +212,18 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
   Future<void> _run() async {
     final query = _ask.text.trim();
     if (query.isEmpty || _running) return;
+    final t0 = DateTime.now();
+    // ignore: unawaited_futures
+    Analytics.capture('avaapps_query_submitted', {'query_chars': query.length});
     setState(() { _running = true; _answer = null; });
     try {
       final a = await AppsService.I.run(query);
       if (mounted) setState(() => _answer = a);
+      // ignore: unawaited_futures
+      Analytics.capture('avaapps_result_rendered', {
+        'total_ms': DateTime.now().difference(t0).inMilliseconds,
+        'answer_len': a.length,
+      });
     } finally {
       if (mounted) setState(() => _running = false);
     }
