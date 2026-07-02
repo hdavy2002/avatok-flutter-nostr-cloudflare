@@ -136,6 +136,28 @@ class AppsService {
   final Map<String, _CachedResult> _cache = {};
   static const Duration _kCacheTtl = Duration(seconds: 60);
 
+  /// Set by [run] when the server returns a `pending_action` (a send/delete that
+  /// needs the user to confirm). The screen reads it right after `run` and, if
+  /// non-null, shows a confirm card then calls [confirmSend]. Null on a normal
+  /// answer. Only populated when the server flag `AVAAPPS_CONFIRM_SENDS` is on.
+  Map<String, dynamic>? lastPendingAction;
+
+  /// Execute a previously-confirmed pending action by its confirm token.
+  Future<String> confirmSend(String token) async {
+    try {
+      final res = await ApiAuth.postJsonH(_url(AvaApi.appsRun), {'confirm_token': token}, const {},
+          timeout: const Duration(seconds: 90));
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      if (j['reason'] == 'confirm_expired') {
+        return 'That confirmation expired — please ask again.';
+      }
+      return (j['answer'] ?? j['error'] ?? 'Done.').toString();
+    } catch (e) {
+      Analytics.appsUnavailable(endpoint: AvaApi.appsRun, code: e.runtimeType.toString());
+      return 'Couldn\'t reach the app just now.';
+    }
+  }
+
   /// Run a natural-language action across the connected apps (premium). Returns Ava's reply.
   Future<String> run(String query) async {
     final key = query.trim().toLowerCase();
@@ -151,6 +173,10 @@ class AppsService {
     final res = await ApiAuth.postJsonH(_url(AvaApi.appsRun), {'query': query}, const {},
         timeout: const Duration(seconds: 90));
     final j = jsonDecode(res.body) as Map<String, dynamic>;
+    // Phase 4: capture any pending confirm-before-send action for the caller.
+    lastPendingAction = (j['pending_action'] is Map)
+        ? (j['pending_action'] as Map).cast<String, dynamic>()
+        : null;
     if (j['reason'] == 'premium_required') {
       return (j['message'] ?? 'Top up to use AvaApps.').toString();
     }

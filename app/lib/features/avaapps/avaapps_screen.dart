@@ -255,7 +255,15 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     }
     try {
       final a = await AppsService.I.run(query);
-      if (mounted) setState(() { _answer = a; _answerAsOf = null; });
+      // Phase 4: server asked to confirm a send/delete before executing.
+      final pending = AppsService.I.lastPendingAction;
+      if (pending != null && pending['confirm_token'] != null) {
+        if (mounted) setState(() { _answer = a; _answerAsOf = null; });
+        final done = await _confirmPending(pending);
+        if (mounted && done != null) setState(() { _answer = done; });
+      } else if (mounted) {
+        setState(() { _answer = a; _answerAsOf = null; });
+      }
       // ignore: unawaited_futures
       Analytics.capture('avaapps_result_rendered', {
         'total_ms': DateTime.now().difference(t0).inMilliseconds,
@@ -268,6 +276,34 @@ class _AvaAppsScreenState extends State<AvaAppsScreen> with WidgetsBindingObserv
     } finally {
       if (mounted) setState(() => _running = false);
     }
+  }
+
+  /// Phase 4: show a confirm card for a pending send/delete. Returns the result
+  /// text if the user confirmed (and it executed), or null if they cancelled.
+  Future<String?> _confirmPending(Map<String, dynamic> pending) async {
+    final summary = (pending['human_summary'] ?? 'Confirm this action?').toString();
+    final token = pending['confirm_token'].toString();
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            side: const BorderSide(color: Zine.ink, width: Zine.bw)),
+        title: Text('Confirm', style: ZineText.cardTitle()),
+        content: Text(summary, style: ZineText.sub(size: 13.5)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: ZineText.value(size: 14))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Confirm', style: ZineText.value(size: 14, color: Zine.blueInk))),
+        ],
+      ),
+    );
+    // ignore: unawaited_futures
+    Analytics.capture('avaapps_send_confirm_client', {'accepted': yes == true});
+    if (yes != true) return 'Okay, I won\'t send it.';
+    return AppsService.I.confirmSend(token);
   }
 
   @override
