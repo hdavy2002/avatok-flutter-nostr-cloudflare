@@ -6,6 +6,7 @@ import 'analytics.dart';
 import 'api_auth.dart';
 import 'ava_ai_store.dart';
 import 'ava_contracts.dart';
+import 'avaapps_cache.dart';
 import 'config.dart';
 
 /// One AvaApp tile. [slug] is the Composio toolkit slug used for connect/status.
@@ -71,7 +72,11 @@ class AppsService {
       final res = await ApiAuth.getSigned(url, timeout: const Duration(seconds: 20));
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       final list = (j['connected'] as List?)?.map((e) => e.toString().toLowerCase()) ?? const [];
-      return list.toSet();
+      final set = list.toSet();
+      // Phase 2: persist for instant render on the next screen open (scoped).
+      // ignore: unawaited_futures
+      AvaAppsCache.writeStatus(set);
+      return set;
     } catch (e) {
       // The chat couldn't reach the user's connected Google apps — surface it
       // (api_error already logs HTTP failures; this adds the apps-layer context).
@@ -156,6 +161,10 @@ class AppsService {
         if (_cache.length > 32) _evictOldest();
         // ignore: unawaited_futures
         Analytics.capture('ava_tool_cache', {'hit': false});
+        // Phase 2: persist read-only answers so a repeat survives app restart
+        // and can render instantly (stale-while-revalidate) next time (scoped).
+        // ignore: unawaited_futures
+        AvaAppsCache.writeRun(query, ans);
       }
       return ans;
     }
