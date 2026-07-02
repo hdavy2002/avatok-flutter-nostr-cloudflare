@@ -120,6 +120,36 @@ const AVA_CF_VOICE = "asteria";
 const MAX_GREETING = 200;
 const MAX_CUSTOM_PROMPT = 1000;
 const MAX_STATUS_CUSTOM = 120;
+// F1 (Phase 12 finish): owner status note + expiry + default answering language.
+const MAX_STATUS_NOTE = 500;
+const STATUS_MAX_TTL_MS = 366 * 86_400_000; // notes expire at most ~1 year out
+// Country (ISO-3166 alpha-2) → primary BCP-47 language, used ONLY as the client's
+// first-load default suggestion when the owner has never set answer_lang. ~40
+// launch markets; anything unmapped falls back to auto-detect.
+export const COUNTRY_LANG: Record<string, string> = {
+  IN: "hi", PK: "ur", BD: "bn", LK: "si", NP: "ne", BR: "pt", PT: "pt", FR: "fr",
+  BE: "fr", ES: "es", MX: "es", AR: "es", CO: "es", CL: "es", PE: "es", DE: "de",
+  AT: "de", IT: "it", NL: "nl", RU: "ru", UA: "uk", TR: "tr", SA: "ar", AE: "ar",
+  EG: "ar", MA: "ar", IL: "he", IR: "fa", CN: "zh", TW: "zh", HK: "zh", JP: "ja",
+  KR: "ko", TH: "th", VN: "vi", ID: "id", MY: "ms", PH: "en", NG: "en", KE: "sw",
+  ZA: "en", US: "en", GB: "en", CA: "en", AU: "en",
+};
+
+// F1: self-migrating settings columns (this codebase's established D1 pattern —
+// guarded ADD COLUMN, once per isolate). Additive + backward-compatible; a proper
+// migration file also lives at worker/migrations/. loadSettings uses SELECT * so
+// the new columns surface automatically; the save INSERT needs them to exist.
+let _receptColsEnsured = false;
+async function ensureStatusColumns(env: Env): Promise<void> {
+  if (_receptColsEnsured) return;
+  _receptColsEnsured = true;
+  const db = metaDb(env);
+  for (const ddl of [
+    "ALTER TABLE receptionist_settings ADD COLUMN status_note TEXT",
+    "ALTER TABLE receptionist_settings ADD COLUMN status_expires_at INTEGER",
+    "ALTER TABLE receptionist_settings ADD COLUMN answer_lang TEXT",
+  ]) { try { await db.prepare(ddl).run(); } catch { /* column already present */ } }
+}
 
 // Availability presets (Mode B). Maps a preset id → a natural phrase Ava speaks.
 // Mirrors the 27-language picker decision: a fixed, validated set so a bad value
@@ -170,12 +200,25 @@ interface SettingsRow {
   greeting_text?: string | null; custom_prompt?: string | null;
   answer_all?: number; status_preset?: string | null; status_custom?: string | null;
   decline_to_ava?: number;
+  // F1 (Phase 12 finish)
+  status_note?: string | null; status_expires_at?: number | null; answer_lang?: string | null;
 }
 
 async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> {
   const r = await metaDb(env).prepare("SELECT * FROM receptionist_settings WHERE owner_uid=?1")
     .bind(uid).first<any>();
-  return r ? (r as SettingsRow) : null;
+  if (!r) return null;
+  // F1: lazily clear an expired status note on the next read, so a stale note can
+  // never reach a call's prompt (the prompt builder also double-checks the ts).
+  if (r.status_expires_at != null && Number(r.status_expires_at) <= Date.now() && r.status_note) {
+    r.status_note = null; r.status_expires_at = null;
+    try {
+      await metaDb(env).prepare("UPDATE receptionist_settings SET status_note=NULL, status_expires_at=NULL, updated_at=?2 WHERE owner_uid=?1")
+        .bind(uid, Date.now()).run();
+      track(env, uid, "recept_status_expired_cleared", "receptionist", {});
+    } catch { /* best-effort */ }
+  }
+  return r as SettingsRow;
 }
 
 // DEFAULT-ON (owner decision 2026-06-29): a user who has NEVER configured the
@@ -260,6 +303,13 @@ export function composeReceptionistPrompt(
   const poss = g === "male" ? "his" : g === "female" ? "her" : "their";
   // The SINGLE owner note ("Let Ava know if you're busy…").
   const note = (s.instructions_text || "").trim();
+  // F1: default answering language + a time-bound status note. The status note is
+  // included ONLY while unexpired (the relay/DB also lazy-clears it). answer_lang is
+  // the OPENING language; caller-adaptive switching (P2) still applies on top.
+  const answerLang = (s.answer_lang || "").trim();
+  const statusNote = (s.status_note && (s.status_expires_at == null || Number(s.status_expires_at) > Date.now()))
+    ? String(s.status_note).trim().slice(0, MAX_STATUS_NOTE) : "";
+  const statusUntil = statusNote && s.status_expires_at ? new Date(Number(s.status_expires_at)).toUTCString() : "";
 
   // CF engine: the greeting is spoken deterministically and the ENGINE decides
   // turn-taking, so the LLM is invoked ONLY to produce the closing line. Keep this
@@ -273,7 +323,12 @@ export function composeReceptionistPrompt(
       `• If you see "[SYSTEM: time is up]" → "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`,
       `• If the caller left no message → "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!"`,
       note ? `Context (never read aloud): ${who}'s availability note — "${note}".` : ``,
-      lang ? `Speak in ${lang}.` : ``,
+      // F1: time-bound status note — use it to answer, never read verbatim.
+      statusNote ? `${who} left this note for you${statusUntil ? ` (valid until ${statusUntil})` : ""}: "${statusNote}". Use it to answer the caller — but never read it out word-for-word.` : ``,
+      // F1: answer_lang is the opening language; else fall back to language_code.
+      (answerLang || lang) ? `Speak in ${answerLang || lang}.` : ``,
+      // P12/F1: Ava is a woman in every language — feminine self-reference always.
+      `You are a woman: always use feminine verb/adjective forms when referring to yourself (e.g. Spanish "encantada", French "désolée", Hindi feminine forms). Never masculine self-reference.`,
       `Refuse anything illegal or harmful.`,
     ].filter(Boolean).join("\n");
   }
@@ -309,7 +364,18 @@ export function composeReceptionistPrompt(
     `If they leave no message: "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!" Then ${endWith}.`,
     `If asked who you are, say only "I'm ${who}'s assistant" and steer back to taking the message. Never debate, never chat, never answer off-topic questions. Refuse anything illegal or harmful. If asked, you may say the call is recorded.`,
   ].filter(Boolean);
-  if (lang) lines.push(`Speak in ${lang}.`);
+  // F1: time-bound status note — Ava uses it naturally (e.g. "he's out at lunch,
+  // back around five"), never verbatim. Only present while unexpired.
+  if (statusNote) {
+    lines.push(`${who} left you this note${statusUntil ? ` (valid until ${statusUntil})` : ""}: "${statusNote}". Use it to answer callers naturally — e.g. tell them when ${subj}'ll be back — but never read it out word-for-word.`);
+  }
+  // F1: answer_lang is the OPENING language; caller-adaptive switching still applies
+  // (the P2 detect-and-follow line above). Falls back to the legacy language_code.
+  if (answerLang) {
+    lines.push(`Answer the call in ${answerLang}. If the caller clearly speaks a different language, switch to theirs and stay in it.`);
+  } else if (lang) {
+    lines.push(`Speak in ${lang}.`);
+  }
   return lines.join("\n");
 }
 
@@ -341,6 +407,14 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     status_preset: s?.status_preset ?? "",
     status_custom: s?.status_custom ?? "",
     decline_to_ava: !!(s?.decline_to_ava),
+    // F1: status note + expiry + default answering language. `answer_lang_default`
+    // is the GeoIP-derived suggestion the client pre-selects (labeled "(detected)")
+    // ONLY when the owner has never saved an answer_lang. The server never
+    // re-detects once a value is saved.
+    status_note: s?.status_note ?? "",
+    status_expires_at: s?.status_expires_at ?? null,
+    answer_lang: s?.answer_lang ?? "",
+    answer_lang_default: COUNTRY_LANG[String((req as any).cf?.country ?? "").toUpperCase()] ?? "en",
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
   });
@@ -386,6 +460,20 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   if (statusPreset && !(statusPreset in STATUS_PRESETS)) statusPreset = null;
   const statusCustom = b.status_custom == null ? null : String(b.status_custom).slice(0, MAX_STATUS_CUSTOM).trim() || null;
 
+  // F1: status note + expiry + default answering language.
+  await ensureStatusColumns(env);
+  const statusNote = b.status_note == null ? null : String(b.status_note).slice(0, MAX_STATUS_NOTE).trim() || null;
+  let statusExpiresAt: number | null = null;
+  if (b.status_expires_at != null && Number(b.status_expires_at) !== 0) {
+    const t = Math.trunc(Number(b.status_expires_at));
+    if (t > Date.now() + STATUS_MAX_TTL_MS) {
+      return json({ error: "expiry_too_far", message: "A note can expire at most a year from now." }, 400);
+    }
+    if (t > 0) statusExpiresAt = t; // past/invalid → treated as no-expiry-set (null)
+  }
+  let answerLang: string | null = b.answer_lang == null ? null : String(b.answer_lang).trim();
+  if (answerLang && !LANG_CODES.has(answerLang)) answerLang = null; // unknown → auto-detect
+
   // Save-time content validation (Nemotron). Reject before persisting so an
   // unsafe persona/instruction/greeting never reaches a live call.
   const blocked = await guardWrite(req, env, ctx.uid, "receptionist", [
@@ -405,16 +493,25 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
        (owner_uid, enabled, instructions_text, voice_name, display_name,
         persona_name, language_code, greeting_text, custom_prompt,
         answer_all, status_preset, status_custom, decline_to_ava,
+        status_note, status_expires_at, answer_lang,
         created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?14,?14)
      ON CONFLICT(owner_uid) DO UPDATE SET
        enabled=?2, instructions_text=?3, voice_name=?4, display_name=?5,
        persona_name=?6, language_code=?7, greeting_text=?8, custom_prompt=?9,
        answer_all=?10, status_preset=?11, status_custom=?12, decline_to_ava=?13,
+       status_note=?15, status_expires_at=?16, answer_lang=?17,
        updated_at=?14`,
   ).bind(ctx.uid, enabled ? 1 : 0, instr, voice, display,
     persona, language, greeting, customPrompt,
-    answerAll, statusPreset, statusCustom, declineToAva, now).run();
+    answerAll, statusPreset, statusCustom, declineToAva, now,
+    statusNote, statusExpiresAt, answerLang).run();
+  // F1 telemetry.
+  const ttlBucket = statusExpiresAt == null ? "never"
+    : (() => { const d = statusExpiresAt - Date.now();
+        return d <= 16 * 60_000 ? "15m" : d <= 31 * 60_000 ? "30m" : d <= 61 * 60_000 ? "1h" : d <= 4.1 * 3600_000 ? "4h" : "custom"; })();
+  track(env, ctx.uid, "recept_status_saved", APP, { has_expiry: statusExpiresAt != null, ttl_bucket: ttlBucket, has_note: !!statusNote });
+  if (answerLang) track(env, ctx.uid, "recept_lang_set", APP, { lang: answerLang, source: b.answer_lang_source === "detected" ? "detected" : "user" });
 
   await refreshSettingsCache(env, ctx.uid); // bust-on-save: next call sees fresh settings
   track(env, ctx.uid, enabled ? "ava_recept_enabled" : "ava_recept_disabled", APP,
@@ -617,8 +714,12 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // Stamp the caller's email/phone so support can pull a complainant's
   // receptionist calls by contact. trace_id = the session id (one-call trace).
   // (caller contact was resolved once above and reused here.)
+  // F1: is a status note actually in force for this call, and in what language?
+  const statusActive = !!(s.status_note && (s.status_expires_at == null || Number(s.status_expires_at) > now));
   trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_triggered", APP,
-    { owner: to, has_phone: !!callerPhone, call_id: callId, activation_mode: activationMode }, sid);
+    { owner: to, has_phone: !!callerPhone, call_id: callId, activation_mode: activationMode,
+      answer_lang: s.answer_lang || null, status_note_active: statusActive }, sid);
+  if (statusActive) track(env, to, "recept_status_used_in_call", APP, { call_id: callId });
   metric(env, "ava_recept_triggered", [1]);
 
   return json({
