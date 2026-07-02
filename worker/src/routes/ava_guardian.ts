@@ -49,7 +49,7 @@ import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { postAvaMessage } from "./ava_thread";
-import { classifyThreat } from "../lib/moderation"; // shield watchdog security classifier (Claude Opus 4.8 via OpenRouter)
+import { classifyThreat, moderate, MOD_MODEL } from "../lib/moderation"; // security classifier (Opus) + P6 Nemotron content-safety
 import { readConfig } from "./config";
 import { track, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
@@ -233,7 +233,8 @@ const GROOM_MEET = /\b(meet (up|in person|me)|come (over|to my)|can i (see|visit
 const GROOM_AGE = /\b(how old are you|are you (over )?\d{1,2}|don'?t (act|look) your age|mature for your age)\b/i;
 const GROOM_INTIMATE = /\b(send (me )?(a )?(pic|photo|selfie|picture)|what are you wearing|you'?re (so )?(cute|pretty|hot|beautiful)|our (relationship|love))\b/i;
 
-export type GuardianCategory = "scam" | "spam" | "grooming" | "deepfake";
+export type GuardianCategory = "scam" | "spam" | "grooming" | "deepfake"
+  | "hate" | "csae" | "trafficking" | "threat"; // P6 Nemotron categories
 
 export interface CheapVerdict {
   hit: boolean;                 // any heuristic fired
@@ -426,7 +427,30 @@ function warningText(category: GuardianCategory, severity: number): string {
     case "deepfake":
       return "⚠️ Ava safety: This image may be AI-generated or manipulated. Treat it with caution — "
         + "things that look real can be faked. (Only you can see this message.)";
+    default:
+      // P6 Nemotron categories (hate / csae / trafficking / threat) and any future
+      // harm label — one careful, non-graphic safety line.
+      return "⚠️ Ava safety: This message may contain harmful content. You don't have to engage — "
+        + "you can block or report this person, and tell an adult you trust if anything feels wrong. "
+        + "(Only you can see this message.)";
   }
+}
+
+// P6: map Nemotron content-safety labels → our flag decision. POLICY (encode
+// exactly): adult sexual content is ALLOWED and NEVER flagged; flag hate, CSAE,
+// grooming, trafficking, threats/violence, and scams. Returns null = do not flag.
+function mapNemotronCategories(cats: string[]): { category: GuardianCategory; severity: number } | null {
+  const s = (cats ?? []).map((c) => String(c).toLowerCase());
+  const has = (...ks: string[]) => s.some((c) => ks.some((k) => c.includes(k)));
+  if (has("csae", "csam", "child", "minor", "underage", "pedo")) return { category: "csae", severity: 3 };
+  if (has("traffick")) return { category: "trafficking", severity: 3 };
+  if (has("groom", "lure", "sextort")) return { category: "grooming", severity: 3 };
+  if (has("hate", "harass", "racis", "slur")) return { category: "hate", severity: 2 };
+  if (has("threat", "violence", "kill", "weapon")) return { category: "threat", severity: 2 };
+  if (has("scam", "fraud", "phish")) return { category: "scam", severity: 2 };
+  // Adult sexual content / nudity (no minor signal above) is explicitly allowed.
+  // Anything else unmapped errs toward NOT red-flagging adult peer speech.
+  return null;
 }
 
 // Map the security model's free-form category onto our GuardianCategory union.
@@ -549,6 +573,28 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     colo: geo.colo ?? null, ip: geo.ip ?? null,
   });
 
+  // P6: ALWAYS-ON message-level safety scan via Nemotron (:free). Runs once per
+  // message (text is identical for all recipients). Async + FAIL-OPEN: any error
+  // → no flag, `safety_scan_error`, delivery already happened. Adult sexual content
+  // is NOT flagged (policy in mapNemotronCategories). Ships ON (safetyScanEnabled).
+  let nemotron: { category: GuardianCategory; severity: number } | null = null;
+  try {
+    let scanOn = true;
+    try { scanOn = (await readConfig(env)).safetyScanEnabled !== false; } catch { scanOn = true; }
+    if (scanOn && text.trim()) {
+      const mod = await moderate(env, { text });
+      if (!mod.ok) {
+        void track(env, senderUid, "safety_scan_error", "guardian", { conv, ms: mod.ms, engine: "nemotron", model: MOD_MODEL });
+      } else {
+        nemotron = mod.safe ? null : mapNemotronCategories(mod.categories);
+        void track(env, senderUid, "safety_scan", "guardian", {
+          conv, is_group: isGroup, flagged: !!nemotron, category: nemotron?.category ?? null,
+          raw_categories: mod.categories, ms: mod.ms, engine: "nemotron", model: MOD_MODEL,
+        });
+      }
+    }
+  } catch { void track(env, senderUid, "safety_scan_error", "guardian", { conv, engine: "nemotron" }); }
+
   let flagged = 0;
   let warned = 0;
 
@@ -592,6 +638,10 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
       }
     }
 
+    // P6: the message-level Nemotron flag applies to EVERY recipient (adult sexual
+    // content already excluded). Only fills in when nothing more specific fired.
+    if (!category && nemotron) { category = nemotron.category; severity = Math.max(severity, nemotron.severity); detail = detail ?? `nemotron:${nemotron.category}`; }
+
     if (!category) return; // clean for this recipient → no cost beyond the scan
 
     await recordFlag(env, { uid, conv, peer: senderUid, category, severity, detail });
@@ -612,6 +662,7 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     // at severity≥2 (avoid nagging). Always private → the sender never sees it.
     // The warning carries the offending message's id so the client paints it red.
     const shouldWarn = category === "grooming" || category === "scam" || category === "deepfake"
+      || category === "csae" || category === "trafficking" || category === "threat" || category === "hate"
       || (category === "spam" && severity >= 2);
     if (shouldWarn && (await warnPrivately(env, {
       uid, conv, category, severity, peer: senderUid, advisory, flaggedClientId, flaggedCreatedAt,

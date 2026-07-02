@@ -109,6 +109,11 @@ export interface PlatformConfig {
   // at launch). Fail-closed on the server route — a direct API call from an
   // unverified user is rejected 403 liveness_required.
   listingLivenessGate: boolean;
+  // P6: always-on per-message safety scanning (Nemotron :free via OpenRouter) with
+  // red-bubble marking on the recipient. Ships **ON** (this one ships enabled).
+  // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
+  // in Guardian settings; child accounts cannot opt out.
+  safetyScanEnabled: boolean;
   // P5: per-user daily cap on DISTINCT marketplace agent conversations (UTC day).
   // Tunable via KV without redeploy. The per-listing talk-once dedupe is separate
   // and does NOT consume quota (re-opening the same listing's result is free).
@@ -165,6 +170,7 @@ const DEFAULTS: PlatformConfig = {
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
   listingLivenessGate: false,      // P4: block listing create/publish unless liveness-verified — dark, flip ON at launch
+  safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   agentDailyCap: 10,               // P5: 10 marketplace agent conversations/user/UTC-day
   minAppBuild: 0,
 };

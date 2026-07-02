@@ -54,6 +54,7 @@ Covers 100% of `PlatformConfig` keys in `worker/src/routes/config.ts` (interface
 | `ivrAiFrontDesk` | bool | `false` | `false` | — tap-menu default; AI front desk future |
 | `groupInvitesEnabled` | bool | `false` | `false` | — pending-membership invites off until migration+test |
 | `listingLivenessGate` | bool | `false` | `true` | **P4** — block listing create/publish unless liveness-verified; ships dark |
+| `safetyScanEnabled` | bool | `true` | `true` | **P6** — always-on Nemotron per-message safety scan + red bubbles; ships ON |
 | `agentDailyCap` | number | `10` | `10` | **P5** — marketplace agent conversations/user/UTC-day (0 disables) |
 | `minAppBuild` | number | `0` | `0` | — min build gate; bump when forcing upgrade |
 
@@ -69,7 +70,6 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
 
 | Flag | Type | Default at add | Launch value | Owner phase |
 |---|---|---|---|---|
-| `safetyScanEnabled` | bool | `true` (ships ON) | `true` | P6 — per-message Nemotron safety scan + red bubbles |
 | `chatArchiveV2` | bool | `false` | `true` | P8 Stage 1 — R2 cold archive |
 | `restoreV2` | bool | `false` | `true` | P8 Stage 2 — new-phone restore |
 | `driveAutoBackup` | bool | `false` | `true` | P8 Stage 3 — daily Drive backup |
@@ -105,6 +105,30 @@ These do not exist in `config.ts` yet; the owning phase appends its row here whe
   server pipeline + a client challenge screen, unverifiable without a build/device.
 - The `CreateListingFlow` (creator-services composer) already gates server-side via `requireKyc`;
   its client explainer can reuse `_openListingComposer` when that path is wired.
+
+## Phase 6 status (per-message safety scanning), 2026-07-02
+
+Much of P6 pre-existed: `guardianScan` is wired into the send path (`messaging.ts:333`), records
+`ava_guardian_flags`, sends private warnings carrying the flagged message id, and the client
+already paints flagged messages red (`chat_thread.dart:_flaggedTs`).
+
+**Done this pass (owner chose always-on Nemotron):**
+- `safetyScanEnabled` flag (**ON**). `guardianScan` now runs an ALWAYS-ON message-level
+  Nemotron scan (`moderate()`, `nvidia/nemotron-3.5-content-safety:free`) once per message,
+  **fail-open**, gated by the flag. Policy encoded in `mapNemotronCategories`: adult sexual
+  content is NEVER flagged; flag hate/csae/grooming/trafficking/threat/scam. `GuardianCategory`
+  extended with those labels; `warningText` has a default branch for them.
+- A Nemotron flag applies to every recipient → existing `recordFlag` + `warnPrivately` path →
+  the flagged message goes red on the recipient (via the existing `_flaggedTs` mechanism).
+- Telemetry: `safety_scan {flagged, category, raw_categories, ms, engine, model}` and
+  `safety_scan_error` (fail-open). Ava/private chats already skipped; media unchanged (text v1).
+
+**Deferred within P6 (documented follow-up):**
+- Per-user **adult opt-out** in Guardian settings (child accounts cannot opt out) — needs a
+  stored per-user pref + child-account check + settings toggle.
+- The dedicated `{type:'safety_flag'}` annotation frame + a red-bubble tap-sheet with
+  Block/Report/"This is fine" (`safety_flag_shown`/`safety_flag_dismissed`). Today's red bubble
+  rides the existing private-warning path, which is functional but less granular.
 
 ## Telemetry doctrine (STANDING RULE — added Phase 13-D)
 
