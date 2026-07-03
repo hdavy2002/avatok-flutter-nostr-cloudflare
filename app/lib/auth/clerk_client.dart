@@ -87,11 +87,22 @@ class ClerkClient {
       {bool get = false, Map<String, String>? body}) async {
     await _loadToken();
     final uri = _uri(path);
-    final r = get
-        ? await http.get(uri, headers: _headers(get: true))
-        : await (body == null
-            ? http.delete(uri, headers: _headers())
-            : http.post(uri, headers: _headers(), body: body));
+    // 8s cap on every FAPI round-trip (P0-2): a stalled TCP connection used to
+    // hang whatever awaited it (shell gate, JWT mint) indefinitely. Callers
+    // already try/catch network errors — let the TimeoutException flow after
+    // capturing telemetry so "Clerk hung" is queryable.
+    const timeout = Duration(seconds: 8);
+    final http.Response r;
+    try {
+      r = get
+          ? await http.get(uri, headers: _headers(get: true)).timeout(timeout)
+          : await (body == null
+              ? http.delete(uri, headers: _headers()).timeout(timeout)
+              : http.post(uri, headers: _headers(), body: body).timeout(timeout));
+    } on TimeoutException {
+      _sx('fapi_timeout', provider: 'clerk', reason: path);
+      rethrow;
+    }
     _capture(r);
     try {
       return jsonDecode(r.body) as Map<String, dynamic>;
@@ -145,17 +156,23 @@ class ClerkClient {
   /// flaky). Returns the JWT and updates the soft/hard expiry, or null on failure.
   Future<String?> _mintSessionJwt() async {
     for (var attempt = 0; attempt < 2; attempt++) {
-      final sid = await _activeSessionId();
-      if (sid == null) return null;
-      // POST /v1/client/sessions/{sid}/tokens → { jwt: "<RS256 session token>" }
-      final body = await _send('/client/sessions/$sid/tokens', body: {});
-      final jwt = (body['jwt'] ?? (body['response'] as Map<String, dynamic>?)?['jwt'])?.toString();
-      if (jwt != null && jwt.isNotEmpty) {
-        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        _sessionJwt = jwt;
-        _sessionJwtSoftExpiry = now + 45; // refresh proactively before the ~60s TTL
-        _sessionJwtHardExpiry = now + 58; // ...but keep serving until truly expired
-        return jwt;
+      try {
+        final sid = await _activeSessionId();
+        if (sid == null) return null;
+        // POST /v1/client/sessions/{sid}/tokens → { jwt: "<RS256 session token>" }
+        final body = await _send('/client/sessions/$sid/tokens', body: {});
+        final jwt = (body['jwt'] ?? (body['response'] as Map<String, dynamic>?)?['jwt'])?.toString();
+        if (jwt != null && jwt.isNotEmpty) {
+          final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          _sessionJwt = jwt;
+          _sessionJwtSoftExpiry = now + 45; // refresh proactively before the ~60s TTL
+          _sessionJwtHardExpiry = now + 58; // ...but keep serving until truly expired
+          return jwt;
+        }
+      } on TimeoutException {
+        // Each attempt now fails fast (≤8s via _send). Treat a timeout as a
+        // failed mint so sessionToken() can fall back to the still-valid cached
+        // JWT instead of the exception nulling auth for every in-flight call.
       }
     }
     return null;
