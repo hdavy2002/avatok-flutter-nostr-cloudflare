@@ -179,6 +179,11 @@ class _CallScreenState extends State<CallScreen> {
   // confirmation (welcome message) within 3s of _start(). If not, show retry UI.
   Timer? _placeCallTimeout;
   bool _gotWelcome = false;
+  // CALLFIX-23: cellular call interruption handling. When a GSM call comes in during
+  // a VoIP call, we mute mic and show "On hold" banner; unmute when the cellular
+  // call ends.
+  bool _onCellularHold = false;    // true when cellular call is active
+  StreamSubscription? _telephonySub; // listens to cellular call state changes
 
   @override
   void initState() {
@@ -448,6 +453,33 @@ class _CallScreenState extends State<CallScreen> {
         Analytics.capture('call_audio_route', {'route': route, 'auto': true});
       }
     }
+    // CALLFIX-23: start listening for cellular call interruption (GSM call during VoIP).
+    // When a cellular call is active, we auto-mute mic and show "On hold" banner.
+    if (NativeVoiceAudio.isSupported) {
+      try {
+        await NativeVoiceAudio().startTelephonyMonitoring();
+        _telephonySub = NativeVoiceAudio().telephonyEventStream.listen((event) {
+          final state = (event['state'] ?? '').toString();
+          if (state == 'held' && !_onCellularHold) {
+            // Cellular call came in — auto-mute mic.
+            if (mounted) setState(() => _onCellularHold = true);
+            if (!_muted) {
+              setState(() => _muted = true);
+              _send({'type': 'mute', 'muted': true});
+            }
+            Analytics.capture('call_cellular_held', {'call_id': widget.room});
+          } else if (state == 'resumed' && _onCellularHold) {
+            // Cellular call ended — unmute mic.
+            if (mounted) setState(() => _onCellularHold = false);
+            if (_muted) {
+              setState(() => _muted = false);
+              _send({'type': 'mute', 'muted': false});
+            }
+            Analytics.capture('call_cellular_resumed', {'call_id': widget.room});
+          }
+        });
+      } catch (_) {}
+    }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _secs++);
     });
@@ -529,24 +561,44 @@ class _CallScreenState extends State<CallScreen> {
     // call, and only when the actual media stops.
     if (_connected) {
       Analytics.capture('call_ws_reconnect',
-          {'call_id': widget.room, 'attempt': _wsReconnects + 1});
-      _reconnectSignaling();
+          {'call_id': widget.room, 'attempt': _wsReconnects + 1, 'phase': 'connected'});
+      _reconnectSignaling(isConnected: true);
       return;
     }
-    // Not connected yet → the handshake can't complete without signaling; end.
+    // CALLFIX-22: Pre-connect retry (ringing/connecting phase). Socket loss during
+    // setup would normally end the call, but we retry 3× with exponential backoff
+    // (1s/2s/4s) before giving up. This helps calls survive transient network
+    // glitches during the ring/connect handshake.
+    if ((_phase == 'ringing' || _phase == 'connecting') && _wsReconnects < 3) {
+      Analytics.capture('call_ws_reconnect_preconnect',
+          {'call_id': widget.room, 'phase': _phase, 'attempt': _wsReconnects + 1});
+      _reconnectSignaling(isConnected: false);
+      return;
+    }
+    // Not connected yet and retry budget exhausted → the handshake can't complete.
     _endWith('ended', reason: 'socket-lost');
   }
 
-  /// Re-open the room signaling socket after it dropped mid-call. Media is P2P
-  /// and keeps flowing; this just restores the channel so renegotiation / ICE
-  /// restarts / a clean 'bye' can still happen. Backed off and capped.
-  void _reconnectSignaling() {
-    if (_ended || !_connected) return;
-    if (_wsReconnects >= 5) return; // give up — net is genuinely gone
+  /// Re-open the room signaling socket after it dropped.
+  /// If [isConnected] is true, the call is already connected; the socket is only
+  /// needed for renegotiation/bye, so reconnect in the background with slow backoff.
+  /// If [isConnected] is false, we're still ringing/connecting; retry up to 3 times
+  /// with faster backoff (1s/2s/4s) to avoid prolonging the no-ring window.
+  void _reconnectSignaling({required bool isConnected}) {
+    if (_ended) return;
+    if (isConnected && !_connected) return; // post-connect path, but call ended
+    if (!isConnected && (_phase != 'ringing' && _phase != 'connecting')) return;
+    if (_wsReconnects >= (isConnected ? 5 : 3)) return; // cap attempts
     _wsReconnects++;
     _wsReconnectTimer?.cancel();
-    _wsReconnectTimer = Timer(Duration(milliseconds: 600 * _wsReconnects), () {
-      if (_ended || !_connected) return;
+    // Backoff: post-connect uses 600ms × attempt; pre-connect uses 1s, 2s, 4s.
+    final delayMs = isConnected
+        ? 600 * _wsReconnects
+        : [1000, 2000, 4000][_wsReconnects - 1];
+    _wsReconnectTimer = Timer(Duration(milliseconds: delayMs), () {
+      if (_ended) return;
+      if (isConnected && !_connected) return;
+      if (!isConnected && (_phase != 'ringing' && _phase != 'connecting')) return;
       try { _ws?.sink.close(); } catch (_) {}
       final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
       try {
@@ -622,6 +674,16 @@ class _CallScreenState extends State<CallScreen> {
         _telemetry.connected(pc);
         HapticFeedback.mediumImpact(); // P9: tactile "call connected" cue
         if (mounted) setState(() { _connected = true; _phase = 'connected'; });
+        // CALLFIX-20: start foreground service to keep the call alive while backgrounded.
+        // This shows an ongoing-call notification with a chronometer and hang-up action.
+        if (NativeVoiceAudio.isSupported) {
+          try {
+            await NativeVoiceAudio().startCallForegroundService(
+              callId: widget.room,
+              peerName: widget.title,
+            );
+          } catch (_) {}
+        }
       }
     };
     pc.onConnectionState = (s) {
@@ -1094,6 +1156,11 @@ class _CallScreenState extends State<CallScreen> {
     try { await NativeVoiceAudio().stopBluetoothSco(); } catch (_) {}
     // CALLFIX-19: stop proximity sensor on call end.
     try { await NativeVoiceAudio().stopProximitySensor(); } catch (_) {}
+    // CALLFIX-20: stop foreground service on call end to remove the ongoing-call notification.
+    try { await NativeVoiceAudio().stopCallForegroundService(); } catch (_) {}
+    // CALLFIX-23: stop listening for cellular call interruption.
+    try { await NativeVoiceAudio().stopTelephonyMonitoring(); } catch (_) {}
+    _telephonySub?.cancel();
     _ended = true;
     // Decrement the live-screen count (never below 0) and derive [gInCall] from
     // it, so overlapping calls tearing down in any order leave an accurate
@@ -1143,7 +1210,7 @@ class _CallScreenState extends State<CallScreen> {
 
   String get _statusText => switch (_phase) {
         'ringing' => 'Ringing…',
-        'connected' => 'Connected · end-to-end encrypted',
+        'connected' => _onCellularHold ? 'On hold — cellular call' : 'Connected · end-to-end encrypted',
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
