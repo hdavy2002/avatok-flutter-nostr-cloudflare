@@ -8,6 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -1882,6 +1883,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         'reason': _dialing ? 'already_dialing' : 'already_in_call',
         'kind': kind,
       });
+      return;
+    }
+    // CALLFIX-14: glare detection — if an incoming call from the same peer is
+    // currently ringing, accept it instead of dialing (resolves simultaneous dials).
+    final to = widget.chat.seed; // the peer's uid
+    if (gIncomingRingingFrom == to && gIncomingRingingCallId != null) {
+      Analytics.capture('call_glare_autoaccept', {
+        'call_id': gIncomingRingingCallId,
+        'kind': kind,
+      });
+      // Accept the incoming call via CallKit (simulates the user tapping accept)
+      await FlutterCallkitIncoming.acceptCall(gIncomingRingingCallId!);
       return;
     }
     _dialing = true;

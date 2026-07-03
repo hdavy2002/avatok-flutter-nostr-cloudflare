@@ -29,6 +29,13 @@ final navigatorKey = GlobalKey<NavigatorState>();
 /// to the active CallScreen — reliable even when the WS path couldn't be held.
 final callStatusBus = StreamController<({String callId, String status})>.broadcast();
 
+// CALLFIX-14: Glare detection — track the currently ringing incoming call so if
+// the user starts dialing while an incoming call from the same peer is ringing,
+// we can auto-accept the incoming call instead. Cleared when the call is
+// accepted/declined/missed.
+String? gIncomingRingingFrom; // the peer's uid/seed that is currently ringing
+String? gIncomingRingingCallId; // the callId of the incoming call
+
 final _local = FlutterLocalNotificationsPlugin();
 // Messages channel. Keep the id 'avatok_messages' UNCHANGED — changing a channel
 // id makes Android drop the old channel and create a fresh one, resetting the
@@ -646,6 +653,11 @@ class PushService {
         // If we're the callee still ringing, dismiss the incoming-call UI.
         if (callId.isNotEmpty && _terminalCallStatus(status)) {
           FlutterCallkitIncoming.endCall(callId);
+          // CALLFIX-14: clear glare tracking when the call is no longer ringing
+          if (gIncomingRingingCallId == callId) {
+            gIncomingRingingFrom = null;
+            gIncomingRingingCallId = null;
+          }
         }
         return;
       }
@@ -754,6 +766,9 @@ class PushService {
         Analytics.capture('call_incoming_received', {
           'call_id': incomingId, 'kind': kind, 'state': 'foreground',
         });
+        // CALLFIX-14: track the ringing incoming call for glare detection
+        gIncomingRingingFrom = (d['from'] ?? '').toString();
+        gIncomingRingingCallId = incomingId;
         _showIncoming(d);
         return;
       }
