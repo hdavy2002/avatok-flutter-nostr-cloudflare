@@ -906,6 +906,9 @@ class PushService {
               'kind': acc['kind'] == 'video' ? 'video' : 'audio',
             });
           }
+          // CALLFIX-R6: Clear glare state when accept is tapped
+          gIncomingRingingFrom = null;
+          gIncomingRingingCallId = null;
           unawaited(_openCall(event.body['extra'])); // CALLFIX-15
           break;
         case Event.actionCallDecline:
@@ -917,6 +920,9 @@ class PushService {
             // ignore: unawaited_futures
             _declineRouting(extra);
           }
+          // CALLFIX-R6: Clear glare state when decline is tapped
+          gIncomingRingingFrom = null;
+          gIncomingRingingCallId = null;
           break;
         case Event.actionCallTimeout:
           final ex = event.body['extra'];
