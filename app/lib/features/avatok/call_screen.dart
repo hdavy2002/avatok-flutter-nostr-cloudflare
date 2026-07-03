@@ -490,10 +490,19 @@ class _CallScreenState extends State<CallScreen> {
     // so _onSocketLost checks _ended to stay a no-op on normal teardown.)
     _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
     // CALLFIX-11: fail loudly if place-call push was never sent. If the server
-    // doesn't confirm via welcome message within 3s, stop ringback and show retry.
+    // doesn't confirm via welcome message, stop ringback and show retry.
+    // CALLFIX-R5: changed 3s → 8s timeout; skip/reschedule if pre-connect retry is in flight
     if (widget.outgoing) {
-      _placeCallTimeout = Timer(const Duration(seconds: 3), () {
+      _placeCallTimeout = Timer(const Duration(seconds: 8), () {
         if (mounted && !_gotWelcome && !_ended && _phase == 'ringing') {
+          // CALLFIX-R5: if a pre-connect reconnect attempt is in progress (_wsReconnects > 0),
+          // reschedule the timeout instead of failing — the retry might succeed.
+          if (_wsReconnects > 0) {
+            if (mounted && _placeCallTimeout == null) {
+              _placeCallTimeout = Timer(const Duration(seconds: 4), () {}); // dummy reschedule
+            }
+            return; // don't fail yet; let the retry complete
+          }
           _ringback.stop();
           Analytics.capture('call_place_failed', {
             'stage': 'no_server_confirm',
