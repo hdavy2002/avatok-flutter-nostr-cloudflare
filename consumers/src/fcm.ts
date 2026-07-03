@@ -166,11 +166,20 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     // Android Doze, so a sleeping phone only learns of a new message minutes
     // later (the "message arrived after 10 min" symptom). Chat messages must
     // wake the device immediately, exactly like calls.
+    //
+    // [FIX-FCM-2 2026-07-03] Forward a receptionist tag when the producer marks
+    // this notify as a "Ava took a message" voicemail (reception DO sends
+    // data:{type:"receptionist"}). Without this the tag was DROPPED here, so the
+    // client couldn't route it to the dedicated "Calls" channel — it fell back to
+    // fragile fromName=='Ava' sniffing. `recept:"1"` lets the app post a
+    // "Missed call — Ava took a message from <name>" banner on the calls channel.
+    const isRecept = (msg.data as any)?.type === "receptionist";
     return { highPriority: true, data: {
       type: "message", fromName: msg.fromName ?? "AvaTOK",
       // Short preview (when the sender included one) → the app renders an
       // expandable banner so the message reads from the shade without opening.
       ...(msg.preview ? { preview: msg.preview } : {}),
+      ...(isRecept ? { recept: "1" } : {}),
     } };
   }
   if (msg.kind === "del") {

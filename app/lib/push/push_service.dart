@@ -29,9 +29,26 @@ final navigatorKey = GlobalKey<NavigatorState>();
 final callStatusBus = StreamController<({String callId, String status})>.broadcast();
 
 final _local = FlutterLocalNotificationsPlugin();
+// Messages channel. Keep the id 'avatok_messages' UNCHANGED — changing a channel
+// id makes Android drop the old channel and create a fresh one, resetting the
+// user's sound/vibration/importance overrides. playSound + enableVibration are set
+// EXPLICITLY so the OS is guaranteed to raise a heads-up banner that wakes the
+// screen with sound + vibration (importance high alone is necessary but the
+// explicit flags remove any ambiguity across OEM skins).
 const _msgChannel = AndroidNotificationChannel(
   'avatok_messages', 'Messages',
   description: 'New message notifications', importance: Importance.high,
+  playSound: true, enableVibration: true,
+);
+
+// Calls channel — missed calls and receptionist ("Ava took a message") banners.
+// Separate id so the user can tune/mute call notifications independently of chat,
+// and so a missed-call banner reads distinctly from a chat message. Also high
+// importance with sound + vibration so it wakes the screen.
+const _callsChannel = AndroidNotificationChannel(
+  'avatok_calls', 'Calls',
+  description: 'Missed calls and receptionist messages', importance: Importance.high,
+  playSound: true, enableVibration: true,
 );
 
 // The BACKGROUND FCM isolate is a SEPARATE Dart isolate with none of the app's
@@ -49,9 +66,10 @@ Future<void> _ensureLocalInit() async {
     await _local.initialize(const InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     ));
-    await _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_msgChannel);
+    final android = _local
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await android?.createNotificationChannel(_msgChannel);
+    await android?.createNotificationChannel(_callsChannel);
     _localReady = true;
   } catch (_) {/* leave false so the next push retries init */}
 }
@@ -131,6 +149,7 @@ Future<void> _showGroupInviteNotif(Map<String, dynamic> d) async {
     ),
     payload: conv.isNotEmpty ? 'group:$conv' : 'group',
   );
+  await _bgTrack('push_shown', {'channel': 'messages', 'type': 'group_invite'});
 }
 
 /// Background/terminated FCM handler — must be a top-level entry point.
@@ -279,6 +298,16 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
   //                    use it purely as a high-priority WAKE so a sleeping phone
   //                    reconnects + syncs fast — no duplicate banner, no bump.
   if (d.containsKey('event_id')) return; // relay-event → wake only
+  // Receptionist voicemail ("Ava took a message") is a MISSED-CALL surface, not a
+  // chat — route it to the dedicated Calls channel so it reads distinctly and can
+  // be tuned/muted apart from chat. The consumer currently delivers it as a plain
+  // type=='message' notify (it drops the data.type=='receptionist' tag the
+  // reception DO attaches — see the report), so the only client-visible signal is
+  // fromName=='Ava' plus an explicit recept/kind flag if the server ever adds one.
+  if (_isReceptionistPush(d)) {
+    await _showMissedCallNotif(d);
+    return;
+  }
   final who = (d['fromName'] ?? 'AvaTOK').toString();
   final count = await _bumpBadge();
   // Server-readable arch (owner request 2026-06-27, WhatsApp-style shade): when
@@ -317,6 +346,62 @@ Future<void> _showMessageNotif(Map<String, dynamic> d) async {
     ),
     payload: 'chat',
   );
+  // Reachable from BOTH the bg isolate (firebaseBackgroundHandler) and the
+  // foreground path, so use _bgTrack — Analytics isn't available in the bg
+  // isolate; _bgTrack durably queues and the main isolate ships it to PostHog.
+  await _bgTrack('push_shown', {'channel': 'messages', 'type': 'message'});
+}
+
+/// True when a type=='message' push is actually the receptionist's "Ava took a
+/// message" voicemail (a missed-call surface). Preferred signal is an explicit
+/// server tag (d['recept']=='1' / d['kind']=='receptionist' / d['type']=='receptionist'
+/// / d['category']=='missed'); today the consumer strips those, so we fall back to
+/// fromName=='Ava', which is what the reception DO sets. See the server-tagging gap
+/// noted in the report — once the consumer forwards the tag this stays correct.
+bool _isReceptionistPush(Map<String, dynamic> d) {
+  final kind = (d['kind'] ?? '').toString().toLowerCase();
+  final type = (d['type'] ?? '').toString().toLowerCase();
+  final category = (d['category'] ?? '').toString().toLowerCase();
+  if (d['recept']?.toString() == '1') return true;
+  if (kind == 'receptionist' || type == 'receptionist') return true;
+  if (category == 'missed' || type == 'missed') return true;
+  // Fallback while the server tag is stripped by the consumer: the reception DO
+  // posts the voicemail as fromName='Ava'.
+  return (d['fromName'] ?? '').toString() == 'Ava';
+}
+
+/// Missed-call / receptionist ("Ava took a message") banner on the dedicated
+/// Calls channel. Distinct notification id (8002) from the message banner (8000)
+/// so both can coexist. High importance + sound + vibration wakes the screen.
+Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
+  final who = (d['callerName'] ?? d['caller_phone'] ?? d['fromName'] ?? 'a caller')
+      .toString();
+  final preview = (d['preview'] ?? d['body'] ?? '').toString().trim();
+  final count = await _bumpBadge();
+  final title = 'Missed call — Ava took a message from $who';
+  final body = preview.isNotEmpty ? preview : 'Tap to hear the message';
+  final styleInfo = preview.isNotEmpty
+      ? BigTextStyleInformation(preview, contentTitle: title)
+      : null;
+  await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
+  await _local.show(
+    8002, // fixed id → updates in place (one missed-call banner)
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _callsChannel.id, _callsChannel.name,
+        channelDescription: _callsChannel.description,
+        importance: Importance.high, priority: Priority.high,
+        number: count,
+        ticker: title,
+        category: AndroidNotificationCategory.missedCall,
+        styleInformation: styleInfo,
+      ),
+    ),
+    payload: 'chat', // tap → open the inbox where the voicemail thread lives
+  );
+  await _bgTrack('push_shown', {'channel': 'calls', 'type': 'missed'});
 }
 
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
@@ -424,9 +509,10 @@ class PushService {
       ),
       onDidReceiveNotificationResponse: (resp) => _onNotifTap(resp.payload),
     );
-    await _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_msgChannel);
+    final androidLocal = _local
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidLocal?.createNotificationChannel(_msgChannel);
+    await androidLocal?.createNotificationChannel(_callsChannel);
     _localReady = true; // main isolate is now initialized → _ensureLocalInit no-ops
     // Ship any telemetry the BACKGROUND isolate parked (incl. bg crashes) now that
     // Analytics is live — so background failures stop being invisible.
@@ -458,6 +544,13 @@ class PushService {
         return;
       }
       if (d['type'] == 'message') {
+        // Receptionist voicemail arriving while the app is foregrounded: surface
+        // the missed-call banner on the Calls channel too (the user may not be on
+        // that thread), then still sync so the voicemail thread updates.
+        if (_isReceptionistPush(d)) {
+          _showMissedCallNotif(d);
+          Analytics.capture('push_shown', {'channel': 'calls', 'type': 'missed'});
+        }
         // App is open: the live InboxDO socket should already have it. But the
         // socket may be half-open (mobile DNS) and lying. P13-B: the push PROVES
         // there's something new — kick a cursor sync even if the socket looks
@@ -765,6 +858,15 @@ class PushService {
       'reason': ok ? 'registered' : 'http_error',
       'status': res.statusCode,
     });
+    // Additional, explicit "token registered" event (kept ALONGSIDE
+    // push_register_ok, not replacing it) so a successful FCM-token registration
+    // is queryable under a stable name for the FIX-FCM tracking dashboard.
+    if (ok) {
+      Analytics.capture('push_token_registered', {
+        'platform': 'fcm',
+        'status': res.statusCode,
+      });
+    }
   }
 
   static void _openCall(dynamic extra) {

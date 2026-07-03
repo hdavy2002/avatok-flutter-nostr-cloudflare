@@ -40,6 +40,7 @@ import '../status/status_screen.dart';
 import 'add_contact_sheet.dart';
 import 'calls_screen.dart';
 import 'chat_thread.dart';
+import 'contact_actions.dart';
 import 'contacts.dart';
 import 'data.dart';
 import 'media.dart';
@@ -210,6 +211,21 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             leading: PhosphorIcon(PhosphorIcons.archive(PhosphorIconsStyle.bold), color: Zine.ink),
             title: Text(has('archived') ? 'Unarchive' : 'Archive', style: ZineText.value(size: 15)),
             onTap: () { Navigator.pop(ctx); _toggleFlag('archived', k); }),
+        // [FIX-CONTACT-1] Copy / Share vCard / Forward — only for 1:1 contact rows.
+        if (c.gid == null) ...[
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), color: Zine.ink),
+              title: Text('Copy contact', style: ZineText.value(size: 15)),
+              onTap: () { Navigator.pop(ctx); ContactActions.copy(context, _contactOf(c)); }),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: Zine.ink),
+              title: Text('Share contact', style: ZineText.value(size: 15)),
+              onTap: () { Navigator.pop(ctx); ContactActions.share(context, _contactOf(c)); }),
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: Zine.ink),
+              title: Text('Forward contact', style: ZineText.value(size: 15)),
+              onTap: () { Navigator.pop(ctx); ContactActions.forward(context, _contactOf(c)); }),
+        ],
         if (c.gid == null)
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: Zine.coral),
@@ -227,6 +243,16 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   Future<void> _removeContact(Chat c) async {
     final list = await _contactsStore.remove(c.seed); // Contact.seed == uid
     if (mounted) setState(() => _contacts = list);
+  }
+
+  /// [FIX-CONTACT-1] Resolve the saved [Contact] behind a 1:1 chat row for the
+  /// Copy / Share / Forward actions. Falls back to a minimal Contact built from
+  /// the chat when the row isn't in the saved list (Contact.seed == uid).
+  Contact _contactOf(Chat c) {
+    for (final x in _contacts) {
+      if (x.uid == c.seed) return x;
+    }
+    return Contact(uid: c.seed, name: c.name, avatarUrl: c.avatarUrl);
   }
 
   Future<void> _toggleFlag(String flag, String key) async {

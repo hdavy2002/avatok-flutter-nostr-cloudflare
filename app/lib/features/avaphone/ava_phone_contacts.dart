@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../core/analytics.dart';
 import '../../core/avatar.dart';
@@ -10,6 +9,7 @@ import '../../core/device_contacts.dart';
 import '../avatok/add_by_link_sheet.dart';
 import '../avatok/call_screen.dart';
 import '../avatok/chat_thread.dart';
+import '../avatok/contact_actions.dart';
 import '../avatok/contact_profile_screen.dart';
 import '../avatok/contacts.dart';
 import '../avatok/data.dart';
@@ -134,11 +134,21 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
           leading: PhosphorIcon(PhosphorIcons.chatText(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
           title: Text('Message', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _message(c); }),
+        // [FIX-CONTACT-1] Copy / Share vCard / Forward as a card — shared actions.
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
+          title: Text('Copy contact', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); ContactActions.copy(context, c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: PhoneTheme.accent),
           title: Text('Share contact', style: PhoneTheme.value(size: 15)),
-          subtitle: Text('WhatsApp, email & more', style: PhoneTheme.sub(size: 11.5)),
-          onTap: () { Navigator.pop(ctx); _shareNumber(c); }),
+          subtitle: Text('vCard — WhatsApp, email & more', style: PhoneTheme.sub(size: 11.5)),
+          onTap: () { Navigator.pop(ctx); ContactActions.share(context, c); }),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
+          title: Text('Forward contact', style: PhoneTheme.value(size: 15)),
+          subtitle: Text('Send as a card to a chat or group', style: PhoneTheme.sub(size: 11.5)),
+          onTap: () { Navigator.pop(ctx); ContactActions.forward(context, c); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.prohibit(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
           title: Text(_isBlocked(c) ? 'Unblock contact' : 'Block contact', style: PhoneTheme.value(size: 15)),
@@ -164,15 +174,6 @@ class _AvaPhoneContactsState extends State<AvaPhoneContacts> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => ChatThreadScreen(
       chat: Chat(name: c.name.isNotEmpty ? c.name : c.number, seed: c.uid,
           avatarUrl: c.avatarUrl, last: '', time: ''))));
-  }
-
-  /// Share a contact's AvaTOK number via the OS share sheet (WhatsApp, email,
-  /// any social) — long-press / "Share number" action.
-  void _shareNumber(Contact c) {
-    final name = c.name.isNotEmpty ? c.name : 'This contact';
-    Analytics.capture('avaphone_contact_share', const {});
-    Share.share('$name on AvaTOK — ${c.number}. Find them on AvaTOK by this number.',
-        subject: 'AvaTOK number');
   }
 
   /// Invite friends: pull the phone address book ONLY to share an invite via

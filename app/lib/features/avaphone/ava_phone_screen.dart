@@ -11,6 +11,7 @@ import '../../core/ice_cache.dart';
 import '../../core/team_api.dart';
 import '../avatok/call_screen.dart';
 import '../team/team_ivr_screen.dart';
+import '../avatok/contact_actions.dart';
 import '../avatok/contact_profile_screen.dart';
 import '../avatok/contacts.dart';
 import 'ava_phone_contacts.dart';
@@ -239,6 +240,19 @@ class _CallsTabState extends State<_CallsTab> {
           leading: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
           title: Text(isContact ? 'View contact' : 'Add to contacts', style: PhoneTheme.value(size: 15)),
           onTap: () { Navigator.pop(ctx); _viewContact(c); }),
+        // [FIX-CONTACT-1] Copy / Share vCard / Forward — shared contact actions.
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.copy(PhosphorIconsStyle.bold), color: PhoneTheme.lilac),
+          title: Text('Copy contact', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); ContactActions.copy(context, _contactOf(c)); }),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.shareNetwork(PhosphorIconsStyle.bold), color: PhoneTheme.accent),
+          title: Text('Share contact', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); ContactActions.share(context, _contactOf(c)); }),
+        ListTile(
+          leading: PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), color: PhoneTheme.teal),
+          title: Text('Forward contact', style: PhoneTheme.value(size: 15)),
+          onTap: () { Navigator.pop(ctx); ContactActions.forward(context, _contactOf(c)); }),
         ListTile(
           leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: PhoneTheme.danger),
           title: Text('Delete this log', style: PhoneTheme.value(size: 15, color: PhoneTheme.danger)),
@@ -297,6 +311,13 @@ class _CallsTabState extends State<_CallsTab> {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => ContactProfileScreen(name: c.name, uid: c.seed)));
   }
+
+  /// [FIX-CONTACT-1] Resolve the saved [Contact] behind a call-log/favourite row
+  /// for the Copy / Share / Forward actions, or synthesize a minimal one when the
+  /// caller isn't saved (CallEntry.seed == uid).
+  Contact _contactOf(CallEntry c) =>
+      _byNpub[c.seed] ??
+      Contact(uid: c.seed, name: c.name, avatarUrl: _avatarFor(c.seed) ?? '');
 
   @override
   Widget build(BuildContext context) {
@@ -524,10 +545,13 @@ class _DialpadSheet extends StatefulWidget {
   State<_DialpadSheet> createState() => _DialpadSheetState();
 }
 
-class _DialpadSheetState extends State<_DialpadSheet> {
+class _DialpadSheetState extends State<_DialpadSheet> with WidgetsBindingObserver {
   String _digits = '';
   bool _dialing = false;
   String? _status;
+  // Whether the OS clipboard currently holds number-like text — drives the small
+  // paste icon beside the number display. Refreshed on init + app resume.
+  bool _clipboardHasNumber = false;
 
   static const _keys = <(String, String)>[
     ('1', '⌷'), ('2', 'ABC'), ('3', 'DEF'),
@@ -535,6 +559,82 @@ class _DialpadSheetState extends State<_DialpadSheet> {
     ('7', 'PQRS'), ('8', 'TUV'), ('9', 'WXYZ'),
     ('*', ''), ('0', '+'), ('#', ''),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshClipboardHint();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshClipboardHint();
+  }
+
+  /// Sanitize an arbitrary pasted string into an AvaTOK-dialable number.
+  /// Strips spaces/dashes/dots/parentheses, keeps a single leading `+` and
+  /// digits only, and converts a leading `00` international prefix to `+`.
+  /// Returns null when fewer than 4 digits remain (i.e. not a phone number).
+  static String? _sanitizeNumber(String raw) {
+    var s = raw.trim();
+    if (s.isEmpty) return null;
+    final hasPlus = s.startsWith('+') || s.startsWith('00');
+    // Keep digits only for the body.
+    var digits = s.replaceAll(RegExp(r'[^\d]'), '');
+    // Leading 00 → international `+` prefix.
+    if (s.startsWith('00') && digits.startsWith('00')) {
+      digits = digits.substring(2);
+    }
+    if (digits.length < 4) return null;
+    return hasPlus ? '+$digits' : digits;
+  }
+
+  /// Peek the clipboard and toggle the paste hint if it holds a number.
+  Future<void> _refreshClipboardHint() async {
+    String? txt;
+    try {
+      final data = await Clipboard.getData('text/plain');
+      txt = data?.text;
+    } catch (_) {
+      txt = null;
+    }
+    final ok = txt != null && _sanitizeNumber(txt) != null;
+    if (!mounted) return;
+    if (ok != _clipboardHasNumber) setState(() => _clipboardHasNumber = ok);
+  }
+
+  /// Paste from the clipboard, sanitize, and load into the display. Rejects
+  /// non-number content with a snackbar and leaves the display untouched.
+  Future<void> _pasteFromClipboard() async {
+    HapticFeedback.selectionClick();
+    String? txt;
+    try {
+      final data = await Clipboard.getData('text/plain');
+      txt = data?.text;
+    } catch (_) {
+      txt = null;
+    }
+    final num = txt == null ? null : _sanitizeNumber(txt);
+    if (num == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not a phone number')),
+      );
+      return;
+    }
+    Analytics.capture('dialpad_paste', {
+      'digits_len': num.replaceAll(RegExp(r'[^\d]'), '').length,
+      'had_plus': num.startsWith('+'),
+    });
+    setState(() { _digits = num; _status = null; });
+  }
 
   void _press(String k) {
     HapticFeedback.lightImpact();
@@ -612,15 +712,38 @@ class _DialpadSheetState extends State<_DialpadSheet> {
           width: 44, height: 5, margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(color: PhoneTheme.border, borderRadius: BorderRadius.circular(100)),
         ),
-        // Entered number.
+        // Entered number. Long-press pastes a sanitized number from the
+        // clipboard; a small paste icon appears when the clipboard holds one.
         SizedBox(
           height: 52,
-          child: Center(
-            child: Text(_digits.isEmpty ? 'AvaTOK number' : _digits,
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: PhoneTheme.title(size: 30,
-                    color: _digits.isEmpty ? PhoneTheme.textMute : PhoneTheme.text)),
-          ),
+          child: Row(children: [
+            const SizedBox(width: 40),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: _pasteFromClipboard,
+                child: Center(
+                  child: Text(_digits.isEmpty ? 'AvaTOK number' : _digits,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: PhoneTheme.title(size: 30,
+                          color: _digits.isEmpty ? PhoneTheme.textMute : PhoneTheme.text)),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 40,
+              child: _clipboardHasNumber
+                  ? IconButton(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Paste number',
+                      onPressed: _pasteFromClipboard,
+                      icon: PhosphorIcon(PhosphorIcons.clipboard(PhosphorIconsStyle.bold),
+                          size: 22, color: PhoneTheme.teal),
+                    )
+                  : null,
+            ),
+          ]),
         ),
         if (_status != null)
           Padding(
