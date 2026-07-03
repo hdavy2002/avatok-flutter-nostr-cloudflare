@@ -40,6 +40,40 @@ class MessageStore {
   }
 
   Future<void> clear(String convKey) => DiskCache.delete(_name(convKey));
+
+  // STREAM G [GROUP-AI-5] inline-translate cache. One small per-account file maps
+  // '<msgId>|<lang>' → translated text, so a re-translate of the same bubble into
+  // the same language is free (no network). DiskCache is already account-scoped.
+  static const _trFile = 'avatok_translations';
+
+  Future<Map<String, String>> _trAll() async {
+    final raw = await DiskCache.read(_trFile);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return (jsonDecode(raw) as Map).map((k, v) => MapEntry(k.toString(), v.toString()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<String?> readTranslation(String msgId, String lang) async {
+    if (msgId.isEmpty) return null;
+    final all = await _trAll();
+    return all['$msgId|$lang'];
+  }
+
+  Future<void> writeTranslation(String msgId, String lang, String text) async {
+    if (msgId.isEmpty || text.isEmpty) return;
+    final all = await _trAll();
+    all['$msgId|$lang'] = text;
+    // Bound the cache so it can't grow unbounded on a very chatty account.
+    if (all.length > 800) {
+      final trimmed = Map<String, String>.fromEntries(all.entries.skip(all.length - 800));
+      await DiskCache.write(_trFile, jsonEncode(trimmed));
+    } else {
+      await DiskCache.write(_trFile, jsonEncode(all));
+    }
+  }
 }
 
 /// F3 (restoreV2): per-conversation cache of DEEP-ARCHIVE pages fetched from
