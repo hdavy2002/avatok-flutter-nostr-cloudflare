@@ -175,6 +175,22 @@ queue = "mkt-audio-dlq"
 max_batch_size = 10
 max_retries = 2
 
+# STREAM F — away auto-responder + away-digest jobs (kind:"digest" discriminated).
+# Mirrors the chat-archive consumer: idempotent handlers, 5 retries then the DLQ so
+# an away-reply is never silently lost. Create once:
+#   `wrangler queues create auto-reply` (+ auto-reply-dlq).
+[[queues.consumers]]
+queue = "auto-reply"
+max_batch_size = 25
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "auto-reply-dlq"
+
+[[queues.consumers]]
+queue = "auto-reply-dlq"
+max_batch_size = 10
+max_retries = 3
+
 # Cross-script DO binding → avatok-api's ConversationDO (run the agent turn loop).
 [[durable_objects.bindings]]
 name = "CONVERSATION_DO"
@@ -224,6 +240,12 @@ queue = "money-settlements"
 [[queues.producers]]
 binding = "Q_ANALYTICS"
 queue = "analytics"
+
+# STREAM F — this Worker both CONSUMES auto-reply (jobs + digests) and PRODUCES onto
+# it (the schedule-end digest sweep enqueues kind:"digest" jobs from the cron).
+[[queues.producers]]
+binding = "Q_AUTO_REPLY"
+queue = "auto-reply"
 
 # Cron — reminders every 15m; heavy cleanup on the 6h tick (handler gates by cron).
 [triggers]
@@ -407,6 +429,19 @@ queue = "chat-archive-dlq-staging"
 max_batch_size = 10
 max_retries = 3
 
+# STREAM F — away auto-responder + digest (staging).
+[[env.staging.queues.consumers]]
+queue = "auto-reply-staging"
+max_batch_size = 25
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "auto-reply-dlq-staging"
+
+[[env.staging.queues.consumers]]
+queue = "auto-reply-dlq-staging"
+max_batch_size = 10
+max_retries = 3
+
 [[env.staging.durable_objects.bindings]]
 name = "CONVERSATION_DO"
 class_name = "ConversationDO"
@@ -434,6 +469,10 @@ queue = "push-notifications-staging"
 [[env.staging.queues.producers]]
 binding = "Q_ANALYTICS"
 queue = "analytics-staging"
+
+[[env.staging.queues.producers]]
+binding = "Q_AUTO_REPLY"
+queue = "auto-reply-staging"
 
 [[env.staging.queues.producers]]
 binding = "Q_MONEY"
