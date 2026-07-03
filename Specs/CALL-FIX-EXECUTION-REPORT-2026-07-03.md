@@ -1179,10 +1179,50 @@ A code audit identified 7 defects in the CALLFIX commits. All remediations commi
 
 ---
 
+### [CALLFIX-R8] Write call_answered KV flag when both peers join
+**Status:** DONE  
+**Commit:** 0d375d7  
+**Files changed:** `worker/src/do/call_room.ts`
+
+**Issue:** receptionist.ts checks KV key `call_answered:{call_id}` to abort receptionist takeover when the callee answered (lines 726-736), but NOTHING ever writes that key. The guard never fires, so receptionist can hijack a live P2P call.
+
+**Fix:**
+1. Updated CallRoom constructor to store env parameter (line 22-24): changed `constructor(state: DurableObjectState, _env: Env)` → `constructor(state: DurableObjectState, env: Env)` and added `this.env = env;`
+2. When the second peer joins (both peers now present), write the KV flag (lines 82-93):
+   - Check if `otherIds.length > 0` (a peer is already here, so this is the second peer)
+   - Extract `roomId` from `this.state.id.name` (the room is keyed by call_id)
+   - Write `await this.env.TOKENS.put('call_answered:${callId}', "true", { expirationTtl: 300 });`
+   - Wrap in try/catch so KV failure never breaks signaling
+3. Key format `call_answered:{callId}` EXACTLY matches receptionist.ts's read (line 730)
+4. Value `"true"` (string) matches receptionist.ts's check `answered === "true"` (line 731)
+5. TTL 300s (5 min) = buffer for call connect + hangup race before flag expires
+
+**Why this works:**
+- CallRoom is instantiated per call_id (idFromName in index.ts line 204)
+- When peer 2 joins (after peer 1 accepted and media connects), the flag is written
+- receptionist.ts reads this on NEXT incoming call attempt to the SAME call_id (edge case: simultaneous dials)
+- The guard prevents receptionist from takeover if call is already live
+
+**Test plan (2-phone manual test):**
+1. Caller dials callee with 6-ring receptionist enabled
+2. At ring 5, callee answers → peer 2 joins room, flag written to KV
+3. If caller hangs up and re-dials same person within 5 min (before flag expires):
+   - Expected: receptionist route checks KV, sees `call_answered:true`, aborts with reason `call_answered`
+   - Expected: caller gets error: `receptionist_unavailable, reason: call_answered`
+4. Normal flow (no re-dial): flag expires after 5 min, system ready for new calls
+
+**Risk notes:**
+- This flag only works for same call_id re-dialed within 5 min (rare edge case)
+- The main receptionist guard is client-side `_connected` check (CALLFIX-8) which fires immediately
+- Server-side KV flag is a defense-in-depth measure for if client somehow re-initiates receptionist after call connects
+- KV failure never blocks signaling (try/catch is best-effort)
+
+---
+
 ### Summary
 
-**Remediation commits:** 7 (R1–R7)  
-**Total changes:** 83 lines across 6 files  
+**Remediation commits:** 8 (R1–R8)  
+**Total changes:** 99 lines across 7 files  
 **All defects FIXED** — code audit clean.
 
 **Remaining integration work (not blocking ship):**
