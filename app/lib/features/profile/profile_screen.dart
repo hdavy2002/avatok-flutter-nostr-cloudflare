@@ -137,6 +137,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _save() async {
     if (_saving) return;
+    // CALLFIX-R7: reset backoff on user-initiated save so they can retry after fixing validation errors
+    Directory._profileBackoff.reset();
     // Flip to the loading state on the VERY FIRST tap so the button responds
     // immediately (the moderation checks below are async).
     setState(() => _saving = true);

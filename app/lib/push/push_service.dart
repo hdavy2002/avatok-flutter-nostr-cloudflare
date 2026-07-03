@@ -116,6 +116,18 @@ Future<void> _clearBadge() async {
   try { await _local.cancel(8000); } catch (_) {}
 }
 
+/// CALLFIX-R7: Handle missed-call callback action (Call back button tapped).
+/// Reads the stored peerId and routes to dial that peer.
+Future<void> _handleMissedCallCallback(String? payload) async {
+  final peerId = await DiskCache.instance.readString('last_missed_call_peer_id');
+  if (peerId != null && peerId.isNotEmpty) {
+    Analytics.capture('missed_call_callback_tapped', {'peer_id': peerId});
+    _clearBadge();
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    // TODO: navigate to chat with peerId and trigger dial flow
+  }
+}
+
 /// A tapped message notification must open the inbox — NOT wherever the app
 /// happened to be. (The old build had no tap handler, so a tap just foregrounded
 /// the app on whatever screen it was last on — e.g. the Diagnostics page.)
@@ -128,18 +140,8 @@ void _onNotifTap(String? payload) {
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
     return;
   }
-  // CALLFIX-21: "Call back" action on missed-call notification.
-  // Payload format: 'callback:<peerId>'. Open the chat with that peer and start a dial.
-  if (payload.startsWith('callback:')) {
-    final peerId = payload.substring('callback:'.length);
-    if (peerId.isNotEmpty) {
-      Analytics.capture('missed_call_callback_tapped', {'peer_id': peerId});
-      _clearBadge();
-      navigatorKey.currentState?.popUntil((r) => r.isFirst);
-      // TODO: navigate to chat with peerId and trigger dial flow (scaffold messaging or a future callback function)
-    }
-    return;
-  }
+  // CALLFIX-R7: 'chat' payload opens inbox (main notification tap on missed-call or message).
+  // Callback action is handled separately in _handleMissedCallCallback.
   if (payload != 'chat') return;
   _clearBadge();
   navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
@@ -407,6 +409,10 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   // the data (fromPub is the caller's public ID used to dial them back).
   final peerId = (d['fromPub'] ?? '').toString();
   final hasCallbackAction = peerId.isNotEmpty;
+  // CALLFIX-R7: Store the peerId so the callback action handler can access it
+  if (hasCallbackAction) {
+    await DiskCache.instance.writeString('last_missed_call_peer_id', peerId);
+  }
   await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
   final androidDetails = AndroidNotificationDetails(
     _callsChannel.id, _callsChannel.name,
@@ -425,12 +431,14 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
       ),
     ] : [],
   );
+  // CALLFIX-R7: Main payload is always 'chat' (to open inbox on tap).
+  // The callback action is handled separately via actionId='callback' in onDidReceiveNotificationResponse.
   await _local.show(
     8002, // fixed id → updates in place (one missed-call banner)
     title,
     body,
     NotificationDetails(android: androidDetails),
-    payload: hasCallbackAction ? 'callback:$peerId' : 'chat',
+    payload: 'chat',
   );
   await _bgTrack('push_shown', {'channel': 'calls', 'type': 'missed', 'has_callback': hasCallbackAction});
 }
@@ -657,7 +665,14 @@ class PushService {
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
-      onDidReceiveNotificationResponse: (resp) => _onNotifTap(resp.payload),
+      onDidReceiveNotificationResponse: (resp) {
+        // CALLFIX-R7: Handle action IDs (e.g., 'callback' on missed-call notification)
+        if (resp.actionId == 'callback') {
+          _handleMissedCallCallback(resp.payload);
+        } else {
+          _onNotifTap(resp.payload);
+        }
+      },
     );
     final androidLocal = _local
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();

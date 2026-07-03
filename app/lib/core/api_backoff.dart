@@ -84,4 +84,12 @@ class ApiBackoffState {
 
   /// True if this endpoint has been permanently disabled (422 hit).
   bool get isPermanentlyFailed => _attemptsSince503 < 0;
+
+  /// CALLFIX-R7: Reset the backoff state so a user-initiated retry can proceed.
+  /// Called when the user fixes input and retries a profile save after a 422.
+  void reset() {
+    _attemptsSince503 = 0;
+    _lastBackoffResetAt = null;
+    AvaLog.I.log('api_backoff', '$endpoint: backoff reset by user');
+  }
 }
