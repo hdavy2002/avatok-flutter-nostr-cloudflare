@@ -29,8 +29,41 @@ class AvatarCropScreen extends StatefulWidget {
 class _AvatarCropScreenState extends State<AvatarCropScreen> {
   static const double _box = 300; // logical size of the crop circle
   final _boundaryKey = GlobalKey();
-  final _tc = TransformationController();
+  // Live transform applied to the photo inside the circle: pan (drag),
+  // pinch-zoom, AND two-finger rotation. Whatever is framed in the circle is
+  // exactly what gets captured, so any rotation is baked into the cropped JPEG.
+  Matrix4 _matrix = Matrix4.identity();
+  double _prevScale = 1.0;
+  double _prevRotation = 0.0;
   bool _busy = false;
+
+  void _onScaleStart(ScaleStartDetails d) {
+    _prevScale = 1.0;
+    _prevRotation = 0.0;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    // ScaleUpdateDetails.scale/.rotation are cumulative from the gesture start,
+    // so track the previous values to apply per-frame deltas.
+    final scaleDelta = _prevScale == 0 ? 1.0 : d.scale / _prevScale;
+    final rotationDelta = d.rotation - _prevRotation;
+    _prevScale = d.scale;
+    _prevRotation = d.rotation;
+    final f = d.localFocalPoint;
+    // Zoom + rotate about the fingers' focal point, then apply the pan delta.
+    final step = Matrix4.identity()
+      ..translate(f.dx, f.dy)
+      ..rotateZ(rotationDelta)
+      ..scale(scaleDelta, scaleDelta)
+      ..translate(-f.dx, -f.dy);
+    final pan =
+        Matrix4.translationValues(d.focalPointDelta.dx, d.focalPointDelta.dy, 0);
+    final next = pan.multiplied(step).multiplied(_matrix);
+    // Soft-clamp overall zoom so the photo can't vanish or blow up off-screen.
+    final s = next.getMaxScaleOnAxis();
+    if (s < 0.3 || s > 8.0) return;
+    setState(() => _matrix = next);
+  }
 
   Future<void> _done() async {
     setState(() => _busy = true);
@@ -66,12 +99,6 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
   }
 
   @override
-  void dispose() {
-    _tc.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Zine.paper,
@@ -92,19 +119,20 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
                 child: SizedBox(
                   width: _box,
                   height: _box,
-                  child: InteractiveViewer(
-                    transformationController: _tc,
-                    minScale: 0.5,
-                    maxScale: 6,
-                    clipBehavior: Clip.none,
-                    child: Image.memory(widget.imageBytes, width: _box, height: _box, fit: BoxFit.cover),
+                  child: GestureDetector(
+                    onScaleStart: _onScaleStart,
+                    onScaleUpdate: _onScaleUpdate,
+                    child: Transform(
+                      transform: _matrix,
+                      child: Image.memory(widget.imageBytes, width: _box, height: _box, fit: BoxFit.cover),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
           const SizedBox(height: 22),
-          const ZineSticker('pinch to zoom · drag to position', kind: ZineStickerKind.hint),
+          const ZineSticker('pinch to zoom · drag to move · twist to rotate', kind: ZineStickerKind.hint),
           const SizedBox(height: 26),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
