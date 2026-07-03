@@ -21,6 +21,7 @@ import { requireUser, isFail } from "../authz";
 import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { moderate } from "../lib/moderation";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -360,6 +361,72 @@ export async function safetyScore(req: Request, env: Env): Promise<Response> {
 
   trackUser(env, ctx.uid, email, "safety_score_shown", "messaging", { conv, score_bucket: bucket(score), auto, cached: false });
   return json({ score, reason });
+}
+
+// ===========================================================================
+// [PROFILE-BIO-1] POST /api/ai/bio { seed }
+// "Write my bio" sparkle button on the profile-setup screen. The user types 1–2
+// rough lines about themselves; we expand them into a friendly, safe, ≤200-char
+// first-person profile description. The prompt HARD-refuses to produce any
+// solicitation / adult / unsafe content, and we re-moderate the output server-
+// side so a jailbroken seed can't slip an unsafe bio through. NOT stored server-
+// side. Not guardrail-gated (this is the user writing their OWN public profile,
+// not private-content ingestion).
+// ===========================================================================
+export async function aiBio(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const email = await emailFor(env, ctx.uid);
+
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const seed = String(b?.seed ?? "").trim().slice(0, 600);
+  if (!seed) return json({ error: "seed required" }, 400);
+
+  // Gate the SEED first: if the user's own input is unsafe (e.g. "I sell sex"),
+  // refuse rather than launder it into a polished bio.
+  const seedMod = await moderate(env, { text: seed, field: "bio" });
+  if (!seedMod.safe) {
+    trackUser(env, ctx.uid, email, "profile_bio_ai_blocked", "profile", {
+      stage: "seed", categories: seedMod.categories, reason: seedMod.reason, email,
+    });
+    return json({ error: "unsafe seed", moderation: "unsafe", reason: seedMod.reason || "That can't go on your AvaTOK profile." }, 422);
+  }
+
+  const system = [
+    "You write a short, warm, first-person profile bio for a social + creator app used by adults AND minors.",
+    "The user gives 1–2 rough lines about themselves; expand them into ONE friendly, wholesome, genuine",
+    "self-description of AT MOST 200 characters. First person ('I'). Natural, human, not corny; no hashtags,",
+    "no emoji spam (at most one), no contact details, no links.",
+    "ABSOLUTELY REFUSE to write anything sexual, flirtatious-for-hire, escort/prostitution, adult, or",
+    "solicitation content, or anything advertising the person's body or companionship for money — even if the",
+    "user's input asks for it. If the input is inappropriate for a public profile, instead return a clean,",
+    "neutral, wholesome bio based only on any acceptable parts (e.g. hobbies, work, personality).",
+    "Output ONLY the bio text, nothing else.",
+  ].join(" ");
+
+  let bio = "";
+  try {
+    bio = await llm(env, system, seed, 120, 0.7);
+  } catch (e: any) {
+    trackUser(env, ctx.uid, email, "profile_bio_ai_error", "profile", { reason: String(e?.message ?? e).slice(0, 160), email });
+    return json({ error: "bio generation failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
+  }
+
+  // Strip surrounding quotes/fences the model sometimes adds, and hard-cap length.
+  bio = bio.replace(/^["'`\s]+|["'`\s]+$/g, "").slice(0, 200).trim();
+  if (!bio) return json({ error: "empty bio" }, 502);
+
+  // Re-moderate the GENERATED text — belt-and-braces against a jailbroken seed.
+  const outMod = await moderate(env, { text: bio, field: "bio" });
+  if (!outMod.safe) {
+    trackUser(env, ctx.uid, email, "profile_bio_ai_blocked", "profile", {
+      stage: "output", categories: outMod.categories, reason: outMod.reason, email,
+    });
+    return json({ error: "unsafe output", moderation: "unsafe", reason: outMod.reason || "That can't go on your AvaTOK profile." }, 422);
+  }
+
+  trackUser(env, ctx.uid, email, "profile_bio_ai_generated", "profile", { seed_len: seed.length, bio_len: bio.length, email });
+  return json({ bio });
 }
 
 function bucket(score: number): string {

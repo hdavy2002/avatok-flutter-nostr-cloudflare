@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,9 +8,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
 import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
+import '../../core/config.dart';
 import '../../core/minor_terms.dart';
+import '../../core/moderation_service.dart';
 import '../../core/profile_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -74,6 +79,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   // While the server round-trips its AI vetting, hold the form (disabled + this
   // message + a spinner). Null when idle.
   String? _holdMsg;
+
+  // ── About-you (bio) live AI moderation ──────────────────────────────────
+  // Debounced /api/moderate check on the bio. `_bioOk` gates Save & continue:
+  // empty is treated as OK (required-field logic handles emptiness). While a
+  // check is in flight `_bioChecking` shows the "Ava is checking…" indicator and
+  // Save stays disabled. A blocked verdict turns the field RED + shows a message.
+  // Fails OPEN on network error (server re-checks on the write route).
+  Timer? _bioTimer;
+  bool _bioChecking = false;
+  bool _bioOk = true;           // true when the current bio text is clean (or empty)
+  String? _bioModError;         // inline reason when the bio is blocked
+  String _bioLastChecked = '';
+  bool _bioAiBusy = false;      // "write my bio" sparkle in flight
 
   GlobalKey _keyFor(String field) {
     switch (field) {
@@ -147,6 +165,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void dispose() {
     _first.dispose(); _last.dispose(); _email.dispose(); _phone.dispose();
     _birthYear.dispose(); _bio.dispose();
+    _bioTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -234,8 +253,101 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
+  // ── Bio live moderation ─────────────────────────────────────────────────
+  /// Called on every bio edit. Debounces a /api/moderate check; empty text is
+  /// treated as clean. A pending check disables Save (bioOk=false) until the
+  /// verdict returns.
+  void _onBioChanged() {
+    _clearErr('about');
+    final text = _bio.text.trim();
+    _bioTimer?.cancel();
+    if (text.isEmpty) {
+      setState(() { _bioChecking = false; _bioModError = null; _bioOk = true; });
+      _bioLastChecked = '';
+      return;
+    }
+    if (text == _bioLastChecked && _bioModError == null) {
+      setState(() {}); // keep field/photo/name previews fresh
+      return;
+    }
+    setState(() { _bioChecking = true; _bioOk = false; _bioModError = null; });
+    _bioTimer = Timer(const Duration(milliseconds: 700), () => _runBioCheck(text));
+  }
+
+  Future<void> _runBioCheck(String text) async {
+    final res = await ModerationService.check(text, ModField.bio);
+    if (!mounted || _bio.text.trim() != text) return; // stale
+    _bioLastChecked = text;
+    if (res.allow) {
+      setState(() { _bioChecking = false; _bioModError = null; _bioOk = true; });
+    } else {
+      final reason = res.reason.isEmpty ? "This can't go on your AvaTOK profile." : res.reason;
+      setState(() { _bioChecking = false; _bioModError = reason; _bioOk = false; });
+      Analytics.capture('profile_bio_moderation_blocked', {
+        'reason': reason,
+        'categories': res.categories.join(','),
+        'email': _email.text.trim(),
+      });
+    }
+  }
+
+  // ── AI "write my bio" sparkle ───────────────────────────────────────────
+  /// Expand the user's 1–2 lines into a short, safe bio via POST /api/ai/bio.
+  /// The generated text is placed in the field and re-run through moderation.
+  Future<void> _writeBioWithAi() async {
+    if (_bioAiBusy) return;
+    final seed = _bio.text.trim();
+    if (seed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Type a line or two about yourself first, then tap the sparkle.')));
+      return;
+    }
+    setState(() => _bioAiBusy = true);
+    try {
+      final r = await ApiAuth.postJson(
+        'https://$kSignalingHost/api/ai/bio', {'seed': seed},
+        timeout: const Duration(seconds: 20),
+      );
+      if (!mounted) return;
+      final body = jsonDecode(r.body) as Map<String, dynamic>;
+      if (r.statusCode == 200 && (body['bio'] ?? '').toString().trim().isNotEmpty) {
+        final bio = body['bio'].toString().trim();
+        _bio.text = bio;
+        _bio.selection = TextSelection.collapsed(offset: bio.length);
+        Analytics.capture('profile_bio_ai_generated', {
+          'seed_len': seed.length, 'bio_len': bio.length, 'email': _email.text.trim(),
+        });
+        setState(() => _bioAiBusy = false);
+        _onBioChanged(); // re-moderate the generated text
+      } else {
+        final reason = (body['reason'] ?? '').toString();
+        setState(() {
+          _bioAiBusy = false;
+          if (r.statusCode == 422 && reason.isNotEmpty) { _bioModError = reason; _bioOk = false; }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            reason.isNotEmpty ? reason : "Couldn't write a bio just now — try rephrasing your notes.")));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _bioAiBusy = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Network issue — try the sparkle again in a moment.')));
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
+    // Block save while the bio is being checked or is flagged unsafe.
+    if (_bio.text.trim().isNotEmpty && (!_bioOk || _bioChecking)) {
+      setState(() {
+        _bioModError ??= _bioChecking
+            ? 'Ava is still checking your profile — one moment…'
+            : "This can't go on your AvaTOK profile.";
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToField('about'));
+      return;
+    }
     // Local completeness first: red-border + helper each missing field, then
     // scroll to the FIRST offender. PRESERVES all input.
     final missing = _missingFields();
@@ -455,18 +567,65 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             Text('Ava uses this when she answers your missed calls — '
                 '"can I take a message for him/her/them?"', style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
-            ZineField(key: _bioKey, controller: _bio, label: 'About you', hint: 'Tell Ava a little about yourself…',
-                error: _fieldErrors.containsKey('about'),
+            // ── About you (bio) — live AI moderation + "write my bio" sparkle ──
+            Row(key: _bioKey, children: [
+              Expanded(child: Text('ABOUT YOU', style: ZineText.kicker())),
+              // Sparkle: type 1–2 lines, tap to have Ava draft a short bio.
+              GestureDetector(
+                onTap: _bioAiBusy ? null : _writeBioWithAi,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Zine.lime,
+                    borderRadius: BorderRadius.circular(Zine.rField),
+                    border: Zine.border,
+                    boxShadow: Zine.shadowXs,
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (_bioAiBusy)
+                      const SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink))
+                    else
+                      PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Zine.ink),
+                    const SizedBox(width: 6),
+                    Text(_bioAiBusy ? 'Writing…' : 'Write my bio',
+                        style: ZineText.tag(size: 12, color: Zine.ink)),
+                  ]),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 9),
+            ZineField(controller: _bio, hint: 'Tell Ava a little about yourself…',
+                error: _fieldErrors.containsKey('about') || _bioModError != null,
                 maxLines: 4, maxLength: 600, textCapitalization: TextCapitalization.sentences,
-                onChanged: (_) { _clearErr('about'); setState(() {}); }),
-            _errFor('about'),
+                onChanged: (_) => _onBioChanged()),
+            // "Ava is checking…" indicator while the moderation call is in flight.
+            if (_bioChecking)
+              Padding(
+                padding: const EdgeInsets.only(top: 9),
+                child: Row(children: [
+                  const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)),
+                  const SizedBox(width: 7),
+                  Text('Ava is checking your profile…', style: ZineText.tag(size: 12, color: Zine.inkSoft)),
+                ]),
+              ),
+            // Red inline message when the bio is blocked by moderation.
+            if (!_bioChecking && _bioModError != null) ZineErrorMsg(_bioModError!),
+            // Required-field (empty) helper still applies.
+            if (_bioModError == null) _errFor('about'),
             const SizedBox(height: 24),
             ZineButton(
               label: _saving ? 'Saving…' : 'Save & continue',
               fullWidth: true, fontSize: 18, loading: _saving,
-              // Always allow tapping (unless mid-save) so incomplete submits can
-              // surface the red-border + scroll-to-offender UX instead of a dead button.
-              onPressed: _saving ? null : _save,
+              // Disabled while the bio is being AI-checked or is flagged unsafe
+              // (gate on _bioOk / _bioChecking). Otherwise always tappable so an
+              // incomplete submit surfaces the red-border + scroll-to-offender UX
+              // instead of a dead button.
+              onPressed: (_saving ||
+                      (_bio.text.trim().isNotEmpty && (!_bioOk || _bioChecking)))
+                  ? null
+                  : _save,
             ),
             const SizedBox(height: 14),
             Center(child: GestureDetector(
