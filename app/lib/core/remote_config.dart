@@ -26,6 +26,11 @@ class RemoteConfig {
 
   static bool _b(String k, bool dflt) => _cfg[k] is bool ? _cfg[k] as bool : dflt;
 
+  /// Tolerant numeric parsing: handles bool→num cast (when server sends true/false
+  /// for numeric fields). Converts bool 1→1, 0→0; otherwise tries num parse.
+  /// This prevents "bool is not num?" crashes when config fields are mistyped.
+  static num? _asNum(dynamic v) => v is num ? v : (v is bool ? (v ? 1 : 0) : null);
+
   // FREE LAUNCH (2026-06-28, Specs/FREE-LAUNCH-DIRECTION.md): the hidden-feature
   // defaults below flip to FALSE so a config-fetch failure renders the focused
   // free product (not the full marketplace). The live KV `platform_config`
@@ -142,7 +147,7 @@ class RemoteConfig {
   /// requests grouping, no media blur. Default ON (safety ships enabled). Mirrors
   /// config.ts `strangerGateEnabled`.
   static bool get strangerGateEnabled => _b('strangerGateEnabled', true);
-  static int get minAppBuild => (_cfg['minAppBuild'] as num?)?.toInt() ?? 0;
+  static int get minAppBuild => (_asNum(_cfg['minAppBuild'])?.toInt()) ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.
   static bool get updateRequired => minAppBuild > kAppBuild;
