@@ -35,10 +35,19 @@ const digits = (s: unknown) => String(s ?? "").replace(/[^0-9]/g, "").slice(0, 2
 const clip = (s: unknown, n: number) => String(s ?? "").trim().slice(0, n);
 
 // ── kill switch ─────────────────────────────────────────────────────────────
+// NOTE (TEAM-503-1): a flag-off Team feature is an EXPECTED, normal state for
+// the vast majority of users (teamIvrEnabled defaults off pending dogfood) —
+// it is not a server error. Returning 503 here made client-side polling
+// (TeamApi.status(), called from the sidebar on every mount) register as an
+// `api_error` in telemetry on every throttled retry. Return 200 with an
+// explicit `enabled: false` payload instead so callers can distinguish
+// "feature off" from a real failure without polluting error dashboards.
+// Client already treats any non-null `team`/`role` as the source of truth
+// (see app/lib/core/team_api.dart TeamApi.status()), so this is compatible.
 async function flagOff(env: Env): Promise<Response | null> {
   const cfg = await readConfig(env);
   return (cfg as any).teamIvrEnabled === false
-    ? json({ error: "team feature disabled", flag: "teamIvrEnabled" }, 503) : null;
+    ? json({ enabled: false, error: "team feature disabled", flag: "teamIvrEnabled", role: null, team: null }, 200) : null;
 }
 
 interface TeamRow {
