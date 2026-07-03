@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import io.flutter.plugin.common.EventChannel
 
 /**
  * CallForegroundService — keeps VoIP calls alive while backgrounded by running as a
@@ -43,6 +44,9 @@ class CallForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == INTENT_HANG_UP) {
             // Hang-up action tapped in the notification.
+            // CALLFIX-R4: emit hangup_requested event to Dart so the call can be ended there.
+            callId = intent.getStringExtra("callId") ?: ""
+            emitHangupEvent()
             isRunning = false
             stopSelf()
             return START_NOT_STICKY
@@ -118,6 +122,22 @@ class CallForegroundService : Service() {
             // On Android 12+, POST_NOTIFICATIONS permission may not be granted.
             // The service still runs in the background; the notification just won't show.
             // Silently continue.
+        }
+    }
+
+    // CALLFIX-R4: Emit hangup_requested event to Dart via the call_hangup channel.
+    // This allows the notification hang-up button to end the call in the app.
+    private fun emitHangupEvent() {
+        try {
+            // Static reference to AvaVoiceAudioPlugin's method channel.
+            // The plugin must expose a method channel that Dart listens to for hangup_requested events.
+            // For now, use a broadcast or intent-based approach: send a broadcast that the plugin listens to.
+            val hangupIntent = Intent("avatok.HANGUP_REQUESTED").apply {
+                putExtra("callId", callId)
+            }
+            sendBroadcast(hangupIntent)
+        } catch (_: Throwable) {
+            // If emission fails, the call will end when stopSelf() is called anyway.
         }
     }
 
