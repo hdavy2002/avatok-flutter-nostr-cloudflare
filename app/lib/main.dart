@@ -39,6 +39,7 @@ import 'shell/ava_shell.dart';
 import 'sync/sync_hub.dart';
 
 void main() async {
+  final t0 = DateTime.now(); // for first_frame_ms telemetry (PERF-6)
   WidgetsFlutterBinding.ensureInitialized();
   // RAM budget (Scale proposal Phase 1): cap the global decoded-image cache.
   // Flutter's default is 1000 images / 100MB with no upper bound enforcement on
@@ -75,7 +76,10 @@ void main() async {
   // permission dialog, disk-cache purge, Ava bootstrap) runs AFTER the first
   // frame so the user sees UI from local state immediately (P0-3 audit fix).
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(_deferredInit());
+    // Compute the ms now (at first frame); the event is sent from inside
+    // _deferredInit once Analytics.init() has completed (PERF-6).
+    final firstFrameMs = DateTime.now().difference(t0).inMilliseconds;
+    unawaited(_deferredInit(firstFrameMs: firstFrameMs));
   });
   runApp(const AvaTalkApp());
 }
@@ -83,7 +87,7 @@ void main() async {
 /// Post-first-frame initialization. Order preserved from the old pre-runApp
 /// sequence: Analytics FIRST (so a Firebase init failure is still captured),
 /// then Firebase, then the rest.
-Future<void> _deferredInit() async {
+Future<void> _deferredInit({int? firstFrameMs}) async {
   // One-time image-cache self-heal on this new build (owner request 2026-07-01):
   // a corrupt cached avatar was crashing the image decoder ("Invalid image data")
   // and freezing the app — reinstalling only "fixed" it by wiping the cache. Purge
@@ -97,6 +101,11 @@ Future<void> _deferredInit() async {
   // Product analytics + error tracking (best-effort) — init FIRST so we can
   // capture a Firebase init failure instead of silently swallowing it.
   await Analytics.init();
+  // Startup performance metric (PERF-6): ms from main() entry to first frame.
+  // Proves/regresses the deferred-init work on real devices (target: <1s).
+  if (firstFrameMs != null) {
+    Analytics.capture('first_frame_ms', {'ms': firstFrameMs});
+  }
   // Initialize Firebase from EXPLICIT options (not the google-services resource
   // lookup, which was failing in CI and broke phone OTP with core/no-app).
   try {
