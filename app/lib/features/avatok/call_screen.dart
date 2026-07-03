@@ -61,6 +61,31 @@ int gLiveCallScreens = 0;
 /// count), NOT a time-windowed flag.
 bool callIsGenuinelyActive() => gLiveCallScreens > 0;
 
+/// CALL-GLARE-1: our PENDING OUTGOING call, if any — the peer we're DIALING
+/// (uid/seed) and its call_id, set the instant an outgoing dial is placed and
+/// CLEARED the moment that call connects, ends, or is superseded. This is what the
+/// incoming-push handler consults to detect GLARE: two users dialing each other
+/// within ~1s. Before this, our own outgoing call made [callIsGenuinelyActive]
+/// true, so the peer's crossing incoming push got auto-busied — the caller heard
+/// "busy" though nobody was on a call (PostHog 2026-07-03 18:38:21/22). NOT set
+/// once connected (a connected call is genuinely busy and SHOULD auto-busy others).
+String? gOutgoingCallTo;     // the peer we are dialing (widget.seed), null when idle/connected
+String? gOutgoingCallId;     // the call_id (room) of that outgoing dial
+int gOutgoingSince = 0;      // epoch-ms the dial was placed (staleness guard)
+const int kMaxDialLifeMs = 60 * 1000; // an unanswered dial can't ring longer than this
+
+/// True while we have a LIVE outgoing dial to [peer] that has NOT yet connected —
+/// the glare condition. Stale entries (older than [kMaxDialLifeMs]) are treated as
+/// absent so a leaked flag can never mis-resolve a genuine later incoming call.
+bool hasPendingOutgoingTo(String peer) {
+  if (gOutgoingCallTo == null || gOutgoingCallTo != peer) return false;
+  if (gOutgoingSince != 0 &&
+      DateTime.now().millisecondsSinceEpoch - gOutgoingSince > kMaxDialLifeMs) {
+    return false;
+  }
+  return true;
+}
+
 /// AvaTok 1:1 call — the mockup CallScreen design, wired to real WebRTC P2P
 /// over the Cloudflare signaling Worker. Both peers join the same [room].
 class CallScreen extends StatefulWidget {
@@ -222,6 +247,12 @@ class _CallScreenState extends State<CallScreen> {
     _speaker = widget.video;
     _phase = widget.outgoing ? 'ringing' : 'connecting';
     if (widget.outgoing) {
+      // CALL-GLARE-1: publish our pending outgoing dial so the incoming-push
+      // handler can detect glare (the peer dialing us back at the same moment)
+      // and resolve it instead of auto-busying. Cleared on connect + on _end.
+      gOutgoingCallTo = widget.seed;
+      gOutgoingCallId = widget.room;
+      gOutgoingSince = DateTime.now().millisecondsSinceEpoch;
       // Default ring window (Mode A, ~5 rings). Audio calls also probe the
       // callee's receptionist config: if they're on "answer every call on the
       // first ring" (Mode B), we re-arm a short window and hand off to Ava early.
@@ -254,6 +285,15 @@ class _CallScreenState extends State<CallScreen> {
           Analytics.capture('ava_recept_signal_suppressed',
               {'channel': 'call_status', 'status': e.status, 'call_id': widget.room});
         }
+        return;
+      }
+      // CALL-GLARE-1: this device lost the glare tie-break — our own outgoing leg
+      // is being yielded so we can accept the peer's (winning) incoming call. Tear
+      // THIS screen down silently (no busy tone / "call failed" — it's an orderly
+      // hand-off), then the incoming accept opens the winning call.
+      if (e.callId == widget.room && mounted && !_ended && e.status == 'glare-yield') {
+        Analytics.capture('call_glare_yielded', {'call_id': widget.room});
+        _endWith('ended', reason: 'glare-yield');
         return;
       }
       // A terminal status from the peer (they hung up / cancelled, or the server
@@ -682,6 +722,12 @@ class _CallScreenState extends State<CallScreen> {
         _ringback.stop(); // call answered — silence the ringback
         _telemetry.connected(pc);
         HapticFeedback.mediumImpact(); // P9: tactile "call connected" cue
+        // CALL-GLARE-1: connected → no longer a pending dial; a connected call IS
+        // genuinely busy and SHOULD auto-busy any further incoming, so clear the
+        // glare window.
+        if (gOutgoingCallId == widget.room) {
+          gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+        }
         if (mounted) setState(() { _connected = true; _phase = 'connected'; });
         // CALLFIX-20: start foreground service to keep the call alive while backgrounded.
         // This shows an ongoing-call notification with a chronometer and hang-up action.
@@ -1093,6 +1139,29 @@ class _CallScreenState extends State<CallScreen> {
           {'channel': 'connected_race', 'call_id': widget.room});
       return false;
     }
+    // RECEPT-REATTACH-1: at most ONE receptionist session per call. Multiple
+    // triggers can race into here for the SAME call — no-answer timeout, a 'busy'
+    // status push, a 'decline_ava' signal, and our OWN 'cancel' echo (which fires
+    // call_cancel_sent). Before this guard, a second trigger during an ACTIVE Ava
+    // session re-entered _tryReceptionist and called ReceptionistApi.start() again,
+    // spawning a SECOND server session on the same call_id — Ava restarted her
+    // greeting from scratch, producing two recordings, two posted messages, and two
+    // ava_recept_cost billing events (PostHog avatok-14739b84, 2026-07-03 18:39).
+    // _receptionistActive is set the instant we commit below, so re-entry is a
+    // no-op that gracefully joins the already-live session instead of restarting it.
+    if (_receptionistActive || _receptionist != null || _avaCountingDown) {
+      Analytics.capture('ava_recept_reattach_blocked', {
+        'call_id': widget.room,
+        'activation_mode': activationMode,
+        'stage': 'client',
+        'reason': _receptionist != null
+            ? 'session_live'
+            : (_avaCountingDown ? 'countdown' : 'already_committed'),
+      });
+      // Report success: a session is already live/warming for this call, so the
+      // caller stays with Ava rather than falling through to a busy tone / hangup.
+      return true;
+    }
     // Commit to Ava: from here, ignore the old signaling socket so a late
     // bye/peer-left from cancelling the ring can't tear down the live session.
     _receptionistActive = true;
@@ -1179,6 +1248,11 @@ class _CallScreenState extends State<CallScreen> {
     if (gActiveCallId == widget.room) {
       gActiveCallId = null;
       gInCallSince = 0;
+    }
+    // CALL-GLARE-1: our pending outgoing dial is over — clear the glare window so a
+    // later incoming call is handled normally (rings or genuine autobusy).
+    if (gOutgoingCallId == widget.room) {
+      gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
     }
     _telemetry.ended(_connected ? 'ended' : _phase); // no-op if already reported
     // Outgoing call torn down before it connected → tell the callee to stop ringing.

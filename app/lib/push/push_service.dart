@@ -544,6 +544,24 @@ class PushService {
     return false;
   }
 
+  // CALL-GLARE-1: dedupe the accept/decline/missed TELEMETRY bursts. CallKit can
+  // deliver actionCallAccept / actionCallDecline / actionCallTimeout more than once
+  // for one call (OEM retries, plus the cold-start recovery path), so each of
+  // call_incoming_accepted / _declined / _missed fired 2–4× for a single call
+  // (PostHog 2026-07-03 18:38). A per-(callId,kind) once-flag with a short TTL keeps
+  // exactly one event per outcome per call while a genuine later call (new id) still
+  // records. Keyed "<callId>:<accepted|declined|missed>".
+  static final Map<String, int> _emittedCallEvents = {};
+  static bool _onceCallEvent(String callId, String kind) {
+    if (callId.isEmpty) return true; // no id → can't dedupe; let it through once
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _emittedCallEvents.removeWhere((_, t) => now - t > 120000);
+    final key = '$callId:$kind';
+    if (_emittedCallEvents.containsKey(key)) return false; // already emitted → skip
+    _emittedCallEvents[key] = now;
+    return true;
+  }
+
   // CALLFIX-12: Ring capability diagnostics. Track when we last checked so we
   // only emit telemetry once per day (not on every app start). Stored globally
   // (device-level, not per-account) since ring capability is device-wide.
@@ -798,6 +816,45 @@ class PushService {
               {'call_id': incomingId, 'reason': 'dedup_window'});
           return;
         }
+        // CALL-GLARE-1: two users dialing EACH OTHER within ~1s. Our own pending
+        // OUTGOING dial makes callIsGenuinelyActive() true, so the peer's crossing
+        // incoming push would get auto-busied and the caller heard "busy" though
+        // nobody was on a call (PostHog 2026-07-03 18:38:21/22). Detect the glare —
+        // an incoming call FROM the exact peer we are currently DIALING (not yet
+        // connected) — and resolve it DETERMINISTICALLY instead of busying: the
+        // lexicographically SMALLER call_id wins. Both devices compute the same
+        // verdict from the same two ids, so exactly one leg survives.
+        final glareFrom = (d['from'] ?? '').toString();
+        if (glareFrom.isNotEmpty && hasPendingOutgoingTo(glareFrom) &&
+            gOutgoingCallId != null && incomingId.isNotEmpty &&
+            incomingId != gOutgoingCallId) {
+          final incomingWins = incomingId.compareTo(gOutgoingCallId!) < 0;
+          Analytics.capture('call_glare_detected', {
+            'call_id_in': incomingId,
+            'call_id_out': gOutgoingCallId,
+            'resolution': incomingWins ? 'accept_incoming' : 'keep_outgoing',
+          });
+          if (incomingWins) {
+            // Their call wins → cancel OUR outgoing leg and accept theirs. Tell the
+            // peer to stop ringing (our cancel), then answer the incoming call.
+            final outId = gOutgoingCallId!;
+            _signalStatus(outId, 'cancel', (d['fromPub'] ?? '').toString());
+            callStatusBus.add((callId: outId, status: 'glare-yield'));
+            gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+            gIncomingRingingFrom = glareFrom;
+            gIncomingRingingCallId = incomingId;
+            // Show the incoming UI so the accept path (and cold-start recovery) can
+            // route into it; the peer keeps its outgoing leg and we connect.
+            _showIncoming(d);
+          } else {
+            // OUR call wins → do NOT busy the incoming; drop this crossing push and
+            // keep dialing. The peer's device will yield ITS outgoing and accept
+            // ours, so both land in the same room.
+            Analytics.capture('call_glare_incoming_dropped',
+                {'call_id': incomingId, 'winner': 'outgoing'});
+          }
+          return;
+        }
         if (callIsGenuinelyActive()) {
           _signalStatus(incomingId, 'busy', (d['fromPub'] ?? '').toString());
           Analytics.capture('call_incoming_autobusy', {
@@ -919,10 +976,14 @@ class PushService {
           IceCache.prefetch(); // accept tapped → call screen is next; warm TURN now
           final acc = event.body['extra'];
           if (acc is Map) {
-            Analytics.capture('call_incoming_accepted', {
-              'call_id': (acc['callId'] ?? '').toString(),
-              'kind': acc['kind'] == 'video' ? 'video' : 'audio',
-            });
+            final accId = (acc['callId'] ?? '').toString();
+            // CALL-GLARE-1: dedupe duplicate accept events for the same call.
+            if (_onceCallEvent(accId, 'accepted')) {
+              Analytics.capture('call_incoming_accepted', {
+                'call_id': accId,
+                'kind': acc['kind'] == 'video' ? 'video' : 'audio',
+              });
+            }
           }
           // CALLFIX-R6: Clear glare state when accept is tapped
           gIncomingRingingFrom = null;
@@ -976,18 +1037,26 @@ class PushService {
       }
     } catch (_) {/* fall back to plain decline */}
     _signalStatus(callId, status, from);
-    Analytics.capture('call_incoming_declined', {
-      'call_id': callId,
-      'routed_to': status, // 'decline' | 'decline_ava'
-    });
+    // CALL-GLARE-1: dedupe duplicate decline events for the same call.
+    if (_onceCallEvent(callId, 'declined')) {
+      Analytics.capture('call_incoming_declined', {
+        'call_id': callId,
+        'routed_to': status, // 'decline' | 'decline_ava'
+      });
+    }
     _logMissed(extra);
   }
 
   static void _logMissed(Map extra) {
-    Analytics.capture('call_incoming_missed', {
-      'call_id': (extra['callId'] ?? '').toString(),
-      'kind': extra['kind'] == 'video' ? 'video' : 'audio',
-    });
+    final missedId = (extra['callId'] ?? '').toString();
+    // CALL-GLARE-1: dedupe duplicate missed events for the same call (a decline
+    // routes here too, and CallKit can fire timeout more than once).
+    if (_onceCallEvent(missedId, 'missed')) {
+      Analytics.capture('call_incoming_missed', {
+        'call_id': missedId,
+        'kind': extra['kind'] == 'video' ? 'video' : 'audio',
+      });
+    }
     CallLogStore().add(CallEntry(
       name: (extra['fromName'] ?? 'Caller').toString(),
       seed: (extra['from'] ?? 'caller').toString(),
