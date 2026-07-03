@@ -696,12 +696,30 @@ class ZineMarkTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = ZineText.hero(size: fontSize);
+    // RESPUI-12: when the mark word IS the whole title (pre and post both
+    // empty — e.g. ZineAppBar's `title == markWord` case, such as Settings'
+    // title:'Settings', markWord:'Settings'), the WidgetSpan below is the
+    // ONLY span in this paragraph — there is no sibling plain-text run left
+    // to anchor an alphabetic baseline against. With no text run to measure,
+    // `PlaceholderAlignment.baseline` inflated the placeholder's line-box by
+    // roughly one fontSize (~27px at the app-bar's 27px title size), blowing
+    // past ZineAppBar's fixed 54px content budget (CI run 28682020489: "A
+    // RenderFlex overflowed by 27 pixels on the bottom" — constant across
+    // screen size/text scale, i.e. not text-driven, exactly this fontSize-
+    // sized fixed mismatch). `middle` alignment centers the placeholder on
+    // the line box using its own height with no baseline lookup, so it can't
+    // inflate the line — safe here because with no sibling text there is
+    // nothing else on the line for it to visually align against anyway. The
+    // pre/post-populated case (hero titles like "Pick your handle") keeps
+    // `baseline` since that's the tested, working alignment against real
+    // surrounding text.
+    final soleSpan = pre.isEmpty && post.isEmpty;
     return Text.rich(
       TextSpan(children: [
         if (pre.isNotEmpty) TextSpan(text: pre),
         WidgetSpan(
-          alignment: PlaceholderAlignment.baseline,
-          baseline: TextBaseline.alphabetic,
+          alignment: soleSpan ? PlaceholderAlignment.middle : PlaceholderAlignment.baseline,
+          baseline: soleSpan ? null : TextBaseline.alphabetic,
           child: Stack(clipBehavior: Clip.none, children: [
             Positioned(
               left: -3, right: -3, bottom: fontSize * 0.02, height: fontSize * 0.40,
