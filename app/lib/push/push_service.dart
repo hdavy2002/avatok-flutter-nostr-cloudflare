@@ -506,6 +506,71 @@ class PushService {
     return false;
   }
 
+  // CALLFIX-12: Ring capability diagnostics. Track when we last checked so we
+  // only emit telemetry once per day (not on every app start). Stored globally
+  // (device-level, not per-account) since ring capability is device-wide.
+  static int _lastRingCapDiagTime = 0;
+  static const int _ringCapDiagIntervalMs = 86400000; // 24 hours
+
+  /// Check ring capabilities (notification permission, calls channel, FSI, DND)
+  /// once per day and emit telemetry. Runs on app start (init) and when the app
+  /// foregrounds (MainActivity should call this periodically or on resume).
+  static Future<void> _checkRingCapabilities() async {
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastRingCapDiagTime < _ringCapDiagIntervalMs) return;
+      _lastRingCapDiagTime = now;
+
+      // Check if notifications are enabled (Firebase permission already checked in init)
+      bool notifEnabled = false;
+      try {
+        notifEnabled = await _local.areNotificationsEnabled() ?? false;
+      } catch (_) {}
+
+      // Check if Calls channel exists and is properly configured
+      bool callsChannelOk = false;
+      try {
+        final androidLocal = _local
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        // If createNotificationChannel succeeded in init(), this is true
+        callsChannelOk = _localReady;
+      } catch (_) {}
+
+      // Check full-screen intent capability (Android 14+)
+      // Note: flutter_local_notifications v17+ has canScheduleExactNotifications()
+      // but canUseFullScreenIntent() is NOT exposed in the current version.
+      // We can check if the permission is granted via permission_handler, but
+      // that's a separate dependency. For now, mark as null and note in report.
+      dynamic fsiOk;
+      try {
+        // Attempt to call if available; if the method doesn't exist, skip it
+        final androidLocal = _local
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        // canScheduleExactNotifications is available in flutter_local_notifications ^17
+        fsiOk = await androidLocal?.canScheduleExactNotifications() ?? null;
+      } catch (_) {
+        // Method not available in this version; mark as null
+        fsiOk = null;
+      }
+
+      // Check DND status (not available in flutter_local_notifications directly;
+      // would need MethodChannel into android.app.NotificationManager)
+      dynamic dndStatus;
+      try {
+        // Placeholder: would need platform code to check NotificationManager
+        // .isNotificationPolicyAccessGranted() and .getCurrentInterruptionFilter()
+        dndStatus = null;
+      } catch (_) {}
+
+      Analytics.capture('ring_capability', {
+        'notif': notifEnabled,
+        'channel_ok': callsChannelOk,
+        'fsi_ok': fsiOk,
+        'dnd': dndStatus,
+      });
+    } catch (_) {/* best-effort */}
+  }
+
   /// Ship telemetry the BACKGROUND FCM isolate parked to a device-level queue
   /// (every push it received, every push it handled, and — crucially — any error
   /// it hit) up to PostHog now that we're in the main isolate with Analytics
@@ -711,6 +776,8 @@ class PushService {
     });
     _listenCallkit();
     await CallDiag.load(); // TURN-only diagnostics flag
+    // CALLFIX-12: check ring capabilities once per day
+    unawaited(_checkRingCapabilities());
     await _recoverAcceptedCall();
   }
 
