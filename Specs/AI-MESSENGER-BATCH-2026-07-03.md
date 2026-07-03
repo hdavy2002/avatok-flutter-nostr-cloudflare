@@ -462,3 +462,194 @@ Streams B and F both touch the receipt/notify path: F is BLOCKED BY `[SAFE-GATE-
   chips insert without sending; scam score ≥0.8 shows red banner on a test thread.
 - ALL: every event carries the user email; commit per issue via git_safe_commit
   with explicit paths; NOTHING pushed; Graphiti episode written per stream.
+
+---
+---
+
+# ADDENDUM 2026-07-03 (same day) — Streams H, I, J
+
+Owner approved three more streams. Same rules (§0) apply. These are additional
+parallel sub-agents; the file-ownership additions are in §14.
+
+## 11. ADDITIONAL LOCKED DECISIONS
+
+| # | Decision | Value |
+|---|----------|-------|
+| D12 | Liveness gate placement | **Hard gate at account creation** (signup). Handle-first L0 GUEST browsing is preserved — guests can claim a handle and browse; the moment they create a real account (AccountGate email/password flow), the human check is MANDATORY before entering the app. |
+| D13 | Existing users | **Immediately on next app open**: unverified existing users get a full-screen, non-dismissible redirect to the liveness check. No grace period. |
+| D14 | Liveness provider | **Rekognition** is the default (existing `/api/id/session` + Amplify Face Liveness path). Workers AI provider stays as flag-gated fallback. |
+| D15 | Evidence retention | **Store EVERYTHING** — clip/audit images, scores, IP, country, device — for BOTH pass and fail attempts, in R2 + D1, for a future admin dashboard. This REVERSES the old "delete on pass/fail" privacy design in `worker/src/routes/liveness.ts`. The "Why" popup includes one honest retention sentence (legal cover). |
+| D16 | Forwarding | **Unlimited** forwarding for liveness-verified users (no WhatsApp-style 5-target cap). Forward sheet includes the user's GROUPS. Fan-out NEVER copies media — one content-addressed R2 object, N envelope references. |
+| D17 | Auto-download | New setting Always / Wi-Fi only / Never. Default **Always** (preserves current behavior). Pending (stranger-gate) threads never auto-download regardless of setting. |
+
+## 12. STREAM H — Liveness "human check" at onboarding
+
+### H1. UI (Flutter) — new onboarding step + redirect screen
+New `app/lib/features/identity/human_check_page.dart`, used in TWO places:
+1. Inserted into the account-creation flow (find the AccountGate signup flow from
+   the handle-first onboarding, `app/lib/` — the step runs AFTER credentials are
+   created, BEFORE landing in the app).
+2. As a full-screen non-dismissible route pushed on app open for existing
+   unverified users (D13): check the ladder/verification status the app already
+   fetches; if not liveness-verified and `livenessOnboardingGate` flag is ON →
+   `Navigator.pushAndRemoveUntil` to this page. No back button, no skip.
+
+Copy (owner-approved framing — friendly, anti-bot, NOT alarming):
+- Title: **"Quick human check"**
+- Body: "Let our AI check that you're a real person — futuristic AI bots keep
+  trying to sign up! No AI agents allowed on AvaTOK. This takes about 15 seconds."
+- Primary button: **"I'm human — start check"** → launches the existing
+  Rekognition Amplify Face Liveness UI (the L2 flow already built; find its
+  entry point under `app/lib/features/identity/` / wherever `/api/id/session`
+  is called).
+- Link: **"Why are we asking this?"** → bottom-sheet popup, copy:
+  "AI spam bots can register accounts automatically, harvest people's data, and
+  blast spam on autopilot. A quick video check proves there's a real human behind
+  every AvaTOK account — so everyone you talk to here is a real person, and your
+  inbox stays safe and trusted. Your verification video is stored securely and
+  used only for safety review." (The last sentence is the D15 disclosure — do not
+  remove it.)
+- On PASS: success screen "You're verified human ✅" → continue into the app.
+- On FAIL: friendly retry screen, shows attempts remaining (existing 3/24h budget
+  is shared across providers — keep it).
+
+### H2. Server — enforcement (bypass-proof) + evidence capture
+- New flag `livenessOnboardingGate` in platform config (KV `platform_config`,
+  same pattern as `listingLivenessGate`). Default **OFF**; owner flips ON after a
+  staging device test. When ON:
+  - The server marks accounts without a verified liveness/KYC proof as
+    `liveness_required` and REJECTS (403 `liveness_required`) the spam-capable
+    routes for them: message send, group create/join, forwarding, listing publish
+    (reuse/extend the `requireKyc`/ladder helpers in `worker/src/authz.ts` +
+    `worker/src/routes/ladder.ts` — the client gate alone is NOT the gate).
+- Evidence capture — new D1 table (migration under `worker/migrations/`):
+```sql
+CREATE TABLE IF NOT EXISTS liveness_audit (
+  id TEXT PRIMARY KEY,            -- session id
+  uid TEXT NOT NULL,
+  provider TEXT NOT NULL,         -- rekognition | workersai | stripe
+  status TEXT NOT NULL,           -- passed | failed | abandoned
+  confidence REAL,
+  ip TEXT, country TEXT, city TEXT, colo TEXT, asn TEXT,
+  device_model TEXT, os TEXT, app_version TEXT,
+  r2_prefix TEXT,                 -- liveness/<uid>/<session>/
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_liveness_audit_uid ON liveness_audit(uid, created_at);
+CREATE INDEX IF NOT EXISTS idx_liveness_audit_status ON liveness_audit(status, created_at);
+```
+- Populate at verify time (`worker/src/routes/id.ts` for Rekognition): IP from
+  `CF-Connecting-IP`, country from `request.cf.country` / `CF-IPCountry`, city/
+  colo/asn from `request.cf`; device/os/app version sent by the client in the
+  verify call body. Fetch Rekognition AUDIT IMAGES from
+  `GetFaceLivenessSessionResults` and store them in R2 under
+  `liveness/<uid>/<session>/audit<i>.jpg`. Record a row for EVERY attempt —
+  passed, failed, AND abandoned (a cron/TTL sweep marks 15-min-stale pending
+  sessions `abandoned`).
+- Workers AI provider (`worker/src/routes/liveness.ts`): CHANGE the
+  delete-evidence behavior (D15) — on pass AND fail, move frames + clip to the
+  same `liveness/<uid>/<session>/` R2 prefix instead of deleting, and write the
+  audit row. Update the file-header comment to record the owner decision.
+- Admin dashboard: NOT in this batch — the tables/prefixes above ARE the
+  deliverable ("dashboard-ready").
+
+### H3. Telemetry (rich — owner explicitly asked; include email + uid on every event)
+`liveness_gate_shown` (source: signup|redirect), `liveness_why_opened`,
+`liveness_started` (provider, attempt_n), `liveness_passed` (provider, confidence,
+country, ip, device_model, os, app_version, duration_ms, attempt_n),
+`liveness_failed` (same props + reason), `liveness_abandoned` (elapsed_ms),
+`liveness_gate_blocked_action` (route — fired when the server 403s a
+liveness_required user). Also PostHog person-properties update: set
+`liveness_verified: true`, `liveness_country` on pass.
+
+### H4. Issues: `[LIVE-GATE-1]` audit table + capture (id.ts), `[LIVE-GATE-2]`
+Workers-AI retention change, `[LIVE-GATE-3]` human-check UI + popup + signup-flow
+insertion, `[LIVE-GATE-4]` existing-user redirect, `[LIVE-GATE-5]` server-side
+route enforcement, `[LIVE-GATE-6]` telemetry. Flag: `livenessOnboardingGate`
+(default OFF → owner flips after staging test).
+
+## 13. STREAM I — Unlimited forwarding + forward-to-groups
+
+### I1. Behavior
+- No forward-target cap anywhere (D16). Forwarding requires the sender to be
+  liveness-verified (same server check as H2 — forwarding is a spam-capable route).
+- Long-press / right-click any message (text, media, preview card, voice note) →
+  **Forward** → forward sheet: search bar; sections **"Groups"** (the user's
+  groups, with member counts) then **"Contacts"** / recent chats. Multi-select
+  with checkmarks → single Send.
+- Forwarded bubbles show a small "↪ Forwarded" label (like WhatsApp). Envelope
+  carries `fwd:true` (and nothing about the original sender — privacy).
+
+### I2. Fan-out mechanics (ZERO media duplication — owner requirement)
+- Media messages already reference a content-addressed object (`media_ref` →
+  one real R2 copy per the universal-storage rulebook). Forwarding MUST create
+  new envelopes that point at the SAME `media_ref`/R2 key — never re-upload,
+  never copy the object. Forwarding a photo to a 3,000-member group = the
+  existing group fan-out path delivering 3,000 small envelope rows, all wired to
+  ONE R2 object. Devices that already hold the bytes in the per-account media
+  cache render instantly without re-downloading (existing local-first cache rule).
+- Private/E2E DM media forwarded into a group: the bytes' encryption context may
+  differ — CHECK how `MediaService.downloadAndDecrypt` keys media. If DM media is
+  encrypted per-conversation, forwarding across contexts must go through a
+  server-side re-reference that re-wraps ONLY the key material, not the payload;
+  if that's not feasible in this codebase, v1 rule: forwarding re-uploads
+  DECRYPTED-and-re-encrypted media ONLY for the cross-context case and the spec's
+  no-copy rule applies to all same-context and public-media forwards. Document
+  which branch was taken in the commit message.
+- Rate safety (anti-abuse backstop even with liveness): server cap of 200
+  forward TARGETS per user per hour (flag-tunable, KV counter). 429 with a
+  friendly "Slow down" message.
+
+### I3. Telemetry: `forward_opened` (msg_kind), `forward_sent` (n_targets,
+n_groups, total_recipients, media_kind, cross_context: bool), `forward_rate_capped`.
+Flag: `unlimitedForwardEnabled` (default ON). Issues: `[FWD-1]` forward sheet UI,
+`[FWD-2]` no-copy fan-out + cross-context handling, `[FWD-3]` rate backstop +
+liveness requirement, `[FWD-4]` telemetry.
+
+## 14. STREAM J — Auto-download setting
+
+- New page: Account & Settings > Settings > **Auto-download** (tile + page
+  `app/lib/features/settings/auto_download_settings_page.dart`). Three radio
+  options: **Download media automatically** (default) / **Download on Wi-Fi
+  only** / **Do not download automatically**.
+- Persist per-account: `scopedKey('auto_download_mode')` — MANDATORY scoping.
+- Wiring (must work out of the box): find every call site where incoming media is
+  fetched eagerly (grep `MediaService`, `downloadAndDecrypt`, avatar/media prefetch
+  in the message list). Route them through one new helper
+  `MediaAutoDownload.shouldAutoFetch()` that checks: (1) the mode, (2)
+  connectivity via the `connectivity_plus` package (add to pubspec if absent —
+  wifi vs cellular), (3) thread `accept_state` — `pending` NEVER auto-downloads
+  (D17/§B1).
+- When auto-download is skipped: bubble renders a blurred thumbnail placeholder
+  with size label + download icon; tap = manual fetch (always allowed). Voice
+  notes: small download button on the bubble. Once fetched, cached forever
+  per the existing local-first rule.
+- Telemetry: `auto_download_mode_set` (mode), `media_manual_download` (kind, bytes).
+  Flag: none (setting, not feature). Issues: `[AUTODL-1]` settings page + helper,
+  `[AUTODL-2]` call-site wiring + placeholder bubbles, `[AUTODL-3]` telemetry.
+
+## 15. FILE-OWNERSHIP ADDITIONS (extends §9)
+
+| Files | Stream |
+|---|---|
+| `worker/src/routes/id.ts`, `worker/src/routes/liveness.ts`, `worker/src/authz.ts` (liveness_required check), `app/lib/features/identity/human_check_page.dart` (new), signup-flow insertion | H |
+| forward sheet + fan-out (messaging routes forward path, `app/lib/features/messaging/widgets/forward_sheet.dart` new) | I |
+| `app/lib/features/settings/auto_download_settings_page.dart` (new), `MediaAutoDownload` helper (new), media fetch call sites | J |
+
+Cross-stream: H's `liveness_required` server check is CONSUMED by I (forwarding)
+and by the messaging send path — land `[LIVE-GATE-5]` before `[FWD-3]`.
+Stream J touches media fetch call sites; Stream C renders preview cards — the
+placeholder-bubble work in J must not modify C's `link_preview_card.dart`.
+
+## 16. ACCEPTANCE ADDITIONS (extends §10)
+- H: new signup cannot reach the app without passing liveness (flag ON); existing
+  unverified user is redirected on open; `liveness_audit` row + R2 audit images
+  exist for a pass AND a fail; popup shows the retention sentence; server 403s
+  message-send for an unverified account even from a patched client.
+- I: forward a photo to a 3,000-member group → exactly ONE R2 object for the
+  photo (verify by key count under the media prefix), 3,000 envelopes; "Forwarded"
+  label renders; 201st forward target within an hour → 429.
+- J: mode=Never → incoming photo shows blurred placeholder, tap downloads;
+  mode=Wi-Fi-only on cellular → same; mode=Always → current behavior; pending
+  stranger thread never auto-downloads in ANY mode; setting does not leak across
+  accounts on the same phone.
