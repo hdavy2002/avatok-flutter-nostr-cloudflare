@@ -79,14 +79,45 @@ function shape(items: GiphyItem[]) {
   return out;
 }
 
+// ── Quota protection (owner has GIPHY's free 100 API calls/day) ──────────────
+// Every distinct query is cached in KV so repeated/identical lookups across ALL
+// users cost ZERO GIPHY calls, and a hard daily budget guard stops us ever
+// blowing past the free tier. Grid preview + full media are served from GIPHY's
+// CDN (asset fetches, which do NOT count against the API quota) and sent media is
+// mirrored to R2, so the ONLY thing that spends quota is the search/trending JSON
+// call — which this cache almost entirely eliminates.
+const CACHE_TTL_SEARCH = 86_400;   // 24h — a query's results are stable enough
+const CACHE_TTL_TRENDING = 21_600; // 6h  — trending refreshes a few times a day
+const DAILY_BUDGET = 95;           // leave headroom under GIPHY's 100/day free cap
+
+function todayKey(): string {
+  return `gif:budget:${new Date().toISOString().slice(0, 10)}`; // UTC day
+}
+
 async function callGiphy(
   req: Request,
   env: Env,
   path: string,
   extra: Record<string, string>,
+  cacheKey: string,
+  ttl: number,
 ): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+
+  const kv = (env as any).TOKENS as KVNamespace | undefined;
+
+  // 1. Cache hit → no GIPHY call, no quota spend. Shared across all users.
+  if (kv) {
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      metric(env, "gif_cache_hit", [1], [path]);
+      return new Response(cached, {
+        status: 200,
+        headers: { "content-type": "application/json", "x-gif-cache": "hit" },
+      });
+    }
+  }
 
   const key = (env as any).GIPHY_API_KEY as string | undefined;
   if (!key) return json({ error: "gifs_unavailable", reason: "GIPHY_API_KEY unset" }, 503);
@@ -94,6 +125,19 @@ async function callGiphy(
   // Light abuse guard: 120 GIF lookups / 5 min / user (search-as-you-type).
   const limited = await rateLimit(env, `gif:${ctx.uid}`, 120, 300);
   if (limited) return limited;
+
+  // 2. Daily budget guard — protect the free 100/day GIPHY quota. When exhausted
+  //    we degrade quietly (empty grid, throttled flag) rather than erroring.
+  const dayKey = todayKey();
+  let used = 0;
+  if (kv) used = Number(await kv.get(dayKey)) || 0;
+  if (used >= DAILY_BUDGET) {
+    metric(env, "gif_budget_exhausted", [used], [path]);
+    return new Response(JSON.stringify({ results: [], next: "", throttled: true }), {
+      status: 200,
+      headers: { "content-type": "application/json", "x-gif-cache": "throttled" },
+    });
+  }
 
   const params = new URLSearchParams({
     api_key: key,
@@ -107,6 +151,8 @@ async function callGiphy(
   try {
     const res = await fetch(`${GIPHY_BASE}/${path}?${params.toString()}`);
     const ms = Date.now() - t0;
+    // 3. Every real GIPHY call spends one unit of the daily budget.
+    if (kv) await kv.put(dayKey, String(used + 1), { expirationTtl: 90_000 }); // ~25h
     if (!res.ok) {
       const detail = (await res.text().catch(() => "")).slice(0, 200);
       metric(env, "gif_fetch_fail", [ms, res.status], [path]);
@@ -119,9 +165,15 @@ async function callGiphy(
     const pg = body.pagination || {};
     const nextOffset = Number(pg.offset || 0) + Number(pg.count || 0);
     const hasMore = nextOffset < Number(pg.total_count || 0);
+    const payload = JSON.stringify({ results, next: hasMore ? String(nextOffset) : "" });
+    // 4. Cache the normalised result so the NEXT identical lookup is free.
+    if (kv && results.length) await kv.put(cacheKey, payload, { expirationTtl: ttl });
     metric(env, "gif_fetch_ok", [ms, results.length], [path]);
     track(env, ctx.uid, "gif_fetch", APP, { ok: true, ms, path, count: results.length });
-    return json({ results, next: hasMore ? String(nextOffset) : "" });
+    return new Response(payload, {
+      status: 200,
+      headers: { "content-type": "application/json", "x-gif-cache": "miss" },
+    });
   } catch (e: any) {
     const ms = Date.now() - t0;
     metric(env, "gif_fetch_error", [ms], [path]);
@@ -131,18 +183,23 @@ async function callGiphy(
 }
 
 // Exported names are KEPT (gifSearch / gifTrending) so the existing index.ts
-// mounts stay valid — do NOT rename these.
+// mounts stay valid — do NOT rename these. `?kind=sticker` switches to GIPHY
+// stickers (transparent), so the sticker tab can use GIPHY too with NO new route.
 export async function gifSearch(req: Request, env: Env): Promise<Response> {
   const u = new URL(req.url);
-  const q = (u.searchParams.get("q") || "").trim().slice(0, 100);
+  const q = (u.searchParams.get("q") || "").trim().toLowerCase().slice(0, 100);
   const pos = (u.searchParams.get("pos") || "").trim();
+  const kind = u.searchParams.get("kind") === "sticker" ? "stickers" : "gifs";
   if (!q) return json({ results: [], next: "" });
+  const cacheKey = `gif:v2:${kind}:s:${q}:${pos || "0"}`;
   // GIPHY paginates by numeric `offset`; the app carries it back opaquely as pos.
-  return callGiphy(req, env, "gifs/search", { q, ...(pos ? { offset: pos } : {}) });
+  return callGiphy(req, env, `${kind}/search`, { q, ...(pos ? { offset: pos } : {}) }, cacheKey, CACHE_TTL_SEARCH);
 }
 
 export async function gifTrending(req: Request, env: Env): Promise<Response> {
   const u = new URL(req.url);
   const pos = (u.searchParams.get("pos") || "").trim();
-  return callGiphy(req, env, "gifs/trending", { ...(pos ? { offset: pos } : {}) });
+  const kind = u.searchParams.get("kind") === "sticker" ? "stickers" : "gifs";
+  const cacheKey = `gif:v2:${kind}:t:${pos || "0"}`;
+  return callGiphy(req, env, `${kind}/trending`, { ...(pos ? { offset: pos } : {}) }, cacheKey, CACHE_TTL_TRENDING);
 }

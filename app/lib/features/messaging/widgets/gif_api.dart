@@ -96,22 +96,41 @@ class GifResult {
 class GifPage {
   final List<GifResult> results;
   final String next; // cursor for the next page ('' = end)
-  final bool unavailable; // GIPHY_API_KEY not configured on the server
-  GifPage(this.results, this.next, {this.unavailable = false});
+  final bool unavailable; // GIPHY_API_KEY not configured on the server (503)
+  final bool throttled; // daily GIPHY budget exhausted (server degraded quietly)
+  GifPage(this.results, this.next,
+      {this.unavailable = false, this.throttled = false});
 }
 
-/// Fallback GIF grid source via our worker → GIPHY REST proxy. The primary picker
-/// is the native GIPHY SDK (giphy_controller.dart); this stays as a graceful
-/// server-side grid for any surface that wants a plain thumbnail grid.
+/// GIF/sticker grid source via our worker → GIPHY REST proxy. This is now the
+/// PRIMARY browse path for the chat picker: the proxy caches every distinct
+/// search/trending JSON call in KV (shared across all users) and enforces a
+/// daily budget, so repeated/identical lookups cost ZERO GIPHY API calls and we
+/// can never blow past the free 100/day quota. Grid previews + sent media come
+/// from GIPHY's CDN (asset fetches, which don't count against the quota) and are
+/// mirrored to R2. The native GIPHY SDK dialog (giphy_controller.dart) bypasses
+/// this cache/guard, so it is NOT the default browse path anymore.
 class GifApi {
-  static Future<GifPage> trending({String pos = ''}) =>
-      _page('$kApiBase/gif/trending${pos.isNotEmpty ? '?pos=$pos' : ''}');
+  /// Trending GIFs (kind=gif) or stickers (kind=sticker). `pos` is the opaque
+  /// pagination cursor returned as `next`.
+  static Future<GifPage> trending({String pos = '', String kind = 'gif'}) {
+    final qp = <String>[
+      if (pos.isNotEmpty) 'pos=$pos',
+      if (kind == 'sticker') 'kind=sticker',
+    ];
+    final qs = qp.isEmpty ? '' : '?${qp.join('&')}';
+    return _page('$kApiBase/gif/trending$qs');
+  }
 
-  static Future<GifPage> search(String q, {String pos = ''}) {
+  static Future<GifPage> search(String q,
+      {String pos = '', String kind = 'gif'}) {
     final query = Uri.encodeQueryComponent(q);
-    final url =
-        '$kApiBase/gif/search?q=$query${pos.isNotEmpty ? '&pos=$pos' : ''}';
-    return _page(url);
+    final qp = <String>[
+      'q=$query',
+      if (pos.isNotEmpty) 'pos=$pos',
+      if (kind == 'sticker') 'kind=sticker',
+    ];
+    return _page('$kApiBase/gif/search?${qp.join('&')}');
   }
 
   static Future<GifPage> _page(String url) async {
@@ -123,7 +142,11 @@ class GifApi {
       final list = (j['results'] as List? ?? [])
           .map((e) => GifResult.fromJson((e as Map).cast<String, dynamic>()))
           .toList();
-      return GifPage(list, (j['next'] ?? '').toString());
+      return GifPage(
+        list,
+        (j['next'] ?? '').toString(),
+        throttled: j['throttled'] == true,
+      );
     } catch (_) {
       return GifPage(const [], '');
     }
