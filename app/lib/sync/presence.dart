@@ -11,16 +11,16 @@ import 'party/party_hub.dart';
 /// Ephemeral presence (typing / online / read receipts).
 ///
 /// Two backends, chosen at runtime:
-///  • Ably (iOS/Android, 'ably' provider): when [convKey] is supplied and
-///    `SyncHub.I.ablyActive`, typing/online/receipts ride the shared Ably
-///    transport (instant, reliable) and inbound events are surfaced in the SAME
-///    `{'type': ...}` map shape the UI already parses — so no UI change.
+///  • PartyKit (replaces Ably): when [convKey] is supplied and PartyHub.I.enabled,
+///    typing/online/receipts ride the shared PartyKit transport (instant, reliable)
+///    and inbound events are surfaced in the SAME `{'type': ...}` map shape the UI
+///    already parses — so no UI change.
 ///  • Legacy signaling WebSocket: a hashed room id over $kSignalingHost. Used on
-///    desktop/macOS/web and whenever Ably isn't active.
+///    desktop/macOS/web and whenever PartyKit isn't enabled.
 class PresenceChannel {
   final String roomId;
   final String me; // short label included in events
-  final String? convKey; // '1:<peerUid>' | 'g:<gid>' — enables the Ably path
+  final String? convKey; // '1:<peerUid>' | 'g:<gid>' — enables the PartyKit path
   final String? peerUid; // 1:1 peer, for online/last-seen watch
   WebSocketChannel? _ws;
   final _events = StreamController<Map<String, dynamic>>.broadcast();
@@ -32,7 +32,7 @@ class PresenceChannel {
 
   /// True when this channel should delegate to the PartyKit transport (the
   /// ephemeral layer's new home now that Ably is retired). Takes precedence over
-  /// the legacy signaling WS; [_ablyMode] stays for any residual Ably build.
+  /// the legacy signaling WebSocket.
   bool get _partyMode => convKey != null && PartyHub.I.enabled;
 
   Stream<Map<String, dynamic>> get events => _events.stream;
@@ -111,8 +111,8 @@ class PresenceChannel {
 
   /// Announce we're leaving/backgrounding, carrying our last-seen timestamp so
   /// peers flip to "last seen <time>" immediately instead of waiting out the
-  /// online window. (Ably presence leave is account-global, so per-thread dispose
-  /// does NOT leave — only an explicit offline does.)
+  /// online window. (Ably's presence leave was account-global; PartyKit presence
+  /// is roster-based, so per-thread dispose fires leave automatically.)
   void sendOffline(int ts) {
     // Party presence is roster-based (leave fires when the socket closes), so no
     // explicit offline send is needed.
