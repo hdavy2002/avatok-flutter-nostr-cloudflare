@@ -597,7 +597,9 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         main.post { try { telephonySink?.success(evt) } catch (_: Throwable) {} }
                     }
                 }
-                am.addOnModeChangedListener(audioModeListener!!)
+                // CALLFIX-R1: addOnModeChangedListener requires Executor + OnModeChangedListener on API 31+
+                val executor = java.util.concurrent.Executor { r -> main.post(r) }
+                am.addOnModeChangedListener(executor, audioModeListener!!)
             }
             emit("telephony_monitoring_started", emptyMap())
         } catch (e: Throwable) {
@@ -611,7 +613,9 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         try {
             val am = audioManager() ?: return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && audioModeListener != null) {
-                am.removeOnModeChangedListener(audioModeListener!!)
+                // CALLFIX-R1: removeOnModeChangedListener also requires Executor parameter
+                val executor = java.util.concurrent.Executor { r -> main.post(r) }
+                am.removeOnModeChangedListener(executor, audioModeListener!!)
             }
             audioModeListener = null
             emit("telephony_monitoring_stopped", emptyMap())
