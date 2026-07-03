@@ -119,7 +119,7 @@ Future<void> _clearBadge() async {
 /// CALLFIX-R7: Handle missed-call callback action (Call back button tapped).
 /// Reads the stored peerId and routes to dial that peer.
 Future<void> _handleMissedCallCallback(String? payload) async {
-  final peerId = await DiskCache.instance.readString('last_missed_call_peer_id');
+  final peerId = await DiskCache.read('last_missed_call_peer_id');
   if (peerId != null && peerId.isNotEmpty) {
     Analytics.capture('missed_call_callback_tapped', {'peer_id': peerId});
     _clearBadge();
@@ -411,7 +411,7 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   final hasCallbackAction = peerId.isNotEmpty;
   // CALLFIX-R7: Store the peerId so the callback action handler can access it
   if (hasCallbackAction) {
-    await DiskCache.instance.writeString('last_missed_call_peer_id', peerId);
+    await DiskCache.write('last_missed_call_peer_id', peerId);
   }
   await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
   final androidDetails = AndroidNotificationDetails(
@@ -562,7 +562,10 @@ class PushService {
       // Check if notifications are enabled (Firebase permission already checked in init)
       bool notifEnabled = false;
       try {
-        notifEnabled = await _local.areNotificationsEnabled() ?? false;
+        notifEnabled = await _local
+                .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+                ?.areNotificationsEnabled() ??
+            false;
       } catch (_) {}
 
       // Check if Calls channel exists and is properly configured
@@ -1051,6 +1054,24 @@ class PushService {
         'status': res.statusCode,
       });
     }
+  }
+
+  /// CALLFIX-14 (glare): programmatically answer the currently-ringing incoming
+  /// call — used when the user taps Call while the same peer is already ringing
+  /// in. Dismisses the CallKit ring UI and opens the call like a normal accept.
+  static Future<void> acceptRingingCall(String callId) async {
+    try {
+      final calls = await FlutterCallkitIncoming.activeCalls();
+      if (calls is List) {
+        for (final c in calls) {
+          if (c is Map && (c['id'] ?? '').toString() == callId) {
+            try { await FlutterCallkitIncoming.endCall(callId); } catch (_) {}
+            await _openCall(c['extra']);
+            return;
+          }
+        }
+      }
+    } catch (_) {/* best-effort — worst case the incoming ring keeps ringing */}
   }
 
   static Future<void> _openCall(dynamic extra) async {

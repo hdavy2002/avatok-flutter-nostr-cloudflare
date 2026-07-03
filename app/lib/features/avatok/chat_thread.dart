@@ -1890,18 +1890,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final to = widget.chat.seed; // the peer's uid
     if (gIncomingRingingFrom == to && gIncomingRingingCallId != null) {
       Analytics.capture('call_glare_autoaccept', {
-        'call_id': gIncomingRingingCallId,
+        'call_id': gIncomingRingingCallId!,
         'kind': kind,
       });
-      // Accept the incoming call via CallKit (simulates the user tapping accept)
-      await FlutterCallkitIncoming.acceptCall(gIncomingRingingCallId!);
+      // Accept the incoming call (dismiss ring UI + open the call like a normal accept)
+      await PushService.acceptRingingCall(gIncomingRingingCallId!);
       return;
     }
     _dialing = true;
     IceCache.prefetch(); // warm TURN creds in parallel with the FCM ring
     final video = kind == 'video';
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
-    final to = widget.chat.seed; // for real contacts this is their uid
+    // (`to` already declared above in the CALLFIX-14 glare block)
     AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
     // The callee's default ringtone (AI Ringback) — comes back on the /api/call
     // response so the caller hears it locally while ringing.

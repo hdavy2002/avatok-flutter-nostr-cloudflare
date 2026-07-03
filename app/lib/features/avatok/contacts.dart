@@ -340,6 +340,10 @@ class Directory {
   /// taken) so callers like onboarding can react; other callers can ignore it.
   // Backoff state for /api/profile calls (prevents 422 hammering).
   static final _profileBackoff = ApiBackoffState('/api/profile');
+
+  /// CALLFIX-R7: public reset for user-initiated saves (profile screen) so a
+  /// 422 validation reject doesn't permanently block a corrected resubmission.
+  static void resetProfileBackoff() => _profileBackoff.reset();
   // PERF-7: capture the /api/profile rejection body once per session so the
   // exact validation reason (e.g. moderation name_format) shows in telemetry.
   static bool _rejectCaptured = false;

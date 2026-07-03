@@ -445,7 +445,7 @@ class _CallScreenState extends State<CallScreen> {
     try { await NativeVoiceAudio().startBluetoothSco(); } catch (_) {}
     // CALLFIX-19: start proximity sensor for earpiece audio calls.
     if (NativeVoiceAudio.isSupported) {
-      final route = await NativeVoiceAudio().getAudioRoute();
+      final route = (await NativeVoiceAudio().getAudioRoute()) ?? 'unknown';
       if (route == 'earpiece') {
         Analytics.capture('call_audio_route', {'route': 'earpiece', 'auto': true});
         try { await NativeVoiceAudio().startProximitySensor(); } catch (_) {}
@@ -673,7 +673,7 @@ class _CallScreenState extends State<CallScreen> {
         _telemetry.onIceGatheringDone();
       }
     };
-    pc.onTrack = (e) {
+    pc.onTrack = (e) async {
       if (e.streams.isNotEmpty) {
         _remote.srcObject = e.streams[0];
         _ringTimeout?.cancel();

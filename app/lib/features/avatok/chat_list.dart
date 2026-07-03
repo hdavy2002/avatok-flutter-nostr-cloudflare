@@ -685,7 +685,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   ? ''
                   : cu.label);
           await Directory.registerProfile(
-              uid: id.uid, email: cu.email!, name: dirName, phone: prof.phone);
+              uid: id!.uid, email: cu.email!, name: dirName, phone: prof.phone);
         }
       } catch (_) {/* not signed in / offline */}
     }());
