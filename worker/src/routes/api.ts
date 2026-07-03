@@ -61,8 +61,22 @@ export async function call(req: Request, env: Env): Promise<Response> {
           app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
         },
       });
+      // [MULTIACCT-1] Also emit push_no_device from the PRODUCER side so the
+      // zero-token case is symmetrical with the consumer's all-tokens-pruned case
+      // (both now surface push_no_device). Reachability queries catch either.
+      void env.Q_ANALYTICS.send({
+        event: "push_no_device", uid: ctx.uid, ts: Date.now(),
+        props: {
+          kind: "call", to: b.to, call_id: b.callId, reason: "zero_tokens",
+          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+        },
+      });
     } catch { /* best-effort: telemetry must never block the response */ }
-    return json({ error: "callee has no registered devices" }, 404);
+    // [MULTIACCT-1] Distinct machine-readable result so the caller client can show
+    // "X is unreachable right now" and SUPPRESS fake ringback instead of ringing
+    // into the void. 404 preserved for back-compat; `reachable:false`/`reason` are
+    // the new signals the client keys on.
+    return json({ error: "callee has no registered devices", reachable: false, reason: "no_device", sent: 0 }, 404);
   }
   // Resolve the caller's real name SERVER-SIDE (Clerk first name → app
   // display_name/handle) instead of trusting the client. The client was sending
@@ -122,7 +136,12 @@ export async function call(req: Request, env: Env): Promise<Response> {
       .bind(b.to).first<{ url: string }>();
     ringbackUrl = r?.url ?? "";
   } catch { /* table missing / no default → caller uses the bundled fallback */ }
-  return json({ sent: n, ringbackUrl });
+  // [MULTIACCT-1] `reachable:true` here means only "the callee had ≥1 registered
+  // token at dial time" — the AUTHORITATIVE ring outcome is async and arrives via
+  // the CallRoom ring-ack (the consumer emits ok=false + push_no_device when every
+  // token turns out stale/pruned after a re-login). The client shows ringback on
+  // this optimistic result but MUST fall back to "unreachable" when ring-ack ok=false.
+  return json({ sent: n, reachable: true, ringbackUrl });
 }
 
 export async function notify(req: Request, env: Env): Promise<Response> {

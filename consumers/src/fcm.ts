@@ -49,12 +49,44 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   // devices: the push "succeeded" if ANY device accepted it.
   const isCall = payload.data.type === "call";
   const callId = payload.data.callId || msg.callId || "";
-  let anyOk = false, firstMsgId = "", lastErr = "";
+  // [MULTIACCT-1] Prune-and-retry fan-out. sendFcm() already DELETEs a token the
+  // instant FCM says it's dead (UNREGISTERED/404/NOT_FOUND); here we COUNT those
+  // prunes so we can distinguish "every device the callee had was stale" from a
+  // transient send error. This is the silent-fan-out bug (2026-07-03): the callee
+  // re-logged-in, the server held ONE stale token, tokenCount>0 so api.ts enqueued
+  // (and never emitted push_no_device), the token failed UNREGISTERED and was
+  // pruned — but NOTHING told the caller the ring never landed. We now always emit
+  // push_fanout_result, and if the entire token set turns out dead we emit
+  // push_no_device (the same signal a zero-token callee would produce), so the
+  // ring-ack tells the caller "unreachable" instead of ringing into the void.
+  const tokensTried = tokens.length;
+  let anyOk = false, firstMsgId = "", lastErr = "", delivered = 0, pruned = 0;
   for (const t of tokens) {
     if (t.platform === "apns") { await sendApns(env, t.token, payload); continue; }
     const r = await sendFcm(env, t.token, payload, uid); // 'fcm' (Android) — default
-    if (r.ok) { anyOk = true; if (!firstMsgId && r.messageId) firstMsgId = r.messageId; }
-    else if (r.error) lastErr = r.error;
+    if (r.ok) { anyOk = true; delivered++; if (!firstMsgId && r.messageId) firstMsgId = r.messageId; }
+    else {
+      if (r.error) lastErr = r.error;
+      if (r.pruned) pruned++;
+    }
+  }
+  // [MULTIACCT-1] Universal per-attempt fan-out result — always emitted (call or
+  // not) so reachability is queryable per recipient. `email` is resolved by
+  // PostHog from distinct_id=uid (raw email is never stored server-side; only
+  // email_hash), and account_id=uid is attached by capturePush().
+  await capturePush(env, "push_fanout_result", uid, {
+    kind: msg.kind, call_id: callId || null, to_uid: uid,
+    tokens_tried: tokensTried, delivered, pruned,
+    ok: anyOk, error: anyOk ? null : (lastErr || "no_delivery"),
+  });
+  // [MULTIACCT-1] If we entered with tokens but NONE delivered AND every failure
+  // was a prune (all tokens were dead — the stale-token-after-relogin case), this
+  // callee is effectively device-less right now. Emit push_no_device so it looks
+  // identical to the zero-token path and downstream reachability queries catch it.
+  if (delivered === 0 && tokensTried > 0 && pruned === tokensTried) {
+    await capturePush(env, "push_no_device", uid, {
+      kind: msg.kind, call_id: callId || null, reason: "all_tokens_pruned", pruned,
+    });
   }
   if (isCall) {
     // The real FCM-hand-off event (stage:'fcm_send' distinguishes it from the
@@ -62,10 +94,13 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
     await capturePush(env, "call_push_sent", uid, {
       stage: "fcm_send", call_id: callId, to_uid: uid,
       fcm_message_id: firstMsgId || null, ok: anyOk,
-      error: anyOk ? null : (lastErr || "no_delivery"), devices: tokens.length,
+      error: anyOk ? null : (lastErr || "no_delivery"),
+      devices: tokensTried, delivered, pruned,
     });
     // receptTakeoverGuard: tell the caller (the only peer in the room during ring)
     // whether the callee's phone could ring. Best-effort; never blocks delivery.
+    // anyOk===false now correctly covers the all-pruned case → caller sees the
+    // ring never landed and shows "unreachable" instead of fake ringback.
     await relayRingAck(env, callId, anyOk);
   }
 }
@@ -215,7 +250,7 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
 // Returns the per-token send outcome so the caller can aggregate call-push results
 // (P1). Existing failure telemetry is preserved (additive) — this only adds a
 // return value and a success-path message-id parse.
-async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+async function sendFcm(env: Env, token: string, payload: { data: Record<string, string>; highPriority: boolean }, uid: string): Promise<{ ok: boolean; messageId?: string; error?: string; pruned?: boolean }> {
   if (!env.FCM_SERVICE_ACCOUNT) {
     console.warn("FCM_SERVICE_ACCOUNT unset; cannot send");
     await capturePush(env, "push_send_failed", uid, { reason: "no_service_account" });
@@ -254,7 +289,9 @@ async function sendFcm(env: Env, token: string, payload: { data: Record<string, 
     if (dead) {
       await env.DB_META.prepare("DELETE FROM push_tokens_v2 WHERE token=?1").bind(token).run();
       console.warn("FCM: pruned dead token", token.slice(0, 12));
-      await capturePush(env, "push_token_pruned", uid, { status: res.status });
+      // [MULTIACCT-1] carry account context so prune events are queryable per user.
+      await capturePush(env, "push_token_pruned", uid, { status: res.status, account_id: uid });
+      return { ok: false, error: `http_${res.status}`, pruned: true };
     } else {
       // Keep the token; surface the error in logs (visible via `wrangler tail`)
       // AND in PostHog so a project/credential/payload break is queryable, not
