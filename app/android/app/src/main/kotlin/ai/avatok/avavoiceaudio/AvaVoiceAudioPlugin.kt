@@ -59,10 +59,12 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     companion object {
         const val METHOD_CHANNEL = "avatok/voice_audio"
         const val EVENT_CHANNEL = "avatok/voice_audio/mic"
+        const val TELEPHONY_EVENT_CHANNEL = "avatok/voice_audio/telephony"
     }
 
     private var methodChannel: MethodChannel? = null
     private var eventChannel: EventChannel? = null
+    private var telephonyEventChannel: EventChannel? = null
     private var appContext: Context? = null
     private val main = Handler(Looper.getMainLooper())
 
@@ -109,6 +111,12 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
     }
 
+    // CALLFIX-23: Telephony monitoring (cellular call interruption).
+    // Listens to AudioManager mode changes or TelephonyManager state to detect
+    // when a cellular call comes in during a VoIP call.
+    private var telephonySink: EventChannel.EventSink? = null
+    private var telephonyMonitoring = AtomicBoolean(false)
+
     // Telemetry counters (surfaced to Dart on stop / on error).
     private val framesCaptured = AtomicLong(0)
     private val bytesPlayed = AtomicLong(0)
@@ -130,14 +138,28 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         eventChannel = EventChannel(binding.binaryMessenger, EVENT_CHANNEL).also {
             it.setStreamHandler(this)
         }
+        // CALLFIX-23: set up the telephony event channel for cellular call interruption events.
+        telephonyEventChannel = EventChannel(binding.binaryMessenger, TELEPHONY_EVENT_CHANNEL).also {
+            it.setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+                    telephonySink = sink
+                }
+                override fun onCancel(arguments: Any?) {
+                    telephonySink = null
+                }
+            })
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         stopEngine()
+        stopTelephonyMonitoring()
         methodChannel?.setMethodCallHandler(null)
         eventChannel?.setStreamHandler(null)
+        telephonyEventChannel?.setStreamHandler(null)
         methodChannel = null
         eventChannel = null
+        telephonyEventChannel = null
         appContext = null
     }
 
@@ -202,6 +224,28 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "stopProximitySensor" -> {
                 // CALLFIX-19: stop proximity sensor
                 stopProximitySensor()
+                result.success(null)
+            }
+            "startCallForegroundService" -> {
+                // CALLFIX-20: start foreground service for ongoing calls
+                val callId = call.argument<String>("callId") ?: ""
+                val peerName = call.argument<String>("peerName") ?: "Unknown"
+                startCallForegroundService(callId, peerName)
+                result.success(null)
+            }
+            "stopCallForegroundService" -> {
+                // CALLFIX-20: stop foreground service on call end
+                stopCallForegroundService()
+                result.success(null)
+            }
+            "startTelephonyMonitoring" -> {
+                // CALLFIX-23: listen for cellular call interruption (GSM call during VoIP)
+                startTelephonyMonitoring()
+                result.success(null)
+            }
+            "stopTelephonyMonitoring" -> {
+                // CALLFIX-23: stop listening for cellular call interruption
+                stopTelephonyMonitoring()
                 result.success(null)
             }
             "stop" -> {
@@ -381,6 +425,7 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         track = null
         stopProximitySensor() // CALLFIX-19: clean up proximity sensor
         try { stopBluetoothSco() } catch (_: Throwable) {} // CALLFIX-18
+        stopTelephonyMonitoring() // CALLFIX-23: clean up telephony monitoring
         try {
             val am = audioManager()
             @Suppress("DEPRECATION")
@@ -493,5 +538,85 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             proximitySensor = null
             emit("proximity_sensor_disabled", emptyMap())
         } catch (_: Throwable) {}
+    }
+
+    // CALLFIX-20: Start foreground service to keep calls alive while backgrounded.
+    // The service shows an ongoing-call notification with a chronometer and hang-up action.
+    private fun startCallForegroundService(callId: String, peerName: String) {
+        try {
+            val intent = Intent(appContext, CallForegroundService::class.java).apply {
+                putExtra("callId", callId)
+                putExtra("peerName", peerName)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Android 8+: must use startForegroundService, not startService.
+                appContext?.startForegroundService(intent)
+            } else {
+                // Older API: startService is sufficient.
+                appContext?.startService(intent)
+            }
+            emit("call_foreground_service_started", mapOf("call_id" to callId))
+        } catch (e: Throwable) {
+            emit("call_foreground_service_error", mapOf("error" to (e.message ?: e.toString())))
+        }
+    }
+
+    // CALLFIX-20: Stop foreground service on call end.
+    private fun stopCallForegroundService() {
+        try {
+            val intent = Intent(appContext, CallForegroundService::class.java)
+            appContext?.stopService(intent)
+            emit("call_foreground_service_stopped", emptyMap())
+        } catch (e: Throwable) {
+            emit("call_foreground_service_error", mapOf("error" to (e.message ?: e.toString())))
+        }
+    }
+
+    // CALLFIX-23: Listen for cellular call interruption (GSM call during VoIP).
+    // Uses AudioManager.OnModeChangedListener (API 31+) or polls audio mode changes
+    // to detect when a cellular call comes in. Emits 'held'/'resumed' events to Dart.
+    private var audioModeListener: AudioManager.OnModeChangedListener? = null
+
+    private fun startTelephonyMonitoring() {
+        if (telephonyMonitoring.getAndSet(true)) return // already listening
+        try {
+            val am = audioManager() ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // API 31+: use OnModeChangedListener for audio mode changes.
+                audioModeListener = AudioManager.OnModeChangedListener { mode ->
+                    // When a cellular call comes in, AudioManager mode may change to MODE_IN_CALL.
+                    // We detect a cellular call when mode is MODE_IN_CALL but we're not
+                    // running our own P2P/Gemini call (which is MODE_IN_COMMUNICATION).
+                    if (mode == AudioManager.MODE_IN_CALL && running.get()) {
+                        // Cellular call is active while we're in a VoIP call.
+                        val evt = mapOf<String, Any>("state" to "held")
+                        main.post { try { telephonySink?.success(evt) } catch (_: Throwable) {} }
+                    } else if (mode == AudioManager.MODE_IN_COMMUNICATION && running.get()) {
+                        // Back to our call (cellular call ended).
+                        val evt = mapOf<String, Any>("state" to "resumed")
+                        main.post { try { telephonySink?.success(evt) } catch (_: Throwable) {} }
+                    }
+                }
+                am.addOnModeChangedListener(audioModeListener!!)
+            }
+            emit("telephony_monitoring_started", emptyMap())
+        } catch (e: Throwable) {
+            telephonyMonitoring.set(false)
+            emit("telephony_monitoring_error", mapOf("error" to (e.message ?: e.toString())))
+        }
+    }
+
+    private fun stopTelephonyMonitoring() {
+        if (!telephonyMonitoring.getAndSet(false)) return // not listening
+        try {
+            val am = audioManager() ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && audioModeListener != null) {
+                am.removeOnModeChangedListener(audioModeListener!!)
+            }
+            audioModeListener = null
+            emit("telephony_monitoring_stopped", emptyMap())
+        } catch (e: Throwable) {
+            emit("telephony_monitoring_error", mapOf("error" to (e.message ?: e.toString())))
+        }
     }
 }

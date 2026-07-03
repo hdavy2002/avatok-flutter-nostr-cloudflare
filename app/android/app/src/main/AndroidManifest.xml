@@ -107,6 +107,13 @@
                 <data android:scheme="avatokauth" />
             </intent-filter>
         </activity>
+        <!-- CALLFIX-20: Foreground service for ongoing calls (keeps VoIP calls alive
+             while backgrounded). Declared with foregroundServiceType="phoneCall|microphone"
+             as required by Android 12+ for call-related services. -->
+        <service
+            android:name="ai.avatok.avavoiceaudio.CallForegroundService"
+            android:foregroundServiceType="phoneCall|microphone"
+            android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
