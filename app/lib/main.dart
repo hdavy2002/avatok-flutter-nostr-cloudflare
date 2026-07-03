@@ -29,6 +29,8 @@ import 'identity/identity.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/restore_screen.dart';
 import 'features/avatok/contacts.dart';
+import 'features/identity/human_check_page.dart';
+import 'features/identity/ladder_api.dart';
 import 'features/onboarding/handle_claim_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
@@ -167,7 +169,7 @@ class AvaTalkApp extends StatelessWidget {
   }
 }
 
-enum _Stage { loading, welcome, handleClaim, signIn, onboarding, restore, shell }
+enum _Stage { loading, welcome, handleClaim, signIn, onboarding, restore, humanCheck, shell }
 
 class RootFlow extends StatefulWidget {
   const RootFlow({super.key});
@@ -251,6 +253,17 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         AccountScope.id = cachedId;
         final local = await _idStore.load(); // in-memory cached after first read
         if (local != null && await _onb.isDone()) {
+          // [LIVE-GATE-4] instant local gate: when the human-check flag is ON and
+          // this account's CACHED level is < 2 (not liveness-verified), hold at the
+          // human check instead of the shell — no network on the critical path.
+          // (_validateClerkInBackground still runs; the gate page confirms server
+          // truth before letting the user proceed.)
+          if (RemoteConfig.livenessOnboardingGate && await LadderApi.cachedLevel() < 2) {
+            Analytics.capture('liveness_gate_shown', const {'source': 'redirect'});
+            _to(_Stage.humanCheck);
+            unawaited(_validateClerkInBackground());
+            return;
+          }
           _to(_Stage.shell); // instant — no network on the critical path
           unawaited(_validateClerkInBackground());
           ContactsStore().pullAndMerge();
@@ -319,6 +332,34 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
   }
 
   void _to(_Stage s) { if (mounted) setState(() => _stage = s); }
+
+  /// STREAM H [LIVE-GATE-4]: the onboarding human-check gate. An existing member
+  /// who has NOT passed liveness is redirected to the non-dismissible human check
+  /// on app open when the livenessOnboardingGate flag is ON (D13 — no grace).
+  /// Guests (L0) and the flag-off case are never gated here (the server is still
+  /// the real gate on spam-capable routes). Returns true when the user should be
+  /// held at the human check instead of landing on the shell.
+  Future<bool> _needsHumanCheck() async {
+    if (!RemoteConfig.livenessOnboardingGate) return false;
+    if (!AccountGate.isMember) return false; // L0 guest — no account yet, no gate
+    // Fast path: cached level ≥2 means liveness already passed (instant, offline).
+    if (await LadderApi.cachedLevel() >= 2) return false;
+    // Confirm against server truth before blocking (avoids a stale-cache lockout).
+    final ld = await LadderApi.level();
+    final level = ld?.level ?? await LadderApi.cachedLevel();
+    return level < 2;
+  }
+
+  /// Land the signed-in member on the shell, OR hold them at the human-check gate
+  /// first (D13). Centralised so every "go to shell" path honours the gate.
+  Future<void> _landOrGate() async {
+    if (await _needsHumanCheck()) {
+      Analytics.capture('liveness_gate_shown', const {'source': 'redirect'});
+      _to(_Stage.humanCheck);
+      return;
+    }
+    _to(_Stage.shell);
+  }
 
   Future<void> _afterAuth() async {
     try {
@@ -404,8 +445,12 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     try { local = await _idStore.load(); } catch (_) {}
     if (local != null) {
       final done = await _onb.isDone();
-      if (done) ContactsStore().pullAndMerge(); // sync contacts from the vault
-      _to(done ? _Stage.shell : _Stage.onboarding);
+      if (done) {
+        ContactsStore().pullAndMerge(); // sync contacts from the vault
+        await _landOrGate(); // [LIVE-GATE-4] hold at human check if unverified + flag on
+      } else {
+        _to(_Stage.onboarding);
+      }
       return;
     }
     // Fresh install / new device → ask the server who this account is.
@@ -415,7 +460,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     switch (st.outcome) {
       case RestoreOutcome.restored:
         ContactsStore().pullAndMerge(); // bring the user's contacts to this device
-        _to(_Stage.shell);
+        await _landOrGate(); // [LIVE-GATE-4] gate a restored-but-unverified account too
         return;
       case RestoreOutcome.newUser:
         _to(_Stage.onboarding);
@@ -485,6 +530,13 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
           onRestored: () => _to(_Stage.shell),
           onRetry: () { _to(_Stage.loading); _route(); },
           onSignOut: _signOut,
+        );
+      case _Stage.humanCheck:
+        // [LIVE-GATE-4] non-dismissible redirect for an existing unverified user.
+        // On pass, re-route through _landOrGate → the app shell.
+        return HumanCheckPage(
+          source: HumanCheckSource.redirect,
+          onVerified: () { unawaited(_landOrGate()); },
         );
       case _Stage.shell:
         return AvaShell(clerk: _clerk, onSignOut: _signOut);

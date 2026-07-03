@@ -257,6 +257,16 @@ class Analytics {
     } catch (_) {}
   }
 
+  /// Set/merge PostHog PERSON properties on the current distinct_id (e.g. STREAM H
+  /// liveness pass: {liveness_verified:true, liveness_country:'GB'}). Re-identifies
+  /// so the props stick to the person and ride subsequent events. Best-effort.
+  static Future<void> setPersonProps(Map<String, Object> props) async {
+    if (!_ready || _accountId == null || props.isEmpty) return;
+    try {
+      await Posthog().identify(userId: _accountId!, userProperties: _base(props));
+    } catch (_) {}
+  }
+
   /// Link this person's uid distinct_id to their Clerk uid (`user_…`) so the
   /// client (identified by uid) and the Worker (which stamps the Clerk uid) land
   /// on ONE person in PostHog — closing the cross-stack debugging gap. Also keeps

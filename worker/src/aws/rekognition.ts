@@ -49,11 +49,13 @@ export async function createLivenessSession(
   return call(env, "CreateFaceLivenessSession", Object.keys(settings).length ? { Settings: settings } : {});
 }
 
-/** Fetch results: Confidence 0..100 and Status (CREATED|IN_PROGRESS|SUCCEEDED|FAILED|EXPIRED). */
+/** Fetch results: Confidence 0..100 and Status (CREATED|IN_PROGRESS|SUCCEEDED|FAILED|EXPIRED).
+ *  AuditImages[].Bytes / ReferenceImage.Bytes are base64 JPEGs (D15: retained for
+ *  the liveness_audit trail on BOTH pass and fail — see routes/liveness_audit.ts). */
 export async function getLivenessResults(
   env: Env,
   sessionId: string,
-): Promise<{ Status: string; Confidence?: number; ReferenceImage?: any }> {
+): Promise<{ Status: string; Confidence?: number; ReferenceImage?: { Bytes?: string }; AuditImages?: Array<{ Bytes?: string }> }> {
   return call(env, "GetFaceLivenessSessionResults", { SessionId: sessionId });
 }
 

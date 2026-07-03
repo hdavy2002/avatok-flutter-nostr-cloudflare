@@ -14,8 +14,9 @@ import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
 import { createLivenessSession, getLivenessResults, rekognitionConfigured } from "../aws/rekognition";
 import { stripeKycSession, stripeIdentityConfigured } from "./kyc";
-import { track, metric, brainFact } from "../hooks";
+import { track, trackUser, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
+import { recordLivenessAudit, storeRekognitionAuditImages, deviceCtxFromBody, edgeCtx } from "./liveness_audit";
 
 const MIN_CONFIDENCE = 90;        // §10.4 auto-approve threshold
 const MAX_ATTEMPTS_24H = 3;       // §10.4 retry cap
@@ -87,7 +88,7 @@ export async function idResult(req: Request, env: Env): Promise<Response> {
     .bind(ctx.uid, sessionId).first<{ ok: number }>();
   if (!owned) return json({ error: "session not found for this account" }, 404);
 
-  let result: { Status: string; Confidence?: number };
+  let result: { Status: string; Confidence?: number; ReferenceImage?: { Bytes?: string }; AuditImages?: Array<{ Bytes?: string }> };
   try {
     result = await getLivenessResults(env, sessionId);
   } catch (e: any) {
@@ -102,11 +103,32 @@ export async function idResult(req: Request, env: Env): Promise<Response> {
     "UPDATE verification_attempts SET result=?1, confidence=?2 WHERE uid=?3 AND session_id=?4",
   ).bind(passed ? "pass" : "fail", confidence, ctx.uid, sessionId).run();
 
+  // D15 (STORE EVERYTHING, 2026-07-03): retain the Rekognition audit frames +
+  // reference image in R2 and write a liveness_audit row for BOTH pass and fail.
+  // Reverses the old delete-on-pass/fail behaviour. Best-effort; never blocks.
+  const dctx = deviceCtxFromBody(b);
+  const geo = edgeCtx(req);
+  // Email for support-pullable telemetry (spec: events carry email AND uid). Best-
+  // effort; trackUser gracefully degrades to plain track when email is null.
+  const email = await clerkPrimaryEmail(env, ctx.uid).catch(() => null);
+  const r2Prefix = await storeRekognitionAuditImages(env, ctx.uid, sessionId, result.AuditImages, result.ReferenceImage);
+  await recordLivenessAudit(env, {
+    uid: ctx.uid, provider: "rekognition", status: passed ? "pass" : "fail",
+    confidence, req, device: dctx, r2Prefix,
+  });
+
   if (!passed) {
     await metaDb(env).prepare(
       "UPDATE verification_status SET status='rejected', confidence=?2, updated_at=?3 WHERE uid=?1",
     ).bind(ctx.uid, confidence, now).run();
     track(env, ctx.uid, "id_verification_failed", "avaid", { confidence, status: result.Status });
+    // STREAM H [LIVE-GATE-6]: rich failure telemetry (uid-stamped; email joins via
+    // the client aliasClerk). Geo from the edge, device from the verify body.
+    trackUser(env, ctx.uid, email, "liveness_failed", "avaid", {
+      provider: "rekognition", reason: result.Status, confidence,
+      country: geo.country, ip: geo.ip, city: geo.city, colo: geo.colo, asn: geo.asn,
+      device_model: dctx.device_model, os: dctx.os, app_version: dctx.app_version,
+    });
     const remaining = Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, ctx.uid)));
     return json({ verified: false, confidence, status: result.Status, attempts_remaining: remaining });
   }
@@ -126,6 +148,14 @@ export async function idResult(req: Request, env: Env): Promise<Response> {
 
   brainFact(env, ctx.uid, "identity_verified", "avaid", { method: "rekognition_liveness", confidence, at: now });
   track(env, ctx.uid, "id_verified", "avaid", { confidence });
+  // STREAM H [LIVE-GATE-6]: rich pass telemetry + person-props (server-stamped geo
+  // + device). PostHog person props: liveness_verified:true, liveness_country.
+  trackUser(env, ctx.uid, email, "liveness_passed", "avaid", {
+    provider: "rekognition", confidence,
+    country: geo.country, ip: geo.ip, city: geo.city, colo: geo.colo, asn: geo.asn,
+    device_model: dctx.device_model, os: dctx.os, app_version: dctx.app_version,
+    $set: { liveness_verified: true, liveness_country: geo.country },
+  });
   metric(env, "avaid_verified", [1, confidence]);
   try { await notifyUser(env, ctx.uid, { type: "system", title: "You're verified ✓", body: "Tier-2 apps are now unlocked.", data: { deeplink: "/profile" } }); } catch { /* best-effort */ }
 

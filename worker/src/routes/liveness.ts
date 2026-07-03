@@ -2,9 +2,15 @@
 // see PROPOSAL-PROGRESSIVE-IDENTITY.md §5). Random challenge → client records a
 // 5–10 s selfie clip, captures challenge frames, uploads both → Workers AI
 // verifies (vision per frame + Whisper on the clip audio for the spoken phrase).
-// PASS → kyc_status('verified','workersai_liveness') exactly like Rekognition;
-// ONE thumbnail kept (the AvaIdentity green-tick card), everything else deleted.
-// FAIL → all evidence deleted immediately, retry within the shared 3/24h budget.
+// PASS → kyc_status('verified','workersai_liveness') exactly like Rekognition.
+//
+// OWNER DECISION 2026-07-03 (STREAM H, D15 — "STORE EVERYTHING"): this REVERSES
+// the old delete-on-pass/fail behaviour. On BOTH pass and fail we now MOVE the
+// frames + clip into the retained audit prefix liveness/<uid>/<session>/ (R2
+// VERIFICATION bucket) instead of deleting them, and write a liveness_audit row
+// (routes/liveness_audit.ts) with the request geo/IP + client device fingerprint.
+// Evidence is retained for safety review; the "Why are we asking?" popup carries
+// the honest retention sentence. Retry stays within the shared 3/24h budget.
 //
 //   POST /api/id/liveness/start            → {session_id, challenge}
 //   POST /api/id/liveness/upload?session=&part=frame0|frame1|frame2|clip  (raw body)
@@ -20,6 +26,7 @@ import { metaDb, metaSession } from "../db/shard";
 import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { invalidateLevelCache } from "./ladder";
+import { recordLivenessAudit, auditPrefix, deviceCtxFromBody } from "./liveness_audit";
 
 const MAX_ATTEMPTS_24H = 3;             // shared budget with the other providers
 const DAY = 86_400_000;
@@ -162,11 +169,31 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
   const challenge = JSON.parse(chRaw) as Challenge;
 
   const prefix = sessionPrefix(ctx.uid, sid);
-  const cleanup = async (keepThumb: boolean) => {
-    const keys = ["frame0", "frame1", "frame2", "clip"].map((p) => prefix + p);
-    if (keepThumb) keys.shift(); // frame0 becomes the green-tick thumbnail
-    try { await Promise.all(keys.map((k) => env.VERIFICATION.delete(k))); } catch { /* best-effort */ }
+  const retainedPrefix = auditPrefix(ctx.uid, sid); // liveness/<uid>/<session>/
+  const device = deviceCtxFromBody(b);
+
+  // D15 (2026-07-03): STORE EVERYTHING. On BOTH pass and fail, MOVE every part
+  // (frames + clip) from the upload prefix into the retained audit prefix instead
+  // of deleting. `keepThumbAt` names the frame0 copy that also stays the
+  // AvaIdentity green-tick thumbnail. Returns the retained prefix + thumb key.
+  const retainEvidence = async (): Promise<{ prefix: string; thumbKey: string }> => {
+    const thumbKey = retainedPrefix + "frame0.jpg";
+    const parts: Array<[string, string]> = [
+      ["frame0", "frame0.jpg"],
+      ["frame1", "frame1.jpg"],
+      ["frame2", "frame2.jpg"],
+      ["clip", "clip.bin"],
+    ];
+    for (const [src, dst] of parts) {
+      try {
+        const obj = await env.VERIFICATION.get(prefix + src);
+        if (!obj) continue;
+        await env.VERIFICATION.put(retainedPrefix + dst, await obj.arrayBuffer());
+        await env.VERIFICATION.delete(prefix + src); // remove the transient upload copy
+      } catch { /* best-effort per part */ }
+    }
     try { await env.TOKENS.delete(`liveness:ch:${ctx.uid}:${sid}`); } catch { /* */ }
+    return { prefix: retainedPrefix, thumbKey };
   };
 
   // Frames: frame0+frame1 = the two challenge actions, frame2 = neutral realness shot.
@@ -176,7 +203,8 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
     frames.push(obj ? await obj.arrayBuffer() : null);
   }
   if (!frames[0] || !frames[1]) {
-    await cleanup(false);
+    const { prefix: rp } = await retainEvidence();
+    await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: rp });
     return json({ verified: false, reason: "missing_frames", message: "We didn't receive the challenge photos — try again." });
   }
 
@@ -220,7 +248,8 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
   ).bind(passed ? "pass" : "fail", ctx.uid, sid).run();
 
   if (!passed) {
-    await cleanup(false);
+    const { prefix: rp } = await retainEvidence(); // D15: keep evidence on fail too
+    await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: rp });
     await metaDb(env).prepare(
       "UPDATE verification_status SET status='rejected', failure_reason=?2, updated_at=?3 WHERE uid=?1",
     ).bind(ctx.uid, JSON.stringify(checks), now).run();
@@ -230,9 +259,10 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
     return json({ verified: false, checks, attempts_remaining: remaining });
   }
 
-  // PASS — keep frame0 as the evidence thumbnail, delete the rest.
-  const thumbKey = prefix + "frame0";
-  await cleanup(true);
+  // PASS — D15: retain ALL evidence under liveness/<uid>/<session>/; frame0 stays
+  // the AvaIdentity green-tick thumbnail (thumbKey now points into the audit prefix).
+  const { prefix: retainedR2Prefix, thumbKey } = await retainEvidence();
+  await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "pass", req, device, r2Prefix: retainedR2Prefix });
 
   // F5: if this user ALSO passed the AWS Rekognition selfie-liveness step
   // (id.ts), the combined proof is stronger than either alone — record the
