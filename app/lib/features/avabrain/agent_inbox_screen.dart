@@ -36,8 +36,8 @@ class _AgentInboxScreenState extends State<AgentInboxScreen> {
     try {
       final items = await PlatformApi.inbox();
       if (mounted) setState(() { _items = items; _loading = false; });
-    } catch (e) {
-      if (mounted) setState(() { _error = '$e'; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _error = 'Couldn\'t load your inbox. Pull to refresh.'; _loading = false; });
     }
   }
 
@@ -47,7 +47,7 @@ class _AgentInboxScreenState extends State<AgentInboxScreen> {
       await _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Done: $action')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('That didn\'t go through. Please try again.')));
     }
   }
 
@@ -221,7 +221,7 @@ class _ListenButtonState extends State<_ListenButton> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Audio ready — tap to play in the player.')));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn\'t synthesize: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Couldn\'t create the audio just now. Please try again.')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
