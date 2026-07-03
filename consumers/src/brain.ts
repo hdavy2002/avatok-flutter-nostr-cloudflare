@@ -130,6 +130,49 @@ async function ingestLibraryFile(msg: BrainMsg, env: Env): Promise<void> {
 
   const category = String(p.category || "other");
   const name = String(p.name || "file");
+
+  // OWNER RULE 2026-07-03: media bytes are never ingested (cost).
+  // VIDPOL-3 (D6): video/audio are indexed on METADATA ONLY — never bytes, never
+  // a transcript. We embed exactly {title, caption, filename, mime, duration_s,
+  // sender, ts} so AvaBrain can still find "that clip Sam sent on Tuesday" without
+  // paying for transcription/vision over large media. This branch returns before
+  // any R2 byte read below.
+  if (category === "video" || category === "audio") {
+    const title = String(p.title || p.name || "file");
+    const caption = String(p.caption || "");
+    const filename = String(p.name || "file");
+    const mime = String(p.mime || "");
+    const durationS = p.duration_s != null ? Number(p.duration_s) : null;
+    const sender = String(p.sender || p.peer || "");
+    const ts = Number(p.ts || p.created_at || Date.now());
+    const metaText = [
+      title, caption, filename, mime,
+      durationS != null ? `${durationS}s` : "",
+      sender ? `from ${sender}` : "",
+    ].filter(Boolean).join(". ").trim().slice(0, 1000);
+    const values = await embed(env, metaText || filename);
+    if (values) {
+      const vecId = `${uid}:lib:${p.media_id}:0`;
+      try {
+        await env.VECTOR_INDEX.upsert([{
+          id: vecId, values,
+          metadata: {
+            uid, media_id: String(p.media_id), app: msg.source_app, category,
+            type: "library", title, caption, filename, mime,
+            duration_s: durationS, sender, ts, summary: metaText.slice(0, 480),
+          },
+        }]);
+      } catch { /* best-effort */ }
+    }
+    try {
+      await env.DB_BRAIN.prepare(
+        `INSERT INTO brain_facts (id, uid, fact_type, content, scope, source_app, source_id, confidence, created_at, updated_at)
+         VALUES (?1,?2,'file',?3,'public',?4,?5,0.7,?6,?6)`,
+      ).bind(crypto.randomUUID(), uid, `${category === "video" ? "Video" : "Audio"} "${title}" (${mime})${caption ? `: ${caption}` : ""}`, msg.source_app, String(p.media_id), Date.now()).run();
+    } catch { /* table optional */ }
+    return;
+  }
+
   let text = "";
   try {
     if (category === "image") {

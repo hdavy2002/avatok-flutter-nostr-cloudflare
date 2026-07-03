@@ -21,6 +21,10 @@ export async function uploadPublic(req: Request, env: Env, exec: ExecutionContex
   const ct = req.headers.get("x-content-type") || req.headers.get("content-type") || "application/octet-stream";
   const fileName = req.headers.get("x-file-name") || defaultName(ct, hash);
   const app = (req.headers.get("x-app") || "avatweet").toLowerCase();
+  // VIDPOL-2: hard 64 MB cap on video uploads (mirrors the client's 720p H.264
+  // transcode gate). Rejected before R2/quota work with the exact client message.
+  const vidCap = videoCapReject(ct, bytes.byteLength);
+  if (vidCap) return vidCap;
   // Optional: drop the upload straight into a user folder (AvaLibrary "+ Upload").
   const folderId = req.headers.get("x-folder") || null;
 
@@ -75,6 +79,11 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
   const realMime = req.headers.get("x-real-mime") || "application/octet-stream";
   const fileName = req.headers.get("x-file-name") || defaultName(realMime, hash);
   const app = (req.headers.get("x-app") || "avachat").toLowerCase();
+  // VIDPOL-2: DM video is E2E-encrypted so the bytes are opaque, but the real
+  // mime rides in x-real-mime — cap on that. Ciphertext is ~same size as source,
+  // so the 64 MB ciphertext ceiling ≈ the same policy as public video.
+  const vidCap = videoCapReject(realMime, bytes.byteLength);
+  if (vidCap) return vidCap;
 
   const mdb = mediaSession(env);
   const existing = await mdb.prepare("SELECT id FROM user_media WHERE key=?1").bind(r2Key).first();
@@ -106,6 +115,19 @@ export async function uploadPrivate(req: Request, env: Env, exec?: ExecutionCont
 //   u/<uid>/backups/…       account exports
 function userKey(uid: string, kind: "public" | "dm", hash: string): string {
   return `u/${uid}/${kind}/${hash}`;
+}
+
+// VIDPOL-2: 64 MB hard cap on video uploads (both /upload/public and
+// /upload/private). The client transcodes to 720p H.264 and rejects locally with
+// the SAME copy; this is the server-side backstop. Returns a 413 Response to
+// return early, or null when the upload is allowed.
+const VIDEO_MAX_BYTES = 64 * 1024 * 1024; // 64 MB
+const VIDEO_TOO_BIG_MSG =
+  "Videos are limited to 64 MB (about 3–5 minutes). Trim it and try again.";
+function videoCapReject(mime: string, byteLength: number): Response | null {
+  if (!String(mime || "").toLowerCase().startsWith("video/")) return null;
+  if (byteLength <= VIDEO_MAX_BYTES) return null;
+  return json({ error: "too_large", message: VIDEO_TOO_BIG_MSG }, 413);
 }
 
 // GET /media/:hash — back-compat shim. Old app fetched bytes here; now we 301 to
