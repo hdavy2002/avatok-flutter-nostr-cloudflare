@@ -169,7 +169,7 @@ const DEFAULTS: PlatformConfig = {
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
-  receptionistRings: 4,            // v2 Mode A: auto-handoff after 4 unanswered rings
+  receptionistRings: 6,            // v2 Mode A: auto-handoff after 6 unanswered rings (CALLFIX-10: changed from 4; KV can override)
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
 
