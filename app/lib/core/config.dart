@@ -134,6 +134,10 @@ const String kMsgReadUrl = 'https://$kSignalingHost/api/msg/read';
 const String kMsgHideUrl = 'https://$kSignalingHost/api/msg/hide';
 // Phase 3 (ABLY-R2): deep chat history from R2/D1 (older than Ably's window).
 const String kMsgArchiveUrl = 'https://$kSignalingHost/api/msg/archive';
+// P8 Stage 2 (restoreV2): page older history from the BATCHED per-user R2 jsonl
+// archive. GET ?before=<InboxDO id>&conv=<optional>&limit=<n>
+//   → { messages:[{id,conv,sender,kind,body,media_ref,client_id,created_at}], next_before }
+const String kArchivePageUrl = 'https://$kSignalingHost/api/archive/page';
 // Phase 4 (ABLY-R2): persist a per-message reaction toggle (live ride is Ably).
 const String kMsgReactUrl = 'https://$kSignalingHost/api/msg/react';
 const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';

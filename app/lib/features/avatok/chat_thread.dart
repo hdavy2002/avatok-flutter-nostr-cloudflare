@@ -144,6 +144,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _recorder = AudioRecorder();
   final _idStore = IdentityStore();
   final _msgStore = MessageStore();
+  // F3 (restoreV2): deep-archive scroll pager. When the user scrolls PAST the
+  // local hot window, older messages are paged in from /api/archive/page and
+  // cached per-conversation so a page is fetched at most once (ever).
+  final _archiveStore = ArchivePageStore();
+  int? _archiveCursor;            // next `before` (InboxDO id); null ⇒ start at newest
+  bool _archiveDone = false;      // the archive is exhausted (no older pages)
+  bool _archiveLoading = false;   // a page fetch is in flight
+  bool _hasArchived = false;      // ≥1 archived message shown ⇒ render the divider
+  // F6: received guardian safety flags, keyed by the flagged message's client id
+  // (msg_id / rumorId). Persisted per-account so the red bubble survives reopen;
+  // a locally-dismissed ("This is fine") flag is kept out of this set.
+  final _safetyStore = SafetyFlagStore();
+  final Map<String, String> _safetyFlaggedIds = {}; // rumorId → category (active reds)
+  StreamSubscription? _safetySub;
   Timer? _persistTimer;
   String? _myNpub;
   String? _myName;
@@ -364,6 +378,29 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    // F6: restore persisted guardian safety flags (red bubbles) + subscribe to
+    // live safety_flag frames pushed to me over the shared InboxDO socket.
+    _safetyStore.load().then((all) {
+      if (!mounted || all.isEmpty) return;
+      setState(() {
+        for (final e in all.entries) {
+          if (e.value['dismissed'] == true) continue; // "This is fine" — stay hidden
+          _safetyFlaggedIds[e.key] = (e.value['category'] ?? '').toString();
+        }
+      });
+    });
+    _safetySub = SyncHub.I.safetyFlags.listen((f) {
+      if (!mounted) return;
+      // Only flags for THIS conversation repaint here (the store already persisted
+      // it for every conv). Match on the derived convKey the hub emits.
+      if (_convKey != null && f['convKey'] != _convKey) return;
+      final msgId = (f['msg_id'] ?? '').toString();
+      if (msgId.isEmpty) return;
+      setState(() => _safetyFlaggedIds[msgId] = (f['category'] ?? '').toString());
+    });
+    // F3 (restoreV2): pull older history a page at a time as the user scrolls to
+    // the top of the hot window. Guarded by the flag inside _maybePageArchive.
+    _scroll.addListener(_maybePageArchive);
     // Paid status — drives the paid-only @ava·#ava composer hint.
     MoneyApi.balance().then((b) {
       if (mounted) setState(() => _premium = b['premium'] == 1 || b['premium'] == true);
@@ -1000,6 +1037,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<void> _loadCachedMessages() async {
     final key = _convKey;
     if (key == null) return;
+    // F3 (restoreV2): restore any previously-paged deep-archive rows for THIS
+    // conversation + the pager cursor, so older history reappears instantly on
+    // reopen without a second /api/archive/page round-trip. Independent of the
+    // hot cache below (which may be empty on a fresh device).
+    unawaited(_restoreArchiveCache());
     final cached = await _msgStore.load(key);
     if (cached.isEmpty || !mounted) return;
     final loaded = <_Msg>[];
@@ -1095,6 +1137,148 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  // ── F3: deep-archive scroll pager (restoreV2) ───────────────────────────────
+  // When the user scrolls PAST the local hot window, page older messages in from
+  // /api/archive/page (batched per-user R2 jsonl), render them above with a subtle
+  // "older messages" divider, and CACHE each fetched page per-conversation so a
+  // page is fetched at most once — ever, across restarts. All dark unless
+  // RemoteConfig.restoreV2 is on (no behaviour change when false).
+
+  /// Feed one archive server row ({id,conv,sender,kind,body,media_ref,client_id,
+  /// created_at}) into the thread as seeded history. Dedup + envelope parsing are
+  /// handled by the normal _onDm/_onGroupMsg path (via _seenEv), so a row already
+  /// in the hot window never double-renders.
+  void _ingestArchiveRow(Map<String, dynamic> r) {
+    final myUid = _meId?.uid ?? _myNpub ?? '';
+    final id = (r['id'] as num?)?.toInt() ?? 0;
+    final clientId = (r['client_id'] ?? '').toString();
+    final rumorId = clientId.isNotEmpty ? clientId : 'srv_$id';
+    final sender = (r['sender'] ?? '').toString();
+    final mine = myUid.isNotEmpty && sender == myUid;
+    final body = (r['body'] ?? '').toString();
+    final createdMs = (r['created_at'] as num?)?.toInt() ??
+        DateTime.now().millisecondsSinceEpoch;
+    final createdSec = createdMs > 2000000000 ? createdMs ~/ 1000 : createdMs; // ms→s
+    if (_isGroup) {
+      _onGroupMsg(GroupMessage(
+          rumorId: rumorId, senderPub: mine ? '' : sender, mine: mine,
+          payload: body, createdAt: createdSec));
+    } else {
+      _onDm(DmMessage(rumorId: rumorId, mine: mine, payload: body, createdAt: createdSec),
+          seed: true);
+    }
+  }
+
+  /// Restore previously-paged archive rows + the pager cursor from the per-account
+  /// cache. Silent + safe when restoreV2 is off (we still restore what was already
+  /// cached so history the user already saw doesn't vanish, but never fetch).
+  Future<void> _restoreArchiveCache() async {
+    final key = _convKey;
+    if (key == null) return;
+    final cur = await _archiveStore.load(key);
+    if (!mounted) return;
+    final rows = (cur['rows'] as List).cast<Map<String, dynamic>>();
+    if (rows.isNotEmpty) {
+      for (final r in rows) _ingestArchiveRow(r);
+      setState(() => _hasArchived = true);
+    }
+    _archiveCursor = cur['cursor'] as int?;
+    _archiveDone = cur['done'] == true;
+  }
+
+  /// Scroll listener: when the viewport nears the TOP of the loaded thread (older
+  /// end), pull the next archive page. Guarded by restoreV2 + one-in-flight.
+  void _maybePageArchive() {
+    if (!RemoteConfig.restoreV2 || _archiveDone || _archiveLoading) return;
+    if (!_scroll.hasClients) return;
+    // extentBefore is how much is scrolled off the TOP; near 0 ⇒ at the oldest
+    // message currently loaded → fetch older history.
+    if (_scroll.position.extentBefore <= 240) {
+      unawaited(_fetchArchivePage());
+    }
+  }
+
+  Future<void> _fetchArchivePage() async {
+    if (!RemoteConfig.restoreV2 || _archiveDone || _archiveLoading) return;
+    final key = _convKey;
+    final myUid = _meId?.uid ?? _myNpub ?? '';
+    if (key == null || myUid.isEmpty) return;
+    final serverConv = serverConvFromKey(key, myUid);
+    if (serverConv == null) return;
+    setState(() => _archiveLoading = true);
+    // Preserve the scroll position across the prepend so the view doesn't jump:
+    // remember distance-from-bottom, restore it after the new rows lay out.
+    final beforeMax = _scroll.hasClients ? _scroll.position.maxScrollExtent : 0.0;
+    final beforePix = _scroll.hasClients ? _scroll.position.pixels : 0.0;
+    try {
+      final before = _archiveCursor; // null ⇒ start from newest segment
+      final uri = '$kArchivePageUrl?conv=$serverConv&limit=30'
+          '${before != null ? '&before=$before' : ''}';
+      final res = await ApiAuth.getSigned(uri);
+      if (!mounted) { _archiveLoading = false; return; }
+      if (res.statusCode != 200) {
+        Analytics.capture('archive_page_failed', {'status': res.statusCode});
+        setState(() => _archiveLoading = false);
+        return;
+      }
+      final body = jsonDecode(res.body);
+      final rows = (body is Map ? (body['messages'] as List? ?? const []) : const [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+      final nextBefore = (body is Map ? body['next_before'] : null) as num?;
+      // Cache the page (dedup at most-once is via the cursor: a fetched `before`
+      // is never re-requested — nextBefore always strictly decreases).
+      await _archiveStore.appendPage(
+        key,
+        newRows: rows,
+        nextBefore: nextBefore?.toInt(),
+        done: nextBefore == null,
+      );
+      if (!mounted) { _archiveLoading = false; return; }
+      for (final r in rows) _ingestArchiveRow(r);
+      setState(() {
+        _archiveCursor = nextBefore?.toInt();
+        _archiveDone = nextBefore == null;
+        if (rows.isNotEmpty) _hasArchived = true;
+        _archiveLoading = false;
+      });
+      Analytics.capture('archive_page_loaded', {'rows': rows.length, 'done': _archiveDone});
+      // Restore the scroll offset so the freshly-prepended history doesn't yank
+      // the user away from where they were reading.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scroll.hasClients) return;
+        final grew = _scroll.position.maxScrollExtent - beforeMax;
+        if (grew > 0) _scroll.jumpTo((beforePix + grew).clamp(0.0, _scroll.position.maxScrollExtent));
+      });
+    } catch (e) {
+      if (mounted) setState(() => _archiveLoading = false);
+      Analytics.capture('archive_page_error', {'error': e.toString()});
+    }
+  }
+
+  // A subtle divider rendered above the oldest loaded messages once we've paged
+  // (or are paging) deep archive, so the user understands they're now looking at
+  // history pulled from the cloud backup.
+  Widget _olderMessagesDivider() => Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 10),
+        child: Row(children: [
+          Expanded(child: Divider(color: Zine.ink.withValues(alpha: 0.18), thickness: 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: _archiveLoading
+                ? Row(mainAxisSize: MainAxisSize.min, children: [
+                    SizedBox(width: 12, height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.6, color: Zine.inkSoft)),
+                    const SizedBox(width: 7),
+                    Text('Loading older messages…', style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+                  ])
+                : Text(_archiveDone ? 'Start of conversation' : 'Older messages',
+                    style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+          ),
+          Expanded(child: Divider(color: Zine.ink.withValues(alpha: 0.18), thickness: 1)),
+        ]),
+      );
+
   String _fmtTime(int epochSecs) {
     final d = DateTime.fromMillisecondsSinceEpoch(epochSecs * 1000);
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
@@ -1160,6 +1344,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void dispose() {
     _localAvaSub?.cancel();
     _avaStreamSub?.cancel();
+    _safetySub?.cancel();              // F6: live safety_flag frames
+    _scroll.removeListener(_maybePageArchive); // F3: archive pager
     _clockTimer?.cancel();              // Phase 5: live clock
     _reactionOverlay?.remove();        // Phase 5: tear down a floating reaction pill if open
     _reactionOverlay = null;
@@ -4475,16 +4661,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   // the visible bubbles locally and answers by MEANING.
                   if (visible.isEmpty) return _searchEmptyState(_searchQuery.trim());
                 }
+                // F3 (restoreV2): a leading "Older messages" divider sits above
+                // the oldest loaded row once we've paged (or are paging) the deep
+                // archive, so the extra rows read as history from the backup.
+                final showArchiveHeader = RemoteConfig.restoreV2 &&
+                    !(_searchMode && _searchQuery.trim().isNotEmpty) &&
+                    (_hasArchived || _archiveLoading);
+                final headerCount = showArchiveHeader ? 1 : 0;
                 return ListView.builder(
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  itemCount: visible.length,
+                  itemCount: visible.length + headerCount,
                   itemBuilder: (c, i) {
-                    final m = visible[i];
+                    if (showArchiveHeader && i == 0) return _olderMessagesDivider();
+                    final vi = i - headerCount;
+                    final m = visible[vi];
                     // Phase 5: insert a "Today / Yesterday / date" separator above
                     // the first message of each new calendar day.
                     final needsSep = m.ts != 0 &&
-                        (i == 0 || !_sameDay(visible[i - 1].ts, m.ts));
+                        (vi == 0 || !_sameDay(visible[vi - 1].ts, m.ts));
                     if (!needsSep) return _bubble(m);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -5642,6 +5837,221 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
+  // ── F6: safety-flag bubble + tap-sheet ──────────────────────────────────────
+  // The server posts {type:'safety_flag', conv, msg_id, category} to MY InboxDO;
+  // SyncHub persists it (per-account, keyed by msg_id) and fans it out. Here the
+  // flagged bubble renders red and, on tap/long-press, opens a sheet with the
+  // category explanation + Block / Report / This is fine. The sender is NEVER
+  // notified (block/report are one-sided; "This is fine" is a local dismiss).
+
+  /// The active safety category for [m] (null ⇒ not flagged, or locally
+  /// dismissed). Matches on the message's rumor id (evId), the flag's msg_id.
+  String? _safetyCategoryFor(_Msg m) {
+    final id = m.evId;
+    if (id == null || id.isEmpty) return null;
+    return _safetyFlaggedIds[id];
+  }
+
+  /// Plain-language explanation for a guardian category (kept generic so an
+  /// unknown/new category still reads sensibly).
+  String _safetyCategoryExplain(String category) {
+    switch (category.toLowerCase()) {
+      case 'grooming':
+        return 'Ava spotted signs of grooming — an adult trying to build secret trust, '
+            'move you off the app, or ask for private things. Please tell an adult you trust.';
+      case 'scam':
+      case 'fraud':
+        return 'Ava thinks this may be a scam — an unexpected offer, a prize, or a request '
+            'for money or codes. Never send money or personal details.';
+      case 'sextortion':
+      case 'csam':
+      case 'sexual':
+        return 'Ava flagged sexual or exploitative content. You do not have to reply. '
+            'Block this person and tell an adult you trust — you are not in trouble.';
+      case 'harassment':
+      case 'bullying':
+        return 'Ava flagged bullying or harassment. You can block or report this person, '
+            'and it is okay to ask an adult for help.';
+      case 'violence':
+      case 'self_harm':
+      case 'selfharm':
+        return 'Ava flagged content about harm. If you or someone is in danger, please '
+            'reach out to an adult you trust right away.';
+      case 'spam':
+        return 'Ava thinks this looks like spam or an unsolicited promo. You can ignore, '
+            'block, or report it.';
+      default:
+        return 'Ava flagged this message as possibly unsafe. Trust your gut — you can block '
+            'or report this person, or dismiss this if you know it is fine.';
+    }
+  }
+
+  String _safetyCategoryLabel(String category) {
+    final c = category.trim();
+    if (c.isEmpty) return 'FLAGGED BY AVA';
+    return '⚠ ${c.replaceAll('_', ' ').toUpperCase()} — FLAGGED BY AVA';
+  }
+
+  Widget _safetyFlagBubble(_Msg m, String category) {
+    return GestureDetector(
+      onTap: () => _openSafetySheet(m, category),
+      onLongPress: () => _openSafetySheet(m, category),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
+          decoration: BoxDecoration(
+            color: const Color(0xFFD32F2F), // strong red — unmistakable danger
+            border: Border.all(color: Zine.ink, width: 2),
+            boxShadow: Zine.shadowXs,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16), topRight: Radius.circular(16),
+              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.fill), size: 14, color: Colors.white),
+              const SizedBox(width: 5),
+              Flexible(child: Text(_safetyCategoryLabel(category),
+                  style: const TextStyle(color: Colors.white, fontSize: 9.5,
+                      fontWeight: FontWeight.w800, letterSpacing: 0.5))),
+            ]),
+            const SizedBox(height: 4),
+            Text(m.text, style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.3,
+                fontWeight: FontWeight.w500)),
+            const SizedBox(height: 4),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(m.time, style: const TextStyle(color: Colors.white70, fontSize: 10)),
+              const SizedBox(width: 8),
+              Text('Tap for options', style: const TextStyle(color: Colors.white70, fontSize: 10,
+                  fontWeight: FontWeight.w600)),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Bottom sheet for a flagged message: category explanation + Block sender /
+  /// Report / This is fine. The sender is never told about any of these.
+  void _openSafetySheet(_Msg m, String category) {
+    HapticFeedback.mediumImpact();
+    Analytics.capture('safety_flag_sheet_opened', {'category': category, 'is_group': _isGroup});
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Zine.paper,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              ZineIconBadge(icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), color: Zine.coral, size: 40),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Ava flagged this message', style: ZineText.cardTitle(size: 18)),
+                Text('From Ava — only you can see this', style: ZineText.sub(size: 11.5)),
+              ])),
+            ]),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: Zine.paper2,
+                borderRadius: BorderRadius.circular(12),
+                border: Zine.border,
+              ),
+              child: Text(_safetyCategoryExplain(category), style: ZineText.sub(size: 13.5)),
+            ),
+            const SizedBox(height: 16),
+            ZineButton(
+              label: 'Block sender',
+              variant: ZineButtonVariant.coral,
+              fullWidth: true,
+              icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: () { Navigator.pop(ctx); _blockSender(category); },
+            ),
+            const SizedBox(height: 8),
+            ZineButton(
+              label: 'Report',
+              variant: ZineButtonVariant.blue,
+              fullWidth: true,
+              icon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: () { Navigator.pop(ctx); _reportFlagged(m, category); },
+            ),
+            const SizedBox(height: 8),
+            ZineButton(
+              label: 'This is fine',
+              variant: ZineButtonVariant.ghost,
+              fullWidth: true,
+              icon: PhosphorIcons.check(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: () { Navigator.pop(ctx); _dismissFlag(m, category); },
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _blockSender(String category) async {
+    final uid = _peerNpub;
+    if (uid == null || uid.isEmpty) {
+      _toast('Couldn\'t identify the sender to block.');
+      return;
+    }
+    Analytics.capture('safety_flag_block', {'category': category, 'is_group': _isGroup});
+    try {
+      // Same `blocks` table the messaging gate reads — a block silently stops all
+      // future sends from this uid. The sender is not notified.
+      final res = await ApiAuth.postJson('$kApiBase/creators/$uid/block', const {});
+      _toast(res.statusCode == 200 ? 'Blocked. They can no longer message you.'
+                                   : 'Couldn\'t block right now — try again.');
+    } catch (_) {
+      _toast('Couldn\'t block right now — try again.');
+    }
+  }
+
+  Future<void> _reportFlagged(_Msg m, String category) async {
+    Analytics.capture('safety_flag_report', {'category': category, 'is_group': _isGroup});
+    final targetId = _peerNpub ?? _convKey ?? '';
+    try {
+      // Generic moderation report (POST /api/report {targetType,targetId,reason}).
+      // Carry the flagged message id (msg_id) so moderation can locate the row.
+      final res = await ApiAuth.postJson('$kApiBase/report', {
+        'targetType': 'message',
+        'targetId': targetId,
+        'reason': 'safety_flag:$category',
+        if (m.evId != null) 'msgId': m.evId,
+      });
+      _toast(res.statusCode == 200 ? 'Thanks — reported to our safety team.'
+                                   : 'Couldn\'t send the report — try again.');
+    } catch (_) {
+      _toast('Couldn\'t send the report — try again.');
+    }
+  }
+
+  /// "This is fine" — local dismiss. Persists the dismissal (so it stays hidden
+  /// on reopen) and removes the red state now. NO network call — the sender is
+  /// never notified.
+  Future<void> _dismissFlag(_Msg m, String category) async {
+    final id = m.evId;
+    if (id == null || id.isEmpty) return;
+    Analytics.capture('safety_flag_dismissed', {'category': category, 'is_group': _isGroup});
+    setState(() => _safetyFlaggedIds.remove(id));
+    await _safetyStore.dismiss(id);
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   Widget _bubble(_Msg m) {
     // Ava "working…" chip (kind 'ava_status') — inline, not a bubble. A 'phase:end'
     // frame is the CLOSE signal (e.g. image done/failed) — it must collapse the
@@ -5656,6 +6066,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // RED FLAGS — Ava's safety alert, and any incoming message Ava flagged as
     // unsafe. Both render red/white so the danger is obvious to the child.
     if (_isGuardianWarn(m)) return _redFlagBubble(m, 'AVA · SAFETY ALERT');
+    // F6: a persisted `safety_flag` frame for THIS message (keyed by rumorId).
+    // Tap / long-press opens the safety sheet (Block · Report · This is fine).
+    // Kept ahead of the legacy _flaggedTs fallback so the newer, richer path wins;
+    // the _flaggedTs path below still fires for older guardian-warning flags.
+    final flagCat = _safetyCategoryFor(m);
+    if (flagCat != null && !m.me && m.special == null && m.media == null && m.localBytes == null) {
+      return _safetyFlagBubble(m, flagCat);
+    }
     if (!m.me && m.special == null && m.media == null && m.localBytes == null && _flaggedTs.contains(m.ts)) {
       return _redFlagBubble(m, '⚠ FLAGGED BY AVA — DO NOT TRUST');
     }

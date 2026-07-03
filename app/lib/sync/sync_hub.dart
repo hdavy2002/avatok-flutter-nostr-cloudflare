@@ -14,6 +14,7 @@ import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore;
 import '../core/config.dart';
 import '../core/db.dart';
 import '../core/disk_cache.dart';
+import '../core/message_store.dart' show SafetyFlagStore;
 import '../identity/identity.dart';
 import 'dm.dart' show DmMessage;
 import 'legacy_stubs.dart';
@@ -96,6 +97,14 @@ class SyncHub {
   /// map carries a derived `convKey` so a thread can filter to its own conv.
   final _avaStream = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get avaStream => _avaStream.stream;
+
+  /// F6: live guardian `safety_flag` frames pushed by the server to the RECIPIENT
+  /// ({type:'safety_flag', conv, msg_id, category}). Persisted per-account to
+  /// [SafetyFlagStore] on receipt, then fanned out so an open thread paints THAT
+  /// bubble red without parsing the private-warning message. The SENDER never
+  /// receives this frame. Transient stream (the durable state is the store).
+  final _safetyFlags = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get safetyFlags => _safetyFlags.stream;
 
   String? get _myUid => AccountScope.id;
 
@@ -506,6 +515,26 @@ class SyncHub {
               ? '1:${dmPeer(conv, myUid) ?? conv}'
               : 'g:$conv';
           _avaStream.add({...m, 'convKey': convKey});
+        }
+        break;
+      case 'safety_flag':
+        {
+          // F6: guardian flagged an incoming message. Persist it per-account keyed
+          // by msg_id (so the red bubble survives reopen), then fan out to the open
+          // thread. Server posts this to the RECIPIENT only — never the sender.
+          final conv = (m['conv'] ?? '').toString();
+          final msgId = (m['msg_id'] ?? '').toString();
+          final category = (m['category'] ?? '').toString();
+          if (msgId.isNotEmpty) {
+            unawaited(SafetyFlagStore().put(msgId, conv: conv, category: category));
+            final myUid = _myUid ?? '';
+            final convKey = conv.startsWith('dm_')
+                ? '1:${dmPeer(conv, myUid) ?? conv}'
+                : 'g:$conv';
+            _safetyFlags.add({
+              'convKey': convKey, 'conv': conv, 'msg_id': msgId, 'category': category,
+            });
+          }
         }
         break;
     }
