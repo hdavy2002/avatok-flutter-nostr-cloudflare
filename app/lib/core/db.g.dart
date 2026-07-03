@@ -322,10 +322,10 @@ class $ContactsTable extends Contacts
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $ContactsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _npubMeta = const VerificationMeta('npub');
+  static const VerificationMeta _uidMeta = const VerificationMeta('uid');
   @override
-  late final GeneratedColumn<String> npub = GeneratedColumn<String>(
-      'npub', aliasedName, false,
+  late final GeneratedColumn<String> uid = GeneratedColumn<String>(
+      'uid', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
@@ -357,7 +357,7 @@ class $ContactsTable extends Contacts
       requiredDuringInsert: false,
       defaultValue: const Constant(''));
   @override
-  List<GeneratedColumn> get $columns => [npub, name, handle, email, avatarUrl];
+  List<GeneratedColumn> get $columns => [uid, name, handle, email, avatarUrl];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -368,11 +368,11 @@ class $ContactsTable extends Contacts
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
-    if (data.containsKey('npub')) {
+    if (data.containsKey('uid')) {
       context.handle(
-          _npubMeta, npub.isAcceptableOrUnknown(data['npub']!, _npubMeta));
+          _uidMeta, uid.isAcceptableOrUnknown(data['uid']!, _uidMeta));
     } else if (isInserting) {
-      context.missing(_npubMeta);
+      context.missing(_uidMeta);
     }
     if (data.containsKey('name')) {
       context.handle(
@@ -394,13 +394,13 @@ class $ContactsTable extends Contacts
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {npub};
+  Set<GeneratedColumn> get $primaryKey => {uid};
   @override
   ContactRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return ContactRow(
-      npub: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}npub'])!,
+      uid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}uid'])!,
       name: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       handle: attachedDatabase.typeMapping
@@ -419,13 +419,13 @@ class $ContactsTable extends Contacts
 }
 
 class ContactRow extends DataClass implements Insertable<ContactRow> {
-  final String npub;
+  final String uid;
   final String name;
   final String handle;
   final String email;
   final String avatarUrl;
   const ContactRow(
-      {required this.npub,
+      {required this.uid,
       required this.name,
       required this.handle,
       required this.email,
@@ -433,7 +433,7 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['npub'] = Variable<String>(npub);
+    map['uid'] = Variable<String>(uid);
     map['name'] = Variable<String>(name);
     map['handle'] = Variable<String>(handle);
     map['email'] = Variable<String>(email);
@@ -443,7 +443,7 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
 
   ContactsCompanion toCompanion(bool nullToAbsent) {
     return ContactsCompanion(
-      npub: Value(npub),
+      uid: Value(uid),
       name: Value(name),
       handle: Value(handle),
       email: Value(email),
@@ -455,7 +455,7 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ContactRow(
-      npub: serializer.fromJson<String>(json['npub']),
+      uid: serializer.fromJson<String>(json['uid']),
       name: serializer.fromJson<String>(json['name']),
       handle: serializer.fromJson<String>(json['handle']),
       email: serializer.fromJson<String>(json['email']),
@@ -466,7 +466,7 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'npub': serializer.toJson<String>(npub),
+      'uid': serializer.toJson<String>(uid),
       'name': serializer.toJson<String>(name),
       'handle': serializer.toJson<String>(handle),
       'email': serializer.toJson<String>(email),
@@ -475,13 +475,13 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
   }
 
   ContactRow copyWith(
-          {String? npub,
+          {String? uid,
           String? name,
           String? handle,
           String? email,
           String? avatarUrl}) =>
       ContactRow(
-        npub: npub ?? this.npub,
+        uid: uid ?? this.uid,
         name: name ?? this.name,
         handle: handle ?? this.handle,
         email: email ?? this.email,
@@ -489,7 +489,7 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
       );
   ContactRow copyWithCompanion(ContactsCompanion data) {
     return ContactRow(
-      npub: data.npub.present ? data.npub.value : this.npub,
+      uid: data.uid.present ? data.uid.value : this.uid,
       name: data.name.present ? data.name.value : this.name,
       handle: data.handle.present ? data.handle.value : this.handle,
       email: data.email.present ? data.email.value : this.email,
@@ -500,7 +500,7 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
   @override
   String toString() {
     return (StringBuffer('ContactRow(')
-          ..write('npub: $npub, ')
+          ..write('uid: $uid, ')
           ..write('name: $name, ')
           ..write('handle: $handle, ')
           ..write('email: $email, ')
@@ -510,12 +510,12 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
   }
 
   @override
-  int get hashCode => Object.hash(npub, name, handle, email, avatarUrl);
+  int get hashCode => Object.hash(uid, name, handle, email, avatarUrl);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ContactRow &&
-          other.npub == this.npub &&
+          other.uid == this.uid &&
           other.name == this.name &&
           other.handle == this.handle &&
           other.email == this.email &&
@@ -523,14 +523,14 @@ class ContactRow extends DataClass implements Insertable<ContactRow> {
 }
 
 class ContactsCompanion extends UpdateCompanion<ContactRow> {
-  final Value<String> npub;
+  final Value<String> uid;
   final Value<String> name;
   final Value<String> handle;
   final Value<String> email;
   final Value<String> avatarUrl;
   final Value<int> rowid;
   const ContactsCompanion({
-    this.npub = const Value.absent(),
+    this.uid = const Value.absent(),
     this.name = const Value.absent(),
     this.handle = const Value.absent(),
     this.email = const Value.absent(),
@@ -538,15 +538,15 @@ class ContactsCompanion extends UpdateCompanion<ContactRow> {
     this.rowid = const Value.absent(),
   });
   ContactsCompanion.insert({
-    required String npub,
+    required String uid,
     this.name = const Value.absent(),
     this.handle = const Value.absent(),
     this.email = const Value.absent(),
     this.avatarUrl = const Value.absent(),
     this.rowid = const Value.absent(),
-  }) : npub = Value(npub);
+  }) : uid = Value(uid);
   static Insertable<ContactRow> custom({
-    Expression<String>? npub,
+    Expression<String>? uid,
     Expression<String>? name,
     Expression<String>? handle,
     Expression<String>? email,
@@ -554,7 +554,7 @@ class ContactsCompanion extends UpdateCompanion<ContactRow> {
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (npub != null) 'npub': npub,
+      if (uid != null) 'uid': uid,
       if (name != null) 'name': name,
       if (handle != null) 'handle': handle,
       if (email != null) 'email': email,
@@ -564,14 +564,14 @@ class ContactsCompanion extends UpdateCompanion<ContactRow> {
   }
 
   ContactsCompanion copyWith(
-      {Value<String>? npub,
+      {Value<String>? uid,
       Value<String>? name,
       Value<String>? handle,
       Value<String>? email,
       Value<String>? avatarUrl,
       Value<int>? rowid}) {
     return ContactsCompanion(
-      npub: npub ?? this.npub,
+      uid: uid ?? this.uid,
       name: name ?? this.name,
       handle: handle ?? this.handle,
       email: email ?? this.email,
@@ -583,8 +583,8 @@ class ContactsCompanion extends UpdateCompanion<ContactRow> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (npub.present) {
-      map['npub'] = Variable<String>(npub.value);
+    if (uid.present) {
+      map['uid'] = Variable<String>(uid.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -607,7 +607,7 @@ class ContactsCompanion extends UpdateCompanion<ContactRow> {
   @override
   String toString() {
     return (StringBuffer('ContactsCompanion(')
-          ..write('npub: $npub, ')
+          ..write('uid: $uid, ')
           ..write('name: $name, ')
           ..write('handle: $handle, ')
           ..write('email: $email, ')
@@ -1102,7 +1102,7 @@ typedef $$MessagesTableProcessedTableManager = ProcessedTableManager<
     MessageRow,
     PrefetchHooks Function()>;
 typedef $$ContactsTableCreateCompanionBuilder = ContactsCompanion Function({
-  required String npub,
+  required String uid,
   Value<String> name,
   Value<String> handle,
   Value<String> email,
@@ -1110,7 +1110,7 @@ typedef $$ContactsTableCreateCompanionBuilder = ContactsCompanion Function({
   Value<int> rowid,
 });
 typedef $$ContactsTableUpdateCompanionBuilder = ContactsCompanion Function({
-  Value<String> npub,
+  Value<String> uid,
   Value<String> name,
   Value<String> handle,
   Value<String> email,
@@ -1126,8 +1126,8 @@ class $$ContactsTableFilterComposer extends Composer<_$AppDb, $ContactsTable> {
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<String> get npub => $composableBuilder(
-      column: $table.npub, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get uid => $composableBuilder(
+      column: $table.uid, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnFilters(column));
@@ -1151,8 +1151,8 @@ class $$ContactsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<String> get npub => $composableBuilder(
-      column: $table.npub, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get uid => $composableBuilder(
+      column: $table.uid, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get name => $composableBuilder(
       column: $table.name, builder: (column) => ColumnOrderings(column));
@@ -1176,8 +1176,8 @@ class $$ContactsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<String> get npub =>
-      $composableBuilder(column: $table.npub, builder: (column) => column);
+  GeneratedColumn<String> get uid =>
+      $composableBuilder(column: $table.uid, builder: (column) => column);
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
@@ -1215,7 +1215,7 @@ class $$ContactsTableTableManager extends RootTableManager<
           createComputedFieldComposer: () =>
               $$ContactsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
-            Value<String> npub = const Value.absent(),
+            Value<String> uid = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String> handle = const Value.absent(),
             Value<String> email = const Value.absent(),
@@ -1223,7 +1223,7 @@ class $$ContactsTableTableManager extends RootTableManager<
             Value<int> rowid = const Value.absent(),
           }) =>
               ContactsCompanion(
-            npub: npub,
+            uid: uid,
             name: name,
             handle: handle,
             email: email,
@@ -1231,7 +1231,7 @@ class $$ContactsTableTableManager extends RootTableManager<
             rowid: rowid,
           ),
           createCompanionCallback: ({
-            required String npub,
+            required String uid,
             Value<String> name = const Value.absent(),
             Value<String> handle = const Value.absent(),
             Value<String> email = const Value.absent(),
@@ -1239,7 +1239,7 @@ class $$ContactsTableTableManager extends RootTableManager<
             Value<int> rowid = const Value.absent(),
           }) =>
               ContactsCompanion.insert(
-            npub: npub,
+            uid: uid,
             name: name,
             handle: handle,
             email: email,
