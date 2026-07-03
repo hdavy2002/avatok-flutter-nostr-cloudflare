@@ -86,6 +86,27 @@ bool hasPendingOutgoingTo(String peer) {
   return true;
 }
 
+/// [MULTIACCT-3] Clear ALL in-flight call state on an account switch/logout.
+/// Resets the busy/active/glare globals so a fresh call on the NEW account is
+/// never auto-busied by state the PREVIOUS account left behind — the
+/// `call_incoming_autobusy`-on-a-fresh-call race seen right after an account
+/// change (report 2026-07-03 18:38). Also best-effort ends any lingering native
+/// CallKit call so no ghost ring survives the switch. Idempotent; safe to call
+/// even when nothing is active. The AccountSwitcher runs this BEFORE swapping the
+/// account scope.
+Future<void> clearCallState() async {
+  gInCall = false;
+  gActiveCallId = null;
+  gInCallSince = 0;
+  gLiveCallScreens = 0;
+  gOutgoingCallTo = null;
+  gOutgoingCallId = null;
+  gOutgoingSince = 0;
+  gIncomingRingingFrom = null;
+  gIncomingRingingCallId = null;
+  try { await FlutterCallkitIncoming.endAllCalls(); } catch (_) {/* none active */}
+}
+
 /// AvaTok 1:1 call — the mockup CallScreen design, wired to real WebRTC P2P
 /// over the Cloudflare signaling Worker. Both peers join the same [room].
 class CallScreen extends StatefulWidget {

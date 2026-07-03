@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'auth/clerk_client.dart';
 import 'core/account_gate.dart';
 import 'core/account_restore.dart';
+import 'core/account_switcher.dart';
 import 'core/analytics.dart';
 import 'core/api_auth.dart';
 import 'core/app_registry.dart';
@@ -392,8 +393,12 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       // hits this background-validate path).
       if (cu.id.isNotEmpty) unawaited(Analytics.aliasClerk(cu.id));
       if (cu.id != AccountScope.id) { // account changed under us — re-route
-        AccountScope.id = cu.id;
-        await DiskCache.writeGlobal(_kAcct, cu.id);
+        // [MULTIACCT-3] A Clerk multi-session flip happened under us (e.g. the
+        // user switched accounts elsewhere). Run the full orchestrated switch so
+        // the hub, DB, push mapping and call state all move to the new account —
+        // NOT just AccountScope.id, which used to leave the old socket + FCM
+        // mapping bound to the previous account.
+        await AccountSwitcher.switchTo(cu.id);
         await _route();
         return;
       }
@@ -434,8 +439,11 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
   Future<void> _afterAuth() async {
     try {
       final cu = await _clerk.currentUser();
-      AccountScope.id = cu?.id;
-      if (cu?.id != null) await DiskCache.writeGlobal(_kAcct, cu!.id);
+      // [MULTIACCT-3] Route login through the single orchestrator so the DB swap,
+      // hub (re)start, push-token (re)mapping and stale-call-state clear all happen
+      // consistently — instead of only setting AccountScope.id and leaving the old
+      // account's hub socket + FCM mapping live (the silent-fan-out cause).
+      await AccountSwitcher.switchTo(cu?.id);
     } catch (_) {}
     await _route();
   }
@@ -549,10 +557,15 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
   /// so logout appeared to do nothing and the session was never cleared).
   Future<void> _signOut() async {
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    // [MULTIACCT-3] Orchestrated logout BEFORE the Clerk session ends: switchTo
+    // (null) clears in-flight call state, marks THIS device inactive for the
+    // departing account server-side (the /api/account/device call needs the auth
+    // that signOut is about to invalidate — so it runs first), stops the hub,
+    // resets the DB and clears the active-account pointer. The device's FCM token
+    // is left intact (device-owned) so the next account reuses it.
+    try { await AccountSwitcher.switchTo(null); } catch (_) {/* clear locally regardless */}
     try { await _clerk.signOut(); } catch (_) {/* clear locally regardless */}
-    AccountScope.id = null;
     AuthSession.lastPassword = null;
-    await DiskCache.deleteGlobal(_kAcct); // forget the remembered account
     _to(_Stage.signIn);
   }
 

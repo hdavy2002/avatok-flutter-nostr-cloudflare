@@ -125,6 +125,33 @@ class SyncHub {
     return _stub;
   }
 
+  /// [MULTIACCT-3] Fully stop the per-account hub for an account switch/logout.
+  /// Sets `_wantConnected=false` FIRST so the socket close does NOT schedule a
+  /// reconnect, tears down the socket + timers, and clears the in-memory
+  /// per-account caches (thread buffers, dedup set, cursor) so the NEXT account's
+  /// `ensure()` starts clean instead of inheriting the previous account's state.
+  /// The persisted per-account cursor on disk is left intact (keyed per account),
+  /// so re-login re-syncs from where that account left off. Idempotent.
+  void stop() {
+    _wantConnected = false;
+    _reconnectTimer?.cancel(); _reconnectTimer = null;
+    _pingTimer?.cancel(); _pingTimer = null;
+    _cursorPersistTimer?.cancel(); _cursorPersistTimer = null;
+    _sub?.cancel(); _sub = null;
+    try { _ch?.sink.close(); } catch (_) {}
+    _ch = null;
+    _started = false;
+    _connecting = false;
+    _connectedAt = 0;
+    _retry = 0;
+    // Drop the previous account's in-memory state so nothing leaks across scopes.
+    _byConv.clear();
+    _seen.clear();
+    _cursor = 0;
+    _cursorUid = null;
+    AvaLog.I.log('hub', 'sync stopped (account switch/logout)');
+  }
+
   void ensureConnected() {
     if (!_wantConnected) return;
     // P13-A: first cold connect of a session is a ttfm baseline too (login case).
