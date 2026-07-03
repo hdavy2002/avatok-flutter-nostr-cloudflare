@@ -162,7 +162,7 @@ const DEFAULTS: PlatformConfig = {
   verseEnabled: false,             // FREE LAUNCH: creator dashboard hidden
   identityLadderEnabled: true,
   guestTierEnabled: true,
-  workersAiLivenessEnabled: false, // flip on after model tuning; Rekognition stays default
+  workersAiLivenessEnabled: true,  // ON 2026-07-03: Cloudflare-native liveness (no AWS/Rekognition creds); powers the signup human-check
   simOnlyPhoneEnabled: true,
   translationEnabled: false,       // FREE LAUNCH: Gemini-Live cost — hidden
   translationGroupEnabled: false,  // FREE LAUNCH: hidden
