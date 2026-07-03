@@ -107,3 +107,13 @@ const int kMaxRingtonesPerAccount = 5;
 /// down). Registered in pubspec under assets/audio/.
 const String kDefaultRingbackAsset = 'assets/audio/ringback_default.wav';
 const String kBusyToneAsset = 'assets/audio/busy_tone.wav';
+
+// ---------------------------------------------------------------------------
+// Link previews + inline YouTube (AI Messenger Batch — STREAM C, PREVIEW-4).
+// The SENDER unfurls a link at compose time (/api/unfurl) and embeds the result
+// in the message envelope (preview:{...}); recipients render the card from the
+// envelope with zero fetch. When OFF, chat renders raw link text only and the
+// compose-time unfurl call is skipped. Server mirror: PlatformConfig
+// .linkPreviewsEnabled (routes/config.ts) — the RemoteConfig value wins at runtime.
+// ---------------------------------------------------------------------------
+const bool kLinkPreviewsEnabledDefault = true;
