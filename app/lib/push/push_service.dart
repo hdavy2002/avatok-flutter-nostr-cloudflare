@@ -600,7 +600,21 @@ class PushService {
     } catch (_) {/* best-effort */}
   }
 
+  /// Completed when [init] finishes (success OR failure) — init now runs
+  /// post-first-frame (PERF-1), so consumers that need Firebase messaging ready
+  /// (e.g. [registerToken]) wait on this instead of racing a late init.
+  static final Completer<void> ready = Completer<void>();
+  static void _markReady() { if (!ready.isCompleted) ready.complete(); }
+
   static Future<void> init() async {
+    try {
+      await _init();
+    } finally {
+      _markReady(); // never hang waiters, even when init throws
+    }
+  }
+
+  static Future<void> _init() async {
     // Desktop (macOS) test build: no APNs and no native incoming-call UI
     // (flutter_callkit_incoming is mobile-only). Skip push/CallKit wiring so the
     // app runs cleanly; messaging still works over the live socket while open.
@@ -938,6 +952,9 @@ class PushService {
 
   /// Register this device's FCM token against the user's uid.
   static Future<void> registerToken(String uid) async {
+    // init() is deferred to post-first-frame (PERF-1): wait for it (bounded)
+    // so getToken() isn't called before Firebase messaging is set up.
+    try { await ready.future.timeout(const Duration(seconds: 15)); } catch (_) {}
     try {
       var token = await FirebaseMessaging.instance.getToken();
       if (token == null) {

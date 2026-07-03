@@ -46,6 +46,44 @@ void main() async {
   // ceiling. Disk caches (avatar_cache/media) make re-decodes cheap.
   PaintingBinding.instance.imageCache.maximumSize = 300;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 64 << 20; // 64 MB
+  // User's app-wide font-size preference (Settings → Display & fonts). Cheap
+  // local prefs read — kept before runApp so the first frame's text scale is
+  // right (everything else heavy is deferred to post-first-frame below).
+  try { await FontScale.load(); } catch (_) {/* default scale */}
+  // Remote kill switches (A2): fetch in the background; never blocks startup.
+  unawaited(RemoteConfig.start());
+  // Route every uncaught error to PostHog as a $exception so crashes are queryable.
+  final priorOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    priorOnError?.call(details);
+    Analytics.captureException(details.exception, details.stack);
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    // A Wi-Fi / DNS blip (failed host lookup on clerk.avatok.ai, an inbox-WS
+    // 401/abort, a dropped tool call) surfaces here as an UNCAUGHT async error.
+    // Previously we returned false, so the platform's default handling could
+    // terminate the app — i.e. a transient network drop crashed AvaTOK. Swallow
+    // those connectivity errors (still logged, tagged so they don't pollute the
+    // crash dashboard) so the app degrades gracefully; let genuine bugs fall
+    // through to default handling as before.
+    final transient = _isTransientNetworkError(error);
+    Analytics.captureException(error, stack,
+        screen: transient ? 'network_transient' : null);
+    return transient; // true = handled (no crash); false = default handling
+  };
+  // Everything heavy (analytics native setup, Firebase, push init incl. the
+  // permission dialog, disk-cache purge, Ava bootstrap) runs AFTER the first
+  // frame so the user sees UI from local state immediately (P0-3 audit fix).
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_deferredInit());
+  });
+  runApp(const AvaTalkApp());
+}
+
+/// Post-first-frame initialization. Order preserved from the old pre-runApp
+/// sequence: Analytics FIRST (so a Firebase init failure is still captured),
+/// then Firebase, then the rest.
+Future<void> _deferredInit() async {
   // One-time image-cache self-heal on this new build (owner request 2026-07-01):
   // a corrupt cached avatar was crashing the image decoder ("Invalid image data")
   // and freezing the app — reinstalling only "fixed" it by wiping the cache. Purge
@@ -69,35 +107,12 @@ void main() async {
   // Ava in-chat layer init (Phase 0). Single startup hook — later phases plug in
   // tools/memory/settings sections via their own files. Non-blocking + guarded.
   try { await AvaBootstrap.init(); } catch (_) {/* never block boot on Ava init */}
-  // User's app-wide font-size preference (Settings → Display & fonts).
-  try { await FontScale.load(); } catch (_) {/* default scale */}
-  // Remote kill switches (A2): fetch in the background; never blocks startup.
-  unawaited(RemoteConfig.start());
-  // Push is separate: a messaging failure must not block the app.
+  // Push is separate: a messaging failure must not block the app. Runs post-
+  // first-frame so the notification-permission dialog never hides the UI.
   try {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
     await PushService.init();
   } catch (_) {/* push unavailable; app still works */}
-  // Route every uncaught error to PostHog as a $exception so crashes are queryable.
-  final priorOnError = FlutterError.onError;
-  FlutterError.onError = (details) {
-    priorOnError?.call(details);
-    Analytics.captureException(details.exception, details.stack);
-  };
-  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-    // A Wi-Fi / DNS blip (failed host lookup on clerk.avatok.ai, an inbox-WS
-    // 401/abort, a dropped tool call) surfaces here as an UNCAUGHT async error.
-    // Previously we returned false, so the platform's default handling could
-    // terminate the app — i.e. a transient network drop crashed AvaTOK. Swallow
-    // those connectivity errors (still logged, tagged so they don't pollute the
-    // crash dashboard) so the app degrades gracefully; let genuine bugs fall
-    // through to default handling as before.
-    final transient = _isTransientNetworkError(error);
-    Analytics.captureException(error, stack,
-        screen: transient ? 'network_transient' : null);
-    return transient; // true = handled (no crash); false = default handling
-  };
-  runApp(const AvaTalkApp());
 }
 
 /// True for transient connectivity failures (no network / DNS / socket / WS drop)
