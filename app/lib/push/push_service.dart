@@ -11,6 +11,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../core/account_storage.dart';
 import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
@@ -465,6 +466,46 @@ class PushService {
   static String? _openedCallId;
   static int _openedAt = 0;
 
+  // CALLFIX-15: idempotent accept/start handling per call_id. In-memory set of
+  // recently-processed call_ids (both accept and start paths). Persisted in
+  // DiskCache with last ~20 for recovery after app restart.
+  static final Set<String> _processedCallIds = {};
+  static const int _maxTrackedIds = 20;
+  static const String _pKey = 'processed_call_ids';
+  static bool _processedIdsLoaded = false;
+
+  /// Check if a call_id was already processed (accept or start). Returns false
+  /// if new, marks it as processed, and returns true on duplicates.
+  static Future<bool> _isCallIdProcessed(String callId) async {
+    if (callId.isEmpty) return false;
+    if (_processedCallIds.contains(callId)) return true;
+    // Load persisted list on first use
+    if (!_processedIdsLoaded) {
+      try {
+        final key = scopedKey(_pKey);
+        final raw = await DiskCache.read(key);
+        if (raw != null && raw.isNotEmpty) {
+          final list = (jsonDecode(raw) as List).cast<String>();
+          _processedCallIds.addAll(list);
+        }
+      } catch (_) {/* best-effort */}
+      _processedIdsLoaded = true;
+    }
+    _processedCallIds.add(callId);
+    // Trim to last N entries
+    if (_processedCallIds.length > _maxTrackedIds) {
+      final sorted = _processedCallIds.toList();
+      _processedCallIds.clear();
+      _processedCallIds.addAll(sorted.skip(sorted.length - _maxTrackedIds));
+    }
+    // Persist the list
+    try {
+      final key = scopedKey(_pKey);
+      await DiskCache.write(key, jsonEncode(_processedCallIds.toList()));
+    } catch (_) {/* best-effort */}
+    return false;
+  }
+
   /// Ship telemetry the BACKGROUND FCM isolate parked to a device-level queue
   /// (every push it received, every push it handled, and — crucially — any error
   /// it hit) up to PostHog now that we're in the main isolate with Analytics
@@ -689,7 +730,7 @@ class PushService {
           AvaLog.I.log('call', 'recovering accepted call after cold start callId=${extra['callId']}');
           IceCache.prefetch();
           // Give the navigator one frame to exist.
-          WidgetsBinding.instance.addPostFrameCallback((_) => _openCall(extra));
+          WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_openCall(extra))); // CALLFIX-15
           return;
         }
       }
@@ -746,7 +787,7 @@ class PushService {
               'kind': acc['kind'] == 'video' ? 'video' : 'audio',
             });
           }
-          _openCall(event.body['extra']);
+          unawaited(_openCall(event.body['extra'])); // CALLFIX-15
           break;
         case Event.actionCallDecline:
           final extra = event.body['extra'];
@@ -869,11 +910,19 @@ class PushService {
     }
   }
 
-  static void _openCall(dynamic extra) {
+  static Future<void> _openCall(dynamic extra) async {
     try {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
       if (room.isEmpty) return;
+      // CALLFIX-15: idempotent accept handling. Each call_id processed exactly once.
+      if (await _isCallIdProcessed(room)) {
+        Analytics.capture('call_duplicate_open_ignored', {
+          'call_id': room,
+          'reason': 'already_processed',
+        });
+        return;
+      }
       // One CallScreen per callId. If one is already on screen, or we opened this
       // same call moments ago (duplicate accept / cold-start recovery race),
       // don't push a second one — a second leg joins the room, gets 'busy', and
@@ -881,7 +930,10 @@ class PushService {
       final now = DateTime.now().millisecondsSinceEpoch;
       if (gActiveCallId == room ||
           (room == _openedCallId && now - _openedAt < 60000)) {
-        Analytics.capture('call_duplicate_open_ignored', {'call_id': room});
+        Analytics.capture('call_duplicate_open_ignored', {
+          'call_id': room,
+          'reason': 'race_condition',
+        });
         return;
       }
       _openedCallId = room;
