@@ -92,6 +92,14 @@ dependencies:
   # chat_media_cards.dart → YouTubeCard). Pure-Dart wrapper over an embedded
   # webview; NATIVE — must be validated by a CI APK build (can't compile headless).
   youtube_player_iframe: ^5.2.0
+  # GIPHY rich picker (STREAM E — Tenor→GIPHY migration). Official GIPHY Flutter
+  # SDK: GIFs, Stickers, GIPHY Text (dynamic), Emoji, and Clips (GIF+sound). Wraps
+  # the native iOS/Android GIPHY SDKs → NATIVE plugin, must be validated by a CI
+  # APK build. Requires Android minSdk >= 21 (this app is 24 ✓) and the host
+  # MainActivity to be a FlutterFragmentActivity (already the case for
+  # flutter_stripe). iOS requires iOS 13+. Configured with the CLIENT SDK key in
+  # features/messaging/widgets/giphy_config.dart.
+  giphy_flutter_sdk: ^1.1.2
   # Contact QR code (profile share)
   qr_flutter: ^4.1.0
   # Compose the shareable/downloadable QR card image (JPEG) — branded card with

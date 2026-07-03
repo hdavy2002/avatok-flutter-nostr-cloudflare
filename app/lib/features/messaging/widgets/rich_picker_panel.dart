@@ -3,7 +3,9 @@
 // Segmented top control: Emoji | GIF | Sticker, with a search icon on the left
 // and a backspace on the right (backspace only meaningful on the Emoji tab).
 //   - Emoji  : "Recents" row + categorized grid + bottom category icon bar.
-//   - GIF    : autoplaying muted previews from our Tenor proxy; tap → send.
+//   - GIF    : opens the full GIPHY experience (native GIPHY SDK) — GIFs,
+//              Stickers, GIPHY Text (dynamic), Emoji, and Clips (GIF+sound);
+//              also shows account-scoped recents inline. tap → send.
 //   - Sticker: built-in packs; tap → send as a kind:"sticker" media message.
 //
 // The panel is a pure view: it calls back to the host (RichInputBar) for the
@@ -14,6 +16,7 @@ import 'package:flutter/material.dart';
 import '../../../core/ui/zine.dart';
 import 'emoji_data.dart';
 import 'gif_api.dart';
+import 'giphy_controller.dart';
 import 'picker_recents_store.dart';
 import 'sticker_packs.dart';
 
@@ -282,7 +285,9 @@ class _EmojiTabState extends State<_EmojiTab> {
 }
 
 // ---------------------------------------------------------------------------
-// GIF tab: autoplaying muted previews (Image.network animates GIFs/WebP).
+// GIF tab: launches the full GIPHY experience (native GIPHY SDK dialog — GIFs,
+// Stickers, GIPHY Text, Emoji, Clips). Also shows account-scoped recents inline
+// (tap a recent to re-send instantly, or tap the launcher to browse GIPHY).
 // ---------------------------------------------------------------------------
 class _GifTab extends StatefulWidget {
   final String query;
@@ -294,83 +299,99 @@ class _GifTab extends StatefulWidget {
 }
 
 class _GifTabState extends State<_GifTab> {
-  List<GifResult> _items = [];
-  bool _loading = true;
-  bool _unavailable = false;
-  String _lastQuery = '#init';
-
-  @override
-  void didUpdateWidget(covariant _GifTab old) {
-    super.didUpdateWidget(old);
-    if (widget.query != old.query) _load();
-  }
-
   @override
   void initState() {
     super.initState();
-    _load();
+    // Warm the SDK so the first "Open GIPHY" tap is instant.
+    GiphyController.instance.ensureConfigured();
   }
 
-  Future<void> _load() async {
-    final q = widget.query.trim();
-    _lastQuery = q;
-    setState(() => _loading = true);
-    final page = q.isEmpty ? await GifApi.trending() : await GifApi.search(q);
-    if (!mounted || q != _lastQuery) return;
-    setState(() {
-      _loading = false;
-      _unavailable = page.unavailable;
-      _items = page.results;
-    });
+  void _openGiphy() {
+    GiphyController.instance.open(context, onPick: widget.onPick);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_unavailable) {
-      return Center(child: Text('GIFs unavailable', style: ZineText.sub()));
-    }
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Zine.ink));
-    }
-    // Show account-scoped recents when browsing trending with no query.
-    final recents = widget.query.trim().isEmpty
-        ? PickerRecentsStore.I.gif.map((m) => GifResult.fromRecent(m)).toList()
-        : const <GifResult>[];
-    final all = [...recents, ..._items];
-    if (all.isEmpty) {
-      return Center(child: Text('No GIFs', style: ZineText.sub()));
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.all(6),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 6,
-        crossAxisSpacing: 6,
-      ),
-      itemCount: all.length,
-      itemBuilder: (ctx, i) {
-        final g = all[i];
-        return GestureDetector(
-          onTap: () => widget.onPick(g),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: Container(
-              color: Zine.card,
-              child: Image.network(
-                g.preview,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.gif_box_outlined, color: Zine.inkMute),
-                loadingBuilder: (c, w, p) => p == null
-                    ? w
-                    : Container(color: Zine.card),
-              ),
+    final recents =
+        PickerRecentsStore.I.gif.map((m) => GifResult.fromRecent(m)).toList();
+    return Column(children: [
+      // Prominent launcher into the full GIPHY picker.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+        child: GestureDetector(
+          onTap: _openGiphy,
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: Zine.lime,
+              borderRadius: BorderRadius.circular(22),
+              border: Zine.border,
+              boxShadow: Zine.shadowXs,
+            ),
+            child: Center(
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.gif_box_rounded, color: Zine.ink, size: 22),
+                const SizedBox(width: 8),
+                Text('Browse GIPHY',
+                    style: ZineText.value(size: 14)
+                        .copyWith(fontWeight: FontWeight.w800, color: Zine.ink)),
+              ]),
             ),
           ),
-        );
-      },
-    );
+        ),
+      ),
+      if (recents.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 2),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text('RECENTS',
+                style: ZineText.kicker(size: 11, color: Zine.inkMute)),
+          ),
+        ),
+      Expanded(
+        child: recents.isEmpty
+            ? GestureDetector(
+                onTap: _openGiphy,
+                behavior: HitTestBehavior.opaque,
+                child: Center(
+                  child: Text('Tap “Browse GIPHY” to find a GIF, sticker or clip',
+                      textAlign: TextAlign.center, style: ZineText.sub()),
+                ),
+              )
+            : GridView.builder(
+                padding: const EdgeInsets.all(6),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 6,
+                  crossAxisSpacing: 6,
+                ),
+                itemCount: recents.length,
+                itemBuilder: (ctx, i) {
+                  final g = recents[i];
+                  return GestureDetector(
+                    onTap: () => widget.onPick(g),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        color: Zine.card,
+                        child: Image.network(
+                          g.preview,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          errorBuilder: (_, __, ___) => const Icon(
+                              Icons.gif_box_outlined,
+                              color: Zine.inkMute),
+                          loadingBuilder: (c, w, p) =>
+                              p == null ? w : Container(color: Zine.card),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    ]);
   }
 }
 
