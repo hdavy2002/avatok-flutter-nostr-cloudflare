@@ -174,6 +174,10 @@ class _CallScreenState extends State<CallScreen> {
   // works even on UDP-blocked tethers). Offerer-driven (no glare); fires once.
   Timer? _relayFallbackTimer;
   bool _relayForced = false;
+  // CALLFIX-11: fail loudly when push was never sent. Track if we got server
+  // confirmation (welcome message) within 3s of _start(). If not, show retry UI.
+  Timer? _placeCallTimeout;
+  bool _gotWelcome = false;
 
   @override
   void initState() {
@@ -436,10 +440,34 @@ class _CallScreenState extends State<CallScreen> {
     // can never reach us — never ignore it. (_end() closes the socket itself,
     // so _onSocketLost checks _ended to stay a no-op on normal teardown.)
     _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
-    // Symmetric-NAT / phone-hotspot rescue: if we haven't connected on direct or
-    // STUN paths within a few seconds, force a TURN-only path so the call lands
-    // via the relay instead of timing out (djee's hotspot never connected).
-    _relayFallbackTimer = Timer(const Duration(seconds: 7), () {
+    // CALLFIX-11: fail loudly if place-call push was never sent. If the server
+    // doesn't confirm via welcome message within 3s, stop ringback and show retry.
+    if (widget.outgoing) {
+      _placeCallTimeout = Timer(const Duration(seconds: 3), () {
+        if (mounted && !_gotWelcome && !_ended && _phase == 'ringing') {
+          _ringback.stop();
+          Analytics.capture('call_place_failed', {
+            'stage': 'no_server_confirm',
+            'kind': widget.video ? 'video' : 'audio',
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text("Couldn't reach ${widget.title} — retry?"),
+              action: SnackBarAction(
+                label: 'Retry',
+                onPressed: () { Navigator.pop(context); },
+              ),
+            ));
+          }
+          _endWith('ended', reason: 'place-call-timeout');
+        }
+      });
+    }
+    // CALLFIX-13: Symmetric-NAT / phone-hotspot rescue: if we haven't connected
+    // on direct or STUN paths within a few seconds, force a TURN-only path so the
+    // call lands via the relay instead of timing out. Reduced from 7s → 4s for
+    // faster fallback (djee's hotspot connects took 5-12s or never).
+    _relayFallbackTimer = Timer(const Duration(seconds: 4), () {
       if (mounted && !_connected && !_ended) _forceRelayRestart();
     });
   }
@@ -661,6 +689,9 @@ class _CallScreenState extends State<CallScreen> {
     if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
     switch (d['type']) {
       case 'welcome':
+        // CALLFIX-11: got server confirmation that push was sent.
+        _gotWelcome = true;
+        _placeCallTimeout?.cancel();
         final peers = (d['peers'] as List).cast<String>();
         if (peers.isNotEmpty) {
           _remoteId = peers.first;
@@ -1059,6 +1090,7 @@ class _CallScreenState extends State<CallScreen> {
     _failTimer?.cancel();
     _wsReconnectTimer?.cancel();
     _relayFallbackTimer?.cancel();
+    _placeCallTimeout?.cancel(); // CALLFIX-11
     _netSub?.cancel();
     // End-path hygiene (A4.4): clear the CallKit/ongoing-call notification +
     // ringtone on EVERY end path, not just the explicit decline. Without this a
