@@ -138,4 +138,45 @@ class NativeVoiceAudio {
   Future<void> stopProximitySensor() async {
     try { await _m.invokeMethod('stopProximitySensor'); } catch (_) {}
   }
+
+  /// CALLFIX-20: Start foreground service for ongoing calls.
+  /// Shows an ongoing-call notification with chronometer and hang-up action.
+  /// [callId] and [peerName] are used in the notification; [peerName] is the
+  /// name of the person being called.
+  Future<void> startCallForegroundService({
+    required String callId,
+    required String peerName,
+  }) async {
+    try {
+      await _m.invokeMethod('startCallForegroundService', {
+        'callId': callId,
+        'peerName': peerName,
+      });
+    } catch (_) {}
+  }
+
+  /// CALLFIX-20: Stop foreground service on call end.
+  Future<void> stopCallForegroundService() async {
+    try { await _m.invokeMethod('stopCallForegroundService'); } catch (_) {}
+  }
+
+  /// CALLFIX-23: Listen for cellular call interruption (GSM call during VoIP).
+  /// Returns a stream of events; each event is a map with 'state' = 'held' or 'resumed'.
+  /// When a cellular call comes in, state='held'; when it ends, state='resumed'.
+  /// The app mutes mic and shows "On hold" banner when held, unmutes when resumed.
+  Stream<Map<String, dynamic>> get telephonyEventStream =>
+      EventChannel('avatok/voice_audio/telephony')
+          .receiveBroadcastStream()
+          .map((e) => Map<String, dynamic>.from(e as Map));
+
+  /// CALLFIX-23: Start listening for cellular call interruption.
+  /// Call this at the start of a call; stop when the call ends.
+  Future<void> startTelephonyMonitoring() async {
+    try { await _m.invokeMethod('startTelephonyMonitoring'); } catch (_) {}
+  }
+
+  /// CALLFIX-23: Stop listening for cellular call interruption.
+  Future<void> stopTelephonyMonitoring() async {
+    try { await _m.invokeMethod('stopTelephonyMonitoring'); } catch (_) {}
+  }
 }
