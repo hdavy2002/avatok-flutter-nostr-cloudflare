@@ -288,11 +288,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ---- Step 1: account type — required, drives the sidebar tools ----
   Widget _accountType() {
+    // RESPUI (onboarding pass): hardcoded 24px gutter → ZineBreakpoints,
+    // matching the pattern already used by _terms()/_notifications() in this
+    // same file (tighter gutter on <360dp phones).
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+            padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -302,7 +306,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 16),
                 ZineMarkTitle(
                     pre: 'How will you ', mark: 'use', post: ' AvaTOK?',
-                    fontSize: 28, textAlign: TextAlign.left),
+                    fontSize: ZineBreakpoints.heroTextSize(context, regular: 28),
+                    textAlign: TextAlign.left),
                 const SizedBox(height: 8),
                 Text(
                     'This sets up your account. Parent and Business accounts unlock extra '
@@ -339,7 +344,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
           child: _primary("Keep going", _selectedKind != null ? _next : null),
         ),
       ],
@@ -387,11 +392,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ---- Step 4: profile (handle + display name) — required ----
   Widget _profileStep() {
+    // RESPUI (onboarding pass): match the ZineBreakpoints gutter/hero-size
+    // pattern already used by _terms()/_notifications() in this file.
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+            padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -401,7 +409,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 const SizedBox(height: 16),
                 ZineMarkTitle(
                     pre: 'Your ', mark: 'name',
-                    fontSize: 30, textAlign: TextAlign.left),
+                    fontSize: ZineBreakpoints.heroTextSize(context, regular: 30),
+                    textAlign: TextAlign.left),
                 const SizedBox(height: 8),
                 Text('This is how you’ll appear to people you message. You can set a private AvaTOK number later in Settings.',
                     style: ZineText.sub(size: 14.5)),
@@ -428,7 +437,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
           child: _primary(
             'Keep going',
             _profileReady ? _saveProfileAndNext : null,
@@ -740,14 +749,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       kApps.where((a) => AppRegistry.isStandard(a.key)).toList();
 
   Widget _appsSetup() {
+    // RESPUI (onboarding pass): match the ZineBreakpoints gutter/hero-size
+    // pattern already used by _terms()/_notifications() in this file.
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+          padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineMarkTitle(
                 pre: 'Set up your ', mark: 'apps',
-                fontSize: 28, textAlign: TextAlign.left),
+                fontSize: ZineBreakpoints.heroTextSize(context, regular: 28),
+                textAlign: TextAlign.left),
             const SizedBox(height: 6),
             Text('Toggle the AvaVerse apps you want. Change these anytime.',
                 style: ZineText.sub(size: 14)),
@@ -755,7 +768,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         ),
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+            padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
             itemCount: _offeredApps.length,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (c, i) {
@@ -787,7 +800,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
+            padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 20),
             child: _primary("Let's go", _finish)),
       ],
     );

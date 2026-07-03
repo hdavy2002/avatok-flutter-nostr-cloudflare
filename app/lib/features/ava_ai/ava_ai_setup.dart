@@ -86,18 +86,23 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
 
   @override
   Widget build(BuildContext context) {
+    // RESPUI (onboarding pass): hardcoded 24px gutter/hero-size → ZineBreakpoints,
+    // matching the pattern used by sign_in_screen.dart / onboarding_flow.dart
+    // (tighter gutter + smaller hero on <360dp phones).
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Column(children: [
       Expanded(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+          padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ZineIconBadge(
                 icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
                 color: Zine.lilac, size: 44),
             const SizedBox(height: 16),
-            const ZineMarkTitle(
+            ZineMarkTitle(
                 pre: 'Add ', mark: 'Ava', post: ', your AI',
-                fontSize: 28, textAlign: TextAlign.left),
+                fontSize: ZineBreakpoints.heroTextSize(context, regular: 28),
+                textAlign: TextAlign.left),
             const SizedBox(height: 8),
             Text(
                 'Ava can find files, summarize chats, translate, generate images and '
@@ -171,7 +176,7 @@ class _AvaAiSetupBodyState extends State<AvaAiSetupBody> {
         ),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+        padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
         child: Column(children: [
           ZineButton(
             label: 'Save & turn on Ava',
