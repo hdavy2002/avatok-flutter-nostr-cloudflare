@@ -673,6 +673,15 @@ class ZineMarkTitle extends StatelessWidget {
   final double fontSize;
   final Color markColor;
   final TextAlign textAlign;
+  /// RESPUI-11: optional line clamp + overflow handling. Null (the default)
+  /// preserves every existing call site's unbounded-wrap behaviour (hero
+  /// titles on onboarding/sign-in screens, which sit inside a scrollable
+  /// column and are fine wrapping to 2+ lines). Callers that place this
+  /// inside a FIXED-height band (e.g. ZineAppBar's title slot) must pass
+  /// maxLines so a long title at high OS text-scale can't blow past that
+  /// fixed band and throw a RenderFlex overflow.
+  final int? maxLines;
+  final TextOverflow? overflow;
   const ZineMarkTitle({
     super.key,
     this.pre = '',
@@ -681,6 +690,8 @@ class ZineMarkTitle extends StatelessWidget {
     this.fontSize = 36,
     this.markColor = Zine.lime,
     this.textAlign = TextAlign.center,
+    this.maxLines,
+    this.overflow,
   });
   @override
   Widget build(BuildContext context) {
@@ -708,6 +719,8 @@ class ZineMarkTitle extends StatelessWidget {
       ]),
       style: style,
       textAlign: textAlign,
+      maxLines: maxLines,
+      overflow: overflow ?? TextOverflow.clip,
     );
   }
 }
@@ -846,12 +859,21 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
     final mw = markWord;
     if (mw != null && title.contains(mw)) {
       final i = title.indexOf(mw);
+      // RESPUI-11: this title sits in a FIXED-height app-bar band
+      // (preferredSize above), unlike the hero use of ZineMarkTitle on
+      // onboarding/sign-in screens which scrolls freely. Without a line
+      // clamp, a longer title (e.g. "Complete your profile") wrapping to
+      // multiple lines at high OS text-scale on a narrow phone blew past the
+      // fixed band and threw a RenderFlex overflow (CI run 28681435747).
+      // Clamp to 1 line + ellipsis, same as the plain-Text branch below.
       titleW = ZineMarkTitle(
         pre: title.substring(0, i),
         mark: mw,
         post: title.substring(i + mw.length),
         fontSize: 27,
         textAlign: TextAlign.left,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       );
     } else {
       titleW = Text(title, style: ZineText.appbar(), maxLines: 1, overflow: TextOverflow.ellipsis);
@@ -876,20 +898,42 @@ class ZineAppBar extends StatelessWidget implements PreferredSizeWidget {
             // Big page title + kicker stay a FIXED size — the Display & fonts
             // slider only grows body/chat/contact/menu text, not headings
             // (owner request 2026-06-28, pic 3).
+            // RESPUI-11: NoUserFontScale only strips the app's OWN Display &
+            // fonts slider — it does NOT touch the OS accessibility text
+            // scale, which the overflow tests push to 1.3x/2.0x. This band
+            // has a FIXED preferredSize height (76/92px), so on top of the
+            // maxLines:1 clamp on titleW above, also cap the OS scale applied
+            // here so a maxed-out accessibility setting can't inflate a
+            // single line of title text past the fixed band. 1.15x still
+            // gives real accessibility benefit over a hard 1.0x pin while
+            // easily fitting the available ~54px vertical budget.
             Expanded(
-              child: NoUserFontScale(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    titleW,
-                    if (tag != null) ...[
-                      const SizedBox(height: 2),
-                      Text(tag!.toUpperCase(), style: ZineText.kicker()),
-                    ],
-                  ],
-                ),
-              ),
+              child: Builder(builder: (context) {
+                // Clamp the OS/accessibility text scale feeding this band to
+                // 1.15x max (NoUserFontScale below only removes the app's own
+                // Display & fonts slider, not the OS scale). 1.15x still gives
+                // real accessibility benefit over a hard 1.0x pin while fitting
+                // the fixed ~54px vertical budget of this app-bar band.
+                final osScale = MediaQuery.textScalerOf(context).scale(1.0);
+                final clampedScale = osScale > 1.15 ? 1.15 : osScale;
+                return MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(clampedScale)),
+                  child: NoUserFontScale(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        titleW,
+                        if (tag != null) ...[
+                          const SizedBox(height: 2),
+                          Text(tag!.toUpperCase(), style: ZineText.kicker()),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
             ),
             ...actions,
           ]),
