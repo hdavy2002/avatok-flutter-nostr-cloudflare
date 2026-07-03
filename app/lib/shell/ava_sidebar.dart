@@ -12,6 +12,7 @@ import '../core/team_api.dart';
 import '../core/ui/zine.dart';
 import '../core/ui/zine_widgets.dart';
 import '../features/diagnostics/log_page.dart';
+import '../features/settings/about_screen.dart';
 import 'focus_mode.dart';
 
 /// The AvaTOK sidebar drawer. `onSelect` receives a destination key:
@@ -593,6 +594,12 @@ class _AvaSidebarState extends State<AvaSidebar> {
         //       Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
         //     }),
         _acct('settings', 'Settings', PhosphorIcons.gearSix(PhosphorIconsStyle.bold)),
+        // About — app version, build, environment (prod/staging), git build.
+        _acct('about', 'About', PhosphorIcons.info(PhosphorIconsStyle.bold),
+            onTap: () {
+              if (!widget.permanent) Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()));
+            }),
       ],
     ]);
   }

@@ -33,6 +33,10 @@ const String kAvatokEnv = String.fromEnvironment('AVATOK_ENV', defaultValue: 'pr
 /// and Analytics.appVersion. Compared against RemoteConfig.minAppBuild.
 const int kAppBuild = 17;
 
+/// Human-readable app version — keep in sync with pubspec `version` (before the
+/// +). Shown on the About screen.
+const String kAppVersion = '0.1.17';
+
 // ---------------------------------------------------------------------------
 // Ava in-chat AI flags (Phase 0 — Foundations). Compile-time defaults; the
 // server enforces the real anti-abuse tiering (BYO key vs our-keys vs premium)
