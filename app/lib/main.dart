@@ -177,6 +177,14 @@ class AvaTalkApp extends StatelessWidget {
       // Text scaling = OS accessibility setting × the app's base bump (~22%) ×
       // the user's own Display & fonts choice (FontScale). Listens live so the
       // whole app re-scales the instant the user moves the slider.
+      //
+      // RESPUI-1 (2026-07-04): the resulting factor is clamped app-wide to
+      // 0.85–1.3 — the previous 0.9–2.8 range let headers/buttons/inputs blow
+      // up on high system-font-scale devices (<360dp phones esp.), squeezing
+      // layouts and hiding actionable elements. This absorbs/replaces the
+      // per-widget body-only scoping in NoUserFontScale's caller sites; that
+      // helper still works (it pins a subtree back to a fixed size) but the
+      // root ceiling is now the same 1.3 everywhere, so it has less to undo.
       builder: (context, child) {
         final mq = MediaQuery.of(context);
         final sys = mq.textScaler.scale(1.0);
@@ -184,7 +192,7 @@ class AvaTalkApp extends StatelessWidget {
           valueListenable: FontScale.scale,
           builder: (_, userScale, __) => MediaQuery(
             data: mq.copyWith(
-                textScaler: TextScaler.linear((sys * 1.22 * userScale).clamp(0.9, 2.8))),
+                textScaler: TextScaler.linear((sys * 1.22 * userScale).clamp(0.85, 1.3))),
             child: child!,
           ),
         );
