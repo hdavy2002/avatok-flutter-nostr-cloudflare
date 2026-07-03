@@ -33,8 +33,8 @@ String tuneOpusSdp(String? sdp) {
   if (pts.isEmpty) return sdp;
   const want = <String, String>{
     'useinbandfec': '1',
-    'usedtx': '1',
-    'maxaveragebitrate': '40000',
+    'usedtx': '0',
+    'maxaveragebitrate': '56000',
     'stereo': '0',
   };
   final lines = sdp.split(RegExp(r'\r\n|\n'));
