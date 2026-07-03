@@ -20,6 +20,7 @@ import '../../core/device_contacts.dart';
 import '../../core/filter_store.dart';
 import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
+import '../../core/remote_config.dart';
 import '../../core/status_store.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -46,6 +47,7 @@ import 'data.dart';
 import 'media.dart';
 import 'new_group_screen.dart';
 import 'search_screen.dart';
+import 'stranger_gate_api.dart';
 import 'unknown_caller.dart';
 import '../avaphone/ava_phone_screen.dart';
 
@@ -95,6 +97,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   Map<String, String> _drafts = {};
   final _previewStore = ChatPreviewStore();
   Map<String, ({String text, int ts, bool me})> _previews = {};
+
+  // [SAFE-GATE-2] "Message requests (N)" section: SERVER conv ids (`dm_…`) whose
+  // stranger-gate accept_state is 'pending'. Grouped in a collapsed section at
+  // the very top of the list (gated on RemoteConfig.strangerGateEnabled). Loaded
+  // from the per-account StrangerGateStore.pendingConvs() and refreshed on resume
+  // / thread return. _requestsExpanded toggles the collapsed/expanded body.
+  Set<String> _pendingConvs = {};
+  bool _requestsExpanded = false;
+  int _requestsShownCount = -1; // memo so telemetry fires once per count change
 
   // Cold start paints from a SINGLE indexed SQLite query over the persisted chat
   // -list projection (Db.chatsOnce) — instant on any phone, nothing pre-loaded
@@ -179,7 +190,109 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       final read = await _readStore.load();
       final previews = await _previewStore.load();
       if (mounted) setState(() { _lastRead = read; _previews = previews; });
+      // A thread may have been accepted/blocked from its stranger-gate bar —
+      // reconcile the "Message requests" section.
+      _loadPendingRequests();
     });
+  }
+
+  /// [SAFE-GATE-2] The collapsed "Message requests (N)" section for pending
+  /// stranger-gate threads. Returns [] (renders nothing) when the flag is off or
+  /// there are no pending requests. Tapping the header expands/collapses; tapping
+  /// a request opens the thread (which shows the stranger-gate action bar).
+  List<Widget> _messageRequestsSection() {
+    if (!RemoteConfig.strangerGateEnabled || _pendingConvs.isEmpty) return const [];
+    final myUid = _id?.uid ?? '';
+    // Resolve each pending SERVER conv id back to a known contact (dm_<lo>__<hi>
+    // == dmConvIdFor(me, contact.uid)). Unknown senders (no contact yet) are
+    // still counted, but only resolvable ones become tappable rows.
+    final pending = <({String conv, Contact? contact})>[];
+    for (final conv in _pendingConvs) {
+      Contact? match;
+      if (myUid.isNotEmpty) {
+        for (final c in _contacts) {
+          if (dmConvIdFor(myUid, c.uid) == conv) { match = c; break; }
+        }
+      }
+      pending.add((conv: conv, contact: match));
+    }
+    final n = pending.length;
+    // Fire the shown-telemetry once per count change (email auto-attached).
+    if (_requestsShownCount != n) {
+      _requestsShownCount = n;
+      Analytics.capture('message_requests_section_shown', {'count': n});
+    }
+    return [
+      InkWell(
+        onTap: () => setState(() => _requestsExpanded = !_requestsExpanded),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(
+                  color: Zine.ink.withValues(alpha: 0.25), width: 2))),
+          child: Row(children: [
+            PhosphorIcon(PhosphorIcons.userCircle(PhosphorIconsStyle.bold),
+                size: 20, color: Zine.blueInk),
+            const SizedBox(width: 16),
+            Text('Message requests', style: ZineText.value(size: 15)),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+              decoration: BoxDecoration(
+                  color: Zine.blue.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: Zine.blueInk, width: 1.5)),
+              child: Text('$n', style: ZineText.tag(size: 11, color: Zine.blueInk)),
+            ),
+            const Spacer(),
+            PhosphorIcon(
+                _requestsExpanded
+                    ? PhosphorIcons.caretUp(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                size: 16, color: Zine.inkSoft),
+          ]),
+        ),
+      ),
+      if (_requestsExpanded)
+        for (final p in pending)
+          if (p.contact != null)
+            _ChatRow(
+              chat: Chat(
+                name: p.contact!.name,
+                seed: p.contact!.seed,
+                avatarUrl: p.contact!.avatarUrl,
+                last: p.contact!.subtitle.isNotEmpty
+                    ? p.contact!.subtitle
+                    : 'Wants to send you a message',
+                time: '',
+              ),
+              pinned: false,
+              muted: false,
+              onTap: () => _openChat(Chat(
+                name: p.contact!.name,
+                seed: p.contact!.seed,
+                avatarUrl: p.contact!.avatarUrl,
+                last: '',
+                time: '',
+              )),
+              onLongPress: () {},
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(
+                      color: Zine.ink.withValues(alpha: 0.1), width: 1))),
+              child: Row(children: [
+                PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold),
+                    size: 18, color: Zine.inkSoft),
+                const SizedBox(width: 16),
+                Expanded(
+                    child: Text('Unknown sender',
+                        style: ZineText.sub(size: 13.5, color: Zine.inkSoft))),
+              ]),
+            ),
+    ];
   }
 
   void _chatRowFlags(Chat c) {
@@ -288,6 +401,21 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     }
     _bootstrap();
     _loadNotifCounts();
+    _loadPendingRequests();
+  }
+
+  /// [SAFE-GATE-2] Load the set of pending stranger-gate threads for the "Message
+  /// requests (N)" section. No-op (and clears) when the kill switch is off, so a
+  /// disabled flag renders nothing. Best-effort; a read failure leaves the last set.
+  Future<void> _loadPendingRequests() async {
+    if (!RemoteConfig.strangerGateEnabled) {
+      if (mounted && _pendingConvs.isNotEmpty) setState(() => _pendingConvs = {});
+      return;
+    }
+    try {
+      final convs = await StrangerGateStore().pendingConvs();
+      if (mounted) setState(() => _pendingConvs = convs);
+    } catch (_) {/* keep last-known set */}
   }
 
   /// Load the bell badge + pending group-invite count (Phase D). Best-effort —
@@ -1140,6 +1268,9 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                   // session (green) so it's never confused with a real contact
                   // (owner decision 2026-06-27). Tapping opens the Ava chat.
                   if (_filter == 'all' || _filter == 'fav') _avaSessionRow(),
+                  // [SAFE-GATE-2] "Message requests (N)" — pending stranger-gate
+                  // threads, collapsed at the very top (only on the All filter).
+                  if (_filter == 'all') ..._messageRequestsSection(),
                   if (archivedCount > 0)
                     InkWell(
                       onTap: () => setState(() => _showArchived = !_showArchived),
