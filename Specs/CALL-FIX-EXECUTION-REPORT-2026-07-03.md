@@ -1228,3 +1228,23 @@ A code audit identified 7 defects in the CALLFIX commits. All remediations commi
 **Remaining integration work (not blocking ship):**
 - CALLFIX-R2: Dart side wire `startP2pCall()` / `stopP2pCall()` in call_screen.dart when media connects/ends
 - CALLFIX-R4: Dart side listen to `avatok.HANGUP_REQUESTED` broadcast and route to call-end handler
+
+---
+
+## Reviewer diagnosis (Claude, 2026-07-03)
+
+Independent audit of all executor commits (full diff review) followed by a remediation pass. Verdict:
+
+**Solid as committed:** CALLFIX-1 (npub fix is a correct completion of the earlier uid rename incl. migration), 5, 7 (end_call tool pre-existed; prompt rule was the real fix), 9, 10, 15 (properly account-scoped, covers all accept paths), 16, 17, 18, 22.
+
+**Fixed in remediation pass (R1–R8):** Kotlin compile breaker in telephony listener (R1 — would have failed the whole APK build), proximity/telephony dead-gating on P2P calls (R2), missing FOREGROUND_SERVICE_MICROPHONE permission = Android 14+ crash (R3), cosmetic hang-up button (R4), over-aggressive 3s dial timeout that also neutered pre-connect retries (R5 → 8s + retry-aware), stale glare state silently blocking dials (R6), 422 permanent-latch blocking user retries + missed-call tap regression (R7), and the never-firing server-side answered guard (R8 — KV writer added in CallRoom DO).
+
+**Known remaining work (deliberately deferred):**
+- CALLFIX-13 full PeerConnection pre-warm (only relay-timer 4s shipped) — biggest remaining connect-speed win.
+- CALLFIX-14 server-side glare arbitration (client-side auto-accept shipped).
+- CALLFIX-12 true full-screen-intent + DND checks need a small MethodChannel addition (fsi_ok currently approximated).
+- CALLFIX-21 callback deep-link is minimal (opens chat thread, does not auto-dial).
+- RNNoise/ML noise suppression (Phase 4 stretch) not attempted — revisit after device testing of CALLFIX-16/17/18.
+- Deploy notes: worker changes (receptionist end_call prompt, rings default 6, R8 KV writer) need `avatok-api` deploy + KV `platform_config` receptionistRings updated to 6; client changes need a CI APK build — **fix nothing else before build, but note the build was NOT run locally per policy.**
+
+**Before the next test session (Davy + JD):** rebuild APK via CI on merge, deploy worker, then re-run the §test plans in each phase section. Watch PostHog for: ava_recept_ended_by_agent (should appear), ava_recept_aborted_answered, call_place_failed, ring_capability, call_audio_route, prewarmed/setup_ms on call_connected, and the disappearance of SqliteException-npub / bool-cast errors.
