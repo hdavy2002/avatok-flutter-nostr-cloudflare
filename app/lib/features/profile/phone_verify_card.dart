@@ -159,7 +159,9 @@ class _PhoneVerifyCardState extends State<PhoneVerifyCard> {
         Row(children: [
           ZineIconBadge(icon: PhosphorIcons.phone(PhosphorIconsStyle.bold), color: Zine.blue, size: 28),
           const SizedBox(width: 9),
-          Expanded(child: Text('PHONE NUMBER', style: ZineText.kicker())),
+          Expanded(
+              child: Text('PHONE NUMBER',
+                  style: ZineText.kicker(), overflow: TextOverflow.ellipsis)),
           if (_verified)
             ZineSticker('verified', kind: ZineStickerKind.ok,
                 icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
@@ -169,7 +171,9 @@ class _PhoneVerifyCardState extends State<PhoneVerifyCard> {
           Row(children: [
             PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.bold), size: 18, color: Zine.mintInk),
             const SizedBox(width: 8),
-            Expanded(child: Text(_phoneCtrl.text.trim(), style: ZineText.value(size: 15))),
+            Expanded(
+                child: Text(_phoneCtrl.text.trim(),
+                    style: ZineText.value(size: 15), overflow: TextOverflow.ellipsis)),
           ])
         else ...[
           ZineField(
@@ -324,7 +328,9 @@ class _PhoneNudgeCardState extends State<PhoneNudgeCard> {
       return _wrap(Row(children: [
         ZineIconBadge(icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), color: Zine.mint, size: 28),
         const SizedBox(width: 10),
-        Expanded(child: Text('Phone number verified', style: ZineText.value(size: 14.5))),
+        Expanded(
+            child: Text('Phone number verified',
+                style: ZineText.value(size: 14.5), overflow: TextOverflow.ellipsis)),
         ZineSticker('verified', kind: ZineStickerKind.ok,
             icon: PhosphorIcons.check(PhosphorIconsStyle.bold)),
       ]));

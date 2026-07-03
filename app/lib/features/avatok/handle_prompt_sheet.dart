@@ -97,7 +97,10 @@ class _HandlePromptSheetState extends State<_HandlePromptSheet> {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final bottom = mq.viewInsets.bottom + mq.padding.bottom + 16;
-    return Padding(
+    // RESPUI: wrap in a scroll view so a small screen + open keyboard (which
+    // shrinks available height via viewInsets.bottom) never overflows — the
+    // sheet's content simply scrolls instead of clipping/erroring.
+    return SingleChildScrollView(
       padding: EdgeInsets.only(bottom: bottom),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(22, 12, 22, 12),

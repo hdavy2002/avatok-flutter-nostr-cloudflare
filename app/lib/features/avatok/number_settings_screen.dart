@@ -210,6 +210,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
     return PopScope(
       canPop: !widget.gate, // mandatory gate can't be backed out of
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         backgroundColor: Zine.paper,
         appBar: ZineAppBar(
             title: widget.gate ? 'Choose your number' : 'Your number',
@@ -230,7 +231,9 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
                       ),
                     ),
                   ])
-                : ListView(padding: const EdgeInsets.all(20), children: _content()),
+                : SafeArea(
+                    child: ListView(padding: const EdgeInsets.all(20), children: _content()),
+                  ),
       ),
     );
   }
@@ -341,7 +344,7 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
         child: Row(children: [
           Text(_country?.flag ?? '🌍', style: const TextStyle(fontSize: 22)),
           const SizedBox(width: 10),
-          Expanded(child: Text(_country?.name ?? 'Choose country', style: ZineText.value(size: 15))),
+          Expanded(child: Text(_country?.name ?? 'Choose country', style: ZineText.value(size: 15), overflow: TextOverflow.ellipsis)),
           PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold), size: 16, color: Zine.inkMute),
         ]),
       ),
@@ -387,8 +390,12 @@ class _NumberSettingsScreenState extends State<NumberSettingsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             onTap: _busy ? null : () => _confirm(n),
             child: Row(children: [
-              Expanded(child: Text(n.display, style: ZineText.value(size: 16))),
-              Text('available', style: ZineText.sub(size: 11, color: _dkGreen)),
+              Expanded(child: Text(n.display, style: ZineText.value(size: 16), overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text('available', style: ZineText.sub(size: 11, color: _dkGreen),
+                    overflow: TextOverflow.ellipsis, maxLines: 1),
+              ),
               const SizedBox(width: 8),
               PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold), size: 15, color: Zine.inkMute),
             ]),

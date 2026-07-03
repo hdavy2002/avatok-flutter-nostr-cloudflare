@@ -391,11 +391,12 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
 
   @override
   Widget build(BuildContext context) {
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+            padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -449,7 +450,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 20),
           child: Column(children: [
             ZineButton(
               label: 'Keep going',
@@ -582,7 +583,9 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
           Row(children: [
             ZineIconBadge(icon: icon, color: verified ? Zine.mint : accent, size: 30),
             const SizedBox(width: 10),
-            Expanded(child: Text(title, style: ZineText.cardTitle(size: 17))),
+            Expanded(
+                child: Text(title,
+                    style: ZineText.cardTitle(size: 17), overflow: TextOverflow.ellipsis)),
             if (verified)
               ZineSticker('verified',
                   kind: ZineStickerKind.ok,
@@ -597,7 +600,8 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
         PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
             size: 18, color: Zine.mintInk),
         const SizedBox(width: 8),
-        Expanded(child: Text(value, style: ZineText.value(size: 15))),
+        Expanded(
+            child: Text(value, style: ZineText.value(size: 15), overflow: TextOverflow.ellipsis)),
       ]);
 
   /// Zine field chrome with inputFormatters support (the shared ZineField
@@ -638,6 +642,7 @@ class _VerifyIdentityStepState extends State<VerifyIdentityStep> {
               inputFormatters: inputFormatters,
               cursorColor: Zine.blueInk,
               style: ZineText.input(size: 16),
+              scrollPadding: const EdgeInsets.all(80),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: ZineText.input(size: 16)
