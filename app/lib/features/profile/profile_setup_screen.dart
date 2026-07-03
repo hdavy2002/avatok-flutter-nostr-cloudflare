@@ -442,17 +442,24 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final id = _id;
     // While the server vets the profile, hold the whole form (disabled + spinner).
     final held = _holdMsg != null;
+    // RESPUI: SafeArea + resizeToAvoidBottomInset keep the focused field above
+    // the keyboard inset; the body was already a scrollable ListView. Page
+    // padding keys off ZineBreakpoints so a <360dp phone gets tighter gutters
+    // instead of the same fixed 20px squeezing the layout.
+    final hPad = ZineBreakpoints.pagePadding(context);
     return PopScope(
       canPop: false, // mandatory — can't back out until complete
       child: Scaffold(
         backgroundColor: Zine.paper,
+        resizeToAvoidBottomInset: true,
         appBar: const ZineAppBar(
             title: 'Complete your profile', markWord: 'profile', showBack: false),
-        body: AbsorbPointer(
+        body: SafeArea(
+          child: AbsorbPointer(
           absorbing: held,
           child: ListView(
           controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(20, 18, 20, 40 + MediaQuery.of(context).padding.bottom),
+          padding: EdgeInsets.fromLTRB(hPad, 18, hPad, 40 + MediaQuery.of(context).padding.bottom),
           children: [
             if (held)
               Padding(
@@ -633,6 +640,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               child: Text('Sign out instead', style: ZineText.link(size: 13, color: Zine.inkSoft)),
             )),
           ],
+        ),
         ),
       ),
     ),

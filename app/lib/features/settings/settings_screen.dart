@@ -331,10 +331,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // RESPUI: SafeArea + resizeToAvoidBottomInset keep this consistent with the
+    // rest of the app (this screen has no text fields of its own, but nested
+    // sub-pages/dialogs can open the keyboard). Body was already a scrollable
+    // ListView; page padding now keys off ZineBreakpoints instead of a fixed
+    // 20px so a <360dp phone gets tighter gutters.
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Scaffold(
       backgroundColor: Zine.paper,
+      resizeToAvoidBottomInset: true,
       appBar: const ZineAppBar(title: 'Settings', markWord: 'Settings'),
-      body: ListView(padding: const EdgeInsets.all(20), children: [
+      body: SafeArea(
+        child: ListView(padding: EdgeInsets.all(hPad), children: [
         // Soft nudge to verify phone for users who skipped it at onboarding.
         // Self-hides when already verified or recently dismissed (account-scoped,
         // re-surfaces after 7 days), so it leaves no gap when not shown.
@@ -423,7 +431,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 18),
         Center(child: Text('AVATOK · YOU OWN IT ALL', style: ZineText.kicker(size: 10, color: Zine.inkMute))),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -577,10 +586,18 @@ class _SettingsDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RESPUI: this generic sub-page hosts arbitrary section bodies (some of
+    // which contain text fields, e.g. phone verify / auto-responder), so it
+    // gets the same SafeArea + resizeToAvoidBottomInset + ZineBreakpoints
+    // treatment as the main Settings screen.
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Scaffold(
       backgroundColor: Zine.paper,
+      resizeToAvoidBottomInset: true,
       appBar: ZineAppBar(title: title, markWord: markWord, showBack: true),
-      body: ListView(padding: const EdgeInsets.all(20), children: children),
+      body: SafeArea(
+        child: ListView(padding: EdgeInsets.all(hPad), children: children),
+      ),
     );
   }
 }
