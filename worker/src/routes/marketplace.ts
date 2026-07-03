@@ -11,13 +11,15 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail, dmConvId } from "../authz";
-import { track } from "../hooks";
+import { track, trackUserContact } from "../hooks";
 import { metaDb } from "../db/shard";
 import { notifyUser } from "../notify";
 import { exploreSearch } from "./listings";
 import { partyEmit } from "./messaging"; // PartyKit live nudges (ephemeral)
 import { moderate } from "../lib/moderation";
 import { readConfig } from "./config"; // P5: agentDailyCap
+import { getAgentSettings, type AgentSettings } from "./agent_settings"; // MKT-LANG: buyer/seller lang, floor, tone, guardrails
+import { contactFor } from "../lib/identity"; // MKT-LANG-5: stamp email on translation telemetry
 
 /** Latest Claude Sonnet via OpenRouter — overridable by env for "latest" tracking. */
 export const MARKET_LLM = "anthropic/claude-sonnet-4.6";
@@ -198,11 +200,92 @@ function negotiationProfile(kind: string): { maxWords: number; maxSeconds: numbe
   }
 }
 
+// ── MKT-LANG: English-canonical negotiation helpers ──────────────────────────
+/** BCP-47 code → English language name (for the translate prompt + TTS preamble).
+ *  Kept in sync with the AGENT_LANGS allowlist in agent_settings.ts. */
+const LANG_NAMES: Record<string, string> = {
+  en: "English", es: "Spanish", hi: "Hindi", fr: "French", de: "German",
+  pt: "Portuguese", ar: "Arabic", zh: "Chinese", ja: "Japanese", ru: "Russian",
+  id: "Indonesian", ur: "Urdu", bn: "Bengali", sw: "Swahili", tr: "Turkish", vi: "Vietnamese",
+};
+export function langName(code: string): string {
+  return LANG_NAMES[String(code || "en").toLowerCase()] || "English";
+}
+
+/** Map a tone key → a short prompt hint injected into the negotiation system prompt. */
+function toneHint(tone: string): string {
+  switch (tone) {
+    case "professional": return "formal, precise and businesslike";
+    case "brief": return "extremely concise — as few words as possible while still closing";
+    default: return "warm, friendly and approachable"; // friendly
+  }
+}
+
+/** Is `now` inside the [start,end) quiet-hours window (both "HH:MM", local-agnostic
+ *  UTC minutes)? Handles windows that wrap past midnight. Empty window → false. */
+export function inQuietHours(quietStart: string | null, quietEnd: string | null, now = new Date()): boolean {
+  if (!quietStart || !quietEnd) return false;
+  const toMin = (s: string) => { const [h, m] = s.split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+  const start = toMin(quietStart), end = toMin(quietEnd);
+  if (start === end) return false;
+  const cur = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return start < end ? (cur >= start && cur < end) : (cur >= start || cur < end);
+}
+
+/** Translate a negotiation transcript + bubble/summary text to `targetLang` in ONE
+ *  LLM call, preserving the Speaker: prefixes. Returns null on any failure (caller
+ *  keeps the English original). */
+async function translateNegotiation(
+  env: Env,
+  target: string,
+  transcript: Array<{ speaker: string; text: string }>,
+  summary: string,
+): Promise<{ transcript: Array<{ speaker: string; text: string }>; summary: string } | null> {
+  if (target === "en" || !transcript.length) return null;
+  const name = langName(target);
+  const sys =
+    `You translate a short marketplace negotiation into ${name}. Keep the JSON shape EXACTLY. ` +
+    `Preserve the "speaker" values verbatim (they are "Seller" or "Buyer" — do NOT translate them). ` +
+    `Translate ONLY the "text" fields and the "summary". Natural, conversational ${name}. ` +
+    `Output ONLY the JSON, no prose.`;
+  const payload = JSON.stringify({ summary, transcript });
+  const raw = await callSonnet(env, sys, payload, 900);
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const j = JSON.parse(m[0]);
+    const outT = Array.isArray(j.transcript)
+      ? j.transcript.filter((t: any) => t && t.text).map((t: any) => ({ speaker: String(t.speaker || "Agent"), text: String(t.text) }))
+      : [];
+    if (!outT.length) return null;
+    return { transcript: outT, summary: String(j.summary || summary) };
+  } catch {
+    return null;
+  }
+}
+
+/** Cap the ENGLISH transcript to the category's spoken-length budget BEFORE
+ *  translation (voice cost + max-talk rule). Keeps the opening exchange + closing
+ *  line when the transcript is long, mirroring the old TTS-side cap but applied to
+ *  the canonical English so EVERY language render is bounded identically. */
+function capTranscriptForSpeech(transcript: Array<{ speaker: string; text: string }>): Array<{ speaker: string; text: string }> {
+  return transcript.length > 6 ? [...transcript.slice(0, 5), transcript[transcript.length - 1]] : transcript;
+}
+
 async function deliverDealAudio(env: Env, a: {
   sellerUid: string; buyerUid: string; listingId: string; listingTitle: string;
   outcome: string; bubble: string; agreed: number; currency: string;
   transcript: Array<{ speaker: string; text: string }>;
   persona?: string;
+  // MKT-LANG: the buyer-language render. `lang` (=buyerLang) drives the TTS
+  // "Speak in <language>." preamble; `transcript` here is ALREADY in the buyer's
+  // language (translated + capped). `buyerVoice` is the buyer's chosen Gemini
+  // voice (consumer falls back to Aoede). `transcriptI18n` caches translations so
+  // reopens never re-translate.
+  lang?: string; buyerVoice?: string | null;
+  transcriptEn?: Array<{ speaker: string; text: string }>;
+  transcriptI18n?: Record<string, Array<{ speaker: string; text: string }>>;
+  summary?: string; pendingOwnerApproval?: boolean;
 }): Promise<{ audioKey: string | null; bytes: number }> {
   const conv = dmConvId(a.sellerUid, a.buyerUid);
   // CREATE the DM thread so it appears in the buyer's chat list.
@@ -228,6 +311,10 @@ async function deliverDealAudio(env: Env, a: {
       conv, sellerUid: a.sellerUid, buyerUid: a.buyerUid, listingId: a.listingId,
       outcome: a.outcome, bubble: a.bubble, agreed: a.agreed, currency: a.currency,
       transcript: a.transcript, persona: a.persona, enqueuedAt: Date.now(),
+      // MKT-LANG-4: buyer language + buyer voice + i18n cache + English canonical.
+      lang: a.lang || "en", buyerVoice: a.buyerVoice || null,
+      transcriptEn: a.transcriptEn, transcriptI18n: a.transcriptI18n,
+      summary: a.summary, pendingOwnerApproval: a.pendingOwnerApproval === true,
     });
     queued = true;
   } catch { /* best-effort; text card already delivered */ }
@@ -318,6 +405,25 @@ export async function marketplaceNegotiate(req: Request, env: Env, exctx?: Execu
   if (!listing) return json({ error: "not found" }, 404);
   if (listing.creator_id === ctx.uid) return json({ error: "own_listing" }, 400);
 
+  // MKT-LANG-3: quiet-hours guardrail. If the BUYER has quiet hours set and we're
+  // inside that window, defer — do NOT start the agent call. The client renders a
+  // friendly deferral card from this response (no slot reserved, so they can retry
+  // later). Gated by the mktI18nNegotiationEnabled flag (off → skip the gate).
+  const cfgQ = await readConfig(env);
+  if ((cfgQ as any).mktI18nNegotiationEnabled !== false) {
+    const buyerSet = await getAgentSettings(env, ctx.uid).catch(() => null);
+    if (buyerSet && inQuietHours(buyerSet.quiet_start, buyerSet.quiet_end)) {
+      track(env, ctx.uid, "agent_call_deferred_quiet_hours", "avamarketplace", {
+        listing_id: listingId, quiet_start: buyerSet.quiet_start, quiet_end: buyerSet.quiet_end,
+      });
+      return json({
+        ok: false, deferred: true, reason: "quiet_hours",
+        quiet_start: buyerSet.quiet_start, quiet_end: buyerSet.quiet_end,
+        message: "Your agent is resting during your quiet hours. Try again after they end.",
+      }, 200);
+    }
+  }
+
   await ensureLedger(env);
   const seen = await metaDb(env).prepare(
     "SELECT 1 FROM mkt_negotiations WHERE buyer_id=?1 AND listing_id=?2 AND content_version=?3",
@@ -374,24 +480,49 @@ async function runNegotiationJob(env: Env, a: {
   const { listing, buyerUid, listingId, version, buyerMax, currency, mustHaves } = a;
   try {
     const asking = Math.trunc(Number(listing.price) || 0);
-    const agentLang = String(listing.agent_lang || "English").trim() || "English";
     const mandate = String(listing.agent_instructions || "").slice(0, 1200);
-    // Category profile — caps SPOKEN length (voice cost + max-talk rule) and sets
-    // tone. Buy/sell = brief & businesslike (≤25s). Dating/matrimony (future
-    // categories) = warmer/expressive & a little playful (≤35s). Extend here.
+
+    // ── MKT-LANG-3: resolve languages, names, tone, and guardrails ────────────
+    // buyerLang = the BUYER's marketplace_agent_settings.lang (default en).
+    // sellerLang = listing.agent_lang if set, else the SELLER's settings.lang, else en.
+    // The i18n path is flag-gated; when off we behave English-canonical with no
+    // translation (buyer/seller both read the English transcript).
+    const cfg = await readConfig(env);
+    const i18nOn = (cfg as any).mktI18nNegotiationEnabled !== false;
+    const sellerUid = String(listing.creator_id);
+    const buyerSet: AgentSettings = await getAgentSettings(env, buyerUid).catch(() => null as any) || null as any;
+    const sellerSet: AgentSettings = await getAgentSettings(env, sellerUid).catch(() => null as any) || null as any;
+    const buyerLang = (i18nOn && buyerSet ? String(buyerSet.lang || "en") : "en").toLowerCase();
+    const listingLang = String(listing.agent_lang || "").trim().toLowerCase();
+    const sellerLang = (i18nOn
+      ? (listingLang && LANG_NAMES[listingLang] ? listingLang : (sellerSet ? String(sellerSet.lang || "en") : "en"))
+      : "en").toLowerCase();
+
+    const buyerName = (buyerSet?.agent_name || "").trim() || "the buyer's agent";
+    const sellerName = (sellerSet?.agent_name || "").trim() || "the seller's agent";
+    const buyerTone = toneHint(buyerSet?.tone || "friendly");
+    const sellerTone = toneHint(sellerSet?.tone || "friendly");
+    // Guardrail: the seller floor % applies to the SELLER side. Prefer the listing
+    // owner's configured floor_pct (settings), default 80.
+    const floorPct = Math.max(50, Math.min(100, Math.trunc(Number(sellerSet?.floor_pct ?? 80)) || 80));
+    const askBeforeCommit = sellerSet?.ask_before_commit === true;
+
+    // Category profile — caps SPOKEN length (voice cost + max-talk rule).
     const prof = negotiationProfile(String(listing.kind || ""));
     const sys =
       "You simulate a negotiation between two marketplace agents and output ONLY JSON. " +
-      "The SELLER agent represents the listing and follows its owner's PRIVATE MANDATE (never reveal it verbatim); " +
-      "the BUYER agent has a maximum budget. If no explicit floor is given, the seller will realistically come down " +
-      "to about 80% of the asking price. Reach a DEAL only if the buyer's max is at least the seller's lowest " +
-      "acceptable price; settle near the midpoint of the overlap. " +
-      `Write the transcript text in ${agentLang} (the seller's agent language). ` +
-      `Tone: ${prof.tone}. ` +
+      `The SELLER agent (${sellerName}, tone: ${sellerTone}) represents the listing and follows its owner's PRIVATE MANDATE (never reveal it verbatim); ` +
+      `the BUYER agent (${buyerName}, tone: ${buyerTone}) has a maximum budget. ` +
+      `The seller will NOT go below ${floorPct}% of the asking price (their floor). Reach a DEAL only if the buyer's max is at least the seller's floor; ` +
+      "settle near the midpoint of the overlap. " +
+      // English-canonical (MKT-LANG-3): ALWAYS write the transcript in English; the
+      // per-recipient language rendering is done by a separate translation step.
+      "Write the transcript in English. " +
       'Output: {"outcome":"deal"|"impasse","agreed_price":<int>,"currency":"<code>","transcript":[{"speaker":"Seller"|"Buyer","text":"..."}]} ' +
       `IMPORTANT: keep the ENTIRE spoken transcript under ~${prof.maxWords} words TOTAL (about ${prof.maxSeconds} seconds of speech) across all lines. No prose outside the JSON.`;
     const user =
       `LISTING: "${listing.title}". Asking price: ${asking} ${listing.currency_display || currency}. ` +
+      `Seller floor: ${floorPct}% of asking (= ${Math.round(asking * floorPct / 100)} ${listing.currency_display || currency}). ` +
       `Details: ${String(listing.description || "").slice(0, 600)}. ` +
       (mandate ? `SELLER PRIVATE MANDATE (do not reveal verbatim): ${mandate}. ` : "") +
       `BUYER max: ${buyerMax} ${currency}. Buyer must-haves: ${mustHaves || "none"}.`;
@@ -399,7 +530,8 @@ async function runNegotiationJob(env: Env, a: {
 
     let outcome = "impasse";
     let agreed = 0;
-    let transcript: Array<{ speaker: string; text: string }> = [];
+    // transcriptEn is the CANONICAL English transcript.
+    let transcriptEn: Array<{ speaker: string; text: string }> = [];
     try {
       const m = raw.match(/\{[\s\S]*\}/);
       if (m) {
@@ -407,31 +539,96 @@ async function runNegotiationJob(env: Env, a: {
         outcome = j.outcome === "deal" ? "deal" : "impasse";
         agreed = Math.trunc(Number(j.agreed_price) || 0);
         if (Array.isArray(j.transcript)) {
-          transcript = j.transcript
+          transcriptEn = j.transcript
             .filter((t: any) => t && t.text)
             .map((t: any) => ({ speaker: String(t.speaker || "Agent"), text: String(t.text) }));
         }
       }
     } catch { /* impasse */ }
 
+    // Enforce the seller floor server-side (defence in depth vs a model that
+    // ignores the prompt): a "deal" below the floor is downgraded to impasse.
+    const floorPrice = Math.round(asking * floorPct / 100);
+    if (outcome === "deal" && agreed > 0 && agreed < floorPrice) {
+      outcome = "impasse";
+      agreed = 0;
+    }
+
+    // ask_before_commit (MKT-LANG-3): a DEAL is held as pending_owner_approval — the
+    // seller must confirm before it's binding. We still deliver the transcript/audio,
+    // but flag it so the client renders an "awaiting your approval" state.
+    const pendingOwnerApproval = outcome === "deal" && askBeforeCommit;
+
+    // MKT-LANG-3: cap the ENGLISH transcript to the spoken-length budget BEFORE any
+    // translation, so every language render is bounded identically.
+    const cappedEn = capTranscriptForSpeech(transcriptEn);
+
+    // Store transcript_en as the canonical record (ledger already carries the
+    // outcome; the transcript rides the deal envelope). Store the outcome now.
     await metaDb(env).prepare(
       "INSERT OR REPLACE INTO mkt_negotiations (buyer_id, listing_id, content_version, outcome, agreed_price, currency, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
-    ).bind(buyerUid, listingId, version, outcome, agreed, currency, Date.now()).run();
+    ).bind(buyerUid, listingId, version, pendingOwnerApproval ? "pending_owner_approval" : outcome, agreed, currency, Date.now()).run();
 
     track(env, buyerUid, "negotiation_outcome", "avamarketplace", {
-      listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: transcript.length,
+      listing_id: listingId, outcome, agreed_price: agreed, currency, rounds: cappedEn.length,
+      buyer_lang: buyerLang, seller_lang: sellerLang, floor_pct: floorPct,
+      pending_owner_approval: pendingOwnerApproval,
     });
+
+    // English summary line (bubble/summary), translated alongside the transcript.
+    const summaryEn = outcome === "deal"
+      ? `The agents agreed at about ${agreed} ${currency}.`
+      : "The agents talked but did not reach a deal this time.";
+
+    // ── MKT-LANG-3: translate to the BUYER's language (one LLM call), cache it in
+    // the i18n map so reopens never re-translate. English → no-op. Seller card text
+    // is translated separately below (for the notify body) when sellerLang!=en.
+    const transcriptI18n: Record<string, Array<{ speaker: string; text: string }>> = { en: cappedEn };
+    let buyerTranscript = cappedEn;
+    let buyerSummary = summaryEn;
+    if (i18nOn && buyerLang !== "en") {
+      const tr = await translateNegotiation(env, buyerLang, cappedEn, summaryEn);
+      if (tr) {
+        buyerTranscript = tr.transcript;
+        buyerSummary = tr.summary;
+        transcriptI18n[buyerLang] = tr.transcript;
+      }
+    }
+    // Seller-side text card (for the bell notify body) when the seller reads a
+    // non-English language and it differs from the buyer's.
+    let sellerSummary = summaryEn;
+    if (i18nOn && sellerLang !== "en") {
+      if (sellerLang === buyerLang) {
+        sellerSummary = buyerSummary;
+      } else {
+        const trS = await translateNegotiation(env, sellerLang, cappedEn, summaryEn);
+        if (trS) { sellerSummary = trS.summary; transcriptI18n[sellerLang] = trS.transcript; }
+      }
+    }
+    if (i18nOn && (buyerLang !== "en" || sellerLang !== "en")) {
+      const contact = await contactFor(env, buyerUid).catch(() => ({ email: null, phone: null }));
+      const chars = cappedEn.reduce((n, t) => n + t.text.length, 0) + summaryEn.length;
+      trackUserContact(env, buyerUid, contact.email, contact.phone, "mkt_negotiation_translated", "avamarketplace", {
+        buyer_lang: buyerLang, seller_lang: sellerLang, chars,
+      });
+    }
 
     // RULE (owner 2026-06-30): render the deal-audio voice note for BOTH outcomes
     // and drop it into both chat threads, colour-coded — DEAL = green, IMPASSE =
     // pale yellow. Gemini 2.5 multi-speaker TTS → WAV in R2 → voice message in each
     // user's InboxDO thread → FCM push (reuses the receptionist delivery pattern).
+    // The buyer-language transcript (buyerTranscript) is what the consumer TTS's;
+    // the buyer's chosen voice drives the buyer speaker.
     const bubble = outcome === "deal" ? "green" : "pale_yellow";
     const delivery = await deliverDealAudio(env, {
-      sellerUid: String(listing.creator_id), buyerUid, listingId,
+      sellerUid, buyerUid, listingId,
       listingTitle: String(listing.title || "your listing"),
-      outcome, bubble, agreed, currency, transcript,
+      outcome, bubble, agreed, currency,
+      transcript: buyerTranscript,
       persona: String(listing.agent_voice_persona || ""),
+      lang: buyerLang, buyerVoice: buyerSet?.voice || null,
+      transcriptEn: cappedEn, transcriptI18n, summary: buyerSummary,
+      pendingOwnerApproval,
     });
     // Audio is now rendered ASYNC by avatok-consumers (mkt-audio queue); this just
     // records that the render was enqueued. The consumer emits mkt_audio_delivered
@@ -439,14 +636,16 @@ async function runNegotiationJob(env: Env, a: {
     track(env, buyerUid, "deal_audio_queued", "avamarketplace", {
       listing_id: listingId, outcome, bubble, queued: (delivery as any).queued === true,
     });
-    // Also a bell notification so it shows in the notifications list, not just the thread.
-    const body = outcome === "deal"
-      ? `Your agents agreed around ${agreed} ${currency}.`
-      : `Your agents talked but didn't agree this time.`;
+    // Also a bell notification so it shows in the notifications list, not just the
+    // thread. Bodies use each party's language summary (MKT-LANG-3). When the deal
+    // is held for owner approval, tell the seller it awaits them.
     try {
       // push:false — bell entry only, NO FCM (delivered live over socket + PartyKit).
-      await notifyUser(env, String(listing.creator_id), { type: "marketplace_deal", title: outcome === "deal" ? "A buyer's agent reached a deal" : "A buyer's agent negotiated your listing", body, data: { listing_id: listingId, outcome, bubble } }, { push: false });
-      await notifyUser(env, buyerUid, { type: "marketplace_deal", title: outcome === "deal" ? "Your agent reached a deal" : "Your agent finished negotiating", body, data: { listing_id: listingId, outcome, bubble } }, { push: false });
+      const sellerBody = pendingOwnerApproval
+        ? (sellerLang !== "en" ? sellerSummary : `A buyer's agent reached a deal around ${agreed} ${currency} — it's awaiting your approval.`)
+        : sellerSummary;
+      await notifyUser(env, sellerUid, { type: "marketplace_deal", title: outcome === "deal" ? (pendingOwnerApproval ? "A deal awaits your approval" : "A buyer's agent reached a deal") : "A buyer's agent negotiated your listing", body: sellerBody, data: { listing_id: listingId, outcome, bubble, pending_owner_approval: pendingOwnerApproval } }, { push: false });
+      await notifyUser(env, buyerUid, { type: "marketplace_deal", title: outcome === "deal" ? (pendingOwnerApproval ? "Deal reached — awaiting the seller" : "Your agent reached a deal") : "Your agent finished negotiating", body: buyerSummary, data: { listing_id: listingId, outcome, bubble, pending_owner_approval: pendingOwnerApproval } }, { push: false });
     } catch { /* notify best-effort */ }
   } catch (e) {
     // A rare failure shouldn't burn the buyer's single chance — release the slot

@@ -12,6 +12,29 @@ import type { Env, MktAudioMsg } from "./types";
 
 const TTS_MODEL = "gemini-2.5-flash-preview-tts";
 
+/** BCP-47 short code → English language name (for the "Speak in <language>."
+ *  preamble). Mirrors LANG_NAMES in worker/src/routes/marketplace.ts. */
+const LANG_NAMES: Record<string, string> = {
+  en: "English", es: "Spanish", hi: "Hindi", fr: "French", de: "German",
+  pt: "Portuguese", ar: "Arabic", zh: "Chinese", ja: "Japanese", ru: "Russian",
+  id: "Indonesian", ur: "Urdu", bn: "Bengali", sw: "Swahili", tr: "Turkish", vi: "Vietnamese",
+};
+function langName(code?: string): string {
+  return LANG_NAMES[String(code || "en").toLowerCase()] || "English";
+}
+
+/** Verified Gemini prebuilt voice ids (buyer picker mirror). A value outside this
+ *  set falls back to Aoede so a stale/bad pref can never break the render. */
+const GEMINI_VOICES = new Set([
+  "Aoede", "Kore", "Leda", "Zephyr", "Autonoe", "Callirrhoe", "Despina", "Erinome",
+  "Laomedeia", "Achernar", "Gacrux", "Pulcherrima", "Vindemiatrix", "Sulafat", "Achird", "Sadachbia",
+  "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", "Umbriel", "Algieba",
+  "Algenib", "Rasalgethi", "Alnilam", "Schedar", "Zubenelgenubi", "Sadaltager",
+]);
+function buyerVoiceOr(v?: string | null): string {
+  return v && GEMINI_VOICES.has(v) ? v : "Aoede";
+}
+
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -35,12 +58,24 @@ function pcmToWav(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
   return out;
 }
 
-/** Render the FULL 2-voice negotiation transcript to a WAV via Gemini TTS. null on error. */
-async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: string; text: string }>, persona?: string): Promise<Uint8Array | null> {
+/** Render the FULL 2-voice negotiation transcript to a WAV via Gemini TTS. null on
+ *  error. MKT-LANG-4: the transcript is already in the buyer's language; we prepend
+ *  a "Speak in <language>." preamble, use the buyer's chosen voice for the Buyer
+ *  speaker (fallback Aoede), and the listing persona/style for the Seller (fallback
+ *  Charon). This is the direct-render fallback; the primary path renders inside a
+ *  US-pinned PartyDO (see handleMktAudio → /render-tts). */
+async function renderNegotiationWav(
+  env: Env,
+  transcript: Array<{ speaker: string; text: string }>,
+  persona?: string,
+  lang?: string,
+  buyerVoice?: string | null,
+): Promise<Uint8Array | null> {
   const key = env.RECEPTIONIST_GEMINI_API_KEY || env.GEMINI_API_KEY;
   if (!key || !transcript.length) return null;
-  const styleHint = persona && persona.trim() ? ` Speak in this style/accent: ${persona.trim()}.` : "";
-  const script = `TTS this marketplace negotiation between two agents, natural and businesslike.${styleHint}\n` +
+  const styleHint = persona && persona.trim() ? ` The Seller speaks in this style/accent: ${persona.trim()}.` : "";
+  const speakIn = ` Speak in ${langName(lang)}.`;
+  const script = `TTS this marketplace negotiation between two agents, natural and businesslike.${speakIn}${styleHint}\n` +
     transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`).join("\n");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${key}`;
   const body = {
@@ -48,8 +83,9 @@ async function renderNegotiationWav(env: Env, transcript: Array<{ speaker: strin
     generationConfig: {
       responseModalities: ["AUDIO"],
       speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
+        // Seller = listing persona/style (fallback Charon); Buyer = buyer's pick (fallback Aoede).
         { speaker: "Seller", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } },
-        { speaker: "Buyer", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } },
+        { speaker: "Buyer", voiceConfig: { prebuiltVoiceConfig: { voiceName: buyerVoiceOr(buyerVoice) } } },
       ] } },
     },
   };
@@ -102,7 +138,7 @@ async function track(env: Env, uid: string, event: string, props: Record<string,
 export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
   const t0 = Date.now();
   console.log(`[mkt-audio] start listing=${m.listingId} conv=${m.conv} lines=${(m.transcript || []).length}`);
-  await track(env, m.buyerUid, "mkt_audio_start", { listing_id: m.listingId, conv: m.conv, lines: (m.transcript || []).length });
+  await track(env, m.buyerUid, "mkt_audio_start", { listing_id: m.listingId, conv: m.conv, lines: (m.transcript || []).length, lang: m.lang || "en", buyer_voice: buyerVoiceOr(m.buyerVoice) });
   try {
     // ETA (owner ask): if this render sat in a BACKLOG before we picked it up,
     // post a reassuring interim note so the buyer doesn't give up. The message's
@@ -122,9 +158,15 @@ export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
     // DO renders AND uploads the WAV to R2, returning the key.
     const PARTY = env.PARTY!;
     const stub = PARTY.get(PARTY.idFromName("ttsr-" + crypto.randomUUID()), { locationHint: "wnam" });
+    // MKT-LANG-4: pass buyer language + buyer voice so the DO's render adds the
+    // "Speak in <language>." preamble and voices the Buyer with the buyer's pick.
+    // (party.ts /render-tts must read `lang`/`buyerVoice` — see the report.)
     const rr = await stub.fetch("https://party/render-tts", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transcript: m.transcript || [], persona: m.persona, listingId: m.listingId }),
+      body: JSON.stringify({
+        transcript: m.transcript || [], persona: m.persona, listingId: m.listingId,
+        lang: m.lang || "en", buyerVoice: buyerVoiceOr(m.buyerVoice),
+      }),
     });
     const rj = (await rr.json().catch(() => ({}))) as { audio_key?: string | null; bytes?: number };
     if (!rj.audio_key) {
@@ -137,13 +179,20 @@ export async function handleMktAudio(m: MktAudioMsg, env: Env): Promise<void> {
       t: "marketplace_deal", text: "🎙️ Voice replay of the negotiation", outcome: m.outcome, bubble: m.bubble,
       agreed_price: m.agreed, currency: m.currency, listing_id: m.listingId, transcript: m.transcript,
       has_audio: true, audio_key: audioKey,
+      // MKT-LANG: buyer language + i18n cache (so a reopen renders the right text
+      // WITHOUT re-translating) + English canonical + owner-approval flag.
+      lang: m.lang || "en",
+      transcript_en: m.transcriptEn,
+      transcript_i18n: m.transcriptI18n,
+      summary: m.summary,
+      pending_owner_approval: m.pendingOwnerApproval === true,
     });
     // Buyer-only for now (owner decision 2026-07-01): only the initiator sees the
     // voice conversation. (Sender=seller so it renders as an incoming card.)
     await inboxAppend(env, m.buyerUid, m.sellerUid, m.conv, envelope, audioKey);
     await partyEmit(env, `thread:${m.conv}`, { t: "deal_ready", kind: "audio", listing_id: m.listingId, conv: m.conv });
     console.log(`[mkt-audio] delivered via US-DO listing=${m.listingId} bytes=${rj.bytes} ms=${Date.now() - t0}`);
-    await track(env, m.buyerUid, "mkt_audio_delivered", { listing_id: m.listingId, conv: m.conv, bytes: rj.bytes ?? 0, ms: Date.now() - t0 });
+    await track(env, m.buyerUid, "mkt_audio_delivered", { listing_id: m.listingId, conv: m.conv, bytes: rj.bytes ?? 0, ms: Date.now() - t0, lang: m.lang || "en", buyer_voice: buyerVoiceOr(m.buyerVoice) });
   } catch (e) {
     console.error(`[mkt-audio] ERROR listing=${m.listingId}: ${String(e)}`);
     await track(env, m.buyerUid, "mkt_audio_error", { listing_id: m.listingId, conv: m.conv, error: String(e).slice(0, 300), ms: Date.now() - t0 });

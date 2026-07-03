@@ -70,4 +70,24 @@ class MarketplaceApi {
     if (r.statusCode != 200) return false;
     return _j(r.body)['already_talked'] == true;
   }
+
+  /// MKT-LANG-1 — fetch the user's Marketplace Agent settings (defaults if none).
+  /// Returns the `settings` map, or null on failure (caller falls back to local).
+  static Future<Map<String, dynamic>?> getAgentSettings() async {
+    final r = await ApiAuth.getSigned('$_base/agent-settings',
+        timeout: const Duration(seconds: 15));
+    if (r.statusCode != 200) return null;
+    final s = _j(r.body)['settings'];
+    return s is Map<String, dynamic> ? s : null;
+  }
+
+  /// MKT-LANG-1 — upsert the user's Marketplace Agent settings. Returns the saved
+  /// `settings` map (server-normalised) or null on failure.
+  static Future<Map<String, dynamic>?> putAgentSettings(Map<String, dynamic> body) async {
+    final r = await ApiAuth.putJson('$_base/agent-settings', body,
+        timeout: const Duration(seconds: 15));
+    if (r.statusCode != 200) return null;
+    final s = _j(r.body)['settings'];
+    return s is Map<String, dynamic> ? s : null;
+  }
 }
