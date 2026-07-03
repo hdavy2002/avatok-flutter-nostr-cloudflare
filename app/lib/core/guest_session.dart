@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'analytics.dart';
 import 'api_auth.dart';
+import 'ava_log.dart';
 import 'config.dart';
 
 /// L0 visitor tier (Trust Ladder). Reserves a unique @handle on the server
@@ -19,8 +22,37 @@ class GuestSession {
   static const _kToken = 'guest_token_v1';
   static const _kHandle = 'guest_handle_v1';
 
-  static Future<String?> reservedHandle() => _storage.read(key: _kHandle);
-  static Future<String?> token() => _storage.read(key: _kToken);
+  static Future<String?> reservedHandle() async {
+    try {
+      return await _storage.read(key: _kHandle);
+    } on PlatformException catch (e) {
+      if (e.message?.contains('BadPaddingException') ?? false) {
+        AvaLog.I.log('storage', 'BadPaddingException reading guest handle');
+        Analytics.capture('secure_storage_corrupt', {'key_hint': _kHandle});
+        try {
+          await _storage.delete(key: _kHandle);
+        } catch (_) {}
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  static Future<String?> token() async {
+    try {
+      return await _storage.read(key: _kToken);
+    } on PlatformException catch (e) {
+      if (e.message?.contains('BadPaddingException') ?? false) {
+        AvaLog.I.log('storage', 'BadPaddingException reading guest token');
+        Analytics.capture('secure_storage_corrupt', {'key_hint': _kToken});
+        try {
+          await _storage.delete(key: _kToken);
+        } catch (_) {}
+        return null;
+      }
+      rethrow;
+    }
+  }
 
   /// GET /api/identity/guest/check — availability while the visitor types.
   static Future<({bool ok, String? message})> checkHandle(String handle) async {

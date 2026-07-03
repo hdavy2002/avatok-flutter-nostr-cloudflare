@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
@@ -76,7 +77,21 @@ class Analytics {
   }
 
   static Future<String?> _loadEmail(String uid) async {
-    try { return await _sec.read(key: _emailKey(uid)); } catch (_) { return null; }
+    try {
+      return await _sec.read(key: _emailKey(uid));
+    } on PlatformException catch (e) {
+      if (e.message?.contains('BadPaddingException') ?? false) {
+        AvaLog.I.log('storage', 'BadPaddingException reading persisted email for uid $uid');
+        final keyName = _emailKey(uid);
+        try {
+          await _sec.delete(key: keyName);
+        } catch (_) {}
+        return null; // Caller will re-identify and re-persist email
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Add to MaterialApp.navigatorObservers to auto-capture a screen on each route.

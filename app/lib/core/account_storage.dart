@@ -1,6 +1,9 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../identity/identity.dart';
+import 'analytics.dart';
+import 'ava_log.dart';
 
 /// Namespaces a secure-storage key to the active Clerk account so multiple
 /// users on one device keep separate onboarding / profile / account-kind state.
@@ -28,15 +31,51 @@ String scopedKey(String base) =>
 
 /// Reads a per-account key, migrating a legacy (un-namespaced) value the first
 /// time a real account reads it. Returns null when nothing is stored yet.
+/// On BadPaddingException (corrupt cipher), logs telemetry, deletes the key only,
+/// and returns null so callers regenerate (does NOT deleteAll — other accounts on
+/// a shared phone must not be wiped).
 Future<String?> readScoped(FlutterSecureStorage s, String base) async {
   final key = scopedKey(base);
-  var v = await s.read(key: key);
+  String? v;
+  try {
+    v = await s.read(key: key);
+  } on PlatformException catch (e) {
+    if (e.message?.contains('BadPaddingException') ?? false) {
+      AvaLog.I.log('storage', 'Secure storage BadPaddingException on key: $base (scoped: $key)');
+      Analytics.capture('secure_storage_corrupt', {'key_hint': base});
+      // Delete only the affected key, not deleteAll (which would wipe other accounts)
+      try {
+        await s.delete(key: key);
+      } catch (delErr) {
+        AvaLog.I.log('storage', 'Failed to delete corrupt key $key: $delErr');
+      }
+      return null; // Caller will regenerate on null
+    }
+    rethrow; // Re-throw other PlatformExceptions
+  }
+
+  // Try legacy migration only if current key read succeeded and is empty/null
   if ((v == null || v.isEmpty) && key != base) {
-    final legacy = await s.read(key: base);
-    if (legacy != null && legacy.isNotEmpty) {
-      await s.write(key: key, value: legacy);
-      await s.delete(key: base);
-      v = legacy;
+    try {
+      final legacy = await s.read(key: base);
+      if (legacy != null && legacy.isNotEmpty) {
+        await s.write(key: key, value: legacy);
+        await s.delete(key: base);
+        v = legacy;
+      }
+    } on PlatformException catch (e) {
+      // Corruption in the legacy key during migration attempt
+      if (e.message?.contains('BadPaddingException') ?? false) {
+        AvaLog.I.log('storage', 'BadPaddingException on legacy key: $base');
+        Analytics.capture('secure_storage_corrupt', {'key_hint': '$base (legacy)'});
+        try {
+          await s.delete(key: base);
+        } catch (delErr) {
+          AvaLog.I.log('storage', 'Failed to delete corrupt legacy key $base: $delErr');
+        }
+        return null;
+      }
+      rethrow;
     }
   }
   return v;
