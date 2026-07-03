@@ -429,6 +429,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
 
       // --- push / calls ---
       if (p === "/api/register" && req.method === "POST") return await api.register(req, env);
+      // [MULTIACCT-2] flip an account's device mapping on switch/logout (device token stays)
+      if (p === "/api/account/device" && req.method === "POST") return await api.accountDevice(req, env);
       if (p === "/api/call" && req.method === "POST") return await api.call(req, env);
       if (p === "/api/notify" && req.method === "POST") return await api.notify(req, env);
       if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);

@@ -5,12 +5,36 @@
 import type { Env, PushMsg } from "./types";
 import { sendApns } from "./apns";
 
+// [MULTIACCT-2] Resolve a callee's live device tokens. PREFERS the device-mapped
+// join (device_tokens ⨝ account_devices WHERE active=1) so a token orphaned by an
+// account switch is never delivered to; falls back to the legacy uid-keyed
+// push_tokens_v2 table when the new tables aren't migrated/populated yet. De-dups
+// by token so a device present in both stores is only tried once.
+async function resolveTokens(env: Env, uid: string): Promise<Array<{ platform: string; token: string }>> {
+  const seen = new Set<string>();
+  const out: Array<{ platform: string; token: string }> = [];
+  try {
+    const rs = await env.DB_META.prepare(
+      "SELECT dt.platform AS platform, dt.token AS token FROM account_devices ad " +
+      "JOIN device_tokens dt ON dt.device_id=ad.device_id WHERE ad.account_id=?1 AND ad.active=1",
+    ).bind(uid).all();
+    for (const r of (rs.results ?? []) as Array<{ platform: string; token: string }>) {
+      if (r.token && !seen.has(r.token)) { seen.add(r.token); out.push(r); }
+    }
+  } catch { /* tables missing → legacy only */ }
+  if (out.length) return out;
+  const rs = await env.DB_META.prepare("SELECT platform, token FROM push_tokens_v2 WHERE uid=?1").bind(uid).all();
+  for (const r of (rs.results ?? []) as Array<{ platform: string; token: string }>) {
+    if (r.token && !seen.has(r.token)) { seen.add(r.token); out.push(r); }
+  }
+  return out;
+}
+
 export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   if (msg.kind === "fanout") return handleFanout(msg, env);
   const uid = msg.to_uid || msg.to;
   if (!uid) return;
-  const rs = await env.DB_META.prepare("SELECT platform, token FROM push_tokens_v2 WHERE uid=?1").bind(uid).all();
-  const tokens = (rs.results ?? []) as Array<{ platform: string; token: string }>;
+  const tokens = await resolveTokens(env, uid);
   if (!tokens.length) {
     // SEND-side visibility: a push (call/notify/…) that can't be delivered because
     // the recipient has NO registered device. Previously a silent return — the
@@ -288,6 +312,12 @@ async function sendFcm(env: Env, token: string, payload: { data: Record<string, 
       txt.includes("registration-token-not-registered") || txt.includes("NOT_FOUND");
     if (dead) {
       await env.DB_META.prepare("DELETE FROM push_tokens_v2 WHERE token=?1").bind(token).run();
+      // [MULTIACCT-2] also drop the device-level row so the device-mapped join
+      // stops resolving this dead token for EVERY account on that device. Its
+      // account_devices mapping rows are left (harmless — they resolve to nothing
+      // until the device re-registers a fresh token). Best-effort: table may not
+      // exist pre-migration.
+      try { await env.DB_META.prepare("DELETE FROM device_tokens WHERE token=?1").bind(token).run(); } catch { /* pre-migration */ }
       console.warn("FCM: pruned dead token", token.slice(0, 12));
       // [MULTIACCT-1] carry account context so prune events are queryable per user.
       await capturePush(env, "push_token_pruned", uid, { status: res.status, account_id: uid });

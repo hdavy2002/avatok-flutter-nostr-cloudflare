@@ -24,20 +24,90 @@ import { rekognitionConfigured, detectModerationLabels, avatarModerationRejected
 export async function register(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { token?: string; platform?: string };
+  const b = (await req.json().catch(() => ({}))) as { token?: string; platform?: string; device_id?: string };
   if (!b.token) return json({ error: "token required" }, 400);
   const platform = b.platform === "apns" ? "apns" : "fcm";
+  const now = Date.now();
   const db = metaSession(env);
+  // Back-compat write (KEPT during rollout so nothing depending on push_tokens_v2
+  // breaks). Resolution now PREFERS the device-mapped tokens below.
   await db.prepare(
     "INSERT OR REPLACE INTO push_tokens_v2 (uid, platform, token, updated_at) VALUES (?1,?2,?3,?4)",
-  ).bind(ctx.uid, platform, b.token, Date.now()).run();
-  const c = await db.prepare("SELECT count(*) AS n FROM push_tokens_v2 WHERE uid=?1").bind(ctx.uid).first<{ n: number }>();
-  return json({ ok: true, devices: c?.n ?? 1 });
+  ).bind(ctx.uid, platform, b.token, now).run();
+  // [MULTIACCT-2] Device-level token + account-level routing. The FCM token
+  // belongs to the DEVICE; each account signed in on that device maps to it. A
+  // token refresh UPDATES the single device row (no stale-row accumulation); an
+  // account switch just UPSERTs its own (account_id, device_id, active=1) mapping.
+  // Guarded so a device that hasn't been migrated yet (no device_id sent) still
+  // works via push_tokens_v2. Best-effort: never fail /api/register on the new
+  // tables (tables may not exist until the migration is applied).
+  const deviceId = String(b.device_id ?? "").trim();
+  if (deviceId) {
+    try {
+      await db.prepare(
+        "INSERT OR REPLACE INTO device_tokens (device_id, platform, token, updated_at) VALUES (?1,?2,?3,?4)",
+      ).bind(deviceId, platform, b.token, now).run();
+      await db.prepare(
+        "INSERT INTO account_devices (account_id, device_id, active, last_seen) VALUES (?1,?2,1,?3) " +
+        "ON CONFLICT(account_id, device_id) DO UPDATE SET active=1, last_seen=excluded.last_seen",
+      ).bind(ctx.uid, deviceId, now).run();
+      // If the SAME token was previously bound to a DIFFERENT device_id row (rare —
+      // e.g. a client that regenerated its device UUID), drop the orphan so we never
+      // fan out to a duplicate. Keyed on token because that's the FCM-unique value.
+      await db.prepare("DELETE FROM device_tokens WHERE token=?1 AND device_id<>?2").bind(b.token, deviceId).run();
+    } catch { /* migration not applied yet → push_tokens_v2 path still serves */ }
+  }
+  const c = await tokenCountObj(db, ctx.uid);
+  return json({ ok: true, devices: c });
+}
+
+// [MULTIACCT-2] Reachable-token count for a uid. Prefers the device-mapped join
+// (device_tokens ⨝ account_devices where active=1) so a stale token orphaned by
+// an account switch never inflates the count; falls back to the legacy
+// push_tokens_v2 count when the new tables aren't populated/migrated yet.
+async function tokenCountObj(db: D1Database | D1DatabaseSession, uid: string): Promise<number> {
+  try {
+    const c = await db.prepare(
+      "SELECT count(*) AS n FROM account_devices ad JOIN device_tokens dt ON dt.device_id=ad.device_id " +
+      "WHERE ad.account_id=?1 AND ad.active=1",
+    ).bind(uid).first<{ n: number }>();
+    if ((c?.n ?? 0) > 0) return c!.n;
+  } catch { /* tables missing → fall through to legacy */ }
+  const c = await db.prepare("SELECT count(*) AS n FROM push_tokens_v2 WHERE uid=?1").bind(uid).first<{ n: number }>();
+  return c?.n ?? 0;
 }
 
 async function tokenCount(db: D1Database | D1DatabaseSession, uid: string): Promise<number> {
-  const c = await db.prepare("SELECT count(*) AS n FROM push_tokens_v2 WHERE uid=?1").bind(uid).first<{ n: number }>();
-  return c?.n ?? 0;
+  return tokenCountObj(db, uid);
+}
+
+// [MULTIACCT-2] POST /api/account/device  { device_id, active?: boolean }
+// Flip THIS account's mapping on the given device without touching the shared
+// device token. Called by the client's AccountSwitcher: on switch-IN / login the
+// target account sets active=1 (via /api/register which already does this, but
+// this endpoint lets the client mark it without re-sending the token); on
+// logout / switch-OUT the departing account sets active=0. The token row in
+// device_tokens is DEVICE-owned and never deleted here — the next account (or a
+// re-login of this one) reuses it, so a switch never orphans the token.
+export async function accountDevice(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as { device_id?: string; active?: boolean };
+  const deviceId = String(b.device_id ?? "").trim();
+  if (!deviceId) return json({ error: "device_id required" }, 400);
+  const active = b.active === false ? 0 : 1;
+  const now = Date.now();
+  try {
+    await env.DB_META.prepare(
+      "INSERT INTO account_devices (account_id, device_id, active, last_seen) VALUES (?1,?2,?3,?4) " +
+      "ON CONFLICT(account_id, device_id) DO UPDATE SET active=excluded.active, last_seen=excluded.last_seen",
+    ).bind(ctx.uid, deviceId, active, now).run();
+  } catch {
+    // Migration not applied yet — nothing to flip; the legacy push_tokens_v2 path
+    // still governs reachability. Report ok so the client switch never blocks.
+    return json({ ok: true, migrated: false });
+  }
+  return json({ ok: true, active: !!active });
 }
 
 export async function call(req: Request, env: Env): Promise<Response> {

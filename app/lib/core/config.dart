@@ -25,6 +25,11 @@ const String kGoogleAuthUrl = '$kApiBase/auth/google';
 /// Worker endpoint to register a device's push token against an uid. (NIP-98)
 const String kRegisterUrl = 'https://$kSignalingHost/api/register';
 
+/// [MULTIACCT-2] Flip THIS account's mapping on a device (active on switch-in /
+/// login, inactive on logout / switch-out) WITHOUT touching the shared device
+/// token — so an account switch never orphans the FCM token.
+const String kAccountDeviceUrl = 'https://$kSignalingHost/api/account/device';
+
 /// Worker endpoint to ring a callee (sends a high-priority FCM wake push). (NIP-98)
 const String kCallUrl = 'https://$kSignalingHost/api/call';
 

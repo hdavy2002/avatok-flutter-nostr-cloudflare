@@ -9,6 +9,7 @@ import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/account_storage.dart';
@@ -114,6 +115,28 @@ Future<void> _clearBadge() async {
   await _badgeStore.write(key: _kBadgeKey, value: '0');
   try { await AppBadgePlus.updateBadge(0); } catch (_) {}
   try { await _local.cancel(8000); } catch (_) {}
+}
+
+/// [MULTIACCT-2] Stable per-DEVICE id. The FCM token belongs to the device, not
+/// to an account (rulebook: device-level values like the Clerk client token stay
+/// global), so this id is stored GLOBALLY (device-level, not account-scoped) and
+/// survives log out / switch / re-login. The server keys device_tokens on it and
+/// maps accounts to it (account_devices), so a switch flips the mapping instead of
+/// orphaning the token — the root fix for the silent-fan-out bug. Generated once.
+class DeviceId {
+  static const _kKey = 'ava_device_id';
+  static String? _cached;
+  static const _uuid = Uuid();
+  static Future<String> get() async {
+    if (_cached != null) return _cached!;
+    var v = await DiskCache.readGlobal(_kKey);
+    if (v == null || v.isEmpty) {
+      v = _uuid.v4();
+      await DiskCache.writeGlobal(_kKey, v);
+    }
+    _cached = v;
+    return v;
+  }
 }
 
 /// CALLFIX-R7: Handle missed-call callback action (Call back button tapped).
@@ -1101,10 +1124,36 @@ class PushService {
     }
   }
 
+  /// [MULTIACCT-2] Flip the ACTIVE account's mapping on this device without
+  /// touching the shared device token. `active:false` on logout / switch-OUT so
+  /// the departing account stops resolving to this device's token; `active:true`
+  /// (the default, also implied by a fresh registerToken) on switch-IN. The token
+  /// row is device-owned and untouched, so the next account reuses it. Best-effort
+  /// — a switch must never block on this network call. NOTE: uid is derived
+  /// server-side from the auth signature, so this MUST be called while the target
+  /// account's auth is active (registerToken for switch-IN; before signing the
+  /// departing session out for switch-OUT).
+  static Future<void> mapDevice({required bool active}) async {
+    try {
+      final deviceId = await DeviceId.get();
+      await ApiAuth.postJson(kAccountDeviceUrl, {'device_id': deviceId, 'active': active});
+      Analytics.capture('account_device_mapped', {'active': active});
+    } catch (e) {
+      AvaLog.I.log('push', 'mapDevice(active=$active) failed: $e');
+    }
+  }
+
   /// POST the current token to the server (uid is derived server-side from the
   /// NIP-98 signature). Used by registerToken AND by onTokenRefresh.
   static Future<void> _postToken(String token) async {
-    final res = await ApiAuth.postJson(kRegisterUrl, {'token': token, 'platform': 'fcm'});
+    // [MULTIACCT-2] Send the stable per-device id so the server keys the token by
+    // DEVICE (device_tokens) and maps the ACTIVE account to it (account_devices).
+    // A token refresh updates the single device row; a login/switch flips the
+    // mapping — neither orphans the token, so the callee never becomes silently
+    // unreachable after a re-login.
+    final deviceId = await DeviceId.get();
+    final res = await ApiAuth.postJson(
+        kRegisterUrl, {'token': token, 'platform': 'fcm', 'device_id': deviceId});
     AvaLog.I.log('push', 'registered FCM token ${token.substring(0, 10)}… -> HTTP ${res.statusCode}');
     // Telemetry: distinguish a real registration (HTTP 200) from a server-side
     // failure (401/5xx). A non-200 here also means the device ends up with no
