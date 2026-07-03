@@ -339,7 +339,6 @@ const Map<String, String> kEmojiKeywords = {
   '💰': 'money bag cash rich',
   '💵': 'money dollar cash',
   '💳': 'card credit pay',
-  '🎁': 'gift present',
   '🔑': 'key lock unlock',
   '🔒': 'lock secure private',
   '📷': 'camera photo picture',

@@ -4690,7 +4690,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// the TranslatedText wrapper renders "translated · show original".
   Future<void> _applyGroupTranslation() async {
     if (!_groupTranslateOn || _groupTranslateBusy) return;
-    final conv = _serverConv;
+    final conv = _serverConvId;
     if (conv == null) return;
     final lang = _transLang.code;
     // Only text rows the member actually fetched, no media/voice, not mine.
@@ -4716,8 +4716,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   // ---- STREAM G [GROUP-AI-1] group catch-up ("What did I miss?") ----
-  /// Server conv id for THIS thread (or null if not resolvable yet).
-  String? get _serverConv {
+  /// Server conv id for THIS thread computed from the conv key (works for DM +
+  /// group). Renamed from _serverConv to avoid clashing with the stranger-gate
+  /// field `_serverConv` (both were added by concurrent streams).
+  String? get _serverConvId {
     final key = _convKey;
     final myUid = _meId?.uid;
     if (key == null || myUid == null || myUid.isEmpty) return null;
@@ -4736,7 +4738,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   Future<void> _whatDidIMiss() async {
-    final conv = _serverConv;
+    final conv = _serverConvId;
     if (conv == null) return;
     if (!await BrainConsent.isOn('messaging')) {
       if (mounted) _toast('Turn on AvaBrain for your messages in Settings to use catch-up.');
@@ -7192,7 +7194,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (card != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && envPreview.isYouTube) {
-            Analytics.capture('chat_youtube_card_shown', {'video_id': envPreview.videoId});
+            Analytics.capture('chat_youtube_card_shown', {'video_id': envPreview.videoId ?? ''});
           }
         });
         return Column(
