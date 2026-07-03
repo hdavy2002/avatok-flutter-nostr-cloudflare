@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
+import '../../core/cached_image.dart';
 import '../../core/listings_api.dart';
 
 /// AvaMarketplace — Archived. Shows the owner's expired + cancelled listings with
@@ -178,10 +179,7 @@ class _Row extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: card.coverUrl != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Image.network(card.coverUrl!, width: 48, height: 48, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported)))
+            ? CachedImage(card.coverUrl!, width: 48, height: 48, radius: BorderRadius.circular(6))
             : const Icon(Icons.inventory_2_outlined, size: 32),
         title: Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text('${card.displayPrice} · $_label'),
