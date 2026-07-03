@@ -773,7 +773,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     ? (firstName ? `${greetPhrase} ${firstName}, ` : `${greetPhrase}, `)
     : (firstName ? `Hey ${firstName}, ` : `Hi, `);
   const greeting = `${greetPrefix}${ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${gSubj}'ll get back to you.`;
-  const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
+  // (callId already declared above in the CALLFIX-8 answered-guard block)
   // v2: how the call was handed off. Standard 2-button incoming UI, so the
   // triggers are: rings (no answer), first_ring (answer-all), decline (callee
   // hit Decline with decline-to-Ava on), busy (callee was on another call).
