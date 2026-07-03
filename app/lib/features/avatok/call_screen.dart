@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,11 +13,13 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
+import '../../core/ava_identity.dart';
 import '../../core/avatar.dart';
 import '../../core/call_log_store.dart';
 import '../../core/call_telemetry.dart';
 import '../../core/config.dart';
 import '../../core/ice_cache.dart';
+import '../../core/profile_store.dart';
 import '../../core/receptionist_api.dart';
 import '../../core/receptionist_call.dart';
 import '../../core/remote_config.dart';
@@ -126,6 +129,10 @@ class _CallScreenState extends State<CallScreen> {
   // while it ticks, then releases her audio at 0 so she speaks instantly.
   int _avaCount = 0;
   bool _avaCountingDown = false;
+  // Local user identity for the receptionist "You ↔ Ava" duo animation.
+  String _myAvatar = '';
+  String _myName = 'You';
+  String _mySeed = 'me';
   // v2 activation: probed from /api/receptionist/config at dial time.
   String _receptMode = 'rings';    // rings | first_ring
   int _receptRings = 5;            // Mode A ring count (RemoteConfig-driven)
@@ -182,6 +189,15 @@ class _CallScreenState extends State<CallScreen> {
     _takeoverGuard = RemoteConfig.receptTakeoverGuard; // P1: snapshot once per call
     _telemetry = CallTelemetry(callId: widget.room, video: widget.video, outgoing: widget.outgoing);
     _telemetry.started(); // funnel root: started → connected → ended
+    // Load my own profile (best-effort) for the receptionist duo's "You" icon.
+    ProfileStore().load().then((p) {
+      if (!mounted) return;
+      setState(() {
+        _myAvatar = p.avatarUrl;
+        if (p.displayName.trim().isNotEmpty) _myName = p.displayName.trim();
+        _mySeed = p.handle.isNotEmpty ? p.handle : (p.displayName.isNotEmpty ? p.displayName : 'me');
+      });
+    }).catchError((_) {});
     // Wi-Fi ⇆ cellular handoff: don't wait for the transport to time out — restart
     // ICE proactively so the call survives leaving the house mid-conversation.
     _netSub = Connectivity().onConnectivityChanged.listen((_) {
@@ -1056,6 +1072,13 @@ class _CallScreenState extends State<CallScreen> {
     _pc = null;
   }
 
+  // Receptionist "You ↔ Ava" duo view (live audio-link animation) applies once
+  // Ava is on the line — connecting, taking the message, or wrapping up.
+  bool get _isReceptDuo =>
+      _phase == 'receptionist' ||
+      _phase == 'receptionist-connecting' ||
+      _phase == 'receptionist-wrapup';
+
   String get _statusText => switch (_phase) {
         'ringing' => 'Ringing…',
         'connected' => 'Connected · end-to-end encrypted',
@@ -1150,27 +1173,42 @@ class _CallScreenState extends State<CallScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _phase == 'ava-countdown' ? Zine.lilac : null,
-                      border: Zine.borderLg,
-                      boxShadow: Zine.shadow,
+                  if (_isReceptDuo && _receptionist != null) ...[
+                    // Talking-to-Ava: your icon + Ava's, with a live audio link
+                    // between that flows toward whoever is speaking.
+                    _ReceptionistDuo(
+                      mic: _receptionist!.micLevel,
+                      ava: _receptionist!.avaLevel,
+                      me: Avatar(seed: _mySeed, name: _myName, size: 88,
+                          avatarUrl: _myAvatar.isEmpty ? null : _myAvatar),
+                      myLabel: _myName,
                     ),
-                    // During handoff: a big movie-style 3-2-1 countdown in the ring
-                    // (Ava warms up behind it); otherwise the caller/contact avatar.
-                    child: _phase == 'ava-countdown'
-                        ? SizedBox(
-                            width: 132, height: 132,
-                            child: Center(child: Text('$_avaCount',
-                                style: ZineText.hero(size: 76))),
-                          )
-                        : Avatar(seed: widget.seed, name: widget.title, size: 132,
-                            avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(widget.title, textAlign: TextAlign.center,
-                      style: ZineText.hero(size: 30)),
+                    const SizedBox(height: 22),
+                    Text('Ava', textAlign: TextAlign.center,
+                        style: ZineText.hero(size: 30)),
+                  ] else ...[
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _phase == 'ava-countdown' ? Zine.lilac : null,
+                        border: Zine.borderLg,
+                        boxShadow: Zine.shadow,
+                      ),
+                      // During handoff: a big movie-style 3-2-1 countdown in the ring
+                      // (Ava warms up behind it); otherwise the caller/contact avatar.
+                      child: _phase == 'ava-countdown'
+                          ? SizedBox(
+                              width: 132, height: 132,
+                              child: Center(child: Text('$_avaCount',
+                                  style: ZineText.hero(size: 76))),
+                            )
+                          : Avatar(seed: widget.seed, name: widget.title, size: 132,
+                              avatarUrl: widget.avatarUrl.isEmpty ? null : widget.avatarUrl),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(widget.title, textAlign: TextAlign.center,
+                        style: ZineText.hero(size: 30)),
+                  ],
                   const SizedBox(height: 16),
                   ZineSticker(
                     _connected ? _clock : _statusText,
@@ -1249,4 +1287,171 @@ class _CallScreenState extends State<CallScreen> {
       ),
     );
   }
+}
+
+/// Receptionist "You ↔ Ava" view: your avatar and Ava's, side by side, with a
+/// live audio link between them. The dots flow toward whoever is speaking and
+/// brighten with their voice level; each avatar gets a soft pulsing ring while
+/// that side talks. Driven by [mic] (caller VU) and [ava] (Ava VU) — so the
+/// caller can SEE their voicemail is being heard, and see Ava reply.
+class _ReceptionistDuo extends StatefulWidget {
+  const _ReceptionistDuo({
+    required this.mic,
+    required this.ava,
+    required this.me,
+    required this.myLabel,
+  });
+  final ValueListenable<double> mic;
+  final ValueListenable<double> ava;
+  final Widget me;
+  final String myLabel;
+
+  @override
+  State<_ReceptionistDuo> createState() => _ReceptionistDuoState();
+}
+
+class _ReceptionistDuoState extends State<_ReceptionistDuo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _flow = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1100))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _flow.dispose();
+    super.dispose();
+  }
+
+  Widget _pulse({required Widget child, required double level, required Color color}) {
+    final g = level.clamp(0.0, 1.0);
+    return SizedBox(
+      width: 104,
+      height: 104,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 84 + g * 20,
+            height: 84 + g * 20,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.14 * g),
+              border: Border.all(color: color.withValues(alpha: 0.55 * g), width: 3),
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _avaCircle() => Container(
+        width: 88,
+        height: 88,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Zine.lilac,
+          border: Zine.borderLg,
+          boxShadow: Zine.shadowSm,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.asset(
+          AvaId.avatarAsset,
+          width: 88,
+          height: 88,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              Center(child: Text('A', style: ZineText.hero(size: 40))),
+        ),
+      );
+
+  Widget _label(String s) => SizedBox(
+        width: 104,
+        child: Text(s,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ZineText.tag(size: 12)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([widget.mic, widget.ava, _flow]),
+      builder: (context, _) {
+        final mic = widget.mic.value.clamp(0.0, 1.0);
+        final ava = widget.ava.value.clamp(0.0, 1.0);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _pulse(child: widget.me, level: mic, color: Zine.ink),
+                SizedBox(
+                  width: 92,
+                  height: 104,
+                  child: CustomPaint(
+                    painter: _LinkPainter(phase: _flow.value, mic: mic, ava: ava),
+                  ),
+                ),
+                _pulse(child: _avaCircle(), level: ava, color: Zine.lilac),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _label(widget.myLabel),
+                const SizedBox(width: 92),
+                _label('Ava'),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The animated audio link between the two avatars: a line of dots whose
+/// brightness travels toward the current speaker (caller → right, Ava → left)
+/// and scales with their voice level. Idle → faint static dots.
+class _LinkPainter extends CustomPainter {
+  _LinkPainter({required this.phase, required this.mic, required this.ava});
+  final double phase; // 0..1 repeating flow phase
+  final double mic;   // caller VU 0..1
+  final double ava;   // Ava VU 0..1
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cy = size.height / 2;
+    const n = 5;
+    final active = mic >= ava; // caller louder → flow toward Ava (rightward)
+    final level = (active ? mic : ava).clamp(0.0, 1.0);
+    final speaking = level > 0.06;
+    final dir = active ? 1.0 : -1.0;
+    final color = active ? Zine.ink : Zine.lilac;
+    for (int i = 0; i < n; i++) {
+      final t = (i + 0.5) / n; // 0..1 across the width
+      final x = size.width * t;
+      double b;
+      double r;
+      if (speaking) {
+        final wave = (math.sin((t * dir - phase) * 2 * math.pi) + 1) / 2; // 0..1
+        b = (0.22 + 0.78 * wave) * (0.4 + 0.6 * level);
+        r = 2.5 + 3.0 * level * wave;
+      } else {
+        b = 0.16;
+        r = 2.5;
+      }
+      final paint = Paint()..color = color.withValues(alpha: b.clamp(0.0, 1.0));
+      canvas.drawCircle(Offset(x, cy), r, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LinkPainter old) =>
+      old.phase != phase || old.mic != mic || old.ava != ava;
 }

@@ -3,6 +3,8 @@ import 'dart:collection';
 import 'dart:io' show ProcessInfo;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:record/record.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -107,6 +109,15 @@ class ReceptionistCall {
 
   Future<String> get done => _done.future;
 
+  /// Live VU levels (0..1) for the call screen's speaking animation. [micLevel]
+  /// is the CALLER's mic energy (their icon + the link toward Ava light up when
+  /// it's high); [avaLevel] is AVA's outgoing-audio energy (her icon + the link
+  /// back to the caller light up). Rising-edge on each audio frame, decayed by
+  /// [_levelTimer] so they fall back to 0 when a side goes quiet.
+  final ValueNotifier<double> micLevel = ValueNotifier<double>(0);
+  final ValueNotifier<double> avaLevel = ValueNotifier<double>(0);
+  Timer? _levelTimer;
+
   /// Buffer Ava's audio instead of playing it — used during the on-screen 3-2-1
   /// countdown so she connects + renders the greeting in the background and is
   /// fully warmed up to speak the INSTANT the countdown hits zero.
@@ -182,6 +193,12 @@ class ReceptionistCall {
       // so a stuck mic, dead playback, echo storm or leak is visible WITHOUT a
       // repro (the call may end before call_ended ever fires).
       _hb = Timer.periodic(const Duration(seconds: 15), (_) => _heartbeat());
+      // Decay the speaking-animation VU levels ~12×/s so an icon stops pulsing
+      // shortly after that side goes quiet (frames set a rising edge; this falls).
+      _levelTimer = Timer.periodic(const Duration(milliseconds: 80), (_) {
+        if (micLevel.value > 0.01) micLevel.value = micLevel.value * 0.72;
+        if (avaLevel.value > 0.01) avaLevel.value = avaLevel.value * 0.72;
+      });
       onStatus?.call('connected');
       Analytics.capture('ava_recept_call_started', {
         'callee_hash': calleeUid.hashCode.toString(),
@@ -251,6 +268,8 @@ class ReceptionistCall {
     final now = DateTime.now().millisecondsSinceEpoch;
     _micCaptured++;
     _lastMicAtMs = now; // a frame arrived → mic is alive
+    final mp = _pcmPeak(chunk); // drive the caller-speaking animation
+    if (mp > micLevel.value) micLevel.value = mp;
     if (speaker && !_aecOk && now - _lastAvaAudioAtMs < _echoTailMs) {
       _echoSuppressed++;
       return;
@@ -278,6 +297,8 @@ class ReceptionistCall {
       _avaChunks++;
       _lastAvaAudioAtMs = DateTime.now().millisecondsSinceEpoch; // echo-gate timing
       final bytes = data is Uint8List ? data : Uint8List.fromList(data);
+      final ap = _pcmPeak(bytes); // drive the Ava-speaking animation
+      if (ap > avaLevel.value) avaLevel.value = ap;
       if (_useNative) {
         // Native engine plays on the AEC'd comm stream — smooth + gapless, and
         // barge-in just works (caller's clean voice → Gemini stops → DO stops feeding).
@@ -394,6 +415,9 @@ class ReceptionistCall {
     _ended = true;
     _hardCap?.cancel();
     _hb?.cancel();
+    _levelTimer?.cancel();
+    micLevel.value = 0;
+    avaLevel.value = 0;
     // Stop audio engines.
     Map<String, dynamic>? nativeCounters;
     if (_useNative) {
@@ -450,6 +474,20 @@ class ReceptionistCall {
 
   /// Minimal WAV (PCM16 mono) wrapper so audioplayers can play a raw segment
   /// (fallback engine only).
+  /// Normalized peak (0..1) of a little-endian PCM16 chunk — a cheap VU meter
+  /// for the speaking animation. Sampled sparsely (every 4th sample) for speed.
+  static double _pcmPeak(Uint8List b) {
+    if (b.length < 2) return 0;
+    int peak = 0;
+    for (int i = 0; i + 1 < b.length; i += 8) {
+      int s = b[i] | (b[i + 1] << 8);
+      if (s > 32767) s -= 65536;
+      final a = s < 0 ? -s : s;
+      if (a > peak) peak = a;
+    }
+    return (peak / 32768.0).clamp(0.0, 1.0).toDouble();
+  }
+
   static Uint8List _wrapWav(Uint8List pcm, int sampleRate) {
     final out = Uint8List(44 + pcm.length);
     final dv = ByteData.view(out.buffer);
