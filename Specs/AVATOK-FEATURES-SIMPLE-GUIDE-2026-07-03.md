@@ -162,20 +162,36 @@
 1. Phone stolen? Buy a new one, log in, restore from Drive — chats, photos, groups all back.
 2. Keep receipts, IDs, and warranties in one folder you can pull up from anywhere.
 
-## 12. Getting Started — Your Identity
+## 12. The Marketplace — Where Your AI Agent Does the Talking
 
-**What it is:** Joining is instant. Claim a **@handle** (like @maria) in about 15 seconds and start browsing — no email needed. Add an email and password when you want full messaging and calling. A quick 5-second selfie check proves you're a real human (not a bot) and unlocks things like publishing a listing.
+**What it is:** A marketplace we're rolling out where you can list anything — a car, a property for sale or rent, electronics, furniture, services, jobs — and where the real magic is **agent-to-agent conversations**. Every user has a personal AI agent. You choose its name, its voice, and its language in Settings (25 languages, including 9 Indian regional languages, and a range of voices), plus how it behaves: friendly, professional, or brief.
+
+**How it works:** You see a listing you like. Instead of messaging the seller and waiting, you tap **"Talk to the seller's agent."** You tell your agent your maximum price and your must-haves — and then the two AI agents talk it out. A short while later, a **voice recording of the whole conversation lands in your messages**: you literally listen to your agent and the seller's agent negotiating the price or asking your questions, with a written transcript in your own language right below it.
+
+**Nice little touches:**
+- Sellers set protection rules: a price floor their agent will never go below, and an "ask me before committing" option so no deal closes without their nod.
+- Quiet hours: negotiations wait politely if the seller has set do-not-disturb times.
+- The two agents can bridge languages — the seller can speak Hindi and you Tamil; you still get the conversation and transcript in your language.
+- A green bubble in your inbox means a deal was reached; a yellow one means no deal — either way you hear exactly why.
+- A quick one-time selfie check is required before publishing a listing, keeping bots and fake sellers out.
 
 **Use cases:**
-1. Try the app before committing: claim @yourname, look around, sign up properly only when you're ready.
-2. The human-check keeps bots and fake sellers out — buyers can trust that verified users are real people.
+1. **Buying a car:** You spot a car listed at 8 lakh. Tap "Talk to my agent," set your max at 7.2 lakh and "must have: full service history." Later, you play the recording: your agent pressed on price, the seller's agent confirmed the service records, and they settled at 7.4 lakh — your call whether to take it.
+2. **Buying an apartment:** Your agent asks the seller's agent all the boring-but-vital questions — parking, maintenance charges, water supply, society rules — and the full Q&A sits in your inbox to replay anytime.
+3. **Renting a flat:** Before you even visit, your agent checks deposit, pet policy, furnished or not, and earliest move-in date. Ten listings, ten recordings, zero phone calls made by you.
+4. **School or college admissions:** An institution lists its information page; parents' agents ask about admission criteria, fees, class sizes, transport, and facilities. Every family gets the answers in their own inbox — in their own language — and the school's staff never repeats itself.
+5. **Hiring a service:** Need a wedding photographer or a plumber? Your agent asks three listed providers about availability, packages, and price — you compare the recordings over your morning tea and pick one.
+6. **Selling anything, effortlessly:** List your old sofa before bed with a price floor of 80%. Overnight, your agent handles five interested buyers' agents within your rules. You wake up to one accepted deal and no haggling stress.
+7. **Cross-language deals:** A buyer from another state whose language you don't speak? No problem — the agents handle the conversation, and each side reads and hears it in their own language.
+
+*Status: in development — rolling out soon. The agent settings, negotiation engine, and inbox delivery are built; we're switching the marketplace on for everyone shortly.*
 
 ---
 
 ## The Bottom Line
 
-Right now, **everything in AvaTOK is free**: unlimited messaging, 1-to-1 video calls, 25-person group meetings, your own AvaTOK number, and an AI receptionist that would normally cost a business real money. Ava lives inside every chat and call — so you get things done without ever switching apps.
+Getting started takes seconds — just sign in with Google. And right now, **everything in AvaTOK is free**: unlimited messaging, 1-to-1 video calls, 25-person group meetings, your own AvaTOK number, and an AI receptionist that would normally cost a business real money. Ava lives inside every chat and call — and soon your personal AI agent will negotiate marketplace deals for you — so you get things done without ever switching apps.
 
 ---
 
-*Internal note (not for end users): compiled 2026-07-03 from code by the feature-audit session; details verified against worker + app code. Companion technical report: Specs/AVATOK-ACTIVE-FEATURES-2026-07-03.md. Known caveats: Drive/Calendar AvaApps are "Soon"; receptionist voice currently fixed (30-voice picker built but pinned); tier-based call caps (5/10/25) exist in code but everyone gets 25 during free launch; file-upload AI analysis is "index then ask", not auto-summary.*
+*Internal note (not for end users): compiled 2026-07-03 from code by the feature-audit session; details verified against worker + app code. Companion technical report: Specs/AVATOK-ACTIVE-FEATURES-2026-07-03.md. Known caveats: Drive/Calendar AvaApps are "Soon"; receptionist voice currently fixed (30-voice picker built but pinned); tier-based call caps (5/10/25) exist in code but everyone gets 25 during free launch; file-upload AI analysis is "index then ask", not auto-summary. Marketplace section: negotiation is LLM-simulated then multi-speaker TTS (not a live voice call), delivered buyer-only (seller gets a bell — 2026-07-01 decision), 1 negotiation per buyer per listing version, 10 listings/day cap, gated dark behind marketplaceEnabled=false; no dedicated "institution" listing category yet (use-case 4 rides on Services/Business listings). Handle-first guest onboarding retired 2026-06-18 (Google-only sign-in) — removed from this guide; the ACTIVE-FEATURES report's identity section is stale on this point.*
