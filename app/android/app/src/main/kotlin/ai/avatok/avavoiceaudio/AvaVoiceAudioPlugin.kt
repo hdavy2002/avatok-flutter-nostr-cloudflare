@@ -124,6 +124,16 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 setSpeaker(call.argument<Boolean>("on") ?: true)
                 result.success(null)
             }
+            "startP2pAudioMode" -> {
+                // CALLFIX-16: start P2P call audio mode (VOICE_COMMUNICATION + AEC/NS/AGC)
+                startP2pAudioMode()
+                result.success(null)
+            }
+            "stopP2pAudioMode" -> {
+                // CALLFIX-16: restore normal audio mode on call end
+                stopP2pAudioMode()
+                result.success(null)
+            }
             "stop" -> {
                 // Return final throughput/error counters so Dart can log a rich
                 // voice_live_native_end (heard-nothing vs no-mic, AEC health, etc.).
@@ -304,6 +314,34 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             @Suppress("DEPRECATION")
             am?.isSpeakerphoneOn = false
             am?.mode = prevAudioMode
+        } catch (_: Throwable) {}
+    }
+
+    // CALLFIX-16: Start P2P call audio mode with hardware AEC/NS/AGC + audio focus.
+    // Called at P2P call start (after getUserMedia) to set the platform to
+    // VOICE_COMMUNICATION mode and request audio focus so the platform applies
+    // hardware echo cancellation, noise suppression, and automatic gain control.
+    private fun startP2pAudioMode() {
+        try {
+            val am = audioManager() ?: return
+            prevAudioMode = am.mode
+            am.mode = AudioManager.MODE_IN_COMMUNICATION
+            // Request transient audio focus for voice communication (music/media pauses).
+            try {
+                am.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            } catch (_: Throwable) {}
+        } catch (_: Throwable) {}
+    }
+
+    // CALLFIX-16: Stop P2P call audio mode and restore normal audio.
+    // Called on call end to restore the normal audio mode and release audio focus
+    // so music/media can resume.
+    private fun stopP2pAudioMode() {
+        try {
+            val am = audioManager() ?: return
+            am.abandonAudioFocus(null)
+            am.mode = prevAudioMode
         } catch (_: Throwable) {}
     }
 }

@@ -88,4 +88,19 @@ class NativeVoiceAudio {
       return null;
     }
   }
+
+  /// CALLFIX-16: Start P2P call audio mode (VOICE_COMMUNICATION + audio focus).
+  /// Sets the AudioManager to MODE_IN_COMMUNICATION and requests audio focus so
+  /// the platform applies hardware echo cancellation, noise suppression, and
+  /// automatic gain control. Called at the start of a P2P WebRTC call.
+  Future<void> startP2pAudioMode() async {
+    try { await _m.invokeMethod('startP2pAudioMode'); } catch (_) {}
+  }
+
+  /// CALLFIX-16: Stop P2P call audio mode and restore normal audio.
+  /// Called on call end to restore the normal audio mode and release audio focus
+  /// so music/media can resume.
+  Future<void> stopP2pAudioMode() async {
+    try { await _m.invokeMethod('stopP2pAudioMode'); } catch (_) {}
+  }
 }

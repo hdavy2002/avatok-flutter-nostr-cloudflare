@@ -27,6 +27,7 @@ import '../../core/remote_config.dart';
 import '../../core/ringback_player.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import '../../core/voice/native_voice_audio.dart';
 import '../../push/push_service.dart';
 
 /// True while a 1:1 call is on this device — used to auto-reply "busy" to a
@@ -431,6 +432,10 @@ class _CallScreenState extends State<CallScreen> {
     // Route audio output: speaker for video, earpiece for voice. The in-call
     // speaker button toggles this for real (previously it did nothing).
     try { await Helper.setSpeakerphoneOn(_speaker); } catch (_) {}
+    // CALLFIX-16: start P2P audio mode (VOICE_COMMUNICATION + AEC/NS/AGC).
+    // This sets the platform to use hardware echo cancellation, noise suppression,
+    // and automatic gain control during the call.
+    try { await NativeVoiceAudio().startP2pAudioMode(); } catch (_) {}
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _secs++);
     });
@@ -1071,6 +1076,8 @@ class _CallScreenState extends State<CallScreen> {
     if (_ended) return; // idempotent — hangup AND dispose both call this
     try { _receptionist?.hangup(); } catch (_) {}
     try { WakelockPlus.disable(); } catch (_) {} // release the call wakelock
+    // CALLFIX-16: restore normal audio mode on call end.
+    try { await NativeVoiceAudio().stopP2pAudioMode(); } catch (_) {}
     _ended = true;
     // Decrement the live-screen count (never below 0) and derive [gInCall] from
     // it, so overlapping calls tearing down in any order leave an accurate
