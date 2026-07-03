@@ -58,6 +58,16 @@ const List<MktAgentLang> kMktAgentLangs = [
   MktAgentLang('sw', 'Swahili'),
   MktAgentLang('tr', 'Turkish'),
   MktAgentLang('vi', 'Vietnamese'),
+  // Indian regional languages — MUST match AGENT_LANGS in agent_settings.ts.
+  MktAgentLang('gu', 'Gujarati (ગુજરાતી)'),
+  MktAgentLang('mr', 'Marathi (मराठी)'),
+  MktAgentLang('ta', 'Tamil (தமிழ்)'),
+  MktAgentLang('te', 'Telugu (తెలుగు)'),
+  MktAgentLang('kn', 'Kannada (ಕನ್ನಡ)'),
+  MktAgentLang('ml', 'Malayalam (മലയാളം)'),
+  MktAgentLang('pa', 'Punjabi (ਪੰਜਾਬੀ)'),
+  MktAgentLang('or', 'Odia (ଓଡ଼ିଆ)'),
+  MktAgentLang('as', 'Assamese (অসমীয়া)'),
 ];
 
 /// Register the "Marketplace Agent" settings tile. Hidden when the feature flag

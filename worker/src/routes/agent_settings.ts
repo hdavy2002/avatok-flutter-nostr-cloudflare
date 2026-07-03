@@ -24,6 +24,9 @@ import { readConfig } from "./config";
 export const AGENT_LANGS = [
   "en", "es", "hi", "fr", "de", "pt", "ar", "zh", "ja",
   "ru", "id", "ur", "bn", "sw", "tr", "vi",
+  // Indian regional languages (2026-07-03): bare BCP-47 codes, kept in sync with
+  // kMktAgentLangs in marketplace_agent_settings_page.dart.
+  "gu", "mr", "ta", "te", "kn", "ml", "pa", "or", "as",
 ] as const;
 
 const TONES = new Set(["friendly", "professional", "brief"]);
