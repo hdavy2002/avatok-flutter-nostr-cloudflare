@@ -32,6 +32,10 @@ class ReceptionistSettings {
   final int? statusExpiresAt;      // epoch ms the note expires; null = never
   final String answerLang;         // BCP-47 opening language; '' = auto/detected
   final String answerLangDefault;  // GeoIP-derived suggestion (2-letter, e.g. 'hi')
+  // F2 (customizable greeting) — a preset id (GREETING_PRESETS server-side) and a
+  // festival auto-greeting toggle. '' greetingStyle = plain open.
+  final String greetingStyle;
+  final bool festivalGreeting;
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -53,6 +57,8 @@ class ReceptionistSettings {
     this.statusExpiresAt,
     this.answerLang = '',
     this.answerLangDefault = 'en',
+    this.greetingStyle = '',
+    this.festivalGreeting = false,
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -75,6 +81,8 @@ class ReceptionistSettings {
         statusExpiresAt: (j['status_expires_at'] as num?)?.toInt(),
         answerLang: (j['answer_lang'] ?? '').toString(),
         answerLangDefault: (j['answer_lang_default'] ?? 'en').toString(),
+        greetingStyle: (j['greeting_style'] ?? '').toString(),
+        festivalGreeting: j['festival_greeting'] == true,
       );
 }
 
@@ -130,6 +138,9 @@ class ReceptionistApi {
     String? answerLang,
     // 'detected' when answerLang was accepted from answer_lang_default, else 'user'.
     String? answerLangSource,
+    // F2 — greeting preset id (GREETING_PRESETS) + festival auto-greeting toggle.
+    String? greetingStyle,
+    bool? festivalGreeting,
   }) async {
     final body = <String, dynamic>{
       'enabled': enabled,
@@ -150,6 +161,8 @@ class ReceptionistApi {
       if (statusNote != null) 'status_expires_at': statusExpiresAt,
       if (answerLang != null) 'answer_lang': answerLang,
       if (answerLangSource != null) 'answer_lang_source': answerLangSource,
+      if (greetingStyle != null) 'greeting_style': greetingStyle,
+      if (festivalGreeting != null) 'festival_greeting': festivalGreeting,
     };
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {

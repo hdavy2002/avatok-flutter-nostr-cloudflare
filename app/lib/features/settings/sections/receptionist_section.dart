@@ -29,6 +29,29 @@ const Map<String, String> kReceptionistStatusPresets = {
 /// use this; the server also slices to it defensively.
 const int kReceptionistNoteMax = 500;
 
+/// F2: greeting presets. id → label shown in the dropdown. The id MUST be one of
+/// GREETING_PRESETS in worker/src/routes/receptionist.ts (an unknown id is coerced
+/// to a plain open server-side). The label shows the phrase Ava opens with, e.g.
+/// "Jai Shree Ram <caller>, <you> can't take the call…". 'custom' uses the free
+/// text greeting field; 'none' opens plainly.
+const Map<String, String> kReceptionistGreetingPresets = {
+  'none': 'No greeting (plain)',
+  'namaste': 'Namaste',
+  'namaskar': 'Namaskar',
+  'jai_shree_ram': 'Jai Shree Ram',
+  'radhe_radhe': 'Radhe Radhe',
+  'ram_ram': 'Ram Ram',
+  'sat_sri_akal': 'Sat Sri Akal',
+  'assalam': 'Assalam-o-Alaikum',
+  'vanakkam': 'Vanakkam',
+  'khamma_ghani': 'Khamma Ghani',
+  'hello': 'Hello',
+  'custom': 'Custom…',
+};
+
+/// F2: server cap on the custom greeting text (MAX_GREETING in receptionist.ts).
+const int kReceptionistGreetingMax = 200;
+
 /// F1: answering-language options for Ava. code = BCP-47 that MUST be one of the
 /// server's LANG_CODES set (worker/src/routes/receptionist.ts) — a value outside
 /// that set is silently reset to auto-detect server-side. `native` is the
@@ -40,7 +63,7 @@ class ReceptionistLang {
   const ReceptionistLang(this.code, this.native, this.english);
 }
 
-/// Mirror of the server LANG_CODES (27 verified Gemini-Live codes). Order roughly
+/// Mirror of the server LANG_CODES (Gemini-Live-verified codes). Order roughly
 /// by launch-market reach; the picker is searchable so order is cosmetic.
 const List<ReceptionistLang> kReceptionistLangs = [
   ReceptionistLang('en-US', 'English (US)', 'English United States'),
@@ -51,6 +74,14 @@ const List<ReceptionistLang> kReceptionistLangs = [
   ReceptionistLang('bn-IN', 'বাংলা', 'Bengali'),
   ReceptionistLang('ta-IN', 'தமிழ்', 'Tamil'),
   ReceptionistLang('te-IN', 'తెలుగు', 'Telugu'),
+  // Indian regional languages — MUST match the server LANG_CODES set.
+  ReceptionistLang('mr-IN', 'मराठी', 'Marathi'),
+  ReceptionistLang('gu-IN', 'ગુજરાતી', 'Gujarati'),
+  ReceptionistLang('kn-IN', 'ಕನ್ನಡ', 'Kannada'),
+  ReceptionistLang('ml-IN', 'മലയാളം', 'Malayalam'),
+  ReceptionistLang('pa-IN', 'ਪੰਜਾਬੀ', 'Punjabi'),
+  ReceptionistLang('ur-IN', 'اردو', 'Urdu'),
+  ReceptionistLang('or-IN', 'ଓଡ଼ିଆ', 'Odia'),
   ReceptionistLang('es-ES', 'Español (España)', 'Spanish Spain'),
   ReceptionistLang('es-US', 'Español (US)', 'Spanish United States'),
   ReceptionistLang('fr-FR', 'Français', 'French'),
@@ -174,10 +205,17 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   // (name/voice/availability/auto-answer) are gone: the name + gender now come
   // from the Profile, and the CF engine uses one fixed warm female voice.
   final _note = TextEditingController();
+  // F2: the custom greeting free-text (used only when the preset = 'custom').
+  final _greeting = TextEditingController();
   bool _enabled = false;
   bool _premium = false;
   bool _loading = true;
   bool _saving = false;
+
+  // F2 — greeting: a preset id ('none' = plain open, 'custom' = _greeting text) and
+  // the festival auto-greeting toggle.
+  String _greetingStyle = 'none';
+  bool _festivalGreeting = false;
 
   // F1 — status note expiry. Null = no expiry; else the absolute epoch-ms instant
   // the note lapses. `_customExpiry` mirrors a picked custom instant so its chip
@@ -200,6 +238,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   @override
   void dispose() {
     _note.dispose();
+    _greeting.dispose();
     super.dispose();
   }
 
@@ -242,6 +281,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           _answerLang = '';
           _langIsDetected = true;
         }
+        // F2: greeting preset + festival toggle + custom greeting text.
+        _greetingStyle = kReceptionistGreetingPresets.containsKey(s.greetingStyle)
+            ? s.greetingStyle
+            : 'none';
+        _festivalGreeting = s.festivalGreeting;
+        _greeting.text = s.greetingText;
       }
       _loading = false;
     });
@@ -260,6 +305,11 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     _customExpiry = _isCustomExpiry(_expiresAtMs) && _expiresAtMs != null
         ? DateTime.fromMillisecondsSinceEpoch(_expiresAtMs!)
         : null;
+    // F2: greeting preset + festival toggle + custom greeting text.
+    final gs = (m['greeting_style'] ?? 'none').toString();
+    _greetingStyle = kReceptionistGreetingPresets.containsKey(gs) ? gs : 'none';
+    _festivalGreeting = m['festival_greeting'] == true;
+    _greeting.text = (m['greeting_text'] ?? '').toString();
   }
 
   Future<void> _writeMirror() async {
@@ -269,6 +319,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
         'expires_at': _expiresAtMs,
         'answer_lang': _answerLang,
         'lang_default': _langDefault,
+        'greeting_style': _greetingStyle,
+        'festival_greeting': _festivalGreeting,
+        'greeting_text': _greeting.text,
       }));
     } catch (_) {/* best-effort */}
   }
@@ -317,13 +370,16 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     // persona/greeting/custom prompt/legacy language are cleared and the call
     // stays on the short, message-first script. voice_name is omitted (server
     // pins Ava's one fixed female voice).
+    // F2: the custom greeting text is only meaningful when the preset is 'custom'.
+    final greetingText = _greetingStyle == 'custom' ? _greeting.text.trim() : '';
     final res = await ReceptionistApi.saveSettings(
       enabled: enabled,
       instructions: note, // the single availability note (also mirrored to status_note)
       displayName: '',    // name now comes from the Profile
       personaName: '',
       languageCode: '',
-      greetingText: '',
+      // F2: the greeting free text (custom preset). Empty for non-custom presets.
+      greetingText: greetingText,
       customPrompt: '',
       answerAll: false,
       statusPreset: 'busy',
@@ -334,6 +390,9 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
       statusExpiresAt: expiresAt,
       answerLang: answerLang,
       answerLangSource: langSource,
+      // F2 — greeting preset + festival auto-greeting toggle.
+      greetingStyle: _greetingStyle,
+      festivalGreeting: _festivalGreeting,
     );
     if (!mounted) return res.ok;
     setState(() {
@@ -357,6 +416,12 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
           'lang': answerLang, 'source': langSource,
         });
       }
+      // F2 telemetry — mirror the server's receptionist_greeting_saved event.
+      Analytics.capture('receptionist_greeting_saved', {
+        'style': _greetingStyle,
+        'festival': _festivalGreeting,
+        'answer_lang': answerLang.isEmpty ? 'auto' : answerLang,
+      });
       AvaLog.I.log('receptionist', 'settings saved (enabled=$enabled, note=${note.isNotEmpty}, expiry=${expiresAt != null}, lang=${answerLang.isEmpty ? "auto" : answerLang})');
       _toast(enabled ? 'Ava will answer your missed calls' : 'Saved');
     } else if (res.blocked) {
@@ -474,6 +539,36 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                   ),
                 ],
                 const SizedBox(height: 16),
+                // ── Greeting ───────────────────────────────────────────────
+                Text('GREETING', style: ZineText.kicker()),
+                const SizedBox(height: 9),
+                _greetingDropdown(),
+                if (_greetingStyle == 'custom') ...[
+                  const SizedBox(height: 10),
+                  ZineField(
+                    controller: _greeting,
+                    label: 'Your greeting',
+                    hint: 'e.g. Jai Shree Ram',
+                    maxLength: kReceptionistGreetingMax,
+                    textCapitalization: TextCapitalization.sentences,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  'Ava opens with this, then the caller’s name — e.g. '
+                  '“${_greetingPreview()} Anita, you can’t take the call right now…”.',
+                  style: ZineText.sub(size: 11),
+                ),
+                const SizedBox(height: 12),
+                _toggleRow(
+                  'Festival greetings',
+                  'On festival days (Diwali, Holi, Eid, Christmas, New Year) Ava '
+                      'greets with the festival instead — e.g. “Happy Diwali”.',
+                  _festivalGreeting,
+                  (v) => setState(() => _festivalGreeting = v),
+                ),
+                const SizedBox(height: 16),
                 // ── Answering language ─────────────────────────────────────
                 Text('ANSWERING LANGUAGE', style: ZineText.kicker()),
                 const SizedBox(height: 9),
@@ -572,6 +667,60 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
     final ap = h24 < 12 ? 'AM' : 'PM';
     final mm = d.minute.toString().padLeft(2, '0');
     return '${wd[d.weekday - 1]} ${d.day} ${mo[d.month - 1]}, $h12:$mm $ap';
+  }
+
+  // ── Greeting helpers ────────────────────────────────────────────────────────
+
+  /// The greeting phrase to preview (the preset phrase, or the custom text). Used
+  /// only for the example sentence under the dropdown.
+  String _greetingPreview() {
+    if (_greetingStyle == 'none' || _greetingStyle.isEmpty) return 'Hey';
+    if (_greetingStyle == 'custom') {
+      final t = _greeting.text.trim();
+      return t.isEmpty ? 'Hey' : t;
+    }
+    // The preset label doubles as the phrase for the built-in ones; strip any
+    // parenthetical annotation ("Custom…" isn't reachable here).
+    return kReceptionistGreetingPresets[_greetingStyle] ?? 'Hey';
+  }
+
+  Widget _greetingDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Zine.card,
+        border: Zine.border,
+        borderRadius: BorderRadius.circular(Zine.rSm),
+        boxShadow: Zine.shadowXs,
+      ),
+      child: DropdownButton<String>(
+        value: _greetingStyle,
+        isExpanded: true,
+        underline: const SizedBox.shrink(),
+        items: [
+          for (final e in kReceptionistGreetingPresets.entries)
+            DropdownMenuItem(value: e.key, child: Text(e.value, style: ZineText.value(size: 15))),
+        ],
+        onChanged: (v) { if (v != null) setState(() => _greetingStyle = v); },
+      ),
+    );
+  }
+
+  Widget _toggleRow(String title, String sub, bool value, ValueChanged<bool> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: ZineText.value(size: 14)),
+            const SizedBox(height: 2),
+            Text(sub, style: ZineText.sub(size: 11.5)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        ZineToggle(value: value, onChanged: onChanged),
+      ]),
+    );
   }
 
   // ── Language helpers ────────────────────────────────────────────────────────

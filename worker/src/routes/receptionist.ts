@@ -148,7 +148,78 @@ async function ensureStatusColumns(env: Env): Promise<void> {
     "ALTER TABLE receptionist_settings ADD COLUMN status_note TEXT",
     "ALTER TABLE receptionist_settings ADD COLUMN status_expires_at INTEGER",
     "ALTER TABLE receptionist_settings ADD COLUMN answer_lang TEXT",
+    // F2 (customizable greeting): a preset id (GREETING_PRESETS) and a festival
+    // auto-greeting toggle. Same guarded ADD-COLUMN self-migration pattern.
+    "ALTER TABLE receptionist_settings ADD COLUMN greeting_style TEXT",
+    "ALTER TABLE receptionist_settings ADD COLUMN festival_greeting INTEGER",
   ]) { try { await db.prepare(ddl).run(); } catch { /* column already present */ } }
+}
+
+// F2: fixed, validated greeting presets (id → the exact phrase Ava opens with,
+// before the caller's name). Mirrors STATUS_PRESETS: a bad/unknown value can never
+// break a call — resolveGreetingPhrase() falls back to "" (Ava opens plainly).
+// "custom" resolves from the owner's free-text greeting_text. Keep the ids in sync
+// with kReceptionistGreetingPresets in the Flutter settings section.
+const GREETING_PRESETS: Record<string, string> = {
+  none: "",
+  namaste: "Namaste",
+  jai_shree_ram: "Jai Shree Ram",
+  radhe_radhe: "Radhe Radhe",
+  ram_ram: "Ram Ram",
+  sat_sri_akal: "Sat Sri Akal",
+  assalam: "Assalam-o-Alaikum",
+  vanakkam: "Vanakkam",
+  khamma_ghani: "Khamma Ghani",
+  namaskar: "Namaskar",
+  hello: "Hello",
+  custom: "", // resolved from greeting_text
+};
+
+// F2: festival auto-greeting. When festival_greeting=1 and today matches a known
+// festival, the festival greeting REPLACES the preset (e.g. "Merry Christmas").
+// Graceful: no match → the preset/custom greeting is used instead.
+//
+// UPDATE FESTIVAL DATES ANNUALLY — the movable Hindu/Islamic festivals below are
+// per-year approximate dates (they follow lunar calendars). Christmas & New Year
+// are fixed. Add the next year's rows each year; a year with no row simply yields
+// no festival match (falls back to the preset), so a stale table never breaks.
+// Dates are "MM-DD" strings compared against the caller's UTC date.
+const FESTIVAL_FIXED: Record<string, string> = {
+  "12-25": "Merry Christmas",
+  "01-01": "Happy New Year",
+};
+// Per-year movable festivals (approximate). key = "YYYY-MM-DD".
+const FESTIVAL_BY_YEAR: Record<string, string> = {
+  // 2026 (approximate)
+  "2026-11-08": "Happy Diwali",       // Diwali 2026 (~Nov 8)
+  "2026-03-04": "Happy Holi",         // Holi 2026 (~Mar 4)
+  "2026-03-20": "Eid Mubarak",        // Eid al-Fitr 2026 (~Mar 20)
+  // 2027 (approximate)
+  "2027-10-29": "Happy Diwali",       // Diwali 2027 (~Oct 29)
+  "2027-03-22": "Happy Holi",         // Holi 2027 (~Mar 22)
+  "2027-03-10": "Eid Mubarak",        // Eid al-Fitr 2027 (~Mar 10)
+};
+
+/** F2: today's festival greeting (UTC), or "" if today is not a known festival. */
+function festivalGreetingToday(now = new Date()): string {
+  const y = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(now.getUTCDate()).padStart(2, "0");
+  return FESTIVAL_BY_YEAR[`${y}-${mm}-${dd}`] ?? FESTIVAL_FIXED[`${mm}-${dd}`] ?? "";
+}
+
+/** F2: resolve the greeting phrase (BEFORE the caller's name) from settings.
+ *  Precedence: festival (if enabled & today matches) → preset → custom → "".
+ *  Always safe: an unknown style yields "" so the call still opens cleanly. */
+function resolveGreetingPhrase(s: SettingsRow, now = new Date()): string {
+  if (Number(s.festival_greeting) === 1) {
+    const fest = festivalGreetingToday(now);
+    if (fest) return fest;
+  }
+  const style = (s.greeting_style || "").trim();
+  if (!style || style === "none") return "";
+  if (style === "custom") return (s.greeting_text || "").trim();
+  return GREETING_PRESETS[style] ?? "";
 }
 
 // Availability presets (Mode B). Maps a preset id → a natural phrase Ava speaks.
@@ -165,13 +236,23 @@ const STATUS_PRESETS: Record<string, string> = {
   custom: "", // resolved from status_custom (legacy; no longer offered in the UI)
 };
 
-// 27 BCP-47 codes verified to complete the Gemini Live handshake (mirror of the
+// BCP-47 codes verified to complete the Gemini Live handshake (mirror of the
 // Ava-voice language picker). NULL/empty = auto-detect. Pinned into speechConfig
 // server-side via the init blob so a selection can never break the call.
+//
+// Indian regional languages (2026-07-03): the base language codes below (mr, gu,
+// kn, ml, pa, ur, or) are ALL in Gemini's documented audio supported-languages
+// table (ai.google.dev/gemini-api/docs/speech-generation#supported-languages, as
+// of 2026-05-18), so their -IN regional tags are safe to offer. Assamese (as-IN)
+// was DELIBERATELY LEFT OUT — Assamese is NOT in that supported-languages table,
+// so we don't offer it until Google lists it (an unsupported code would silently
+// fall back to auto-detect anyway; better to not surface a broken choice).
 const LANG_CODES = new Set([
   "en-US", "en-GB", "en-IN", "en-AU", "es-ES", "es-US", "fr-FR", "de-DE", "it-IT",
   "pt-BR", "pt-PT", "nl-NL", "pl-PL", "ru-RU", "tr-TR", "ar-XA", "hi-IN", "bn-IN",
   "ta-IN", "te-IN", "ja-JP", "ko-KR", "cmn-CN", "vi-VN", "id-ID", "th-TH", "uk-UA",
+  // Indian regional languages (Gemini audio supported-languages table).
+  "mr-IN", "gu-IN", "kn-IN", "ml-IN", "pa-IN", "ur-IN", "or-IN",
 ]);
 
 /** Resolve the spoken availability phrase from preset + custom text. */
@@ -202,6 +283,8 @@ interface SettingsRow {
   decline_to_ava?: number;
   // F1 (Phase 12 finish)
   status_note?: string | null; status_expires_at?: number | null; answer_lang?: string | null;
+  // F2 (customizable greeting)
+  greeting_style?: string | null; festival_greeting?: number | null;
 }
 
 async function loadSettings(env: Env, uid: string): Promise<SettingsRow | null> {
@@ -414,6 +497,9 @@ export async function receptionistGetSettings(req: Request, env: Env): Promise<R
     status_expires_at: s?.status_expires_at ?? null,
     answer_lang: s?.answer_lang ?? "",
     answer_lang_default: COUNTRY_LANG[String((req as any).cf?.country ?? "").toUpperCase()] ?? "en",
+    // F2: customizable greeting — preset id + festival auto-greeting toggle.
+    greeting_style: s?.greeting_style ?? "",
+    festival_greeting: !!(s?.festival_greeting),
     premium, // client greys the toggle + shows upsell when false
     soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
   });
@@ -473,6 +559,12 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
   let answerLang: string | null = b.answer_lang == null ? null : String(b.answer_lang).trim();
   if (answerLang && !LANG_CODES.has(answerLang)) answerLang = null; // unknown → auto-detect
 
+  // F2: greeting style (validated against GREETING_PRESETS) + festival toggle. An
+  // unknown style is coerced to null so a bad value can never reach a live call.
+  let greetingStyle: string | null = b.greeting_style == null ? null : String(b.greeting_style).trim();
+  if (greetingStyle && !(greetingStyle in GREETING_PRESETS)) greetingStyle = null;
+  const festivalGreeting = b.festival_greeting === true || b.festival_greeting === 1 ? 1 : 0;
+
   // Save-time content validation (Nemotron). Reject before persisting so an
   // unsafe persona/instruction/greeting never reaches a live call.
   const blocked = await guardWrite(req, env, ctx.uid, "receptionist", [
@@ -493,24 +585,32 @@ export async function receptionistPutSettings(req: Request, env: Env): Promise<R
         persona_name, language_code, greeting_text, custom_prompt,
         answer_all, status_preset, status_custom, decline_to_ava,
         status_note, status_expires_at, answer_lang,
+        greeting_style, festival_greeting,
         created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?14,?14)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?15,?16,?17,?18,?19,?14,?14)
      ON CONFLICT(owner_uid) DO UPDATE SET
        enabled=?2, instructions_text=?3, voice_name=?4, display_name=?5,
        persona_name=?6, language_code=?7, greeting_text=?8, custom_prompt=?9,
        answer_all=?10, status_preset=?11, status_custom=?12, decline_to_ava=?13,
        status_note=?15, status_expires_at=?16, answer_lang=?17,
+       greeting_style=?18, festival_greeting=?19,
        updated_at=?14`,
   ).bind(ctx.uid, enabled ? 1 : 0, instr, voice, display,
     persona, language, greeting, customPrompt,
     answerAll, statusPreset, statusCustom, declineToAva, now,
-    statusNote, statusExpiresAt, answerLang).run();
+    statusNote, statusExpiresAt, answerLang,
+    greetingStyle, festivalGreeting).run();
   // F1 telemetry.
   const ttlBucket = statusExpiresAt == null ? "never"
     : (() => { const d = statusExpiresAt - Date.now();
         return d <= 16 * 60_000 ? "15m" : d <= 31 * 60_000 ? "30m" : d <= 61 * 60_000 ? "1h" : d <= 4.1 * 3600_000 ? "4h" : "custom"; })();
   track(env, ctx.uid, "recept_status_saved", APP, { has_expiry: statusExpiresAt != null, ttl_bucket: ttlBucket, has_note: !!statusNote });
   if (answerLang) track(env, ctx.uid, "recept_lang_set", APP, { lang: answerLang, source: b.answer_lang_source === "detected" ? "detected" : "user" });
+  // F2: greeting telemetry — stamped with the owner's email/phone so support can
+  // pull it by contact. Emitted on every save so both set and cleared are visible.
+  const greetContact = await contactFor(env, ctx.uid).catch(() => ({ email: null, phone: null }));
+  trackUserContact(env, ctx.uid, greetContact.email, greetContact.phone, "receptionist_greeting_saved", APP,
+    { style: greetingStyle ?? "none", festival: festivalGreeting === 1, answer_lang: answerLang ?? "auto" });
 
   await refreshSettingsCache(env, ctx.uid); // bust-on-save: next call sees fresh settings
   track(env, ctx.uid, enabled ? "ava_recept_enabled" : "ava_recept_disabled", APP,
@@ -649,9 +749,16 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const firstName = (callerName || "").trim().split(/\s+/)[0] || "";
   const gSubj = ownerGender === "male" ? "he" : ownerGender === "female" ? "she" : "they";
   const ownerLabel = ownerName || "your contact";
-  const greeting = firstName
-    ? `Hey ${firstName}, ${ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${gSubj}'ll get back to you.`
-    : `Hi, ${ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${gSubj}'ll get back to you.`;
+  // F2: the owner's customizable opening phrase — a validated preset ("Namaste",
+  // "Jai Shree Ram", …), the free-text custom greeting, or (when festival greetings
+  // are on and today matches) a festival greeting like "Merry Christmas". Empty when
+  // the owner hasn't set one — the call then opens plainly, exactly as before.
+  // Composed here: "<phrase> <FirstName>, <owner> can't take the call…".
+  const greetPhrase = resolveGreetingPhrase(s);
+  const greetPrefix = greetPhrase
+    ? (firstName ? `${greetPhrase} ${firstName}, ` : `${greetPhrase}, `)
+    : (firstName ? `Hey ${firstName}, ` : `Hi, `);
+  const greeting = `${greetPrefix}${ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${gSubj}'ll get back to you.`;
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   // v2: how the call was handed off. Standard 2-button incoming UI, so the
   // triggers are: rings (no answer), first_ring (answer-all), decline (callee
