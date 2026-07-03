@@ -13,9 +13,11 @@
 ///     (see features/settings/settings_registry.dart).
 library;
 
+import '../features/settings/sections/auto_download_section.dart';
 import '../features/settings/sections/backup_sync_section.dart';
 import '../features/settings/sections/delegate_section.dart';
 import '../features/settings/sections/focus_section.dart';
+import '../features/settings/marketplace_agent_settings_page.dart';
 import '../features/settings/sections/guardian_section.dart';
 import '../features/settings/sections/ondevice_section.dart';
 import '../features/settings/sections/receptionist_section.dart';
@@ -72,6 +74,10 @@ class AvaBootstrap {
     // "Leave Instructions for Ava" box. First real AvaVoice deployment.
     // Spec: Specs/PROPOSAL-AI-RECEPTIONIST.md.
     registerReceptionistSection();
+    // AI Messenger Batch — STREAM A (MKT-LANG-2): "Marketplace Agent" settings
+    // tile (default language/voice/tone + negotiation guardrails). The tile hides
+    // itself when RemoteConfig.marketplaceAgentSettingsEnabled is false.
+    registerMarketplaceAgentSection();
     // AI Ringback Tones — free "Ringback tone" settings section: generate tones
     // with MiniMax Music 2.6, keep up to 5, set the default callers hear, delete.
     // Spec: Specs/proposals/PROPOSAL-AI-RINGBACK-TONES.md.
@@ -100,6 +106,10 @@ class AvaBootstrap {
     // phone BEFORE wiring routing/embeddings/STT/RAG. Does not touch the existing
     // server Ava path. See core/ava_ondevice_llm.dart.
     registerOnDeviceSection();
+    // Stream J (D17): "Auto-download" settings tile → page (Always / Wi-Fi only /
+    // Never). Free setting, no flag. The choice is per-account and consulted by
+    // MediaAutoDownload.shouldAutoFetch() at every incoming-media render site.
+    registerAutoDownloadSection();
     // Load the persisted "Activate Ava AI locally" preference; if the user had
     // it on, warm the model in the background so chat surfaces use it.
     // ignore: unawaited_futures

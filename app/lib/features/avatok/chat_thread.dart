@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:video_compress/video_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:record/record.dart';
@@ -82,7 +83,11 @@ import '../../core/live_location_service.dart';
 import 'call_screen.dart';
 import 'contact_profile_screen.dart';
 import 'contacts.dart';
+import '../messaging/widgets/stranger_gate_bar.dart'; // STREAM B
+import 'stranger_gate_api.dart'; // STREAM B (stranger safety gate)
+import 'forward_sheet.dart';
 import 'chat_media_cards.dart';
+import '../messaging/widgets/link_preview_card.dart';
 import 'data.dart';
 import '../ava_guardian/guardian_settings.dart'; // shield watchdog (Nemotron) per-chat toggle
 import 'live_location.dart';
@@ -91,6 +96,19 @@ import 'media.dart';
 import 'media_library_screen.dart';
 import 'unknown_caller.dart';
 import 'video_player_screen.dart';
+// STREAM G (AI in chats): catch-up card, smart-reply chips, inline translate.
+import '../messaging/ai_chat_api.dart';
+import '../messaging/widgets/catchup_card.dart';
+import '../messaging/widgets/smart_reply_chips.dart';
+import '../messaging/widgets/translated_text.dart';
+// STREAM J (D17): auto-download policy + tap-to-download placeholder.
+import '../../core/media_auto_download.dart';
+import '../messaging/widgets/media_download_placeholder.dart';
+// STREAM E: WhatsApp-parity input bar + emoji/GIF/sticker panel.
+import '../messaging/widgets/rich_input_bar.dart';
+import '../messaging/widgets/gif_api.dart';
+import '../messaging/widgets/picker_recents_store.dart';
+import '../messaging/widgets/sticker_media.dart';
 
 /// AvaTok conversation thread — bubbles, media (photo/video/file/voice),
 /// long-press reactions, forward / delete, calls (1:1 or group), ⋮ overflow.
@@ -136,6 +154,17 @@ class _Msg {
 }
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
+  // STREAM J (D17): whether incoming media auto-downloads on render in THIS
+  // thread. Resolved once on open from MediaAutoDownload.shouldAutoFetch (mode +
+  // connectivity + accept_state). Defaults to true so behavior is unchanged until
+  // the async check resolves — the check runs in initState and repaints. When
+  // false, media bubbles render a tap-to-download placeholder instead of eagerly
+  // fetching. A manual tap always downloads regardless.
+  bool _mediaAutoFetch = true;
+  // Recipient thread accept-state (§B1): 'pending' | 'accepted' | 'blocked' or
+  // null when unknown. Stranger-gate (Stream B) will populate this; until then it
+  // stays null (treated as accepted). A 'pending' thread NEVER auto-downloads.
+  String? _threadAcceptState;
   final _ctrl = TextEditingController();
   final _composerFocus = FocusNode(); // keep the keyboard up after each send
   final _scroll = ScrollController();
@@ -175,6 +204,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _sttActive = false;
   bool _sttPreparing = false; // model loading between tap and "Listening…"
 
+  // STREAM G [GROUP-AI-1] group catch-up ("What did I miss?").
+  List<CatchupBullet> _catchupBullets = const [];
+  int _catchupCount = 0;
+  bool _catchupDismissed = false;
+  bool _catchupLoading = false;
+  // STREAM G [GROUP-AI-4] smart replies (DMs). Chips above the input bar.
+  List<String> _smartReplies = const [];
+  Timer? _smartReplyDebounce;
+  // STREAM G [GROUP-AI-2/3] per-group "translate this group for me" toggle.
+  bool _groupTranslateOn = false;
+  bool _groupTranslateBusy = false;
+
   // Server-routed DM (Cloudflare-native transport) for contacts.
   AvaDm? _dm;
   AvaGroupDm? _gdm;
@@ -184,6 +225,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _realMode = false;
   final Set<String> _seenEv = {};
   int? _playingAudioId;
+  // [UI-BUBBLE-3] Voice-note playback speed chip (1x / 1.5x / 2x). Applied to the
+  // shared _audio player on play and when the chip is tapped mid-playback.
+  double _audioSpeed = 1.0;
 
   // Presence: typing + read receipts (ephemeral, over the signaling WS).
   PresenceChannel? _presence;
@@ -216,6 +260,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String? _peerNpub; // 1:1 recipient uid for message notifications
   List<String> _memberUids = []; // group recipient uids (excl me)
   String? _convKey; // '1:<hex>' or 'g:<gid>' for read state / unread badges
+  // STREAM B (SAFE-GATE): the SERVER conv id (dm_lo__hi) + whether this thread is
+  // a pending stranger gate (non-contact). When true the composer is replaced by
+  // the StrangerGateBar and media/link-previews are suppressed in bubbles.
+  String? _serverConv;
+  bool _strangerGatePending = false;
   PartyRoom? _party;               // PartyKit live layer for this thread (ephemeral, gated)
   StreamSubscription? _partySub;
   Identity? _meId;
@@ -374,6 +423,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // when it landed, the thread would look empty. This probes/reconnects so the
     // missing message pulls in right as you open the chat.
     try { SyncHub.I.onAppResumed(); } catch (_) {}
+    // STREAM J (D17): resolve whether incoming media should auto-download in this
+    // thread (mode + connectivity + accept_state). Non-blocking; repaints once
+    // known so media bubbles render either the real preview or a tap-to-download
+    // placeholder. A 'pending' stranger thread never auto-downloads in any mode.
+    MediaAutoDownload.shouldAutoFetch(acceptState: _threadAcceptState).then((v) {
+      if (mounted && v != _mediaAutoFetch) setState(() => _mediaAutoFetch = v);
+      else _mediaAutoFetch = v;
+    });
+    // STREAM E: load the account-scoped picker recents (emoji/GIF/sticker) +
+    // last-known keyboard height so the rich input panel opens instantly.
+    // ignore: unawaited_futures
+    PickerRecentsStore.I.load().then((_) { if (mounted) setState(() {}); });
     // Phase 5: tick a lightweight clock so relative timestamps, day separators
     // and the "last seen" header stay live without the user reloading the thread.
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -492,6 +553,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _loadLastSeen();
     _peerNpub = seed; // contact uid, for message notifications
     _convKey = '1:$peerHex';
+    // STREAM B (SAFE-GATE-1/2): compute the SERVER conv id (dm_lo__hi) and, for a
+    // non-contact peer, gate the thread. Fire-and-forget; the gate bar renders
+    // once _strangerGatePending flips true.
+    _serverConv = dmConvIdFor(id.uid, peerHex);
+    _initStrangerGate(peerHex);
     _partyJoin(id.uid); // PartyKit live layer (deal-ready nudge etc.); no-op until flag on
     _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
@@ -509,6 +575,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         _onDm(DmMessage(rumorId: m.rumorId, mine: m.mine, payload: m.payload, createdAt: m.createdAt), seed: true);
       }
       _jumpToEndSettled(); // open ON the latest message, not mid-thread
+      // STREAM B: re-evaluate the stranger gate now that history (inbound/outbound)
+      // is loaded — the initial call ran before _msgs was populated.
+      _initStrangerGate(peerHex);
     });
     // Restore persisted delivery/read marks so ticks are correct immediately on
     // reopen (before any fresh receipt arrives) — survives app restarts.
@@ -821,6 +890,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         return; // ginfo/gkick etc. — not chat content
       }
       if (env is Map && env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
+      // STREAM C: link preview embedded by the sender at compose time — render
+      // from the envelope, never fetch on the recipient.
+      if (env is Map && env['preview'] is Map) {
+        extra = {...?extra, 'preview': (env['preview'] as Map).cast<String, dynamic>()};
+      }
     } catch (_) {
       return;
     }
@@ -865,6 +939,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
     _jump();
     _markRead();
+    // STREAM G [GROUP-AI-4]: after an INCOMING DM, offer smart replies (debounced,
+    // DM-only; the method self-gates on group/foreground and clears on my own msg).
+    if (!m.mine && special == null && media == null) _maybeFetchSmartReplies(); // STREAM G
     _schedulePersist();
   }
 
@@ -968,6 +1045,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
         forwarded = env['forwarded'] == true;
         exp = (env['exp'] as num?)?.toInt();
+        // STREAM C: sender-embedded link preview → render from the envelope.
+        if (env['preview'] is Map) {
+          extra = {...?extra, 'preview': (env['preview'] as Map).cast<String, dynamic>()};
+        }
       }
     } catch (_) {/* legacy/plain text */}
     if (exp != null && exp < DateTime.now().millisecondsSinceEpoch ~/ 1000) return;
@@ -1378,6 +1459,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _pruneTimer?.cancel();
     _persistTimer?.cancel();
     _markReadTimer?.cancel();
+    _smartReplyDebounce?.cancel(); // STREAM G smart replies
     _persistNow(); // flush any pending message-cache write on exit
     // NOTE: do NOT dispose _nostr — it's the shared SyncHub client owned by the
     // whole app. _dm.stop()/_gdm.stop() above already cancel this screen's
@@ -1549,6 +1631,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   void _send() {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    // STREAM B: replying while a thread is pending is an IMPLICIT accept — fire the
+    // accept (server restores receipts) and drop the gate before the send.
+    if (_strangerGatePending && _serverConv != null) {
+      _strangerGatePending = false;
+      _threadAcceptState = 'accepted';
+      StrangerGateApi.accept(_serverConv!);
+      trackStrangerGate('stranger_gate_accept', {'conv': _serverConv!, 'implicit': true});
+    }
     HapticFeedback.selectionClick(); // P9: subtle send confirmation
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final expire = _disappearSecs > 0 ? now + _disappearSecs : null;
@@ -1635,48 +1725,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             'who': _replyTo!.me ? 'You' : (_replyTo!.senderLabel ?? widget.chat.name),
           };
 
+    // STREAM C [PREVIEW-2]: compose-time link unfurl. The SENDER unfurls the
+    // first URL and embeds the preview in the envelope (`preview:{...}`) so
+    // recipients render the card from the envelope — zero recipient fetch. The
+    // dispatch is delegated to _dispatchText so we can attach the preview once it
+    // resolves (fast timeout; a link with no preview just sends without one).
     if (_isGroup && _gdm != null) {
-      final id = _gdm!.send(jsonEncode({
-        't': 'gtext', 'gid': _group!.id, 'body': t, 'fromName': _fromNameTag,
-        if (replyMeta != null) 'replyTo': replyMeta, if (expire != null) 'exp': expire,
-      }));
-      _seenEv.add(id);
-      Analytics.capture('group_message_sent', {
-        'gid': _group!.id, 'member_count': _group!.members.length, 'kind': 'text',
-        'has_reply': replyMeta != null, 'expiring': expire != null,
-      });
-      setState(() {
-        // Optimistic "Sent" the instant it leaves the device — the message is
-        // already persisted locally + dispatched, so we show the 1-tick state now
-        // (feels instant) and only downgrade to "Not sent" if the POST errors
-        // (_onSendStatus). Delivered/Read still arrive later via receipts.
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, sent: true, evId: id, replyTo: replyMeta, expireAt: expire));
-        _ctrl.clear(); _hasText = false; _replyTo = null;
-      });
-      _jump();
-      if (_convKey != null) DraftStore().set(_convKey!, '');
-      _schedulePersist();
-      PushService.notifyMessage(_memberUids, _myName ?? 'AvaTOK', preview: t);
+      _dispatchText(
+        t: t, now: now, replyMeta: replyMeta, expire: expire, isGroup: true);
       return;
     }
     if (_realMode && _dm != null) {
-      final id = _dm!.send(jsonEncode({
-        't': 'text', 'body': t,
-        if (replyMeta != null) 'replyTo': replyMeta, if (expire != null) 'exp': expire,
-      }));
-      _seenEv.add(id);
-      setState(() {
-        // Optimistic "Sent" the instant it leaves the device — the message is
-        // already persisted locally + dispatched, so we show the 1-tick state now
-        // (feels instant) and only downgrade to "Not sent" if the POST errors
-        // (_onSendStatus). Delivered/Read still arrive later via receipts.
-        _msgs.add(_Msg(_seq++, true, t, _fmtTime(now), ts: now, sent: true, evId: id, replyTo: replyMeta, expireAt: expire));
-        _ctrl.clear(); _hasText = false; _replyTo = null;
-      });
-      _jump();
-      if (_convKey != null) DraftStore().set(_convKey!, '');
-      _schedulePersist();
-      if (_peerNpub != null) PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK', preview: t);
+      _dispatchText(
+        t: t, now: now, replyMeta: replyMeta, expire: expire, isGroup: false);
       return;
     }
     setState(() {
@@ -1685,6 +1746,105 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     });
     _jump();
     _schedulePersist();
+  }
+
+  /// STREAM C [PREVIEW-2]: send a text message, optionally embedding a
+  /// compose-time link preview in the envelope. The optimistic bubble appears
+  /// instantly (mirrors media sends); the actual wire dispatch waits for a fast
+  /// unfurl ONLY when the text contains a URL and previews are enabled — so
+  /// recipients render the card straight from `preview:{...}` (zero fetch). A URL
+  /// that unfurls to nothing (or times out) simply sends without a preview.
+  Future<void> _dispatchText({
+    required String t,
+    required int now,
+    required Map<String, dynamic>? replyMeta,
+    required int? expire,
+    required bool isGroup,
+  }) async {
+    // Optimistic local bubble first — instant feel, independent of the unfurl.
+    final localMsg = _Msg(_seq++, true, t, _fmtTime(now),
+        ts: now, sent: true, replyTo: replyMeta, expireAt: expire);
+    setState(() {
+      _msgs.add(localMsg);
+      _ctrl.clear();
+      _hasText = false;
+      _replyTo = null;
+    });
+    _jump();
+    if (_convKey != null) DraftStore().set(_convKey!, '');
+
+    // Unfurl the first URL (best-effort, fast). Skipped entirely when the flag is
+    // off or there's no link — no behavioural change for plain messages.
+    Map<String, dynamic>? preview;
+    if (RemoteConfig.linkPreviewsEnabled) {
+      final url = _firstUrl(t);
+      if (url != null) {
+        preview = await _unfurl(url);
+        if (preview != null && mounted) {
+          // Show the card on the sender's own bubble too.
+          setState(() => localMsg.extra = {...?localMsg.extra, 'preview': preview});
+        }
+      }
+    }
+
+    final env = <String, dynamic>{
+      't': isGroup ? 'gtext' : 'text',
+      if (isGroup) 'gid': _group!.id,
+      if (isGroup) 'fromName': _fromNameTag,
+      'body': t,
+      if (replyMeta != null) 'replyTo': replyMeta,
+      if (expire != null) 'exp': expire,
+      if (preview != null) 'preview': preview,
+    };
+    final id = isGroup ? _gdm!.send(jsonEncode(env)) : _dm!.send(jsonEncode(env));
+    _seenEv.add(id);
+    localMsg.evId = id;
+
+    if (isGroup) {
+      Analytics.capture('group_message_sent', {
+        'gid': _group!.id, 'member_count': _group!.members.length, 'kind': 'text',
+        'has_reply': replyMeta != null, 'expiring': expire != null,
+        'has_preview': preview != null,
+      });
+      PushService.notifyMessage(_memberUids, _myName ?? 'AvaTOK', preview: t);
+    } else if (_peerNpub != null) {
+      PushService.notifyMessage([_peerNpub!], _myName ?? 'AvaTOK', preview: t);
+    }
+    _schedulePersist();
+  }
+
+  /// First http(s) URL in [text], or null. Mirrors the worker/card regex.
+  String? _firstUrl(String text) {
+    final m = RegExp(r'https?://[^\s<>()]+', caseSensitive: false).firstMatch(text);
+    return m?.group(0);
+  }
+
+  /// GET /api/unfurl?url=… (auth Clerk bearer). Returns the preview map or null.
+  /// Best-effort with a short timeout so a slow site never delays a send much.
+  Future<Map<String, dynamic>?> _unfurl(String url) async {
+    try {
+      final r = await ApiAuth.getSigned(
+        '$kUnfurlUrl?url=${Uri.encodeQueryComponent(url)}',
+        timeout: const Duration(seconds: 6),
+      );
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body);
+      if (j is! Map) return null;
+      final type = (j['type'] ?? 'link').toString();
+      Analytics.capture('unfurl_requested', {
+        'type': type,
+        'cached': false, // client can't see the KV hit; the server also logs it
+        if (Analytics.currentEmail != null) 'email': Analytics.currentEmail!,
+      });
+      // Only embed a preview that will actually render a card (else raw link).
+      final hasCard = type == 'youtube' ||
+          (type == 'link' &&
+              (((j['title'] ?? '').toString().isNotEmpty) ||
+                  ((j['image'] ?? '').toString().isNotEmpty)));
+      return hasCard ? Map<String, dynamic>.from(j) : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   void _jump() => WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2962,6 +3122,50 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  // STREAM E — GIF send. Download the full GIF/MP4 bytes from our Tenor proxy,
+  // then push them through the SAME encrypted media pipeline as any photo so the
+  // recipient fetches from R2 (never Tenor). No fork of the upload path.
+  Future<void> _sendGif(GifResult g) async {
+    // ignore: unawaited_futures
+    PickerRecentsStore.I.pushGif(g.toRecent());
+    Analytics.capture('gif_sent', {
+      'conv_kind': _isGroup ? 'group' : 'dm',
+      'query_len': g.desc.length,
+    });
+    final bytes = await GifApi.download(g.url);
+    if (!mounted) return;
+    if (bytes == null || bytes.isEmpty) { _capNote("Couldn't send GIF"); return; }
+    if (bytes.length > _kMediaMaxBytes) { _capNote('GIF too large'); return; }
+    final isMp4 = g.url.toLowerCase().contains('.mp4');
+    await _sendMedia(
+      isMp4 ? MediaKind.video : MediaKind.image,
+      bytes,
+      isMp4 ? 'video/mp4' : 'image/gif',
+      'gif-${g.id}.${isMp4 ? 'mp4' : 'gif'}',
+    );
+  }
+
+  // STREAM E — sticker send. Load the bundled .webp bytes and send through the
+  // encrypted media pipeline, tagging the media name so the message can render
+  // as a bubble-less 160dp sticker (see sticker_media.dart). Reuses _sendMedia.
+  Future<void> _sendStickerAsset(String assetPath) async {
+    // ignore: unawaited_futures
+    PickerRecentsStore.I.pushSticker(assetPath);
+    Analytics.capture('sticker_sent', {
+      'conv_kind': _isGroup ? 'group' : 'dm',
+      'pack': assetPath.split('/').length > 2 ? assetPath.split('/')[2] : 'unknown',
+    });
+    try {
+      final data = await rootBundle.load(assetPath);
+      final bytes = data.buffer.asUint8List();
+      if (!mounted) return;
+      await _sendMedia(
+          MediaKind.image, bytes, 'image/webp', stickerMediaName(assetPath));
+    } catch (_) {
+      if (mounted) _capNote("Couldn't send sticker");
+    }
+  }
+
   // Upload caps (owner rule): photos/videos ≤ 25 MB each; ≤ 8 photos per pick.
   static const int _kMediaMaxBytes = 25 * 1024 * 1024;
   static const int _kMaxPhotosPerPick = 8;
@@ -3231,13 +3435,61 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (skipped > 0) _capNote('$skipped photo(s) skipped — over the 25 MB limit.');
   }
 
+  // VIDPOL-1: chat videos are transcoded to 720p H.264 on-device, then held to a
+  // hard 64 MB cap. Source clips off a modern phone are often 200+ MB; the
+  // transcode brings a typical 3–5 min clip well under the cap, and anything
+  // still over is rejected with the owner-mandated notice below.
+  static const int _kVideoMaxBytes = 64 * 1024 * 1024; // 64 MB (VIDPOL-1/2)
+  static const String _kVideoTooBigMsg =
+      'Videos are limited to 64 MB (about 3–5 minutes). Trim it and try again.';
+
   Future<void> _pickVideo(ImageSource source) async {
     // Recording auto-stops at the clip cap; gallery picks an existing clip.
     final x = await _picker.pickVideo(source: source, maxDuration: kVideoClipMax);
     if (x == null) return;
-    final bytes = await x.readAsBytes();
-    if (bytes.length > _kMediaMaxBytes) { _capNote('Videos must be under 25 MB. Trim the clip and try again.'); return; }
-    await _sendVideoWithCaption(bytes, x.name);
+    final inBytes = await x.readAsBytes();
+    final inLen = inBytes.length;
+
+    // Compress to 720p H.264 via the platform encoder. Best-effort: if the
+    // transcode fails/returns nothing, fall back to the original bytes and let
+    // the 64 MB cap below decide.
+    Uint8List bytes = inBytes;
+    String name = x.name;
+    double? durationS;
+    if (mounted) _capNote('Optimising video…');
+    try {
+      final info = await VideoCompress.compressVideo(
+        x.path,
+        quality: VideoQuality.Res1280x720Quality, // 720p H.264
+        deleteOrigin: false,
+        includeAudio: true,
+      );
+      durationS = info?.duration == null ? null : (info!.duration! / 1000.0);
+      final outPath = info?.file?.path;
+      if (outPath != null) {
+        final out = await File(outPath).readAsBytes();
+        if (out.isNotEmpty) {
+          bytes = out;
+          if (!name.toLowerCase().endsWith('.mp4')) name = '$name.mp4';
+        }
+      }
+    } catch (e) {
+      AvaLog.I.log('media', 'video compress failed, using original: $e');
+    }
+
+    if (bytes.length > _kVideoMaxBytes) {
+      _capNote(_kVideoTooBigMsg);
+      // Email rides in the envelope (Analytics._base); support can pull why a
+      // video never sent, keyed by user + byte size. (VIDPOL telemetry)
+      Analytics.capture('video_upload_rejected', {'bytes': bytes.length});
+      return;
+    }
+    Analytics.capture('video_upload_compressed', {
+      'in_bytes': inLen,
+      'out_bytes': bytes.length,
+      if (durationS != null) 'duration_s': durationS,
+    });
+    await _sendVideoWithCaption(bytes, name);
   }
 
   // Videos get the same caption/instruction step as photos + files, so any text
@@ -3389,7 +3641,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (resp.statusCode != 200) { _capNote('Could not load that file.'); return; }
       final bytes = resp.bodyBytes;
       final kind = _kindFromCategory(item.category);
-      if ((kind == MediaKind.image || kind == MediaKind.video) && bytes.length > _kMediaMaxBytes) {
+      // VIDPOL-1: video is held to the 64 MB policy cap; photos keep the 25 MB cap.
+      if (kind == MediaKind.video && bytes.length > _kVideoMaxBytes) {
+        _capNote(_kVideoTooBigMsg);
+        Analytics.capture('video_upload_rejected', {'bytes': bytes.length});
+        return;
+      }
+      if (kind == MediaKind.image && bytes.length > _kMediaMaxBytes) {
         _capNote('That file is over 25 MB.'); return;
       }
       await _sendMedia(kind, bytes, item.mime, item.name);
@@ -3504,7 +3762,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final f = File('${dir.path}/play_${m.id}.m4a');
       await f.writeAsBytes(bytes, flush: true);
       await _audio.play(DeviceFileSource(f.path));
+      // [UI-BUBBLE-3] honour the chosen playback speed for this note.
+      try { await _audio.setPlaybackRate(_audioSpeed); } catch (_) {/* not supported on all platforms */}
       if (mounted) setState(() => _playingAudioId = m.id);
+      Analytics.capture('voice_note_played', {'speed': _audioSpeed});
     } catch (e) {
       AvaLog.I.log('media', 'voice play failed: $e');
       if (mounted) {
@@ -3512,6 +3773,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             const SnackBar(content: Text("Couldn't play this voice message")));
       }
     }
+  }
+
+  /// [UI-BUBBLE-3] Cycle the voice-note playback speed 1x → 1.5x → 2x → 1x. When a
+  /// note is currently playing, apply the new rate live.
+  void _cycleAudioSpeed() {
+    const steps = [1.0, 1.5, 2.0];
+    final next = steps[(steps.indexOf(_audioSpeed) + 1) % steps.length];
+    setState(() => _audioSpeed = next);
+    if (_playingAudioId != null) {
+      _audio.setPlaybackRate(next).catchError((_) {});
+    }
+    Analytics.capture('voice_note_speed', {'speed': next});
   }
 
   Future<void> _openGroupInfo() async {
@@ -3717,6 +3990,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       m.starred ? 'Unstar' : 'Star', () => _toggleStar(m)),
                   if (m.me && m.evId != null && m.media == null && m.text != 'You deleted this message')
                     _action(ctx, PhosphorIcons.pencilSimple(PhosphorIconsStyle.bold), 'Edit', () => _startEdit(m)),
+                  // STREAM G [GROUP-AI-5]: inline translate any text bubble into the
+                  // user's remembered language (added via the existing _action menu
+                  // extension point — no Stream K geometry change).
+                  if (m.text.trim().isNotEmpty && m.special != 'ava_status')
+                    _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
+                        () => _inlineTranslate(m)),
                   _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
                   // Share OUT to another app (WhatsApp, Files, etc.) via the OS
                   // share sheet — works for any media, including voice notes.
@@ -4123,37 +4402,102 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  // STREAM I (FWD-1): open the multi-select Forward sheet (Groups + Contacts,
+  // search, checkmarks, single Send). If forwarding is flag-disabled, fall back
+  // to a quiet no-op. One selected contact with editable text still gets the
+  // caption editor; everything else fans out straight to the chosen targets.
   Future<void> _forward(_Msg m) async {
-    final contacts = await ContactsStore().load();
+    if (!RemoteConfig.unlimitedForwardEnabled) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Forwarding is temporarily unavailable')));
+      return;
+    }
+    final msgKind = m.media?.kind.name ?? 'text';
+    final targets = await showForwardSheet(context, msgKind: msgKind);
+    if (targets == null || targets.isEmpty || !mounted) return;
+    // Preserve the single-contact caption-edit UX when it's exactly one DM.
+    if (targets.length == 1 && !targets.first.isGroup) {
+      final peerUid = targets.first.peerUid;
+      final saved = await ContactsStore().load();
+      final hit = saved.where((c) => c.uid == peerUid).toList();
+      final match = hit.isNotEmpty
+          ? hit.first
+          : Contact(uid: peerUid, name: targets.first.label);
+      if (!mounted) return;
+      await _forwardWithText(m, match);
+      return;
+    }
+    await _forwardToTargets(m, targets);
+  }
+
+  /// Fan a single message out to a MIX of DMs + groups in ONE server call
+  /// (/api/msg/forward). The envelope carries `fwd:true` (Stream K renders the
+  /// "↪ Forwarded" label from this) and — for privacy (FWD-1) — NOTHING about
+  /// the original sender. Media re-references the SAME content-addressed R2 key
+  /// via the same envelope (its per-blob AES key rides in the envelope, so no
+  /// re-upload is ever needed — FWD-2, all cases including cross-context).
+  Future<void> _forwardToTargets(_Msg m, List<ForwardTarget> targets,
+      {String? caption}) async {
+    final id = _meId;
+    if (id == null) return;
+    final Map<String, dynamic> payload;
+    if (m.media != null) {
+      // Same envelope → same media_ref → one R2 copy, never re-uploaded.
+      payload = {...m.media!.toEnvelope(), 'fwd': true, 'forwarded': true};
+      final cap = (caption ?? _mediaCaptionOf(m)).trim();
+      if (cap.isEmpty) { payload.remove('cap'); } else { payload['cap'] = cap; }
+    } else {
+      payload = {'t': 'text', 'body': caption ?? m.text, 'fwd': true, 'forwarded': true};
+    }
+    // media_ref: the R2 content hash so the server indexes the forward against
+    // the SAME object (zero duplication). For text this stays null.
+    final mediaRef = m.media?.id;
+    final body = jsonEncode(payload);
+    final serverTargets = [
+      for (final t in targets)
+        t.isGroup ? {'conv': t.groupId} : {'to': t.peerUid},
+    ];
+    final nGroups = targets.where((t) => t.isGroup).length;
+    Analytics.capture('chat_message_forwarded', {
+      'has_media': m.media != null,
+      'media_kind': m.media?.kind.name ?? 'text',
+      'n_targets': targets.length,
+      'n_groups': nGroups,
+      'edited_caption': caption != null,
+    });
+    int status = 0;
+    try {
+      final res = await ApiAuth.postJson(kMsgForwardUrl, {
+        'kind': 'text',
+        'body': body,
+        if (mediaRef != null) 'media_ref': mediaRef,
+        'targets': serverTargets,
+      });
+      status = res.statusCode;
+      // Wake the DM peers (groups fan out server-side).
+      final dmUids = [for (final t in targets) if (!t.isGroup) t.peerUid];
+      if (dmUids.isNotEmpty) PushService.notifyMessage(dmUids, _myName ?? 'AvaTOK');
+      // FWD-4 telemetry (email auto-attached by Analytics.identify person props).
+      if (status == 429) {
+        Analytics.capture('forward_rate_capped', {
+          'n_targets': targets.length, 'n_groups': nGroups,
+        });
+      } else if (status == 200) {
+        Analytics.capture('forward_sent', {
+          'n_targets': targets.length, 'n_groups': nGroups,
+          'media_kind': m.media?.kind.name ?? 'text',
+          'cross_context': true,
+        });
+      }
+    } catch (_) {}
     if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Forward to', style: ZineText.cardTitle(size: 18)),
-          const SizedBox(height: 8),
-          if (contacts.isEmpty)
-            Padding(padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Text('No contacts yet — add someone first', style: ZineText.sub()))
-          else
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
-              child: ListView(shrinkWrap: true, children: [
-                for (final c in contacts)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Avatar(seed: c.seed, name: c.name, size: 40),
-                    title: Text(c.name, style: ZineText.value(size: 15)),
-                    onTap: () { Navigator.pop(ctx); _forwardWithText(m, c); },
-                  ),
-              ]),
-            ),
-        ]),
-      ),
-    );
+    final n = targets.length;
+    final msg = status == 429
+        ? 'Slow down — too many forwards. Try again shortly.'
+        : (status == 200 || status == 0)
+            ? 'Forwarded to $n chat${n == 1 ? '' : 's'}'
+            : "Couldn't forward — try again";
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   /// Step between picking a recipient and sending: when the message has text
@@ -4257,28 +4601,188 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final peerHex = c.uid;
     if (id == null || peerHex.isEmpty) return;
     final Map<String, dynamic> payload;
+    // STREAM I: carry `fwd:true` (Stream K renders "↪ Forwarded") + keep the
+    // legacy `forwarded` key for the existing bubble renderer. NOTHING about the
+    // original sender travels (privacy, FWD-1).
     if (m.media != null) {
-      payload = {...m.media!.toEnvelope(), 'forwarded': true};
+      payload = {...m.media!.toEnvelope(), 'fwd': true, 'forwarded': true};
       final cap = (caption ?? _mediaCaptionOf(m)).trim();
       if (cap.isEmpty) { payload.remove('cap'); } else { payload['cap'] = cap; }
     } else {
-      payload = {'t': 'text', 'body': caption ?? m.text, 'forwarded': true};
+      payload = {'t': 'text', 'body': caption ?? m.text, 'fwd': true, 'forwarded': true};
     }
     Analytics.capture('chat_message_forwarded', {
       'has_media': m.media != null,
       'media_kind': m.media?.kind.name ?? 'text',
       'edited_caption': caption != null,
       'conv_kind': _isGroup ? 'group' : 'dm',
+      'n_targets': 1,
+      'n_groups': 0,
     });
     try {
-      // Cloudflare-native: forward = one-off send to the peer's InboxDO over HTTP.
-      await ApiAuth.postJson(kMsgSendUrl, {
-        'to': peerHex, 'kind': 'text', 'body': jsonEncode(payload),
-        'client_id': 'fwd_${DateTime.now().millisecondsSinceEpoch}',
+      // STREAM I: route single-contact forwards through /api/msg/forward too, so
+      // the rate cap + liveness guard apply uniformly. Media re-references the
+      // SAME R2 key via media_ref (no re-upload — FWD-2, all cases).
+      await ApiAuth.postJson(kMsgForwardUrl, {
+        'kind': 'text', 'body': jsonEncode(payload),
+        if (m.media?.id != null) 'media_ref': m.media!.id,
+        'targets': [{'to': peerHex}],
       });
       PushService.notifyMessage([c.uid], _myName ?? 'AvaTOK');
     } catch (_) {}
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Forwarded to ${c.name}')));
+  }
+
+  // ---- STREAM G [GROUP-AI-2/3] per-member group translation ----
+  /// Toggle "Translate this group for me". When turned ON, translate the loaded
+  /// TEXT messages into the user's Stream-A language on FETCH (server caches per
+  /// msg_id+lang). Voice notes are not translated (only text rows are sent).
+  Future<void> _toggleGroupTranslate() async {
+    if (!(widget.chat.group || widget.chat.gid != null)) return;
+    final turningOn = !_groupTranslateOn;
+    setState(() => _groupTranslateOn = turningOn);
+    if (!turningOn) {
+      // Revert: drop the translations so bubbles show the original again.
+      setState(() { for (final m in _msgs) { m.extra?.remove('translated'); m.extra?.remove('translated_lang'); } });
+      Analytics.capture('group_translate_enabled', {'lang': _transLang.code, 'on': false});
+      return;
+    }
+    Analytics.capture('group_translate_enabled', {'lang': _transLang.code, 'on': true});
+    await _applyGroupTranslation();
+  }
+
+  /// Fetch translations for the currently-loaded, not-mine text messages of the
+  /// group into the remembered language and stash them on each bubble's extra so
+  /// the TranslatedText wrapper renders "translated · show original".
+  Future<void> _applyGroupTranslation() async {
+    if (!_groupTranslateOn || _groupTranslateBusy) return;
+    final conv = _serverConv;
+    if (conv == null) return;
+    final lang = _transLang.code;
+    // Only text rows the member actually fetched, no media/voice, not mine.
+    final targets = _msgs.where((m) => !m.me && m.special == null && m.media == null
+        && m.text.trim().isNotEmpty && (m.extra?['translated'] == null)).toList();
+    if (targets.isEmpty) return;
+    setState(() => _groupTranslateBusy = true);
+    final batch = <Map<String, String>>[
+      for (final m in targets) {'id': m.evId ?? '${m.id}', 'text': m.text.trim()},
+    ];
+    final out = await AiChatApi.groupTranslate(conv, lang, batch);
+    if (!mounted) { return; }
+    setState(() {
+      _groupTranslateBusy = false;
+      for (final m in targets) {
+        final t = out[m.evId ?? '${m.id}'];
+        if (t != null && t.isNotEmpty) {
+          (m.extra ??= <String, dynamic>{})['translated'] = t;
+          m.extra!['translated_lang'] = lang;
+        }
+      }
+    });
+  }
+
+  // ---- STREAM G [GROUP-AI-1] group catch-up ("What did I miss?") ----
+  /// Server conv id for THIS thread (or null if not resolvable yet).
+  String? get _serverConv {
+    final key = _convKey;
+    final myUid = _meId?.uid;
+    if (key == null || myUid == null || myUid.isEmpty) return null;
+    return serverConvFromKey(key, myUid);
+  }
+
+  /// Count of unread INCOMING messages currently loaded (drives the >25 gate).
+  int get _unreadIncoming => _msgs.where((m) => !m.me && m.special == null).length;
+
+  /// Whether the "What did I miss?" button should be offered: a group thread with
+  /// >25 unread and the messaging AvaBrain guardrail ON.
+  Future<bool> _catchupAvailable() async {
+    if (!(widget.chat.group || widget.chat.gid != null)) return false;
+    if (_unreadIncoming <= 25) return false;
+    return BrainConsent.isOn('messaging');
+  }
+
+  Future<void> _whatDidIMiss() async {
+    final conv = _serverConv;
+    if (conv == null) return;
+    if (!await BrainConsent.isOn('messaging')) {
+      if (mounted) _toast('Turn on AvaBrain for your messages in Settings to use catch-up.');
+      return;
+    }
+    setState(() { _catchupLoading = true; _catchupDismissed = false; });
+    // since_seq 0 = summarise the whole loaded unread window; the server pulls
+    // text-only from my own InboxDO and never stores the summary.
+    final bullets = await AiChatApi.catchup(conv, sinceSeq: 0);
+    if (!mounted) return;
+    setState(() {
+      _catchupLoading = false;
+      _catchupBullets = bullets;
+      _catchupCount = _unreadIncoming;
+    });
+    if (bullets.isEmpty) _toast('Nothing to catch up on.');
+  }
+
+  void _dismissCatchup() => setState(() { _catchupDismissed = true; _catchupBullets = const []; });
+
+  // ---- STREAM G [GROUP-AI-4] smart replies (DMs) ----
+  /// Debounced fetch after an incoming DM. Only fires for 1:1 threads when the
+  /// screen is mounted (open + foreground). Guardrail + flag are enforced server-side.
+  void _maybeFetchSmartReplies() {
+    if (widget.chat.group || widget.chat.gid != null) return; // DMs only
+    _smartReplyDebounce?.cancel();
+    _smartReplyDebounce = Timer(const Duration(milliseconds: 900), () async {
+      if (!mounted) return;
+      // Don't suggest replies to my own last message.
+      final tail = _msgs.where((m) => m.special == null && m.text.trim().isNotEmpty).toList();
+      if (tail.isEmpty || tail.last.me) { if (_smartReplies.isNotEmpty) setState(() => _smartReplies = const []); return; }
+      final last4 = tail.length <= 4 ? tail : tail.sublist(tail.length - 4);
+      final payload = <Map<String, Object>>[
+        for (final m in last4) {'me': m.me, 'text': m.text.trim()},
+      ];
+      final s = await AiChatApi.smartReplies(payload);
+      if (!mounted) return;
+      setState(() => _smartReplies = s);
+    });
+  }
+
+  void _insertSmartReply(String text) {
+    Analytics.capture('smart_reply_used', {'len': text.length});
+    _ctrl.text = _ctrl.text.isEmpty ? text : '${_ctrl.text} $text';
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+    setState(() { _hasText = _ctrl.text.trim().isNotEmpty; _smartReplies = const []; });
+    _composerFocus.requestFocus();
+  }
+
+  // ---- STREAM G [GROUP-AI-5] inline translate one bubble ----
+  Future<void> _inlineTranslate(_Msg m) async {
+    if (!await BrainConsent.isOn('messaging')) {
+      if (mounted) _toast('Turn on AvaBrain for your messages in Settings to translate.');
+      return;
+    }
+    final text = m.text.trim();
+    if (text.isEmpty) return;
+    final to = _transLang.code; // user's Stream-A / remembered language
+    // Local drift cache first (scoped per account) so a re-translate is free.
+    final cached = await _msgStore.readTranslation(m.evId ?? '${m.id}', to);
+    if (cached != null && cached.isNotEmpty) {
+      if (mounted) _showInlineTranslation(m, cached, to);
+      return;
+    }
+    _toast('Translating…');
+    final out = await AiChatApi.translate(text, to);
+    if (!mounted) return;
+    if (out == null) { _toast('Could not translate.'); return; }
+    Analytics.capture('inline_translate_used', {'lang': to});
+    try { await _msgStore.writeTranslation(m.evId ?? '${m.id}', to, out); } catch (_) {}
+    _showInlineTranslation(m, out, to);
+  }
+
+  /// Stash the translation on the message's `extra` so the bubble can render it
+  /// under the original (via TranslatedText) without touching Stream K geometry.
+  void _showInlineTranslation(_Msg m, String translated, String lang) {
+    setState(() {
+      (m.extra ??= <String, dynamic>{})['translated'] = translated;
+      m.extra!['translated_lang'] = lang;
+    });
   }
 
   // ---- header overflow ----
@@ -4296,6 +4800,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           if (kDiscussWithAvaEnabled && _convKey != null)
             _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Discuss with Ava',
                 _discussWithAva),
+          // STREAM G [GROUP-AI-1]: catch-up on a busy group thread. Shown only for
+          // a group with >25 unread; the guardrail is re-checked in _whatDidIMiss.
+          if ((widget.chat.group || widget.chat.gid != null) && _unreadIncoming > 25)
+            _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'What did I miss?',
+                () { Navigator.pop(ctx); _whatDidIMiss(); }),
+          // STREAM G [GROUP-AI-2/3]: per-member "translate this group for me".
+          // Hidden while the groupTranslationEnabled flag (cost watch) is OFF.
+          if ((widget.chat.group || widget.chat.gid != null) && RemoteConfig.groupTranslationEnabled)
+            _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                _groupTranslateOn ? 'Stop translating this group' : 'Translate this group for me',
+                () { Navigator.pop(ctx); _toggleGroupTranslate(); }),
           _action(ctx, PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold), 'Search',
               () { Navigator.pop(ctx); setState(() { _searchMode = true; _searchQuery = ''; }); }),
           _action(ctx, PhosphorIcons.images(PhosphorIconsStyle.bold), 'Media, links & docs',
@@ -4624,6 +5139,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             if (_isTelThread && !_callerSaved && !_saveBannerDismissed) _saveContactBanner(),
             // Ongoing group conference (Phase 10) — joinable, not ringing.
             if (widget.chat.gid != null && _confLive && RemoteConfig.conferenceEnabled) _confBanner(),
+            // STREAM G [GROUP-AI-1]: the catch-up summary card, pinned above the
+            // thread (dismissible). Rendered only when we have bullets to show.
+            if (!_catchupDismissed && _catchupBullets.isNotEmpty)
+              CatchupCard(bullets: _catchupBullets, msgCount: _catchupCount, onDismiss: _dismissCatchup),
             Expanded(
               child: DecoratedBox(
                 decoration: BoxDecoration(gradient: wallpaperGradient(_wallpaperId)),
@@ -4671,7 +5190,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 final headerCount = showArchiveHeader ? 1 : 0;
                 return ListView.builder(
                   controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  // [UI-BUBBLE-1] Symmetric 12dp horizontal thread padding for both
+                  // incoming & outgoing (bubbles cap at 78% of the thread width).
+                  padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
                   itemCount: visible.length + headerCount,
                   itemBuilder: (c, i) {
                     if (showArchiveHeader && i == 0) return _olderMessagesDivider();
@@ -4694,7 +5215,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             if (_mentionMatches.isNotEmpty) _mentionBar(),
             // Unknown-number threads are a one-way voicemail record (no live peer
             // to reply to), so the composer is replaced with a read-only note.
+            // STREAM G [GROUP-AI-4]: smart-reply chips above the input (DMs only).
+            if (!_isTelThread && _smartReplies.isNotEmpty)
+              SmartReplyChips(suggestions: _smartReplies, onTap: _insertSmartReply),
+            // STREAM B (SAFE-GATE-2): a pending stranger thread replaces the
+            // composer with the safety gate bar (Safety/Block/Report/Accept).
+            // Message list stays scrollable above; no typing indicator/composer.
             if (_isTelThread) SafeArea(top: false, child: _telFooter())
+            else if (_strangerGatePending && StrangerGateBar.enabled && _serverConv != null)
+              SafeArea(top: false, child: StrangerGateBar(
+                conv: _serverConv!,
+                peerUid: _peerNpub ?? widget.chat.seed,
+                peerName: widget.chat.name,
+                onAccepted: () => setState(() { _strangerGatePending = false; _threadAcceptState = 'accepted'; }),
+                onBlockedOrReported: () { if (mounted) Navigator.of(context).maybePop(); },
+              ))
             else SafeArea(top: false, child: _inputBar()),
           ],
         ),
@@ -4737,6 +5272,45 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final uid = _meId?.uid;
     if (key == null || uid == null || uid.isEmpty) return null;
     return serverConvFromKey(key, uid);
+  }
+
+  // STREAM B (SAFE-GATE-1/2): gate a NEW thread from a NON-CONTACT. The contact
+  // check is client-side (ContactsStore is local); the server enforces the
+  // receipt suppression once the state is 'pending'. We reconcile with the
+  // server (multi-device) but render the local decision instantly.
+  Future<void> _initStrangerGate(String peerHex) async {
+    if (!StrangerGateBar.enabled) return;
+    final conv = _serverConv;
+    if (conv == null || peerHex.isEmpty) return;
+    try {
+      // Respect an explicit stored/server decision. NOTE: 'accepted' is also the
+      // DEFAULT for a fresh thread, so we do NOT early-return on accepted here —
+      // the contact check + inbound/outbound guards below decide a new thread. Only
+      // a blocked thread short-circuits (handled elsewhere).
+      final serverState = await StrangerGateApi.state(conv);
+      if (serverState == AcceptState.blocked) return;
+      // If I already explicitly accepted (I have outbound below) this stays open.
+      // Confirm the peer is really a non-contact before gating.
+      final contacts = await ContactsStore().load();
+      final isContact = contacts.any((c) => c.uid == peerHex);
+      if (isContact) { if (mounted) setState(() => _threadAcceptState = 'accepted'); return; } // a saved contact is never gated
+      // Only INBOUND-first threads are gated: if I already sent in this thread I
+      // initiated contact (e.g. marketplace "Contact seller"), so no gate. History
+      // loads async, so we re-check once (the send path also clears the gate via
+      // implicit-accept). Empty thread with no inbound → nothing to gate yet.
+      final hasOutbound = _msgs.any((m) => m.me);
+      final hasInbound = _msgs.any((m) => !m.me);
+      if (hasOutbound || !hasInbound) return;
+      // Non-contact. If the server hasn't recorded a pending state yet (a brand-new
+      // inbound thread reads as the 'accepted' default), DECLARE it pending so the
+      // server starts suppressing our read-receipts to the stranger.
+      if (serverState != AcceptState.pending) {
+        await StrangerGateApi.declarePending(conv);
+      }
+      if (!mounted) return;
+      setState(() { _strangerGatePending = true; _threadAcceptState = 'pending'; });
+      StrangerGateBar.trackShown(conv, peerHex);
+    } catch (_) { /* fail open — no gate rather than a broken thread */ }
   }
 
   Future<void> _loadGuardian() async {
@@ -4829,6 +5403,33 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           const SizedBox(width: 8),
           Expanded(child: Text('Recording… tap to send', style: ZineText.value(size: 14))),
           _sendCircle(PhosphorIcons.paperPlaneRight(PhosphorIconsStyle.fill), _toggleRecord),
+        ]),
+      );
+    }
+    // STREAM E: WhatsApp-parity rich input bar + emoji/GIF/sticker panel (flag ON
+    // by default). Reuses the SAME handlers as the legacy row below (_send,
+    // _attach, camera, _toggleRecord, _onInputChanged) so send/attach/camera/mic
+    // behaviour is unchanged; adds the emoji/GIF/sticker panel + GIF/sticker send.
+    // The reply/listening banners + quick-tools ride in `topSlot`. When the flag
+    // is OFF we fall through to the legacy composer below.
+    if (RemoteConfig.richInputEnabled) {
+      return RichInputBar(
+        controller: _ctrl,
+        focusNode: _composerFocus,
+        hasText: _hasText,
+        hintText: _avaMode ? 'Ask Ava privately…' : 'Message',
+        fieldColor: _avaMode ? Zine.lilac : Zine.card,
+        onSend: _send,
+        onAttach: _attach,
+        onCamera: () => _pickImage(ImageSource.camera),
+        onMic: _toggleRecord,
+        onChanged: _onInputChanged,
+        onGif: _sendGif,
+        onSticker: _sendStickerAsset,
+        topSlot: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (_replyTo != null || _editing != null) _replyBanner(),
+          if (_sttActive) _listeningBanner(),
+          _composerTools(),
         ]),
       );
     }
@@ -6088,6 +6689,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // conversation", never confused with a green message to a person.
     final toAva = m.me && m.aiLocal;
     final onRight = m.me && !isAva;
+    // [UI-BUBBLE-2] "media IS the bubble": for a bare image/video (no caption,
+    // no reply, no special kind) the media fills the bubble edge-to-edge and the
+    // forwarded label + timestamp/status overlay ON the media (bottom-right scrim
+    // + top-left label) instead of the normal below-bubble rows.
+    final _mediaKind = m.media?.kind ??
+        (m.localBytes != null ? MediaKind.image : null);
+    final isPureMedia = m.special == null &&
+        hasMedia &&
+        m.replyTo == null &&
+        _mediaCaptionOf(m).isEmpty &&
+        !isStickerName(m.media?.name ?? '') && // stickers keep their own bubble-less path
+        (_mediaKind == MediaKind.image || _mediaKind == MediaKind.video);
     final core = GestureDetector(
         // Phase 5: long-press / right-click → floating reaction pill anchored at
         // the touch point. Double-tap → quick ❤️ (toggle), like iMessage.
@@ -6110,21 +6723,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               // uploading attachment (m.media == null) doesn't fall back to the
               // wide text padding — that was the broad white border on sent media.
               // Voice notes stay on the normal padding (they're an inline row).
-              padding: (m.special == null &&
-                      hasMedia &&
-                      (m.media?.kind ??
-                              (m.localBytes != null ? MediaKind.image : MediaKind.file)) !=
-                          MediaKind.audio)
-                  ? const EdgeInsets.all(3)
-                  : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              // [UI-BUBBLE-2] pure image/video = ZERO padding so the media reaches
+              // the bubble edge (the media IS the bubble); other media keep the 3px
+              // hug; text/voice keep the wide padding.
+              padding: isPureMedia
+                  ? EdgeInsets.zero
+                  : (m.special == null &&
+                          hasMedia &&
+                          (m.media?.kind ??
+                                  (m.localBytes != null ? MediaKind.image : MediaKind.file)) !=
+                              MediaKind.audio)
+                      ? const EdgeInsets.all(3)
+                      : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               // Ava email-card and GenUI/A2UI bubbles need more room (the design
-              // uses ~92%); everything else stays at the standard 76%.
+              // uses ~92%); everything else stays at the standard [UI-BUBBLE-1] 78%
+              // (symmetric for incoming & outgoing — text sizes to content up to this).
               constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(context).size.width *
                       (((m.extra?['emails'] is List && (m.extra!['emails'] as List).isNotEmpty) ||
                               m.extra?['a2ui'] is Map)
                           ? 0.92
-                          : 0.76)),
+                          : 0.78)),
               // Chat bubble (§7.14): 2.5px ink border, radius 16 with one
               // squared corner toward the sender; me = lime, them = card.
               decoration: BoxDecoration(
@@ -6147,6 +6766,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   bottomRight: Radius.circular(onRight ? 4 : 16),
                 ),
               ),
+              // [UI-BUBBLE-2] clip edge-to-edge media to the bubble's rounded shape.
+              clipBehavior: isPureMedia ? Clip.antiAlias : Clip.none,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -6165,7 +6786,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                             style: ZineText.tag(size: 9.5, color: Zine.ink)),
                       ]),
                     ),
-                  if (m.forwarded)
+                  // [UI-BUBBLE-2] For pure media the FORWARDED label overlays the
+                  // media (top-left) instead of this inline row.
+                  if (m.forwarded && !isPureMedia)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 1),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -6198,7 +6821,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     ),
                   if (m.special != null) _specialContent(m)
                   else if (hasMedia) ...[
-                    _mediaContent(m),
+                    // [UI-BUBBLE-2] pure image/video → media fills edge-to-edge with
+                    // the forwarded label + timestamp/status overlaid on it.
+                    _mediaContent(m, overlayMeta: isPureMedia),
                     // WhatsApp-style caption: the attachment's own text, in the
                     // SAME bubble. A hairline divider above it separates the media
                     // area from the text area so the two read as distinct zones.
@@ -6219,6 +6844,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     ],
                   ]
                   else _textContent(m),
+                  // [UI-BUBBLE-2] pure media carries its timestamp/status as an
+                  // overlay scrim on the media itself, so skip this inline row.
+                  if (!isPureMedia)
                   Padding(
                     padding: const EdgeInsets.only(top: 3, left: 2, right: 2),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -6399,8 +7027,44 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // rich card with inline playback right inside the chat (no leaving the thread).
   Widget _textContent(_Msg m) {
     final style = ZineText.sub(size: 13.5, color: Zine.ink);
-    final ytId = firstYouTubeId(m.text);
     final link = ChatLinkText(text: m.text, style: style);
+
+    // STREAM G [GROUP-AI-3/5]: translated bubble → "show original" toggle. Wraps
+    // the ORIGINAL child; does NOT alter Stream K geometry.
+    final translated = m.extra?['translated'] as String?;
+    if (translated != null && translated.trim().isNotEmpty) {
+      // Translations suppress the preview card (the text is the point).
+      return TranslatedText(original: link, translated: translated, translatedStyle: style);
+    }
+
+    // STREAM C [PREVIEW-3]: STRANGER GATE — while the thread's accept_state is
+    // pending, render raw URL text only (never a card). Also honours the master
+    // linkPreviewsEnabled flag ([PREVIEW-4]).
+    final pending = _threadAcceptState == 'pending';
+    if (pending || !RemoteConfig.linkPreviewsEnabled) return link;
+
+    // Preferred path: render the card from the SENDER's compose-time envelope
+    // preview (m.extra['preview']) — zero recipient fetch.
+    final envPreview = LinkPreview.fromEnvelope(m.extra?['preview']);
+    if (envPreview != null) {
+      final card = buildLinkPreviewCard(envPreview, pending: pending);
+      if (card != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && envPreview.isYouTube) {
+            Analytics.capture('chat_youtube_card_shown', {'video_id': envPreview.videoId});
+          }
+        });
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [link, const SizedBox(height: 6), card],
+        );
+      }
+    }
+
+    // Fallback (older messages / sender had no preview): keep the legacy inline
+    // YouTube card so a bare youtube link still plays inline.
+    final ytId = firstYouTubeId(m.text);
     if (ytId == null) return link;
     final ytUrl = urlSpans(m.text)
         .map((s) => s.url)
@@ -6415,12 +7079,61 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     ]);
   }
 
-  Widget _mediaContent(_Msg m) {
+  /// [UI-BUBBLE-2] The overlay stack children for an edge-to-edge image/video:
+  /// the "↪ Forwarded" label (top-left, when fwd:true) and the timestamp/status
+  /// scrim (bottom-right). White-on-scrim so it reads over any image.
+  List<Widget> _mediaMetaOverlays(_Msg m) {
+    final st = _statusFor(m);
+    final trailing = Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(m.ts != 0 ? _relTime(m.ts) : m.time,
+          style: ZineText.tag(size: 10, color: Colors.white)),
+      if (m.expireAt != null) ...[
+        const SizedBox(width: 4),
+        PhosphorIcon(PhosphorIcons.timer(PhosphorIconsStyle.bold), size: 11, color: Colors.white),
+      ],
+      if (st != null) ...[
+        const SizedBox(width: 5),
+        Icon(st.icon, size: 13, color: st.color == Zine.blueInk ? const Color(0xFF7EC8FF) : Colors.white),
+      ],
+    ]);
+    return [
+      if (m.forwarded) const MediaForwardedLabel(),
+      MediaTimestampScrim(trailing: trailing),
+    ];
+  }
+
+  Widget _mediaContent(_Msg m, {bool overlayMeta = false}) {
+    // STREAM E: sticker media (tagged via stickerMediaName). Renders at a fixed
+    // 160dp via StickerMediaView. NOTE: the surrounding bubble still applies its
+    // padding/background — the fully bubble-LESS geometry is a Stream K hook (see
+    // the eng report). This branch keeps sticker rendering in the content method
+    // where it belongs, without touching bubble geometry.
+    final stName = m.media?.name ?? '';
+    if (isStickerName(stName)) {
+      final bytes = m.localBytes;
+      if (bytes != null) return StickerMediaView(bytes: bytes, mine: m.me);
+      if (m.media != null) {
+        return FutureBuilder<Uint8List>(
+          future: MediaService.downloadAndDecrypt(m.media!),
+          builder: (c, snap) => snap.hasData
+              ? StickerMediaView(bytes: snap.data!, mine: m.me)
+              : const SizedBox(width: kStickerRenderSize, height: kStickerRenderSize),
+        );
+      }
+    }
     final kind = m.media?.kind ??
         (m.localBytes != null ? MediaKind.image : MediaKind.file); // best guess pre-upload
     switch (kind) {
       case MediaKind.image:
         if (m.localBytes != null) {
+          // [UI-BUBBLE-2] edge-to-edge, 78%-wide, ≤320dp, overlaid meta.
+          if (overlayMeta) {
+            return ChatImageCard(
+              bytes: m.localBytes!,
+              onTap: () => _openImageBytes(m.localBytes!, mime: m.media?.contentType),
+              overlays: _mediaMetaOverlays(m),
+            );
+          }
           // Tap → full-screen, pinch-to-zoom viewer with an X to close (and a
           // Copy button). Long-press still opens the message action sheet.
           return GestureDetector(
@@ -6432,11 +7145,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           );
         }
         if (m.media != null) {
+          // STREAM J (D17): auto-download off + no local bytes -> tap-to-download
+          // placeholder instead of eagerly fetching. Tapping is a MANUAL fetch
+          // (always allowed); it caches into m.localBytes and repaints the preview.
+          if (!_mediaAutoFetch) {
+            return MediaDownloadPlaceholder(
+              key: ValueKey('imgph_${m.media!.id}'),
+              media: m.media!,
+              width: 220,
+              height: 160,
+              onFetched: (bytes) {
+                if (!mounted) return;
+                setState(() => m.localBytes = bytes);
+              },
+            );
+          }
           return FutureBuilder<Uint8List>(
             future: MediaService.downloadAndDecrypt(m.media!),
             builder: (ctx, snap) {
               if (snap.hasData) {
                 m.localBytes = snap.data; // cache decrypted bytes
+                // [UI-BUBBLE-2] edge-to-edge, 78%-wide, ≤320dp, overlaid meta.
+                if (overlayMeta) {
+                  return ChatImageCard(
+                    bytes: snap.data!,
+                    onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
+                    overlays: _mediaMetaOverlays(m),
+                  );
+                }
                 return GestureDetector(
                   onTap: () => _openImageBytes(snap.data!, mime: m.media?.contentType),
                   child: ClipRRect(
@@ -6455,27 +7191,58 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         }
         return _fileChip(m, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photo');
       case MediaKind.audio:
-        final playing = _playingAudioId == m.id;
-        return GestureDetector(
-          onTap: () => _playAudio(m),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(
-                playing
-                    ? PhosphorIcons.pauseCircle(PhosphorIconsStyle.fill)
-                    : PhosphorIcons.playCircle(PhosphorIconsStyle.fill),
-                color: Zine.ink, size: 30),
-            const SizedBox(width: 8),
-            Text('Voice message', style: ZineText.value(size: 14)),
-          ]),
+        // STREAM J (D17): auto-download off + nothing cached -> small download
+        // button. Tapping fetches (manual = allowed) and repaints into play control.
+        if (!_mediaAutoFetch && m.localBytes == null && m.media != null) {
+          return MediaDownloadPlaceholder(
+            key: ValueKey('audioph_${m.media!.id}'),
+            media: m.media!,
+            compact: true,
+            onFetched: (bytes) {
+              if (!mounted) return;
+              setState(() => m.localBytes = bytes);
+            },
+          );
+        }
+        // [UI-BUBBLE-3] rich voice-note bubble: large circular play, waveform,
+        // live duration, and a 1x/1.5x/2x speed chip after play starts.
+        return VoiceNoteBubble(
+          key: ValueKey('voice_${m.media?.id ?? m.id}'),
+          playing: _playingAudioId == m.id,
+          speed: _audioSpeed,
+          onRight: m.me && !_isAvaBubble(m),
+          onPlayPause: () => _playAudio(m),
+          onCycleSpeed: _cycleAudioSpeed,
         );
       case MediaKind.video:
         // Rich card: first-frame thumbnail + tap-to-play inline; the expand
-        // glyph opens the fullscreen player.
+        // glyph opens the fullscreen player. [UI-BUBBLE-2] when it's the whole
+        // bubble, fill the width (≤78%, capped ~320dp by the card's 16:9) and
+        // overlay the forwarded label + timestamp scrim.
+        if (overlayMeta) {
+          return LayoutBuilder(builder: (ctx, cons) {
+            final w = cons.maxWidth.isFinite
+                ? cons.maxWidth
+                : MediaQuery.of(context).size.width * 0.78;
+            return Stack(children: [
+              ChatVideoCard(
+                key: ValueKey('vid_${m.media?.id ?? m.id}'),
+                media: m.media,
+                localBytes: m.localBytes,
+                width: w,
+                autoFetch: _mediaAutoFetch,
+                onFullscreen: () => _openVideo(m),
+              ),
+              ..._mediaMetaOverlays(m),
+            ]);
+          });
+        }
         return ChatVideoCard(
           key: ValueKey('vid_${m.media?.id ?? m.id}'),
           media: m.media,
           localBytes: m.localBytes,
           width: 220,
+          autoFetch: _mediaAutoFetch,
           onFullscreen: () => _openVideo(m),
         );
       case MediaKind.file:
@@ -6484,16 +7251,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         final fname = (m.media?.name.isNotEmpty == true)
             ? m.media!.name
             : m.text.replaceFirst('📎 ', '');
-        return ChatFileCard(
-          key: ValueKey('file_${m.media?.id ?? m.id}'),
-          media: m.media,
-          localBytes: m.localBytes,
-          name: fname,
-          mime: m.media?.contentType ?? '',
-          size: m.media?.size ?? (m.localBytes?.length ?? 0),
-          width: 240,
-          onOpen: () => _openFile(m, fname),
-        );
+        // [UI-BUBBLE-2] full-width file row (no dead right space): fill the bubble
+        // width so the filename can use the whole line, ellipsised.
+        return LayoutBuilder(builder: (ctx, cons) {
+          final w = cons.maxWidth.isFinite && cons.maxWidth > 0
+              ? cons.maxWidth
+              : MediaQuery.of(context).size.width * 0.78;
+          return ChatFileCard(
+            key: ValueKey('file_${m.media?.id ?? m.id}'),
+            media: m.media,
+            localBytes: m.localBytes,
+            name: fname,
+            mime: m.media?.contentType ?? '',
+            size: m.media?.size ?? (m.localBytes?.length ?? 0),
+            width: w,
+            autoFetch: _mediaAutoFetch,
+            onOpen: () => _openFile(m, fname),
+          );
+        });
     }
   }
 

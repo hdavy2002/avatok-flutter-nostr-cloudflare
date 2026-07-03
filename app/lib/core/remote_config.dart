@@ -44,6 +44,20 @@ class RemoteConfig {
   static bool get translationGroupEnabled => _b('translationGroupEnabled', false);
   static bool get avavoiceEnabled => _b('avavoiceEnabled', false);
   static bool get avavisionEnabled => _b('avavisionEnabled', false);
+  // STREAM G (AI in chats). Mirrors config.ts flags of the same name.
+  /// [GROUP-AI-2] per-member group translation (translate on fetch). Default OFF
+  /// (cost watch) — the "Translate this group for me" toggle is hidden while off.
+  static bool get groupTranslationEnabled => _b('groupTranslationEnabled', false);
+  /// [GROUP-AI-4] DM smart-reply suggestion chips. Default ON.
+  static bool get smartRepliesEnabled => _b('smartRepliesEnabled', true);
+  /// [GROUP-AI-6] auto scam-scan a stranger thread on first render. Default ON.
+  static bool get scamAutoScanEnabled => _b('scamAutoScanEnabled', true);
+  /// STREAM I (AI Messenger Batch): unlimited forwarding + forward-to-groups.
+  /// Master kill switch for the whole forwarding feature — the multi-select
+  /// forward sheet and the /api/msg/forward route both gate on this. Default ON
+  /// (per spec FWD-4); flip OFF in KV to fall back to hiding Forward if abuse
+  /// ever spikes. Mirrors config.ts `unlimitedForwardEnabled`.
+  static bool get unlimitedForwardEnabled => _b('unlimitedForwardEnabled', true);
   /// FREE LAUNCH: no paywalls. When true, the whole client renders premium and
   /// no upgrade/metering UI shows. Mirrors KV `betaFreePremium`.
   static bool get betaFreePremium => _b('betaFreePremium', true);
@@ -52,6 +66,13 @@ class RemoteConfig {
   static bool get billingEnabled => _b('billingEnabled', false);
   /// AI receptionist (Gemini Live) — ON for the free launch. Mirrors KV.
   static bool get receptionistEnabled => _b('receptionistEnabled', true);
+  /// MKT-LANG (AI Messenger Batch, STREAM A): the "Marketplace Agent" settings
+  /// surface (default language/voice/tone + negotiation guardrails). Default ON;
+  /// the settings tile hides when false. Mirrors config.ts.
+  static bool get marketplaceAgentSettingsEnabled => _b('marketplaceAgentSettingsEnabled', true);
+  /// MKT-LANG-3: English-canonical negotiation + per-recipient translation +
+  /// quiet-hours/floor/ask-before-commit guardrails. Default ON. Mirrors config.ts.
+  static bool get mktI18nNegotiationEnabled => _b('mktI18nNegotiationEnabled', true);
   /// P1 call-reliability: gate the caller's Ava-takeover countdown on the server's
   /// ring-ack (incoming-call FCM push outcome). Ships dark (default OFF); flip in
   /// KV after a device test. Mirrors config.ts `receptTakeoverGuard`.
@@ -59,6 +80,12 @@ class RemoteConfig {
   /// P4: require video-liveness verification before creating/publishing a listing.
   /// Ships dark (default OFF); flip ON at launch. Mirrors config.ts.
   static bool get listingLivenessGate => _b('listingLivenessGate', false);
+  /// STREAM H (AI Messenger Batch): onboarding "human check" hard gate. When ON,
+  /// every account must pass liveness the moment it's created (D12) and existing
+  /// unverified users are redirected on app open (D13, non-dismissible). Server
+  /// enforcement (bypass-proof) mirrors this via authz.requireLiveness. Ships dark
+  /// (default OFF); flip ON in KV platform_config.livenessOnboardingGate.
+  static bool get livenessOnboardingGate => _b('livenessOnboardingGate', false);
   /// P11: mandatory + AI-vetted profile completion. Ships dark (default OFF); flip
   /// ON at launch. When on, an incomplete profile is routed to the Profile screen
   /// before the app, and the save shows a hold state while the server vets. Mirrors config.ts.
@@ -100,6 +127,21 @@ class RemoteConfig {
   /// fetch failure and during phased rollout — flip `marketplaceEnabled: true`
   /// in KV `platform_config` to surface the Marketplace menu + agent calls.
   static bool get marketplaceEnabled => _b('marketplaceEnabled', false);
+  /// Link previews + inline YouTube (AI Messenger Batch — STREAM C). Mirrors the
+  /// KV `linkPreviewsEnabled` flag. Default ON. When false the chat renders raw
+  /// link text only and never calls /api/unfurl. Mirrors [kLinkPreviewsEnabledDefault].
+  static bool get linkPreviewsEnabled => _b('linkPreviewsEnabled', kLinkPreviewsEnabledDefault);
+  /// WhatsApp-parity rich input bar + emoji/GIF/sticker panel (AI Messenger
+  /// Batch — STREAM E). Mirrors the KV `richInputEnabled` flag. Default ON. When
+  /// false the chat falls back to the legacy composer row (no emoji/GIF/sticker
+  /// panel, no GIF/sticker send). Add `richInputEnabled: true` to the config.ts
+  /// PlatformConfig interface + defaults so it can be flipped from KV.
+  static bool get richInputEnabled => _b('richInputEnabled', true);
+  /// STREAM B (stranger safety gate). When false the whole feature is hidden: a
+  /// new non-contact thread renders the normal composer (no gate), no Message
+  /// requests grouping, no media blur. Default ON (safety ships enabled). Mirrors
+  /// config.ts `strangerGateEnabled`.
+  static bool get strangerGateEnabled => _b('strangerGateEnabled', true);
   static int get minAppBuild => (_cfg['minAppBuild'] as num?)?.toInt() ?? 0;
 
   /// Installed build too old? → callers show the blocking "please update" screen.

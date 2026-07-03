@@ -127,6 +127,8 @@ const String kInboxWsUrl = 'wss://$kSignalingHost/api/inbox';
 // wss://host/api/party?room=<type:id>&token=<clerk jwt>. See sync/party/party_hub.dart.
 const String kPartyWsUrl = 'wss://$kSignalingHost/api/party';
 const String kMsgSendUrl = 'https://$kSignalingHost/api/msg/send';
+// STREAM I: multi-target forward (DMs + groups in one call, server rate-capped).
+const String kMsgForwardUrl = 'https://$kSignalingHost/api/msg/forward';
 const String kMsgSyncUrl = 'https://$kSignalingHost/api/msg/sync';
 const String kMsgReceiptUrl = 'https://$kSignalingHost/api/msg/receipt';
 const String kMsgReadUrl = 'https://$kSignalingHost/api/msg/read';
@@ -141,11 +143,22 @@ const String kArchivePageUrl = 'https://$kSignalingHost/api/archive/page';
 // Phase 4 (ABLY-R2): persist a per-message reaction toggle (live ride is Ably).
 const String kMsgReactUrl = 'https://$kSignalingHost/api/msg/react';
 const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
+// STREAM C: link-preview unfurl (sender-side, compose time). GET ?url=<encoded>
+// → {type:'link'|'youtube', title, description, image, domain, video_id, thumb}.
+const String kUnfurlUrl = 'https://$kSignalingHost/api/unfurl';
 // Group membership management (Group Info screen).
 const String kConvMembersUrl = 'https://$kSignalingHost/api/conversations/members';
 const String kConvAddMembersUrl = 'https://$kSignalingHost/api/conversations/members/add';
 const String kConvInvitesUrl = 'https://$kSignalingHost/api/conversations/invites'; // GET my pending group invites
-const String kConvInviteRespondUrl = 'https://$kSignalingHost/api/conversations/invite/respond'; // POST {conv, accept}
+const String kConvInviteRespondUrl = 'https://$kSignalingHost/api/conversations/invite/respond'; // POST {conv, accept, block?}
+// STREAM B (stranger safety gate). Accept restores the composer; block blocks the
+// sender; report copies the last N envelopes to spam_reports then blocks; score is
+// owned by STREAM G (call best-effort, degrade on 404).
+const String kConvAcceptUrl = 'https://$kSignalingHost/api/conversations/accept'; // POST {conv}
+const String kConvBlockUrl = 'https://$kSignalingHost/api/conversations/block'; // POST {conv?, uid?}
+const String kConvAcceptStateUrl = 'https://$kSignalingHost/api/conversations/accept-state'; // GET ?conv=
+const String kSafetyReportUrl = 'https://$kSignalingHost/api/safety/report'; // POST {conv, last_n?}
+const String kSafetyScoreUrl = 'https://$kSignalingHost/api/safety/score'; // POST {conv} — STREAM G owns the route
 const String kConvRemoveMemberUrl = 'https://$kSignalingHost/api/conversations/members/remove';
 const String kConvSetRoleUrl = 'https://$kSignalingHost/api/conversations/members/role';
 const String kConvLeaveUrl = 'https://$kSignalingHost/api/conversations/leave';

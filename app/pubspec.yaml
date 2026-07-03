@@ -59,6 +59,10 @@ dependencies:
   # Encrypted chat media (pure-Dart AES-GCM) + pickers/record/playback
   cryptography: ^2.7.0
   image_picker: ^1.1.2
+  # Client-side video transcode (720p H.264) before a chat video is uploaded, so
+  # multi-hundred-MB source clips shrink to the 64 MB policy cap. Native
+  # (MediaCodec / AVFoundation) — no app-bundled encoder. See VIDPOL-1.
+  video_compress: ^3.1.4
   # Native on-device speech-to-text (phone's built-in recognizer) for instant
   # voice-to-text — no app-bundled model, no download, OS loads/unloads it. Cloud
   # Whisper stays as the fallback for devices without on-device recognition.
@@ -197,6 +201,10 @@ flutter:
     - assets/audio/catalog/   # bundled ringtone catalog (preview + set as default)
     - assets/models/   # AvaVision on-device vision models (MoveNet/MediaPipe Tasks)
     - assets/ai_studio/   # Google AI Studio key-setup step screenshots
+    # STREAM E: built-in sticker packs (.webp) for the emoji/GIF/sticker panel.
+    - assets/stickers/ava_hearts/
+    - assets/stickers/ava_reactions/
+    - assets/stickers/ava_paws/
   # AvaTOK design system fonts (bundled — offline-safe; see AVATOK-DESIGN-SYSTEM):
   # Nunito is the single app-wide font (owner request 2026-06-19).
   fonts:

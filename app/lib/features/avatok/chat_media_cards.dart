@@ -17,6 +17,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
 import '../../core/ui/zine.dart';
+import '../messaging/widgets/media_download_placeholder.dart';
 import 'media.dart';
 
 /// Rich in-chat preview cards (Issue: attachments rendered as bare filenames).
@@ -124,6 +125,255 @@ class ChatLinkText extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// [UI-BUBBLE-3] Voice-note bubble — LARGE circular play button (>=44dp touch
+// target), a static waveform bar (progress-tinted while playing), a live
+// duration on the right, and a playback-speed chip (1x/1.5x/2x) that appears
+// once playback has started. Same 78% max-width rule (governed by the parent
+// bubble's BoxConstraints). Playback itself is owned by the parent (one shared
+// AudioPlayer); this widget is pure presentation + callbacks.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class VoiceNoteBubble extends StatefulWidget {
+  const VoiceNoteBubble({
+    super.key,
+    required this.playing,
+    required this.speed,
+    required this.onPlayPause,
+    required this.onCycleSpeed,
+    this.onRight = false,
+  });
+
+  final bool playing;
+  final double speed; // 1.0 | 1.5 | 2.0
+  final VoidCallback onPlayPause;
+  final VoidCallback onCycleSpeed;
+  final bool onRight; // my message (lime) vs theirs (card) — tints the bars
+
+  @override
+  State<VoiceNoteBubble> createState() => _VoiceNoteBubbleState();
+}
+
+class _VoiceNoteBubbleState extends State<VoiceNoteBubble> {
+  // A stable, deterministic-looking waveform so the same note always draws the
+  // same shape (no random reshuffle on rebuild). 26 bars.
+  static const List<double> _bars = [
+    0.30, 0.55, 0.42, 0.78, 0.62, 0.90, 0.48, 0.70, 0.35, 0.60,
+    0.85, 0.52, 0.40, 0.72, 0.95, 0.58, 0.44, 0.66, 0.38, 0.80,
+    0.50, 0.68, 0.34, 0.74, 0.46, 0.88,
+  ];
+  Timer? _tick;
+  int _elapsed = 0; // seconds, live while playing (we don't store true duration)
+
+  @override
+  void didUpdateWidget(VoiceNoteBubble old) {
+    super.didUpdateWidget(old);
+    if (widget.playing && !old.playing) {
+      _elapsed = 0;
+      _tick?.cancel();
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() => _elapsed++);
+      });
+    } else if (!widget.playing && old.playing) {
+      _tick?.cancel();
+      _tick = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  String get _durLabel {
+    final m = _elapsed ~/ 60, s = _elapsed % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.playing;
+    final barPlayed = widget.onRight ? Zine.ink : Zine.blueInk;
+    final barIdle = Zine.ink.withValues(alpha: 0.28);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      // LARGE circular play/pause — 44dp touch target.
+      GestureDetector(
+        onTap: widget.onPlayPause,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Zine.lime,
+            shape: BoxShape.circle,
+            border: Border.all(color: Zine.ink, width: 2.5),
+            boxShadow: Zine.shadowXs,
+          ),
+          child: Center(
+            child: PhosphorIcon(
+              active
+                  ? PhosphorIcons.pause(PhosphorIconsStyle.fill)
+                  : PhosphorIcons.play(PhosphorIconsStyle.fill),
+              size: 20,
+              color: Zine.ink,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 10),
+      // Waveform — bars tint to `barPlayed` while playing, idle otherwise.
+      SizedBox(
+        width: 128,
+        height: 30,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (final h in _bars)
+              Container(
+                width: 2.6,
+                height: 6 + h * 22,
+                decoration: BoxDecoration(
+                  color: active ? barPlayed : barIdle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(width: 10),
+      Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(active ? _durLabel : 'Voice',
+              style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+          // Speed chip — only after playback has started.
+          if (active) ...[
+            const SizedBox(height: 3),
+            GestureDetector(
+              onTap: widget.onCycleSpeed,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Zine.card,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: Zine.ink, width: 1.5),
+                ),
+                child: Text(
+                  widget.speed == 1.0
+                      ? '1x'
+                      : (widget.speed == 1.5 ? '1.5x' : '2x'),
+                  style: ZineText.tag(size: 9.5, color: Zine.ink),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ]);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [UI-BUBBLE-2] Shared overlay pieces so media (image/video) can be THE bubble:
+// a bottom gradient scrim carrying the timestamp/status bottom-right, and a
+// "↪ Forwarded" label top-left. Compose these over any edge-to-edge media clip.
+// Other streams (I forwarded-label, C link-preview) reuse the same scrim idiom.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A bottom-right timestamp/status chip on a subtle dark gradient scrim, meant to
+/// be the last child of a Stack over an image/video. [trailing] is the caller's
+/// timestamp + delivery-status row (built with its own logic).
+class MediaTimestampScrim extends StatelessWidget {
+  const MediaTimestampScrim({super.key, required this.trailing});
+  final Widget trailing;
+  @override
+  Widget build(BuildContext context) => Positioned(
+        left: 0,
+        right: 0,
+        bottom: 0,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 16, 8, 6),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.transparent, Zine.ink.withValues(alpha: 0.55)],
+            ),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [trailing]),
+        ),
+      );
+}
+
+/// "↪ Forwarded" label overlaid top-left on media (render when envelope fwd:true).
+class MediaForwardedLabel extends StatelessWidget {
+  const MediaForwardedLabel({super.key});
+  @override
+  Widget build(BuildContext context) => Positioned(
+        left: 6,
+        top: 6,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: Zine.ink.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            PhosphorIcon(PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold),
+                size: 11, color: Colors.white),
+            const SizedBox(width: 3),
+            Text('FORWARDED', style: ZineText.tag(size: 8.5, color: Colors.white)),
+          ]),
+        ),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [UI-BUBBLE-2] Image card — the media IS the bubble: fills the bubble width
+// edge-to-edge, aspect-fits within a 320dp height cap (cover-crops extreme
+// sources), rounded clip, NO inner padding. Timestamp + forwarded overlays are
+// composed by the caller via the Stack children passed in [overlays].
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ChatImageCard extends StatelessWidget {
+  const ChatImageCard({
+    super.key,
+    required this.bytes,
+    this.onTap,
+    this.overlays = const [],
+    this.maxHeight = 320,
+  });
+  final Uint8List bytes;
+  final VoidCallback? onTap;
+  final List<Widget> overlays; // forwarded label, timestamp scrim
+  final double maxHeight;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Image.memory(
+              bytes,
+              // Fill the bubble width; cover-crop only the vertical excess.
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+          ...overlays,
+        ]),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Video card — first-frame thumbnail + tap-to-play inline.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -133,12 +383,17 @@ class ChatVideoCard extends StatefulWidget {
     required this.media,
     this.localBytes,
     this.width = 220,
+    this.autoFetch = true,
     this.onFullscreen,
   });
 
   final ChatMedia? media;
   final Uint8List? localBytes;
   final double width;
+  /// STREAM J (D17): when false, the card does NOT eagerly download to build the
+  /// thumbnail — it shows a tap-to-download placeholder instead. A manual tap
+  /// (play / download) still fetches. Once bytes are fetched they are cached.
+  final bool autoFetch;
   final VoidCallback? onFullscreen;
 
   @override
@@ -152,10 +407,19 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
   bool _starting = false;
   File? _tmp;
 
+  bool _needsDownload = false; // STREAM J: auto-download off & nothing cached yet
+
   @override
   void initState() {
     super.initState();
-    _makeThumb();
+    // STREAM J (D17): only eagerly fetch (to build the first-frame thumbnail)
+    // when auto-download is on or we already have local bytes. Otherwise show a
+    // tap-to-download placeholder; a tap fetches and then plays.
+    if (widget.autoFetch || widget.localBytes != null) {
+      _makeThumb();
+    } else {
+      _needsDownload = true;
+    }
   }
 
   @override
@@ -251,6 +515,20 @@ class _ChatVideoCardState extends State<ChatVideoCard> {
 
   @override
   Widget build(BuildContext context) {
+    // STREAM J (D17): auto-download off & nothing cached yet → tap-to-download.
+    // Tapping fetches the bytes, then builds the thumbnail + plays inline.
+    if (_needsDownload && widget.media != null) {
+      return MediaDownloadPlaceholder(
+        media: widget.media!,
+        width: widget.width,
+        height: widget.width * 9 / 16,
+        onFetched: (_) {
+          if (!mounted) return;
+          setState(() => _needsDownload = false);
+          _makeThumb();
+        },
+      );
+    }
     final c = _ctrl;
     if (c != null && c.value.isInitialized) {
       return ClipRRect(
@@ -365,6 +643,7 @@ class ChatFileCard extends StatefulWidget {
     this.mime = '',
     this.size = 0,
     this.width = 240,
+    this.autoFetch = true,
     this.onOpen,
   });
 
@@ -374,6 +653,11 @@ class ChatFileCard extends StatefulWidget {
   final String mime;
   final int size;
   final double width;
+  /// STREAM J (D17): when false, the card does NOT eagerly download to render a
+  /// PDF first-page thumbnail — it shows the typed card (name + size + OPEN),
+  /// which itself is the tap-to-download affordance (onOpen fetches). A manual
+  /// tap always fetches; fetched bytes are cached.
+  final bool autoFetch;
   final VoidCallback? onOpen;
 
   @override
@@ -389,7 +673,9 @@ class _ChatFileCardState extends State<ChatFileCard> {
   @override
   void initState() {
     super.initState();
-    if (_isPdf) _makePdfThumb();
+    // STREAM J (D17): only pre-render the PDF thumbnail (which requires a
+    // download) when auto-download is on or the bytes are already local.
+    if (_isPdf && (widget.autoFetch || widget.localBytes != null)) _makePdfThumb();
   }
 
   Future<Uint8List?> _bytes() async {
