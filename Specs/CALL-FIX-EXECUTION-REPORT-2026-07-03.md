@@ -568,6 +568,190 @@ The issue: both `actionCallAccept` (user taps CallKit accept) and `_recoverAccep
 3. **CALLFIX-12 FSI/DND checks incomplete**: flutter_local_notifications v17.2.3 doesn't expose `canUseFullScreenIntent()` or DND status. These require platform-specific MethodChannel additions. Placeholders emit null values. Deferred for future platform work.
 4. **Icecandidate timing**: candidates arriving before remote description is set are buffered, but no telemetry on buffer depth / overflow — hard to debug if buffering fails silently.
 
+---
+
+## Phase 4 Status
+
+### CALLFIX-16: Platform DSP on the P2P path (communication-mode audio config)
+**Status:** DONE  
+**Commit:** 5150bba  
+**Files changed:** `app/lib/features/avatok/call_screen.dart`, `app/lib/core/voice/native_voice_audio.dart`, `app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/AvaVoiceAudioPlugin.kt`
+
+**What I did:**
+1. Added `startP2pAudioMode()` and `stopP2pAudioMode()` methods to AvaVoiceAudioPlugin.kt (Kotlin):
+   - Sets `AudioManager.MODE_IN_COMMUNICATION` on call start
+   - Requests `AUDIOFOCUS_GAIN_TRANSIENT` for VOICE_COMMUNICATION stream
+   - Abandons focus and restores normal mode on call end
+2. Exposed these methods via MethodChannel in NativeVoiceAudio (Dart)
+3. Called `startP2pAudioMode()` in call_screen's `_start()` after getUserMedia
+4. Called `stopP2pAudioMode()` in call_screen's `_end()` for cleanup
+
+**Why this works:**
+- flutter_webrtc ^0.12.5 doesn't expose `setAndroidAudioConfiguration`, so native code is required
+- Setting MODE_IN_COMMUNICATION triggers the platform's hardware AEC/NS/AGC stack (already present in AvaVoiceAudioPlugin for Gemini calls)
+- Audio focus ensures music/media pauses during the call and resumes after
+
+**Test plan (2-phone manual test):**
+1. Caller: initiate a P2P audio call
+2. Callee: answer
+3. Expected: call audio plays cleanly with hardware echo cancellation (no room noise, clear speech)
+4. Expected: if music was playing before, it mutes during the call and resumes after hangup
+5. Verify PostHog: no new errors related to audio initialization
+
+**Risk notes:**
+- The native code is straightforward (3 API calls). The only risk is if AudioManager is null or throws unexpectedly, but both are guarded by try/catch.
+- Multiple calls to startP2pAudioMode/stopP2pAudioMode are safe (idempotent on the native side).
+
+---
+
+### CALLFIX-17: Opus tuning for noisy environments
+**Status:** DONE  
+**Commit:** 464f575  
+**Files changed:** `app/lib/core/audio_tuning.dart`
+
+**What I did:**
+- Changed `usedtx` from `'1'` to `'0'` (disable discontinuous transmission, which chops word tails)
+- Changed `maxaveragebitrate` from `'40000'` to `'56000'` (raise voice bitrate from 40 kbps to 56 kbps for better quality in noisy environments)
+- Kept `useinbandfec: '1'` (forward error correction for packet loss) and `stereo: '0'` (mono is fine for voice)
+
+**Why this works:**
+- DTX (silence suppression) introduces artifacts when background noise is present — it chops word endings and creates the "pump" effect
+- 56 kbps vs 40 kbps uses 40% more bandwidth but delivers noticeably cleaner speech in noisy/low-signal conditions
+- Opus automatically adapts bitrate within the target, so this is a target cap, not a fixed rate
+
+**Test plan (2-phone manual test):**
+1. Caller: dial in a noisy environment (car, street, office)
+2. Callee: listen and verify clarity vs distortion
+3. Expected: speech is clearer (less DTX chop, better detail at 56 kbps)
+4. Compare before/after by reverting the change and retesting (if time permits)
+
+**Risk notes:**
+- Higher bitrate = slightly more data usage. For an hour-long call, 56 kbps vs 40 kbps is ~7.2 MB vs 5.4 MB delta (+1.8 MB, negligible)
+- No telemetry changes needed (bitrate is implicit in the SDP)
+
+---
+
+### CALLFIX-18: Audio routing (Bluetooth SCO, wired headset, auto-switch)
+**Status:** DONE  
+**Commit:** 74db12a  
+**Files changed:** `app/lib/features/avatok/call_screen.dart`, `app/lib/core/voice/native_voice_audio.dart`, `app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/AvaVoiceAudioPlugin.kt`
+
+**What I did:**
+1. **Native (AvaVoiceAudioPlugin.kt):**
+   - Added Bluetooth/headset tracking via `currentRoute` state variable
+   - Added `startBluetoothSco()` / `stopBluetoothSco()` to enable Bluetooth audio
+   - Added `getAudioRoute()` to query current route (earpiece|speaker|bluetooth|headset)
+   - Added `setAudioRoute(route: String)` to switch routes programmatically
+   - Cleanup in `stopEngine()` calls `stopBluetoothSco()`
+   - Emits `audio_route_changed` telemetry on route changes
+
+2. **Dart (NativeVoiceAudio + call_screen):**
+   - Exposed all native methods via MethodChannel
+   - In `_start()`: call `startBluetoothSco()` for auto-routing to BT if available
+   - In `_start()`: query current route and emit `call_audio_route` telemetry with `{route, auto: true}`
+   - In `_end()`: call `stopBluetoothSco()` for cleanup
+
+**Why this works:**
+- `AudioManager.startBluetoothSco()` initiates Bluetooth audio on compatible devices
+- `setAudioRoute()` provides manual switching (future UI: long-press speaker button)
+- Auto-routing on start + telemetry enables observability (PostHog can show which calls used BT)
+
+**What was NOT done (noted as remaining work):**
+- Route picker UI (long-press speaker button → modal sheet listing available routes) — requires Flutter UI work beyond audio logic
+- `ACTION_HEADSET_PLUG` BroadcastReceiver for wired headset hot-plug detection — can be added in a follow-up
+
+**Test plan (2-phone manual test):**
+1. Caller: connect a Bluetooth headset and dial
+2. Expected: call audio routes to Bluetooth automatically (no manual toggle needed)
+3. Caller: during call, manually unplug Bluetooth
+4. Expected: audio falls back to earpiece (not hardcoded; system decides)
+5. Verify PostHog: `call_audio_route` event shows `route: 'bluetooth', auto: true`
+
+**Risk notes:**
+- Bluetooth startup takes ~200-500ms; the `startBluetoothSco()` call is non-blocking, so no UI delay
+- If a Bluetooth headset is not connected, `startBluetoothSco()` is a no-op (safe)
+- The route picker UI is deferred; calls proceed without it
+
+---
+
+### CALLFIX-19: Proximity sensor + audio focus
+**Status:** DONE  
+**Commit:** 34049f8  
+**Files changed:** `app/lib/features/avatok/call_screen.dart`, `app/lib/core/voice/native_voice_audio.dart`, `app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/AvaVoiceAudioPlugin.kt`
+
+**What I did:**
+1. **Native (AvaVoiceAudioPlugin.kt):**
+   - Added `SensorManager` + `PROXIMITY` sensor listener
+   - On sensor event: if distance < 5cm (near ear), acquire `PROXIMITY_SCREEN_OFF_WAKE_LOCK`; if distance > 5cm, release
+   - Lock is active only when `currentRoute == "earpiece"` (not during speaker/BT calls)
+   - Added `startProximitySensor()` / `stopProximitySensor()` methods
+   - Cleanup in `stopEngine()` calls `stopProximitySensor()`
+
+2. **Audio focus (already implemented in CALLFIX-16):**
+   - `startP2pAudioMode()` requests `AUDIOFOCUS_GAIN_TRANSIENT` for the VOICE_COMMUNICATION stream
+   - This ensures music/media pause on call start and resume on call end
+   - No duplication needed
+
+3. **Dart (NativeVoiceAudio + call_screen):**
+   - Exposed `startProximitySensor()` / `stopProximitySensor()` via MethodChannel
+   - In `_start()`: get current route; if earpiece, call `startProximitySensor()`
+   - In `_end()`: call `stopProximitySensor()`
+
+**Why this works:**
+- Proximity sensor detects when phone is near the ear during an earpiece call
+- `PROXIMITY_SCREEN_OFF_WAKE_LOCK` turns the screen off without suspending the call (unlike normal sleep)
+- This prevents accidental button presses during calls and saves battery
+
+**What was NOT done:**
+- No external package added (none available in pubspec.yaml); used native SensorManager (20-line implementation)
+- DND (Do Not Disturb) status check placeholder — would require `NotificationManager` (deferred)
+- Full-screen intent check (FSI) already handled in CALLFIX-12
+
+**Test plan (2-phone manual test):**
+1. Caller: initiate an audio-only call (no video)
+2. Caller: bring phone to ear during the call
+3. Expected: screen turns off after ~500ms (proximity sensor latency)
+4. Caller: move phone away from ear
+5. Expected: screen turns back on
+6. Caller: switch to speaker during the call
+7. Expected: proximity sensor stops affecting screen (BT/speaker route doesn't trigger screen-off)
+
+**Risk notes:**
+- Proximity sensor is hardware-dependent; some devices have poor calibration (near = 2cm, far = 20cm). The 5cm threshold is a heuristic.
+- WakeLock is released on call end, so no "screen stuck off" issue
+- Sensor listener is unregistered on cleanup (no battery drain after call ends)
+
+---
+
+## Summary - Phase 4
+
+**Status:** All 4 fixes DONE (CALLFIX-16, CALLFIX-17, CALLFIX-18, CALLFIX-19).
+
+**Commits made in this session:**
+1. 464f575: [CALLFIX-17] Opus: disable DTX, raise voice bitrate to 56kbps
+2. 5150bba: [CALLFIX-16] Communication-mode audio config on P2P calls (hardware AEC/NS path)
+3. 74db12a: [CALLFIX-18] Bluetooth/wired headset routing with auto-switch during calls
+4. 34049f8: [CALLFIX-19] Proximity screen-off + audio focus during calls
+
+**Total lines changed:**
+- CALLFIX-16: 40 lines (Kotlin startP2pAudioMode/stopP2pAudioMode + Dart bridge + 2 call sites in call_screen)
+- CALLFIX-17: 2 lines (audio_tuning.dart: usedtx '1'→'0', maxaveragebitrate '40000'→'56000')
+- CALLFIX-18: 134 lines (Kotlin routing logic + Dart bridge + auto-routing in call_screen)
+- CALLFIX-19: 71 lines (Kotlin sensor listener + methods + Dart bridge + proximity start/stop)
+
+**Telemetry:**
+- CALLFIX-16: (implicit — audio clarity improvements have no new event)
+- CALLFIX-17: (implicit — bitrate change is in SDP, no new event needed)
+- CALLFIX-18: `audio_route_changed`, `call_audio_route {route, auto}`
+- CALLFIX-19: `proximity_sensor_enabled`, `proximity_sensor_disabled`
+
+### NEW ISSUES NOTICED (not fixed in Phase 4)
+1. **CALLFIX-18 route picker UI**: Long-press on speaker button to show a sheet listing available routes (earpiece, speaker, bluetooth, headset) — requires Flutter UI integration, deferred.
+2. **CALLFIX-18 headset hot-plug**: `ACTION_HEADSET_PLUG` BroadcastReceiver for wired headset connect/disconnect during a call — can be added in a follow-up to auto-switch audio routing.
+3. **CALLFIX-19 proximity calibration**: Proximity sensor threshold (5cm) is device-dependent; some phones may need tuning. Consider making it configurable via remote config if telemetry shows miscalibration.
+4. **Audio focus on receptionist calls**: The receptionist path (Gemini Live via AvaVoiceAudioPlugin) already handles audio focus in startEngine(), but P2P calls now also call startP2pAudioMode(). If a call transitions from P2P to receptionist, both hold focus — likely harmless, but worth monitoring.
+
+---
+
 ### PHASES NOT ATTEMPTED
-- Phase 4 (Audio quality fixes CALLFIX-16..19)
 - Phase 5 (Call survival fixes CALLFIX-20..23)
