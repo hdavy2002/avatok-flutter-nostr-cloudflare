@@ -42,7 +42,9 @@
         android:label="AvaTOK"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round">
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <!-- No empty taskAffinity here on purpose: an empty affinity put
              MainActivity in a DIFFERENT task from the flutter_callkit_incoming
              call activity (which uses the default package affinity), so after a

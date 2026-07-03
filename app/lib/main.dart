@@ -14,6 +14,7 @@ import 'core/app_registry.dart';
 import 'core/apps.dart';
 import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
+import 'core/db.dart';
 import 'core/deep_links.dart';
 import 'core/disk_cache.dart';
 import 'core/font_scale.dart';
@@ -314,6 +315,14 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
   /// The original network boot — used on fresh install / signed-out, or when we
   /// have no local session to trust.
   Future<void> _bootOnline() async {
+    // Self-heal a corrupt secure store before doing anything online. On a
+    // Keystore⇄ciphertext mismatch (BAD_DECRYPT after an update / OS restore /
+    // device transfer) [IdentityStore.load] can't return the key and flags
+    // [storageCorrupt]; without recovery the app loops forever on the "Can't
+    // reach AvaTOK" reconnect screen. Both the corrupt-member path (local == null
+    // falls through here) and the guest path funnel through _bootOnline, so this
+    // is the single chokepoint. Runs at most once (the wipe clears the flag).
+    if (IdentityStore.storageCorrupt) await _recoverFromCorruptStorage();
     bool signedIn = false;
     try {
       final t0 = DateTime.now();
@@ -330,6 +339,35 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     // social sign-in. (Simple flow: Welcome → Login → Terms → Notifications.)
     if (!signedIn) { _to(_Stage.welcome); return; }
     await _route();
+  }
+
+  /// Recover from an un-decryptable secure store (Android Keystore ⇄
+  /// EncryptedSharedPreferences mismatch — a `BadPaddingException` / `BAD_DECRYPT`
+  /// on the FIRST key read after an app update, OS/cloud backup restore, or device
+  /// transfer). The stored ciphertext survives the restore but the Keystore key
+  /// that decrypts it does not, so every launch used to throw out of boot and sit
+  /// on the "Can't reach AvaTOK" reconnect screen in a relaunch loop.
+  ///
+  /// Recovery = treat the device like a fresh install and let the server rebuild
+  /// it: wipe the un-decryptable secure store + all on-disk caches, forget the
+  /// remembered account pointer, then fall through to the normal online boot. The
+  /// account, keys, messages (re-synced from cursor 0), groups (re-adopted) and
+  /// profile all come back from the server via [_route] → key restore + /api/me.
+  /// Runs at most once per corruption (the wipe clears [storageCorrupt]).
+  Future<void> _recoverFromCorruptStorage() async {
+    if (!IdentityStore.storageCorrupt) return;
+    Analytics.capture('storage_recovered', const {'reason': 'bad_decrypt'});
+    AvaLog.I.log('storage',
+        'secure store un-decryptable (BAD_DECRYPT) — wiping local state, re-restoring from server');
+    // 1. Drop every secure-storage entry (all corrupt on a Keystore mismatch).
+    try { await _idStore.wipeAllSecureStorage(); } catch (_) {}
+    // 2. Clear all on-disk caches + the remembered-account pointer so nothing
+    //    stale renders; the server restore rebuilds them.
+    try { await DiskCache.purgeAllCaches(); } catch (_) {}
+    // 3. Drop the open local DB handle so it reopens clean for the restored scope.
+    try { await Db.reset(); } catch (_) {}
+    AccountScope.id = null;
+    IdentityStore.storageCorrupt = false; // one-shot guard
   }
 
   /// Validate/refresh the Clerk session AFTER the UI is already on screen. Only

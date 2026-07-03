@@ -131,4 +131,26 @@ class DiskCache {
       await writeGlobal(flag, '1');
     } catch (_) {/* never block boot on a cache purge */}
   }
+
+  /// Wipe ALL on-disk caches (every account scope, the `_global` pointer, and the
+  /// `avatars/` image cache). Used by the boot-time self-heal after a secure-store
+  /// corruption (BAD_DECRYPT): we clear the device to a fresh-install state so
+  /// nothing stale renders, then the server restore rebuilds chat/contacts and the
+  /// account pointer. Safe: everything here is a cache re-fetched from the server.
+  /// Does NOT touch secure storage (handled separately) or the SQLite DB.
+  static Future<void> purgeAllCaches() async {
+    try {
+      final base = await _baseDir();
+      final cacheDir = Directory('$base/cache');
+      if (await cacheDir.exists()) await cacheDir.delete(recursive: true);
+      final avatars = Directory('$base/avatars');
+      if (await avatars.exists()) await avatars.delete(recursive: true);
+    } catch (e) {
+      AvaLog.I.log('cache', 'purgeAllCaches FAILED: $e');
+    } finally {
+      // Invalidate the memoised dir paths so the next access recreates them.
+      _scopeDirScope = null;
+      _scopeDirPath = null;
+    }
+  }
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:crypto/crypto.dart' as crypto;
 
@@ -59,6 +60,18 @@ class IdentityStore {
   // scope check invalidates on switch.
   static Identity? _cached;
   static String? _cachedScope;
+
+  /// Set true when a secure-storage read could not be DECRYPTED — i.e. the
+  /// Android Keystore key no longer matches the EncryptedSharedPreferences
+  /// ciphertext (surfaces as `PlatformException(read, …BadPaddingException:
+  /// …BAD_DECRYPT)`). This happens after an app update, an OS/cloud backup
+  /// restore, or a device transfer, because the ciphertext is backed up but the
+  /// Keystore key is not. A raw read used to THROW straight out of `_boot()`,
+  /// dumping the user on the "Can't reach AvaTOK" reconnect screen in a relaunch
+  /// loop. We never throw now: we flag here so boot can self-heal (wipe the
+  /// un-decryptable store + caches, then re-restore the account from the server).
+  static bool storageCorrupt = false;
+
   final FlutterSecureStorage _storage;
 
   IdentityStore([FlutterSecureStorage? s])
@@ -78,13 +91,43 @@ class IdentityStore {
       ApiAuth.identity = _cached; // keep the key accessor in sync
       return _cached;
     }
-    final priv = await _storage.read(key: _key);
+    String? priv;
+    try {
+      priv = await _storage.read(key: _key);
+    } on PlatformException catch (e) {
+      // BAD_DECRYPT / BadPaddingException: the Keystore key ⇄ ciphertext link is
+      // broken (update / OS restore / device transfer). NEVER let this throw into
+      // boot. Flag for the boot-time self-heal, drop the corrupt entry, and return
+      // null so the caller re-provisions (server key-restore rehydrates us).
+      if ((e.message?.contains('BadPaddingException') ?? false) ||
+          (e.message?.contains('BAD_DECRYPT') ?? false) ||
+          e.code == 'read') {
+        storageCorrupt = true;
+        try { await _storage.delete(key: _key); } catch (_) {/* best-effort */}
+        return null;
+      }
+      rethrow; // a different platform error — don't mask it
+    }
     if (priv == null || priv.isEmpty) return null;
     final id = Identity.fromPrivateKey(priv);
     ApiAuth.identity = id; // keep the legacy-key accessor in sync
     _cached = id;
     _cachedScope = scope;
     return id;
+  }
+
+  /// Nuke EVERY secure-storage entry. Used only by the boot-time self-heal when
+  /// the store is un-decryptable (BAD_DECRYPT): on a Keystore-key mismatch ALL
+  /// values are corrupt, so a per-key delete can't recover us — clear the lot and
+  /// let the server re-provision each account. Best-effort; never throws.
+  Future<void> wipeAllSecureStorage() async {
+    try {
+      await _storage.deleteAll();
+    } catch (_) {/* best-effort — some entries may already be unreadable */}
+    ApiAuth.identity = null;
+    _cached = null;
+    _cachedScope = null;
+    storageCorrupt = false;
   }
 
   Future<Identity> createAndStore() async {

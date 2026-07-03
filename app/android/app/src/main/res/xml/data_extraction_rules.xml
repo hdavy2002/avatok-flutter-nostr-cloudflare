@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup/transfer rules (android:dataExtractionRules). Same
+  root-cause fix as backup_rules.xml, for both cloud backup and device-to-device
+  transfer: never carry the flutter_secure_storage EncryptedSharedPreferences
+  file across installs/devices, because its Keystore decryption key does not come
+  with it — a restored ciphertext then fails with BadPaddingException/BAD_DECRYPT.
+  The app re-provisions these keys from the server on next launch instead.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    </device-transfer>
+</data-extraction-rules>

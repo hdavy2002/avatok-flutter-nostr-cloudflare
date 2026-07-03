@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android Auto Backup rules (Android 11 and below; android:fullBackupContent).
+
+  ROOT-CAUSE FIX: flutter_secure_storage stores its values in the
+  `FlutterSecureStorage` EncryptedSharedPreferences file, but the AES key that
+  decrypts them lives in the Android Keystore, which is NEVER part of a backup.
+  If Auto Backup restores the ciphertext (new install, "restore from backup",
+  device transfer) the matching Keystore key is gone, so the first read throws
+  `BadPaddingException` / `BAD_DECRYPT` and the app can't load the account.
+  Excluding the secure-storage prefs from backup stops the corruption at source;
+  the app re-provisions those keys from the server on next launch.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+</full-backup-content>
