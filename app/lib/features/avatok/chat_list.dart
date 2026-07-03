@@ -234,7 +234,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
             PhosphorIcon(PhosphorIcons.userCircle(PhosphorIconsStyle.bold),
                 size: 20, color: Zine.blueInk),
             const SizedBox(width: 16),
-            Text('Message requests', style: ZineText.value(size: 15)),
+            Flexible(
+                child: Text('Message requests',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: ZineText.value(size: 15))),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
@@ -1300,7 +1303,10 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
                           PhosphorIcon(PhosphorIcons.archive(PhosphorIconsStyle.bold),
                               size: 20, color: Zine.inkSoft),
                           const SizedBox(width: 16),
-                          Text('Archived', style: ZineText.value(size: 15)),
+                          Flexible(
+                              child: Text('Archived',
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: ZineText.value(size: 15))),
                           const Spacer(),
                           Text(_showArchived ? 'HIDE' : '$archivedCount',
                               style: ZineText.tag(size: 12, color: Zine.blueInk)),
