@@ -18,8 +18,10 @@ import type { Env } from "../types";
 
 export class CallRoom {
   private state: DurableObjectState;
-  constructor(state: DurableObjectState, _env: Env) {
+  private env: Env;
+  constructor(state: DurableObjectState, env: Env) {
     this.state = state;
+    this.env = env;
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -76,6 +78,19 @@ export class CallRoom {
     const otherIds = others
       .map((ws) => this.state.getTags(ws)[0])
       .filter((x) => x && x !== peerId);
+
+    // CALLFIX-R8: when the second peer joins (both peers now present), write the
+    // call_answered KV flag so receptionist.ts's abort guard fires. Extract the
+    // call_id from the room name (idFromName output); format matches receptionist.ts.
+    if (otherIds.length > 0) {
+      const roomId = this.state.id.name;
+      const callId = roomId ? String(roomId).slice(0, 64) : null;
+      if (callId) {
+        try {
+          await this.env.TOKENS.put(`call_answered:${callId}`, "true", { expirationTtl: 300 });
+        } catch { /* best-effort: KV failure never breaks signaling */ }
+      }
+    }
 
     this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds });
     for (const ws of others) this.sendTo(ws, { type: "peer-joined", id: peerId });
