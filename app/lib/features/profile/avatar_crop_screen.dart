@@ -8,15 +8,18 @@ import 'package:image/image.dart' as img;
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
-/// Lightweight, dependency-free circular crop editor. The user pans/zooms the
-/// picked image inside a circular viewport; we capture exactly that circle,
-/// then flatten it onto white and re-encode as a compact JPEG (~512px, q82).
+/// Lightweight, dependency-free circular crop editor. The user pans/zooms/rotates
+/// the picked image inside a circular viewport; we capture exactly that circle,
+/// flatten it onto white, downscale to a 320px master and re-encode as a tiny
+/// JPEG (~10–18 KB) toward a byte budget.
 ///
-/// Why JPEG, not the raw PNG capture: the server re-fetches the avatar and runs
-/// it through image moderation *synchronously* inside the /api/profile save, so
-/// a fat PNG (0.5–1.5 MB) makes that request blow past the client timeout and
-/// the user sees a bogus "check your internet" error. A 512px JPEG is ~40 KB —
-/// 15–20× smaller — so moderation finishes well within the timeout. The circle's
+/// Why so small: avatars never display larger than ~96pt (≈288px @3x) and are
+/// always served through Cloudflare's per-size /cdn-cgi/image transform (a 100px
+/// icon is delivered as ~5 KB AVIF), so the stored master only needs to cover the
+/// biggest on-screen size. Keeping it tiny also matters because the server
+/// re-fetches the avatar and runs image moderation *synchronously* inside the
+/// /api/profile save — a fat PNG (0.5–1.5 MB) made that request blow past the
+/// client timeout and users saw a bogus "check your internet" error. The circle's
 /// transparent corners are flattened to white (JPEG has no alpha); avatars are
 /// always displayed clipped to a circle, so the corners are never visible.
 class AvatarCropScreen extends StatefulWidget {
@@ -83,19 +86,27 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
     }
   }
 
+  static const int _masterPx = 320; // stored avatar size; CDN downsizes per display
+  static const int _byteBudget = 18 * 1024; // aim for a ~10–18 KB master
+
   /// Decode the captured PNG, composite it onto an opaque white background
-  /// (JPEG has no alpha), clamp to 512×512, and encode JPEG at quality 82.
-  /// Falls back to the original bytes if decoding somehow fails.
+  /// (JPEG has no alpha), downscale to a 320px master, and encode JPEG toward a
+  /// small byte budget — stepping quality down for busy photos so even detailed
+  /// images stay tiny. Falls back to the original bytes if decoding fails.
   Uint8List _toCompactJpeg(Uint8List pngBytes) {
     final decoded = img.decodePng(pngBytes);
     if (decoded == null) return pngBytes;
     final flattened = img.Image(width: decoded.width, height: decoded.height);
     img.fill(flattened, color: img.ColorRgb8(255, 255, 255));
     img.compositeImage(flattened, decoded);
-    final sized = (flattened.width != 512 || flattened.height != 512)
-        ? img.copyResize(flattened, width: 512, height: 512)
-        : flattened;
-    return img.encodeJpg(sized, quality: 82);
+    final sized = img.copyResize(flattened, width: _masterPx, height: _masterPx);
+    var out = Uint8List.fromList(img.encodeJpg(sized, quality: 80));
+    // If a detailed photo overshoots the budget, drop quality until it fits
+    // (floor ~45 so faces never turn to mush).
+    for (var q = 72; out.length > _byteBudget && q >= 45; q -= 9) {
+      out = Uint8List.fromList(img.encodeJpg(sized, quality: q));
+    }
+    return out;
   }
 
   @override
