@@ -22,7 +22,12 @@ import 'liveness_check_screen.dart';
 /// the liveness screen shows a friendly retry with attempts-remaining (the existing
 /// 3/24h budget). The "Why are we asking this?" sheet carries the D15 retention
 /// sentence and MUST NOT be removed.
-enum HumanCheckSource { signup, redirect }
+///
+///   3. LISTING — a DISMISSIBLE gate shown once when an unverified user tries to
+///      create a marketplace listing (owner decision 2026-07-03: liveness is a
+///      one-time "sell" gate, not an onboarding gate). The user can back out; on
+///      PASS the server flips kyc_status → 'verified' and they never see it again.
+enum HumanCheckSource { signup, redirect, listing }
 
 class HumanCheckPage extends StatefulWidget {
   const HumanCheckPage({
@@ -46,7 +51,11 @@ class HumanCheckPage extends StatefulWidget {
 class _HumanCheckPageState extends State<HumanCheckPage> {
   bool _busy = false;
 
-  String get _source => widget.source == HumanCheckSource.signup ? 'signup' : 'redirect';
+  String get _source => switch (widget.source) {
+        HumanCheckSource.signup => 'signup',
+        HumanCheckSource.redirect => 'redirect',
+        HumanCheckSource.listing => 'listing',
+      };
 
   @override
   void initState() {
@@ -165,9 +174,12 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
   @override
   Widget build(BuildContext context) {
     // D13: the redirect variant is non-dismissible — swallow the system back
-    // gesture so an unverified user can't escape the gate.
+    // gesture so an unverified user can't escape the onboarding gate. The
+    // signup + listing variants ARE dismissible (a user can back out of
+    // starting a listing / can't be trapped mid-signup).
+    final dismissible = widget.source != HumanCheckSource.redirect;
     return PopScope(
-      canPop: false,
+      canPop: dismissible,
       child: Scaffold(
         backgroundColor: Zine.paper,
         body: ZineScrollBody(
@@ -189,9 +201,12 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
             Text('Quick human check', textAlign: TextAlign.center, style: ZineText.hero(size: 30)),
             const SizedBox(height: 14),
             Text(
-              'Let our AI check that you\'re a real person — AI bots keep '
-              'trying to sign up! No AI agents allowed on AvaTOK. This takes about '
-              '15 seconds.',
+              widget.source == HumanCheckSource.listing
+                  ? 'To keep the marketplace trusted, we check that sellers are '
+                      'real people. It takes about 15 seconds and you only do this once.'
+                  : 'Let our AI check that you\'re a real person — AI bots keep '
+                      'trying to sign up! No AI agents allowed on AvaTOK. This takes about '
+                      '15 seconds.',
               textAlign: TextAlign.center,
               style: ZineText.sub(size: 15),
             ),

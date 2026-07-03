@@ -9,6 +9,7 @@ import '../../core/cached_image.dart';
 import '../../core/config.dart';
 import '../../core/listings_api.dart';
 import '../../core/marketplace_api.dart';
+import '../identity/listing_liveness_gate.dart';
 
 /// AvaMarketplace P2 — buy/sell/social listing pipeline with the agent-mandate
 /// + language step (Specs/AVAMARKETPLACE-FINAL-PROPOSAL.md). Self-contained so
@@ -231,7 +232,21 @@ class _SellListingFlowState extends State<SellListingFlow> {
       setState(() { _busy = false; _error = 'Could not save your listing.'; });
       return;
     }
-    final res = await ListingsApi.publish(id);
+    var res = await ListingsApi.publish(id);
+    // Fallback: the server gate returns 403 {error:'liveness_required'} when the
+    // seller isn't verified. Don't show the raw string — run the one-time human
+    // check and, on PASS, retry publish once. On fail, a friendly message.
+    if (!res.isEmpty && res['error']?.toString() == 'liveness_required') {
+      if (!mounted) return;
+      final passed = await ensureListingLiveness(context);
+      if (!mounted) return;
+      if (passed) {
+        res = await ListingsApi.publish(id); // retry once, now verified
+      } else {
+        setState(() { _busy = false; _error = 'You need to verify you\'re a real person to publish a listing.'; });
+        return;
+      }
+    }
     if (!mounted) return;
     setState(() => _busy = false);
     if (res.isEmpty) {
@@ -241,6 +256,9 @@ class _SellListingFlowState extends State<SellListingFlow> {
           const SnackBar(content: Text('Listing submitted for review.')));
         Navigator.of(context).maybePop();
       }
+    } else if (res['error']?.toString() == 'liveness_required') {
+      // Retry still gated (e.g. server hadn't propagated) — friendly message.
+      setState(() => _error = 'You need to verify you\'re a real person to publish a listing.');
     } else {
       // Identity gate (eligibility) / moderation / daily-cap rejections surface here.
       setState(() => _error = res['error']?.toString() ?? res['reason']?.toString() ?? 'Could not publish.');

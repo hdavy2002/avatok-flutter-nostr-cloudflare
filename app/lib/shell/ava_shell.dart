@@ -37,6 +37,7 @@ import '../features/marketplace/archived_screen.dart';
 import '../features/marketplace/marketplace_browse.dart';
 import '../features/explore/explore_home.dart';
 import '../features/identity/identity_screen.dart';
+import '../features/identity/listing_liveness_gate.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/profile/profile_setup_screen.dart';
 import '../features/inbox/inbox_screen.dart';
@@ -173,7 +174,23 @@ class _AvaShellState extends State<AvaShell> {
         _push(ExploreHome(onMenu: () => Navigator.of(context).maybePop()));
         return;
       case 'createlisting':
-        _push(const SellListingFlow());
+        // First-time liveness gate (owner 2026-07-03): an unverified user must
+        // pass the one-time human check before the sell flow opens. Verified
+        // users go straight in (no extra screen). Only enforced when the flag is
+        // ON; the Worker is the real gate (403 liveness_required).
+        if (RemoteConfig.listingLivenessGate) {
+          ensureListingLiveness(context).then((ok) {
+            if (!mounted) return;
+            if (ok) {
+              _push(const SellListingFlow());
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Verify you\'re a real person to start selling.')));
+            }
+          });
+        } else {
+          _push(const SellListingFlow());
+        }
         return;
       case 'mylistings':
         _push(const MyListingsScreen());
