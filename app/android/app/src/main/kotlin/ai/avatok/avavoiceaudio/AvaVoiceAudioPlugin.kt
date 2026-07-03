@@ -87,13 +87,17 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var headsetReceiver: BroadcastReceiver? = null
     private var currentRoute: String = "earpiece" // earpiece|speaker|bluetooth
 
+    // CALLFIX-R2: P2P call active flag — gates proximity/telephony events during WebRTC calls
+    // (running.get() only reflects Gemini native calls, not P2P calls via flutter_webrtc)
+    private val p2pActive = AtomicBoolean(false)
+
     // CALLFIX-19: Proximity sensor for screen-off during earpiece calls
     private var proximitySensor: Sensor? = null
     private var sensorManager: SensorManager? = null
     private var proximityWakeLock: PowerManager.WakeLock? = null
     private val proximitySensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent?) {
-            if (event != null && currentRoute == "earpiece" && running.get()) {
+            if (event != null && currentRoute == "earpiece" && (running.get() || p2pActive.get())) {
                 val distance = event.values[0]
                 try {
                     val pm = appContext?.getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -246,6 +250,16 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "stopTelephonyMonitoring" -> {
                 // CALLFIX-23: stop listening for cellular call interruption
                 stopTelephonyMonitoring()
+                result.success(null)
+            }
+            "startP2pCall" -> {
+                // CALLFIX-R2: mark P2P WebRTC call as active (for gates on proximity/telephony)
+                p2pActive.set(true)
+                result.success(null)
+            }
+            "stopP2pCall" -> {
+                // CALLFIX-R2: mark P2P WebRTC call as inactive
+                p2pActive.set(false)
                 result.success(null)
             }
             "stop" -> {
@@ -585,13 +599,14 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 // API 31+: use OnModeChangedListener for audio mode changes.
                 audioModeListener = AudioManager.OnModeChangedListener { mode ->
                     // When a cellular call comes in, AudioManager mode may change to MODE_IN_CALL.
-                    // We detect a cellular call when mode is MODE_IN_CALL but we're not
-                    // running our own P2P/Gemini call (which is MODE_IN_COMMUNICATION).
-                    if (mode == AudioManager.MODE_IN_CALL && running.get()) {
+                    // We detect a cellular call when mode is MODE_IN_CALL but we're in a VoIP call
+                    // (either Gemini native via running.get() or P2P via p2pActive.get()).
+                    // CALLFIX-R2: gate on both running and p2pActive
+                    if (mode == AudioManager.MODE_IN_CALL && (running.get() || p2pActive.get())) {
                         // Cellular call is active while we're in a VoIP call.
                         val evt = mapOf<String, Any>("state" to "held")
                         main.post { try { telephonySink?.success(evt) } catch (_: Throwable) {} }
-                    } else if (mode == AudioManager.MODE_IN_COMMUNICATION && running.get()) {
+                    } else if (mode == AudioManager.MODE_IN_COMMUNICATION && (running.get() || p2pActive.get())) {
                         // Back to our call (cellular call ended).
                         val evt = mapOf<String, Any>("state" to "resumed")
                         main.post { try { telephonySink?.success(evt) } catch (_: Throwable) {} }
