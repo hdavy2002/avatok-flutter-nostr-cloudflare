@@ -3,7 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:pointycastle/export.dart' show SHA256Digest;
+import 'package:crypto/crypto.dart' as crypto;
 
 import '../core/api_auth.dart';
 
@@ -25,7 +25,7 @@ class Identity {
   /// Non-secret, stable id derived from the local key material (SHA-256). Not a
   /// signing key — just an opaque per-device fallback id.
   static String _derivePub(String privHex) {
-    final d = SHA256Digest().process(Uint8List.fromList(utf8.encode(privHex)));
+    final d = Uint8List.fromList(crypto.sha256.convert(Uint8List.fromList(utf8.encode(privHex))).bytes);
     final sb = StringBuffer();
     for (final b in d) sb.write(b.toRadixString(16).padLeft(2, '0'));
     return sb.toString();

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:pointycastle/export.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/config.dart';
@@ -40,7 +40,7 @@ class PresenceChannel {
   /// Deterministic 1:1 room id from the two pubkeys (order-independent, hashed).
   static String roomFor1on1(String a, String b) {
     final s = ([a, b]..sort()).join();
-    final d = SHA256Digest().process(Uint8List.fromList(utf8.encode(s)));
+    final d = Uint8List.fromList(crypto.sha256.convert(Uint8List.fromList(utf8.encode(s))).bytes);
     return 'p${d.sublist(0, 16).map((x) => x.toRadixString(16).padLeft(2, '0')).join()}';
   }
 

@@ -31,11 +31,11 @@ const String kAvatokEnv = String.fromEnvironment('AVATOK_ENV', defaultValue: 'pr
 
 /// Numeric build number — keep in sync with pubspec `version` (after the +)
 /// and Analytics.appVersion. Compared against RemoteConfig.minAppBuild.
-const int kAppBuild = 17;
+const int kAppBuild = 28;
 
 /// Human-readable app version — keep in sync with pubspec `version` (before the
 /// +). Shown on the About screen.
-const String kAppVersion = '0.1.17';
+const String kAppVersion = '0.1.18';
 
 // ---------------------------------------------------------------------------
 // Ava in-chat AI flags (Phase 0 — Foundations). Compile-time defaults; the

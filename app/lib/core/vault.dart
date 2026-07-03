@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:pointycastle/export.dart' show SHA256Digest;
+import 'package:crypto/crypto.dart' as crypto;
 
 import 'api_auth.dart';
 import 'config.dart';
@@ -18,8 +18,8 @@ class Vault {
   /// Deterministic 256-bit key from the key material hex — same on every device
   /// that restores the key, so blobs written on one device decrypt on another.
   static SecretKey _key(String keyMaterial) {
-    final d = SHA256Digest().process(
-        Uint8List.fromList(utf8.encode('avatok-vault-v1:$keyMaterial')));
+    final d = Uint8List.fromList(crypto.sha256.convert(
+        Uint8List.fromList(utf8.encode('avatok-vault-v1:$keyMaterial'))).bytes);
     return SecretKey(d.sublist(0, 32));
   }
 

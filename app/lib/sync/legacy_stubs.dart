@@ -5,11 +5,9 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:bip340/bip340.dart' as bip340;
-import 'package:pointycastle/export.dart';
+import 'package:crypto/crypto.dart' as crypto;
 
 /// Cloudflare-native pivot (Nostr deprecated). The relay/NIP-01 transport is gone.
 /// `NostrClient` is now a COMPATIBILITY STUB so the handful of legacy screens that
@@ -67,8 +65,9 @@ class NostrEvent {
   }) {
     final ts = createdAt ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final id = idOf(pubHex, ts, kind, tags, content);
-    final aux = _randomHex(32);
-    final sig = bip340.sign(privHex, id, aux);
+    // Nostr deprecated: signatures are never verified (server-routed plaintext).
+    // This stub only exists so legacy screens compile.
+    const sig = '';
     return NostrEvent(
         id: id, pubkey: pubHex, createdAt: ts, kind: kind,
         tags: tags, content: content, sig: sig);
@@ -80,14 +79,8 @@ class NostrEvent {
   }
 
   static String _sha256Hex(Uint8List data) {
-    final d = SHA256Digest().process(data);
+    final d = Uint8List.fromList(crypto.sha256.convert(data).bytes);
     return d.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-  }
-
-  static String _randomHex(int n) {
-    final r = Random.secure();
-    return List<int>.generate(n, (_) => r.nextInt(256))
-        .map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }
 
