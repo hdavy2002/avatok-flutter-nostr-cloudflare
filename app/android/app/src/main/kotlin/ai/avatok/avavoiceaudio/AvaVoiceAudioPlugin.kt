@@ -6,6 +6,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -18,6 +22,7 @@ import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -79,6 +84,30 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var bluetoothHeadset: BluetoothHeadset? = null
     private var headsetReceiver: BroadcastReceiver? = null
     private var currentRoute: String = "earpiece" // earpiece|speaker|bluetooth
+
+    // CALLFIX-19: Proximity sensor for screen-off during earpiece calls
+    private var proximitySensor: Sensor? = null
+    private var sensorManager: SensorManager? = null
+    private var proximityWakeLock: PowerManager.WakeLock? = null
+    private val proximitySensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            if (event != null && currentRoute == "earpiece" && running.get()) {
+                val distance = event.values[0]
+                try {
+                    val pm = appContext?.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                    if (distance < 5) { // Near ear
+                        if (proximityWakeLock?.isHeld != true) {
+                            proximityWakeLock = pm?.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "avatok:proximity")
+                            proximityWakeLock?.acquire()
+                        }
+                    } else { // Far from ear
+                        if (proximityWakeLock?.isHeld == true) proximityWakeLock?.release()
+                    }
+                } catch (_: Throwable) {}
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     // Telemetry counters (surfaced to Dart on stop / on error).
     private val framesCaptured = AtomicLong(0)
@@ -163,6 +192,16 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "stopBluetoothSco" -> {
                 // CALLFIX-18: stop Bluetooth SCO
                 stopBluetoothSco()
+                result.success(null)
+            }
+            "startProximitySensor" -> {
+                // CALLFIX-19: start proximity sensor for earpiece calls
+                startProximitySensor()
+                result.success(null)
+            }
+            "stopProximitySensor" -> {
+                // CALLFIX-19: stop proximity sensor
+                stopProximitySensor()
                 result.success(null)
             }
             "stop" -> {
@@ -340,6 +379,8 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         aec = null; ns = null; agc = null
         try { track?.pause(); track?.flush(); track?.release() } catch (_: Throwable) {}
         track = null
+        stopProximitySensor() // CALLFIX-19: clean up proximity sensor
+        try { stopBluetoothSco() } catch (_: Throwable) {} // CALLFIX-18
         try {
             val am = audioManager()
             @Suppress("DEPRECATION")
@@ -430,16 +471,26 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     // CALLFIX-19: Proximity sensor — turn screen off during earpiece audio calls.
     private fun startProximitySensor() {
         try {
-            if (currentRoute == "earpiece") {
-                // Placeholder: actual implementation requires SensorManager.
-                // For now, emit an event so the Dart side can handle it if a package is available.
-                emit("proximity_sensor_enabled", emptyMap())
+            if (currentRoute != "earpiece") return // only for earpiece route
+            sensorManager = appContext?.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+            if (sensorManager != null) {
+                proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+                if (proximitySensor != null) {
+                    sensorManager?.registerListener(proximitySensorListener, proximitySensor,
+                        SensorManager.SENSOR_DELAY_NORMAL)
+                    emit("proximity_sensor_enabled", emptyMap())
+                }
             }
         } catch (_: Throwable) {}
     }
 
     private fun stopProximitySensor() {
         try {
+            sensorManager?.unregisterListener(proximitySensorListener)
+            if (proximityWakeLock?.isHeld == true) proximityWakeLock?.release()
+            proximityWakeLock = null
+            sensorManager = null
+            proximitySensor = null
             emit("proximity_sensor_disabled", emptyMap())
         } catch (_: Throwable) {}
     }

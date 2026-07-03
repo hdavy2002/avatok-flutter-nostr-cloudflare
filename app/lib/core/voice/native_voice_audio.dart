@@ -127,4 +127,15 @@ class NativeVoiceAudio {
   Future<void> stopBluetoothSco() async {
     try { await _m.invokeMethod('stopBluetoothSco'); } catch (_) {}
   }
+
+  /// CALLFIX-19: Start proximity sensor for screen-off during earpiece calls.
+  /// Only active when the audio route is earpiece; disabled for speaker/Bluetooth.
+  Future<void> startProximitySensor() async {
+    try { await _m.invokeMethod('startProximitySensor'); } catch (_) {}
+  }
+
+  /// CALLFIX-19: Stop proximity sensor.
+  Future<void> stopProximitySensor() async {
+    try { await _m.invokeMethod('stopProximitySensor'); } catch (_) {}
+  }
 }

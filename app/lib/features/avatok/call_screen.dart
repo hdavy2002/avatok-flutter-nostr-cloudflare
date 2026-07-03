@@ -443,6 +443,9 @@ class _CallScreenState extends State<CallScreen> {
       final route = await NativeVoiceAudio().getAudioRoute();
       if (route == 'earpiece') {
         Analytics.capture('call_audio_route', {'route': 'earpiece', 'auto': true});
+        try { await NativeVoiceAudio().startProximitySensor(); } catch (_) {}
+      } else {
+        Analytics.capture('call_audio_route', {'route': route, 'auto': true});
       }
     }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -1089,6 +1092,8 @@ class _CallScreenState extends State<CallScreen> {
     try { await NativeVoiceAudio().stopP2pAudioMode(); } catch (_) {}
     // CALLFIX-18: stop Bluetooth SCO and clean up audio routing on call end.
     try { await NativeVoiceAudio().stopBluetoothSco(); } catch (_) {}
+    // CALLFIX-19: stop proximity sensor on call end.
+    try { await NativeVoiceAudio().stopProximitySensor(); } catch (_) {}
     _ended = true;
     // Decrement the live-screen count (never below 0) and derive [gInCall] from
     // it, so overlapping calls tearing down in any order leave an accurate
