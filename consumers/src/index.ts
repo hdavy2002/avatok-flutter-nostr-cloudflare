@@ -1,6 +1,7 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
-import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg } from "./types";
+import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg, AutoReplyMsg, AutoDigestMsg } from "./types";
 import { handleMktAudio } from "./mkt_audio";
+import { handleAutoReply, handleAutoDigest } from "./auto_reply"; // STREAM F — away auto-responder job + away digest
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
 import { handleBrain, purgeChurnedBrains } from "./brain";
@@ -35,6 +36,12 @@ export default {
           case "agent-tasks": await handleAgent(msg.body as AgentMsg, env); break;
           case "chat-archive": await handleArchive(msg.body as ArchiveMsg, env); break;
           case "mkt-audio": await handleMktAudio(msg.body as MktAudioMsg, env); break;
+          case "auto-reply": { // STREAM F — reply jobs + away-digest jobs share this queue
+            const body = msg.body as AutoReplyMsg | AutoDigestMsg;
+            if ((body as AutoDigestMsg).kind === "digest") await handleAutoDigest(body as AutoDigestMsg, env);
+            else await handleAutoReply(body as AutoReplyMsg, env);
+            break;
+          }
         }
         msg.ack(); ok++;
       } catch (e) {

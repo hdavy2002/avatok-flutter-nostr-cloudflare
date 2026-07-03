@@ -21,6 +21,7 @@ import '../../identity/identity.dart';
 import '../ava_ai/ava_ai_setup.dart';
 import '../avabrain/brain_settings_screen.dart';
 import '../profile/phone_verify_card.dart';
+import 'auto_responder_settings_page.dart';
 import 'settings_registry.dart';
 
 /// Account settings — Backup, Manage keys, Delete account.
@@ -367,6 +368,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         _tile(PhosphorIcons.textAa(PhosphorIconsStyle.bold), Zine.blue, 'Display & fonts',
             'Make text across the app bigger or smaller', () => _push(const DisplayFontsScreen())),
+        // STREAM F — Auto-Responder ("Ava replies while you're away").
+        _tile(PhosphorIcons.robot(PhosphorIconsStyle.bold), Zine.mint, 'Auto-Responder',
+            'Let Ava reply while you\'re away', () => _push(const AutoResponderSettingsPage())),
         // Pluggable sections (Phase 0 contract): feature phases register a
         // SettingsSection from their own file under settings/sections/; each one
         // now renders as a row that opens the section in its own sub-page.

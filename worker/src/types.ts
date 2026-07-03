@@ -29,6 +29,7 @@ export interface Env {
   Q_MONEY: Queue;    // money-settlements (refund/settlement engine, marketplace Phase 7)
   Q_ARCHIVE?: Queue; // chat-archive (Phase 1 ABLY-R2: message body → R2 + D1 index)
   Q_MKT_AUDIO?: Queue; // marketplace negotiation VOICE render (async → avatok-consumers)
+  Q_AUTO_REPLY?: Queue; // STREAM F auto-responder job (incoming DM → away auto-reply, async → avatok-consumers)
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;
