@@ -173,42 +173,71 @@ export async function handleCheck(_req: Request, _env: Env): Promise<Response> {
 // profile must not pass just because a model was down). Encodes the policy with
 // few-shot examples: fragments/invented/object-innuendo names are implausible;
 // legitimately short real names (Al, Bo, Li, Ng, Wu) pass. min length 2.
+// Parse the model's JSON verdict → {plausible, reason}; null if unparseable.
+function parseNameVerdict(txt: string): { plausible: boolean; reason: string } | null {
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const parsed = JSON.parse(m[0]) as { plausible?: boolean; reason?: string };
+    const plausible = parsed.plausible === true;
+    return { plausible, reason: plausible ? "" : (parsed.reason || "Please use your real name — it helps people trust who they're talking to.") };
+  } catch { return null; }
+}
+
+// Google Generative Language direct (x-goog-api-key). null on ANY failure.
+async function geminiDirectVet(key: string, prompt: string): Promise<{ plausible: boolean; reason: string } | null> {
+  try {
+    const r = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+      { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 80 } }) },
+    );
+    if (!r.ok) return null;
+    const j = (await r.json()) as any;
+    return parseNameVerdict(String(j?.candidates?.[0]?.content?.parts?.[0]?.text ?? ""));
+  } catch { return null; }
+}
+
+// OpenRouter (Gemini model) fallback — same key/endpoint the guardian + CF
+// receptionist use. null on ANY failure.
+async function openrouterVet(env: Env, prompt: string): Promise<{ plausible: boolean; reason: string } | null> {
+  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
+  if (!key) return null;
+  const model = (env as any).OPENROUTER_NAME_MODEL || "google/gemini-2.0-flash-001";
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://avatok.ai", "X-Title": "AvaTok Name Check" },
+      body: JSON.stringify({ model, temperature: 0, max_tokens: 80, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json()) as any;
+    return parseNameVerdict(String(j?.choices?.[0]?.message?.content ?? ""));
+  } catch { return null; }
+}
+
 async function vetRealName(env: Env, first: string, last: string): Promise<{ ok: boolean; plausible: boolean; reason: string; unavailable?: boolean }> {
   const full = `${first} ${last}`.trim();
   if (!full) return { ok: true, plausible: false, reason: "Please enter your first and last name." };
-  const key = (env as any).GEMINI_API_KEY as string | undefined;
-  // FAIL OPEN (owner decision 2026-07-03): if the name-check model is unreachable
-  // (no key, depleted quota, HTTP/parse error) we ALLOW the save rather than block
-  // a real user — the check only ever REJECTS when the model actively says a name
-  // is implausible. `unavailable:true` still lets the caller log profile_vet_error
-  // so a broken/rotated key is visible in telemetry.
-  if (!key) return { ok: true, plausible: true, reason: "", unavailable: true };
   const prompt =
     "You judge whether a submitted first+last name is a plausible REAL human name for a social app. " +
     "Real names from many cultures can be 2 letters (Al, Bo, Li, Ng, Wu) — judge INTENT, not raw length; min length 2. " +
     "Examples: \"Sat\" -> implausible (fragment). \"Satish\" -> plausible. \"Satisy\" -> implausible (misspelled/invented). " +
     "\"Midnight Rod\", \"Black Stick\" -> implausible (object/innuendo, not a human name). \"Al Wu\" -> plausible. " +
     `Name: "${full}". Respond with ONLY JSON: {"plausible": <true|false>, "reason": "<short kind sentence, only when implausible>"}.`;
-  try {
-    const r = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 80 } }),
-      },
-    );
-    if (!r.ok) return { ok: true, plausible: true, reason: "", unavailable: true }; // fail open
-    const j = (await r.json()) as any;
-    const txt = String(j?.candidates?.[0]?.content?.parts?.[0]?.text ?? "");
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return { ok: true, plausible: true, reason: "", unavailable: true }; // fail open
-    const parsed = JSON.parse(m[0]) as { plausible?: boolean; reason?: string };
-    const plausible = parsed.plausible === true;
-    return { ok: true, plausible, reason: plausible ? "" : (parsed.reason || "Please use your real name — it helps people trust who they're talking to.") };
-  } catch {
-    return { ok: true, plausible: true, reason: "", unavailable: true }; // network error → fail open
+  // Provider chain: primary Gemini key → the RECEPTIONIST's Gemini key (the one
+  // Gemini Live uses) → OpenRouter (Gemini). First provider that answers wins.
+  // FAIL OPEN only if EVERY provider is unreachable — never block a real user on an
+  // AI outage / depleted key; `unavailable:true` still logs profile_vet_error.
+  const keys = [(env as any).GEMINI_API_KEY, (env as any).RECEPTIONIST_GEMINI_API_KEY]
+    .filter((k, i, a): k is string => !!k && a.indexOf(k) === i);
+  for (const key of keys) {
+    const out = await geminiDirectVet(key, prompt);
+    if (out) return { ok: true, plausible: out.plausible, reason: out.reason };
   }
+  const orOut = await openrouterVet(env, prompt);
+  if (orOut) return { ok: true, plausible: orOut.plausible, reason: orOut.reason };
+  return { ok: true, plausible: true, reason: "", unavailable: true }; // all providers down → fail open
 }
 
 export async function profileUpsert(req: Request, env: Env): Promise<Response> {
