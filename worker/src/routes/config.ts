@@ -193,7 +193,7 @@ const DEFAULTS: PlatformConfig = {
   teamIvrEnabled: false,           // Team Receptionist (IVR) — OFF until dogfood passes (enable via KV)
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
-  listingLivenessGate: false,      // P4: block listing create/publish unless liveness-verified — dark, flip ON at launch
+  listingLivenessGate: true,       // ON 2026-07-03: mandatory liveness (once) to create/publish a listing
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified
@@ -210,7 +210,7 @@ const DEFAULTS: PlatformConfig = {
   groupTranslationEnabled: false,        // STREAM G — OFF (cost watch)
   smartRepliesEnabled: true,             // STREAM G — ships ON
   scamAutoScanEnabled: true,             // STREAM G — ships ON
-  livenessOnboardingGate: true,          // STREAM H — ON (owner enabled 2026-07-03 to test signup human-check flow)
+  livenessOnboardingGate: false,         // OFF 2026-07-03: liveness moved to listing-creation gate, NOT onboarding
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
   minAppBuild: 0,
 };
