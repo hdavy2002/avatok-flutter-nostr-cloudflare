@@ -653,3 +653,157 @@ placeholder-bubble work in J must not modify C's `link_preview_card.dart`.
   mode=Wi-Fi-only on cellular → same; mode=Always → current behavior; pending
   stranger thread never auto-downloads in ANY mode; setting does not leak across
   accounts on the same phone.
+
+---
+---
+
+# ADDENDUM 2 (2026-07-03) — STREAM K: owner screenshot fixes & redesigns
+
+Owner supplied 7 annotated screenshots. These are fixes/redesigns on EXISTING
+features. Same rules (§0). Stream K can run as 4 parallel sub-agents:
+K-a (dialpad + contacts), K-b (FCM), K-c (chat bubble redesign), K-d (marketplace
+redesign). K-c overlaps files with Streams C/E/I (message bubbles / input /
+forward) — if those streams are in flight, K-c lands FIRST and the others rebase
+on the new bubble widgets, or coordinate via the file table; never concurrent
+edits to the same widget file.
+
+## K1. Dialpad — paste a copied number (pic 1) — `[FIX-DIAL-1]`
+The dialpad (AvaPhone / dialpad tab) number display must support pasting:
+- Long-press on the number display → system context menu with **Paste**.
+- ALSO add a small paste icon button beside the display (discoverability), shown
+  only when the clipboard contains something number-like.
+- Sanitize on paste: strip spaces, dashes, dots, parentheses; keep leading `+`
+  and digits; convert `00` prefix to `+`. Reject (snackbar "Not a phone number")
+  if <4 digits after sanitizing.
+- After paste the number renders in the display and the green dial button works
+  immediately — no other taps needed.
+- Telemetry: `dialpad_paste` (digits_len, had_plus).
+
+## K2. Contact long-press menu (pic 2) — `[FIX-CONTACT-1]`
+On ANY contact row (contacts list, chat list contact, dialpad favorites) a
+long-press / right-click opens a context menu with:
+- **Copy contact** — copies "Name — +number" (and handle if present) to clipboard.
+- **Share contact** — system share sheet with a vCard (.vcf) built from the
+  contact (name, AvaTOK number, handle).
+- **Forward contact** — opens the Stream-I forward sheet, sending the app's
+  existing contact-card message kind (groups keep full messaging incl. contact
+  cards per the rulebook — reuse that envelope).
+If a context menu already exists on some rows, EXTEND it; do not create a second
+menu pattern. Telemetry: `contact_copied/shared/forwarded`.
+
+## K3. FCM notifications regression (pic 3) — `[FIX-FCM-1..3]` (HIGH PRIORITY)
+Symptom: owner previously received heads-up FCM notifications ("AvaMarketplace /
+New message") that woke the phone and beeped; now nothing.
+Known history (Graphiti/memory — READ THESE EPISODES FIRST):
+- 2026-06-29: FCM `getToken` failed with `FIS_AUTH_ERROR` → 0 push tokens
+  registered ("no device registered"); `push_register` telemetry was added; the
+  Google Cloud project deletion/restore was involved.
+- 2026-07-01: staging google-services.json client fix (147311d).
+- 2026-07-01: transport flipped to `MSG_TRANSPORT=inbox` (Ably disabled) — verify
+  the offline-push fan-out (`/api/notify` with fromName+preview, built 2026-06-28)
+  still fires on the inbox transport path for EVERY offline recipient.
+Work order:
+1. `[FIX-FCM-1]` Diagnose: pull PostHog `push_register` events for
+   `hdavy2005@gmail.com`; confirm whether a current FCM token exists for the
+   owner's device + account. If FIS_AUTH_ERROR persists, fix the Firebase
+   installation config (google-services.json / API key restrictions in project
+   avatok-e19ef) — document root cause in the commit.
+2. `[FIX-FCM-2]` Guarantee the three notification triggers server-side:
+   (a) incoming DM/group message while recipient offline/backgrounded →
+   FCM with sender name + preview; (b) missed call / "Ava took a message"
+   (receptionist) → FCM "Missed call — Ava took a message from <name>";
+   (c) Novu-driven notifications (the Novu integration) → ensure Novu's FCM
+   provider integration is configured and firing, or route Novu events through
+   our own /api/notify path — whichever is already closest to working; do NOT
+   build a second parallel push system.
+3. `[FIX-FCM-3]` Client: Android notification channel `messages` with
+   IMPORTANCE_HIGH + sound + vibration (heads-up wake like the screenshot);
+   channel `calls` for missed-call/receptionist. Verify a data-only message still
+   posts a local notification when the app is killed (use
+   FirebaseMessaging.onBackgroundMessage). Telemetry: `push_shown` (channel,
+   type), `push_token_registered` (keep existing push_register events too).
+Acceptance: with the app killed, sending the owner a DM from another account
+produces a heads-up beep notification within seconds; a missed receptionist call
+produces one too.
+
+## K4. Chat bubble redesign — voice notes + media + files (pics 4 & 7) —
+`[UI-BUBBLE-1..3]`
+Owner complaints: (1) voice-note play icon too small; (2) bubbles leave a huge
+right-side gutter (incoming bubbles stop ~60% width) AND media inside the bubble
+has ANOTHER right gap → double-gutter, squeezed look. Required redesign, one
+coherent modern spec:
+- `[UI-BUBBLE-1]` Geometry: bubble max-width = 78% of thread width for BOTH
+  incoming and outgoing (WhatsApp-like), symmetric horizontal thread padding
+  (12dp each side). Text bubbles size to content up to the max.
+- `[UI-BUBBLE-2]` Media bubbles (image/video): the media IS the bubble —
+  edge-to-edge fill inside the rounded-corner clip, NO inner padding, no visible
+  bubble chrome around the image except the rounded mask + timestamp/status
+  overlaid bottom-right on a subtle gradient scrim. Aspect-fit within max 78%
+  width × 320dp height (cover-crop very tall/wide sources). Video: same, with a
+  center play glyph + duration chip. PDFs/files: full-width (of the bubble) row —
+  file-type icon in a tinted rounded square, filename (1-line ellipsis), size +
+  extension subtitle; no dead space to the right. Forwarded label (Stream I)
+  overlays top-left on media.
+- `[UI-BUBBLE-3]` Voice-note bubble: modern voice UI — LARGE circular play
+  button (44dp min touch target), waveform bar (static bars are fine v1,
+  progress-tinted while playing), duration right-aligned, playback speed chip
+  (1x/1.5x/2x) after play starts. Same 78% width rule.
+- Keep the zine design system (`app/lib/core/ui/zine*.dart`) as the styling
+  source — new bubbles must be zine-styled, not a foreign design language.
+- These widget changes are shared with Streams C (preview cards) and I
+  (forwarded label): land K4 first (see stream ordering note above).
+- Telemetry: none required beyond existing message events.
+
+## K5. Marketplace cards + listing page redesign, WIRED (pics 5 & 6) —
+`[UI-MKT-1..4]`
+Owner: "modern, sexy" cards, everything wired to REAL data — no dummy numbers.
+Existing backing (verify, reuse, extend): `listing_views` + stats endpoints and
+listing reviews shipped 2026-06-11 (see Graphiti "Listing photos + creator
+analytics"); reviews visible on the listing page already ("Reviews" section).
+- `[UI-MKT-1]` Grid card redesign: photo top (rounded, edge-to-edge);
+  **heart icon overlaid top-right of the photo** → toggles favorite (see MKT-3);
+  price bold + currency; title 1-line; row of wired micro-stats with icons:
+  ★ rating average + review count (from the reviews data), 👁 view count (from
+  listing_views), country flag chip as today; optional "NEW" chip when the
+  listing is <48h old, and seller avatar chip. Compact, modern spacing —
+  zine-styled.
+- `[UI-MKT-2]` Listing page redesign to match: photo gallery header
+  (swipeable, page dots), heart overlay, title + price row, wired stats row
+  (★ reviews / 👁 views / posted-ago), seller card, description, reviews
+  section. REMOVE the "GROUP SESSION (NULL)" chip — that is the
+  `market_type`/`social_sub` field rendering when null/irrelevant; the chip must
+  render ONLY when the listing actually has a meaningful market/session type,
+  and never print NULL. Fix the formatter, not just this instance (audit other
+  chips on the page for null leakage).
+- `[UI-MKT-3]` Favorites wiring: if a favorites/save endpoint exists, use it;
+  if not, add `POST/DELETE /api/marketplace/favorites {listing_id}` +
+  `GET /api/marketplace/favorites` (D1 table `listing_favorites(uid, listing_id,
+  created_at)` PK(uid,listing_id)), heart state hydrated on fetch, and a
+  "Favorites" filter chip on the marketplace home. Increment nothing on
+  favorite; views keep using the existing listing_views tracking (fire it on
+  listing-page open if not already).
+- `[UI-MKT-4]` Ensure view counts, ratings, review counts on the CARD come from
+  the listing list/query endpoint in ONE query (extend the SELECT with
+  aggregates/joins) — do NOT issue N+1 per-card stat fetches.
+- Telemetry: `listing_favorited/unfavorited`, `mkt_card_impression` (batched),
+  keep existing listing_view events.
+
+## K6. File-ownership additions (extends §9/§15)
+| Files | Sub-stream |
+|---|---|
+| dialpad screen widget, contacts row context menu | K-a |
+| push registration (Flutter), notify path (`worker`), Android channels, Novu integration config | K-b |
+| message bubble widgets (voice/media/file), zine bubble styles | K-c |
+| marketplace grid card + listing page widgets, `worker/src/routes/listings.ts` (stats aggregates, null-chip fix), favorites route/table | K-d |
+
+## K7. Acceptance additions
+- Pasting "+44 7951 039-396" into the dialpad shows +447951039396, dial works.
+- Long-press a contact → Copy/Share/Forward all function (share produces a .vcf).
+- App killed → incoming DM beeps + heads-up within seconds; missed receptionist
+  call notifies; PostHog shows push_shown with the owner's email.
+- Incoming and outgoing bubbles reach 78% width with symmetric gutters; an image
+  fills its bubble edge-to-edge with zero inner right gap; voice note has a
+  ≥44dp play button and waveform.
+- Marketplace card shows real ★/review/view numbers (verify against D1),
+  heart persists across restart, "GROUP SESSION (NULL)" is gone everywhere,
+  card grid causes no N+1 queries.
