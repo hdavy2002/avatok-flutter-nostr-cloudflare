@@ -124,6 +124,7 @@ export class ReceptionRoom {
   private finalized = false;
   // P2 wrap/close state.
   private wrapCueInjected = false; // the 40s wrap cue is injected exactly once
+  private idleNudges = 0; // silence escalation: 1st = spoken check-in, 2nd = spoken close
   private closePending = false;    // 60s reached while Ava was mid-utterance → close on her next turnComplete
   private avaSpeaking = false;     // true between an Ava audio chunk and her turnComplete
 
@@ -365,6 +366,7 @@ export class ReceptionRoom {
       const pk = peakOf(up);
       if (pk > this.callerPeak) this.callerPeak = pk;
       this.pcmOut.push({ caller: true, pcm: up }); this.pcmBytes += up.byteLength; this.callerRecBytes += up.byteLength;
+      this.idleNudges = 0; // caller is engaged again → reset the silence escalation
       this.bumpIdle();
     }
     this.sendGem({
@@ -404,7 +406,33 @@ export class ReceptionRoom {
   private bumpIdle(): void {
     if (this.finalized) return;
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => this.finalize("inactivity"), ReceptionRoom.IDLE_MS);
+    this.idleTimer = setTimeout(() => this.onIdle(), ReceptionRoom.IDLE_MS);
+  }
+
+  // Silence backstop. Instead of cutting the call dead (the "Ava silently wraps"
+  // bug — caller goes quiet, 10s later the line just drops with no goodbye), the
+  // FIRST unbroken silence makes Ava gently check in ("still there? anything I can
+  // pass on?"), and the SECOND makes her say a warm goodbye via the wrap cue. The
+  // call therefore ALWAYS ends on Ava's voice, never a silent drop.
+  private onIdle(): void {
+    if (this.finalized) return;
+    // Wrap already spoken (40s cue or a prior escalation) and STILL silent → the
+    // goodbye is said, so it's safe to close now.
+    if (this.wrapCueInjected) { void this.finalize("inactivity"); return; }
+    // Second unbroken silence → escalate to the spoken close (Ava says goodbye).
+    if (this.idleNudges >= 1) { this.onWrapCue(); return; }
+    // First silence → a warm spoken check-in, then re-arm; don't end the call.
+    this.idleNudges++;
+    this.ev("ava_recept_idle_nudge", { at_ms: Date.now() - this.startedAt });
+    // End the caller's still-open (silent) turn so the model actually answers.
+    this.sendGem({ realtimeInput: { audioStreamEnd: true } });
+    this.sendGem({
+      clientContent: {
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM: The caller has gone quiet. In ONE short, warm sentence, check if they're still there and ask if there's anything you can pass on. Do NOT say goodbye yet.]" }] }],
+        turnComplete: true,
+      },
+    });
+    this.bumpIdle(); // re-arm; the next unbroken silence escalates to the goodbye
   }
 
   // Gemini → caller : audio out (binary) + transcript accumulation
