@@ -735,6 +735,34 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     }
   }
 
+  // RECEPT-REATTACH-1: idempotency — AT MOST ONE receptionist session per call_id.
+  // Multiple caller-side triggers can hit /start for the SAME call (no-answer
+  // timeout + a 'busy' status push + our own 'cancel' echo, all within a couple of
+  // seconds). Before this guard, a second /start spawned a SECOND ReceptionRoom on
+  // the same call — Ava restarted her greeting from scratch, producing two
+  // recordings, two posted messages, and TWO ava_recept_cost billing events for one
+  // call (PostHog avatok-14739b84, 2026-07-03 18:39). We claim the call_id in KV on
+  // the first /start (first-write-wins via a compare-after-put race check); a second
+  // /start for the same call_id is a NO-OP that emits ava_recept_reattach_blocked and
+  // returns the already-active session so the caller stays on it (never restarts).
+  // Keyed per (call_id, caller, owner) so an unrelated later call can't be blocked;
+  // TTL bounds it to the ~90s call life so a crashed session never wedges the id.
+  const REATTACH_LOCK_TTL = 120; // sec — covers the 90s hard cap + slack
+  const reattachKey = callId ? `recept_call:${callId}:${ctx.uid}:${to}` : null;
+  if (reattachKey) {
+    const existing = await env.TOKENS.get(reattachKey).catch(() => null);
+    if (existing) {
+      trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_reattach_blocked", APP,
+        { owner: to, call_id: callId, stage: "server", existing_sid: existing });
+      // Not an error to the client: a session is already live for this exact call,
+      // so the caller's app keeps talking to the FIRST session. Return the existing
+      // session id (the RTC token/url are single-use and already consumed by the
+      // first leg, so we do NOT hand out a second WS — the client treats a 409
+      // no-op reattach as "stay on the session you have").
+      return json({ error: "receptionist_unavailable", reason: "reattach_blocked", session_id: existing }, 409);
+    }
+  }
+
   const sid = crypto.randomUUID();
   const rtcToken = crypto.randomUUID();
   const now = Date.now();
@@ -830,6 +858,32 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     started_at: now,
   };
   await env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
+
+  // RECEPT-REATTACH-1: claim this call_id so any LATER /start for the same call is
+  // rejected as a reattach (see the guard near the top of this handler). Best-effort
+  // first-write-wins: KV isn't strongly consistent, so after writing we read back —
+  // if another concurrent /start already claimed it with a DIFFERENT sid, we yield
+  // to that one (mark our just-created session superseded) and let the caller reattach
+  // to the winner rather than run two Ava sessions on one call.
+  if (reattachKey) {
+    try {
+      const prior = await env.TOKENS.get(reattachKey);
+      if (prior && prior !== sid) {
+        // Lost the race — another /start claimed this call first. Tear down our
+        // just-created (unused) session and hand the caller the winner.
+        try {
+          await metaDb(env).prepare(
+            "UPDATE receptionist_sessions SET status='ended', ended_at=?2, cutoff_reason='reattach_superseded', updated_at=?2 WHERE id=?1",
+          ).bind(sid, now).run();
+        } catch { /* best-effort */ }
+        await env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {});
+        trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_reattach_blocked", APP,
+          { owner: to, call_id: callId, stage: "server_race", existing_sid: prior });
+        return json({ error: "receptionist_unavailable", reason: "reattach_blocked", session_id: prior }, 409);
+      }
+      if (!prior) await env.TOKENS.put(reattachKey, sid, { expirationTtl: REATTACH_LOCK_TTL });
+    } catch { /* best-effort: the client-side _receptionistActive guard is the backstop */ }
+  }
 
   // Stamp the caller's email/phone so support can pull a complainant's
   // receptionist calls by contact. trace_id = the session id (one-call trace).
