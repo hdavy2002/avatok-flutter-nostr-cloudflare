@@ -148,8 +148,24 @@ class AppDb extends _$AppDb {
           if (from < 6) {
             // npub → uid rename (Nostr removal). Renamed in place so existing
             // on-device contact rows are preserved across the update.
-            await m.renameColumn(contacts, 'npub', contacts.uid);
-            await m.renameColumn(deviceContactsCache, 'npub', deviceContactsCache.uid);
+            // GUARDED (PERF-5): on devices whose tables were already created
+            // with `uid`, the blind rename threw `no such column: "npub"` on
+            // EVERY open — the version bump rolled back and the migration
+            // re-fired forever. Check PRAGMA table_info first, and never let a
+            // legacy rename brick the DB open.
+            Future<void> renameIfExists(
+                TableInfo table, String from_, GeneratedColumn to) async {
+              try {
+                final cols = await customSelect(
+                        'PRAGMA table_info(${table.actualTableName})')
+                    .get();
+                final hasOld =
+                    cols.any((r) => r.read<String>('name') == from_);
+                if (hasOld) await m.renameColumn(table, from_, to);
+              } catch (_) {/* never let a legacy rename brick the DB open */}
+            }
+            await renameIfExists(contacts, 'npub', contacts.uid);
+            await renameIfExists(deviceContactsCache, 'npub', deviceContactsCache.uid);
           }
         },
       );
