@@ -655,23 +655,30 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // NOTE: the phone address book is NOT read on cold start — it's read on demand
     // only when the user opens a contacts screen (Invite/Search). This keeps app
     // startup instant and can never freeze the app in the background.
-    // Register this device for incoming-call wake pushes (uid hashed at rest).
     Analytics.identify(id.uid); // attribute diagnostics/events to this uid every app open
-    await PushService.registerToken(id.uid);
-    // Email is the human-facing id: publish email → uid so others find me by email.
-    try {
-      final cu = await widget.clerk.currentUser();
-      final prof = await ProfileStore().load();
-      // Phone + email are the human-facing ids — attach them to telemetry so this
-      // user's errors / slow loads / log lines are retrievable by phone or email.
-      Analytics.setUserKeys(email: cu?.email, phone: prof.phone);
-      if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
-      if (cu?.email != null && cu!.email!.isNotEmpty) {
-        await Directory.registerProfile(
-            uid: id.uid, email: cu.email!, name: cu.label, phone: prof.phone);
-      }
-    } catch (_) {/* not signed in / offline */}
+    // Open the InboxDO socket FIRST (P0-4): the cursor sync has zero network
+    // prerequisites, and gating it behind FCM/Clerk/directory round-trips was
+    // delaying new messages by up to 15-20s on flaky devices.
     _startInbox(id);
+    // Register this device for incoming-call wake pushes (uid hashed at rest) —
+    // fire-and-forget; not a prerequisite for message sync.
+    unawaited(PushService.registerToken(id.uid));
+    // Email is the human-facing id: publish email → uid so others find me by email.
+    // Background task — the chat list never waits on Clerk/directory for this.
+    unawaited(() async {
+      try {
+        final cu = await widget.clerk.currentUser();
+        final prof = await ProfileStore().load();
+        // Phone + email are the human-facing ids — attach them to telemetry so this
+        // user's errors / slow loads / log lines are retrievable by phone or email.
+        Analytics.setUserKeys(email: cu?.email, phone: prof.phone);
+        if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
+        if (cu?.email != null && cu!.email!.isNotEmpty) {
+          await Directory.registerProfile(
+              uid: id.uid, email: cu.email!, name: cu.label, phone: prof.phone);
+        }
+      } catch (_) {/* not signed in / offline */}
+    }());
     // Handles are retired (owner decision 2026-06-27): we no longer prompt for a
     // @handle. Tagging in groups uses the name you saved the contact under.
   }
