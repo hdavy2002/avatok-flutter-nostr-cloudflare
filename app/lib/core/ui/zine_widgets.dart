@@ -252,7 +252,8 @@ class ZineField extends StatefulWidget {
   final ValueChanged<String>? onSubmitted;
   final bool autofocus;
   final int? maxLength;
-  final int maxLines;
+  final int? maxLines;
+  final int? minLines;
   final TextCapitalization textCapitalization;
   final bool autocorrect;
   final bool enabled;
@@ -274,6 +275,7 @@ class ZineField extends StatefulWidget {
     this.autofocus = false,
     this.maxLength,
     this.maxLines = 1,
+    this.minLines,
     this.textCapitalization = TextCapitalization.none,
     this.autocorrect = false,
     this.enabled = true,
@@ -329,7 +331,7 @@ class _ZineFieldState extends State<ZineField> {
           boxShadow: shadow,
         ),
         clipBehavior: Clip.antiAlias,
-        child: Row(crossAxisAlignment: widget.maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
+        child: Row(crossAxisAlignment: (widget.maxLines == null || widget.maxLines! > 1) ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
           if (hasLead)
             Container(
               width: 50,
@@ -356,6 +358,7 @@ class _ZineFieldState extends State<ZineField> {
               autofocus: widget.autofocus,
               maxLength: widget.maxLength,
               maxLines: widget.maxLines,
+              minLines: widget.minLines,
               textCapitalization: widget.textCapitalization,
               autocorrect: widget.autocorrect,
               inputFormatters: widget.inputFormatters,

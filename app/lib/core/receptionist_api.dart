@@ -27,6 +27,11 @@ class ReceptionistSettings {
   final String statusPreset; // busy|travelling|meeting|driving|holiday|after_hours|custom|''
   final String statusCustom;
   final bool declineToAva;   // Mode C: red Decline routes to Ava
+  // F1 (Phase 12 finish) — owner status note + expiry + default answering language.
+  final String statusNote;         // free-text availability note (≤500 chars)
+  final int? statusExpiresAt;      // epoch ms the note expires; null = never
+  final String answerLang;         // BCP-47 opening language; '' = auto/detected
+  final String answerLangDefault;  // GeoIP-derived suggestion (2-letter, e.g. 'hi')
   const ReceptionistSettings({
     required this.enabled,
     required this.instructions,
@@ -44,6 +49,10 @@ class ReceptionistSettings {
     this.statusPreset = '',
     this.statusCustom = '',
     this.declineToAva = false,
+    this.statusNote = '',
+    this.statusExpiresAt,
+    this.answerLang = '',
+    this.answerLangDefault = 'en',
   });
   factory ReceptionistSettings.fromJson(Map<String, dynamic> j) => ReceptionistSettings(
         enabled: j['enabled'] == true,
@@ -62,6 +71,10 @@ class ReceptionistSettings {
         statusPreset: (j['status_preset'] ?? '').toString(),
         statusCustom: (j['status_custom'] ?? '').toString(),
         declineToAva: j['decline_to_ava'] == true,
+        statusNote: (j['status_note'] ?? '').toString(),
+        statusExpiresAt: (j['status_expires_at'] as num?)?.toInt(),
+        answerLang: (j['answer_lang'] ?? '').toString(),
+        answerLangDefault: (j['answer_lang_default'] ?? 'en').toString(),
       );
 }
 
@@ -97,7 +110,9 @@ class ReceptionistApi {
   static Future<ReceptionistSaveResult> saveSettings({
     required bool enabled,
     required String instructions,
-    required String voiceName,
+    // P12: the server pins Ava to one fixed female voice and IGNORES any
+    // client-supplied voice_name. Kept optional so no call site must send it.
+    String? voiceName,
     String? displayName,
     // v2 — persona / language / activation
     String? personaName,
@@ -108,11 +123,18 @@ class ReceptionistApi {
     String? statusPreset,
     String? statusCustom,
     bool? declineToAva,
+    // F1 — status note + expiry + default answering language.
+    String? statusNote,
+    // Epoch ms the note expires; pass null for "no expiry" (server stores NULL).
+    int? statusExpiresAt,
+    String? answerLang,
+    // 'detected' when answerLang was accepted from answer_lang_default, else 'user'.
+    String? answerLangSource,
   }) async {
     final body = <String, dynamic>{
       'enabled': enabled,
       'instructions_text': instructions,
-      'voice_name': voiceName,
+      if (voiceName != null) 'voice_name': voiceName,
       'display_name': displayName,
       if (personaName != null) 'persona_name': personaName,
       if (languageCode != null) 'language_code': languageCode,
@@ -122,6 +144,12 @@ class ReceptionistApi {
       if (statusPreset != null) 'status_preset': statusPreset,
       if (statusCustom != null) 'status_custom': statusCustom,
       if (declineToAva != null) 'decline_to_ava': declineToAva,
+      // F1: status_note always sent (empty string clears it); expiry as epoch ms
+      // or explicit null = never; answer_lang '' = auto/detected.
+      if (statusNote != null) 'status_note': statusNote,
+      if (statusNote != null) 'status_expires_at': statusExpiresAt,
+      if (answerLang != null) 'answer_lang': answerLang,
+      if (answerLangSource != null) 'answer_lang_source': answerLangSource,
     };
     const maxAttempts = 3;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
