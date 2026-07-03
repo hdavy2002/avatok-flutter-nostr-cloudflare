@@ -340,6 +340,9 @@ class Directory {
   /// taken) so callers like onboarding can react; other callers can ignore it.
   // Backoff state for /api/profile calls (prevents 422 hammering).
   static final _profileBackoff = ApiBackoffState('/api/profile');
+  // PERF-7: capture the /api/profile rejection body once per session so the
+  // exact validation reason (e.g. moderation name_format) shows in telemetry.
+  static bool _rejectCaptured = false;
 
   static Future<({bool ok, int status, String? error, String? field, String? message})> registerProfile(
       {required String uid, String handle = '', String name = '', String email = '', String phone = '',
@@ -377,6 +380,14 @@ class Directory {
       // profile_vet_rejected → { error, field, message }). Only parsed on non-200.
       String? error, field, message;
       if (res.statusCode != 200) {
+        if (!_rejectCaptured) {
+          _rejectCaptured = true;
+          final body = res.body;
+          Analytics.capture('profile_restore_rejected', {
+            'status': res.statusCode,
+            'body': body.length > 300 ? body.substring(0, 300) : body,
+          });
+        }
         try {
           final j = jsonDecode(res.body) as Map<String, dynamic>;
           error = (j['error'] ?? '').toString().isEmpty ? null : j['error'].toString();

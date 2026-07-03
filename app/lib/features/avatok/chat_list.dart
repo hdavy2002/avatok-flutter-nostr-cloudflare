@@ -674,8 +674,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         Analytics.setUserKeys(email: cu?.email, phone: prof.phone);
         if (cu != null && cu.label.isNotEmpty && mounted) setState(() => _clerkName = cu.label);
         if (cu?.email != null && cu!.email!.isNotEmpty) {
+          // PERF-7 root cause: cu.label falls back to the EMAIL ADDRESS when the
+          // Clerk account has no first_name, and the Worker's name moderation
+          // (namePlausible: no digits/'@') 422-rejected it on EVERY launch.
+          // Prefer the saved profile name; never send an email/digit "name"
+          // (empty name is fine — the server COALESCEs and keeps the stored one).
+          final dirName = prof.displayName.trim().isNotEmpty
+              ? prof.displayName.trim()
+              : (cu.label.contains('@') || cu.label.contains(RegExp(r'\d'))
+                  ? ''
+                  : cu.label);
           await Directory.registerProfile(
-              uid: id.uid, email: cu.email!, name: cu.label, phone: prof.phone);
+              uid: id.uid, email: cu.email!, name: dirName, phone: prof.phone);
         }
       } catch (_) {/* not signed in / offline */}
     }());
