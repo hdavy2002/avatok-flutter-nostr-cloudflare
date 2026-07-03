@@ -321,7 +321,10 @@ class _ZineFieldState extends State<ZineField> {
             Icon(widget.labelIcon, size: 14, color: Zine.inkSoft),
             const SizedBox(width: 7),
           ],
-          Text(widget.label!.toUpperCase(), style: ZineText.kicker()),
+          Flexible(
+            child: Text(widget.label!.toUpperCase(),
+                style: ZineText.kicker(), overflow: TextOverflow.ellipsis),
+          ),
         ]),
         const SizedBox(height: 9),
       ],

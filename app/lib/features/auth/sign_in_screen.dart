@@ -257,7 +257,10 @@ class _SignInScreenState extends State<SignInScreen> {
                     canPop ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
                 children: [
                   if (canPop) const ZineBackButton(),
-                  Text(tag.toUpperCase(), style: ZineText.kicker()),
+                  Flexible(
+                    child: Text(tag.toUpperCase(),
+                        style: ZineText.kicker(), overflow: TextOverflow.ellipsis),
+                  ),
                 ],
               ),
             ),
@@ -442,15 +445,21 @@ class _SignInScreenState extends State<SignInScreen> {
       );
 
   Widget _footerLink() {
+    // RESPUI-5: was a Row(mainAxisSize: min) with two unconstrained Text/
+    // ZineLink children inside a Center — at high textScale ("have an
+    // account? " + "log in" etc.) the combined intrinsic width exceeds the
+    // available width and Row has nothing to shrink, so it overflows
+    // horizontally (393px @ 320x568/2.0x). Wrap lets the pieces flow onto a
+    // second line instead of forcing one row wider than the screen.
     switch (_mode) {
       case _Mode.signIn:
-        return Row(mainAxisSize: MainAxisSize.min, children: [
+        return Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Text('new here? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
           ZineLink('create account',
               underline: Zine.coral, fontSize: 14, onTap: () => _switch(_Mode.signUp)),
         ]);
       case _Mode.signUp:
-        return Row(mainAxisSize: MainAxisSize.min, children: [
+        return Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Text('have an account? ', style: ZineText.tag(size: 14, color: Zine.inkSoft)),
           ZineLink('log in', fontSize: 14, onTap: () => _switch(_Mode.signIn)),
         ]);
