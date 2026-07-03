@@ -1906,6 +1906,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // The callee's default ringtone (AI Ringback) — comes back on the /api/call
     // response so the caller hears it locally while ringing.
     String ringbackUrl = '';
+    // [MULTIACCT-4] When the server tells us the callee is UNREACHABLE (no
+    // registered device / all tokens stale after a re-login), we must NOT open the
+    // CallScreen — opening it plays fake ringback into a call that can never ring
+    // (the exact "endless ringback, callee never rings" symptom). This flag short-
+    // circuits the dial: show a clear message and stop, no ringback.
+    bool unreachable = false;
     // Ring the callee's phone via FCM wake (real uid contacts only).
     if (to.startsWith('user_')) {
       try {
@@ -1918,20 +1924,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         });
         AvaLog.I.log('call', 'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
         final callKind = video ? 'video' : 'audio';
-        if (res.statusCode == 200) {
+        // [MULTIACCT-4] Parse the distinct reachability signal the server now
+        // returns (`reachable:false` on both the zero-token 404 and — via a later
+        // ring-ack — the all-tokens-pruned case). A 404 is always unreachable.
+        bool reachableFalse = false;
+        try { reachableFalse = jsonDecode(res.body)['reachable'] == false; } catch (_) {}
+        if (res.statusCode == 200 && !reachableFalse) {
           try { ringbackUrl = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString(); } catch (_) {}
           Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': ringbackUrl.isNotEmpty});
-        } else if (res.statusCode == 404) {
-          // The callee has NO registered device (server found 0 push tokens) — the
-          // exact "no device registered" failure. Capture it so call reachability
-          // is queryable per-callee instead of being a UI-only snackbar.
+        } else if (res.statusCode == 404 || reachableFalse) {
+          // The callee has NO reachable device (0 push tokens, or every token went
+          // stale after a re-login). Capture it so call reachability is queryable
+          // per-callee, and DON'T open the ringing CallScreen — tell the caller.
+          unreachable = true;
           Analytics.capture('call_no_device', {
             'to': to.length > 40 ? to.substring(0, 40) : to,
             'kind': callKind,
+            'reason': res.statusCode == 404 ? 'http_404' : 'reachable_false',
           });
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('They have no device registered yet — they need to open AvaTOK once')));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('${widget.chat.name} is unreachable right now — ask them to open AvaTOK')));
           }
         } else {
           // Any other non-200 (auth, 5xx, rate-limit) — capture so a failed call
@@ -1950,6 +1963,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       AvaLog.I.log('call', 'NOT ringing — contact seed is not an uid ($to)');
     }
     if (!mounted) { _dialing = false; return; }
+    // [MULTIACCT-4] Unreachable callee → abort the dial before mounting CallScreen
+    // so no ringback plays. The snackbar above already told the user why.
+    if (unreachable) { _dialing = false; return; }
     // From here the CallScreen mounts (gLiveCallScreens > 0 guards re-entry),
     // so the in-flight debounce flag can be released.
     _dialing = false;

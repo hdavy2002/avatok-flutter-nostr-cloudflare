@@ -194,6 +194,7 @@ class _CallScreenState extends State<CallScreen> {
   Timer? _ringAckFallback;         // fires at 5s if no ring-ack arrives → arm the window anyway
   bool _ringAckHandled = false;    // one-shot: the first ring-ack (or the fallback) wins
   bool? _pendingAckResult;         // ring-ack that landed before the config probe finished
+  bool _callUnreachable = false;   // [MULTIACCT-4] ring-ack reported the callee can't ring (stale tokens)
   // ICE candidates that arrive before the remote description is set must be
   // buffered — addCandidate throws otherwise and the dropped candidate is often
   // the very one that would have connected the call (esp. over cellular/TURN).
@@ -1138,7 +1139,19 @@ class _CallScreenState extends State<CallScreen> {
     if (ok) {
       _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 20));
     } else if (mounted && !_connected) {
-      // Push failed — the callee can't ring. Ava takes the message immediately.
+      // [MULTIACCT-4] Push failed — the callee's phone can NOT ring (every token
+      // was stale after a re-login, so the consumer emitted ok=false +
+      // push_no_device). Stop the fake ringback immediately and tell the caller
+      // they're unreachable; then hand to Ava (if the callee has a receptionist)
+      // or end. Without this the caller heard endless ringback into a call that
+      // could never land — the exact reported symptom.
+      _ringback.stop();
+      _callUnreachable = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${widget.title} is unreachable right now')));
+      }
+      // Ava takes the message immediately if configured; else the call ends.
       _onNoAnswer();
     }
   }
