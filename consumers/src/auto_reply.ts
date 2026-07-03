@@ -328,6 +328,93 @@ async function recordDigestPeer(env: Env, uid: string, peer: string, peerName: s
 // one-liners. Triggered by an AutoDigestMsg (producer: the PUT route on an
 // enabled→disabled transition, and the cron schedule-end sweep). The self-thread is
 // the user's own conv with themselves (dm_<uid>__<uid>), so it appears as an Ava note.
+// STREAM F (AUTOREP-4) — SCHEDULE-END DIGEST SWEEP (cron).
+//
+// The PUT route (worker/src/routes/auto_responder.putAutoResponder) fires the away
+// digest on an explicit enabled→disabled TRANSITION. But two "windows" close on
+// their OWN without any PUT: a `hours` responder whose `active_until` elapsed, and
+// a `schedule` responder whose daily window just ended. Nothing writes a config on
+// those boundaries, so without this sweep the user never gets the "while you were
+// away…" note. This cron finds those users and enqueues ONE digest job each.
+//
+// SOURCE OF TRUTH: the D1 mirror `auto_responder_settings` (DB_META). We only look
+// at users who (a) have a digest log for today (arsp:<uid>:digest:<yyyymmdd> exists
+// — i.e. we actually auto-replied while they were away) AND (b) whose window is no
+// longer active NOW but was active earlier today. IDEMPOTENT: a per-window KV marker
+// (arsp:<uid>:digestfired:<window> = a value that changes only when the window does)
+// ensures the digest fires exactly once per closed window even though the 15-min
+// cron re-runs. The marker carries a short TTL so it self-cleans.
+//
+// enqueue-only: we push an AutoDigestMsg onto the SAME auto-reply queue (kind:
+// "digest"); handleAutoDigest reads + clears the day's log and posts the note. Doing
+// the heavy work in the consumer (not the cron tick) keeps the sweep cheap + bounded.
+const DIGEST_MARKER_TTL_S = 26 * 3600; // just over a day — self-cleans, survives a schedule day.
+
+function schedWindowActive(schedStart: number | null, schedEnd: number | null, now: number): boolean {
+  if (schedStart == null || schedEnd == null) return false;
+  const d = new Date(now);
+  const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return schedStart <= schedEnd
+    ? mins >= schedStart && mins < schedEnd
+    : mins >= schedStart || mins < schedEnd;
+}
+
+/**
+ * Cron sweep: find users whose auto-responder window just CLOSED (a `hours` expiry
+ * or a `schedule` window end) and who auto-replied to someone today, then enqueue a
+ * one-shot away digest each. Idempotent via a per-window KV marker. Bounded.
+ */
+export async function sweepAutoDigest(env: Env): Promise<{ fired: number; scanned: number }> {
+  const now = Date.now();
+  const day = ymd(now);
+  let fired = 0, scanned = 0;
+  try {
+    // Only ENABLED responders with digest ON and a bounded window can "close".
+    // 'off' (until-turned-off) never auto-closes, so it's excluded — its digest is
+    // the explicit PUT transition. Bounded to 500 rows/run.
+    const rows = await env.DB_META.prepare(
+      `SELECT uid, duration_kind, active_until, sched_start, sched_end
+         FROM auto_responder_settings
+        WHERE enabled = 1 AND away_digest = 1
+          AND duration_kind IN ('hours','schedule')
+        LIMIT 500`,
+    ).bind().all<{ uid: string; duration_kind: string; active_until: number | null; sched_start: number | null; sched_end: number | null }>();
+    for (const r of rows.results ?? []) {
+      scanned++;
+      const uid = r.uid;
+      // Window identity: for 'hours' it's the active_until timestamp; for 'schedule'
+      // it's the day + the window end. The marker keys off this, so a *new* window
+      // (a re-enable, or the next scheduled day) can fire its own digest.
+      let closedNow = false;
+      let windowId = "";
+      if (r.duration_kind === "hours") {
+        if (r.active_until != null && now >= r.active_until) { closedNow = true; windowId = `h:${r.active_until}`; }
+      } else { // schedule
+        if (!schedWindowActive(r.sched_start, r.sched_end, now)) { closedNow = true; windowId = `s:${day}:${r.sched_end ?? "x"}`; }
+      }
+      if (!closedNow) continue;
+
+      // Only fire if we actually auto-replied to someone today (there's a log).
+      const logKey = `arsp:${uid}:digest:${day}`;
+      let hasLog = false;
+      try { hasLog = (await env.TOKENS.get(logKey)) != null; } catch { /* treat as none */ }
+      if (!hasLog) continue;
+
+      // Idempotency: fire once per closed window.
+      const markerKey = `arsp:${uid}:digestfired:${windowId}`;
+      let alreadyFired = false;
+      try { alreadyFired = (await env.TOKENS.get(markerKey)) != null; } catch { /* treat as not fired */ }
+      if (alreadyFired) continue;
+
+      try { await env.Q_AUTO_REPLY?.send({ kind: "digest", uid, day }); } catch { /* best-effort */ }
+      try { await env.TOKENS.put(markerKey, "1", { expirationTtl: DIGEST_MARKER_TTL_S }); } catch { /* best-effort */ }
+      await track(env, uid, "autoresponder_digest_swept", { duration_kind: r.duration_kind, window: windowId, email_hash: await ownerEmail(env, uid) });
+      fired++;
+    }
+  } catch { /* best-effort sweep (table may not exist pre-Stream-F) */ }
+  return { fired, scanned };
+}
+
 export async function handleAutoDigest(m: AutoDigestMsg, env: Env): Promise<void> {
   const uid = m.uid;
   const day = m.day || ymd();

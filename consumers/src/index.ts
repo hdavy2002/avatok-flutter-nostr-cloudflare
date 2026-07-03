@@ -1,7 +1,8 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
 import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg, AutoReplyMsg, AutoDigestMsg } from "./types";
 import { handleMktAudio } from "./mkt_audio";
-import { handleAutoReply, handleAutoDigest } from "./auto_reply"; // STREAM F — away auto-responder job + away digest
+import { handleAutoReply, handleAutoDigest, sweepAutoDigest } from "./auto_reply"; // STREAM F — away auto-responder job + away digest (+ schedule-end sweep)
+import { sweepAbandonedLiveness } from "./liveness_sweep"; // STREAM H — abandoned-liveness sweep (ported from worker/routes/liveness_audit)
 import { handleModeration } from "./moderation";
 import { handlePush } from "./fcm";
 import { handleBrain, purgeChurnedBrains } from "./brain";
@@ -72,7 +73,26 @@ export default {
     // Phase 5: T-24h / T-60m / T-10m reminder ladder + gcal inbound-sync fallback.
     try { await bookingReminderLadder(env, sendEmail); } catch (e) { console.error("[reminders]", String(e)); }
     try { await gcalSyncSweep(env); } catch (e) { console.error("[gcal]", String(e)); }
-    if ((event as any).cron && (event as any).cron !== "0 */6 * * *") return; // 15m tick: reminders only
+
+    // STREAM H [LIVE-GATE-1] — mark verification attempts stuck 'pending' >15 min as
+    // 'abandoned' (+ one liveness_audit row each). Idempotent + bounded (200/run), so
+    // it's safe on every 15-min tick. Ported into consumers (liveness_sweep.ts) since
+    // the worker's routes/liveness_audit.ts can't be imported across the package split.
+    try {
+      const { swept } = await sweepAbandonedLiveness(env);
+      if (swept) env.ANALYTICS?.writeDataPoint({ blobs: ["liveness_abandon_sweep"], doubles: [swept], indexes: ["cron"] });
+    } catch (e) { console.error("[liveness-sweep]", String(e)); }
+
+    // STREAM F (AUTOREP-4) — schedule-end / hours-expiry away-digest sweep. Finds
+    // users whose responder window just CLOSED (no PUT fired the transition) and who
+    // auto-replied to someone today, then enqueues ONE digest job each (kind:"digest"
+    // on the auto-reply queue). Idempotent via a per-window KV marker; bounded.
+    try {
+      const { fired, scanned } = await sweepAutoDigest(env);
+      if (fired) env.ANALYTICS?.writeDataPoint({ blobs: ["auto_digest_sweep"], doubles: [fired, scanned], indexes: ["cron"] });
+    } catch (e) { console.error("[auto-digest-sweep]", String(e)); }
+
+    if ((event as any).cron && (event as any).cron !== "0 */6 * * *") return; // 15m tick: reminders + sweeps only
 
     const dayAgo = Date.now() - 86_400_000;
     // Public uploads stuck 'pending' >24h (failed/lost moderation) → reject.
