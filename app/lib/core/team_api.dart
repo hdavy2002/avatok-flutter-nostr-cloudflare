@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'api_auth.dart';
+import 'api_backoff.dart';
 import 'config.dart';
 
 /// TeamApi — Team Receptionist (IVR / auto-attendant).
@@ -139,10 +140,22 @@ class TeamApi {
   /// Refreshed by [status]; lets the sidebar drop the PAID badge on the Team row.
   static bool onPaidTeam = false;
 
+  /// Backoff state for /api/team calls (prevents 503 hammering + 422 permanent fail).
+  static final _statusBackoff = ApiBackoffState('/api/team');
+
   /// My team as owner or member (null when none). Also updates [onPaidTeam].
+  /// On 503 (feature off): exponential backoff. On 422 (validation reject): stop retrying.
   static Future<({String? role, Team? team})> status() async {
+    // Skip if backoff is active (either 503 waiting or 422 permanent fail)
+    if (_statusBackoff.isBackingOff || _statusBackoff.isPermanentlyFailed) {
+      return (role: null, team: null);
+    }
+
     try {
       final r = await ApiAuth.getSigned('$_base');
+      if (!_statusBackoff.shouldRetry(r.statusCode)) {
+        return (role: null, team: null);
+      }
       if (r.statusCode != 200) return (role: null, team: null);
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final role = j['role']?.toString();

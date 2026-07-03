@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
+import '../../core/api_backoff.dart';
 import '../../core/ava_log.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
@@ -337,12 +338,20 @@ class Directory {
   /// Publish my own profile so others can find me (by email / phone / handle).
   /// Returns whether the upsert succeeded plus the HTTP status (409 = handle
   /// taken) so callers like onboarding can react; other callers can ignore it.
+  // Backoff state for /api/profile calls (prevents 422 hammering).
+  static final _profileBackoff = ApiBackoffState('/api/profile');
+
   static Future<({bool ok, int status, String? error, String? field, String? message})> registerProfile(
       {required String uid, String handle = '', String name = '', String email = '', String phone = '',
        String firstName = '', String lastName = '',
        String? encryptedNsecBackup, String? backupMethod, String? accountKind, String? avatarUrl,
        int? birthYear, String? bio, String? gender}) async {
     try {
+      // On 422 validation reject: don't retry this call (permanent fail).
+      if (_profileBackoff.isPermanentlyFailed) {
+        return (ok: false, status: 422, error: 'validation_failed_permanently', field: null, message: null);
+      }
+
       // Handles are retired — names power the directory + contact card. `handle` is
       // accepted but no longer sent. account_kind persists the Single/Parent choice.
       final res = await ApiAuth.postJson(kProfileUrl, {
@@ -360,6 +369,9 @@ class Directory {
         // Profile gender → Ava's pronouns when answering calls.
         if (gender != null && gender.isNotEmpty) 'gender': gender,
       });
+      // Track backoff state: on 422, never retry; on success, reset.
+      _profileBackoff.shouldRetry(res.statusCode);
+
       // P11/R2-F2: surface the server's vetting error so the profile screen can show
       // it inline on the offending field (e.g. implausible_name, profile_incomplete,
       // profile_vet_rejected → { error, field, message }). Only parsed on non-200.
