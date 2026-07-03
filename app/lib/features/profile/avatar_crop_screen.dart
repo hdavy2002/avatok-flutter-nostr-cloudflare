@@ -3,13 +3,22 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:image/image.dart' as img;
 
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Lightweight, dependency-free circular crop editor. The user pans/zooms the
-/// picked image inside a circular viewport; we capture exactly that circle
-/// (transparent corners) as PNG bytes — a perfect-circle crop ready to upload.
+/// picked image inside a circular viewport; we capture exactly that circle,
+/// then flatten it onto white and re-encode as a compact JPEG (~512px, q82).
+///
+/// Why JPEG, not the raw PNG capture: the server re-fetches the avatar and runs
+/// it through image moderation *synchronously* inside the /api/profile save, so
+/// a fat PNG (0.5–1.5 MB) makes that request blow past the client timeout and
+/// the user sees a bogus "check your internet" error. A 512px JPEG is ~40 KB —
+/// 15–20× smaller — so moderation finishes well within the timeout. The circle's
+/// transparent corners are flattened to white (JPEG has no alpha); avatars are
+/// always displayed clipped to a circle, so the corners are never visible.
 class AvatarCropScreen extends StatefulWidget {
   final Uint8List imageBytes;
   const AvatarCropScreen({super.key, required this.imageBytes});
@@ -27,13 +36,33 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
     setState(() => _busy = true);
     try {
       final boundary = _boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      final image = await boundary.toImage(pixelRatio: 512 / _box); // ~512px output
+      final image = await boundary.toImage(pixelRatio: 512 / _box); // ~512px capture
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (!mounted || data == null) { if (mounted) setState(() => _busy = false); return; }
+      // Flatten the transparent-corner circle onto white and re-encode as a
+      // compact JPEG so the upload (and the server-side moderation that re-fetches
+      // it) stays small and fast. See the class doc for the full rationale.
+      final jpeg = _toCompactJpeg(data.buffer.asUint8List());
       if (!mounted) return;
-      Navigator.pop(context, data?.buffer.asUint8List());
+      Navigator.pop(context, jpeg);
     } catch (_) {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Decode the captured PNG, composite it onto an opaque white background
+  /// (JPEG has no alpha), clamp to 512×512, and encode JPEG at quality 82.
+  /// Falls back to the original bytes if decoding somehow fails.
+  Uint8List _toCompactJpeg(Uint8List pngBytes) {
+    final decoded = img.decodePng(pngBytes);
+    if (decoded == null) return pngBytes;
+    final flattened = img.Image(width: decoded.width, height: decoded.height);
+    img.fill(flattened, color: img.ColorRgb8(255, 255, 255));
+    img.compositeImage(flattened, decoded);
+    final sized = (flattened.width != 512 || flattened.height != 512)
+        ? img.copyResize(flattened, width: 512, height: 512)
+        : flattened;
+    return img.encodeJpg(sized, quality: 82);
   }
 
   @override

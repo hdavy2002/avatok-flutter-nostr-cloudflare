@@ -382,8 +382,11 @@ class Directory {
   /// canonical blossom URL (served + CF-transformed at display time), or null.
   static Future<String?> uploadAvatar(Uint8List bytes) async {
     try {
+      // Avatars are compressed to JPEG client-side (see AvatarCropScreen) so the
+      // upload — and the server-side moderation that re-fetches it on profile
+      // save — stays small and fast.
       final res = await ApiAuth.postBytes(kUploadPublicUrl, bytes,
-          extraHeaders: {'x-content-type': 'image/png'}, timeout: const Duration(seconds: 45));
+          extraHeaders: {'x-content-type': 'image/jpeg'}, timeout: const Duration(seconds: 45));
       if (res.statusCode != 200) return null;
       final j = jsonDecode(res.body) as Map<String, dynamic>;
       return (j['url'] ?? '').toString().isEmpty ? null : j['url'].toString();
