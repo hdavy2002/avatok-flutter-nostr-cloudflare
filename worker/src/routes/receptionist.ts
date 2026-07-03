@@ -427,9 +427,10 @@ export function composeReceptionistPrompt(
   // message OR answer a quick question, has a short natural back-and-forth, and
   // wraps the WHOLE call inside ~1 minute with a SPOKEN goodbye (never a silent cut).
   const greetLine = (ctx?.greeting || "").trim();
+  const isBusy = ctx?.activationMode === "busy";
   const step1 = greetLine
     ? `OPEN by warmly saying this greeting, then KEEP the conversation going naturally (do not just stop and go silent): "${greetLine}"`
-    : `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), and that ${subj} can't take the call right now${note ? ` — ${note}` : ""}.`;
+    : `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), and that ${subj} can't take the call right now${isBusy ? ` — ${subj}'s on another call at the moment` : note ? ` — ${note}` : ""}.`;
   const lines: string[] = [
     `You are ${me}, ${who}'s warm, friendly phone assistant. You are having a SHORT, NATURAL CONVERSATION with the caller — you are NOT reading a script and NOT silently recording a voicemail. Sound like a real, kind person; never robotic, never templated.`,
     // P2: language-adaptive from the first words, whole call incl. wrap-up + goodbye.
@@ -444,6 +445,7 @@ export function composeReceptionistPrompt(
     `Keep the WHOLE call to about a minute. If the caller goes quiet, gently check in ("Anything else, or shall I pass this along to ${who}?") instead of leaving dead air or hanging up in silence.`,
     `WRAP-UP: when you get a system note that time is nearly up (e.g. "[SYSTEM: 20 seconds remain …]"), OR the chat naturally winds down, warmly say that's about all the time you have, give a one-line summary of what you'll pass on, promise to tell ${who}, and say a warm goodbye (e.g. "have a great ${tod}${firstSuffix}") — in your OWN natural words. Then ${endWith}. NEVER end the call silently.`,
     `If the caller clearly has nothing to say, warmly offer to just let ${who} know they called, then wrap up and ${endWith}.`,
+    `When the caller indicates they are finished (says no message, says goodbye, gives their message and confirms nothing else), say ONE short closing line and immediately call end_call. Never ask another question after the caller says they are done.`,
     `If asked who you are, say you're ${who}'s assistant helping out while ${subj}'s away. Stay on topic, be kind, and refuse anything illegal or harmful. If asked, you may say the call is recorded.`,
   ].filter(Boolean);
   // F1: time-bound status note — Ava uses it naturally (e.g. "he's out at lunch,
@@ -719,6 +721,18 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_plan_block", APP,
       { owner: to, tier, cap: res.cap, used: res.used });
     return json({ error: "receptionist_unavailable", reason: "plan_limit", ...planLimitBody(res) }, 402);
+  }
+
+  // CALLFIX-8: check if call was already answered by the callee
+  const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
+  if (callId) {
+    const answeredKey = `call_answered:${callId}`;
+    const answered = await env.TOKENS.get(answeredKey).catch(() => null);
+    if (answered === "true") {
+      trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_aborted_answered", APP,
+        { owner: to, call_id: callId, stage: "scheduled" });
+      return json({ error: "receptionist_unavailable", reason: "call_answered" }, 409);
+    }
   }
 
   const sid = crypto.randomUUID();
