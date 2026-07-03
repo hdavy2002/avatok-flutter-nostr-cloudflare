@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -8,6 +10,7 @@ import '../core/admin_tools.dart';
 import '../core/analytics.dart';
 import '../core/app_registry.dart';
 import '../core/apps.dart';
+import '../core/disk_cache.dart';
 import '../core/remote_config.dart';
 import '../core/profile_store.dart';
 import '../core/ui/zine.dart';
@@ -76,54 +79,119 @@ class _AvaShellState extends State<AvaShell> {
     _load();
   }
 
+  // Persisted per-account gate flags (P0-1, local-first shell): '1'/'0' via
+  // DiskCache, which is account-scoped automatically (cache/<AccountScope.id>/,
+  // same pattern as FocusMode). Lets a returning user enter the app instantly
+  // from the last-known gate decisions; the server re-validates in background.
+  static const _kProfileCompleteFlag = 'shell_profile_complete';
+  static const _kHasNumberFlag = 'shell_has_number';
+
   Future<void> _load() async {
+    final gateT0 = DateTime.now();
     final id = await _idStore.load();
-    // The signed-in email (from Clerk) — used to prefill + lock the profile's
-    // email field and satisfy its required-email validation.
-    try { _authEmail = (await widget.clerk.currentUser())?.email; } catch (_) {/* offline */}
     // Warm the per-account focus-mode value so any sidebar drawer paints the
     // correct menu without a default-then-correct flicker.
     await FocusMode.load();
-    // Mandatory-profile gate (pic5): every entry into the shell — new users after
-    // onboarding AND existing users on next open — must have a complete profile
-    // (photo, first+last name, valid email, valid phone) before using the app.
-    final store = ProfileStore();
-    var complete = (await store.load()).isComplete;
-    // Email-OTP recovery on a NEW phone: if the local profile is incomplete (a
-    // fresh install), ask the server for this account's saved profile and
-    // hydrate it so a returning user skips onboarding. Phone is re-added later
-    // via the soft nudge (owner request 2026-06-27).
-    if (!complete) {
-      try { complete = await store.restoreFromServer(); } catch (_) {/* offline → setup screen */}
-    }
-    // R2-F2: when the profile-completion gate is ON, the server is the authority
-    // on completeness (its AI vetting — photo moderation, real-name — can mark a
-    // locally-"complete" profile as not yet passed). If /api/me says the profile
-    // is incomplete, route to the Profile screen before the app. FAIL OPEN: a
-    // null (offline / error) leaves the local decision untouched so a network
-    // blip never traps the user out.
-    if (complete && RemoteConfig.profileCompletionGate) {
-      try {
-        final serverComplete = await store.serverProfileComplete();
-        if (serverComplete == false) complete = false;
-      } catch (_) {/* offline → trust local decision */}
-    }
-    // Compulsory AvaTOK number — now picked BEFORE the profile (owner decision
-    // 2026-06-27) so the chosen number can be shown (locked) in the profile's
-    // phone field. Computed regardless of profile completeness. Fail-open when
-    // offline so a network error never traps a user.
-    var needsNumber = false;
+    // LOCAL-FIRST gates: if both flags are known from a previous launch, render
+    // NOW (no network on the critical path) and re-validate in the background.
+    String? storedComplete;
+    String? storedHasNumber;
     try {
-      final me = await AvaNumber.me();
-      needsNumber = me.featureOn && !me.hasNumber;
-    } catch (_) { needsNumber = false; }
-    if (mounted) setState(() { _id = id; _profileComplete = complete; _needsNumber = needsNumber; });
-    // Funnel signal: did the user hit the compulsory number gate?
-    if (needsNumber) Analytics.capture('number_gate_shown', const {});
-    // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
-    // (premium) or the user's own Google Drive (free). Makes the device + backup
-    // the durable copy so the InboxDO can shed old history.
-    BackupService.I.maybeAutoBackup();
+      storedComplete = await DiskCache.read(_kProfileCompleteFlag);
+      storedHasNumber = await DiskCache.read(_kHasNumberFlag);
+    } catch (_) {/* treat as first run */}
+    final haveCache = storedComplete != null && storedComplete.isNotEmpty &&
+        storedHasNumber != null && storedHasNumber.isNotEmpty;
+    if (haveCache && mounted) {
+      final needsNumber = storedHasNumber != '1';
+      setState(() {
+        _id = id;
+        _profileComplete = storedComplete == '1';
+        _needsNumber = needsNumber;
+      });
+      Analytics.capture('shell_gate_ms', {
+        'ms': DateTime.now().difference(gateT0).inMilliseconds,
+        'source': 'cache',
+      });
+      // Funnel signal: did the user hit the compulsory number gate?
+      if (needsNumber) Analytics.capture('number_gate_shown', const {});
+    }
+
+    Future<void> validateGates() async {
+      // The signed-in email (from Clerk) — used to prefill + lock the profile's
+      // email field and satisfy its required-email validation.
+      try {
+        final email = (await widget.clerk.currentUser())?.email;
+        if (mounted && email != null && email != _authEmail) {
+          setState(() => _authEmail = email);
+        } else {
+          _authEmail = email ?? _authEmail;
+        }
+      } catch (_) {/* offline */}
+      // Mandatory-profile gate (pic5): every entry into the shell — new users after
+      // onboarding AND existing users on next open — must have a complete profile
+      // (photo, first+last name, valid email, valid phone) before using the app.
+      final store = ProfileStore();
+      var complete = (await store.load()).isComplete;
+      // Email-OTP recovery on a NEW phone: if the local profile is incomplete (a
+      // fresh install), ask the server for this account's saved profile and
+      // hydrate it so a returning user skips onboarding. Phone is re-added later
+      // via the soft nudge (owner request 2026-06-27).
+      if (!complete) {
+        try { complete = await store.restoreFromServer(); } catch (_) {/* offline → setup screen */}
+      }
+      // R2-F2: when the profile-completion gate is ON, the server is the authority
+      // on completeness (its AI vetting — photo moderation, real-name — can mark a
+      // locally-"complete" profile as not yet passed). If /api/me says the profile
+      // is incomplete, route to the Profile screen before the app. FAIL OPEN: a
+      // null (offline / error) leaves the local decision untouched so a network
+      // blip never traps the user out.
+      if (complete && RemoteConfig.profileCompletionGate) {
+        try {
+          final serverComplete = await store.serverProfileComplete();
+          if (serverComplete == false) complete = false;
+        } catch (_) {/* offline → trust local decision */}
+      }
+      // Compulsory AvaTOK number — now picked BEFORE the profile (owner decision
+      // 2026-06-27) so the chosen number can be shown (locked) in the profile's
+      // phone field. Computed regardless of profile completeness. Fail-open when
+      // offline so a network error never traps a user.
+      var needsNumber = false;
+      try {
+        final me = await AvaNumber.me();
+        needsNumber = me.featureOn && !me.hasNumber;
+      } catch (_) { needsNumber = false; }
+      // Persist both gate decisions so the NEXT launch enters instantly.
+      try {
+        await DiskCache.write(_kProfileCompleteFlag, complete ? '1' : '0');
+        await DiskCache.write(_kHasNumberFlag, needsNumber ? '0' : '1');
+      } catch (_) {/* best-effort */}
+      if (!haveCache) {
+        // FIRST RUN: this was the blocking path — reveal the UI now.
+        if (mounted) setState(() { _id = id; _profileComplete = complete; _needsNumber = needsNumber; });
+        Analytics.capture('shell_gate_ms', {
+          'ms': DateTime.now().difference(gateT0).inMilliseconds,
+          'source': 'network',
+        });
+        if (needsNumber) Analytics.capture('number_gate_shown', const {});
+      } else if (mounted &&
+          (complete != _profileComplete || needsNumber != _needsNumber)) {
+        // Server disagrees with the cached render — re-route (e.g. a user who
+        // genuinely lost profile-completeness goes to the gate).
+        setState(() { _profileComplete = complete; _needsNumber = needsNumber; });
+        if (needsNumber) Analytics.capture('number_gate_shown', const {});
+      }
+      // Daily auto-backup (best-effort, throttled): encrypt local SQLite → R2
+      // (premium) or the user's own Google Drive (free). Makes the device + backup
+      // the durable copy so the InboxDO can shed old history.
+      BackupService.I.maybeAutoBackup();
+    }
+
+    if (haveCache) {
+      unawaited(validateGates()); // user is already in the app
+    } else {
+      await validateGates(); // first run: correctness over speed
+    }
   }
 
   /// Switch apps from within the home app (AvaTOK): return to the home surface,
