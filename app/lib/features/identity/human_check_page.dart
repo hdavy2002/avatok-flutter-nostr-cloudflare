@@ -4,7 +4,6 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
-import 'identity_gate.dart';
 import 'ladder_api.dart';
 import 'liveness_check_screen.dart';
 
@@ -59,21 +58,18 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
   Future<void> _startCheck() async {
     if (_busy) return;
     setState(() => _busy = true);
-    Analytics.capture('liveness_started', {'provider': 'rekognition', 'source': _source});
+    Analytics.capture('liveness_started', {'provider': 'workersai', 'source': _source});
 
-    // Launch the existing Face Liveness UI. Returns true on PASS. On a null/false
-    // return (flag off / camera unavailable / user backed out of a dismissible
-    // inner screen), offer the Stripe document-KYC fallback so a real human is
-    // never permanently stuck at the gate.
+    // Launch the Cloudflare-native Face Liveness UI. Returns true on PASS.
+    // LIVENESS-ONLY onboarding: we do NOT ask for government ID here (owner
+    // decision 2026-07-03 — don't scare users). A failed check just lets them
+    // retry; no document/KYC fallback.
     bool ok = false;
     try {
       ok = await Navigator.of(context).push<bool>(
             MaterialPageRoute(builder: (_) => const LivenessCheckScreen()),
           ) ==
           true;
-      if (!ok && mounted) {
-        ok = await IdentityGate.ensureVerified(context, reason: 'confirm you\'re a real person');
-      }
     } catch (_) {
       ok = false;
     }
@@ -87,7 +83,7 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
       // country/ip/device_model/os/app_version are authoritatively stamped
       // server-side on the liveness_audit row (edge geo + verify body); the
       // client doesn't geo-locate, so those props ride the SERVER events.
-      Analytics.capture('liveness_passed', {'provider': 'rekognition', 'source': _source});
+      Analytics.capture('liveness_passed', {'provider': 'workersai', 'source': _source});
       // Person-props on pass (D-spec [LIVE-GATE-6]).
       await Analytics.setPersonProps({'liveness_verified': true});
       if (!mounted) return;
@@ -174,48 +170,46 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
       canPop: false,
       child: Scaffold(
         backgroundColor: Zine.paper,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Spacer(),
-              Center(
-                child: Container(
-                  width: 108, height: 108,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Zine.lilac,
-                    border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
-                    boxShadow: Zine.shadow,
-                  ),
-                  child: PhosphorIcon(PhosphorIcons.userFocus(PhosphorIconsStyle.bold), size: 48, color: Zine.ink),
+        body: ZineScrollBody(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Spacer(),
+            Center(
+              child: Container(
+                width: 108, height: 108,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Zine.lilac,
+                  border: Border.fromBorderSide(BorderSide(color: Zine.ink, width: Zine.bwLg)),
+                  boxShadow: Zine.shadow,
                 ),
+                child: PhosphorIcon(PhosphorIcons.userFocus(PhosphorIconsStyle.bold), size: 48, color: Zine.ink),
               ),
-              const SizedBox(height: 24),
-              Text('Quick human check', textAlign: TextAlign.center, style: ZineText.hero(size: 30)),
-              const SizedBox(height: 14),
-              Text(
-                'Let our AI check that you\'re a real person — futuristic AI bots keep '
-                'trying to sign up! No AI agents allowed on AvaTOK. This takes about '
-                '15 seconds.',
-                textAlign: TextAlign.center,
-                style: ZineText.sub(size: 15),
-              ),
-              const SizedBox(height: 20),
-              Center(child: ZineLink('Why are we asking this?', onTap: _openWhy)),
-              const Spacer(),
-              ZineButton(
-                label: 'I\'m human — start check',
-                fullWidth: true,
-                fontSize: 19,
-                loading: _busy,
-                icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
-                trailingIcon: false,
-                onPressed: _busy ? null : _startCheck,
-              ),
-              const SizedBox(height: 8),
-            ]),
-          ),
+            ),
+            const SizedBox(height: 24),
+            Text('Quick human check', textAlign: TextAlign.center, style: ZineText.hero(size: 30)),
+            const SizedBox(height: 14),
+            Text(
+              'Let our AI check that you\'re a real person — AI bots keep '
+              'trying to sign up! No AI agents allowed on AvaTOK. This takes about '
+              '15 seconds.',
+              textAlign: TextAlign.center,
+              style: ZineText.sub(size: 15),
+            ),
+            const SizedBox(height: 20),
+            Center(child: ZineLink('Why are we asking this?', onTap: _openWhy)),
+            const Spacer(),
+            ZineButton(
+              label: 'I\'m human — start check',
+              fullWidth: true,
+              fontSize: 19,
+              loading: _busy,
+              icon: PhosphorIcons.videoCamera(PhosphorIconsStyle.bold),
+              trailingIcon: false,
+              onPressed: _busy ? null : _startCheck,
+            ),
+            const SizedBox(height: 8),
+          ]),
+        ),
         ),
       ),
     );

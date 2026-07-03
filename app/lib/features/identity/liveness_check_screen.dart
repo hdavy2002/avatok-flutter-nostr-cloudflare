@@ -19,8 +19,9 @@ import 'ladder_api.dart';
 ///   2. front camera records a short clip; at each action prompt we also
 ///      capture a still frame (frame0/frame1) + one neutral frame (frame2)
 ///   3. frames + clip upload → server verifies with Workers AI vision+Whisper
-/// PASS → green tick in AvaIdentity (one thumbnail kept, clip deleted).
-/// FAIL → all evidence deleted server-side; retry within the 3/24h budget.
+/// PASS → green tick in AvaIdentity; clip + frames retained securely (R2
+/// VERIFICATION bucket) + a liveness_audit row (D15 retain-everything policy).
+/// FAIL → evidence also retained (audit trail); retry within the 3/24h budget.
 class LivenessCheckScreen extends StatefulWidget {
   const LivenessCheckScreen({super.key});
   @override
@@ -227,8 +228,7 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
     );
   }
 
-  Widget _intro() => Padding(
-        padding: const EdgeInsets.all(24),
+  Widget _intro() => ZineScrollBody(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Spacer(),
           Center(
@@ -251,7 +251,7 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
           Text(
             'A quick selfie video (5–10 s). We\'ll ask you to say a short phrase '
             'and make two random gestures. The clip is checked automatically and '
-            'then DELETED — only a single photo stays on your AvaIdentity card.',
+            'stored securely — used only for safety review.',
             textAlign: TextAlign.center,
             style: ZineText.sub(size: 14),
           ),
@@ -334,8 +334,7 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
         onCta: () => Navigator.of(context).pop(true),
       );
 
-  Widget _failed() => Padding(
-        padding: const EdgeInsets.all(24),
+  Widget _failed() => ZineScrollBody(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Spacer(),
           Center(
@@ -356,8 +355,7 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
           const SizedBox(height: 10),
           Text(
             '${_failMessage ?? 'Verification failed.'}'
-            '${_attemptsLeft != null ? '\nAttempts left today: $_attemptsLeft' : ''}'
-            '\n\nYour clip and photos were deleted.',
+            '${_attemptsLeft != null ? '\nAttempts left today: $_attemptsLeft' : ''}',
             textAlign: TextAlign.center,
             style: ZineText.sub(size: 14),
           ),

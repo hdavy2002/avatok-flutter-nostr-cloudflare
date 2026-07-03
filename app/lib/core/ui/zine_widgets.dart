@@ -1011,3 +1011,63 @@ class ZineEmptyState extends StatelessWidget {
     ]);
   }
 }
+
+/// Responsive, overflow-proof body wrapper.
+///
+/// Wraps a [child] Column (typically one that uses `Spacer()`s and a pinned
+/// bottom button) so it NEVER clips on any screen height:
+///   SafeArea → LayoutBuilder → SingleChildScrollView(ClampingScrollPhysics)
+///   → ConstrainedBox(minHeight: viewport) → IntrinsicHeight → child.
+///
+/// - When there is room to spare, `IntrinsicHeight` lets `Spacer()`s expand so
+///   the layout looks exactly as before (bottom button pinned to the bottom).
+/// - When the screen is short (large system UI, small phone, big font scale),
+///   the `SingleChildScrollView` scrolls instead of overflowing, so nothing —
+///   text or button — is ever cut off.
+///
+/// The [child] MUST be a widget that stretches to the incoming height, e.g. a
+/// `Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...])`
+/// containing `Spacer()`s. Pass the screen's own [padding] (defaults to 24 all
+/// round) instead of wrapping the child in a Padding yourself.
+class ZineScrollBody extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  /// SafeArea insets — set to false on an edge that owns a full-bleed element
+  /// (e.g. a camera preview). Defaults to insetting all sides.
+  final bool safeTop;
+  final bool safeBottom;
+
+  const ZineScrollBody({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(24),
+    this.safeTop = true,
+    this.safeBottom = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: safeTop,
+      bottom: safeBottom,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            padding: padding,
+            child: ConstrainedBox(
+              // Subtract the padding so IntrinsicHeight/Spacer target the true
+              // content viewport (avoids a spurious extra scroll of padding).
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight -
+                    padding.resolve(TextDirection.ltr).vertical,
+              ),
+              child: IntrinsicHeight(child: child),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
