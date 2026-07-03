@@ -210,7 +210,7 @@ const DEFAULTS: PlatformConfig = {
   groupTranslationEnabled: false,        // STREAM G — OFF (cost watch)
   smartRepliesEnabled: true,             // STREAM G — ships ON
   scamAutoScanEnabled: true,             // STREAM G — ships ON
-  livenessOnboardingGate: false,         // STREAM H — OFF, owner flips after staging device test
+  livenessOnboardingGate: true,          // STREAM H — ON (owner enabled 2026-07-03 to test signup human-check flow)
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
   minAppBuild: 0,
 };
