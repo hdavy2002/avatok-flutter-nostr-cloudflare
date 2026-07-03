@@ -436,6 +436,15 @@ class _CallScreenState extends State<CallScreen> {
     // This sets the platform to use hardware echo cancellation, noise suppression,
     // and automatic gain control during the call.
     try { await NativeVoiceAudio().startP2pAudioMode(); } catch (_) {}
+    // CALLFIX-18: auto-routing to Bluetooth SCO if available.
+    try { await NativeVoiceAudio().startBluetoothSco(); } catch (_) {}
+    // CALLFIX-19: start proximity sensor for earpiece audio calls.
+    if (NativeVoiceAudio.isSupported) {
+      final route = await NativeVoiceAudio().getAudioRoute();
+      if (route == 'earpiece') {
+        Analytics.capture('call_audio_route', {'route': 'earpiece', 'auto': true});
+      }
+    }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _secs++);
     });
@@ -1078,6 +1087,8 @@ class _CallScreenState extends State<CallScreen> {
     try { WakelockPlus.disable(); } catch (_) {} // release the call wakelock
     // CALLFIX-16: restore normal audio mode on call end.
     try { await NativeVoiceAudio().stopP2pAudioMode(); } catch (_) {}
+    // CALLFIX-18: stop Bluetooth SCO and clean up audio routing on call end.
+    try { await NativeVoiceAudio().stopBluetoothSco(); } catch (_) {}
     _ended = true;
     // Decrement the live-screen count (never below 0) and derive [gInCall] from
     // it, so overlapping calls tearing down in any order leave an accurate

@@ -103,4 +103,28 @@ class NativeVoiceAudio {
   Future<void> stopP2pAudioMode() async {
     try { await _m.invokeMethod('stopP2pAudioMode'); } catch (_) {}
   }
+
+  /// CALLFIX-18: Get the current audio route (earpiece|speaker|bluetooth|headset).
+  Future<String?> getAudioRoute() async {
+    try {
+      return await _m.invokeMethod<String>('getAudioRoute');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// CALLFIX-18: Set the audio route by name (earpiece|speaker|bluetooth|headset).
+  Future<void> setAudioRoute(String route) async {
+    try { await _m.invokeMethod('setAudioRoute', {'route': route}); } catch (_) {}
+  }
+
+  /// CALLFIX-18: Start Bluetooth SCO (audio data exchange).
+  Future<void> startBluetoothSco() async {
+    try { await _m.invokeMethod('startBluetoothSco'); } catch (_) {}
+  }
+
+  /// CALLFIX-18: Stop Bluetooth SCO.
+  Future<void> stopBluetoothSco() async {
+    try { await _m.invokeMethod('stopBluetoothSco'); } catch (_) {}
+  }
 }

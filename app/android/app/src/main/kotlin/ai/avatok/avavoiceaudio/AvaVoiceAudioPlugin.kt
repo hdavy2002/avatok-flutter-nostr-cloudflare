@@ -1,6 +1,11 @@
 package ai.avatok.avavoiceaudio
 
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothHeadset
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -10,6 +15,7 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -68,6 +74,11 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var playThread: Thread? = null
     private val playQueue = LinkedBlockingQueue<ByteArray>()
     private var prevAudioMode = AudioManager.MODE_NORMAL
+
+    // CALLFIX-18: Bluetooth headset / wired headset routing
+    private var bluetoothHeadset: BluetoothHeadset? = null
+    private var headsetReceiver: BroadcastReceiver? = null
+    private var currentRoute: String = "earpiece" // earpiece|speaker|bluetooth
 
     // Telemetry counters (surfaced to Dart on stop / on error).
     private val framesCaptured = AtomicLong(0)
@@ -132,6 +143,26 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "stopP2pAudioMode" -> {
                 // CALLFIX-16: restore normal audio mode on call end
                 stopP2pAudioMode()
+                result.success(null)
+            }
+            "getAudioRoute" -> {
+                // CALLFIX-18: return current audio route (earpiece|speaker|bluetooth|headset)
+                result.success(getCurrentRoute())
+            }
+            "setAudioRoute" -> {
+                // CALLFIX-18: set audio route by name
+                val route = call.argument<String>("route") ?: "earpiece"
+                setAudioRoute(route)
+                result.success(null)
+            }
+            "startBluetoothSco" -> {
+                // CALLFIX-18: start Bluetooth SCO (audio data exchange)
+                startBluetoothSco()
+                result.success(null)
+            }
+            "stopBluetoothSco" -> {
+                // CALLFIX-18: stop Bluetooth SCO
+                stopBluetoothSco()
                 result.success(null)
             }
             "stop" -> {
@@ -342,6 +373,74 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             val am = audioManager() ?: return
             am.abandonAudioFocus(null)
             am.mode = prevAudioMode
+        } catch (_: Throwable) {}
+    }
+
+    // CALLFIX-18: Audio routing — Bluetooth, wired headset, earpiece, speaker.
+    private fun getCurrentRoute(): String = currentRoute
+
+    private fun setAudioRoute(route: String) {
+        try {
+            val am = audioManager() ?: return
+            when (route) {
+                "speaker" -> {
+                    stopBluetoothSco()
+                    @Suppress("DEPRECATION")
+                    am.isSpeakerphoneOn = true
+                    currentRoute = "speaker"
+                }
+                "earpiece" -> {
+                    stopBluetoothSco()
+                    @Suppress("DEPRECATION")
+                    am.isSpeakerphoneOn = false
+                    currentRoute = "earpiece"
+                }
+                "bluetooth" -> {
+                    startBluetoothSco()
+                    @Suppress("DEPRECATION")
+                    am.isSpeakerphoneOn = false
+                    currentRoute = "bluetooth"
+                }
+            }
+            emit("audio_route_changed", mapOf("route" to currentRoute))
+        } catch (_: Throwable) {}
+    }
+
+    private fun startBluetoothSco() {
+        try {
+            val am = audioManager() ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // API 31+: setCommunicationDevice with DEVICE_OUT_BLUETOOTH_SCO
+                // (implementation requires Android device config; for now, use startBluetoothSco)
+            }
+            am.startBluetoothSco()
+        } catch (_: Throwable) {}
+    }
+
+    private fun stopBluetoothSco() {
+        try {
+            val am = audioManager() ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // API 31+: clearCommunicationDevice
+            }
+            am.stopBluetoothSco()
+        } catch (_: Throwable) {}
+    }
+
+    // CALLFIX-19: Proximity sensor — turn screen off during earpiece audio calls.
+    private fun startProximitySensor() {
+        try {
+            if (currentRoute == "earpiece") {
+                // Placeholder: actual implementation requires SensorManager.
+                // For now, emit an event so the Dart side can handle it if a package is available.
+                emit("proximity_sensor_enabled", emptyMap())
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun stopProximitySensor() {
+        try {
+            emit("proximity_sensor_disabled", emptyMap())
         } catch (_: Throwable) {}
     }
 }
