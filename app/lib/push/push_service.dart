@@ -854,7 +854,7 @@ class PushService {
           final incomingWins = incomingId.compareTo(gOutgoingCallId!) < 0;
           Analytics.capture('call_glare_detected', {
             'call_id_in': incomingId,
-            'call_id_out': gOutgoingCallId,
+            'call_id_out': gOutgoingCallId ?? '',
             'resolution': incomingWins ? 'accept_incoming' : 'keep_outgoing',
           });
           if (incomingWins) {

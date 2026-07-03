@@ -46,7 +46,8 @@ class AccountSwitcher {
     // Coalesce: if a switch is already running, chain the new one after it so we
     // never tear down two accounts simultaneously.
     final prev = _inFlight ?? Future<void>.value();
-    final next = prev.then((_) => _run(accountId)).whenComplete(() {
+    late final Future<void> next;
+    next = prev.then((_) => _run(accountId)).whenComplete(() {
       if (identical(_inFlight, next)) _inFlight = null;
     });
     _inFlight = next;
@@ -104,7 +105,7 @@ class AccountSwitcher {
     }
 
     Analytics.capture('account_switch', {
-      'from': from, 'to': to,
+      'from': from ?? '', 'to': to ?? '',
       'duration_ms': DateTime.now().millisecondsSinceEpoch - sw,
       'steps_failed': failed,
       'logout': to == null,
