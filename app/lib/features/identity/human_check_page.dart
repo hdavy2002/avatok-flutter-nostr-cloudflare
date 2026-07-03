@@ -210,7 +210,6 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
             const SizedBox(height: 8),
           ]),
         ),
-        ),
       ),
     );
   }
