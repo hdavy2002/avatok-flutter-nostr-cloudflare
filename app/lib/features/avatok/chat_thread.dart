@@ -3122,27 +3122,61 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
-  // STREAM E — GIF send. Download the full GIF/MP4 bytes from our Tenor proxy,
-  // then push them through the SAME encrypted media pipeline as any photo so the
-  // recipient fetches from R2 (never Tenor). No fork of the upload path.
+  // STREAM E — GIPHY send (Tenor→GIPHY migration). Download the full media bytes
+  // from GIPHY's CDN, then push them through the SAME encrypted media pipeline as
+  // any photo so the recipient fetches from R2 (never GIPHY). No fork of the
+  // upload path. Routing by GIPHY content type:
+  //   • clip  → video message (mp4 WITH sound)
+  //   • sticker / text / emoji → bubble-less sticker (kind:"sticker" via name tag)
+  //   • gif   → animated media (image/gif or webp)
   Future<void> _sendGif(GifResult g) async {
     // ignore: unawaited_futures
     PickerRecentsStore.I.pushGif(g.toRecent());
+    Analytics.capture('giphy_selected', {
+      'content_type': g.contentType.wire,
+      'conv_kind': _isGroup ? 'group' : 'dm',
+    });
     Analytics.capture('gif_sent', {
       'conv_kind': _isGroup ? 'group' : 'dm',
       'query_len': g.desc.length,
+      'content_type': g.contentType.wire,
     });
     final bytes = await GifApi.download(g.url);
     if (!mounted) return;
     if (bytes == null || bytes.isEmpty) { _capNote("Couldn't send GIF"); return; }
-    if (bytes.length > _kMediaMaxBytes) { _capNote('GIF too large'); return; }
-    final isMp4 = g.url.toLowerCase().contains('.mp4');
-    await _sendMedia(
-      isMp4 ? MediaKind.video : MediaKind.image,
-      bytes,
-      isMp4 ? 'video/mp4' : 'image/gif',
-      'gif-${g.id}.${isMp4 ? 'mp4' : 'gif'}',
-    );
+    if (bytes.length > _kMediaMaxBytes) { _capNote('That GIF is too large'); return; }
+
+    final lowerUrl = g.url.toLowerCase();
+    switch (g.contentType) {
+      case GifContentType.clip:
+        // Clips = GIF WITH SOUND → send as a video message.
+        await _sendMedia(
+          MediaKind.video, bytes, 'video/mp4', 'giphy-${g.id}.mp4');
+        return;
+      case GifContentType.sticker:
+      case GifContentType.text:
+      case GifContentType.emoji:
+        // Transparent WebP/GIF → render bubble-less at 160dp (Stream E sticker
+        // path). Reuse the sticker name tag so the bubble builder detects it.
+        final isGif = lowerUrl.contains('.gif');
+        await _sendMedia(
+          MediaKind.image,
+          bytes,
+          isGif ? 'image/gif' : 'image/webp',
+          stickerMediaName('giphy/${g.id}.${isGif ? 'gif' : 'webp'}'),
+        );
+        return;
+      case GifContentType.gif:
+        final isMp4 = lowerUrl.contains('.mp4');
+        final isWebp = lowerUrl.contains('.webp');
+        await _sendMedia(
+          isMp4 ? MediaKind.video : MediaKind.image,
+          bytes,
+          isMp4 ? 'video/mp4' : (isWebp ? 'image/webp' : 'image/gif'),
+          'giphy-${g.id}.${isMp4 ? 'mp4' : (isWebp ? 'webp' : 'gif')}',
+        );
+        return;
+    }
   }
 
   // STREAM E — sticker send. Load the bundled .webp bytes and send through the
@@ -6679,6 +6713,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (!m.me && m.special == null && m.media == null && m.localBytes == null && _flaggedTs.contains(m.ts)) {
       return _redFlagBubble(m, '⚠ FLAGGED BY AVA — DO NOT TRUST');
     }
+    // [UI-BUBBLE-STICKER] Fully bubble-LESS sticker (Stream E follow-up). A
+    // sticker rides the media pipeline tagged via `isStickerName`. WhatsApp-parity:
+    // render StickerMediaView (160dp) with NO bubble chrome — no background, no
+    // padding, no tail, no border — aligned to the sender side, with the timestamp
+    // + read receipt in a small row BELOW the sticker (also side-aligned). Long-
+    // press still opens the reaction/action sheet; tap opens the fullscreen viewer.
+    if (isStickerName(m.media?.name ?? '')) {
+      return _stickerBubbleLess(m);
+    }
     final hasMedia = m.media != null || m.localBytes != null;
     // Ava bubbles always render on the LEFT (she is a participant, not "me"),
     // in a distinct feminine lilac fill — visually separate from my lime and
@@ -6984,6 +7027,104 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
+  // [UI-BUBBLE-STICKER] A sticker rendered with ZERO bubble chrome: just the
+  // 160dp sticker aligned to the sender's side, with a slim timestamp + read-
+  // receipt row underneath (WhatsApp-parity). Long-press → reaction/action sheet;
+  // tap → fullscreen viewer once bytes are available.
+  Widget _stickerBubbleLess(_Msg m) {
+    final onRight = m.me && !_isAvaBubble(m);
+    final st = _statusFor(m);
+    // The sticker itself (decrypt on demand for received stickers).
+    Widget sticker() {
+      final bytes = m.localBytes;
+      if (bytes != null) return StickerMediaView(bytes: bytes, mine: m.me);
+      if (m.media != null) {
+        return FutureBuilder<Uint8List>(
+          future: MediaService.downloadAndDecrypt(m.media!),
+          builder: (c, snap) {
+            if (snap.hasData) m.localBytes = snap.data; // cache decrypted bytes
+            return snap.hasData
+                ? StickerMediaView(bytes: snap.data!, mine: m.me)
+                : const SizedBox(
+                    width: kStickerRenderSize, height: kStickerRenderSize);
+          },
+        );
+      }
+      return const SizedBox(
+          width: kStickerRenderSize, height: kStickerRenderSize);
+    }
+
+    // Timestamp + delivery-status row, mirroring the in-bubble meta row but with
+    // no bubble surround. Aligned to the sender's side.
+    final meta = Padding(
+      padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (m.starred) ...[
+          PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill),
+              size: 11, color: Zine.blueInk),
+          const SizedBox(width: 3),
+        ],
+        Text(m.ts != 0 ? _relTime(m.ts) : m.time,
+            style: ZineText.tag(size: 10, color: Zine.inkSoft)),
+        if (st != null) ...[
+          const SizedBox(width: 4),
+          Icon(st.icon, size: 13, color: st.color),
+        ],
+      ]),
+    );
+
+    final column = Column(
+      crossAxisAlignment:
+          onRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onLongPressStart: (d) => _onBubbleLongPressAt(m, d.globalPosition),
+          onTap: () {
+            final b = m.localBytes;
+            if (b != null) _openImageBytes(b, mime: m.media?.contentType);
+          },
+          child: sticker(),
+        ),
+        meta,
+        if (m.reactCounts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 8),
+            child: Wrap(spacing: 4, children: [
+              for (final e in m.reactCounts.entries)
+                GestureDetector(
+                  onTap: () => _react(m, e.key),
+                  onLongPress: () => _showReactedBy(m),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: m.reaction == e.key ? Zine.lime : Zine.card,
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(color: Zine.ink, width: 2),
+                        boxShadow: Zine.shadowXs),
+                    child: Text(e.value > 1 ? '${e.key} ${e.value}' : e.key,
+                        style: const TextStyle(fontSize: 13)),
+                  ),
+                ),
+            ]),
+          )
+        else
+          const SizedBox(height: 8),
+      ],
+    );
+
+    // Align to the sender's side, matching the padding gutters used by the
+    // normal bubble rows (so the sticker sits under the same margin).
+    return Padding(
+      padding: EdgeInsets.only(left: onRight ? 34 : 0, right: onRight ? 0 : 34),
+      child: Align(
+        alignment: onRight ? Alignment.centerRight : Alignment.centerLeft,
+        child: column,
+      ),
+    );
+  }
+
   // The tiny avatar shown beside an incoming bubble. Ava uses her sitewide
   // asset (with a lilac-sparkle fallback if the asset is missing); a 1:1 peer
   // uses the chat's avatar; a group member uses a per-sender seed.
@@ -7104,10 +7245,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Widget _mediaContent(_Msg m, {bool overlayMeta = false}) {
     // STREAM E: sticker media (tagged via stickerMediaName). Renders at a fixed
-    // 160dp via StickerMediaView. NOTE: the surrounding bubble still applies its
-    // padding/background — the fully bubble-LESS geometry is a Stream K hook (see
-    // the eng report). This branch keeps sticker rendering in the content method
-    // where it belongs, without touching bubble geometry.
+    // 160dp via StickerMediaView. NOTE: pure sticker messages are now intercepted
+    // in _bubble() and rendered fully bubble-LESS via _stickerBubbleLess (no
+    // background/padding/tail) — see [UI-BUBBLE-STICKER]. This branch is retained
+    // as a defensive fallback for any sticker that reaches _mediaContent (e.g. a
+    // sticker with a caption/reply that keeps the normal bubble).
     final stName = m.media?.name ?? '';
     if (isStickerName(stName)) {
       final bytes = m.localBytes;
