@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'ladder_api.dart';
@@ -52,6 +53,20 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
     'mouth_open': 'Open your MOUTH wide',
     'eyebrows_raised': 'RAISE your eyebrows',
   };
+
+  /// Big directional arrow shown during a head-turn action; null for the
+  /// phrase step, non-turn gestures and the neutral frame.
+  IconData? get _arrowIcon {
+    if (_actionIx < 0 || _actionIx >= _actions.length) return null;
+    switch (_actions[_actionIx]) {
+      case 'turn_left':
+        return PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold);
+      case 'turn_right':
+        return PhosphorIcons.arrowRight(PhosphorIconsStyle.bold);
+      default:
+        return null;
+    }
+  }
 
   @override
   void dispose() {
@@ -106,6 +121,13 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
   Future<void> _runChallenge() async {
     final cam = _cam!;
     setState(() { _phase = _Phase.challenge; _actionIx = -1; _prompt = 'Say out loud:\n“$_phrase”'; });
+    // F5: gesture-challenge screen shown (arrows + spoken phrase). Only emitted
+    // as a named challenge event under the listing-liveness gate; the generic
+    // liveness_started/passed/failed telemetry above is unchanged when off.
+    if (RemoteConfig.listingLivenessGate) {
+      Analytics.capture('liveness_challenge_shown',
+          {'actions': _actions.join(','), 'phrase_words': _phrase.split(' ').length});
+    }
     try {
       await cam.startVideoRecording();
     } catch (_) {
@@ -172,6 +194,9 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
     setState(() => _phase = _Phase.verifying);
     final r = await LadderApi.livenessVerify(_sessionId);
     if (!mounted) return;
+    if (RemoteConfig.listingLivenessGate) {
+      Analytics.capture('liveness_challenge_result', {'pass': r.verified});
+    }
     if (r.verified) {
       Analytics.capture('liveness_passed', const {});
       setState(() => _phase = _Phase.passed);
@@ -246,6 +271,11 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
     // Camera preview keeps its natural look; overlays are zine chrome.
     return Stack(fit: StackFit.expand, children: [
       if (cam != null && cam.value.isInitialized) CameraPreview(cam) else const ColoredBox(color: Zine.ink),
+      // Big directional arrow for head-turn actions (turn_left/turn_right).
+      if (_arrowIcon != null)
+        Center(
+          child: PhosphorIcon(_arrowIcon!, size: 120, color: Zine.lime),
+        ),
       // Instruction sticker-card (overlay scrim with ink alpha is OK here).
       Positioned(
         left: 0, right: 0, bottom: 48,

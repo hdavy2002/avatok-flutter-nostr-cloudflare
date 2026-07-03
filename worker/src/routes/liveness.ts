@@ -233,15 +233,25 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
   // PASS — keep frame0 as the evidence thumbnail, delete the rest.
   const thumbKey = prefix + "frame0";
   await cleanup(true);
+
+  // F5: if this user ALSO passed the AWS Rekognition selfie-liveness step
+  // (id.ts), the combined proof is stronger than either alone — record the
+  // provider as `rekognition+challenges`. Otherwise keep the plain gesture
+  // provider. We look for any prior passing rekognition attempt.
+  const rekog = await metaSession(env)
+    .prepare("SELECT 1 AS ok FROM verification_attempts WHERE uid=?1 AND provider='rekognition' AND result='pass' LIMIT 1")
+    .bind(ctx.uid).first<{ ok: number }>();
+  const kycProvider = rekog ? "rekognition+challenges" : "workersai_liveness";
+
   await metaDb(env).batch([
     metaDb(env).prepare(
       "UPDATE verification_status SET status='verified', verified_at=?2, updated_at=?2 WHERE uid=?1",
     ).bind(ctx.uid, now),
     metaDb(env).prepare(
       `INSERT INTO kyc_status (uid, status, provider, verified_at, updated_at)
-       VALUES (?1, 'verified', 'workersai_liveness', ?2, ?2)
-       ON CONFLICT(uid) DO UPDATE SET status='verified', provider='workersai_liveness', verified_at=?2, updated_at=?2`,
-    ).bind(ctx.uid, now),
+       VALUES (?1, 'verified', ?3, ?2, ?2)
+       ON CONFLICT(uid) DO UPDATE SET status='verified', provider=?3, verified_at=?2, updated_at=?2`,
+    ).bind(ctx.uid, now, kycProvider),
     metaDb(env).prepare(
       `INSERT INTO identity_proofs (uid, proof, status, provider, evidence_ref, verified_at, updated_at)
        VALUES (?1,'liveness','verified','workersai',?2,?3,?3)
@@ -251,8 +261,8 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
   await setVerifiedCache(env, ctx.uid, true);
   await invalidateLevelCache(env, ctx.uid);
 
-  brainFact(env, ctx.uid, "identity_verified", "avaid", { method: "workersai_liveness", at: now });
-  track(env, ctx.uid, "id_verified", "avaid", { provider: "workersai" });
+  brainFact(env, ctx.uid, "identity_verified", "avaid", { method: kycProvider, at: now });
+  track(env, ctx.uid, "id_verified", "avaid", { provider: kycProvider });
   metric(env, "liveness_wai_verified", [1]);
   try {
     await notifyUser(env, ctx.uid, {
