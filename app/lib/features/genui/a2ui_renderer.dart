@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/ava_log.dart';
+import '../../core/avatar_cache.dart';
 import '../../core/config.dart';
 import '../../core/ui/zine.dart';
 
@@ -253,7 +254,7 @@ class _AvaA2uiSurfaceState extends State<AvaA2uiSurface> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: Image.network(
-        url, width: w, height: h, fit: BoxFit.cover,
+        AvatarCache.sizedUrl(url, 800), width: w, height: h, fit: BoxFit.cover,
         cacheWidth: (w * 3).round(),
         errorBuilder: (_, __, ___) => fallback(),
         loadingBuilder: (_, child, progress) => progress == null ? child : fallback(),

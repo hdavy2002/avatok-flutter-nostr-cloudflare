@@ -23,6 +23,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/account_storage.dart';
 import '../../core/api_auth.dart';
+import '../../core/avatar_cache.dart';
 import '../../core/ava_ai_client.dart';
 import '../../core/composer_ai.dart';
 import '../translation/ondevice_translate.dart';
@@ -2690,7 +2691,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             minScale: 0.8,
             maxScale: 4,
             child: Center(
-              child: Image.network(url,
+              child: Image.network(AvatarCache.sizedUrl(url, 1600),
                   errorBuilder: (_, __, ___) => const Padding(
                       padding: EdgeInsets.all(24),
                       child: Text('Image unavailable',

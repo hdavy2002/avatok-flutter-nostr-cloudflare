@@ -16,6 +16,7 @@ import '../../core/ava_log.dart';
 import '../../core/ava_memory/ava_profile_memory.dart';
 import '../../core/ava_memory/local_index.dart';
 import '../../core/ava_ondevice_rag.dart';
+import '../../core/avatar_cache.dart';
 import '../../core/cached_image.dart';
 import '../../core/ava_prompt_budget.dart';
 import '../../core/ava_quality.dart';
@@ -607,7 +608,7 @@ class _CompanionThreadScreenState extends State<CompanionThreadScreen> {
             minScale: 0.8,
             maxScale: 4,
             child: Center(
-              child: Image.network(url,
+              child: Image.network(AvatarCache.sizedUrl(url, 1600),
                   errorBuilder: (_, __, ___) => const Padding(
                       padding: EdgeInsets.all(24),
                       child: Text('Image unavailable',

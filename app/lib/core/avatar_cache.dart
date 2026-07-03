@@ -31,6 +31,23 @@ class AvatarCache {
     return '${u.scheme}://${u.host}/cdn-cgi/image/$opts${u.path}';
   }
 
+  /// Host-aware sync variant of [transformUrl] for use directly in an
+  /// `Image.network(...)` src. ONLY avatok.ai hosts support the /cdn-cgi/image
+  /// transform, so we rewrite those (smaller AVIF download, edge-cached) and
+  /// return every other URL (YouTube thumbs, OSM tiles, placeholders, non-http
+  /// data/asset URIs) UNCHANGED — a bare Image.network has no fallback to the
+  /// original, so an unconditional rewrite would break external images. Safe to
+  /// wrap any url with: it no-ops on anything that isn't ours.
+  static String sizedUrl(String rawUrl, int px) {
+    try {
+      final u = Uri.parse(rawUrl);
+      if (!u.hasScheme || !u.host.endsWith('avatok.ai')) return rawUrl;
+      return transformUrl(rawUrl, px);
+    } catch (_) {
+      return rawUrl;
+    }
+  }
+
   /// Store bytes we already have (e.g. just-cropped/uploaded) so the photo shows
   /// instantly without a round-trip.
   static Future<void> putBytes(String rawUrl, int px, Uint8List bytes) async {

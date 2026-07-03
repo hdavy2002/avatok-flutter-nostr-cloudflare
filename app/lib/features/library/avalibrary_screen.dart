@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/analytics.dart';
 import '../../core/apps.dart';
+import '../../core/avatar_cache.dart';
 import '../../core/library_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -1190,7 +1191,7 @@ class _ImageViewerState extends State<_ImageViewer> {
               },
               child: Center(
                 child: Image.network(
-                  m.displayUrl,
+                  AvatarCache.sizedUrl(m.displayUrl, 1600),
                   fit: BoxFit.contain,
                   loadingBuilder: (ctx, child, progress) {
                     if (progress == null) {

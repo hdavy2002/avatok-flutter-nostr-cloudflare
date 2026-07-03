@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../core/avatar_cache.dart';
 import '../../core/library_api.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -92,7 +93,7 @@ class _LibraryPickerScreenState extends State<LibraryPickerScreen> {
           Expanded(
             child: (isMedia && thumb.isNotEmpty)
                 ? Stack(fit: StackFit.expand, children: [
-                    Image.network(thumb, fit: BoxFit.cover,
+                    Image.network(AvatarCache.sizedUrl(thumb, 400), fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => _iconFor(it)),
                     if (it.category == 'video')
                       const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
