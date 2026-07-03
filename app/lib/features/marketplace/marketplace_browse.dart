@@ -3,10 +3,21 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 
 import '../../core/analytics.dart';
+import '../../core/avatar.dart';
 import '../../core/avatar_cache.dart';
 import '../../core/listings_api.dart';
 import '../explore/listing_detail.dart';
 import 'sell_listing_flow.dart' show kMarketCategories;
+
+/// [UI-MKT-1] Card-impression de-dupe — fire 'mkt_card_impression' once per
+/// listing_id per app session (a simple in-memory set is enough; the point is to
+/// avoid re-firing on every scroll/rebuild).
+final Set<String> _impressed = <String>{};
+void _fireImpression(String listingId) {
+  if (listingId.isEmpty || _impressed.contains(listingId)) return;
+  _impressed.add(listingId);
+  Analytics.capture('mkt_card_impression', {'listing_id': listingId});
+}
 
 /// AvaMarketplace landing — the real buy/sell/social browse (replaces AvaExplore
 /// as the marketplace home). Cards show photo, title, price (multi-currency) and
@@ -192,11 +203,40 @@ class _CachedCover extends StatelessWidget {
   }
 }
 
-class _Card extends StatelessWidget {
+/// [UI-MKT-1] Compact zine-styled grid card, WIRED to the extended list endpoint.
+/// Photo edge-to-edge on top with a heart overlay (optimistic favorite toggle);
+/// below: price, 1-line title, and a micro-stats row built ONLY from real data —
+/// star rating + review count, eye view count, country flag, an optional "NEW"
+/// chip (<48h), and a small seller avatar. Zero/absent stats hide their chip
+/// (never render "0" or "NULL").
+class _Card extends StatefulWidget {
   final ListingCard card;
   const _Card({required this.card});
   @override
+  State<_Card> createState() => _CardState();
+}
+
+class _CardState extends State<_Card> {
+  bool _favBusy = false;
+
+  ListingCard get card => widget.card;
+
+  Future<void> _toggleFav() async {
+    if (_favBusy) return;
+    final next = !card.favorited;
+    setState(() { card.favorited = next; _favBusy = true; }); // optimistic
+    Analytics.capture(next ? 'listing_favorited' : 'listing_unfavorited', {'listing_id': card.id});
+    final ok = next
+        ? await ListingsApi.favorite(card.id)
+        : await ListingsApi.unfavorite(card.id);
+    if (!mounted) return;
+    setState(() { if (!ok) card.favorited = !next; _favBusy = false; }); // revert on failure
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Fire the impression once this card is built into the tree.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fireImpression(card.id));
     return GestureDetector(
       onTap: () {
         Analytics.capture('listing_card_clicked', {'listing_id': card.id});
@@ -211,18 +251,68 @@ class _Card extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: _CachedCover(url: card.coverUrl)),
+          Expanded(
+            child: Stack(fit: StackFit.expand, children: [
+              _CachedCover(url: card.coverUrl),
+              // "NEW" chip (top-left) — only when created_at < 48h.
+              if (card.isNew)
+                Positioned(left: 6, top: 6, child: _chip('NEW', bg: const Color(0xFF111111), fg: Colors.white)),
+              // Heart overlay (top-right) — optimistic favorite toggle.
+              Positioned(
+                right: 4, top: 4,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggleFav,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: const BoxDecoration(color: Color(0xE6FFFFFF), shape: BoxShape.circle),
+                    child: Icon(
+                      card.favorited ? Icons.favorite : Icons.favorite_border,
+                      size: 18,
+                      color: card.favorited ? const Color(0xFFE23744) : Colors.black87,
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 2),
               Row(children: [
                 Expanded(child: Text(card.displayPrice,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
-                Text(_flagOf(card.country), style: const TextStyle(fontSize: 14)),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                if (card.country != null && card.country!.isNotEmpty)
+                  Text(_flagOf(card.country), style: const TextStyle(fontSize: 13)),
+              ]),
+              const SizedBox(height: 2),
+              Text(card.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+              const SizedBox(height: 5),
+              // Wired micro-stats row — every chip guards its own value (no 0/NULL).
+              Row(children: [
+                if (card.ratingAvg != null && card.ratingCount > 0) ...[
+                  const Icon(Icons.star, size: 12, color: Color(0xFFF5A623)),
+                  const SizedBox(width: 1),
+                  Text('${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})',
+                      style: const TextStyle(fontSize: 10.5, color: Colors.black54, fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 8),
+                ],
+                if (card.viewCount > 0) ...[
+                  const Icon(Icons.visibility_outlined, size: 12, color: Colors.black45),
+                  const SizedBox(width: 2),
+                  Text('${card.viewCount}',
+                      style: const TextStyle(fontSize: 10.5, color: Colors.black54, fontWeight: FontWeight.w600)),
+                ],
+                const Spacer(),
+                // Small seller avatar chip (never a dummy — Avatar seeds from uid).
+                Avatar(
+                  seed: card.creator.uid,
+                  name: card.creator.name ?? card.creator.handle ?? '?',
+                  size: 20,
+                  avatarUrl: card.creator.avatarUrl,
+                ),
               ]),
             ]),
           ),
@@ -230,4 +320,10 @@ class _Card extends StatelessWidget {
       ),
     );
   }
+
+  Widget _chip(String text, {required Color bg, required Color fg}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(100)),
+        child: Text(text, style: TextStyle(fontSize: 9.5, color: fg, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+      );
 }

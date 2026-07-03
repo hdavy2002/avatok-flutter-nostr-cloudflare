@@ -67,6 +67,13 @@ class ListingCard {
   // AvaMarketplace: expiry + type + location.
   final int? expiresAt;
   final String? marketType, location;
+  // [UI-MKT-4] wired card stats (all from the extended list endpoint, never dummy):
+  // review_count, view_count, created_at (for the <48h "NEW" chip), and the
+  // per-user favorited flag. `favorited` is mutable so the heart can optimistically
+  // toggle without a re-fetch.
+  final int reviewCount, viewCount;
+  final int? createdAt;
+  bool favorited;
   String? description; // only on the details endpoint
 
   ListingCard.fromJson(Map<String, dynamic> j)
@@ -95,8 +102,19 @@ class ListingCard {
         expiresAt = (j['expires_at'] as num?)?.toInt(),
         marketType = j['market_type']?.toString(),
         location = j['location']?.toString(),
+        reviewCount = (j['review_count'] as num?)?.toInt() ?? 0,
+        viewCount = (j['view_count'] as num?)?.toInt() ?? 0,
+        createdAt = (j['created_at'] as num?)?.toInt(),
+        favorited = j['favorited'] == true,
         creator = ListingCreator.fromJson((j['creator'] as Map?)?.cast<String, dynamic>() ?? const {}),
         description = j['description']?.toString();
+
+  /// True when this listing was created less than 48h ago (drives the "NEW" chip).
+  bool get isNew {
+    final c = createdAt;
+    if (c == null || c <= 0) return false;
+    return DateTime.now().millisecondsSinceEpoch - c < 48 * 3600 * 1000;
+  }
 
   bool get isMarketplace => (marketType ?? '').isNotEmpty || const ['sell', 'buy', 'social'].contains(kind);
   bool get isExpired => expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
@@ -295,6 +313,21 @@ class ListingsApi {
     final r = await ApiAuth.getSigned('$_base/creators/$uid');
     if (r.statusCode != 200) return null;
     return CreatorChannel.fromJson(_j(r.body));
+  }
+
+  // ── [UI-MKT-3] favorites (marketplace hearts, per-account scoped server-side) ──
+  /// Heart a listing. Returns true on success (idempotent server-side).
+  static Future<bool> favorite(String listingId) async =>
+      (await ApiAuth.postJson('$_base/marketplace/favorites', {'listing_id': listingId})).statusCode == 200;
+
+  /// Un-heart a listing (listing_id rides the query so the signed DELETE stays body-less).
+  static Future<bool> unfavorite(String listingId) async =>
+      (await ApiAuth.deleteSigned('$_base/marketplace/favorites?listing_id=${Uri.encodeQueryComponent(listingId)}')).statusCode == 200;
+
+  /// The user's favorited listings (full cards, newest-saved first).
+  static Future<List<ListingCard>> favorites() async {
+    final r = await ApiAuth.getSigned('$_base/marketplace/favorites');
+    return _cards(_j(r.body));
   }
 
   // ── creator insights (owner-gated dashboards) ─────────────────────────────

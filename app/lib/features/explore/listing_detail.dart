@@ -380,21 +380,10 @@ class ListingDetailView extends StatelessWidget {
         .map((m) => (m is Map ? (m['url'] ?? m['r2_key']) : null)?.toString())
         .whereType<String>().where((u) => u.startsWith('http')).toList();
     return ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.only(bottom: 24), children: [
-      // media carousel — hero cover with ink border + hard shadow.
+      // [UI-MKT-2] swipeable photo gallery header — page dots + heart overlay.
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-        child: Container(
-          height: 230,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(Zine.rSm),
-            boxShadow: Zine.shadowSm,
-          ),
-          child: covers.isEmpty
-              ? CoverImage(url: null, seed: card.id.hashCode)
-              : PageView(children: [
-                  for (final u in covers) CoverImage(url: u, seed: card.id.hashCode),
-                ]),
-        ),
+        child: _GalleryHeader(card: card, covers: covers),
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -428,16 +417,43 @@ class ListingDetailView extends StatelessWidget {
                 style: ZineText.sub(size: 12, color: Zine.inkMute)),
           ],
           const SizedBox(height: 12),
+          // [UI-MKT-2] wired stats row: star reviews / eye views / posted-ago.
+          // Each guards its own value — never renders 0 or NULL.
+          Builder(builder: (_) {
+            final chips = <Widget>[
+              if (card.ratingAvg != null && card.ratingCount > 0)
+                _statPill(PhosphorIcons.star(PhosphorIconsStyle.fill), '${card.ratingAvg!.toStringAsFixed(1)} (${card.ratingCount})', color: Zine.coral),
+              if (card.viewCount > 0)
+                _statPill(PhosphorIcons.eye(PhosphorIconsStyle.bold), '${card.viewCount} view${card.viewCount == 1 ? '' : 's'}'),
+              if (card.createdAt != null)
+                _statPill(PhosphorIcons.clock(PhosphorIconsStyle.bold), _postedAgo(card.createdAt!)),
+            ];
+            if (chips.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Wrap(spacing: 14, runSpacing: 6, children: chips),
+            );
+          }),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            ZineSticker(card.kind == 'live_event' ? '🎥 Live event' : '🗓 ${card.capacity == 1 ? '1:1 session' : 'Group session (${card.capacity})'}'),
+            // FORMATTER FIX: the session-type chip is meaningful ONLY for creator
+            // services (live_event/consult) — for marketplace kinds (sell/buy/
+            // social) capacity is null, which used to print "Group session (NULL)".
+            // Render it only for those kinds AND only when capacity is a real value.
+            if (card.kind == 'live_event')
+              const ZineSticker('🎥 Live event')
+            else if (card.kind == 'consult' && card.capacity != null)
+              ZineSticker(card.capacity == 1 ? '🗓 1:1 session' : '🗓 Group session (${card.capacity})'),
             if (card.startsAt != null) ZineSticker('🕐 ${fmtWhen(card.startsAt)}'),
             if (card.durationMin != null) ZineSticker('${card.durationMin} min'),
-            if (card.country != null) ZineSticker('${flagEmoji(card.country)} ${card.country}'),
+            if (card.country != null && card.country!.isNotEmpty) ZineSticker('${flagEmoji(card.country)} ${card.country}'),
             if (card.adultsOnly) const ZineSticker('18+', kind: ZineStickerKind.no),
             if (card.translationEnabled)
               ZineSticker('🌐 Voice translation${card.spokenLang != null ? ' · speaks ${translationLangLabel(card.spokenLang!)}' : ''}'),
-            for (final b in card.badges) ZineSticker(b.toString()),
-            ZineSticker(card.category, kind: ZineStickerKind.hint),
+            // Guard badges: skip null/empty entries so a stray null never prints "null".
+            for (final b in card.badges)
+              if (b != null && b.toString().trim().isNotEmpty) ZineSticker(b.toString()),
+            // Category hint — only when it's a real, non-empty value.
+            if (card.category.trim().isNotEmpty) ZineSticker(card.category, kind: ZineStickerKind.hint),
           ]),
           if (card.joinedCount > 0) ...[
             const SizedBox(height: 10),
@@ -493,6 +509,127 @@ class ListingDetailView extends StatelessWidget {
         ]),
       ),
     ]);
+  }
+}
+
+/// [UI-MKT-2] A small icon+label stat pill for the detail stats row.
+Widget _statPill(IconData icon, String label, {Color? color}) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PhosphorIcon(icon, size: 14, color: color ?? Zine.inkSoft),
+        const SizedBox(width: 4),
+        Text(label, style: ZineText.value(size: 12, color: Zine.inkSoft, weight: FontWeight.w800)),
+      ],
+    );
+
+/// "posted 3h ago" / "posted 2d ago" from a created_at ms timestamp.
+String _postedAgo(int createdMs) {
+  final diff = DateTime.now().millisecondsSinceEpoch - createdMs;
+  if (diff < 0) return 'just now';
+  final mins = diff ~/ 60000;
+  if (mins < 1) return 'just now';
+  if (mins < 60) return '${mins}m ago';
+  final hrs = mins ~/ 60;
+  if (hrs < 24) return '${hrs}h ago';
+  final days = hrs ~/ 24;
+  if (days < 30) return '${days}d ago';
+  final months = days ~/ 30;
+  if (months < 12) return '${months}mo ago';
+  return '${days ~/ 365}y ago';
+}
+
+/// [UI-MKT-2] Swipeable photo gallery with page dots + a heart overlay that
+/// optimistically toggles the favorite (calls the POST/DELETE endpoints).
+class _GalleryHeader extends StatefulWidget {
+  final ListingCard card;
+  final List<String> covers;
+  const _GalleryHeader({required this.card, required this.covers});
+  @override
+  State<_GalleryHeader> createState() => _GalleryHeaderState();
+}
+
+class _GalleryHeaderState extends State<_GalleryHeader> {
+  final _pc = PageController();
+  int _page = 0;
+  bool _favBusy = false;
+
+  ListingCard get card => widget.card;
+
+  @override
+  void dispose() { _pc.dispose(); super.dispose(); }
+
+  Future<void> _toggleFav() async {
+    if (_favBusy) return;
+    final next = !card.favorited;
+    setState(() { card.favorited = next; _favBusy = true; });
+    Analytics.capture(next ? 'listing_favorited' : 'listing_unfavorited', {'listing_id': card.id});
+    final ok = next
+        ? await ListingsApi.favorite(card.id)
+        : await ListingsApi.unfavorite(card.id);
+    if (!mounted) return;
+    setState(() { if (!ok) card.favorited = !next; _favBusy = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final covers = widget.covers;
+    return SizedBox(
+      height: 230,
+      child: Stack(children: [
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(Zine.rSm), boxShadow: Zine.shadowSm),
+            child: covers.isEmpty
+                ? CoverImage(url: null, seed: card.id.hashCode)
+                : PageView(
+                    controller: _pc,
+                    onPageChanged: (i) => setState(() => _page = i),
+                    children: [for (final u in covers) CoverImage(url: u, seed: card.id.hashCode)],
+                  ),
+          ),
+        ),
+        // page dots — only when there's more than one photo.
+        if (covers.length > 1)
+          Positioned(
+            bottom: 10, left: 0, right: 0,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (var i = 0; i < covers.length; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: i == _page ? 18 : 6, height: 6,
+                  decoration: BoxDecoration(
+                    color: i == _page ? Zine.ink : Colors.white,
+                    borderRadius: BorderRadius.circular(100),
+                    border: Border.all(color: Zine.ink, width: 1),
+                  ),
+                ),
+            ]),
+          ),
+        // heart overlay (top-right).
+        Positioned(
+          top: 8, right: 8,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggleFav,
+            child: Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: const Color(0xF2FFFFFF),
+                shape: BoxShape.circle,
+                border: Border.all(color: Zine.ink, width: Zine.bw),
+                boxShadow: Zine.shadowXs,
+              ),
+              child: Icon(
+                card.favorited ? Icons.favorite : Icons.favorite_border,
+                size: 20,
+                color: card.favorited ? Zine.coral : Zine.ink,
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
   }
 }
 
