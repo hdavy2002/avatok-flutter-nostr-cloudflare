@@ -27,6 +27,39 @@ import { Mp3Encoder } from "@breezystack/lamejs";
 
 interface SockMeta { uid: string; room: string; since: number; events: number }
 
+/** BCP-47 short code → English language name (for the "Speak in <language>."
+ *  preamble). Mirrors LANG_NAMES in consumers/src/mkt_audio.ts + marketplace.ts.
+ *  Accepts a full BCP-47 tag ("pt-BR") or a bare language NAME ("Portuguese"). */
+const LANG_NAMES: Record<string, string> = {
+  en: "English", es: "Spanish", hi: "Hindi", fr: "French", de: "German",
+  pt: "Portuguese", ar: "Arabic", zh: "Chinese", ja: "Japanese", ru: "Russian",
+  id: "Indonesian", ur: "Urdu", bn: "Bengali", sw: "Swahili", tr: "Turkish", vi: "Vietnamese",
+};
+/** Resolve a lang input to an English language name, or null when English/absent
+ *  (so callers can skip the preamble). Takes a BCP-47 code, a code with a region
+ *  subtag ("pt-BR" → "pt"), or an already-spelled language name (returned as-is). */
+function resolveLangName(lang?: string | null): string | null {
+  const raw = String(lang || "").trim();
+  if (!raw) return null;
+  const code = raw.toLowerCase().split(/[-_]/)[0]; // "pt-BR" → "pt"
+  const mapped = LANG_NAMES[code];
+  if (mapped) return mapped === "English" ? null : mapped;
+  // Not a known code — treat as a language name unless it's plainly English.
+  return /^english$/i.test(raw) ? null : raw;
+}
+
+/** Verified Gemini prebuilt voice ids (buyer picker mirror). A value outside this
+ *  set falls back to Aoede so a stale/bad pref can never break the render. */
+const GEMINI_VOICES = new Set([
+  "Aoede", "Kore", "Leda", "Zephyr", "Autonoe", "Callirrhoe", "Despina", "Erinome",
+  "Laomedeia", "Achernar", "Gacrux", "Pulcherrima", "Vindemiatrix", "Sulafat", "Achird", "Sadachbia",
+  "Puck", "Charon", "Fenrir", "Orus", "Enceladus", "Iapetus", "Umbriel", "Algieba",
+  "Algenib", "Rasalgethi", "Alnilam", "Schedar", "Zubenelgenubi", "Sadaltager",
+]);
+function buyerVoiceOr(v?: string | null): string {
+  return v && GEMINI_VOICES.has(v) ? v : "Aoede";
+}
+
 /** Encode 24kHz mono 16-bit PCM to MP3 (~10x smaller than WAV, universally
  *  playable + shareable to WhatsApp/Telegram). Pure-JS LAME — runs in Workers. */
 function pcmToMp3(pcm: Uint8Array, sampleRate = 24000): Uint8Array {
@@ -103,9 +136,9 @@ export class PartyDO {
     // Cloudflare's default (non-US) egress it returns finishReason=OTHER with no
     // audio. Renders, uploads the WAV to R2, returns { audio_key, bytes }.
     if (url.pathname.endsWith("/render-tts") && req.method === "POST") {
-      const b = await req.json().catch(() => null) as { transcript?: Array<{ speaker: string; text: string }>; persona?: string; listingId?: string } | null;
+      const b = await req.json().catch(() => null) as { transcript?: Array<{ speaker: string; text: string }>; persona?: string; listingId?: string; lang?: string; buyerVoice?: string } | null;
       if (!b || !Array.isArray(b.transcript)) return new Response("bad", { status: 400 });
-      const pcm = await this.renderTts(b.transcript, b.persona);
+      const pcm = await this.renderTts(b.transcript, b.persona, b.lang, b.buyerVoice);
       if (!pcm) return new Response(JSON.stringify({ audio_key: null, bytes: 0 }), { headers: { "content-type": "application/json" } });
       // Encode to MP3 (~10x smaller than WAV, and shareable to WhatsApp/Telegram).
       const mp3 = pcmToMp3(pcm);
@@ -117,19 +150,27 @@ export class PartyDO {
     return new Response("not found", { status: 404 });
   }
 
-  /** Render a 2-voice negotiation transcript to a WAV via Gemini TTS. null on error. */
-  private async renderTts(transcript: Array<{ speaker: string; text: string }>, persona?: string): Promise<Uint8Array | null> {
+  /** Render a 2-voice negotiation transcript to a WAV via Gemini TTS. null on error.
+   *  MKT-LANG-4: `lang` (BCP-47 code, code+region, or a language name) prepends a
+   *  "Speak in <language>." preamble unless it is English/absent; `buyerVoice` picks
+   *  the Buyer speaker's Gemini voice (fallback Aoede). Seller stays persona/Charon.
+   *  Behaviour is identical to before when lang/buyerVoice are absent (English +
+   *  Aoede — matching the prior hard-coded default). */
+  private async renderTts(transcript: Array<{ speaker: string; text: string }>, persona?: string, lang?: string, buyerVoice?: string): Promise<Uint8Array | null> {
     const key = (this.env as any).RECEPTIONIST_GEMINI_API_KEY || (this.env as any).GEMINI_API_KEY;
     if (!key || !transcript.length) return null;
+    const langName = resolveLangName(lang);
+    const speakIn = langName ? ` Speak in ${langName}.` : "";
     const styleHint = persona && persona.trim() ? ` Speak in this style/accent: ${persona.trim()}.` : "";
-    const script = `TTS this marketplace negotiation between two agents, natural and businesslike.${styleHint}\n` +
+    const script = `TTS this marketplace negotiation between two agents, natural and businesslike.${speakIn}${styleHint}\n` +
       transcript.map((t) => `${t.speaker === "Buyer" ? "Buyer" : "Seller"}: ${t.text}`).join("\n");
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${key}`;
     const body = {
       contents: [{ parts: [{ text: script }] }],
       generationConfig: { responseModalities: ["AUDIO"], speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
+        // Seller = listing persona/style (fallback Charon); Buyer = buyer's pick (fallback Aoede).
         { speaker: "Seller", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } },
-        { speaker: "Buyer", voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } },
+        { speaker: "Buyer", voiceConfig: { prebuiltVoiceConfig: { voiceName: buyerVoiceOr(buyerVoice) } } },
       ] } } },
     };
     try {
