@@ -382,3 +382,72 @@ class GuardianDisplayPrefs {
     await DiskCache.write(_kBanner, v ? '1' : '0');
   }
 }
+
+/// F6 — account-wide "adult-only content warning" opt-out for ADULT accounts.
+///
+/// When ON (opted out), the user has chosen NOT to see the extra adult-content
+/// caution cards. Persisted per-account on-device ([DiskCache], scoped under
+/// `cache/<AccountScope.id>/`) AND mirrored to the server
+/// (`POST /api/ava/guardian/scan` with `{adult_optout}`), which is the prefs row
+/// the safety pipeline reads. The server REFUSES the write for child accounts
+/// (403 `minor_cannot_opt_out`); the client additionally hides the toggle for
+/// minors, so a child never reaches this at all. Default OFF (warnings shown).
+class GuardianAdultPrefs {
+  GuardianAdultPrefs._();
+
+  static const _kOptOut = 'ava_guardian_adult_optout';
+
+  /// true = the user has opted OUT of adult-content warnings. Default OFF.
+  static final ValueNotifier<bool> optedOut = ValueNotifier<bool>(false);
+
+  static bool _loaded = false;
+  static bool get isLoaded => _loaded;
+
+  static String get _url {
+    final origin = kApiBase.endsWith('/api')
+        ? kApiBase.substring(0, kApiBase.length - '/api'.length)
+        : kApiBase;
+    return '$origin/api/ava/guardian/scan';
+  }
+
+  /// Load the local value first (instant), then reconcile with the server.
+  static Future<void> load() async {
+    try {
+      final v = await DiskCache.read(_kOptOut);
+      optedOut.value = v == '1';
+    } catch (_) {/* keep default */}
+    _loaded = true;
+    // Best-effort server reconcile — the server prefs row is the source of truth
+    // for cross-device consistency.
+    try {
+      final res = await ApiAuth.postJson(_url, {'get_adult_optout': true},
+          timeout: const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body) as Map<String, Object?>;
+        final serverVal = j['adultOptOut'] == true;
+        optedOut.value = serverVal;
+        await DiskCache.write(_kOptOut, serverVal ? '1' : '0');
+      }
+    } catch (_) {/* offline — keep local */}
+  }
+
+  /// Set the opt-out. Persists locally, then syncs to the server. Returns false
+  /// if the server refused (minor) — the caller reverts the UI.
+  static Future<bool> setOptedOut(bool v) async {
+    optedOut.value = v;
+    await DiskCache.write(_kOptOut, v ? '1' : '0');
+    try {
+      final res = await ApiAuth.postJson(_url, {'adult_optout': v},
+          timeout: const Duration(seconds: 8));
+      if (res.statusCode == 403) {
+        // Minor — server refused. Revert.
+        optedOut.value = false;
+        await DiskCache.write(_kOptOut, '0');
+        return false;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('GuardianAdultPrefs.setOptedOut sync failed: $e');
+    }
+    return true;
+  }
+}

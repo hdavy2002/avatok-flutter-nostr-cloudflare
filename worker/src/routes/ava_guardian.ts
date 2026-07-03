@@ -113,8 +113,79 @@ async function ensureTables(env: Env): Promise<void> {
          PRIMARY KEY (parent_uid, child_uid)
        )`,
     ),
+    // F6: ACCOUNT-WIDE guardian prefs (one row per uid). Currently holds the
+    // adult-content opt-out: when adult_optout=1 the user has chosen NOT to see
+    // adult-only content warnings (they accept adult content without the extra
+    // caution card). Adults only — the write is REFUSED server-side for minors
+    // (users.birth_year < 18), so a child can never turn the warnings off.
+    env.DB_META.prepare(
+      `CREATE TABLE IF NOT EXISTS ava_guardian_account_prefs (
+         uid           TEXT PRIMARY KEY,
+         adult_optout  INTEGER NOT NULL DEFAULT 0,  -- 1 → hide adult-only content warnings
+         updated_at    INTEGER NOT NULL DEFAULT 0
+       )`,
+    ),
   ]);
   _ensured = true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F6 — account-wide adult-content opt-out. Adults may opt OUT of the extra
+// "adult-only content" warning cards. Minors CANNOT (the write is refused).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Is this uid a self-declared minor (< 18 by users.birth_year)? Null year → adult. */
+async function isMinorAccount(env: Env, uid: string): Promise<boolean> {
+  try {
+    const r = await env.DB_META
+      .prepare("SELECT birth_year FROM users WHERE uid=?1")
+      .bind(uid)
+      .first<{ birth_year: number | null }>();
+    const by = r?.birth_year ?? null;
+    if (!by) return false; // no declared year → treated as adult
+    return new Date().getFullYear() - by < 18;
+  } catch {
+    return false; // fail-open toward adult (never traps an adult as a minor)
+  }
+}
+
+/** Read the account-wide adult opt-out. Default false (warnings shown). */
+export async function getAdultOptOut(env: Env, uid: string): Promise<boolean> {
+  if (!uid) return false;
+  try {
+    await ensureTables(env);
+    const r = await env.DB_META
+      .prepare("SELECT adult_optout FROM ava_guardian_account_prefs WHERE uid=?1")
+      .bind(uid)
+      .first<{ adult_optout: number }>();
+    return !!(r && Number(r.adult_optout) === 1);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Set the account-wide adult opt-out. Refused for minors (returns
+ * { refused: true }); the caller surfaces nothing for a child (the client hides
+ * the toggle entirely, this is the server backstop).
+ */
+export async function setAdultOptOut(
+  env: Env,
+  uid: string,
+  optOut: boolean,
+): Promise<{ ok: boolean; refused?: boolean; adultOptOut: boolean }> {
+  await ensureTables(env);
+  if (await isMinorAccount(env, uid)) {
+    // A child account may never turn adult-content warnings off.
+    return { ok: false, refused: true, adultOptOut: false };
+  }
+  const now = Date.now();
+  await env.DB_META.prepare(
+    `INSERT INTO ava_guardian_account_prefs (uid, adult_optout, updated_at)
+     VALUES (?1,?2,?3)
+     ON CONFLICT(uid) DO UPDATE SET adult_optout=?2, updated_at=?3`,
+  ).bind(uid, optOut ? 1 : 0, now).run();
+  return { ok: true, adultOptOut: optOut };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -889,6 +960,27 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
     if (!conv) return json({ error: "conv required" }, 400);
     const p = await getGuardianPrefs(env, ctx.uid, conv);
     return json({ conv, secureChat: p.secureChat, deepMonitor: p.deepMonitor, updatedAt: p.updatedAt });
+  }
+
+  // --- F6: account-wide adult-content opt-out (set / read) --------------------
+  // { adult_optout: bool }  → set (refused for minors, 403)
+  // { get_adult_optout: true } → read the caller's current value + whether they
+  //                               are eligible to change it (adults only).
+  if (b && typeof b.adult_optout === "boolean") {
+    const res = await setAdultOptOut(env, ctx.uid, b.adult_optout);
+    if (res.refused) {
+      return json({ error: "minor_cannot_opt_out", adultOptOut: false }, 403);
+    }
+    const cf: any = (req as any).cf || {};
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid), "guardian_adult_optout_set", "guardian", {
+      opt_out: res.adultOptOut, country: cf.country ?? null,
+    });
+    return json({ ok: true, adultOptOut: res.adultOptOut });
+  }
+  if (b && b.get_adult_optout === true) {
+    const minor = await isMinorAccount(env, ctx.uid);
+    const adultOptOut = await getAdultOptOut(env, ctx.uid);
+    return json({ adultOptOut, eligible: !minor });
   }
 
   // --- link a child (custodial) -----------------------------------------------

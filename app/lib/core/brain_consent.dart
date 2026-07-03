@@ -20,6 +20,13 @@ class BrainCapability {
 /// default ON (opt-out model) EXCEPT private/E2E reading, which is opt-IN.
 const kBrainCapabilities = <BrainCapability>[
   BrainCapability('master', 'AvaBrain', 'Let AvaBrain learn from your activity to help you across apps', master: true),
+  // F7 — the four per-APP guardrails surfaced in the main Settings AvaBrain card.
+  // Each is a server-readable consent boolean the ingestion pipeline checks
+  // (brain_consent table, keyed by capability). All default ON (opt-out model).
+  BrainCapability('messaging', 'Messaging', 'Let AvaBrain learn from your chats so AvaChat can answer "what did X say about…"'),
+  BrainCapability('library', 'Library', 'Let AvaBrain read your files (captions, text) so you can find them later'),
+  BrainCapability('marketplace', 'Marketplace', 'Let AvaBrain remember your listings, buys and sells'),
+  BrainCapability('receptionist', 'Receptionist', 'Let AvaBrain use your call notes and voicemails to answer for you'),
   // Phase 9 — per-app guardrails the ingestion pipeline obeys (server-checked).
   BrainCapability('avatok_messages', 'AvaTok messages', 'Index your 1:1 messages so AvaChat can answer "what did X say about…"'),
   BrainCapability('group_chats', 'Group chats', 'Index messages from your group conversations'),

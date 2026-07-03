@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../auth/clerk_client.dart';
 import '../avatok/number_settings_screen.dart';
 import '../avatok/privacy_screen.dart';
+import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/ava_ai_store.dart';
 import '../../core/avaapps_cache.dart';
@@ -43,7 +44,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'ava_voice',    // Ava voice
     'ai_ringback',  // Ringback tone
     'ava_delegate', // Ava delegate
-    'ava_guardian', // Guardian / safety
+    // 'ava_guardian' un-hidden (F6): the Guardian section carries the adult-only
+    // content-warning opt-out (adults) + the free scam/spam shield assurance.
     'ava_tools',    // Tools & connectors
     'backup_sync',  // Backup & sync
   };
@@ -112,6 +114,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _setBrain(String key, bool v) async {
     setState(() => _brain[key] = v);
     await BrainConsent.set(key, v);
+    // F7 telemetry: which guardrail scope was flipped and to what.
+    Analytics.capture('brain_toggle_set', {'scope': key, 'on': v});
+  }
+
+  /// F7 — the AvaBrain guardrail card: master switch + the four per-app toggles
+  /// (Messaging, Library, Marketplace, Receptionist). ALL default ON. When the
+  /// master is OFF the per-app toggles are disabled/greyed. Each toggle persists
+  /// per-account (scoped) AND syncs to the server prefs the pipeline reads, via
+  /// [BrainConsent].
+  Widget _brainCard() {
+    bool on(String k) => _brain[k] ?? true; // absent = default ON
+    final masterOn = on('master');
+    Widget row(String key, String title, String sub, {bool master = false}) {
+      final enabled = master || masterOn;
+      final value = on(key);
+      return Padding(
+        padding: EdgeInsets.only(bottom: master ? 12 : 10, left: master ? 0 : 8),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.45,
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: ZineText.value(size: master ? 15 : 13.5)),
+                const SizedBox(height: 2),
+                Text(sub, style: ZineText.sub(size: master ? 12 : 11.5)),
+              ]),
+            ),
+            const SizedBox(width: 10),
+            ZineToggle(
+              value: master ? value : (value && masterOn),
+              onChanged: enabled ? (v) => _setBrain(key, v) : null,
+            ),
+          ]),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ZineCard(
+        radius: Zine.rSm,
+        padding: const EdgeInsets.all(14),
+        boxShadow: Zine.shadowXs,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            ZineIconBadge(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill), color: Zine.lilac, size: 34),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'AvaBrain learns from your activity to help you across apps. '
+                'Turn it off entirely, or pick which apps it may learn from. '
+                'Private, end-to-end content is only ever read on your device.',
+                style: ZineText.sub(size: 12.5),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          row('master', 'AvaBrain', 'Master switch for everything below', master: true),
+          const Divider(height: 1, thickness: 1, color: Zine.inkMute),
+          const SizedBox(height: 12),
+          row('messaging', 'Messaging', 'Learn from your chats'),
+          row('library', 'Library', 'Read your files (captions, text)'),
+          row('marketplace', 'Marketplace', 'Remember your listings, buys and sells'),
+          row('receptionist', 'Receptionist', 'Use call notes and voicemails to answer for you'),
+        ]),
+      ),
+    );
   }
 
   void _backup() {
@@ -286,6 +355,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         //     'Get a number that represents you, keep your real one private', () => _push(const NumberSettingsScreen())),
         _tile(PhosphorIcons.shieldCheck(PhosphorIconsStyle.bold), Zine.mint, 'Privacy & discoverability',
             'Choose how people can find and add you', () => _push(const PrivacyScreen())),
+        // F7 — AvaBrain guardrails: master + per-app (Messaging, Library,
+        // Marketplace, Receptionist). All default ON; per-app greyed when master
+        // is OFF. Persisted per-account (scoped) + synced to server via BrainConsent.
+        _brainCard(),
         // _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
         //     'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         _tile(PhosphorIcons.textAa(PhosphorIconsStyle.bold), Zine.blue, 'Display & fonts',

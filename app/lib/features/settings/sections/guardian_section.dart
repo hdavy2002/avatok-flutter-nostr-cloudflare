@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../core/admin_tools.dart';
+import '../../../core/analytics.dart';
 import '../../../core/api_auth.dart';
 import '../../../core/config.dart';
 import '../../../core/disk_cache.dart';
 import '../../../core/paid_feature.dart';
+import '../../../core/profile_store.dart';
 import '../../../core/remote_config.dart';
 import '../../../core/ui/zine.dart';
 import '../../../core/ui/zine_widgets.dart';
@@ -105,18 +107,39 @@ class _GuardianCard extends StatefulWidget {
 
 class _GuardianCardState extends State<_GuardianCard> {
   AccountKind _kind = AccountKind.personal;
+  // F6: whether this account is a minor (< 18 by birth year). Child accounts do
+  // NOT see the adult-content opt-out toggle at all (the server also refuses the
+  // write). Defaults to `true` until the profile loads so a minor never briefly
+  // sees the toggle before we know their age.
+  bool _isMinor = true;
 
   @override
   void initState() {
     super.initState();
     GuardianDefaults.load();
     GuardianDisplayPrefs.load();
+    GuardianAdultPrefs.load();
     _loadKind();
+    _loadMinor();
   }
 
   Future<void> _loadKind() async {
     final k = await AccountKindStore().load();
     if (mounted) setState(() => _kind = k);
+  }
+
+  Future<void> _loadMinor() async {
+    final p = await ProfileStore().load();
+    if (mounted) setState(() => _isMinor = p.isMinor);
+  }
+
+  Future<void> _setAdultOptOut(bool v) async {
+    final ok = await GuardianAdultPrefs.setOptedOut(v);
+    Analytics.capture('brain_toggle_set', {'scope': 'guardian_adult_optout', 'on': v});
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('This setting isn\'t available on this account.')));
+    }
   }
 
   @override
@@ -166,6 +189,26 @@ class _GuardianCardState extends State<_GuardianCard> {
             ZineToggle(value: on, onChanged: (v) => GuardianDisplayPrefs.setShowBanner(v)),
           ]),
         ),
+        // F6 — adult-content warning opt-out (ADULT accounts only). Hidden for
+        // minors; the server also refuses the write for child accounts.
+        if (!_isMinor) ...[
+          const SizedBox(height: 12),
+          ValueListenableBuilder<bool>(
+            valueListenable: GuardianAdultPrefs.optedOut,
+            builder: (context, optedOut, _) => Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Show adult-only content warnings', style: ZineText.value(size: 13.5)),
+                  Text('Turn off to view adult content without the extra caution card.',
+                      style: ZineText.sub(size: 11.5)),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              // The toggle shows "warnings ON" = NOT opted out, so invert.
+              ZineToggle(value: !optedOut, onChanged: (show) => _setAdultOptOut(!show)),
+            ]),
+          ),
+        ],
         const SizedBox(height: 12),
         const Divider(height: 1, thickness: 1, color: Zine.inkMute),
         const SizedBox(height: 12),
