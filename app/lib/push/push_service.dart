@@ -128,6 +128,18 @@ void _onNotifTap(String? payload) {
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
     return;
   }
+  // CALLFIX-21: "Call back" action on missed-call notification.
+  // Payload format: 'callback:<peerId>'. Open the chat with that peer and start a dial.
+  if (payload.startsWith('callback:')) {
+    final peerId = payload.substring('callback:'.length);
+    if (peerId.isNotEmpty) {
+      Analytics.capture('missed_call_callback_tapped', {'peer_id': peerId});
+      _clearBadge();
+      navigatorKey.currentState?.popUntil((r) => r.isFirst);
+      // TODO: navigate to chat with peerId and trigger dial flow (scaffold messaging or a future callback function)
+    }
+    return;
+  }
   if (payload != 'chat') return;
   _clearBadge();
   navigatorKey.currentState?.popUntil((r) => r.isFirst); // back to shell/chat list
@@ -391,25 +403,36 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
   final styleInfo = preview.isNotEmpty
       ? BigTextStyleInformation(preview, contentTitle: title)
       : null;
+  // CALLFIX-21: add "Call back" action button. Extract the caller's peerId from
+  // the data (fromPub is the caller's public ID used to dial them back).
+  final peerId = (d['fromPub'] ?? '').toString();
+  final hasCallbackAction = peerId.isNotEmpty;
   await _ensureLocalInit(); // bg isolate: plugin isn't init'd here otherwise → crash
+  final androidDetails = AndroidNotificationDetails(
+    _callsChannel.id, _callsChannel.name,
+    channelDescription: _callsChannel.description,
+    importance: Importance.high, priority: Priority.high,
+    number: count,
+    ticker: title,
+    category: AndroidNotificationCategory.missedCall,
+    styleInformation: styleInfo,
+    actions: hasCallbackAction ? [
+      AndroidNotificationAction(
+        'callback',
+        'Call back',
+        titleColor: const Color.fromARGB(255, 76, 175, 80),
+        cancelNotification: false,
+      ),
+    ] : [],
+  );
   await _local.show(
     8002, // fixed id → updates in place (one missed-call banner)
     title,
     body,
-    NotificationDetails(
-      android: AndroidNotificationDetails(
-        _callsChannel.id, _callsChannel.name,
-        channelDescription: _callsChannel.description,
-        importance: Importance.high, priority: Priority.high,
-        number: count,
-        ticker: title,
-        category: AndroidNotificationCategory.missedCall,
-        styleInformation: styleInfo,
-      ),
-    ),
-    payload: 'chat', // tap → open the inbox where the voicemail thread lives
+    NotificationDetails(android: androidDetails),
+    payload: hasCallbackAction ? 'callback:$peerId' : 'chat',
   );
-  await _bgTrack('push_shown', {'channel': 'calls', 'type': 'missed'});
+  await _bgTrack('push_shown', {'channel': 'calls', 'type': 'missed', 'has_callback': hasCallbackAction});
 }
 
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
