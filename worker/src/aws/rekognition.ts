@@ -56,3 +56,62 @@ export async function getLivenessResults(
 ): Promise<{ Status: string; Confidence?: number; ReferenceImage?: any }> {
   return call(env, "GetFaceLivenessSessionResults", { SessionId: sessionId });
 }
+
+// ── Content moderation on profile photos (P11 / R2-F2) ───────────────────────
+// DetectModerationLabels returns hierarchical safety labels for an image. We
+// reject an avatar whose labels include the sexual categories below. Uses the
+// same JSON-1.1 `call` helper (SigV4-signed by src/aws/sigv4.ts) as liveness.
+
+/** A single moderation label from Rekognition (Name/ParentName/Confidence). */
+export interface ModerationLabel {
+  Name?: string;
+  ParentName?: string;
+  Confidence?: number;
+}
+
+/**
+ * Run DetectModerationLabels on raw image bytes. `MinConfidence` is the floor
+ * (0..100) below which a label is not returned. Throws on a transient/API error
+ * (the caller decides fail-open vs fail-closed).
+ */
+export async function detectModerationLabels(
+  env: Env,
+  imageBytes: Uint8Array,
+  minConfidence = 60,
+): Promise<{ ModerationLabels: ModerationLabel[] }> {
+  // Rekognition's Image.Bytes is a base64-encoded blob in the JSON-1.1 body.
+  let bin = "";
+  for (let i = 0; i < imageBytes.length; i++) bin += String.fromCharCode(imageBytes[i]);
+  const b64 = btoa(bin);
+  const r = await call<{ ModerationLabels?: ModerationLabel[] }>(env, "DetectModerationLabels", {
+    Image: { Bytes: b64 },
+    MinConfidence: minConfidence,
+  });
+  return { ModerationLabels: r.ModerationLabels ?? [] };
+}
+
+// Top-level moderation categories we reject a PROFILE PHOTO on. Rekognition
+// nests specific labels under these parents (e.g. "Exposed Male Genitalia" →
+// parent "Explicit Nudity"). We match on either the label Name or its
+// ParentName so a new child label under these parents is still caught.
+const AVATAR_REJECT_CATEGORIES = [
+  "explicit nudity",
+  "sexual activity",
+];
+
+/**
+ * True when the moderation labels contain a rejected sexual category. Matches on
+ * Name OR ParentName (case-insensitive substring) so child labels count too.
+ */
+export function avatarModerationRejected(labels: ModerationLabel[]): { rejected: boolean; label?: string } {
+  for (const l of labels ?? []) {
+    const name = String(l.Name ?? "").toLowerCase();
+    const parent = String(l.ParentName ?? "").toLowerCase();
+    for (const cat of AVATAR_REJECT_CATEGORIES) {
+      if (name.includes(cat) || parent.includes(cat)) {
+        return { rejected: true, label: l.Name ?? l.ParentName ?? cat };
+      }
+    }
+  }
+  return { rejected: false };
+}

@@ -59,6 +59,55 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   bool _photoBusy = false;
   bool _saving = false;
 
+  // R2-F2: profile-completion UX. Per-field GlobalKeys let us scroll the FIRST
+  // missing/rejected field into view. `_fieldErrors` drives the red border +
+  // helper text under each offending field; `_holdMsg` is the vetting hold copy.
+  final _scrollController = ScrollController();
+  final _photoKey = GlobalKey();
+  final _firstKey = GlobalKey();
+  final _lastKey = GlobalKey();
+  final _birthYearKey = GlobalKey();
+  final _genderKey = GlobalKey();
+  final _bioKey = GlobalKey();
+  // field id -> inline error text (null/absent = no error).
+  final Map<String, String> _fieldErrors = {};
+  // While the server round-trips its AI vetting, hold the form (disabled + this
+  // message + a spinner). Null when idle.
+  String? _holdMsg;
+
+  GlobalKey _keyFor(String field) {
+    switch (field) {
+      case 'photo': return _photoKey;
+      case 'first_name': return _firstKey;
+      case 'last_name': return _lastKey;
+      case 'birth_year': return _birthYearKey;
+      case 'gender': return _genderKey;
+      case 'about':
+      case 'bio': return _bioKey;
+      default: return _photoKey;
+    }
+  }
+
+  /// Compute which required fields are still missing, in display order.
+  List<String> _missingFields() {
+    final m = <String>[];
+    if (_avatarUrl.trim().isEmpty) m.add('photo');
+    if (_first.text.trim().isEmpty) m.add('first_name');
+    if (_last.text.trim().isEmpty) m.add('last_name');
+    if (_birthYearValue == null) m.add('birth_year');
+    if (_gender.isEmpty) m.add('gender');
+    if (_bio.text.trim().isEmpty) m.add('about');
+    return m;
+  }
+
+  /// Scroll the first offending field into view (post-frame so keys are laid out).
+  void _scrollToField(String field) {
+    final ctx = _keyFor(field).currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(ctx,
+        duration: const Duration(milliseconds: 300), curve: Curves.ease, alignment: 0.1);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -98,6 +147,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void dispose() {
     _first.dispose(); _last.dispose(); _email.dispose(); _phone.dispose();
     _birthYear.dispose(); _bio.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -110,15 +160,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   // Phone is intentionally NOT required (owner decision 2026-06-27): users sign
   // in and recover with email + email-OTP. Phone stays optional here, collected
-  // later for features like dating verification.
-  bool get _valid =>
-      _avatarUrl.trim().isNotEmpty &&
-      _first.text.trim().isNotEmpty &&
-      _last.text.trim().isNotEmpty &&
-      Profile.isValidEmail(_email.text) &&
-      _bio.text.trim().isNotEmpty &&
-      _birthYearValue != null &&
-      _gender.isNotEmpty;
+  // later for features like dating verification. Field-level completeness now
+  // lives in [_missingFields] (drives the red-border + scroll-to-offender UX).
 
   Future<void> _pickAndCrop(ImageSource source) async {
     try {
@@ -149,7 +192,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       return;
     }
     await AvatarCache.putBytes(url, 192, bytes);
-    setState(() { _avatarUrl = url; _photoBusy = false; });
+    setState(() { _avatarUrl = url; _photoBusy = false; _fieldErrors.remove('photo'); });
   }
 
   void _choosePhoto() {
@@ -178,14 +221,37 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
+  /// Copy shown inline (and used to red-flag) each missing required field.
+  String _missingHelper(String field) {
+    switch (field) {
+      case 'photo': return 'Please add a profile photo.';
+      case 'first_name': return 'Please enter your first name.';
+      case 'last_name': return 'Please enter your last name.';
+      case 'birth_year': return 'Please enter a valid birth year (you must be 13+).';
+      case 'gender': return 'Please choose how Ava should refer to you.';
+      case 'about': return 'Please tell Ava a little about yourself.';
+      default: return 'This field is required.';
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
-    if (!_valid) { setState(() {}); return; }
-    setState(() => _saving = true);
+    // Local completeness first: red-border + helper each missing field, then
+    // scroll to the FIRST offender. PRESERVES all input.
+    final missing = _missingFields();
+    if (missing.isNotEmpty) {
+      setState(() {
+        _fieldErrors.clear();
+        for (final f in missing) { _fieldErrors[f] = _missingHelper(f); }
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToField(missing.first));
+      return;
+    }
+    setState(() { _saving = true; _holdMsg = 'Ava is checking your profile…'; _fieldErrors.clear(); });
     final id = _id ?? await IdentityStore().load();
     if (id == null) {
       if (mounted) {
-        setState(() => _saving = false);
+        setState(() { _saving = false; _holdMsg = null; });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Still getting your account ready — try once more.')));
       }
@@ -201,44 +267,97 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final minor = by != null && (DateTime.now().year - by) < 18;
     if (minor) {
       final accepted = await MinorTerms.ensureAccepted(context, isMinor: true);
-      if (!accepted) { if (mounted) setState(() => _saving = false); return; }
+      if (!accepted) { if (mounted) setState(() { _saving = false; _holdMsg = null; }); return; }
     }
     final existing = await _store.load();
     // The visible "phone" field shows the AvaTOK number (locked) and is NOT the
     // user's real phone — preserve any previously-stored real phone instead of
     // overwriting it with the AvaTOK number.
     final phone = existing.phone;
+    final r = await Directory.registerProfile(
+        uid: id.uid, name: fullName, firstName: first, lastName: last,
+        email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio, gender: _gender);
+    if (!mounted) return;
+    // Server vetting failed (implausible_name / profile_incomplete / photo). Release
+    // the hold, show the message inline on the offending field, PRESERVE all input.
+    if (!r.ok) {
+      final field = (r.field ?? '').isNotEmpty ? r.field! : 'photo';
+      final msg = (r.message ?? '').isNotEmpty
+          ? r.message!
+          : (r.status == 0
+              ? 'Could not save your profile — check your connection and try again.'
+              : 'We couldn’t save your profile just now — please try again.');
+      setState(() {
+        _saving = false;
+        _holdMsg = null;
+        // Only pin the message to a known field; otherwise fall back to the photo
+        // slot (the most common reject reason here) so the user always sees it.
+        _fieldErrors[field] = msg;
+      });
+      Analytics.capture('profile_save_rejected', {
+        'reason': r.error ?? 'unknown', 'field': field, 'status': r.status, 'email': email,
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToField(field));
+      return;
+    }
+    // Only persist locally AFTER the server accepts (so a rejected profile isn't
+    // stored as complete — the gate would then wave the user through).
     await _store.save(existing.copyWith(
         displayName: fullName, email: email, phone: phone, avatarUrl: _avatarUrl,
         bio: bio, birthYear: by, gender: _gender));
-    await Directory.registerProfile(
-        uid: id.uid, name: fullName, firstName: first, lastName: last,
-        email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio, gender: _gender);
     Analytics.capture('profile_completed', {
       'has_photo': true, 'via': 'mandatory_gate', 'email': email,
     });
     if (!mounted) return;
-    setState(() => _saving = false);
+    setState(() { _saving = false; _holdMsg = null; });
     widget.onDone();
+  }
+
+  /// The inline error line for a field (null = none). Clearing an error on the
+  /// next edit keeps the form responsive.
+  Widget _errFor(String field) {
+    final e = _fieldErrors[field];
+    if (e == null) return const SizedBox.shrink();
+    return ZineErrorMsg(e);
+  }
+
+  void _clearErr(String field) {
+    if (_fieldErrors.containsKey(field)) setState(() => _fieldErrors.remove(field));
   }
 
   @override
   Widget build(BuildContext context) {
     final id = _id;
+    // While the server vets the profile, hold the whole form (disabled + spinner).
+    final held = _holdMsg != null;
     return PopScope(
       canPop: false, // mandatory — can't back out until complete
       child: Scaffold(
         backgroundColor: Zine.paper,
         appBar: const ZineAppBar(
             title: 'Complete your profile', markWord: 'profile', showBack: false),
-        body: ListView(
+        body: AbsorbPointer(
+          absorbing: held,
+          child: ListView(
+          controller: _scrollController,
           padding: EdgeInsets.fromLTRB(20, 18, 20, 40 + MediaQuery.of(context).padding.bottom),
           children: [
+            if (held)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Row(children: [
+                  const SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_holdMsg!, style: ZineText.value(size: 13))),
+                ]),
+              ),
             Text('A few details so people can recognise you. Your email and AvaTOK '
                 'number are set from sign-up and shown locked below.',
                 style: ZineText.sub(size: 13)),
             const SizedBox(height: 18),
             Center(
+              key: _photoKey,
               child: GestureDetector(
                 onTap: _photoBusy ? null : _choosePhoto,
                 child: Stack(clipBehavior: Clip.none, children: [
@@ -277,14 +396,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            if (_avatarUrl.isEmpty)
+            if (_avatarUrl.isEmpty && !_fieldErrors.containsKey('photo'))
               Center(child: Text('Tap to add a profile photo', style: ZineText.sub(size: 12.5, color: Zine.coral))),
+            Center(child: _errFor('photo')),
             const SizedBox(height: 20),
-            ZineField(controller: _first, label: 'First name', hint: 'Your first name',
-                textCapitalization: TextCapitalization.words, onChanged: (_) => setState(() {})),
+            ZineField(key: _firstKey, controller: _first, label: 'First name', hint: 'Your first name',
+                error: _fieldErrors.containsKey('first_name'),
+                textCapitalization: TextCapitalization.words,
+                onChanged: (_) { _clearErr('first_name'); setState(() {}); }),
+            _errFor('first_name'),
             const SizedBox(height: 14),
-            ZineField(controller: _last, label: 'Last name', hint: 'Your last name',
-                textCapitalization: TextCapitalization.words, onChanged: (_) => setState(() {})),
+            ZineField(key: _lastKey, controller: _last, label: 'Last name', hint: 'Your last name',
+                error: _fieldErrors.containsKey('last_name'),
+                textCapitalization: TextCapitalization.words,
+                onChanged: (_) { _clearErr('last_name'); setState(() {}); }),
+            _errFor('last_name'),
             const SizedBox(height: 14),
             ZineField(controller: _email, label: 'Email', hint: 'you@example.com',
                 enabled: false),
@@ -298,17 +424,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             Text('This is your AvaTOK number — it represents you and keeps your real '
                 'phone private. You can change it later in Settings.', style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
-            ZineField(controller: _birthYear, label: 'Birth year (Private)', hint: 'e.g. 1990',
+            ZineField(key: _birthYearKey, controller: _birthYear, label: 'Birth year (Private)', hint: 'e.g. 1990',
+                error: _fieldErrors.containsKey('birth_year'),
                 keyboardType: TextInputType.number, maxLength: 4,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: (_) => setState(() {})),
+                onChanged: (_) { _clearErr('birth_year'); setState(() {}); }),
+            _errFor('birth_year'),
             const SizedBox(height: 4),
             Text('Private — never shown to anyone. Used to confirm your age '
                 '(under-18 accounts get extra safety protections).',
                 style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
             // ── Gender (mandatory) — drives how Ava refers to you on calls ──
-            Text('Gender', style: ZineText.value(size: 13)),
+            Text('Gender', key: _genderKey, style: ZineText.value(size: 13)),
             const SizedBox(height: 6),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final opt in const [
@@ -319,21 +447,26 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ChoiceChip(
                   label: Text(opt[1]),
                   selected: _gender == opt[0],
-                  onSelected: (_) => setState(() => _gender = opt[0]),
+                  onSelected: (_) { _clearErr('gender'); setState(() => _gender = opt[0]); },
                 ),
             ]),
+            _errFor('gender'),
             const SizedBox(height: 4),
             Text('Ava uses this when she answers your missed calls — '
                 '"can I take a message for him/her/them?"', style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
-            ZineField(controller: _bio, label: 'About you', hint: 'Tell Ava a little about yourself…',
+            ZineField(key: _bioKey, controller: _bio, label: 'About you', hint: 'Tell Ava a little about yourself…',
+                error: _fieldErrors.containsKey('about'),
                 maxLines: 4, maxLength: 600, textCapitalization: TextCapitalization.sentences,
-                onChanged: (_) => setState(() {})),
+                onChanged: (_) { _clearErr('about'); setState(() {}); }),
+            _errFor('about'),
             const SizedBox(height: 24),
             ZineButton(
               label: _saving ? 'Saving…' : 'Save & continue',
               fullWidth: true, fontSize: 18, loading: _saving,
-              onPressed: (_saving || !_valid) ? null : _save,
+              // Always allow tapping (unless mid-save) so incomplete submits can
+              // surface the red-border + scroll-to-offender UX instead of a dead button.
+              onPressed: _saving ? null : _save,
             ),
             const SizedBox(height: 14),
             Center(child: GestureDetector(
@@ -343,6 +476,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }

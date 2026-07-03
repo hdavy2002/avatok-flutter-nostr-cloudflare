@@ -337,7 +337,7 @@ class Directory {
   /// Publish my own profile so others can find me (by email / phone / handle).
   /// Returns whether the upsert succeeded plus the HTTP status (409 = handle
   /// taken) so callers like onboarding can react; other callers can ignore it.
-  static Future<({bool ok, int status})> registerProfile(
+  static Future<({bool ok, int status, String? error, String? field, String? message})> registerProfile(
       {required String uid, String handle = '', String name = '', String email = '', String phone = '',
        String firstName = '', String lastName = '',
        String? encryptedNsecBackup, String? backupMethod, String? accountKind, String? avatarUrl,
@@ -360,9 +360,21 @@ class Directory {
         // Profile gender → Ava's pronouns when answering calls.
         if (gender != null && gender.isNotEmpty) 'gender': gender,
       });
-      return (ok: res.statusCode == 200, status: res.statusCode);
+      // P11/R2-F2: surface the server's vetting error so the profile screen can show
+      // it inline on the offending field (e.g. implausible_name, profile_incomplete,
+      // profile_vet_rejected → { error, field, message }). Only parsed on non-200.
+      String? error, field, message;
+      if (res.statusCode != 200) {
+        try {
+          final j = jsonDecode(res.body) as Map<String, dynamic>;
+          error = (j['error'] ?? '').toString().isEmpty ? null : j['error'].toString();
+          field = (j['field'] ?? '').toString().isEmpty ? null : j['field'].toString();
+          message = (j['message'] ?? '').toString().isEmpty ? null : j['message'].toString();
+        } catch (_) {/* non-JSON body */}
+      }
+      return (ok: res.statusCode == 200, status: res.statusCode, error: error, field: field, message: message);
     } catch (_) {
-      return (ok: false, status: 0); // best-effort for non-onboarding callers
+      return (ok: false, status: 0, error: null, field: null, message: null); // best-effort
     }
   }
 

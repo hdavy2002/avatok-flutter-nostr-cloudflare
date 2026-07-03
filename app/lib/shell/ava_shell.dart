@@ -95,6 +95,18 @@ class _AvaShellState extends State<AvaShell> {
     if (!complete) {
       try { complete = await store.restoreFromServer(); } catch (_) {/* offline → setup screen */}
     }
+    // R2-F2: when the profile-completion gate is ON, the server is the authority
+    // on completeness (its AI vetting — photo moderation, real-name — can mark a
+    // locally-"complete" profile as not yet passed). If /api/me says the profile
+    // is incomplete, route to the Profile screen before the app. FAIL OPEN: a
+    // null (offline / error) leaves the local decision untouched so a network
+    // blip never traps the user out.
+    if (complete && RemoteConfig.profileCompletionGate) {
+      try {
+        final serverComplete = await store.serverProfileComplete();
+        if (serverComplete == false) complete = false;
+      } catch (_) {/* offline → trust local decision */}
+    }
     // Compulsory AvaTOK number — now picked BEFORE the profile (owner decision
     // 2026-06-27) so the chosen number can be shown (locked) in the profile's
     // phone field. Computed regardless of profile completeness. Fail-open when

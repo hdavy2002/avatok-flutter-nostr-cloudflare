@@ -16,6 +16,9 @@ import { brainFact, track } from "../hooks";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
 import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
+// R2-F2: avatar nudity moderation (AWS Rekognition DetectModerationLabels; SigV4
+// signing reused from ../aws/sigv4 via ../aws/rekognition).
+import { rekognitionConfigured, detectModerationLabels, avatarModerationRejected } from "../aws/rekognition";
 
 // ---- push: /api/register /api/call /api/notify /api/call-status ----
 export async function register(req: Request, env: Env): Promise<Response> {
@@ -274,8 +277,36 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
       track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "realname", field: "first_name" });
       return json({ error: "implausible_name", field: "first_name", message: nm.reason }, 400);
     }
-    // NOTE: photo moderation (Rekognition DetectModerationLabels on avatarUrl) is a
-    // documented follow-up — the helper + image-byte fetch aren't wired yet.
+    // Avatar nudity moderation (Rekognition DetectModerationLabels). Only run on a
+    // NEW/changed photo (skip re-moderating an unchanged avatar on later saves) and
+    // only when creds are configured. INTENT: reject on a positive sexual-nudity
+    // detection; FAIL OPEN on a transient Rekognition/infra error so a flaky API
+    // never bricks signup (mirrors the deepfake-check best-effort fetch pattern).
+    if (avatarUrl && rekognitionConfigured(env)) {
+      let changed = true;
+      try {
+        const prev = await db.prepare("SELECT avatar_url FROM users WHERE uid=?1").bind(ctx.uid).first<{ avatar_url: string | null }>();
+        changed = (prev?.avatar_url ?? "") !== avatarUrl;
+      } catch { changed = true; }
+      if (changed) {
+        try {
+          const res = await fetch(avatarUrl);
+          if (res.ok) {
+            const bytes = new Uint8Array(await res.arrayBuffer());
+            const mod = await detectModerationLabels(env, bytes);
+            const verdict = avatarModerationRejected(mod.ModerationLabels);
+            if (verdict.rejected) {
+              track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "photo", field: "photo", label: verdict.label });
+              return json({ error: "profile_vet_rejected", field: "photo", message: "That photo didn't pass our check — please choose another." }, 400);
+            }
+          }
+          // A non-OK fetch or empty labels → allow (fail open on infra issues).
+        } catch {
+          // Transient Rekognition/network error → allow the save (fail open).
+          track(env, ctx.uid, "profile_vet_error", "profile", { stage: "photo_moderation" });
+        }
+      }
+    }
     track(env, ctx.uid, "profile_vet_passed", "profile", {});
   }
 

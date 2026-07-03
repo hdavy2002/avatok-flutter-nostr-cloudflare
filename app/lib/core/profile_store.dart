@@ -190,4 +190,28 @@ class ProfileStore {
     try { await _s.write(key: scopedKey(_recoveredKey), value: '1'); } catch (_) {/* best-effort */}
     return true;
   }
+
+  /// R2-F2 login gate: ask the server whether this account's profile is complete
+  /// (`GET /api/me` → `profile_complete`). Returns null on any network/parse error
+  /// so the caller can FAIL OPEN (a fetch failure must never trap a user out of
+  /// the app). Only consulted by AvaShell when RemoteConfig.profileCompletionGate
+  /// is on. This is the AUTHORITATIVE completeness signal — the server's vetting
+  /// (photo moderation, real-name) can mark a locally-"complete" profile as not
+  /// yet passed, so it must route the user back to the Profile screen.
+  Future<bool?> serverProfileComplete() async {
+    http.Response res;
+    try {
+      res = await ApiAuth.getSigned(kMeUrl);
+    } catch (_) {
+      return null; // offline / transient → caller fails open
+    }
+    if (res.statusCode != 200) return null;
+    try {
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      if (j['found'] != true) return false; // no profile row yet → not complete
+      return j['profile_complete'] == true;
+    } catch (_) {
+      return null;
+    }
+  }
 }
