@@ -173,11 +173,16 @@ export async function handleCheck(_req: Request, _env: Env): Promise<Response> {
 // profile must not pass just because a model was down). Encodes the policy with
 // few-shot examples: fragments/invented/object-innuendo names are implausible;
 // legitimately short real names (Al, Bo, Li, Ng, Wu) pass. min length 2.
-async function vetRealName(env: Env, first: string, last: string): Promise<{ ok: boolean; plausible: boolean; reason: string }> {
+async function vetRealName(env: Env, first: string, last: string): Promise<{ ok: boolean; plausible: boolean; reason: string; unavailable?: boolean }> {
   const full = `${first} ${last}`.trim();
   if (!full) return { ok: true, plausible: false, reason: "Please enter your first and last name." };
   const key = (env as any).GEMINI_API_KEY as string | undefined;
-  if (!key) return { ok: false, plausible: false, reason: "" }; // no key → fail closed
+  // FAIL OPEN (owner decision 2026-07-03): if the name-check model is unreachable
+  // (no key, depleted quota, HTTP/parse error) we ALLOW the save rather than block
+  // a real user — the check only ever REJECTS when the model actively says a name
+  // is implausible. `unavailable:true` still lets the caller log profile_vet_error
+  // so a broken/rotated key is visible in telemetry.
+  if (!key) return { ok: true, plausible: true, reason: "", unavailable: true };
   const prompt =
     "You judge whether a submitted first+last name is a plausible REAL human name for a social app. " +
     "Real names from many cultures can be 2 letters (Al, Bo, Li, Ng, Wu) — judge INTENT, not raw length; min length 2. " +
@@ -193,16 +198,16 @@ async function vetRealName(env: Env, first: string, last: string): Promise<{ ok:
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 80 } }),
       },
     );
-    if (!r.ok) return { ok: false, plausible: false, reason: "" };
+    if (!r.ok) return { ok: true, plausible: true, reason: "", unavailable: true }; // fail open
     const j = (await r.json()) as any;
     const txt = String(j?.candidates?.[0]?.content?.parts?.[0]?.text ?? "");
     const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return { ok: false, plausible: false, reason: "" };
+    if (!m) return { ok: true, plausible: true, reason: "", unavailable: true }; // fail open
     const parsed = JSON.parse(m[0]) as { plausible?: boolean; reason?: string };
     const plausible = parsed.plausible === true;
     return { ok: true, plausible, reason: plausible ? "" : (parsed.reason || "Please use your real name — it helps people trust who they're talking to.") };
   } catch {
-    return { ok: false, plausible: false, reason: "" }; // network/parse error → fail closed
+    return { ok: true, plausible: true, reason: "", unavailable: true }; // network error → fail open
   }
 }
 
@@ -267,11 +272,13 @@ export async function profileUpsert(req: Request, env: Env): Promise<Response> {
       track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "incomplete", field: missing[0] });
       return json({ error: "profile_incomplete", missing, message: "Please complete every field (only your phone number is optional)." }, 400);
     }
-    // Real-name plausibility (gemini-2.5-flash-lite). Fail closed on model error.
+    // Real-name plausibility (gemini-2.5-flash-lite). FAIL OPEN: if the model is
+    // unavailable we log it but let the save through (never block a real user on an
+    // AI outage / depleted key); we only reject when the model actively says the
+    // name is implausible.
     const nm = await vetRealName(env, firstName!, lastName!);
-    if (!nm.ok) {
+    if (nm.unavailable) {
       track(env, ctx.uid, "profile_vet_error", "profile", { stage: "realname_model" });
-      return json({ error: "vet_unavailable", field: "first_name", message: "We couldn't check your profile just now — please try again in a minute." }, 400);
     }
     if (!nm.plausible) {
       track(env, ctx.uid, "profile_vet_rejected", "profile", { reason_class: "realname", field: "first_name" });
