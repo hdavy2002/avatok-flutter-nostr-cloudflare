@@ -968,6 +968,12 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Future<bool> _tryReceptionist({String activationMode = 'rings'}) async {
+    // CALLFIX-8: if the call already connected, don't start receptionist (race guard)
+    if (_connected) {
+      Analytics.capture('ava_recept_signal_suppressed',
+          {'channel': 'connected_race', 'call_id': widget.room});
+      return false;
+    }
     // Commit to Ava: from here, ignore the old signaling socket so a late
     // bye/peer-left from cancelling the ring can't tear down the live session.
     _receptionistActive = true;
