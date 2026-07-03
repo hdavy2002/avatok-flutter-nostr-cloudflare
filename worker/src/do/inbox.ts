@@ -85,6 +85,14 @@ export class InboxDO {
          peer TEXT,
          updated_at INTEGER
        );
+       -- STREAM B (stranger safety gate): the OWNER's thread-level acceptance
+       -- state for a conversation. 'accepted' (default — never locks anyone out)
+       -- | 'pending' (a new thread from a NON-CONTACT — the recipient sees the
+       -- Accept/Block/Report gate and their read-receipts are withheld from the
+       -- sender until they Accept) | 'blocked'. This is the OWNER's own state, so
+       -- it lives in their InboxDO. The initial 'pending' is set by the client
+       -- (which knows the local contact list); the server ENFORCES the suppression
+       -- via shouldSuppressReceipt(conv). See worker/src/routes/safety.ts.
        -- The OWNER's own read high-water per conversation (a unix-SECONDS ts,
        -- matching the client createdAt unit). Distinct from the receipts table,
        -- which tracks the PEER's read state of MY messages (for the tick marks).
@@ -130,6 +138,12 @@ export class InboxDO {
     // their own InboxDO so all of their devices (iPhone/Mac/PC) sync the same hide/
     // Undo via /sync + the live 'hide' broadcast. Never set on a peer's inbox.
     try { this.sql.exec(`ALTER TABLE messages ADD COLUMN hidden INTEGER`); } catch { /* already present */ }
+    // STREAM B (stranger safety gate): additive accept_state on conv_meta. Existing
+    // rows default to 'accepted' via COLUMN DEFAULT, so this migration can NEVER
+    // lock an existing conversation into the gate. A brand-new pending thread is
+    // stamped 'pending' explicitly by setAcceptState (client-initiated on a new
+    // non-contact thread). SQLite has no "ADD COLUMN IF NOT EXISTS" — try + swallow.
+    try { this.sql.exec(`ALTER TABLE conv_meta ADD COLUMN accept_state TEXT NOT NULL DEFAULT 'accepted'`); } catch { /* already present */ }
     // P8 Stage 1: tiny durable KV for the archive owner uid + high-water (last
     // archived message id). Kept in DO-SQLite so it survives hibernation cheaply.
     try { this.sql.exec(`CREATE TABLE IF NOT EXISTS meta_kv (k TEXT PRIMARY KEY, v TEXT)`); } catch { /* present */ }
@@ -263,6 +277,16 @@ export class InboxDO {
         });
       }
       if (url.pathname.endsWith("/receipt")) return this.receipt(await req.json());
+      // STREAM B: read/write the OWNER's thread-level accept_state.
+      if (url.pathname.endsWith("/accept_state")) {
+        if (req.method === "POST") return this.setAcceptState(await req.json());
+        // GET ?conv=… → {conv, accept_state, suppress}
+        const conv = url.searchParams.get("conv") || "";
+        const st = this.acceptState(conv);
+        return new Response(JSON.stringify({ conv, accept_state: st, suppress: st === "pending" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
       if (url.pathname.endsWith("/hide")) return this.hide(await req.json());
       if (url.pathname.endsWith("/read")) return this.markRead(await req.json());
       if (url.pathname.endsWith("/event")) return this.event(await req.json());
@@ -277,6 +301,24 @@ export class InboxDO {
           `SELECT id, conv, sender, kind, body, created_at FROM messages
            WHERE body IS NOT NULL AND body != '' ORDER BY id DESC LIMIT ?`,
           limit,
+        ).toArray();
+        return new Response(JSON.stringify({ messages: rows }), { headers: { "content-type": "application/json" } });
+      }
+      // STREAM G (AI in chats): text-only messages for ONE conversation, since a
+      // given InboxDO row id (unread window). Media rows are SKIPPED per D6 (only
+      // kind text/ava with a non-empty body). Oldest-first so a summary reads in
+      // order. Used by /api/ai/catchup and /api/safety/score (server-readable arch).
+      if (url.pathname.endsWith("/convtext")) {
+        const conv = url.searchParams.get("conv") || "";
+        const since = Math.max(0, Number(url.searchParams.get("since") || 0));
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") || 200)));
+        if (!conv) return new Response(JSON.stringify({ messages: [] }), { headers: { "content-type": "application/json" } });
+        const rows = this.sql.exec(
+          `SELECT id, conv, sender, kind, body, created_at FROM messages
+           WHERE conv = ? AND id > ? AND (kind = 'text' OR kind = 'ava')
+             AND body IS NOT NULL AND body != '' AND (hidden IS NULL OR hidden = 0)
+           ORDER BY id ASC LIMIT ?`,
+          conv, since, limit,
         ).toArray();
         return new Response(JSON.stringify({ messages: rows }), { headers: { "content-type": "application/json" } });
       }
@@ -522,6 +564,52 @@ export class InboxDO {
     this.sql.exec(`DELETE FROM call_log`);
     const live = this.broadcast(JSON.stringify({ type: "call_clear" }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // ---- STREAM B: stranger safety gate (thread-level acceptance) --------------
+  /** The OWNER's accept_state for a conversation: 'accepted' | 'pending' |
+   *  'blocked'. Unknown/absent conversations read as 'accepted' (never gated —
+   *  the migration default + this fallback both fail OPEN so nobody is locked out). */
+  private acceptState(conv: string): "accepted" | "pending" | "blocked" {
+    if (!conv) return "accepted";
+    try {
+      const r = this.sql.exec(`SELECT accept_state FROM conv_meta WHERE conv=?1`, conv).toArray();
+      const s = r.length ? String((r[0] as { accept_state?: string }).accept_state ?? "accepted") : "accepted";
+      return (s === "pending" || s === "blocked") ? s : "accepted";
+    } catch { return "accepted"; }
+  }
+
+  /**
+   * STREAM F DEPENDENCY — reusable helper. True when the OWNER has NOT yet
+   * accepted this conversation (accept_state === 'pending'), so the read-receipt
+   * fan-out to the sender MUST be dropped (the stranger must not learn the
+   * recipient has opened/read the pending thread). The auto-responder path
+   * (Stream F) reuses this same check before emitting any receipt/typing signal.
+   * Fails OPEN (returns false) on any error, matching the fail-open gate policy.
+   */
+  shouldSuppressReceipt(conv: string): boolean {
+    return this.acceptState(conv) === "pending";
+  }
+
+  /** Set the OWNER's accept_state for a conversation. Ensures a conv_meta row
+   *  exists so a brand-new pending thread (first inbound before any /append quirk)
+   *  is still gated. On Accept we do NOT retroactively emit old receipts — the
+   *  client simply resumes normal receipt sending from now on. */
+  private setAcceptState(b: { conv: string; state?: string; peer?: string }): Response {
+    const conv = String(b.conv ?? "");
+    const raw = String(b.state ?? "");
+    const state = (raw === "pending" || raw === "blocked" || raw === "accepted") ? raw : "accepted";
+    if (!conv) return new Response(JSON.stringify({ ok: false, error: "conv required" }), { headers: { "content-type": "application/json" } });
+    this.sql.exec(
+      `INSERT INTO conv_meta (conv, unread, peer, accept_state, updated_at)
+       VALUES (?1, 0, ?2, ?3, ?4)
+       ON CONFLICT(conv) DO UPDATE SET accept_state=?3, updated_at=?4`,
+      conv, b.peer ?? null, state, Date.now(),
+    );
+    // Fan out to the owner's OTHER open sockets so a second device reflects the
+    // Accept/Block instantly (mirrors the read/hide multi-device pattern).
+    const live = this.broadcast(JSON.stringify({ type: "accept_state", conv, accept_state: state }));
+    return new Response(JSON.stringify({ ok: true, conv, accept_state: state, live }), { headers: { "content-type": "application/json" } });
   }
 
   private receipt(b: { conv: string; peer: string; delivered_id?: number; read_id?: number }): Response {

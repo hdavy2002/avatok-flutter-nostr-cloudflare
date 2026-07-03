@@ -31,7 +31,7 @@
 //   POST   /api/report                   A4 → user_reports pipeline
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, isFail, requireKyc } from "../authz";
+import { requireUser, isFail, requireKyc, requireLiveness } from "../authz";
 import { metaDb, metaSession, moderationDb } from "../db/shard";
 import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
 import { hold, refund } from "../ledger";
@@ -74,6 +74,14 @@ function parseJson<T>(s: unknown, fallback: T): T {
   try { return JSON.parse(s) as T; } catch { return fallback; }
 }
 
+// [UI-MKT-4] Card SELECT extended with review + view aggregates in-query (NO
+// N+1 per card): rating_avg/rating_count already live on `listings` (kept in sync
+// by the reviews route); `review_count` is a correlated COUNT over `reviews`, and
+// `view_count` a correlated COUNT over `listing_views` for this listing. The
+// per-user `favorited` flag is hydrated separately via favoritesFor() (one IN
+// query keyed on the caller's uid) so this shared SELECT stays bind-order-stable
+// across every caller that reuses it. created_at + country are already selected
+// (client derives the <48h "NEW" chip + flag chip from them).
 const CARD_SELECT = `
   SELECT l.id, l.creator_id, l.kind, l.title, l.description, l.category, l.price,
          l.currency_display, l.country, l.adults_only, l.badges, l.cover_media,
@@ -81,10 +89,27 @@ const CARD_SELECT = `
          l.expires_at, l.expiry_days, l.market_type, l.social_sub, l.location,
          l.translation_enabled, l.spoken_lang,
          l.rating_avg, l.rating_count, l.created_at,
+         (SELECT COUNT(*) FROM reviews rv WHERE rv.listing_id = l.id) AS review_count,
+         (SELECT COUNT(*) FROM listing_views lv WHERE lv.subject_kind='listing' AND lv.subject_id = l.id) AS view_count,
          u.handle AS creator_handle, u.display_name AS creator_name, u.avatar_url AS creator_avatar,
          u.avatok_number_display AS creator_number,
          (SELECT k.status FROM kyc_status k WHERE k.uid = l.creator_id) AS creator_kyc
     FROM listings l LEFT JOIN users u ON u.uid = l.creator_id`;
+
+/** [UI-MKT-3] Which of these listing ids has `uid` favorited? One IN query (no
+ *  N+1). Empty set for a guest (uid null) or no ids. Per-account scoped: the uid
+ *  is the authed caller's, so favorites never leak across the shared-phone accounts. */
+async function favoritesFor(env: Env, uid: string | null, ids: string[]): Promise<Set<string>> {
+  const set = new Set<string>();
+  if (!uid || !ids.length) return set;
+  try {
+    const rs = await metaSession(env).prepare(
+      `SELECT listing_id FROM listing_favorites WHERE uid=?1 AND listing_id IN (${ids.map((_, i) => `?${i + 2}`).join(",")})`,
+    ).bind(uid, ...ids).all();
+    for (const r of (rs.results ?? []) as any[]) set.add(String(r.listing_id));
+  } catch { /* table may not be migrated yet — treat as none favorited */ }
+  return set;
+}
 
 function activePromoPct(promos: any[], now: number, code?: string | null): { pct: number; promo: any | null } {
   let best: any = null;
@@ -97,7 +122,7 @@ function activePromoPct(promos: any[], now: number, code?: string | null): { pct
   return best ? { pct: Math.min(100, Math.max(0, Number(best.pct_off))), promo: best } : { pct: 0, promo: null };
 }
 
-function shapeCard(r: any, promosByListing?: Map<string, any[]>) {
+function shapeCard(r: any, promosByListing?: Map<string, any[]>, favorited?: Set<string>) {
   const now = Date.now();
   const promos = promosByListing?.get(r.id) ?? [];
   const { pct } = activePromoPct(promos.filter((p) => p.kind === "early_bird"), now);
@@ -118,6 +143,13 @@ function shapeCard(r: any, promosByListing?: Map<string, any[]>) {
     joined_count: Number(r.joined_count ?? 0),
     rating_avg: r.rating_avg != null ? Number(r.rating_avg) : null,
     rating_count: Number(r.rating_count ?? 0),
+    // [UI-MKT-4] additive card stats (backward-compatible): review_count from the
+    // reviews table, view_count from listing_views, created_at for the <48h "NEW"
+    // chip, and the per-user favorited flag (false for guests / un-hydrated pages).
+    review_count: Number(r.review_count ?? 0),
+    view_count: Number(r.view_count ?? 0),
+    created_at: r.created_at != null ? Number(r.created_at) : null,
+    favorited: favorited ? favorited.has(String(r.id)) : false,
     creator: {
       uid: r.creator_id, handle: r.creator_handle ?? null,
       name: r.creator_name ?? null, avatar_url: r.creator_avatar ?? null,
@@ -264,6 +296,8 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   // P4: no listing (of any kind) without video-liveness verification (flag-gated).
   const gate = await livenessGate(env, ctx.uid, kind, null);
   if (gate) return gate;
+  // STREAM H [LIVE-GATE-5]: onboarding human-check gate (independent of the P4 flag).
+  { const g = await requireLiveness(env, ctx.uid, "listing/create"); if (g) return json({ error: g.error }, g.status); }
   const id = crypto.randomUUID();
   const now = Date.now();
   const f = normFields(b);
@@ -336,6 +370,10 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   // funnels back through here). Applies to EVERY kind when the flag is on.
   const lg = await livenessGate(env, ctx.uid, String(l.kind), id);
   if (lg) return lg;
+  // STREAM H [LIVE-GATE-5]: independent onboarding human-check gate. Fires even
+  // when listingLivenessGate is OFF but livenessOnboardingGate (KV) is ON — both
+  // reject unverified accounts with 403 liveness_required.
+  { const g = await requireLiveness(env, ctx.uid, "listing/publish"); if (g) return json({ error: g.error }, g.status); }
 
   const isMarket = MARKET_KINDS.has(String(l.kind));
   if (isMarket) {
@@ -491,7 +529,8 @@ export async function myListings(req: Request, env: Env): Promise<Response> {
   ).bind(ctx.uid).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
-  return json({ listings: rows.map((r) => shapeCard(r, promos)) });
+  const favs = await favoritesFor(env, ctx.uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
+  return json({ listings: rows.map((r) => shapeCard(r, promos, favs)) });
 }
 
 // ---------------------------------------------------------------------------
@@ -579,8 +618,9 @@ export async function exploreBrowse(req: Request, env: Env): Promise<Response> {
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const promos = await promosFor(env, page.map((r) => r.id));
+  const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3] hydrate heart state per fetch
   trackImpressions(env, req, uid, APP, "explore", page.map((r) => String(r.id)));
-  return json({ listings: page.map((r) => shapeCard(r, promos)), cursor: rows.length > limit ? String(offset + limit) : null });
+  return json({ listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
 // GET /api/explore/live-now — the red-dot rail.
@@ -594,8 +634,9 @@ export async function exploreLiveNow(req: Request, env: Env): Promise<Response> 
   ).bind(...binds).all();
   const rows = (rs.results ?? []) as any[];
   const promos = await promosFor(env, rows.map((r) => r.id));
+  const favs = await favoritesFor(env, uid, rows.map((r) => String(r.id))); // [UI-MKT-3]
   trackImpressions(env, req, uid, APP, "live_now", rows.map((r) => String(r.id)));
-  return json({ listings: rows.map((r) => ({ ...shapeCard(r, promos), joinable: true })) });
+  return json({ listings: rows.map((r) => ({ ...shapeCard(r, promos, favs), joinable: true })) });
 }
 
 // GET /api/explore/search — A1: FTS5 + filters + sorts; partial title AND creator name hit.
@@ -658,10 +699,11 @@ export async function exploreSearch(req: Request, env: Env): Promise<Response> {
   const rows = (rs.results ?? []) as any[];
   const page = rows.slice(0, limit);
   const promos = await promosFor(env, page.map((r) => r.id));
+  const favs = await favoritesFor(env, uid, page.map((r) => String(r.id))); // [UI-MKT-3]
   const g = geoOf(req);
   track(env, uid ?? "guest", "explore_search", APP, { q: q.slice(0, 40), sort, n: page.length, guest: !uid, country: g.country, city: g.city });
   trackImpressions(env, req, uid, APP, "search", page.map((r) => String(r.id)));
-  return json({ listings: page.map((r) => shapeCard(r, promos)), cursor: rows.length > limit ? String(offset + limit) : null });
+  return json({ listings: page.map((r) => shapeCard(r, promos, favs)), cursor: rows.length > limit ? String(offset + limit) : null });
 }
 
 // GET /api/listings/:id — full details + creator card + reviews page 1.
@@ -672,7 +714,8 @@ export async function getListing(req: Request, env: Env, id: string): Promise<Re
   const isOwner = uid === r.creator_id;
   if (r.status === "draft" && !isOwner) return json({ error: "not found" }, 404);
   const promos = await promosFor(env, [id]);
-  const card = shapeCard(r, promos);
+  const favs = await favoritesFor(env, uid, [id]); // [UI-MKT-3] heart state on the detail page
+  const card = shapeCard(r, promos, favs);
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
        FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id WHERE rv.listing_id=?1 ORDER BY rv.created_at DESC LIMIT 20`,
@@ -716,6 +759,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
   ).bind(id).all();
   const lrows = (ls.results ?? []) as any[];
   const promos = await promosFor(env, lrows.map((r) => r.id));
+  const favs = await favoritesFor(env, uid, lrows.map((r) => String(r.id))); // [UI-MKT-3]
   const reviews = await metaSession(env).prepare(
     `SELECT rv.id, rv.listing_id, rv.author_id, rv.rating, rv.body, rv.reply, rv.reply_at, rv.created_at, u.display_name AS author_name, u.avatar_url AS author_avatar
        FROM reviews rv LEFT JOIN users u ON u.uid=rv.author_id WHERE rv.creator_id=?1 ORDER BY rv.created_at DESC LIMIT 50`,
@@ -742,7 +786,7 @@ export async function getCreator(req: Request, env: Env, id: string): Promise<Re
       intro_video_ref: prof?.intro_video_ref ?? null,
       pinned_listing_id: prof?.pinned_listing_id ?? null,
     },
-    listings: lrows.map((r) => shapeCard(r, promos)),
+    listings: lrows.map((r) => shapeCard(r, promos, favs)),
     reviews: reviews.results ?? [],
     viewer: { following, notify },
   });
@@ -865,6 +909,63 @@ export async function report(req: Request, env: Env): Promise<Response> {
     String(b.reason || "other").slice(0, 60), b.description ? String(b.description).slice(0, 2000) : null, Date.now()).run();
   track(env, ctx.uid, "report_filed", APP, { targetType });
   return json({ ok: true });
+}
+
+// ---------------------------------------------------------------------------
+// [UI-MKT-3] favorites (marketplace hearts) — per-account scoped by ctx.uid.
+//   POST   /api/marketplace/favorites {listing_id}   → insert OR IGNORE
+//   DELETE /api/marketplace/favorites?listing_id=…    → delete
+//   GET    /api/marketplace/favorites                 → the user's favorited cards
+// The card/list reads hydrate the `favorited` flag via favoritesFor() (above),
+// so the client can render the heart state without a per-card round-trip.
+// ---------------------------------------------------------------------------
+
+/** POST /api/marketplace/favorites {listing_id} — heart a listing (idempotent). */
+export async function addFavorite(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as any;
+  const listingId = String(b.listing_id || "").trim();
+  if (!listingId) return json({ error: "listing_id required" }, 400);
+  // Only real listings can be hearted (avoids orphan rows); soft check, best-effort.
+  const l = await metaDb(env).prepare("SELECT id FROM listings WHERE id=?1").bind(listingId).first<any>();
+  if (!l) return json({ error: "not found" }, 404);
+  await metaDb(env).prepare(
+    "INSERT OR IGNORE INTO listing_favorites (uid, listing_id, created_at) VALUES (?1,?2,?3)",
+  ).bind(ctx.uid, listingId, Date.now()).run();
+  track(env, ctx.uid, "listing_favorited", APP, { listing_id: listingId });
+  return json({ ok: true, favorited: true });
+}
+
+/** DELETE /api/marketplace/favorites?listing_id=… — un-heart. */
+export async function removeFavorite(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  // listing_id may ride the query (DELETE) or a JSON body — accept both.
+  let listingId = new URL(req.url).searchParams.get("listing_id") || "";
+  if (!listingId) { const b = (await req.json().catch(() => ({}))) as any; listingId = String(b.listing_id || ""); }
+  listingId = listingId.trim();
+  if (!listingId) return json({ error: "listing_id required" }, 400);
+  await metaDb(env).prepare("DELETE FROM listing_favorites WHERE uid=?1 AND listing_id=?2").bind(ctx.uid, listingId).run();
+  track(env, ctx.uid, "listing_unfavorited", APP, { listing_id: listingId });
+  return json({ ok: true, favorited: false });
+}
+
+/** GET /api/marketplace/favorites — the user's favorited listings as full cards
+ *  (newest-favorited first), so the "Saved" tab renders with the same card path. */
+export async function listFavorites(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const rs = await metaSession(env).prepare(
+    `${CARD_SELECT}
+       JOIN listing_favorites f ON f.listing_id = l.id
+      WHERE f.uid=?1 AND l.status IN ('published','live')
+      ORDER BY f.created_at DESC LIMIT 100`,
+  ).bind(ctx.uid).all();
+  const rows = (rs.results ?? []) as any[];
+  const promos = await promosFor(env, rows.map((r) => r.id));
+  const favs = new Set(rows.map((r) => String(r.id))); // all favorited by definition
+  return json({ listings: rows.map((r) => shapeCard(r, promos, favs)) });
 }
 
 // ---------------------------------------------------------------------------

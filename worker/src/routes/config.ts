@@ -127,6 +127,21 @@ export interface PlatformConfig {
   // Tunable via KV without redeploy. The per-listing talk-once dedupe is separate
   // and does NOT consume quota (re-opening the same listing's result is free).
   agentDailyCap: number;
+  // STREAM F (AI Messenger Batch): "Ava replies while you're away" auto-responder.
+  // Master kill switch for the whole feature — the settings page, hot-path enqueue,
+  // and the auto_reply consumer all gate on this. Default ON (per spec AUTOREP-5).
+  autoResponderEnabled: boolean;
+  // AI Messenger Batch 2026-07-03 — per-stream kill switches (spec §8 / §12).
+  marketplaceAgentSettingsEnabled: boolean; // STREAM A: Marketplace Agent settings surface
+  mktI18nNegotiationEnabled: boolean;        // STREAM A: English-canonical negotiation + translation
+  strangerGateEnabled: boolean;              // STREAM B: message-request stranger safety gate
+  linkPreviewsEnabled: boolean;              // STREAM C: server-side unfurl + inline YouTube
+  richInputEnabled: boolean;                 // STREAM E: emoji/GIF/sticker input panel
+  groupTranslationEnabled: boolean;          // STREAM G: per-member group translation (cost watch)
+  smartRepliesEnabled: boolean;              // STREAM G: DM smart-reply chips
+  scamAutoScanEnabled: boolean;              // STREAM G: auto scam-scan on stranger-thread first render
+  livenessOnboardingGate: boolean;           // STREAM H: hard liveness gate at signup / existing-user redirect
+  unlimitedForwardEnabled: boolean;          // STREAM I: unlimited forwarding + forward-to-groups
   minAppBuild: number;
 }
 
@@ -185,6 +200,18 @@ const DEFAULTS: PlatformConfig = {
   restoreV2: false,               // P8 Stage 2: R2 lazy-older restore paging — dark
   driveAutoBackup: true,          // P8 Stage 3: daily Drive backup for EVERY user (no premium gate)
   agentDailyCap: 10,               // P5: 10 marketplace agent conversations/user/UTC-day
+  autoResponderEnabled: true,      // STREAM F: auto-responder "Ava replies while away" — ships ON
+  // AI Messenger Batch 2026-07-03 defaults (spec §8 / §12).
+  marketplaceAgentSettingsEnabled: true, // STREAM A — ships ON
+  mktI18nNegotiationEnabled: true,       // STREAM A — ships ON
+  strangerGateEnabled: true,             // STREAM B — ships ON
+  linkPreviewsEnabled: true,             // STREAM C — ships ON
+  richInputEnabled: true,                // STREAM E — ships ON
+  groupTranslationEnabled: false,        // STREAM G — OFF (cost watch)
+  smartRepliesEnabled: true,             // STREAM G — ships ON
+  scamAutoScanEnabled: true,             // STREAM G — ships ON
+  livenessOnboardingGate: false,         // STREAM H — OFF, owner flips after staging device test
+  unlimitedForwardEnabled: true,         // STREAM I — ships ON
   minAppBuild: 0,
 };
 

@@ -5,13 +5,19 @@
 // so moderation/reporting can operate.
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, kycVerified, dmConvId, isFail } from "../authz";
+import { requireUser, kycVerified, dmConvId, isFail, requireLiveness } from "../authz";
 import { nameFor } from "../lib/identity";        // resolve inviter display name
 import { readConfig } from "./config";            // groupInvitesEnabled kill switch
 import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
 import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
 import { canonicalMsgId } from "../util"; // canonical, chronologically-sortable message id
+import { inboxAcceptState } from "./safety"; // STREAM B — read-receipt suppression for pending stranger threads
+// STREAM F — auto-responder ("Ava replies while you're away"). Hot-path hook only:
+// on an incoming DM we decide whether to enqueue an auto-reply job; the heavy work
+// (canned/AI reply generation + append) runs in the avatok-consumers auto_reply
+// consumer. Reading the recipient's config is a single KV-mirror get (fast).
+import { readAutoResponderConfig, isActiveNow } from "./auto_responder";
 
 // ---- WebSocket: client live socket → the caller's InboxDO --------------------
 export async function wsInbox(req: Request, env: Env): Promise<Response> {
@@ -180,12 +186,65 @@ async function pushDelete(env: Env, toUid: string, conv: string, target: string)
   }
 }
 
+// STREAM F — decide + enqueue an auto-reply for one incoming DM.
+// Gates (all must pass): feature flag ON, recipient's responder ACTIVE now,
+// audience matches (known-contacts-only vs everyone-except-blocked), and the peer
+// is NOT a pending stranger-gate thread. Loop protection, per-contact/day caps and
+// the global circuit breaker live in the CONSUMER (single source of truth for
+// counters) — this hot-path check is the cheap first filter so we don't enqueue a
+// job for the overwhelming majority of messages. Best-effort; never blocks the send.
+//
+// `isAutoReplyEnvelope`: NEVER auto-reply to a message that is itself an auto-reply
+// (envelope carries auto:true) — first line of loop defence (also re-checked in the
+// consumer). Group messages are excluded by the caller (DM-only: 1 recipient).
+function isAutoReplyEnvelope(text: string | null): boolean {
+  if (!text) return false;
+  const t = text.trim();
+  if (!t.startsWith("{")) return false;
+  try { const o = JSON.parse(t); return o && o.auto === true; } catch { return false; }
+}
+
+async function maybeEnqueueAutoReply(
+  env: Env,
+  args: { recipient: string; sender: string; conv: string; text: string | null; kind: string; senderKnown: boolean; mid: string },
+): Promise<void> {
+  try {
+    // 1) Loop guard — never respond to another auto-reply.
+    if (isAutoReplyEnvelope(args.text)) return;
+    // 2) Recipient's responder config (KV-mirror fast read). Check FIRST so a
+    //    non-away recipient (the vast majority) never pays for the DO fetches below.
+    const cfg = await readAutoResponderConfig(env, args.recipient);
+    if (!isActiveNow(cfg)) return;
+    // 3) NEVER auto-reply into a pending stranger-gate thread (Stream B owns this),
+    //    regardless of audience setting (spec AUTOREP-1). Reuse Stream B's shared
+    //    inboxAcceptState() — do NOT duplicate the gate logic. accept_state other
+    //    than 'accepted' means the recipient hasn't accepted this stranger yet.
+    const st = await inboxAcceptState(env, args.recipient, args.conv);
+    if (st.accept_state !== "accepted") return;
+    // 4) Audience gate. 'known' → only if the sender is an existing contact of the
+    //    recipient. 'everyone' → anyone except a blocked sender (blocks were already
+    //    filtered upstream, so reaching here means not blocked).
+    if (cfg.audience === "known" && !args.senderKnown) return;
+    // 5) Enqueue. The consumer enforces the 3/contact/day + 50/day caps + generates
+    //    the reply (canned or AI) + appends it. Dark/no-op if the queue is unbound.
+    await env.Q_AUTO_REPLY?.send({
+      recipient: args.recipient, sender: args.sender, conv: args.conv,
+      incoming_text: args.text, incoming_kind: args.kind, incoming_mid: args.mid,
+      enqueuedAt: Date.now(),
+    });
+  } catch { /* best-effort; a missed auto-reply never affects the human's message delivery */ }
+}
+
 // ---- POST /api/msg/send -----------------------------------------------------
 export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   // KYC gate is flag-gated OFF until Stripe Identity ships (set KYC_REQUIRED=1 to enforce).
   if (env.KYC_REQUIRED === "1" && !(await kycVerified(env, ctx.uid))) return json({ error: "kyc required" }, 403);
+  // STREAM H [LIVE-GATE-5]: onboarding human-check gate (bypass-proof). Dark by
+  // default; when platform_config.livenessOnboardingGate is ON, unverified
+  // accounts can't send messages (spam-capable route).
+  { const g = await requireLiveness(env, ctx.uid, "msg/send"); if (g) return json({ error: g.error }, g.status); }
 
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   const kind = String(b.kind || "text");
@@ -197,16 +256,30 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // Resolve the conversation + its members.
   let conv: string;
   let mem: string[];
+  // STREAM F — "known contact" signal for the auto-responder audience gate: the two
+  // parties have an EXISTING DM thread (they've spoken before) → the sender is a
+  // known contact of the recipient. Computed BEFORE ensureDm (which upserts the
+  // row) so a brand-new first-contact DM correctly reads as "not known".
+  let dmPreexisted = false;
   if (b.to) {
+    try {
+      const existing = await env.DB_META.prepare("SELECT id FROM conversations WHERE id=?1")
+        .bind(dmConvId(ctx.uid, String(b.to))).first();
+      dmPreexisted = !!existing;
+    } catch { /* best-effort; defaults to not-known (safe) */ }
     conv = await ensureDm(env, ctx.uid, String(b.to), normContext(b.context));
     mem = [ctx.uid, String(b.to)];
   } else if (b.conv) {
     conv = String(b.conv);
     mem = await members(env, conv);
     if (!mem.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+    // Reaching a DM by an existing conv id means the thread already exists → the
+    // parties are known contacts (STREAM F audience gate).
+    dmPreexisted = true;
   } else {
     return json({ error: "conv or to required" }, 400);
   }
+  const isDm = mem.length === 2;
 
   const created = Date.now();
   // Canonical, chronologically-sortable id shared by the live Ably message, the
@@ -278,6 +351,19 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
         } catch { /* best-effort */ }
       } else if (!r.live) {
         await pushOffline(env, m, fromName, preview);
+      }
+      // STREAM F — auto-responder hook. DM-only (isDm), regular messages only (not a
+      // delete-for-everyone control). Fires independent of socket liveness because
+      // "away" means the human isn't READING even if a background socket is open —
+      // the read-state, not the socket, is authoritative (see the receipt-suppression
+      // note in the consumer). Best-effort; never blocks the human's message. The
+      // stranger-gate check (Stream B's inboxAcceptState) is done INSIDE the helper,
+      // only after the cheap KV config read says the responder is active — so a
+      // non-away recipient never pays the extra DO fetch.
+      if (isDm && !delTarget) {
+        void maybeEnqueueAutoReply(env, {
+          recipient: m, sender: ctx.uid, conv, text, kind, senderKnown: dmPreexisted, mid,
+        });
       }
     }));
     if (delTarget) {
@@ -358,6 +444,166 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   return json({ id: mine.id, conv, created_at: created });
 }
 
+// ---- POST /api/msg/forward --------------------------------------------------
+// STREAM I (AI Messenger Batch). Fan a single message out to N chosen targets
+// (DMs and/or groups) in ONE call. The body carries the ALREADY-BUILT forward
+// envelope (the client stamped `fwd:true` and stripped the original sender —
+// privacy, FWD-1), so this route never re-reads/re-uploads media: media forwards
+// re-reference the SAME content-addressed R2 object via the same `media_ref`
+// (FWD-2, zero duplication — see the client `_doForward` for the E2E-key detail).
+//
+// Anti-spam (FWD-3): a flag-tunable KV counter caps forward TARGETS per user per
+// hour; over the cap → 429. Forwarding is a spam-capable route, so it also
+// requires liveness (Stream H's requireLiveness helper — see the guard below).
+const FORWARD_TARGET_CAP_PER_HOUR = 200;   // flag-tunable default (FWD-3)
+const FORWARD_WINDOW_MS = 3_600_000;
+
+// KV rolling-hour counter of forward targets. Best-effort + FAIL-OPEN: the cap
+// is an abuse backstop, not a correctness gate, so a KV hiccup must never brick
+// forwarding. Keyed per account (per-account scoping).
+async function forwardCount(env: Env, uid: string): Promise<number> {
+  try {
+    const raw = await env.TOKENS.get(`fwd:count:${uid}`, "json") as { n: number; t: number } | null;
+    if (!raw) return 0;
+    if (Date.now() - raw.t >= FORWARD_WINDOW_MS) return 0; // window rolled over
+    return raw.n || 0;
+  } catch { return 0; }
+}
+async function bumpForwardCount(env: Env, uid: string, by: number): Promise<void> {
+  try {
+    const raw = await env.TOKENS.get(`fwd:count:${uid}`, "json") as { n: number; t: number } | null;
+    const rolled = !raw || (Date.now() - raw.t >= FORWARD_WINDOW_MS);
+    const next = rolled ? { n: by, t: Date.now() } : { n: (raw!.n || 0) + by, t: raw!.t };
+    await env.TOKENS.put(`fwd:count:${uid}`, JSON.stringify(next), { expirationTtl: 4000 });
+  } catch { /* best-effort */ }
+}
+
+// DEPENDENCY (Stream H): forwarding is spam-capable, so it must require a
+// liveness/human check. Stream H owns the canonical `requireLiveness(uid)`
+// server helper; at the time of writing liveness.ts exports only the challenge
+// endpoints (start/upload/verify) and NO reusable `requireLiveness(env, uid)`
+// gate. This wrapper is the AGREED shim: when Stream H lands the helper, replace
+// the body with a call to it (import from ./liveness or wherever H puts it) and
+// delete this stub. Until then it reads the same kyc_status row the liveness
+// verify writes ('verified') so behaviour is already correct in prod; it fails
+// OPEN only if the row/table is absent (pre-verification / pre-migration), never
+// silently blocking legitimate users during rollout.
+async function requireLivenessOrKyc(env: Env, uid: string): Promise<boolean> {
+  try {
+    const r = await env.DB_META.prepare(
+      "SELECT status FROM kyc_status WHERE uid=?1 LIMIT 1",
+    ).bind(uid).first<{ status: string }>();
+    if (!r) return true;                 // no row yet → fail-open during rollout
+    return r.status === "verified";
+  } catch { return true; /* table missing → fail-open */ }
+}
+
+export async function forwardMsg(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+
+  // Feature flag (FWD-4): unlimitedForwardEnabled (default ON). Treat only an
+  // explicit `false` as off, so the route is ON even before config.ts ships the
+  // key into DEFAULTS.
+  const cfg = await readConfig(env) as Record<string, unknown>;
+  if (cfg.unlimitedForwardEnabled === false) return json({ error: "forwarding disabled" }, 403);
+
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const kind = String(b.kind || "text");
+  const text = b.body == null ? null : String(b.body);
+  const mediaRef = b.media_ref == null ? null : String(b.media_ref);
+  if (!text && !mediaRef) return json({ error: "empty message" }, 400);
+
+  // Targets: { to?: uid, conv?: groupId }[] — a mix of DMs and groups.
+  const rawTargets: Array<{ to?: string; conv?: string }> =
+    Array.isArray(b.targets) ? b.targets : [];
+  const dmTargets = rawTargets.map((t) => (t.to ? String(t.to) : "")).filter(Boolean);
+  const groupTargets = rawTargets.map((t) => (t.conv ? String(t.conv) : "")).filter(Boolean);
+  const nGroups = groupTargets.length;
+  const nTargets = dmTargets.length + nGroups;
+  if (nTargets === 0) return json({ error: "no targets" }, 400);
+
+  // Liveness/human check (FWD-3 dependency on Stream H).
+  if (!(await requireLivenessOrKyc(env, ctx.uid))) {
+    return json({ error: "verify_required", message: "Verify you're human to forward messages." }, 403);
+  }
+
+  // Rate backstop (FWD-3): 200 forward TARGETS / user / rolling hour. A group
+  // counts as ONE target (the per-member fan-out inside a group is handled by
+  // delivery, not this abuse cap).
+  const already = await forwardCount(env, ctx.uid);
+  if (already + nTargets > FORWARD_TARGET_CAP_PER_HOUR) {
+    try {
+      const email = (req.headers.get("x-user-email") || "").toString();
+      void env.Q_ANALYTICS?.send({ event: "forward_rate_capped", uid: ctx.uid, ts: Date.now(),
+        props: { attempted: nTargets, window_count: already, cap: FORWARD_TARGET_CAP_PER_HOUR,
+          email, account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+    } catch { /* best-effort */ }
+    return json({ error: "rate_limited", message: "Slow down — you're forwarding too fast." }, 429);
+  }
+
+  const fromName = await senderDisplayName(env, ctx.uid);
+  const preview = msgPreview(kind, text, mediaRef);
+  let totalRecipients = 0;
+
+  // Resolve each target into a (conv, members) pair, then reuse the SAME append
+  // fan-out the normal send uses. Media rides as the same media_ref → one R2 copy.
+  const jobs: Array<{ conv: string; recipients: string[] }> = [];
+
+  // DMs: ensure the 1:1 conversation, deliver to the peer (blockers respected).
+  for (const to of dmTargets) {
+    const conv = await ensureDm(env, ctx.uid, to, null);
+    const blocked = (await blockersOf(env, ctx.uid, [to])).has(to);
+    jobs.push({ conv, recipients: blocked ? [] : [to] });
+  }
+  // Groups: I must be a member; deliver to every OTHER member (skip blockers).
+  for (const gid of groupTargets) {
+    const mem = await members(env, gid);
+    if (!mem.includes(ctx.uid)) continue; // silently skip groups I'm not in
+    const others = mem.filter((m) => m !== ctx.uid);
+    const blockers = await blockersOf(env, ctx.uid, others);
+    jobs.push({ conv: gid, recipients: others.filter((m) => !blockers.has(m)) });
+  }
+
+  const created = Date.now();
+  for (const job of jobs) {
+    const mid = canonicalMsgId(created);
+    const payload = { conv: job.conv, sender: ctx.uid, kind, body: text,
+      media_ref: mediaRef, client_id: `fwd_${created}_${Math.random().toString(36).slice(2, 8)}`,
+      created_at: created, mid };
+    // My own log first (anchors my cursor), then each recipient.
+    await appendTo(env, ctx.uid, payload);
+    totalRecipients += job.recipients.length;
+    // Small fan-out per target inline; large groups go through the queue like send.
+    if (job.recipients.length <= FANOUT_SYNC_MAX) {
+      await Promise.all(job.recipients.map(async (m) => {
+        const r = await appendTo(env, m, payload);
+        if (!r.live) await pushOffline(env, m, fromName, preview);
+      }));
+    } else {
+      const sends: Promise<unknown>[] = [];
+      for (let i = 0; i < job.recipients.length; i += FANOUT_QUEUE_CHUNK) {
+        sends.push(env.Q_PUSH.send({ kind: "fanout", payload, fromName, preview,
+          recipients: job.recipients.slice(i, i + FANOUT_QUEUE_CHUNK) }));
+      }
+      await Promise.all(sends);
+    }
+  }
+
+  await bumpForwardCount(env, ctx.uid, nTargets);
+
+  // Telemetry (FWD-4): forward_sent with the shape the spec asks for.
+  try {
+    const email = (req.headers.get("x-user-email") || "").toString();
+    void env.Q_ANALYTICS?.send({ event: "forward_sent", uid: ctx.uid, ts: Date.now(),
+      props: { n_targets: nTargets, n_groups: nGroups, total_recipients: totalRecipients,
+        media_kind: mediaRef ? kind : "text", cross_context: true, email,
+        account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
+
+  return json({ ok: true, n_targets: nTargets, total_recipients: totalRecipients });
+}
+
 // ---- POST /api/msg/react ----------------------------------------------------
 // Phase 4 (ABLY-R2-4): persist a per-message reaction toggle. The LIVE reaction
 // rides Ably (client→react:<conv>) for instant feedback; this call durably stores
@@ -407,10 +653,21 @@ export async function receiptMsg(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   if (!b.conv || !b.peer) return json({ error: "conv and peer required" }, 400);
+  // STREAM B (stranger safety gate): if the READER (ctx.uid) has NOT yet accepted
+  // this thread (their own InboxDO accept_state === 'pending'), DROP the READ
+  // receipt fan-out to the sender — the stranger must not learn the recipient has
+  // opened/read the pending thread. Delivery (delivered_id) still goes through so
+  // the sender's single tick stays honest. On Accept the client resumes read
+  // receipts; the withheld read is NEVER sent retroactively. Fails OPEN.
+  let readId = b.read_id;
+  try {
+    const { suppress } = await inboxAcceptState(env, ctx.uid, String(b.conv));
+    if (suppress) readId = undefined; // withhold read; keep delivered
+  } catch { /* fail open — never block a normal receipt */ }
   const stub = env.INBOX.get(env.INBOX.idFromName(String(b.peer)));
   await stub.fetch("https://inbox/receipt", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conv: String(b.conv), peer: ctx.uid, delivered_id: b.delivered_id, read_id: b.read_id }),
+    body: JSON.stringify({ conv: String(b.conv), peer: ctx.uid, delivered_id: b.delivered_id, read_id: readId }),
   });
   return json({ ok: true });
 }
@@ -629,6 +886,8 @@ export async function convCreate(req: Request, env: Env): Promise<Response> {
   // group
   const list: string[] = Array.isArray(b.members) ? b.members.map(String) : [];
   if (!list.length) return json({ error: "members or to required" }, 400);
+  // STREAM H [LIVE-GATE-5]: gate GROUP creation (spam-capable) behind the human check.
+  { const g = await requireLiveness(env, ctx.uid, "group/create"); if (g) return json({ error: g.error }, g.status); }
   const conv = "g_" + crypto.randomUUID();
   const now = Date.now();
   const invitees = list.filter((u) => u !== ctx.uid);
@@ -820,7 +1079,13 @@ export async function convInvites(req: Request, env: Env): Promise<Response> {
         WHERE gi.uid = ?1 AND gi.status = 'pending'
         ORDER BY gi.created_at DESC LIMIT 100`,
     ).bind(ctx.uid).all();
-    return json({ invites: rows.results ?? [] });
+    const invites = rows.results ?? [];
+    // STREAM B (SAFE-GATE-4): emit one shown event per pending invite the client
+    // is about to render as an invite card (group name, adder, member count).
+    if (invites.length) {
+      trackGroup(env, ctx.uid, "group_invite_shown", { count: invites.length });
+    }
+    return json({ invites });
   } catch {
     return json({ invites: [] }); // table missing (pre-migration) → empty
   }
@@ -836,6 +1101,9 @@ export async function convInviteRespond(req: Request, env: Env): Promise<Respons
   if (!conv) return json({ error: "conv required" }, 400);
   const inv = await env.DB_META.prepare("SELECT status FROM group_invites WHERE conv=?1 AND uid=?2").bind(conv, ctx.uid).first<{ status: string }>();
   if (!inv) return json({ error: "no_invite" }, 404);
+  // STREAM H [LIVE-GATE-5]: gate JOINING a group (accepting an invite) behind the
+  // human check. Declining is always allowed (accept === false skips the gate).
+  if (accept) { const g = await requireLiveness(env, ctx.uid, "group/join"); if (g) return json({ error: g.error }, g.status); }
   const now = Date.now();
   if (accept) {
     // Become a real member → the router now fans group messages to this user.
@@ -845,12 +1113,26 @@ export async function convInviteRespond(req: Request, env: Env): Promise<Respons
       env.DB_META.prepare("UPDATE conversations SET updated_at=?2 WHERE id=?1").bind(conv, now),
     ]);
     trackGroup(env, ctx.uid, "group_invite_accepted", { conv });
+    // STREAM B (SAFE-GATE-4): the spec's group-invite telemetry event name.
+    trackGroup(env, ctx.uid, "group_invite_joined", { conv });
   } else {
+    // STREAM B (SAFE-GATE-4): "Block adder" — when declining, the client may pass
+    // block:true to also block the inviter (a non-contact who added them). Reads
+    // the inviter BEFORE the decline update, then writes the same `blocks` table
+    // the router honours. Best-effort; never fails the decline.
+    let adder: string | null = null;
+    if (b.block === true) {
+      adder = (await env.DB_META.prepare("SELECT inviter FROM group_invites WHERE conv=?1 AND uid=?2").bind(conv, ctx.uid).first<{ inviter: string | null }>())?.inviter ?? null;
+    }
     await env.DB_META.batch([
       env.DB_META.prepare("UPDATE group_invites SET status='declined' WHERE conv=?1 AND uid=?2").bind(conv, ctx.uid),
       env.DB_META.prepare("DELETE FROM conversation_members WHERE conv_id=?1 AND uid=?2").bind(conv, ctx.uid),
     ]);
     trackGroup(env, ctx.uid, "group_invite_declined", { conv });
+    if (adder) {
+      try { await env.DB_META.prepare("INSERT OR IGNORE INTO blocks (uid, blocked_uid, created_at) VALUES (?1,?2,?3)").bind(ctx.uid, adder, now).run(); } catch { /* best-effort */ }
+      trackGroup(env, ctx.uid, "group_invite_block_adder", { conv, adder });
+    }
   }
   return json({ ok: true, conv, accepted: accept });
 }

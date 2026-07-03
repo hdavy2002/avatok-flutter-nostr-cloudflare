@@ -19,6 +19,7 @@ export interface Env {
   PARTY?: DurableObjectNamespace; // cross-script → avatok-api PartyDO (marketplace voice deal_ready nudge)
   CALL_ROOMS?: DurableObjectNamespace; // cross-script → avatok-api CallRoom (P1 ring-ack control-plane)
   Q_MKT_AUDIO?: Queue;            // marketplace negotiation voice render (async, this consumer)
+  Q_AUTO_REPLY?: Queue;           // STREAM F auto-responder job (incoming DM → away auto-reply, this consumer)
   WALLET_DO?: DurableObjectNamespace; // cross-script → avatok-api WalletDO (nightly recon reads, Phase 2)
   VECTOR_INDEX?: VectorizeIndex;      // semantic memory (brain embeddings)
   AI_SEARCH?: any;                    // sharded per-user AI Search (delete cascade per item id)
@@ -88,10 +89,40 @@ export interface Env {
 export interface MktAudioMsg {
   conv: string; sellerUid: string; buyerUid: string; listingId: string;
   outcome: string; bubble: string; agreed: number; currency: string;
+  // `transcript` is the BUYER-LANGUAGE transcript (already translated + capped by
+  // avatok-api). The consumer TTS's it verbatim with a "Speak in <language>." preamble.
   transcript: Array<{ speaker: string; text: string }>;
   persona?: string;
+  // MKT-LANG-4: buyer language + buyer voice + English canonical + i18n cache.
+  lang?: string;               // =buyerLang (BCP-47 short code, e.g. 'es'); default 'en'
+  buyerVoice?: string | null;  // buyer's chosen Gemini voice (fallback Aoede)
+  transcriptEn?: Array<{ speaker: string; text: string }>;               // canonical
+  transcriptI18n?: Record<string, Array<{ speaker: string; text: string }>>; // cache
+  summary?: string;            // buyer-language summary line
+  pendingOwnerApproval?: boolean; // deal held for the seller's approval
   enqueuedAt?: number; // when avatok-api enqueued this; consumer detects backlog delay
 }
+
+// STREAM F — auto-responder job (producer: avatok-api sendMsg hot-path hook). One
+// message per incoming DM that passed the hot-path pre-filter (feature on, responder
+// active, audience matched, not a stranger-gate thread, not itself an auto-reply).
+// The consumer enforces the per-contact/day + global/day caps + loop protection,
+// generates the reply (canned string, or AI mode = short LLM call), and appends it
+// to the thread as the RECIPIENT's message with envelope auto:true.
+export interface AutoReplyMsg {
+  recipient: string;      // the AWAY user (whose responder fires) — reply is sent AS them
+  sender: string;         // the person who messaged them (gets the auto-reply)
+  conv: string;           // the DM conversation id
+  incoming_text: string | null; // the incoming message text (for AI context + urgent classify)
+  incoming_kind: string;  // 'text' | 'audio' | ...
+  incoming_mid?: string;  // canonical id of the incoming message (telemetry only)
+  enqueuedAt?: number;    // when avatok-api enqueued this (backlog detection)
+}
+
+// STREAM F — away-digest job (producer: avatok-api putAutoResponder on an
+// enabled→disabled transition; also the schedule-end cron sweep). Rides the SAME
+// `auto-reply` queue; discriminated by `kind:"digest"`.
+export interface AutoDigestMsg { kind: "digest"; uid: string; day?: string; }
 
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).
 export interface DeletionMsg { uid: string; clerk_user_id?: string | null; scheduled_at?: number; pubkey_hex?: string; }

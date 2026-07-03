@@ -33,6 +33,7 @@ import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
 import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList, archivePage } from "./routes/archive";
+import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
 import { getConfig, putConfig } from "./routes/config";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
@@ -111,6 +112,15 @@ import { avaImage } from "./routes/ava_image";          // P9
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
 import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
 import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
+// --- AI Messenger Batch 2026-07-03 (Streams A/B/C/E/F/G/I) ---
+import { marketplaceAgentSettingsGet, marketplaceAgentSettingsPut } from "./routes/agent_settings"; // STREAM A
+import { convAccept, convBlock, safetyReport, convAcceptState } from "./routes/safety";              // STREAM B
+import { unfurl } from "./routes/unfurl";                                                            // STREAM C
+import { gifSearch, gifTrending } from "./routes/gif";                                               // STREAM E
+import { getAutoResponder, putAutoResponder } from "./routes/auto_responder";                        // STREAM F
+import { aiCatchup, aiSmartReplies, aiTranslate, aiGroupTranslate, safetyScore } from "./routes/ai_chat"; // STREAM G
+import { forwardMsg } from "./routes/messaging";                                                     // STREAM I
+import { addFavorite, removeFavorite, listFavorites } from "./routes/listings";                       // STREAM K
 
 export { CallRoom } from "./do/call_room";
 export { MeshRoom } from "./do/mesh_room";
@@ -289,6 +299,39 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/conversations/members/role" && req.method === "POST") return await convSetRole(req, env);
       if (p === "/api/conversations/leave" && req.method === "POST") return await convLeave(req, env);
       if (p === "/api/conversations/delete" && req.method === "POST") return await convDelete(req, env);
+      // --- AI Messenger Batch 2026-07-03 route mounts ---
+      // STREAM I: unlimited forwarding (no-copy fan-out; requires liveness when gate ON)
+      if (p === "/api/msg/forward" && req.method === "POST") return await forwardMsg(req, env);
+      // STREAM B: stranger safety gate (accept/block/report + accept-state)
+      if (p === "/api/conversations/accept" && req.method === "POST") return await convAccept(req, env);
+      if (p === "/api/conversations/block" && req.method === "POST") return await convBlock(req, env);
+      if (p === "/api/conversations/accept-state" && (req.method === "GET" || req.method === "POST")) return await convAcceptState(req, env);
+      if (p === "/api/safety/report" && req.method === "POST") return await safetyReport(req, env);
+      // STREAM A: marketplace agent settings
+      if (p === "/api/marketplace/agent-settings" && req.method === "GET") return await marketplaceAgentSettingsGet(req, env);
+      if (p === "/api/marketplace/agent-settings" && req.method === "PUT") return await marketplaceAgentSettingsPut(req, env);
+      // STREAM K: marketplace favorites
+      if (p === "/api/marketplace/favorites" && req.method === "POST") return await addFavorite(req, env);
+      if (p === "/api/marketplace/favorites" && req.method === "DELETE") return await removeFavorite(req, env);
+      if (p === "/api/marketplace/favorites" && req.method === "GET") return await listFavorites(req, env);
+      // STREAM C: server-side link unfurl (zero recipient-side fetch)
+      if (p === "/api/unfurl" && req.method === "GET") return await unfurl(req, env);
+      // STREAM E: Tenor GIF proxy (key stays server-side)
+      if (p === "/api/gif/search" && req.method === "GET") return await gifSearch(req, env);
+      if (p === "/api/gif/trending" && req.method === "GET") return await gifTrending(req, env);
+      // STREAM F: auto-responder settings
+      if (p === "/api/auto-responder" && req.method === "GET") return await getAutoResponder(req, env);
+      if (p === "/api/auto-responder" && req.method === "PUT") return await putAutoResponder(req, env);
+      // STREAM G: AI-in-chats (catchup / smart-replies / translate / group-translate / safety score)
+      if (p === "/api/ai/catchup" && req.method === "POST") return await aiCatchup(req, env);
+      if (p === "/api/ai/smart-replies" && req.method === "POST") return await aiSmartReplies(req, env);
+      if (p === "/api/ai/translate" && req.method === "POST") return await aiTranslate(req, env);
+      if (p === "/api/ai/group-translate" && req.method === "POST") return await aiGroupTranslate(req, env);
+      if (p === "/api/safety/score" && req.method === "POST") return await safetyScore(req, env);
+
+      // STREAM F — auto-responder ("Ava replies while you're away") per-user settings.
+      if (p === "/api/auto-responder" && req.method === "GET") return await getAutoResponder(req, env);
+      if (p === "/api/auto-responder" && req.method === "PUT") return await putAutoResponder(req, env);
 
       // --- Ava in-chat AI (Phase 0 registered routes; handlers filled by the
       // owner phases — master-plan §4). Order: most-specific first. ---
