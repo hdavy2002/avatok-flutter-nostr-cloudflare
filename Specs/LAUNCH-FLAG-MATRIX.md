@@ -10,6 +10,43 @@ Covers 100% of `PlatformConfig` keys in `worker/src/routes/config.ts` (interface
 - Flags are stored in KV `platform_config` and merged over `DEFAULTS`; flip via KV, no redeploy.
 - `partyEnabled` is NOT in `DEFAULTS` — it is derived from the `PARTY_ENABLED` Worker secret.
 
+> **⚠️ The `Current default` column below is the CODE DEFAULT, not the live value.** The live prod
+> state (KV overrides + secrets actually set) is captured in **[LIVE PROD STATE](#live-prod-state-as-of-2026-07-02)**
+> and diverges from the defaults. Check that section for what is actually on in production.
+
+## LIVE PROD STATE (as of 2026-07-02)
+
+Actual prod configuration after the launch-enable pass (owner "all in, gemini"). `avatok-api`
+(`d1308d98`) + `avatok-consumers` (`5d03f9e2`) deployed with all session code.
+
+**KV `platform_config` overrides that are ON** (namespace `TOKENS` `ab462ef0…`, 30 keys total):
+`receptionistEnabled=true`, `receptionistUseCf=false` (Gemini engine → P2 timing active),
+`listingLivenessGate=true`, `profileCompletionGate=true`, `receptTakeoverGuard=true`,
+`groupAudioSfuEnabled=true`, `conferenceEnabled=true`, `groupInvitesEnabled=true`,
+`numberFeatureEnabled=true`, `aiEnabled=true`, `guardianEnabled=true`, `companionEnabled=true`,
+`ringbackEnabled=true`, `betaFreePremium=true`, `donationsEnabled=true`, `identityLadderEnabled=true`,
+`guestTierEnabled=true`, `simOnlyPhoneEnabled=true`. **OFF in KV:** `brainEnabled=false`,
+`billingEnabled=false`, `walletRealMoney=false`, `liveEnabled=false`, `consultEnabled=false`,
+`verseEnabled=false`, `translationEnabled=false`, `avavoiceEnabled=false`, `avavisionEnabled=false`,
+`webSearchEnabled=false`, `fileAnalysisEnabled=false`, `generativeEnabled=false`,
+`avaAffiliateEnabled=false`, `teamIvrEnabled=false`. `receptionistRings=6`.
+
+**Worker secrets set on `avatok-api`:** `PARTY_ENABLED=1`, `CHAT_ARCHIVE_V2=1`.
+
+**Defaults-that-ship-ON (not in KV, so live via code default):** `safetyScanEnabled=true` (Nemotron
+per-message scan live), `driveAutoBackup=true`, `agentDailyCap=10`, `imageDailyCap=100`,
+`dailyAvaTurnLimit=25`, `focusMode=true`.
+
+**Live consequences owner accepted (client friendly-flows only in the not-yet-shipped #311 build):**
+- `listingLivenessGate` → unverified users get a bare `403` on listing create/publish.
+- `profileCompletionGate` → server rejects incomplete profile saves + real-name Gemini vetting (fail-closed).
+- `CHAT_ARCHIVE_V2` → InboxDO batched R2 archive on every message; legacy `CHAT_ARCHIVE` lane
+  force-suppressed; retention prunes only ≤ archive high-water. (Skipped the planned staging soak.)
+- `PARTY_ENABLED` → PartyKit realtime + delivery hints on. (Skipped the planned 24h staging soak.)
+- `receptTakeoverGuard` → ring-ack path live server-side; `call_ring_ack` telemetry needs the #311 build on a device.
+
+All reversible via the same KV read-merge-write / `wrangler secret put`.
+
 ## Core `PlatformConfig` keys
 
 | Flag | Type | Current default | Launch value | Flip owner / notes |
