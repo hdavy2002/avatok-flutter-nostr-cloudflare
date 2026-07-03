@@ -358,9 +358,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // F7 — AvaBrain guardrails: master + per-app (Messaging, Library,
         // Marketplace, Receptionist). All default ON; per-app greyed when master
         // is OFF. Persisted per-account (scoped) + synced to server via BrainConsent.
-        _brainCard(),
-        // _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
-        //     'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
+        // AvaBrain — its own control-room page (Accounts & Settings › Settings ›
+        // AvaBrain): master switch + per-source guardrail toggles (now incl. the
+        // F7 Messaging / Library / Marketplace / Receptionist sources) + "delete my
+        // AvaBrain data". Owner 2026-07-03: re-enabled as a page (replaces the inline
+        // card). The page reads/writes the same BrainConsent store.
+        _tile(PhosphorIcons.brain(PhosphorIconsStyle.bold), Zine.lilac, 'AvaBrain',
+            'Control what your AI may remember', () => _push(const BrainSettingsScreen())),
         _tile(PhosphorIcons.textAa(PhosphorIconsStyle.bold), Zine.blue, 'Display & fonts',
             'Make text across the app bigger or smaller', () => _push(const DisplayFontsScreen())),
         // Pluggable sections (Phase 0 contract): feature phases register a
