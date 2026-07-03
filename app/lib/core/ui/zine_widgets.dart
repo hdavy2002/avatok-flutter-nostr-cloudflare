@@ -258,6 +258,10 @@ class ZineField extends StatefulWidget {
   final bool autocorrect;
   final bool enabled;
   final List<TextInputFormatter>? inputFormatters;
+  // RESPUI-2: keeps this field visible above the keyboard when focused —
+  // matters most on short screens where the default 20px isn't enough
+  // clearance once other fields/buttons are stacked below it.
+  final EdgeInsets scrollPadding;
   const ZineField({
     super.key,
     this.controller,
@@ -280,6 +284,7 @@ class ZineField extends StatefulWidget {
     this.autocorrect = false,
     this.enabled = true,
     this.inputFormatters,
+    this.scrollPadding = const EdgeInsets.all(80),
   });
   @override
   State<ZineField> createState() => _ZineFieldState();
@@ -362,6 +367,7 @@ class _ZineFieldState extends State<ZineField> {
               textCapitalization: widget.textCapitalization,
               autocorrect: widget.autocorrect,
               inputFormatters: widget.inputFormatters,
+              scrollPadding: widget.scrollPadding,
               cursorColor: Zine.blueInk,
               style: ZineText.input(),
               decoration: InputDecoration(

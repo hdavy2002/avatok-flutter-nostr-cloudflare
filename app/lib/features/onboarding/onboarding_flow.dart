@@ -217,13 +217,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   @override
   Widget build(BuildContext context) {
+    // RESPUI-2: resize for the keyboard so steps with text fields (profile)
+    // never hide the input or the "Keep going" button beneath it.
+    // RESPUI-3: horizontal gutter keys off ZineBreakpoints (tighter on <360dp).
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: ZinePaper(
         child: SafeArea(
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+                padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 4),
                 child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                   ZineStepPips(total: _steps, active: _step + 1),
                 ]),
@@ -526,6 +531,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               onChanged: onChanged,
               inputFormatters: inputFormatters,
               textCapitalization: textCapitalization,
+              // RESPUI-2: keep the focused field clear of the keyboard on short screens.
+              scrollPadding: const EdgeInsets.all(80),
               cursorColor: Zine.blueInk,
               style: ZineText.input(),
               decoration: InputDecoration(
@@ -553,11 +560,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ---- Step 1: notifications ----
   Widget _notifications() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+    // RESPUI-2: was a fixed Column with Spacer()s sized for a tall screen —
+    // on short screens / high textScale the CTA at the bottom got pushed off
+    // or the layout overflowed. Now a scrollable column with fixed gaps, so
+    // it compresses naturally and the button is always reachable by scrolling.
+    final hPad = ZineBreakpoints.pagePadding(context);
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 24),
       child: Column(
         children: [
-          const Spacer(flex: 2),
+          const SizedBox(height: 12),
           ZineCrest(
             child: PhosphorIcon(
                 _notifEnabled
@@ -566,7 +578,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 size: 46, color: Zine.ink),
           ),
           const SizedBox(height: 18),
-          const ZineMarkTitle(pre: 'Stay in the ', mark: 'loop', fontSize: 32),
+          ZineMarkTitle(pre: 'Stay in the ', mark: 'loop',
+              fontSize: ZineBreakpoints.heroTextSize(context, regular: 32)),
           const SizedBox(height: 12),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 300),
@@ -580,7 +593,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           _featureRow(PhosphorIcons.wallet(PhosphorIconsStyle.bold), Zine.mint, 'Payouts & wallet activity'),
           const SizedBox(height: 12),
           _featureRow(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), Zine.blue, 'Replies & mentions'),
-          const Spacer(flex: 3),
+          const SizedBox(height: 32),
           if (_notifEnabled)
             _primary('Keep going', _next)
           else ...[
@@ -601,17 +614,19 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     const para = 'AvaTOK is your account for the whole AvaVerse — calls, chat, '
         'social, marketplace and storage in one place. Your account, profile and '
         'settings stay in sync on every device you sign in to.';
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+            padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ZineMarkTitle(
                     pre: 'Terms & ', mark: 'Conditions',
-                    fontSize: 30, textAlign: TextAlign.left),
+                    fontSize: ZineBreakpoints.heroTextSize(context, regular: 30),
+                    textAlign: TextAlign.left),
                 const SizedBox(height: 6),
                 Text('PLEASE REVIEW BEFORE CONTINUING', style: ZineText.kicker()),
                 const SizedBox(height: 20),
@@ -625,7 +640,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
         ),
         Container(
-          padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
+          padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 20),
           decoration: const BoxDecoration(
             color: Zine.paper2,
             border: Border(top: BorderSide(color: Zine.ink, width: Zine.bw)),
@@ -676,10 +691,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // ---- Step 5: contacts ----
   Widget _contacts() {
-    return Padding(
+    // RESPUI-2: same Spacer-overflow fix as _notifications() — scrollable
+    // column instead of fixed Spacers so this never clips on short screens.
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(children: [
-        const Spacer(flex: 2),
+        const SizedBox(height: 12),
         SizedBox(
           width: 74, height: 46,
           child: Stack(alignment: Alignment.center, children: [
@@ -697,7 +714,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               'Upload your contacts to instantly connect with friends already creating on AvaTOK. We never store your contacts.',
               textAlign: TextAlign.center, style: ZineText.sub(size: 14.5)),
         ),
-        const Spacer(flex: 3),
+        const SizedBox(height: 32),
         _primary('Find my people', () async {
           await Permission.contacts.request();
           // TODO: read + upload contacts in background once granted.

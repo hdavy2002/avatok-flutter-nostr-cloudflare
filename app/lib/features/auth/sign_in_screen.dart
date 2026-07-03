@@ -237,13 +237,22 @@ class _SignInScreenState extends State<SignInScreen> {
     final showGoogle = _mode == _Mode.signIn || _mode == _Mode.signUp;
     final canPop = Navigator.of(context).canPop();
 
+    // RESPUI-2/3: the whole body (incl. the CTA/Google/footer, previously
+    // fixed below the scroll area) now scrolls as one column so short screens
+    // and an open keyboard never hide the submit button or clip the footer.
+    // SafeArea + resizeToAvoidBottomInset keep the focused field above the
+    // keyboard inset. Horizontal padding + hero title size key off
+    // ZineBreakpoints so a <360dp phone gets tighter gutters and a smaller
+    // hero instead of the same fixed 24px/36px squeezing the layout.
+    final hPad = ZineBreakpoints.pagePadding(context);
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: ZinePaper(
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(hPad, 12, hPad, 0),
+              child: Row(
                 mainAxisAlignment:
                     canPop ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
                 children: [
@@ -251,13 +260,17 @@ class _SignInScreenState extends State<SignInScreen> {
                   Text(tag.toUpperCase(), style: ZineText.kicker()),
                 ],
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 24),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     const SizedBox(height: 18),
                     const Center(child: ZineCrest(size: 96)),
                     const SizedBox(height: 14),
-                    ZineMarkTitle(pre: titlePre, mark: titleMark, fontSize: 36),
+                    ZineMarkTitle(pre: titlePre, mark: titleMark,
+                        fontSize: ZineBreakpoints.heroTextSize(context)),
                     const SizedBox(height: 12),
                     Center(
                       child: ConstrainedBox(
@@ -272,44 +285,43 @@ class _SignInScreenState extends State<SignInScreen> {
                       ZineErrorMsg(_error!),
                     ],
                     const SizedBox(height: 20),
-                  ]),
-                ),
+                    ZineButton(
+                      label: cta,
+                      icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
+                      fullWidth: true,
+                      fontSize: 20,
+                      loading: _busy,
+                      onPressed: _busy ? null : _submit,
+                    ),
+                    if (showGoogle) ...[
+                      const SizedBox(height: 16),
+                      _orDivider(),
+                      const SizedBox(height: 16),
+                      ZineButton(
+                        label: 'Continue with Google',
+                        variant: ZineButtonVariant.ghost,
+                        icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
+                        fullWidth: true,
+                        fontSize: 18,
+                        onPressed: _busy ? null : _continueWithGoogle,
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    Center(child: _footerLink()),
+                    const SizedBox(height: 14),
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
+                          size: 14, color: Zine.blueInk),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text('secured by Clerk · one account for everything Ava',
+                            style: ZineText.kicker(), textAlign: TextAlign.center),
+                      ),
+                    ]),
+                ]),
               ),
-              ZineButton(
-                label: cta,
-                icon: PhosphorIcons.arrowRight(PhosphorIconsStyle.bold),
-                fullWidth: true,
-                fontSize: 20,
-                loading: _busy,
-                onPressed: _busy ? null : _submit,
-              ),
-              if (showGoogle) ...[
-                const SizedBox(height: 16),
-                _orDivider(),
-                const SizedBox(height: 16),
-                ZineButton(
-                  label: 'Continue with Google',
-                  variant: ZineButtonVariant.ghost,
-                  icon: PhosphorIcons.googleLogo(PhosphorIconsStyle.bold),
-                  fullWidth: true,
-                  fontSize: 18,
-                  onPressed: _busy ? null : _continueWithGoogle,
-                ),
-              ],
-              const SizedBox(height: 16),
-              Center(child: _footerLink()),
-              const SizedBox(height: 14),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                PhosphorIcon(PhosphorIcons.lockKey(PhosphorIconsStyle.fill),
-                    size: 14, color: Zine.blueInk),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text('secured by Clerk · one account for everything Ava',
-                      style: ZineText.kicker(), textAlign: TextAlign.center),
-                ),
-              ]),
-            ]),
-          ),
+            ),
+          ]),
         ),
       ),
     );
