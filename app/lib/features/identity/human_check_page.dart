@@ -8,6 +8,7 @@ import '../../core/ui/zine_widgets.dart';
 import 'ladder_api.dart';
 import 'liveness_check_screen.dart';
 import 'liveness_v2/liveness_v2_screen.dart';
+import 'liveness_v2/pending_session.dart';
 
 /// STREAM H (AI Messenger Batch) — the onboarding "human check" hard gate.
 ///
@@ -64,6 +65,20 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
     super.initState();
     // [LIVE-GATE-6] telemetry (auto-stamps email + uid via Analytics._base).
     Analytics.capture('liveness_gate_shown', {'source': _source});
+    // Verify-pending resilience (LIVE-V2 P4): if a V2 verify was left in flight
+    // (app backgrounded mid-check), reopen the V2 screen so it can resume that
+    // session's result instead of making the user redo the whole video. The V2
+    // screen's initState does the actual poll/render. Flag-gated so V1 is unchanged.
+    if (RemoteConfig.livenessV2Enabled) _resumePendingV2();
+  }
+
+  Future<void> _resumePendingV2() async {
+    final sid = await LivenessPendingSession.get();
+    if (sid == null || sid.isEmpty || !mounted) return;
+    Analytics.capture('liveness_resume_pending', {'source': _source});
+    // _startCheck's push already routes to LivenessV2Screen under the flag; it
+    // resumes the pending sid on its own. Just launch it.
+    await _startCheck();
   }
 
   Future<void> _startCheck() async {
