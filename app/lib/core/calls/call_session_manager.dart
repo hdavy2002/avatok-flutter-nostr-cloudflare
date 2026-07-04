@@ -43,8 +43,6 @@ class CallSessionManager with WidgetsBindingObserver {
     }
     final session = CallSession(config);
     _active.value = session;
-    // ignore: unawaited_futures
-    session.start();
     // When the session tears down, drop it from `active`.
     void watch() {
       if (session.phase.value == CallPhase.ended) {
@@ -53,6 +51,8 @@ class CallSessionManager with WidgetsBindingObserver {
       }
     }
     session.phase.addListener(watch);
+    // ignore: unawaited_futures
+    session.start();
     return session;
   }
 
