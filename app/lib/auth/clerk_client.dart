@@ -230,15 +230,28 @@ class ClerkClient {
       if (r.statusCode != 200) {
         String msg = 'Sign-in failed (${r.statusCode})';
         String? detail;
+        bool bodyIsJson = false;
         try {
           final m = jsonDecode(r.body) as Map<String, dynamic>;
+          bodyIsJson = true;
           msg = m['error']?.toString() ?? msg;
           // `detail` carries Clerk's real reason behind "could not create account".
           detail = [m['error'], m['detail']].where((x) => x != null).join(' · ');
         } catch (_) {}
+        // Edge-vs-Worker classification (2026-07-04 blind-spot fix): our Worker
+        // ALWAYS returns JSON. A non-JSON body here = Cloudflare EDGE rejected the
+        // request before the Worker (SNI/TLS/WAF/0-RTT) — so surface the origin +
+        // a body snippet instead of a bare "(400)".
+        final origin = bodyIsJson ? 'worker' : 'edge';
+        final bodySnip = r.body.isEmpty
+            ? ''
+            : (r.body.length > 160 ? r.body.substring(0, 160) : r.body);
         _sx('exchange_failed',
             reason: 'server_${r.statusCode}',
             status: r.statusCode,
+            origin: origin,
+            respContentType: r.headers['content-type'],
+            bodySnippet: bodySnip,
             detail: (detail == null || detail.isEmpty) ? msg : detail,
             ms: sw.elapsedMilliseconds);
         return ClerkStep.error(msg);
@@ -282,7 +295,15 @@ class ClerkClient {
   /// Best-effort and never throws into the auth path (PostHog stamps email +
   /// clerk_uid automatically once known). Lets support trace exactly where a
   /// signup died — the client side of the server's `signup_server` events.
-  void _sx(String step, {String provider = 'google', String? reason, int? status, String? detail, int? ms}) {
+  void _sx(String step,
+      {String provider = 'google',
+      String? reason,
+      int? status,
+      String? detail,
+      int? ms,
+      String? origin,
+      String? respContentType,
+      String? bodySnippet}) {
     unawaited(Analytics.capture('signup_step', {
       'provider': provider,
       'step': step,
@@ -290,6 +311,9 @@ class ClerkClient {
       if (status != null) 'http_status': status,
       if (detail != null && detail.isNotEmpty) 'detail': detail,
       if (ms != null) 'duration_ms': ms,
+      if (origin != null) 'origin': origin,                 // 'edge' | 'worker'
+      if (respContentType != null) 'resp_content_type': respContentType,
+      if (bodySnippet != null && bodySnippet.isNotEmpty) 'body_snippet': bodySnippet,
     }));
   }
 

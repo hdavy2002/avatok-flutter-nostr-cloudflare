@@ -112,13 +112,59 @@ class Analytics {
     String? code,
     int? latencyMs,
     int retryCount = 0,
+    String? host,
+    String? body,
+    String? contentType,
+  }) {
+    // Kill the edge-vs-worker blind spot (2026-07-04 incident): our Worker ALWAYS
+    // answers JSON, so a non-JSON 4xx body means Cloudflare's edge rejected the
+    // request BEFORE the Worker (SNI/TLS/WAF/0-RTT) — previously indistinguishable
+    // from a real app 400. Classify it here + carry a short body snippet so a
+    // single query separates edge rejections from genuine Worker validation.
+    String? origin;
+    String? snippet;
+    if (body != null && status >= 400) {
+      final trimmed = body.trimLeft();
+      final looksJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+      final ctJson = (contentType ?? '').contains('json');
+      origin = (looksJson || ctJson) ? 'worker' : 'edge';
+      snippet = body.length > 160 ? body.substring(0, 160) : body;
+    }
+    return capture('api_error', {
+      'endpoint': endpoint,
+      'status': status,
+      if (code != null) 'code': code,
+      if (latencyMs != null) 'latency_ms': latencyMs,
+      'retry_count': retryCount,
+      if (host != null) 'host': host,
+      if (origin != null) 'origin': origin,           // 'edge' | 'worker'
+      if (contentType != null) 'resp_content_type': contentType,
+      if (snippet != null) 'body_snippet': snippet,
+    });
+  }
+
+  /// Carrier-DNS observability (2026-07-04): a client-side resolve/connect health
+  /// signal so "Failed host lookup on Jio" is queryable per host/network instead
+  /// of being an invisible cause behind api_error status 0.
+  static Future<void> dnsProbe({
+    required String host,
+    required bool osOk,
+    int? osMs,
+    bool? dohOk,
+    String? dohResolver,
+    String? family,
+    int? dohMs,
+    String? error,
   }) =>
-      capture('api_error', {
-        'endpoint': endpoint,
-        'status': status,
-        if (code != null) 'code': code,
-        if (latencyMs != null) 'latency_ms': latencyMs,
-        'retry_count': retryCount,
+      capture('dns_probe', {
+        'host': host,
+        'os_ok': osOk,
+        if (osMs != null) 'os_ms': osMs,
+        if (dohOk != null) 'doh_ok': dohOk,
+        if (dohResolver != null) 'doh_resolver': dohResolver,
+        if (family != null) 'family': family,
+        if (dohMs != null) 'doh_ms': dohMs,
+        if (error != null && error.isNotEmpty) 'error': error,
       });
 
   // ── In-chat health signals (ANALYTICS-OBSERVABILITY) ───────────────────────

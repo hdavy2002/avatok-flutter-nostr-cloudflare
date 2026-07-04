@@ -45,11 +45,15 @@ class AvaDns {
     ..connectionTimeout = const Duration(seconds: 4);
 
   // DoH endpoints, tried in order. All are IP literals → no bootstrap DNS.
-  // Cloudflare uses /dns-query (+accept header); Google uses /resolve.
+  // Google (/resolve) is FIRST: Jio (and several Indian carriers) block or
+  // hijack Cloudflare's 1.1.1.1 / 1.0.0.1, which is exactly why the old
+  // Cloudflare-first order timed out on Jio (doh_resolve_fail). Google 8.8.8.8
+  // stays reachable there. Cloudflare kept as secondary for networks that block
+  // Google instead.
   static const List<_Doh> _endpoints = [
+    _Doh('8.8.8.8', '/resolve'),
     _Doh('1.1.1.1', '/dns-query'),
     _Doh('1.0.0.1', '/dns-query'),
-    _Doh('8.8.8.8', '/resolve'),
   ];
 
   /// Resolve [host] to a connectable IP. Returns null only when BOTH the OS and
@@ -85,11 +89,13 @@ class AvaDns {
         if (res != null && res.addrs.isNotEmpty) {
           _cache[host] = _Entry(
               res.addrs, DateTime.now().add(Duration(seconds: res.ttl.clamp(30, 300))));
+          final v4 = res.addrs.where((a) => a.type == InternetAddressType.IPv4).length;
           Analytics.capture('doh_resolve_ok', {
             'host': host,
             'resolver': e.ip,
             'ms': DateTime.now().difference(t0).inMilliseconds,
             'n': res.addrs.length,
+            'family': v4 > 0 ? (v4 == res.addrs.length ? 'v4' : 'dual') : 'v6',
           });
           return res.addrs.first;
         }
@@ -102,13 +108,26 @@ class AvaDns {
     return null;
   }
 
-  /// One DoH JSON query. Returns IPv4 addresses + the min record TTL, or null.
+  /// One DoH JSON query — asks for BOTH A (IPv4) and AAAA (IPv6) so v6-only /
+  /// NAT64 carriers (Jio) get a usable answer. IPv4 is listed first (preferred),
+  /// IPv6 appended. Returns the addresses + the min record TTL, or null.
   Future<_DohResult?> _queryDoh(_Doh e, String host) async {
+    final v4 = await _queryDohType(e, host, 'A', 1);
+    final v6 = await _queryDohType(e, host, 'AAAA', 28);
+    final ips = <InternetAddress>[...?v4?.addrs, ...?v6?.addrs];
+    if (ips.isEmpty) return null;
+    final ttl = [v4?.ttl ?? 300, v6?.ttl ?? 300].reduce((a, b) => a < b ? a : b);
+    return _DohResult(ips, ttl);
+  }
+
+  /// One DoH JSON query for a single record [type] ('A' → dnsType 1,
+  /// 'AAAA' → 28). Returns matching addresses + min TTL, or null.
+  Future<_DohResult?> _queryDohType(_Doh e, String host, String type, int dnsType) async {
     final uri = Uri.parse(
-        'https://${e.ip}${e.path}?name=${Uri.encodeComponent(host)}&type=A');
-    final req = await _doh.getUrl(uri).timeout(const Duration(seconds: 4));
+        'https://${e.ip}${e.path}?name=${Uri.encodeComponent(host)}&type=$type');
+    final req = await _doh.getUrl(uri).timeout(const Duration(seconds: 3));
     req.headers.set(HttpHeaders.acceptHeader, 'application/dns-json');
-    final resp = await req.close().timeout(const Duration(seconds: 4));
+    final resp = await req.close().timeout(const Duration(seconds: 3));
     if (resp.statusCode != 200) return null;
     final body = await resp.transform(utf8.decoder).join();
     final json = jsonDecode(body) as Map<String, dynamic>;
@@ -116,8 +135,9 @@ class AvaDns {
     final ips = <InternetAddress>[];
     var minTtl = 300;
     for (final a in answers) {
-      if (a is Map && a['type'] == 1) {
-        // type 1 = A record. CNAME (5) answers are followed server-side already.
+      // CNAME (5) answers are followed server-side already; we keep the terminal
+      // A (1) / AAAA (28) records.
+      if (a is Map && a['type'] == dnsType) {
         final ip = InternetAddress.tryParse('${a['data']}');
         if (ip != null) ips.add(ip);
         final ttl = (a['TTL'] as num?)?.toInt() ?? 300;
@@ -125,6 +145,61 @@ class AvaDns {
       }
     }
     return ips.isEmpty ? null : _DohResult(ips, minTtl);
+  }
+
+  /// Fire-and-forget DNS health probe for [host]: times the OS resolver, then
+  /// (on OS failure) tries DoH, and emits a `dns_probe` telemetry event. Called
+  /// by the HTTP wrapper on a transport failure so "Failed host lookup" on a
+  /// carrier is queryable per host/network instead of being invisible. Never
+  /// throws.
+  Future<void> probe(String host) async {
+    if (InternetAddress.tryParse(host) != null) return; // IP literal — nothing to probe
+    final t0 = DateTime.now();
+    try {
+      final r =
+          await InternetAddress.lookup(host).timeout(const Duration(seconds: 3));
+      final v4 = r.where((a) => a.type == InternetAddressType.IPv4).length;
+      await Analytics.dnsProbe(
+        host: host,
+        osOk: r.isNotEmpty,
+        osMs: DateTime.now().difference(t0).inMilliseconds,
+        family: r.isEmpty ? null : (v4 > 0 ? (v4 == r.length ? 'v4' : 'dual') : 'v6'),
+      );
+      return;
+    } catch (osErr) {
+      // OS resolution failed — try DoH so we know whether the name is resolvable
+      // at all from this network (carrier DNS broken) or genuinely unreachable.
+      if (!dohEnabled) {
+        await Analytics.dnsProbe(
+            host: host, osOk: false,
+            osMs: DateTime.now().difference(t0).inMilliseconds,
+            error: osErr.toString());
+        return;
+      }
+      final d0 = DateTime.now();
+      for (final e in _endpoints) {
+        try {
+          final res = await _queryDoh(e, host);
+          if (res != null && res.addrs.isNotEmpty) {
+            final v4 = res.addrs.where((a) => a.type == InternetAddressType.IPv4).length;
+            await Analytics.dnsProbe(
+              host: host, osOk: false,
+              osMs: DateTime.now().difference(t0).inMilliseconds,
+              dohOk: true, dohResolver: e.ip,
+              dohMs: DateTime.now().difference(d0).inMilliseconds,
+              family: v4 > 0 ? (v4 == res.addrs.length ? 'v4' : 'dual') : 'v6',
+              error: osErr.toString());
+            return;
+          }
+        } catch (_) {/* try next resolver */}
+      }
+      await Analytics.dnsProbe(
+          host: host, osOk: false,
+          osMs: DateTime.now().difference(t0).inMilliseconds,
+          dohOk: false,
+          dohMs: DateTime.now().difference(d0).inMilliseconds,
+          error: osErr.toString());
+    }
   }
 }
 
@@ -163,39 +238,12 @@ class _Entry {
 void installAvaDns() {
   // Intentionally a no-op — see PERF-DNS-4 note above. Pure OS DNS + default
   // dart:io connection (identical to the last known-good build).
-}
-
-class AvaHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    final client = super.createHttpClient(context);
-    client.connectionFactory =
-        (Uri url, String? proxyHost, int? proxyPort) async {
-      final secure = url.scheme == 'https' || url.scheme == 'wss';
-      final port = url.port != 0 ? url.port : (secure ? 443 : 80);
-      // Honour an explicit proxy untouched.
-      if (proxyHost != null) {
-        return Socket.startConnect(proxyHost, proxyPort ?? port);
-      }
-      // HAPPY PATH — connect by HOSTNAME, exactly like the default resolver.
-      // (PERF-DNS-3 fix) The previous build connected by a pre-resolved IP on
-      // every request; against a shared CDN edge (Cloudflare) that severed the
-      // TLS SNI, so the edge answered 400 Bad Request before the Worker ever
-      // saw the request — breaking ALL sign-in / API calls on every network.
-      // Connecting by hostname preserves SNI + cert validation and is a true
-      // no-op when DNS is healthy (which is ~always).
-      try {
-        return await Socket.startConnect(url.host, port);
-      } catch (osErr) {
-        // Only NOW — a genuine OS resolve/connect failure (the Jio "Failed host
-        // lookup" case PERF-DNS-2 targeted) — do we fall back to a DoH-resolved
-        // IP. TLS SNI still uses url.host via the HttpClient's secure upgrade.
-        if (!AvaDns.dohEnabled) rethrow;
-        final ip = await AvaDns.I.resolve(url.host);
-        if (ip == null) rethrow; // no better answer than the OS had — surface osErr's peer
-        return Socket.startConnect(ip, port);
-      }
-    };
-    return client;
-  }
+  //
+  // DELIBERATELY NO `HttpOverrides.global` / custom `connectionFactory` here.
+  // A dart:io `connectionFactory` severs TLS SNI on the secure upgrade, so
+  // Cloudflare's shared edge answers 400 before the Worker — a total sign-in
+  // outage (field-proven 2026-07-04, builds 04ec3d3 / fda87cd). Do NOT add one
+  // back to "route DNS": use [AvaDns.resolve] / [AvaDns.probe] for observation
+  // only. Any IP-level connection routing must be validated end-to-end against
+  // Cloudflare (SNI intact) on a real device first.
 }

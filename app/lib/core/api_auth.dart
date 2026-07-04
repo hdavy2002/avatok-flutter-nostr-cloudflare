@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../identity/identity.dart';
 import 'analytics.dart';
+import 'net/ava_dns.dart';
 
 /// Central authenticated-HTTP helper for the `/api/*` Worker contract.
 ///
@@ -56,24 +57,39 @@ class ApiAuth {
   /// call reports failures here — screens never capture api_error themselves.
   static Future<http.Response> _tracked(String url, Future<http.Response> Function() run) async {
     final t0 = DateTime.now();
+    final uri = Uri.parse(url);
     try {
       final res = await run();
       if (res.statusCode >= 400) {
+        // Carry host + a short body snippet + content-type so api_error can tell
+        // an EDGE rejection (Cloudflare, non-JSON body) from a genuine WORKER 400
+        // (JSON) — the exact blind spot that hid the 2026-07-04 sign-in outage.
+        String? snippet;
+        try { snippet = res.body; } catch (_) {/* bytes/stream body — skip */}
         Analytics.apiError(
-          endpoint: Uri.parse(url).path,
+          endpoint: uri.path,
           status: res.statusCode,
           latencyMs: DateTime.now().difference(t0).inMilliseconds,
+          host: uri.host,
+          body: snippet,
+          contentType: res.headers['content-type'],
         );
-        if (res.statusCode == 401) _onUnauthorized(Uri.parse(url).path);
+        if (res.statusCode == 401) _onUnauthorized(uri.path);
       }
       return res;
     } catch (e) {
       Analytics.apiError(
-        endpoint: Uri.parse(url).path,
+        endpoint: uri.path,
         status: 0,
         code: e.runtimeType.toString(),
         latencyMs: DateTime.now().difference(t0).inMilliseconds,
+        host: uri.host,
       );
+      // A transport failure (status 0) is often carrier DNS ("Failed host
+      // lookup" on Jio). Fire a one-off DNS health probe so the real cause is
+      // queryable instead of hiding behind a generic ClientException.
+      // ignore: unawaited_futures
+      AvaDns.I.probe(uri.host);
       rethrow;
     }
   }
