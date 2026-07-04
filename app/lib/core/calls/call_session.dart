@@ -159,6 +159,23 @@ class CallSession {
   bool _onCellularHold = false;
   StreamSubscription? _telephonySub;
 
+  // ── CALL-RC-D2: post-connect reconnect state machine ────────────────────
+  // Distinct from the pre-connect `_wsReconnects`/`_reconnectSignaling` path
+  // above (kept untouched for ringing/connecting drops). This machine only
+  // engages once the call was `connected` and the signaling WS drops: phase
+  // goes to `reconnecting`, retries back off 0.5/1/2/4/8/8… s, capped at 30s
+  // total elapsed, then gives up via hangup('reconnect_failed'). Reuses the
+  // SAME `_myId` WS tag so the DO (CallRoom, CALL-RC-D1) recognizes the
+  // rejoin and replays buffered signaling.
+  static const List<double> _kReconnectBackoffSec = [0.5, 1, 2, 4, 8, 8, 8];
+  static const Duration _kReconnectGiveUp = Duration(seconds: 30);
+  bool _reconnecting = false;
+  int _reconnectAttempt = 0;
+  int? _reconnectStartMs;
+  Timer? _reconnectRetryTimer;
+  Timer? _reconnectGiveUpTimer;
+  Timer? _pingTimer;
+
   int get avaCount => _avaCount; // for the countdown ring in the view
   bool get isEnded => _ended;
   bool get isConnected => _connected;
@@ -304,6 +321,8 @@ class CallSession {
       case 'busy':
       case 'no-answer':
         return CallPhase.ended;
+      case 'reconnecting':
+        return CallPhase.reconnecting;
       default:
         return CallPhase.connecting;
     }
@@ -470,6 +489,7 @@ class CallSession {
     final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
     _ws = WebSocketChannel.connect(Uri.parse(url));
     _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+    _startPingTimer();
     if (config.outgoing) {
       _placeCallTimeout = Timer(const Duration(seconds: 8), () {
         if (!_gotWelcome && !_ended && _phase == 'ringing') {
@@ -535,9 +555,9 @@ class CallSession {
       return;
     }
     if (_connected) {
-      Analytics.capture('call_ws_reconnect',
-          {'call_id': config.room, 'attempt': _wsReconnects + 1, 'phase': 'connected'});
-      _reconnectSignaling(isConnected: true);
+      // CALL-RC-D2: post-connect drop → the exponential-backoff reconnect
+      // state machine (phase=reconnecting), not the legacy pre-connect path.
+      _beginReconnect();
       return;
     }
     if ((_phase == 'ringing' || _phase == 'connecting') && _wsReconnects < 3) {
@@ -572,6 +592,103 @@ class CallSession {
         _onSocketLost();
       }
     });
+  }
+
+  // ── CALL-RC-D2: post-connect reconnect state machine ────────────────────
+
+  /// Signaling WS dropped while `connected`. Enter `reconnecting`, arm the
+  /// 30s give-up timer, and kick off the first retry attempt.
+  void _beginReconnect() {
+    if (_ended) return;
+    _stopPingTimer();
+    if (!_reconnecting) {
+      _reconnecting = true;
+      _reconnectAttempt = 0;
+      _reconnectStartMs = DateTime.now().millisecondsSinceEpoch;
+      _setPhase('reconnecting');
+      // peerAway is a separate signal (the OTHER peer's socket state, driven
+      // by peer-away/peer-rejoined below); our own drop doesn't imply theirs.
+      Analytics.capture('call_reconnect_start', {'call_id': config.room, 'video': config.video});
+      _reconnectGiveUpTimer?.cancel();
+      _reconnectGiveUpTimer = Timer(_kReconnectGiveUp, () {
+        if (_ended || !_reconnecting) return;
+        Analytics.capture('call_reconnect_fail', {
+          'call_id': config.room,
+          'elapsed_ms': DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? 0),
+          'attempts': _reconnectAttempt,
+        });
+        _endWith('ended', reason: 'reconnect_failed');
+      });
+    }
+    _scheduleReconnectAttempt();
+  }
+
+  void _scheduleReconnectAttempt() {
+    if (_ended || !_reconnecting) return;
+    _reconnectRetryTimer?.cancel();
+    final idx = _reconnectAttempt.clamp(0, _kReconnectBackoffSec.length - 1);
+    final delay = Duration(milliseconds: (_kReconnectBackoffSec[idx] * 1000).round());
+    _reconnectAttempt++;
+    _reconnectRetryTimer = Timer(delay, _attemptReconnect);
+  }
+
+  void _attemptReconnect() {
+    if (_ended || !_reconnecting) return;
+    // Give-up timer is the source of truth for the 30s cap; just try again.
+    try { _ws?.sink.close(); } catch (_) {}
+    final url = 'wss://$kSignalingHost/room/$_room?id=$_myId';
+    try {
+      _ws = WebSocketChannel.connect(Uri.parse(url));
+      _ws!.stream.listen(_onSignal, onError: (_) => _onSocketLost(), onDone: _onSocketLost);
+    } catch (_) {
+      // Connection attempt itself threw synchronously — schedule the next retry.
+      _scheduleReconnectAttempt();
+      return;
+    }
+    // If this attempt doesn't yield a 'welcome' before the next backoff tick,
+    // schedule the following retry; a successful 'welcome' calls
+    // _completeReconnect() (which flips _reconnecting off) before it fires,
+    // so the guard at the top of _scheduleReconnectAttempt no-ops it.
+    _scheduleReconnectAttempt();
+  }
+
+  /// Called from the `welcome` signal handler when we reconnect mid-call
+  /// (i.e. we were the one who dropped and re-attached with the same `id`).
+  void _completeReconnect() {
+    if (!_reconnecting) return;
+    _reconnecting = false;
+    _reconnectRetryTimer?.cancel();
+    _reconnectGiveUpTimer?.cancel();
+    final ms = DateTime.now().millisecondsSinceEpoch - (_reconnectStartMs ?? DateTime.now().millisecondsSinceEpoch);
+    Analytics.capture('call_reconnect_ok', {
+      'call_id': config.room,
+      'ms': ms,
+      'attempts': _reconnectAttempt,
+    });
+    _reconnectStartMs = null;
+    _reconnectAttempt = 0;
+    if (!_ended) {
+      _setPhase('connected');
+      _startPingTimer();
+    }
+  }
+
+  /// 15s client ping over the signaling WS, matching the DO's
+  /// `setWebSocketAutoResponse({type:"ping"}->{type:"pong"})` (CALL-RC-D1).
+  /// No manual pong handling needed client-side — the DO answers without
+  /// waking, and stray {"type":"pong"} frames are ignored by `_onSignal`'s
+  /// switch (no matching case).
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_ended) return;
+      _send({'type': 'ping'});
+    });
+  }
+
+  void _stopPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = null;
   }
 
   void _send(Map<String, dynamic> o) {
@@ -708,6 +825,12 @@ class CallSession {
             _wsReconnects = 0;
             peerAway.value = false;
             Analytics.capture('call_ws_reconnected', {'call_id': config.room});
+            // CALL-RC-D2: this `welcome` is the CallRoom DO recognizing OUR
+            // rejoin (same `id` tag) after a signaling drop — complete the
+            // reconnect state machine (phase back to connected, cancel the
+            // give-up timer) before the ICE restart so the UI clears
+            // "Reconnecting…" promptly.
+            _completeReconnect();
             await _tryIceRestart('ws-reconnect');
           } else {
             final pc = await _newPC();
@@ -760,25 +883,48 @@ class CallSession {
         // ignore: unawaited_futures
         _onBusy();
         break;
-      case 'peer-left':
-      case 'bye':
-        final isBye = d['type'] == 'bye';
+      // CALL-RC-D1/D2: the CallRoom DO now grades a dropped peer's socket
+      // through a 30s away/rejoin window instead of ending the call instantly.
+      // 'peer-away' = the peer's signaling socket dropped; media may still be
+      // flowing. 'peer-rejoined' = they re-attached within the window (their
+      // OWN reconnect, distinct from a 'welcome' answering OUR reconnect).
+      // 'peer-left' now ONLY arrives after the 30s alarm expires with no
+      // rejoin — i.e. a real end, not a grace signal.
+      case 'peer-away':
         if (_connected) {
-          if (isBye) {
-            remoteRenderer.srcObject = null;
-            _endWith('ended', reason: 'remote-bye');
-          } else {
-            // 'peer-left' = the peer's SIGNALING socket dropped — not a hangup.
-            // Keep the call; the RTC watchdog decides. SEAM: mark peer away.
-            peerAway.value = true;
-            Analytics.capture('call_peer_left_grace', {'call_id': config.room});
-          }
-        } else if (isBye) {
-          _endWith('ended', reason: 'remote-bye');
+          peerAway.value = true;
+          Analytics.capture('call_peer_away', {'call_id': config.room});
+        }
+        break;
+      case 'peer-rejoined':
+        if (_connected) {
+          peerAway.value = false;
+          Analytics.capture('call_peer_rejoined', {'call_id': config.room});
+          // The peer's transport blipped and recovered; proactively re-offer
+          // an ICE restart from our side too (harmless if already healthy —
+          // _tryIceRestart no-ops unless we're the offerer with a live pc).
+          // ignore: unawaited_futures
+          _tryIceRestart('peer-rejoined');
+        }
+        break;
+      case 'peer-left':
+        // Alarm expired with no rejoin — the call is over for real.
+        peerAway.value = false;
+        if (_connected) {
+          _endWith('ended', reason: 'peer-left');
         } else {
           _connected = false;
           _bump();
         }
+        break;
+      case 'bye':
+        remoteRenderer.srcObject = null;
+        _endWith('ended', reason: 'remote-bye');
+        break;
+      case 'ping':
+      case 'pong':
+        // WS-layer keepalive frames (server auto-response / our own 15s
+        // ping). Nothing to do client-side.
         break;
     }
   }
@@ -1059,6 +1205,12 @@ class CallSession {
     _placeCallTimeout?.cancel();
     _netSub?.cancel();
     _statusSub?.cancel();
+    // CALL-RC-D2: cancel every reconnect/ping timer so nothing keeps firing
+    // after teardown (acceptance criterion — no leaked timers post-hangup).
+    _reconnecting = false;
+    _reconnectRetryTimer?.cancel();
+    _reconnectGiveUpTimer?.cancel();
+    _stopPingTimer();
     try { await FlutterCallkitIncoming.endCall(config.room); } catch (_) {}
     try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     try { await _pc?.close(); } catch (_) {}
@@ -1091,6 +1243,7 @@ class CallSession {
         'receptionist-connecting' => 'Connecting you to Ava…',
         'receptionist' => 'Ava is taking a message',
         'receptionist-wrapup' => 'Ava is wrapping up…',
+        'reconnecting' => 'Reconnecting…',
         'ended' => 'Call ended',
         _ => 'Connecting…',
       };
