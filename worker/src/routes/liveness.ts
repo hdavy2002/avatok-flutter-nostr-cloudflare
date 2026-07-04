@@ -36,12 +36,17 @@ import { track, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { invalidateLevelCache } from "./ladder";
 import { recordLivenessAudit, auditPrefix, deviceCtxFromBody } from "./liveness_audit";
+import { readConfig } from "./config";
+import { rekognitionConfigured, compareFaces } from "../aws/rekognition";
 
 const MAX_ATTEMPTS_24H = 3;             // shared budget with the other providers
 const DAY = 86_400_000;
 const CHALLENGE_TTL_S = 900;            // 15 min to finish a session
 const MAX_FRAME_BYTES = 1_500_000;      // ~1.5 MB JPEG
 const MAX_CLIP_BYTES = 16_000_000;      // ~16 MB clip
+const MAX_IMAGE_PARTS = 8;              // LIVE-V2 P3: cap image parts per session
+const MIN_CLIP_BYTES = 200_000;         // LIVE-V2 P3 (B9): a real clip is > 200 KB
+const MAX_LLAVA_CALLS = 8;              // LIVE-V2 P3: budget guard per verify
 const VISION_MODEL = "@cf/llava-hf/llava-1.5-7b-hf";
 const WHISPER_MODEL = "@cf/openai/whisper";
 const RESULT_TTL_S = 3600;              // LIVE-V2 P0: verify outcome cached in KV 1h
@@ -50,6 +55,7 @@ const VERIFY_PROVIDER = "workersai";
 // LIVE-V2 P0: human-readable message for each structured check id (plan §5B).
 // The client renders the FIRST failing check's user_message as the fail reason.
 const CHECK_MESSAGES: Record<string, string> = {
+  // V1 flat ids (kept so old sessions/clients render unchanged).
   realness: "This looks like a photo of a screen or picture. Use your live camera.",
   phrase: "We couldn't hear the phrase clearly.",
   turn_left: "We couldn't see you complete the movements.",
@@ -59,6 +65,18 @@ const CHECK_MESSAGES: Record<string, string> = {
   mouth_open: "We couldn't see you complete the movements.",
   eyebrows_raised: "We couldn't see you complete the movements.",
   missing_frames: "We didn't receive the challenge photos — try again.",
+  // LIVE-V2 P3: structured B-check ids (plan §5B wording).
+  b1_realness: "This looks like a photo of a screen or picture. Use your live camera.",
+  b2_single_person: "More than one person was detected.",
+  b3_mask: "Your face was covered.",
+  b4_challenge: "We couldn't see you complete the movements.",
+  b4_profile: "We couldn't see you complete the movements.",
+  b5_same_person: "Different faces appeared during the video.",
+  b5_skipped: "",
+  b6_phrase: "We couldn't hear the phrase clearly.",
+  b7_eyes_open: "Your eyes were closed.",
+  b8_session: "Verification failed — please try again.",
+  b9_clip: "The video was too short.",
 };
 const checkMessage = (id: string): string =>
   CHECK_MESSAGES[id] ?? "Verification failed — please try again.";
@@ -76,6 +94,12 @@ const REALNESS_PROMPT =
   "Look carefully at this photo. Is it a live photo of exactly one real human " +
   "person taken with a front camera (NOT a photo of a screen, monitor, printed " +
   "photo, or another photograph)? Answer only YES or NO.";
+
+// LIVE-V2 P3: single-check LLaVA prompts (plan §6.4 prompt hardening).
+const COUNT_PROMPT = "How many people are visible in this photo? Answer with a number only.";
+const MASK_PROMPT = "Is the person's face covered by a mask or object over the nose or mouth? Answer only YES or NO.";
+const PROFILE_PROMPT = "Is the person's head clearly turned or tilted away from facing straight at the camera (in profile or looking up/down/sideways)? Answer only YES or NO.";
+const EYES_OPEN_PROMPT = "Are the person's eyes open? Answer only YES or NO.";
 
 const PHRASE_WORDS = [
   "river", "orange", "window", "tiger", "cloud", "guitar", "marble", "rocket",
@@ -158,9 +182,32 @@ export async function livenessUpload(req: Request, env: Env): Promise<Response> 
   const sid = u.searchParams.get("session") || "";
   const part = u.searchParams.get("part") || "";
   if (!/^[0-9a-f-]{36}$/.test(sid)) return json({ error: "bad session" }, 400);
-  if (!/^(frame[0-2]|clip)$/.test(part)) return json({ error: "bad part" }, 400);
+  // LIVE-V2 P3: accept the richer V2 evidence set (head-circle profiles + extra
+  // expression peaks) alongside the V1 frame0/frame1/frame2 layout. Parts:
+  //   frame<n>            — V1 challenge/neutral stills (kept for back-compat)
+  //   extra<n>            — V2 additional stills (expression peaks etc.)
+  //   profile_left/right/up/down — V2 head-circle auto-captures
+  //   clip               — the selfie recording
+  // Cap total IMAGE parts at 8 per session (clip is separate); same size caps.
+  if (!/^(frame\d|extra\d|profile_(left|right|up|down)|clip)$/.test(part)) {
+    return json({ error: "bad part" }, 400);
+  }
   const ch = await env.TOKENS.get(`liveness:ch:${ctx.uid}:${sid}`);
   if (!ch) return json({ error: "session expired" }, 410);
+
+  // LIVE-V2 P3: enforce the ≤8 image-parts cap. Only counts NEW image keys — an
+  // overwrite of an already-uploaded part does not add to the total.
+  if (part !== "clip") {
+    const prefix = sessionPrefix(ctx.uid, sid);
+    const [existing, already] = await Promise.all([
+      env.VERIFICATION.list({ prefix }),
+      env.VERIFICATION.head(prefix + part),
+    ]);
+    const imageCount = (existing.objects ?? []).filter((o) => !o.key.endsWith("clip")).length;
+    if (!already && imageCount >= MAX_IMAGE_PARTS) {
+      return json({ error: "too many parts" }, 413);
+    }
+  }
 
   const body = await req.arrayBuffer();
   const cap = part === "clip" ? MAX_CLIP_BYTES : MAX_FRAME_BYTES;
@@ -170,18 +217,29 @@ export async function livenessUpload(req: Request, env: Env): Promise<Response> 
   return json({ ok: true, part, bytes: body.byteLength });
 }
 
-async function visionYes(env: Env, image: ArrayBuffer, prompt: string): Promise<boolean> {
+// LIVE-V2 P3: a tiny budget object threaded through the pipeline so total LLaVA
+// calls per verify never exceed MAX_LLAVA_CALLS (cost guard). `visionRun` returns
+// the raw uppercased text; `visionYes` is the YES/NO convenience on top of it.
+interface LlavaBudget { calls: number; }
+
+async function visionRun(env: Env, budget: LlavaBudget, image: ArrayBuffer, prompt: string): Promise<string | null> {
+  if (budget.calls >= MAX_LLAVA_CALLS) return null; // over budget — caller treats as "unknown"
+  budget.calls++;
   try {
     const r: any = await env.AI.run(VISION_MODEL as any, {
       image: [...new Uint8Array(image)],
       prompt,
       max_tokens: 8,
     } as any);
-    const text = String(r?.description ?? r?.response ?? "").trim().toUpperCase();
-    return text.startsWith("YES");
+    return String(r?.description ?? r?.response ?? "").trim().toUpperCase();
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function visionYes(env: Env, budget: LlavaBudget, image: ArrayBuffer, prompt: string): Promise<boolean> {
+  const text = await visionRun(env, budget, image, prompt);
+  return !!text && text.startsWith("YES");
 }
 
 // LIVE-V2 P0: the structured outcome we cache in KV + return to the polling client.
@@ -225,13 +283,15 @@ export async function livenessVerify(req: Request, env: Env, ctx?: ExecutionCont
   const existing = await env.TOKENS.get(resultKey(auth.uid, sid), "json").catch(() => null);
   if (existing) return json({ status: "done", ...(existing as LivenessResult) }, 200);
 
-  // Required parts present? (Same gate as the old sync path — frame0 + frame1.)
+  // Required parts present? LIVE-V2 P3: the strict per-check required-parts logic
+  // now lives in runLivenessChecks (B8, layout-aware for V1 frame0/frame1 AND V2
+  // profile_*/extra layouts). Here we only short-circuit the obvious "nothing was
+  // uploaded" case (no image parts at all) so we don't spin up the worker for an
+  // empty session. Any real upload flows through to the full pipeline.
   const prefix = sessionPrefix(auth.uid, sid);
-  const [f0, f1] = await Promise.all([
-    env.VERIFICATION.head(prefix + "frame0"),
-    env.VERIFICATION.head(prefix + "frame1"),
-  ]);
-  if (!f0 || !f1) {
+  const listed = await env.VERIFICATION.list({ prefix }).catch(() => null);
+  const imageParts = (listed?.objects ?? []).filter((o) => !o.key.endsWith("clip"));
+  if (imageParts.length === 0) {
     // Store + return a done fail immediately — no need to spin up the worker.
     const result: LivenessResult = {
       verified: false,
@@ -301,11 +361,20 @@ export async function runLivenessChecks(
   // and an empty device ctx. (Client can be extended to persist it later.)
   const device = deviceCtxFromBody({});
 
-  // LIVE-V2 P0: build the structured checks[] (plan §5B) + legacy map from a flat
-  // id→bool map, store the outcome in KV, and return it. Central exit for the
-  // background run so both fail and pass persist the poll-able result.
-  const finalize = async (map: Record<string, boolean>, opts: { verified: boolean; level?: number }): Promise<LivenessResult> => {
-    const checksArr = Object.entries(map).map(([id, pass]) => ({ id, pass, user_message: pass ? "" : checkMessage(id) }));
+  // LIVE-V2 P0/P3: build the structured checks[] (plan §5B) + legacy id→bool map,
+  // store the outcome in KV, and return it. Central exit for the background run so
+  // both fail and pass persist the poll-able result. Accepts a structured array
+  // (V2) OR a flat map (V1 back-compat); the map form derives messages via
+  // checkMessage(). `telemetry` carries the P3 extras (llava_calls, rekognition_used).
+  const finalize = async (
+    checksInput: Array<{ id: string; pass: boolean; user_message?: string }> | Record<string, boolean>,
+    opts: { verified: boolean; level?: number; telemetry?: { llava_calls?: number; rekognition_used?: boolean } },
+  ): Promise<LivenessResult> => {
+    const checksArr = Array.isArray(checksInput)
+      ? checksInput.map((c) => ({ id: c.id, pass: c.pass, user_message: c.pass ? "" : (c.user_message ?? checkMessage(c.id)) }))
+      : Object.entries(checksInput).map(([id, pass]) => ({ id, pass, user_message: pass ? "" : checkMessage(id) }));
+    const map: Record<string, boolean> = {};
+    for (const c of checksArr) map[c.id] = c.pass;
     const result: LivenessResult = {
       verified: opts.verified,
       checks: checksArr,
@@ -314,12 +383,16 @@ export async function runLivenessChecks(
       ...(opts.level != null ? { level: opts.level } : {}),
     };
     await env.TOKENS.put(resultKey(ctx.uid, sid), JSON.stringify(result), { expirationTtl: RESULT_TTL_S }).catch(() => {});
+    const failed = checksArr.filter((c) => !c.pass).map((c) => c.id);
     track(env, ctx.uid, "liveness_verify_result", "avaid", {
       pass: opts.verified,
-      failed_checks: checksArr.filter((c) => !c.pass).map((c) => c.id),
+      failed_checks: failed,
       duration_ms: Date.now() - startedAt,
       provider: VERIFY_PROVIDER,
+      llava_calls: opts.telemetry?.llava_calls ?? 0,
+      rekognition_used: opts.telemetry?.rekognition_used ?? false,
     });
+    metric(env, "liveness_v2_verify", [1]);
     return result;
   };
 
@@ -327,71 +400,196 @@ export async function runLivenessChecks(
   // (frames + clip) from the upload prefix into the retained audit prefix instead
   // of deleting. `keepThumbAt` names the frame0 copy that also stays the
   // AvaIdentity green-tick thumbnail. Returns the retained prefix + thumb key.
+  // LIVE-V2 P3: retain EVERY uploaded part, not just the fixed V1 set — the V2 flow
+  // uploads profile_* + extra<n> stills too. We list the whole session prefix and
+  // move each object across, so the audit trail keeps 100% of the evidence (D15).
+  // frame0 stays the AvaIdentity green-tick thumbnail when present.
   const retainEvidence = async (): Promise<{ prefix: string; thumbKey: string }> => {
     const thumbKey = retainedPrefix + "frame0.jpg";
-    const parts: Array<[string, string]> = [
-      ["frame0", "frame0.jpg"],
-      ["frame1", "frame1.jpg"],
-      ["frame2", "frame2.jpg"],
-      ["clip", "clip.bin"],
-    ];
-    for (const [src, dst] of parts) {
-      try {
-        const obj = await env.VERIFICATION.get(prefix + src);
-        if (!obj) continue;
-        await env.VERIFICATION.put(retainedPrefix + dst, await obj.arrayBuffer());
-        await env.VERIFICATION.delete(prefix + src); // remove the transient upload copy
-      } catch { /* best-effort per part */ }
-    }
+    try {
+      const listing = await env.VERIFICATION.list({ prefix });
+      for (const o of listing.objects ?? []) {
+        const src = o.key;
+        const part = src.slice(prefix.length); // e.g. "frame0", "profile_left", "clip"
+        if (!part) continue;
+        const dst = part === "clip" ? retainedPrefix + "clip.bin" : `${retainedPrefix}${part}.jpg`;
+        try {
+          const obj = await env.VERIFICATION.get(src);
+          if (!obj) continue;
+          await env.VERIFICATION.put(dst, await obj.arrayBuffer());
+          await env.VERIFICATION.delete(src); // remove the transient upload copy
+        } catch { /* best-effort per part */ }
+      }
+    } catch { /* best-effort listing */ }
     try { await env.TOKENS.delete(`liveness:ch:${ctx.uid}:${sid}`); } catch { /* */ }
     return { prefix: retainedPrefix, thumbKey };
   };
 
-  // Frames: frame0+frame1 = the two challenge actions, frame2 = neutral realness shot.
-  const frames: (ArrayBuffer | null)[] = [];
-  for (const p of ["frame0", "frame1", "frame2"]) {
-    const obj = await env.VERIFICATION.get(prefix + p);
-    frames.push(obj ? await obj.arrayBuffer() : null);
-  }
-  if (!frames[0] || !frames[1]) {
+  // ── LIVE-V2 P3: multi-frame verify pipeline (plan §5B). ────────────────────
+  // Evidence layout is layout-agnostic so BOTH old V1 sessions AND new V2 sessions
+  // verify correctly:
+  //   V1 session:  frame0 = gesture A, frame1 = gesture B, frame2 = neutral, clip
+  //   V2 session:  extra<n>/frame<n> = expression peaks, profile_* = head-circle
+  //                turns, one neutral still, clip
+  // We load every image part, then classify: profiles (profile_*), and a "neutral"
+  // = the last non-profile still (V1 frame2 or V2's neutral). Cheap checks run first
+  // and expensive LLaVA calls short-circuit when evidence is missing. Total LLaVA
+  // calls are capped by the shared `budget`.
+  const budget: LlavaBudget = { calls: 0 };
+  const checks: Array<{ id: string; pass: boolean; user_message?: string }> = [];
+  const addCheck = (id: string, pass: boolean) =>
+    checks.push({ id, pass, user_message: pass ? "" : checkMessage(id) });
+
+  // Load all uploaded image parts (skip the clip) as {part -> bytes}.
+  const parts: Record<string, ArrayBuffer> = {};
+  try {
+    const listing = await env.VERIFICATION.list({ prefix });
+    for (const o of listing.objects ?? []) {
+      const part = o.key.slice(prefix.length);
+      if (!part || part === "clip") continue;
+      const obj = await env.VERIFICATION.get(o.key);
+      if (obj) parts[part] = await obj.arrayBuffer();
+    }
+  } catch { /* best-effort */ }
+
+  const profileParts = Object.keys(parts).filter((p) => p.startsWith("profile_")).sort();
+  const stillParts = Object.keys(parts).filter((p) => !p.startsWith("profile_")).sort();
+  // Neutral = the last non-profile still (V1 frame2, else V2 neutral, else frame0).
+  const neutralKey = stillParts.length ? stillParts[stillParts.length - 1] : undefined;
+  const neutral = neutralKey ? parts[neutralKey] : null;
+  // Expression/gesture stills = every non-profile still EXCEPT the neutral one.
+  const gestureKeys = stillParts.filter((p) => p !== neutralKey);
+
+  // B8 — session integrity. TTL is implied (challenge KV still present). Required
+  // parts: for V2 we want ≥1 gesture still + neutral + clip; for V1 (frame0+frame1)
+  // the frame0/frame1 layout is treated as valid (frame0=gesture, frame1 doubles as
+  // gesture+neutral). Single-verify is enforced by the idempotency guard in verify.
+  const clipHead = await env.VERIFICATION.head(prefix + "clip");
+  const isV1Layout = !profileParts.length && !!parts["frame0"] && !!parts["frame1"];
+  const b8ok = isV1Layout
+    ? (!!parts["frame0"] && !!parts["frame1"])
+    : (gestureKeys.length >= 1 && !!neutral && !!clipHead);
+  addCheck("b8_session", b8ok);
+  if (!b8ok) {
     const { prefix: rp } = await retainEvidence();
     await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: rp });
-    return finalize({ missing_frames: false }, { verified: false });
+    await env.DB_META.prepare("UPDATE verification_attempts SET result='fail' WHERE uid=?1 AND session_id=?2").bind(ctx.uid, sid).run().catch(() => {});
+    return finalize(checks, { verified: false, telemetry: { llava_calls: budget.calls, rekognition_used: false } });
   }
 
-  const checks: Record<string, boolean> = {};
+  // B9 — clip sanity: size 200KB–16MB. (Duration/audio-track probing isn't available
+  // in Workers — LIVE-V2 NOTE: we approximate via byte size; a real clip that
+  // contains a few seconds of video+audio always clears 200KB.)
+  const clipSize = clipHead?.size ?? 0;
+  const b9ok = clipSize >= MIN_CLIP_BYTES && clipSize <= MAX_CLIP_BYTES;
+  addCheck("b9_clip", b9ok);
 
-  // 1. Per-action gesture checks.
-  for (let i = 0; i < challenge.actions.length; i++) {
-    const action = ACTIONS.find((a) => a.id === challenge.actions[i]);
-    checks[challenge.actions[i]] = action ? await visionYes(env, frames[i]!, action.prompt) : false;
+  // Pick the reference frame for the LLaVA vision checks: neutral if present, else
+  // the first gesture still (V1 frame0). Everything short-circuits to a fail if we
+  // somehow have no still at all.
+  const refFrame = neutral ?? (gestureKeys.length ? parts[gestureKeys[0]] : null);
+
+  // B1 — realness on neutral + one profile (≤2 calls, plan §6). If no profile, run
+  // realness on neutral + first gesture still instead.
+  const realTargets: ArrayBuffer[] = [];
+  if (refFrame) realTargets.push(refFrame);
+  if (profileParts.length) realTargets.push(parts[profileParts[0]]);
+  else if (gestureKeys.length && parts[gestureKeys[0]] !== refFrame) realTargets.push(parts[gestureKeys[0]]);
+  let b1ok = realTargets.length > 0;
+  for (const t of realTargets.slice(0, 2)) b1ok = b1ok && (await visionYes(env, budget, t, REALNESS_PROMPT));
+  addCheck("b1_realness", b1ok);
+
+  // B2 — exactly one person (LLaVA count on neutral).
+  const b2ok = refFrame ? ((await visionRun(env, budget, refFrame, COUNT_PROMPT))?.startsWith("1") ?? false) : false;
+  addCheck("b2_single_person", b2ok);
+
+  // B3 — mask / face covering on neutral (prompt asks YES if covered → invert).
+  const b3ok = refFrame ? !(await visionYes(env, budget, refFrame, MASK_PROMPT)) : false;
+  addCheck("b3_mask", b3ok);
+
+  // B4 — challenge gestures. Expression stills use the server-side ACTIONS prompts
+  // (matched to the session's random actions when possible; else any ACTIONS prompt
+  // whose gesture the frame satisfies). Then up to 2 profile frames are checked for
+  // a clear head turn. At least ONE gesture OR profile must pass.
+  const gestureResults: boolean[] = [];
+  for (let i = 0; i < gestureKeys.length; i++) {
+    if (budget.calls >= MAX_LLAVA_CALLS) break;
+    // Prefer the action id at this index; fall back to the first challenge action.
+    const actionId = challenge.actions[i] ?? challenge.actions[0];
+    const action = ACTIONS.find((a) => a.id === actionId) ?? ACTIONS.find((a) => a.id === "smile");
+    const ok = action ? await visionYes(env, budget, parts[gestureKeys[i]], action.prompt) : false;
+    gestureResults.push(ok);
+    addCheck(`b4_challenge_${i}`, ok);
   }
-  // 2. Realness (anti photo-of-screen) on every frame we have.
-  let real = true;
-  for (const f of frames) if (f) real = real && (await visionYes(env, f, REALNESS_PROMPT));
-  checks.realness = real;
+  const profileResults: boolean[] = [];
+  for (const pk of profileParts.slice(0, 2)) {
+    if (budget.calls >= MAX_LLAVA_CALLS) break;
+    const ok = await visionYes(env, budget, parts[pk], PROFILE_PROMPT);
+    profileResults.push(ok);
+    addCheck(`b4_profile_${pk.replace("profile_", "")}`, ok);
+  }
+  const anyGesture = gestureResults.some(Boolean) || profileResults.some(Boolean);
+  // A single rolled-up b4 flag drives the verdict + gives the client one message.
+  addCheck("b4_challenge", anyGesture);
+  const profilesPresent = profileParts.length > 0;
+  const profileTurnOk = !profilesPresent || profileResults.some(Boolean);
 
-  // 3. Spoken phrase via Whisper on the clip (SOFT in v1 — transcription of
-  //    mobile codecs varies; gesture + realness are the hard gates, and the
-  //    random phrase still defeats pre-recorded clips because the user must
-  //    start recording after seeing it).
+  // B5 — same person. LLaVA image-comparison is unreliable → only run when the
+  // livenessUseRekognition flag is ON *and* AWS creds exist, via CompareFaces
+  // (standard image API, NOT Face Liveness). Otherwise mark skipped=pass (never
+  // fail a user on a check we cannot run).
+  let rekognitionUsed = false;
+  let b5ok = true;
+  let b5id = "b5_skipped";
+  try {
+    const cfg = await readConfig(env);
+    const compareTarget = gestureKeys.length ? parts[gestureKeys[0]] : (profileParts.length ? parts[profileParts[0]] : null);
+    if (cfg.livenessUseRekognition && rekognitionConfigured(env) && neutral && compareTarget) {
+      rekognitionUsed = true;
+      b5id = "b5_same_person";
+      const { similarity } = await compareFaces(env, new Uint8Array(neutral), new Uint8Array(compareTarget), 80);
+      b5ok = similarity >= 90;
+    }
+  } catch {
+    // CompareFaces error → don't punish the user; treat as skipped.
+    b5ok = true;
+    b5id = "b5_skipped";
+    rekognitionUsed = false;
+  }
+  checks.push({ id: b5id, pass: b5ok, user_message: b5ok ? "" : checkMessage(b5id) });
+
+  // B6 — spoken phrase via Whisper (fuzzy ≥2/3 words, prefix-match tolerant).
   let phraseOk: boolean | null = null;
   const clipObj = await env.VERIFICATION.get(prefix + "clip");
   if (clipObj) {
     try {
       const audio = await clipObj.arrayBuffer();
       const r: any = await env.AI.run(WHISPER_MODEL as any, { audio: [...new Uint8Array(audio)] } as any);
-      const text = String(r?.text ?? "").toLowerCase();
-      const words = challenge.phrase.split(" ");
-      phraseOk = words.filter((w) => text.includes(w)).length >= 2; // 2 of 3 words
+      const text = String(r?.text ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+      const heard = text.split(/\s+/).filter(Boolean);
+      const words = challenge.phrase.toLowerCase().split(" ");
+      // Fuzzy: a word matches if the heard transcript contains it, OR shares a
+      // ≥4-char prefix with any heard token (tolerates minor misspelling).
+      const matched = words.filter((w) => {
+        if (text.includes(w)) return true;
+        const p = w.slice(0, 4);
+        return p.length >= 4 && heard.some((h) => h.startsWith(p) || w.startsWith(h.slice(0, 4)));
+      }).length;
+      phraseOk = matched >= 2; // 2 of 3
     } catch {
-      phraseOk = null; // transcription unavailable — soft pass
+      phraseOk = null; // transcription unavailable — soft pass (don't hard-fail)
     }
   }
-  checks.phrase = phraseOk !== false;
+  const b6ok = phraseOk !== false;
+  addCheck("b6_phrase", b6ok);
 
-  const gesturesOk = challenge.actions.every((a) => checks[a]);
-  const passed = gesturesOk && checks.realness && checks.phrase;
+  // B7 — eyes open on neutral.
+  const b7ok = refFrame ? await visionYes(env, budget, refFrame, EYES_OPEN_PROMPT) : false;
+  addCheck("b7_eyes_open", b7ok);
+
+  // ── Verdict (plan §5B / §D-P3): pass iff ALL of B1,B2,B3,B6,B8 pass AND ≥1 B4
+  // gesture passes AND B7 passes AND (a profile turn passed OR profiles missing).
+  const passed = b1ok && b2ok && b3ok && b6ok && b8ok && anyGesture && b7ok && profileTurnOk;
   const now = Date.now();
 
   await env.DB_META.prepare(
@@ -401,12 +599,14 @@ export async function runLivenessChecks(
   if (!passed) {
     const { prefix: rp } = await retainEvidence(); // D15: keep evidence on fail too
     await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: rp });
+    const failMap: Record<string, boolean> = {};
+    for (const c of checks) failMap[c.id] = c.pass;
     await metaDb(env).prepare(
       "UPDATE verification_status SET status='rejected', failure_reason=?2, updated_at=?3 WHERE uid=?1",
-    ).bind(ctx.uid, JSON.stringify(checks), now).run();
-    track(env, ctx.uid, "liveness_failed", "avaid", { provider: "workersai", checks });
+    ).bind(ctx.uid, JSON.stringify(failMap), now).run();
+    track(env, ctx.uid, "liveness_failed", "avaid", { provider: "workersai", checks: failMap });
     metric(env, "liveness_wai_failed", [1]);
-    return finalize(checks, { verified: false });
+    return finalize(checks, { verified: false, telemetry: { llava_calls: budget.calls, rekognition_used: rekognitionUsed } });
   }
 
   // PASS — D15: retain ALL evidence under liveness/<uid>/<session>/; frame0 stays
@@ -452,5 +652,5 @@ export async function runLivenessChecks(
     });
   } catch { /* best-effort */ }
 
-  return finalize(checks, { verified: true, level: 2 });
+  return finalize(checks, { verified: true, level: 2, telemetry: { llava_calls: budget.calls, rekognition_used: rekognitionUsed } });
 }
