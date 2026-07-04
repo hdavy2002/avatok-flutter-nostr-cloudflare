@@ -13,6 +13,10 @@ import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+// Ringing globals (gIncomingRingingFrom/CallId) live here — cleared by
+// clearCallState() on account switch. push_service.dart also imports this file
+// (Dart permits the library cycle).
+import '../../push/push_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  BUSY / GLARE GLOBALS — thin shims delegating to the CallSession lifecycle.

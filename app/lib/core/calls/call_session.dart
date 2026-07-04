@@ -23,6 +23,11 @@ import '../remote_config.dart';
 import '../ringback_player.dart';
 import '../voice/native_voice_audio.dart';
 import '../../push/push_service.dart';
+// The 1:1 call/glare globals (gInCall, gActiveCallId, gLiveCallScreens,
+// gOutgoing*, gInCallSince) that gate phantom-busy/glare live in call_screen.dart
+// and are DRIVEN from here. Imported for scope; call_screen.dart also imports
+// this file — Dart permits the library cycle. See call_screen.dart:33-108.
+import '../../features/avatok/call_screen.dart';
 
 /// Coarse call lifecycle exposed via [CallSession.phase]. Wave 2 (PiP/pill,
 /// reconnect, Gemini parity) keys off THIS enum; the full call view also reads
