@@ -67,6 +67,7 @@ export function newAppsRunStats(): AppsRunStats {
 // NEVER be served from cache. Keep it in sync with CURATED (reads only).
 const READ_TOOL_SLUGS = new Set<string>([
   "GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL_GET_CONTACTS",
+  "OUTLOOK_OUTLOOK_LIST_MESSAGES", "OUTLOOK_OUTLOOK_GET_MESSAGE",
   "GOOGLEDRIVE_FIND_FILE",
   "GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_FIND_EVENT",
   "GOOGLECALENDAR_FIND_FREE_SLOTS", "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
@@ -797,6 +798,7 @@ function capArrays(obj: any, maxItems: number, depth = 0): void {
 function statusFor(slug: string): string {
   const s = (slug || "").toUpperCase();
   if (s.startsWith("GMAIL")) return "Checking Gmail…";
+  if (s.startsWith("OUTLOOK")) return "Checking Outlook…";
   if (s.startsWith("GOOGLECALENDAR")) return "Checking your calendar…";
   if (s.startsWith("GOOGLEDRIVE")) return "Looking in Drive…";
   if (s.startsWith("GOOGLEDOCS")) return "Working in Docs…";

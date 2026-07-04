@@ -1,5 +1,7 @@
 // ava_email.ts — the in-chat email surface (AvaTOK "Ava inbox" cards). PREMIUM +
-// Gmail-connected, Powered by Composio. Returns structured JSON the Flutter
+// Gmail- OR Outlook-connected (Gmail preferred when both), Powered by Composio.
+// Outlook ids are "ol:"-prefixed so every follow-up action routes to the right
+// backend with zero client changes. Returns structured JSON the Flutter
 // EmailCard / EmailViewer render directly (list of 5 → view → reply; spam/delete).
 // The inbox LIST itself is normally pushed as an Ava bubble by do/ava_agent.ts
 // when the user asks "what's in my inbox"; these routes back the per-card actions
@@ -26,6 +28,20 @@ import { connectedToolkits } from "../lib/composio";
 import {
   fetchInbox, getMessageBody, markSpam, trashMessage, replyThread, toolOk, toolErr,
 } from "../lib/gmail";
+import {
+  fetchOutlookInbox, getOutlookMessageBody, markOutlookSpam, trashOutlookMessage,
+  replyOutlookThread, isOutlookId, stripOutlookId,
+} from "../lib/outlook";
+
+// Which backend an id/threadId belongs to. Outlook ids carry the "ol:" prefix
+// (set by lib/outlook.ts when the list is built); everything else is Gmail —
+// so existing Gmail traffic is routed byte-identically. An optional explicit
+// `provider` body field is honoured too (additive; the Flutter client doesn't
+// need to send it since the prefix already discriminates).
+function providerOf(id: string, bodyProvider?: unknown): "gmail" | "outlook" {
+  if (String(bodyProvider ?? "").toLowerCase() === "outlook") return "outlook";
+  return isOutlookId(id) ? "outlook" : "gmail";
+}
 
 type Gate = { uid: string; email?: string | null; phone?: string | null };
 
@@ -52,15 +68,21 @@ export async function avaEmailList(req: Request, env: Env): Promise<Response> {
   const t0 = Date.now();
   try {
     const connected = await connectedToolkits(env, g.uid);
-    if (!connected.includes("gmail")) {
+    // Provider pick: Gmail wins when both are connected; Outlook-only users get
+    // the SAME envelope from the Outlook helpers (ids carry the ol: prefix).
+    const provider = connected.includes("gmail") ? "gmail"
+      : connected.includes("outlook") ? "outlook" : null;
+    if (!provider) {
       trackUserContact(env, g.uid, g.email, g.phone, "ava_email_list", "avaemail",
         { ok: false, reason: "gmail_not_connected", ms: Date.now() - t0, surface: "client" });
       return json({ ok: false, error: "gmail_not_connected" }, 409);
     }
-    const emails = await fetchInbox(env, g.uid, 5);
+    const emails = provider === "gmail"
+      ? await fetchInbox(env, g.uid, 5)
+      : await fetchOutlookInbox(env, g.uid, 5);
     chargeFeature(env, g.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_list", "avaemail",
-      { ok: true, ms: Date.now() - t0, count: emails.length, surface: "client" });
+      { ok: true, ms: Date.now() - t0, count: emails.length, surface: "client", provider });
     return json({ ok: true, emails });
   } catch (e: any) {
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_list", "avaemail",
@@ -76,52 +98,60 @@ export async function avaEmailGet(req: Request, env: Env): Promise<Response> {
   const b = await bodyOf(req);
   const id = String(b.id ?? "").trim();
   if (!id) return json({ error: "id required" }, 400);
+  const provider = providerOf(id, b.provider);
   const t0 = Date.now();
   try {
-    const out = await getMessageBody(env, g.uid, id);
+    const out = provider === "outlook"
+      ? await getOutlookMessageBody(env, g.uid, stripOutlookId(id))
+      : await getMessageBody(env, g.uid, id);
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_action", "avaemail",
-      { action: "get", ok: true, ms: Date.now() - t0 });
+      { action: "get", ok: true, ms: Date.now() - t0, provider });
     return json({ ok: true, ...out });
   } catch (e: any) {
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_action", "avaemail",
-      { action: "get", ok: false, ms: Date.now() - t0, error: String(e?.message ?? e).slice(0, 200) });
+      { action: "get", ok: false, ms: Date.now() - t0, provider, error: String(e?.message ?? e).slice(0, 200) });
     return json({ error: "email get failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }
 
-// Shared body for the two label/trash mutations.
+// Shared body for the two label/trash mutations. Routes to the Gmail or Outlook
+// helper by the id's provider prefix (Gmail ids stay on the exact old path).
 async function action(
   req: Request, env: Env, name: "spam" | "trash",
-  run: (env: Env, uid: string, id: string) => Promise<any>,
+  runGmail: (env: Env, uid: string, id: string) => Promise<any>,
+  runOutlook: (env: Env, uid: string, id: string) => Promise<any>,
 ): Promise<Response> {
   const g = await gate(req, env);
   if (g instanceof Response) return g;
   const b = await bodyOf(req);
   const id = String(b.id ?? "").trim();
   if (!id) return json({ error: "id required" }, 400);
+  const provider = providerOf(id, b.provider);
   const t0 = Date.now();
   try {
-    const r = await run(env, g.uid, id);
+    const r = provider === "outlook"
+      ? await runOutlook(env, g.uid, stripOutlookId(id))
+      : await runGmail(env, g.uid, id);
     const ok = toolOk(r);
     if (ok) chargeFeature(env, g.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_action", "avaemail",
-      { action: name, ok, ms: Date.now() - t0, ...(ok ? {} : { error: toolErr(r) }) });
+      { action: name, ok, ms: Date.now() - t0, provider, ...(ok ? {} : { error: toolErr(r) }) });
     return ok ? json({ ok: true }) : json({ error: `${name} failed`, detail: toolErr(r) }, 502);
   } catch (e: any) {
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_action", "avaemail",
-      { action: name, ok: false, ms: Date.now() - t0, error: String(e?.message ?? e).slice(0, 200) });
+      { action: name, ok: false, ms: Date.now() - t0, provider, error: String(e?.message ?? e).slice(0, 200) });
     return json({ error: `${name} failed`, detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }
 
-// POST /api/ava/email/spam — report spam (SPAM label, drop INBOX).
+// POST /api/ava/email/spam — report spam (Gmail: SPAM label; Outlook: Junk).
 export function avaEmailSpam(req: Request, env: Env): Promise<Response> {
-  return action(req, env, "spam", markSpam);
+  return action(req, env, "spam", markSpam, markOutlookSpam);
 }
 
-// POST /api/ava/email/trash — move to Trash ("Delete").
+// POST /api/ava/email/trash — move to Trash / Deleted Items ("Delete").
 export function avaEmailTrash(req: Request, env: Env): Promise<Response> {
-  return action(req, env, "trash", trashMessage);
+  return action(req, env, "trash", trashMessage, trashOutlookMessage);
 }
 
 // POST /api/ava/email/reply — send a reply in-thread, then the client returns to
@@ -134,17 +164,21 @@ export async function avaEmailReply(req: Request, env: Env): Promise<Response> {
   const to = String(b.to ?? b.recipient ?? "").trim();
   const text = String(b.body ?? "").trim();
   if (!threadId || !to || !text) return json({ error: "threadId, to, body required" }, 400);
+  // Outlook cards carry an "ol:"-prefixed threadId (= the Graph message id).
+  const provider = providerOf(threadId, b.provider);
   const t0 = Date.now();
   try {
-    const r = await replyThread(env, g.uid, { threadId, to, body: text });
+    const r = provider === "outlook"
+      ? await replyOutlookThread(env, g.uid, { threadId, to, body: text })
+      : await replyThread(env, g.uid, { threadId, to, body: text });
     const ok = toolOk(r);
     if (ok) chargeFeature(env, g.uid, "ava_mcp_tool", crypto.randomUUID()).catch(() => ({ ok: false }));
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_action", "avaemail",
-      { action: "reply", ok, ms: Date.now() - t0, body_len: text.length, ...(ok ? {} : { error: toolErr(r) }) });
+      { action: "reply", ok, ms: Date.now() - t0, body_len: text.length, provider, ...(ok ? {} : { error: toolErr(r) }) });
     return ok ? json({ ok: true }) : json({ error: "reply failed", detail: toolErr(r) }, 502);
   } catch (e: any) {
     trackUserContact(env, g.uid, g.email, g.phone, "ava_email_action", "avaemail",
-      { action: "reply", ok: false, ms: Date.now() - t0, error: String(e?.message ?? e).slice(0, 200) });
+      { action: "reply", ok: false, ms: Date.now() - t0, provider, error: String(e?.message ?? e).slice(0, 200) });
     return json({ error: "reply failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
 }

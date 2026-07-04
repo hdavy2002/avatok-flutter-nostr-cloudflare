@@ -45,7 +45,8 @@ export function parseSender(raw: string): { name: string; addr: string } {
 }
 
 // Composio returns either an epoch (ms or s) or an ISO string for the timestamp.
-function shortTime(ts: unknown): string {
+// Exported so lib/outlook.ts renders the SAME compact time labels on its cards.
+export function shortTime(ts: unknown): string {
   if (ts == null || ts === "") return "";
   let d: Date;
   const n = Number(ts);

@@ -36,6 +36,7 @@ import { brainSearchLines } from "../lib/ava_memory"; // P4 RAG (Phase 11 swap)
 import { runAppsToolLoop, runAgentLoop, connectedToolkits } from "../lib/composio"; // AvaApps + unified agentic loop
 import { runAvaImage } from "../routes/ava_image"; // P9 — in-thread image gen (Nano Banana 2), shared gate
 import { fetchInbox } from "../lib/gmail"; // in-chat email cards (Composio Gmail)
+import { fetchOutlookInbox } from "../lib/outlook"; // same cards for Outlook-only users
 import { fetchDayEvents, buildCalendarSurface } from "../lib/gcal"; // in-chat calendar (GenUI/A2UI pilot)
 import { renderData } from "../lib/genui"; // GENERIC GenUI: any Composio result → cached A2UI template + data
 import { resolveAffordances, affordanceToAction } from "../lib/capabilities"; // capability catalog → executable card affordances
@@ -578,8 +579,15 @@ export class AvaAgentDO {
         const il0 = Date.now();
         try {
           const connected = await connectedToolkits(this.env, uid);
-          if (connected.includes("gmail")) {
-            const emails = await fetchInbox(this.env, uid, 5);
+          // Gmail preferred when both are connected; an Outlook-only user gets
+          // the SAME cards from the Outlook helpers (ids "ol:"-prefixed so the
+          // /api/ava/email/* actions route to the right backend).
+          const mailProvider = connected.includes("gmail") ? "gmail"
+            : connected.includes("outlook") ? "outlook" : null;
+          if (mailProvider) {
+            const emails = mailProvider === "gmail"
+              ? await fetchInbox(this.env, uid, 5)
+              : await fetchOutlookInbox(this.env, uid, 5);
             const flagged = emails.filter((e) => e.flag).length;
             const head = emails.length === 0
               ? "Your inbox is all caught up — nothing new right now."
@@ -587,12 +595,15 @@ export class AvaAgentDO {
             await this.postStatus(conv, uid, priv, "Ava is working…", statusId, "end");
             await this.postAva({ conv, uid, text: head, private: priv, source: "email", emails });
             trackUserContact(this.env, uid, email, phone, "ava_email_list", "avaai", {
-              conv_kind: convKind, ok: true, ms: Date.now() - il0, count: emails.length, surface: "ava_chat",
+              conv_kind: convKind, ok: true, ms: Date.now() - il0, count: emails.length,
+              surface: "ava_chat", provider: mailProvider,
             });
             trackUserContact(this.env, uid, email, phone, "ava_thread_completed", "avaai", {
               conv_kind: convKind, tier, agentic: false, surface: "email_inbox",
               answer_len: head.length, latency_ms: Date.now() - t0,
-              tools_called: 1, tool_names: "GMAIL_FETCH_EMAILS", tools_ms: Date.now() - il0, tool_error: false,
+              tools_called: 1,
+              tool_names: mailProvider === "gmail" ? "GMAIL_FETCH_EMAILS" : "OUTLOOK_OUTLOOK_LIST_MESSAGES",
+              tools_ms: Date.now() - il0, tool_error: false,
               attachments: 0, attachments_captioned: 0,
             });
             return { ok: true, status_id: statusId };
