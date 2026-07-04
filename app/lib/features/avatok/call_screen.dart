@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/ava_identity.dart';
 import '../../core/avatar.dart';
+import '../../core/calls/call_overlay.dart';
 import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
 import '../../core/ui/zine.dart';
@@ -213,8 +214,20 @@ class _CallScreenState extends State<CallScreen> {
     super.dispose();
   }
 
-  // Red button / back: end the call (durable hangup) and pop.
+  // Red button: end the call (durable hangup) and pop.
   void _hangup() => _session.endByUser();
+
+  /// Back gesture / header ⌄ button: MINIMIZE, not hang up. Keeps the call alive
+  /// (the session owns the WS/PC/renderers/FGS) and shows the floating video
+  /// thumbnail / audio pill via [CallOverlay]. If the call has already ended
+  /// (e.g. a busy/declined sticker is showing), fall through to a plain pop.
+  void _minimize() {
+    if (_session.isEnded || _session.phase.value == CallPhase.ended) {
+      _popIfMounted();
+      return;
+    }
+    minimizeActiveCall(_session, context);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -260,7 +273,8 @@ class _CallScreenState extends State<CallScreen> {
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
             child: Row(
               children: [
-                ZineBackButton(onTap: _hangup),
+                // Back = MINIMIZE (keeps the call alive as a PiP/pill), not hang up.
+                ZineBackButton(onTap: _minimize),
                 const SizedBox(width: 12),
                 if (showVideo)
                   Expanded(
@@ -273,7 +287,12 @@ class _CallScreenState extends State<CallScreen> {
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: ZineText.tag(size: 11, color: Colors.white)),
                     ]),
-                  ),
+                  )
+                else
+                  const Spacer(),
+                // Explicit ⌄ minimize control — shrink to the floating thumbnail
+                // (video) or the ongoing-call pill (audio) and return to the app.
+                _MinimizeButton(light: light, onTap: _minimize),
               ],
             ),
           ),
@@ -375,9 +394,19 @@ class _CallScreenState extends State<CallScreen> {
         ),
       ],
     );
-    return Scaffold(
-      backgroundColor: light ? Zine.paper : Zine.ink,
-      body: light ? ZinePaper(child: stack) : stack,
+    // PopScope: intercept the system back gesture so it MINIMIZES the call
+    // instead of tearing it down. canPop:false → onPopInvoked runs _minimize,
+    // which pops the route itself while keeping the session alive.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _minimize();
+      },
+      child: Scaffold(
+        backgroundColor: light ? Zine.paper : Zine.ink,
+        body: light ? ZinePaper(child: stack) : stack,
+      ),
     );
   }
 
@@ -392,6 +421,36 @@ class _CallScreenState extends State<CallScreen> {
       child: SizedBox(
         width: 48, height: 48,
         child: Center(child: PhosphorIcon(icon, size: 21, color: Zine.ink)),
+      ),
+    );
+  }
+}
+
+/// Header ⌄ control — shrinks the call to the floating PiP/pill. A small zine
+/// circle that adapts its colours to the video (dark chrome) vs audio (paper)
+/// screen so it stays legible on either background.
+class _MinimizeButton extends StatelessWidget {
+  const _MinimizeButton({required this.light, required this.onTap});
+  final bool light; // true = audio/paper screen; false = video/dark chrome
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ZinePressable(
+      onTap: onTap,
+      color: light ? Zine.card : Colors.white.withValues(alpha: 0.16),
+      radius: BorderRadius.circular(100),
+      boxShadow: light ? Zine.shadowXs : const [],
+      child: SizedBox(
+        width: 42,
+        height: 42,
+        child: Center(
+          child: PhosphorIcon(
+            PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+            size: 20,
+            color: light ? Zine.ink : Colors.white,
+          ),
+        ),
       ),
     );
   }
