@@ -21,7 +21,7 @@ import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, c
 import { runMoney, moneyDlq, type MoneyMsg } from "./money_engine";
 import { setTestClock } from "./clock";
 import { stripeIdentityWebhook, agreementStatus, agreementDoc, agreementAccept } from "./routes/kyc";
-import { livenessStart, livenessUpload, livenessVerify } from "./routes/liveness";
+import { livenessStart, livenessUpload, livenessVerify, livenessResult } from "./routes/liveness";
 import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
@@ -476,7 +476,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // L2 liveness — Workers AI provider (flag-gated; Rekognition stays default).
       if (p === "/api/id/liveness/start" && req.method === "POST") return await livenessStart(req, env);
       if (p === "/api/id/liveness/upload" && req.method === "POST") return await livenessUpload(req, env);
-      if (p === "/api/id/liveness/verify" && req.method === "POST") return await livenessVerify(req, env);
+      if (p === "/api/id/liveness/verify" && req.method === "POST") return await livenessVerify(req, env, ctx);
+      // LIVE-V2 P0: async-verify poll target (verify now returns 202 immediately).
+      if (p === "/api/id/liveness/result" && req.method === "GET") return await livenessResult(req, env);
       // Progressive Identity ladder — guest tier (no auth) + level (Clerk auth).
       if (p === "/api/identity/guest" && req.method === "POST") return await guestCreate(req, env);
       if (p === "/api/identity/guest/check" && req.method === "GET") return await guestHandleCheck(req, env);

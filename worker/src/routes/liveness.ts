@@ -14,7 +14,16 @@
 //
 //   POST /api/id/liveness/start            → {session_id, challenge}
 //   POST /api/id/liveness/upload?session=&part=frame0|frame1|frame2|clip  (raw body)
-//   POST /api/id/liveness/verify {session_id} → {verified, checks, attempts_remaining}
+//   POST /api/id/liveness/verify {session_id} → 202 {status:"pending", session_id}
+//   GET  /api/id/liveness/result?session=<sid> → {status:"pending"} | done result
+//
+// LIVE-V2 P0 (2026-07-04, ASYNC VERIFY HOTFIX): /verify no longer runs LLaVA×3 +
+// Whisper inside the HTTP request (that exceeded the client timeout → users saw a
+// false "Network error" and burned the 3/24h budget). It now validates the session
+// and kicks off the SAME checks in the background (runLivenessChecks), returning
+// 202 immediately; the client polls GET /result until the outcome is stored in KV
+// (key liveness:result:<uid>:<sid>, TTL 1h). Same checks, same pass/fail rules,
+// same D15 evidence retention — just async.
 //
 // Flag-gated by platform_config.workersAiLivenessEnabled — OFF by default;
 // Rekognition remains the default L2 provider until this is tuned.
@@ -35,6 +44,24 @@ const MAX_FRAME_BYTES = 1_500_000;      // ~1.5 MB JPEG
 const MAX_CLIP_BYTES = 16_000_000;      // ~16 MB clip
 const VISION_MODEL = "@cf/llava-hf/llava-1.5-7b-hf";
 const WHISPER_MODEL = "@cf/openai/whisper";
+const RESULT_TTL_S = 3600;              // LIVE-V2 P0: verify outcome cached in KV 1h
+const VERIFY_PROVIDER = "workersai";
+
+// LIVE-V2 P0: human-readable message for each structured check id (plan §5B).
+// The client renders the FIRST failing check's user_message as the fail reason.
+const CHECK_MESSAGES: Record<string, string> = {
+  realness: "This looks like a photo of a screen or picture. Use your live camera.",
+  phrase: "We couldn't hear the phrase clearly.",
+  turn_left: "We couldn't see you complete the movements.",
+  turn_right: "We couldn't see you complete the movements.",
+  smile: "We couldn't see you complete the movements.",
+  sad_face: "We couldn't see you complete the movements.",
+  mouth_open: "We couldn't see you complete the movements.",
+  eyebrows_raised: "We couldn't see you complete the movements.",
+  missing_frames: "We didn't receive the challenge photos — try again.",
+};
+const checkMessage = (id: string): string =>
+  CHECK_MESSAGES[id] ?? "Verification failed — please try again.";
 
 const ACTIONS = [
   { id: "turn_left", prompt: "Is the person's head clearly turned to their left or right (face in profile or semi-profile, not facing the camera straight on)? Answer only YES or NO." },
@@ -157,20 +184,144 @@ async function visionYes(env: Env, image: ArrayBuffer, prompt: string): Promise<
   }
 }
 
+// LIVE-V2 P0: the structured outcome we cache in KV + return to the polling client.
+export interface LivenessResult {
+  verified: boolean;
+  // Structured, human-readable checks (plan §5B). The client renders the first
+  // failing user_message as the specific reason.
+  checks: Array<{ id: string; pass: boolean; user_message: string }>;
+  // Legacy id→bool map so the pre-V2 client keeps working unchanged.
+  checks_map: Record<string, boolean>;
+  attempts_remaining: number;
+  level?: number;
+}
+
+const resultKey = (uid: string, sid: string) => `liveness:result:${uid}:${sid}`;
+
 // POST /api/id/liveness/verify {session_id}
-export async function livenessVerify(req: Request, env: Env): Promise<Response> {
-  const ctx = await requireUser(req, env);
-  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+// LIVE-V2 P0: validate the session, then run the checks in the BACKGROUND and
+// return 202 immediately. The client polls GET /api/id/liveness/result.
+//
+// LIVE-V2 NOTE (queue vs waitUntil): the plan prefers enqueuing onto the existing
+// consumers queue, but avatok-api has NO liveness queue producer and avatok-consumers
+// has no liveness consumer binding — wiring one needs new infra (`wrangler queues
+// create liveness-verify` + a [[queues.consumers]] entry + cross-package import of
+// runLivenessChecks, which the worker↔consumers package split forbids, exactly as
+// noted for liveness_sweep.ts). So we take the plan's sanctioned fallback (b):
+// ctx.waitUntil(runLivenessChecks(...)) keeps the request alive past the response
+// while the checks run, storing the outcome in KV. A future queue can call the SAME
+// exported runLivenessChecks. See consumers/src/liveness_verify.ts for the stub.
+export async function livenessVerify(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return json({ error: auth.error }, auth.status);
 
   const b = (await req.json().catch(() => ({}))) as { session_id?: string };
   const sid = String(b.session_id || "");
-  const chRaw = await env.TOKENS.get(`liveness:ch:${ctx.uid}:${sid}`);
+  const chRaw = await env.TOKENS.get(`liveness:ch:${auth.uid}:${sid}`);
   if (!chRaw) return json({ error: "session expired — start again" }, 410);
+
+  // Idempotency: if this session was already verified, return the stored outcome
+  // as done (a client double-tap / re-poll must not re-run LLaVA or re-charge).
+  const existing = await env.TOKENS.get(resultKey(auth.uid, sid), "json").catch(() => null);
+  if (existing) return json({ status: "done", ...(existing as LivenessResult) }, 200);
+
+  // Required parts present? (Same gate as the old sync path — frame0 + frame1.)
+  const prefix = sessionPrefix(auth.uid, sid);
+  const [f0, f1] = await Promise.all([
+    env.VERIFICATION.head(prefix + "frame0"),
+    env.VERIFICATION.head(prefix + "frame1"),
+  ]);
+  if (!f0 || !f1) {
+    // Store + return a done fail immediately — no need to spin up the worker.
+    const result: LivenessResult = {
+      verified: false,
+      checks: [{ id: "missing_frames", pass: false, user_message: checkMessage("missing_frames") }],
+      checks_map: { missing_frames: false },
+      attempts_remaining: Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, auth.uid))),
+    };
+    // Run the audit/DB fail-path in the background; respond right away.
+    const runFail = runLivenessChecks(env, auth.uid, sid, req).catch(() => {});
+    if (ctx) ctx.waitUntil(runFail); else await runFail;
+    return json({ status: "done", ...result }, 200);
+  }
+
+  // Kick off the real checks in the background; the client polls /result.
+  const work = runLivenessChecks(env, auth.uid, sid, req).catch((e) => {
+    console.error("[liveness] background verify failed:", String(e));
+  });
+  if (ctx) ctx.waitUntil(work); else await work; // no ctx in tests → run inline
+  return json({ status: "pending", session_id: sid }, 202);
+}
+
+// GET /api/id/liveness/result?session=<sid>
+// LIVE-V2 P0: poll target. {status:"pending"} until runLivenessChecks stores the
+// outcome in KV, then the full result with status:"done".
+export async function livenessResult(req: Request, env: Env): Promise<Response> {
+  const auth = await requireUser(req, env);
+  if (isFail(auth)) return json({ error: auth.error }, auth.status);
+  const u = new URL(req.url);
+  const sid = u.searchParams.get("session") || "";
+  if (!/^[0-9a-f-]{36}$/.test(sid)) return json({ error: "bad session" }, 400);
+  const stored = await env.TOKENS.get(resultKey(auth.uid, sid), "json").catch(() => null);
+  if (!stored) return json({ status: "pending" }, 200);
+  return json({ status: "done", ...(stored as LivenessResult) }, 200);
+}
+
+// LIVE-V2 P0: the actual verification — extracted so BOTH the background waitUntil
+// path AND a future queue consumer call the SAME logic. Runs the LLaVA frame checks
+// + Whisper phrase check, moves evidence to the retained audit prefix (D15), writes
+// the pass/fail DB rows, updates caches/notifies on pass, and stores the structured
+// outcome in KV (key liveness:result:<uid>:<sid>). Never throws to the caller.
+export async function runLivenessChecks(
+  env: Env,
+  uid: string,
+  sid: string,
+  req?: Request,
+): Promise<LivenessResult> {
+  const startedAt = Date.now();
+  const ctx = { uid }; // local alias to minimise diff below
+  const chRaw = await env.TOKENS.get(`liveness:ch:${ctx.uid}:${sid}`);
+  if (!chRaw) {
+    // Session expired between verify and the background run — record a soft fail.
+    const result: LivenessResult = {
+      verified: false,
+      checks: [{ id: "b8_session", pass: false, user_message: "Verification failed — please try again." }],
+      checks_map: {},
+      attempts_remaining: Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, ctx.uid))),
+    };
+    await env.TOKENS.put(resultKey(ctx.uid, sid), JSON.stringify(result), { expirationTtl: RESULT_TTL_S }).catch(() => {});
+    return result;
+  }
   const challenge = JSON.parse(chRaw) as Challenge;
 
   const prefix = sessionPrefix(ctx.uid, sid);
   const retainedPrefix = auditPrefix(ctx.uid, sid); // liveness/<uid>/<session>/
-  const device = deviceCtxFromBody(b);
+  // LIVE-V2 P0: the device fingerprint used to ride the verify JSON body; the
+  // async path no longer has it here, so audit keeps the edge geo/IP (from req)
+  // and an empty device ctx. (Client can be extended to persist it later.)
+  const device = deviceCtxFromBody({});
+
+  // LIVE-V2 P0: build the structured checks[] (plan §5B) + legacy map from a flat
+  // id→bool map, store the outcome in KV, and return it. Central exit for the
+  // background run so both fail and pass persist the poll-able result.
+  const finalize = async (map: Record<string, boolean>, opts: { verified: boolean; level?: number }): Promise<LivenessResult> => {
+    const checksArr = Object.entries(map).map(([id, pass]) => ({ id, pass, user_message: pass ? "" : checkMessage(id) }));
+    const result: LivenessResult = {
+      verified: opts.verified,
+      checks: checksArr,
+      checks_map: map,
+      attempts_remaining: Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, ctx.uid))),
+      ...(opts.level != null ? { level: opts.level } : {}),
+    };
+    await env.TOKENS.put(resultKey(ctx.uid, sid), JSON.stringify(result), { expirationTtl: RESULT_TTL_S }).catch(() => {});
+    track(env, ctx.uid, "liveness_verify_result", "avaid", {
+      pass: opts.verified,
+      failed_checks: checksArr.filter((c) => !c.pass).map((c) => c.id),
+      duration_ms: Date.now() - startedAt,
+      provider: VERIFY_PROVIDER,
+    });
+    return result;
+  };
 
   // D15 (2026-07-03): STORE EVERYTHING. On BOTH pass and fail, MOVE every part
   // (frames + clip) from the upload prefix into the retained audit prefix instead
@@ -205,7 +356,7 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
   if (!frames[0] || !frames[1]) {
     const { prefix: rp } = await retainEvidence();
     await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: rp });
-    return json({ verified: false, reason: "missing_frames", message: "We didn't receive the challenge photos — try again." });
+    return finalize({ missing_frames: false }, { verified: false });
   }
 
   const checks: Record<string, boolean> = {};
@@ -255,8 +406,7 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
     ).bind(ctx.uid, JSON.stringify(checks), now).run();
     track(env, ctx.uid, "liveness_failed", "avaid", { provider: "workersai", checks });
     metric(env, "liveness_wai_failed", [1]);
-    const remaining = Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, ctx.uid)));
-    return json({ verified: false, checks, attempts_remaining: remaining });
+    return finalize(checks, { verified: false });
   }
 
   // PASS — D15: retain ALL evidence under liveness/<uid>/<session>/; frame0 stays
@@ -302,5 +452,5 @@ export async function livenessVerify(req: Request, env: Env): Promise<Response> 
     });
   } catch { /* best-effort */ }
 
-  return json({ verified: true, checks, level: 2 });
+  return finalize(checks, { verified: true, level: 2 });
 }
