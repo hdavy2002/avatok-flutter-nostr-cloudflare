@@ -17,6 +17,11 @@ import '../../../core/ui/zine_widgets.dart';
 import '../../ava_guardian/guardian_settings.dart';
 import '../settings_registry.dart';
 
+/// Weekly parent digest UI — hidden 2026-07-04 (owner decision): the toggle
+/// promised weekly delivery but no scheduled job exists yet. Flip to true once
+/// runParentDigests() is wired to a cron + delivery channel.
+const bool kParentDigestUiEnabled = false;
+
 /// Settings → "Guardian / safety" section (Phase 8 — Safety).
 ///
 /// Holds the ACCOUNT-WIDE guardian controls (the per-chat secure-chat toggle lives
@@ -238,7 +243,10 @@ class _GuardianCardState extends State<_GuardianCard> {
           ]),
         ),
         // PARENT ACCOUNTS — weekly safety digest opt-in.
-        if (isParent) ...[
+        // DISABLED 2026-07-04 (owner decision): no scheduled delivery job exists
+        // yet, so the toggle over-promises. Backend (runParentDigests + scan
+        // {digest:true}) stays; flip kParentDigestUiEnabled when delivery ships.
+        if (kParentDigestUiEnabled && isParent) ...[
           const SizedBox(height: 12),
           const Divider(height: 1, thickness: 1, color: Zine.inkMute),
           const SizedBox(height: 12),
