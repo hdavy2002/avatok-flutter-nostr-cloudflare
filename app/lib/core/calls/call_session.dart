@@ -320,10 +320,10 @@ class CallSession {
       Analytics.capture('busy_tone_played', const {});
     }
     // Release mic/cam IMMEDIATELY on every end path — this is the ONE teardown.
-    _teardown();
-    if (_ended && phase == 'ended') {
-      // already terminal
-    }
+    // Fire-and-forget: _teardown is idempotent and async, but the UI label +
+    // pop scheduling below must happen synchronously (as the old _endWith did).
+    // ignore: unawaited_futures
+    _teardown(reason: reason ?? phase);
     _setPhase(phase);
     // Give the busy tone time to be heard before the view pops; other states 1.4s.
     Future.delayed(Duration(milliseconds: busy ? 2600 : 1400), () {
