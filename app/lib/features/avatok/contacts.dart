@@ -375,7 +375,15 @@ class Directory {
         if (bio != null) 'bio': bio,
         // Profile gender → Ava's pronouns when answering calls.
         if (gender != null && gender.isNotEmpty) 'gender': gender,
-      });
+      },
+        // Save-time server vetting runs AI real-name plausibility (Gemini, with a
+        // multi-provider fallback chain) + avatar moderation (Rekognition), which
+        // routinely exceeds the 8s postJson default — the client was aborting with a
+        // status-0 "check your connection" error while the SERVER actually completed
+        // and PASSED (telemetry: profile_vet_passed fired AFTER the client gave up).
+        // The profile screen holds with an "Ava is checking your profile…" spinner,
+        // so a longer wait is expected. 30s comfortably covers the vetting round-trip.
+        timeout: const Duration(seconds: 30));
       // Track backoff state: on 422, never retry; on success, reset.
       _profileBackoff.shouldRetry(res.statusCode);
 
