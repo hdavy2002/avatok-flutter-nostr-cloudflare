@@ -1,10 +1,11 @@
 name: Android build
 
 # All app builds run on GitHub Actions — never on a local machine.
-# Builds the app under app/ as a Play Store Android App Bundle (.aab) — the
-# ONLY artifact we ship — and publishes it to a Release tagged
+# Builds the app under app/ as a universal, side-loadable Android APK (.apk) —
+# the ONLY artifact we ship — and publishes it to a Release tagged
 # "calltest-latest" (prod) / "staging-latest" so there's a stable download
-# link. No APK or other formats are produced.
+# link. No .aab or other formats are produced (owner decision 2026-07-04:
+# "for all builds going forward I need an APK and not AAB").
 
 # Staging lane (creator-marketplace Phase 1, A1): pushes to the `staging`
 # branch build with --dart-define=AVATOK_ENV=staging (app talks to
@@ -26,13 +27,12 @@ on:
 
 env:
   AVATOK_ENV: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
-  # AAB-only for the Play Store (owner 2026-07-04: "from now on we make the .aab
-  # file and no apk file"). This SUPERSEDES the 2026-06-24 "just apk, no aab"
-  # decision. Normally the .aab is the ONLY artifact this workflow builds.
-  # One-off override (owner 2026-07-04, later same day): "i just need a apk
-  # file and not aab etc" for this run — AAB build skipped this time.
+  # APK-only, PERMANENT (owner decision 2026-07-04: "for all builds going forward
+  # I need an APK and not AAB"). This SUPERSEDES every earlier .aab-only decision.
+  # The universal side-loadable .apk is the ONLY artifact this workflow builds and
+  # publishes to the Release. Do NOT flip BUILD_AAB back to 'true' without an
+  # explicit owner request.
   BUILD_AAB: 'false'
-  # One-off APK build (owner 2026-07-04: apk-only this run per the override above).
   BUILD_APK: 'true'
 
 permissions:
@@ -203,15 +203,14 @@ jobs:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
-            dist/avatok-call.aab
             dist/avatok-call.apk
           fail_on_unmatched_files: false
           body: |
-            Play Store Android App Bundle (.aab), built by CI from `app/` — the
-            ONLY artifact we ship (owner 2026-07-04: .aab only, no APK).
-            Download `avatok-call.aab` and upload it in Play Console → pick a
-            track (Internal testing / Production) → Create new release. Play
-            generates the per-device APKs from the bundle server-side.
+            Universal side-loadable Android APK (.apk), built by CI from `app/` —
+            the ONLY artifact we ship (owner 2026-07-04: APK only, no AAB).
+            Download `avatok-call.apk` and install it directly on the device
+            (enable "Install unknown apps" for your browser / file manager if
+            prompted). No Play Store or App Bundle step is involved.
 
             Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
             (+ store/alias/key password) secrets are set; otherwise signed with
