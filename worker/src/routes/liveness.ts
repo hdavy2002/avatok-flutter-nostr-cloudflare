@@ -109,8 +109,10 @@ const PHRASE_WORDS = [
 interface Challenge { actions: string[]; phrase: string; created_at: number; }
 
 function workersAiEnabled(env: Env): Promise<boolean> {
-  return env.TOKENS.get("platform_config", "json")
-    .then((c: any) => c?.workersAiLivenessEnabled === true)
+  // Merge KV over code DEFAULTS (readConfig) — a raw KV read silently reports
+  // "off" for any flag added after the KV blob was last written (2026-07-04 outage).
+  return readConfig(env)
+    .then((c) => c.workersAiLivenessEnabled === true)
     .catch(() => false);
 }
 
