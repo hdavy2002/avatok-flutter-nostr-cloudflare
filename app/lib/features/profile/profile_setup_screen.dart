@@ -93,8 +93,30 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   String _bioLastChecked = '';
   bool _bioAiBusy = false;      // "write my bio" sparkle in flight
 
-  GlobalKey _keyFor(String field) {
+  // Server-side rejection reason shown as a prominent red banner above the Save
+  // button, so the user always sees WHY Ava rejected the profile even if the
+  // offending field can't be highlighted. Cleared on any edit or the next save.
+  String? _rejectBanner;
+
+  /// Map a server `field` onto a field this form can actually highlight. The
+  /// content moderator reports the combined name as `name`; the form only has
+  /// `first_name`/`last_name`, so point `name` at the first-name box (and we red-
+  /// border both). Unknown fields fall back to the banner only.
+  String _normalizeField(String field) {
     switch (field) {
+      case 'name':
+      case 'full_name':
+      case 'display_name':
+        return 'first_name';
+      case 'bio':
+        return 'about';
+      default:
+        return field;
+    }
+  }
+
+  GlobalKey _keyFor(String field) {
+    switch (_normalizeField(field)) {
       case 'photo': return _photoKey;
       case 'first_name': return _firstKey;
       case 'last_name': return _lastKey;
@@ -359,7 +381,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToField(missing.first));
       return;
     }
-    setState(() { _saving = true; _holdMsg = 'Ava is checking your profile…'; _fieldErrors.clear(); });
+    setState(() { _saving = true; _holdMsg = 'Ava is checking your profile…'; _fieldErrors.clear(); _rejectBanner = null; });
     final id = _id ?? await IdentityStore().load();
     if (id == null) {
       if (mounted) {
@@ -399,24 +421,40 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         uid: id.uid, name: fullName, firstName: first, lastName: last,
         email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio, gender: _gender);
     if (!mounted) return;
-    // Server vetting failed (implausible_name / profile_incomplete / photo). Release
-    // the hold, show the message inline on the offending field, PRESERVE all input.
+    // Server vetting failed (moderation / implausible_name / profile_incomplete /
+    // photo). Release the hold and tell the user EXACTLY why + WHICH field, so they
+    // can fix it and resubmit. PRESERVE all input.
     if (!r.ok) {
-      final field = (r.field ?? '').isNotEmpty ? r.field! : 'photo';
-      final msg = (r.message ?? '').isNotEmpty
-          ? r.message!
-          : (r.status == 0
-              ? 'Could not save your profile — check your connection and try again.'
-              : 'We couldn’t save your profile just now — please try again.');
+      final rawField = (r.field ?? '').isNotEmpty ? r.field! : 'photo';
+      final field = _normalizeField(rawField);
+      // Prefer the server's detailed, user-facing reason. `message` is the primary
+      // channel; `error` is the moderation reason (guardWrite historically sent the
+      // reason there). Only fall back to a generic line if the server sent neither.
+      var msg = (r.message ?? '').trim().isNotEmpty
+          ? r.message!.trim()
+          : ((r.error ?? '').trim().isNotEmpty ? r.error!.trim() : '');
+      if (msg.isEmpty) {
+        msg = r.status == 0
+            ? 'Could not save your profile — check your connection and try again.'
+            : 'We couldn’t save your profile just now — please try again.';
+      }
+      // Banner copy names what Ava flagged so it reads like "Ava couldn't save this
+      // because …" rather than a bare sentence.
+      final banner = 'Ava couldn’t save your profile: $msg';
       setState(() {
         _saving = false;
         _holdMsg = null;
-        // Only pin the message to a known field; otherwise fall back to the photo
-        // slot (the most common reject reason here) so the user always sees it.
+        _rejectBanner = banner;
         _fieldErrors[field] = msg;
+        // A combined-name reject should red-border BOTH name boxes.
+        if (rawField == 'name' || rawField == 'full_name' || rawField == 'display_name') {
+          _fieldErrors['first_name'] = msg;
+          _fieldErrors['last_name'] = msg;
+        }
       });
       Analytics.capture('profile_save_rejected', {
-        'reason': r.error ?? 'unknown', 'field': field, 'status': r.status, 'email': email,
+        'reason': r.error ?? 'unknown', 'field': field, 'raw_field': rawField,
+        'status': r.status, 'email': email,
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToField(field));
       return;
@@ -443,7 +481,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }
 
   void _clearErr(String field) {
-    if (_fieldErrors.containsKey(field)) setState(() => _fieldErrors.remove(field));
+    if (_fieldErrors.containsKey(field) || _rejectBanner != null) {
+      setState(() { _fieldErrors.remove(field); _rejectBanner = null; });
+    }
   }
 
   @override
@@ -631,6 +671,27 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             // Required-field (empty) helper still applies.
             if (_bioModError == null) _errFor('about'),
             const SizedBox(height: 24),
+            // Prominent rejection banner: names exactly why Ava couldn't save, so
+            // the user knows what to change. Disappears as soon as they edit a field.
+            if (_rejectBanner != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                decoration: BoxDecoration(
+                  color: Zine.coral.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(Zine.rField),
+                  border: Border.all(color: Zine.coral, width: Zine.bw),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  PhosphorIcon(PhosphorIcons.warningCircle(PhosphorIconsStyle.fill),
+                      color: Zine.coral, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_rejectBanner!,
+                      style: ZineText.value(size: 13.5, color: Zine.ink))),
+                ]),
+              ),
+              const SizedBox(height: 14),
+            ],
             ZineButton(
               label: _saving ? 'Saving…' : 'Save & continue',
               fullWidth: true, fontSize: 18, loading: _saving,

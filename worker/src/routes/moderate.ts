@@ -88,8 +88,19 @@ export async function guardWrite(
     engine: bad.result.ms ? "nemotron-3.5-content-safety" : "local",
     server_side: true, ...geoOf(req),
   });
+  // `message` mirrors `reason` so clients that render the user-facing string from
+  // `message` (e.g. the Flutter profile screen) show the DETAILED reason instead of
+  // a generic fallback. `error` is kept for back-compat. `categories` lets the client
+  // prefix what was flagged (e.g. "flagged: sexual").
   return json(
-    { ok: false, moderation: "unsafe", field: bad.field, categories: bad.result.categories, error: bad.result.reason },
+    {
+      ok: false,
+      moderation: "unsafe",
+      field: bad.field,
+      categories: bad.result.categories,
+      error: bad.result.reason,
+      message: bad.result.reason,
+    },
     422,
   );
 }
