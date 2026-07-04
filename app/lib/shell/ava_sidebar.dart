@@ -581,11 +581,13 @@ class _AvaSidebarState extends State<AvaSidebar> {
       // Diagnostics moved here (owner decision 2026-06-19). Identity (the trust
       // ladder + profile hub) also lives here now.
       if (_accountOpen) ...[
-        // Owner request 2026-06-29: hide Identity, Billing, Wallet and
-        // Diagnostics from the ACCOUNT & SETTINGS menu. Routes/features stay
-        // registered — only these menu rows are suppressed. Re-enable by
-        // un-commenting the rows below.
-        // _acct('identity', 'Identity', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold)),
+        // Identity re-enabled for everyone (owner request 2026-07-04): the trust
+        // ladder + identity-proofs hub (all identity types with green ticks when
+        // complete) lives here in ACCOUNT & SETTINGS, visible to all users.
+        // Billing, Wallet and Diagnostics stay hidden (owner request 2026-06-29);
+        // their routes/features remain registered — only the menu rows are
+        // suppressed. Re-enable those by un-commenting their rows below.
+        _acct('identity', 'Identity', PhosphorIcons.identificationCard(PhosphorIconsStyle.bold)),
         // _acct('billing', 'Billing', PhosphorIcons.creditCard(PhosphorIconsStyle.bold)),
         // _acct('avawallet', 'Wallet', PhosphorIcons.wallet(PhosphorIconsStyle.bold)),
         _acct('avaapps', 'Connectors', PhosphorIcons.squaresFour(PhosphorIconsStyle.bold)),
