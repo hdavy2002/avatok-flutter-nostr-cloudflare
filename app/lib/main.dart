@@ -15,6 +15,7 @@ import 'core/app_registry.dart';
 import 'core/apps.dart';
 import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
+import 'core/calls/call_session_manager.dart';
 import 'core/db.dart';
 import 'core/deep_links.dart';
 import 'core/disk_cache.dart';
@@ -43,6 +44,10 @@ import 'sync/sync_hub.dart';
 void main() async {
   final t0 = DateTime.now(); // for first_frame_ms telemetry (PERF-6)
   WidgetsFlutterBinding.ensureInitialized();
+  // Call background survival: register the app-level call-session manager as a
+  // lifecycle observer so a 1:1 call keeps its foreground service + signaling WS
+  // alive when the app is backgrounded (CALL-BG-A). Cheap; no I/O.
+  CallSessionManager.instance.register();
   // RAM budget (Scale proposal Phase 1): cap the global decoded-image cache.
   // Flutter's default is 1000 images / 100MB with no upper bound enforcement on
   // some paths; avatar grids + media threads on cheap phones benefit from a hard
