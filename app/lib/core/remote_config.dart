@@ -4,9 +4,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../identity/identity.dart';
 import '../sync/party/party_hub.dart';
+import 'analytics.dart';
 import 'ava_log.dart';
 import 'config.dart';
+import 'disk_cache.dart';
 import 'feature_flags.dart';
 import 'money_api.dart';
 
@@ -29,10 +32,40 @@ class RemoteConfig {
   /// Resolved by [refreshAdmin] via the existing signed /admin/recon probe. Used
   /// to surface admin-only, not-yet-launched surfaces (e.g. the Marketplace) to
   /// the operator without exposing them to ordinary testers. Per-account: it is
-  /// re-resolved on every config refresh, so an account switch on a shared phone
-  /// re-checks against the newly active token.
+  /// re-resolved on every config refresh AND on every account switch (see
+  /// [onAccountSwitched]), so an account switch on a shared phone re-checks
+  /// against the newly active token instead of inheriting the departing
+  /// account's value.
   static bool _isAdmin = false;
   static bool get isAdmin => _isAdmin;
+
+  /// Per-account cache key for [_isAdmin]. DiskCache is scoped by AccountScope.id,
+  /// so each account on a shared phone keeps its OWN cached admin flag — a switch
+  /// never inherits the previous account's value, and there is no cross-account
+  /// leak. The signed /admin/recon probe ([refreshAdmin]) stays the source of
+  /// truth and refreshes this cache; the cache only supplies an instant, leak-free
+  /// paint before the probe lands (no Marketplace flicker on a non-admin child).
+  static const String _kAdminCache = 'is_admin';
+
+  /// Load the ACTIVE account's cached admin flag into memory (instant paint).
+  /// Never throws; defaults to non-admin when nothing is cached for this account.
+  static Future<void> _loadAdminCache() async {
+    bool v = false;
+    try { v = (await DiskCache.read(_kAdminCache)) == '1'; } catch (_) {/* best-effort */}
+    if (v != _isAdmin) { _isAdmin = v; revision.value++; }
+  }
+
+  /// Re-resolve admin state for the NEWLY active account after an account switch.
+  /// Step 1 paints the target account's own cached value instantly (leak-free on a
+  /// shared phone — a non-admin child no longer briefly sees admin-only surfaces
+  /// like the Marketplace). Step 2 re-probes the server to confirm + refresh the
+  /// cache. Skips the network probe on logout (no active account). Never throws.
+  static Future<void> onAccountSwitched() async {
+    await _loadAdminCache();
+    if (AccountScope.id != null && AccountScope.id!.isNotEmpty) {
+      unawaited(refreshAdmin());
+    }
+  }
 
   static bool _b(String k, bool dflt) => _cfg[k] is bool ? _cfg[k] as bool : dflt;
 
@@ -184,6 +217,9 @@ class RemoteConfig {
 
   /// Fetch now + poll every 15 min. Never throws.
   static Future<void> start() async {
+    // Paint the active account's cached admin flag first so admin-only surfaces
+    // (Marketplace) render correctly on cold boot before the network probe lands.
+    await _loadAdminCache();
     await refresh();
     // Resolve admin status alongside config so admin-only surfaces (Marketplace)
     // appear on this launch. Fire-and-forget: never blocks app start.
@@ -199,10 +235,19 @@ class RemoteConfig {
   /// Bumps [revision] on change so drawers/menus re-evaluate [marketplaceVisible].
   /// Never throws. Call again after an account switch to re-resolve.
   static Future<void> refreshAdmin() async {
+    final scope = AccountScope.id; // capture: an account switch may race this probe
     try {
       final was = _isAdmin;
-      _isAdmin = await MoneyApi.isAdmin();
+      final v = await MoneyApi.isAdmin();
+      // If the active account changed while the probe was in flight, a newer
+      // switch owns the admin state now — discard this (stale) result so we never
+      // write one account's admin flag into another's scoped cache.
+      if (AccountScope.id != scope) return;
+      _isAdmin = v;
       if (_isAdmin != was) revision.value++;
+      // Persist per-account so the next switch to this account paints instantly.
+      try { await DiskCache.write(_kAdminCache, v ? '1' : '0'); } catch (_) {/* best-effort */}
+      Analytics.capture('admin_probe', {'is_admin': v, 'account': scope ?? ''});
     } catch (e) {
       AvaLog.I.log('config', 'admin probe failed: $e');
     }

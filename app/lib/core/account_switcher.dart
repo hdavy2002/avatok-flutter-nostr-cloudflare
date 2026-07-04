@@ -8,6 +8,7 @@ import 'analytics.dart';
 import 'ava_log.dart';
 import 'db.dart';
 import 'disk_cache.dart';
+import 'remote_config.dart';
 
 /// [MULTIACCT-3] Single, idempotent orchestrator for changing the ACTIVE account
 /// on a shared device (parent + kids log out/in constantly). EVERY login /
@@ -87,6 +88,14 @@ class AccountSwitcher {
     // 5. Flip the scope — DiskCache, media cache and IdentityStore all re-scope
     //    on their next access because every key derives from AccountScope.id.
     AccountScope.id = to;
+
+    // 5b. Re-resolve admin state for the TARGET account now that the scope has
+    //     flipped. Paints the target's OWN per-account cached admin flag instantly
+    //     (leak-free) then re-probes the server. Without this the in-memory admin
+    //     flag kept the DEPARTING account's value, so switching from the admin
+    //     operator to a non-admin child on the same phone briefly showed
+    //     admin-only surfaces (e.g. the Marketplace menu) to the child.
+    try { await RemoteConfig.onAccountSwitched(); } catch (e) { failed.add('admin:$e'); }
 
     // 6. Persist / clear the cold-boot pointer.
     try {
