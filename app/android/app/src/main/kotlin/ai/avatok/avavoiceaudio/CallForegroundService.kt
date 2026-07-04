@@ -6,11 +6,11 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import androidx.core.content.pm.ServiceInfoCompat
 
 /**
  * CallForegroundService — keeps VoIP calls alive while backgrounded by running as a
@@ -144,10 +144,10 @@ class CallForegroundService : Service() {
             // given the exact foregroundServiceType(s) actually in use — phoneCall +
             // microphone always, plus camera when it's a video call.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                var type = ServiceInfoCompat.FOREGROUND_SERVICE_TYPE_PHONE_CALL or
-                    ServiceInfoCompat.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 if (isVideo) {
-                    type = type or ServiceInfoCompat.FOREGROUND_SERVICE_TYPE_CAMERA
+                    type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
                 }
                 ServiceCompat.startForeground(this, NOTIFICATION_ID, notif, type)
             } else {
