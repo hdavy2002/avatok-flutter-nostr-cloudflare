@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../core/analytics.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'ladder_api.dart';
 import 'liveness_check_screen.dart';
+import 'liveness_v2/liveness_v2_screen.dart';
 
 /// STREAM H (AI Messenger Batch) — the onboarding "human check" hard gate.
 ///
@@ -76,7 +78,11 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
     bool ok = false;
     try {
       ok = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => const LivenessCheckScreen()),
+            MaterialPageRoute(
+              builder: (_) => RemoteConfig.livenessV2Enabled
+                  ? const LivenessV2Screen()
+                  : const LivenessCheckScreen(),
+            ),
           ) ==
           true;
     } catch (_) {

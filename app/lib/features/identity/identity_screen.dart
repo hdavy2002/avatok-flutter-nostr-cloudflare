@@ -4,6 +4,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../profile/phone_verify_card.dart';
@@ -12,6 +13,7 @@ import 'identity_api.dart';
 import 'identity_gate.dart';
 import 'ladder_api.dart';
 import 'liveness_check_screen.dart';
+import 'liveness_v2/liveness_v2_screen.dart';
 
 /// AvaIdentity — the ONE-STOP identity hub (replaces the Profile sidebar
 /// entry; PROPOSAL-PROGRESSIVE-IDENTITY.md §7b). Shows the Trust Ladder with
@@ -58,8 +60,10 @@ class _IdentityScreenState extends State<IdentityScreen> {
       (_status?.verified == true && _status?.provider == 'stripe_identity');
 
   Future<void> _startLiveness() async {
-    final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => const LivenessCheckScreen()));
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => RemoteConfig.livenessV2Enabled
+            ? const LivenessV2Screen()
+            : const LivenessCheckScreen()));
     if (ok == true) {
       await _refresh();
     } else if (mounted) {
