@@ -190,9 +190,9 @@ jobs:
           mkdir -p dist
           ls -la app/build/app/outputs/flutter-apk/
           # arm64-v8a is the primary asset (virtually every modern phone) →
-          # published as the single clean avatok-call.apk. armeabi-v7a kept as a
-          # fallback for older 32-bit devices.
-          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call.apk
+          # named -arm64 so it's unmistakable on the release page. armeabi-v7a
+          # kept as a fallback for older 32-bit devices.
+          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call-arm64.apk
           cp app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/avatok-call-armv7.apk
           echo "size:"; ls -lh dist/
 
@@ -201,7 +201,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: avatok-call-apk
-          path: dist/avatok-call.apk
+          path: dist/avatok-call-arm64.apk
 
       - name: Publish to Release (stable link)
         uses: softprops/action-gh-release@v2
@@ -209,15 +209,16 @@ jobs:
           tag_name: ${{ env.AVATOK_ENV == 'staging' && 'staging-latest' || 'calltest-latest' }}
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
-            dist/avatok-call.apk
+            dist/avatok-call-arm64.apk
             dist/avatok-call-armv7.apk
           fail_on_unmatched_files: false
           body: |
             Side-loadable Android APK (.apk), split per ABI, built by CI from
-            `app/` (owner 2026-07-04: APK only, no AAB). Install `avatok-call.apk`
-            (arm64 — for virtually every modern phone). Use `avatok-call-armv7.apk`
-            only for old 32-bit devices. Install directly on the device
-            (enable "Install unknown apps" for your browser / file manager if
+            `app/` (owner 2026-07-04: APK only, no AAB). Install
+            `avatok-call-arm64.apk` (for virtually every modern phone). Use
+            `avatok-call-armv7.apk` only for old 32-bit devices. Install directly
+            on the device (enable "Install unknown apps" for your browser / file
+            manager if
             prompted). No Play Store or App Bundle step is involved.
 
             Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
