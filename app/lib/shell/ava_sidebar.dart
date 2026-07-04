@@ -9,6 +9,7 @@ import '../core/money_api.dart';
 import '../core/paid_feature.dart';
 import '../core/profile_store.dart';
 import '../core/team_api.dart';
+import '../core/update_service.dart';
 import '../core/ui/zine.dart';
 import '../core/ui/zine_widgets.dart';
 import '../features/diagnostics/log_page.dart';
@@ -594,6 +595,15 @@ class _AvaSidebarState extends State<AvaSidebar> {
         //       Navigator.push(context, MaterialPageRoute(builder: (_) => const LogPage()));
         //     }),
         _acct('settings', 'Settings', PhosphorIcons.gearSix(PhosphorIconsStyle.bold)),
+        // Update — checks Google Play for a newer build and updates in-place
+        // (flexible download → restart), then confirms "updated to build #X". No
+        // route key: runs the flow directly. Android-only + gated by
+        // RemoteConfig.inAppUpdateEnabled (UpdateService no-ops elsewhere).
+        _acct('update', 'Update', PhosphorIcons.arrowsClockwise(PhosphorIconsStyle.bold),
+            onTap: () {
+              if (!widget.permanent) Navigator.pop(context);
+              UpdateService.runManual();
+            }),
         // About — app version, build, environment (prod/staging), git build.
         _acct('about', 'About', PhosphorIcons.info(PhosphorIconsStyle.bold),
             onTap: () {

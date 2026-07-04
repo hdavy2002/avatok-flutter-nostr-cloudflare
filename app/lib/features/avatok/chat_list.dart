@@ -22,6 +22,7 @@ import '../../core/group_store.dart';
 import '../../core/profile_store.dart';
 import '../../core/remote_config.dart';
 import '../../core/status_store.dart';
+import '../../core/update_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import '../../core/onboarding_store.dart';
@@ -405,6 +406,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     _bootstrap();
     _loadNotifCounts();
     _loadPendingRequests();
+    // After the first frame, run the throttled Google Play update check: shows
+    // the "new version available" popup if a newer build exists, and the
+    // "updated to build #X" confirmation if we just restarted into an update.
+    // Once per cold launch, Android-only, throttled — see UpdateService.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) UpdateService.maybePromptOnLaunch();
+    });
   }
 
   /// [SAFE-GATE-2] Load the set of pending stranger-gate threads for the "Message

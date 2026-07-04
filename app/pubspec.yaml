@@ -57,6 +57,13 @@ dependencies:
   # .github/workflows/android.yml), which the old hardcoded kAppBuild constant
   # never reflected — the build number looked frozen after every update.
   package_info_plus: ^8.0.2
+  # Google Play in-app updates (Android). Powers the "Update" sidebar row + the
+  # on-launch "new version available" popup: checks Play for a newer versionCode
+  # and runs the flexible download/restart flow WITHOUT sending the user to the
+  # Store. Android-only (no-ops on iOS); wraps Play Core → NATIVE plugin, must be
+  # validated by a CI build. Gated by RemoteConfig.inAppUpdateEnabled. See
+  # core/update_service.dart.
+  in_app_update: ^4.2.3
   # Product analytics + error tracking → PostHog (EU). See lib/core/analytics.dart.
   posthog_flutter: ^4.10.0
   # Native in-app Stripe PaymentSheet for wallet top-ups (card / Apple Pay /

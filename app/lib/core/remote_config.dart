@@ -152,6 +152,11 @@ class RemoteConfig {
   /// Installed build too old? → callers show the blocking "please update" screen.
   static bool get updateRequired => minAppBuild > kAppBuild;
 
+  /// Kill switch for the Google Play in-app update flow (the "Update" sidebar row
+  /// + the on-launch "new version available" popup). Default ON; flip to false in
+  /// KV to silence all Play update checks (e.g. if they ever get noisy).
+  static bool get inAppUpdateEnabled => _b('inAppUpdateEnabled', true);
+
   /// Fetch now + poll every 15 min. Never throws.
   static Future<void> start() async {
     await refresh();
