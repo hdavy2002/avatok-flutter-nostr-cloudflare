@@ -9,6 +9,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/zine.dart';
+import '../../../core/ui/zine_widgets.dart';
 
 /// Liveness V2 — HEAD-CIRCLE challenge step (Specs/LIVENESS-V2-PLAN.md §4 step
 /// 4a). "Move your head slowly to complete the circle": a 12-segment progress

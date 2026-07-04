@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/analytics.dart';
 import '../../../core/ui/zine.dart';
+import '../../../core/ui/zine_widgets.dart';
 import 'face_gate.dart';
 import 'flash_fill.dart';
 

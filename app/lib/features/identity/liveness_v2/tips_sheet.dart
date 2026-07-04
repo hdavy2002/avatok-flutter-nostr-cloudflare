@@ -41,7 +41,7 @@ class _TipsBody extends StatelessWidget {
       'Face the light. Don\'t stand with a window or lamp behind you.',
     ),
     (
-      PhosphorIcons.mask(PhosphorIconsStyle.bold),
+      PhosphorIcons.userFocus(PhosphorIconsStyle.bold),
       'Take off any mask, sunglasses, or hat covering your face.',
     ),
     (
