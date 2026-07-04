@@ -24,6 +24,10 @@ env:
   # decision. The Play Store Android App Bundle (.aab) is the ONLY artifact this
   # workflow builds and publishes; no APK is produced anymore.
   BUILD_AAB: 'true'
+  # One-off APK build (owner 2026-07-04: "note you create an apk file this time").
+  # AAB stays the default store artifact; this additionally produces a universal
+  # side-loadable .apk for this run. Set back to 'false' to return to AAB-only.
+  BUILD_APK: 'true'
 
 permissions:
   contents: write
@@ -159,10 +163,33 @@ jobs:
           name: avatok-call-aab
           path: dist/avatok-call.aab
 
-      # APK builds are RETIRED (owner 2026-07-04: ".aab only, no apk"). Play splits
-      # per-ABI/density server-side from the .aab, so no APK is needed for the store.
-      # If a sideloadable test build is ever needed again, re-add a
-      # `flutter build apk --split-per-abi` step here.
+      # Universal side-loadable APK — one-off this run (BUILD_APK). The .aab above
+      # stays the Play Store artifact; this .apk is for direct install / testing.
+      - name: Build release APK (universal, side-load)
+        if: env.BUILD_APK == 'true'
+        working-directory: app
+        run: flutter build apk --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+
+      - name: Stage .apk with a stable name
+        if: env.BUILD_APK == 'true'
+        run: |
+          mkdir -p dist
+          ls -la app/build/app/outputs/flutter-apk/
+          cp app/build/app/outputs/flutter-apk/app-release.apk dist/avatok-call.apk
+          echo "size:"; ls -lh dist/
+
+      - name: Upload .apk artifact (side-load)
+        if: env.BUILD_APK == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: avatok-call-apk
+          path: dist/avatok-call.apk
 
       - name: Publish to Release (stable link)
         uses: softprops/action-gh-release@v2
@@ -171,6 +198,7 @@ jobs:
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
             dist/avatok-call.aab
+            dist/avatok-call.apk
           fail_on_unmatched_files: false
           body: |
             Play Store Android App Bundle (.aab), built by CI from `app/` — the
