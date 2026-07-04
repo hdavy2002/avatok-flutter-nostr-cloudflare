@@ -14,8 +14,10 @@ import '../ladder_api.dart';
 import 'expression_step.dart';
 import 'flash_fill.dart';
 import 'head_circle_step.dart';
+import 'pending_session.dart';
 import 'phrase_step.dart';
 import 'position_step.dart';
+import 'tips_sheet.dart';
 
 /// Liveness V2 — the detection-gated orchestrator (Specs/LIVENESS-V2-PLAN.md §4).
 /// Replaces V1's timer script: every challenge step advances ONLY when ML Kit
@@ -73,10 +75,72 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
   // Continuous-guard overlay message (face lost / second face). Null = clear.
   String? _guard;
 
-  String? _failMessage;
+  // Every failing check's user_message, each shown as its own line on the fail
+  // screen (Agent E P4). Empty when the fail is a local error (upload etc.).
+  List<String> _failMessages = const [];
   int? _attemptsLeft;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    // Verify-pending resilience: if we backgrounded mid-verify last time, resume
+    // that session's result instead of restarting the whole video (plan §4 s7).
+    _resumePendingIfAny();
+  }
+
+  Future<void> _resumePendingIfAny() async {
+    final sid = await LivenessPendingSession.get();
+    if (sid == null || sid.isEmpty || !mounted) return;
+    setState(() {
+      _sessionId = sid;
+      _phase = _Phase.verifying;
+    });
+    final res = await LadderApi.livenessResultOutcome(sid);
+    if (!mounted) return;
+    if (res.pending) {
+      // Still checking server-side — poll a little, then let the user reopen.
+      final done = await _pollResume(sid);
+      if (!mounted) return;
+      if (!done) {
+        // Give up gracefully back to intro; the pending sid stays for next open.
+        setState(() {
+          _phase = _Phase.intro;
+          _error = 'We\'re still checking your last video — reopen this screen '
+              'in a minute to see the result.';
+        });
+      }
+      return;
+    }
+    if (res.noResult) {
+      // The session is gone (expired / cleared). Drop it and show a clean intro.
+      await LivenessPendingSession.clear();
+      if (!mounted) return;
+      setState(() => _phase = _Phase.intro);
+      return;
+    }
+    await _applyOutcome(res);
+  }
+
+  /// Poll a resumed session up to 60s (30 × 2s). Returns true if it resolved to
+  /// a terminal outcome (which [_applyOutcome] then renders).
+  Future<bool> _pollResume(String sid) async {
+    for (var i = 0; i < 30; i++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return true;
+      final r = await LadderApi.livenessResultOutcome(sid);
+      if (!r.pending && !r.noResult) {
+        await _applyOutcome(r);
+        return true;
+      }
+      if (r.noResult) {
+        await LivenessPendingSession.clear();
+        return false;
+      }
+    }
+    return false;
+  }
 
   @override
   void dispose() {
@@ -95,10 +159,39 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
     if (!mounted) return;
     setState(() {
       _phase = _Phase.failed;
-      _failMessage = message;
+      _failMessages = [message];
       _attemptsLeft = attemptsLeft;
     });
     await _flash.deactivate();
+  }
+
+  /// Render a terminal verify outcome (pass or fail) + clear the pending session
+  /// so it isn't resumed again. Fires the pass/fail funnel event.
+  Future<void> _applyOutcome(({
+    bool pending,
+    bool noResult,
+    bool verified,
+    List<String> failedMessages,
+    int? attemptsRemaining,
+  }) res) async {
+    await LivenessPendingSession.clear();
+    if (!mounted) return;
+    if (res.verified) {
+      Analytics.capture('liveness_passed', const {'v': 2});
+      setState(() => _phase = _Phase.passed);
+    } else {
+      Analytics.capture('liveness_failed', {
+        'v': 2,
+        'checks': res.failedMessages.length,
+      });
+      setState(() {
+        _phase = _Phase.failed;
+        _failMessages = res.failedMessages.isEmpty
+            ? const ['Verification failed — please try again.']
+            : res.failedMessages;
+        _attemptsLeft = res.attemptsRemaining;
+      });
+    }
   }
 
   // ── Preflight ────────────────────────────────────────────────────────────
@@ -349,19 +442,22 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
 
     if (!mounted) return;
     setState(() => _phase = _Phase.verifying);
-    final r = await LadderApi.livenessVerify(_sessionId);
+    // Persist BEFORE verifying so a background/kill mid-check can resume this
+    // exact session on reopen instead of restarting the whole video.
+    await LivenessPendingSession.set(_sessionId);
+    final r = await LadderApi.livenessVerifyRich(_sessionId);
     if (!mounted) return;
-    if (r.verified) {
-      Analytics.capture('liveness_passed', const {'v': 2});
-      setState(() => _phase = _Phase.passed);
-    } else {
-      Analytics.capture('liveness_failed', {'message': r.message ?? '', 'v': 2});
+    if (r.pending) {
+      // Verify hasn't resolved within the poll window. Keep the pending sid and
+      // let the user reopen to see the result (resilience path in initState).
       setState(() {
-        _phase = _Phase.failed;
-        _failMessage = r.message;
-        _attemptsLeft = r.attemptsRemaining;
+        _phase = _Phase.intro;
+        _error = 'We\'re still checking your video — reopen this screen in a '
+            'minute to see the result.';
       });
+      return;
     }
+    await _applyOutcome(r);
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -577,53 +673,87 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
         onCta: () => Navigator.of(context).pop(true),
       );
 
-  Widget _failed() => ZineScrollBody(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Spacer(),
-          Center(
-            child: Container(
-              width: 92,
-              height: 92,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Zine.coral,
-                border: Border.fromBorderSide(
-                    BorderSide(color: Zine.ink, width: Zine.bwLg)),
-                boxShadow: Zine.shadow,
-              ),
-              child: PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold),
-                  size: 42, color: Colors.white),
+  Widget _failed() {
+    final msgs = _failMessages.isEmpty
+        ? const ['Verification failed — please try again.']
+        : _failMessages;
+    final canRetry = (_attemptsLeft ?? 1) > 0;
+    return ZineScrollBody(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const SizedBox(height: 8),
+        Center(
+          child: Container(
+            width: 92,
+            height: 92,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Zine.coral,
+              border: Border.fromBorderSide(
+                  BorderSide(color: Zine.ink, width: Zine.bwLg)),
+              boxShadow: Zine.shadow,
             ),
+            child: PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold),
+                size: 42, color: Colors.white),
           ),
-          const SizedBox(height: 20),
-          Text('Not verified yet',
-              textAlign: TextAlign.center, style: ZineText.hero(size: 28)),
-          const SizedBox(height: 10),
-          Text(
-            '${_failMessage ?? 'Verification failed.'}'
-            '${_attemptsLeft != null ? '\nAttempts left today: $_attemptsLeft' : ''}',
-            textAlign: TextAlign.center,
-            style: ZineText.sub(size: 14),
+        ),
+        const SizedBox(height: 20),
+        Text('Not verified yet',
+            textAlign: TextAlign.center, style: ZineText.hero(size: 28)),
+        const SizedBox(height: 6),
+        Text(
+          msgs.length > 1
+              ? 'A few things to fix and try again:'
+              : 'Here\'s what to fix and try again:',
+          textAlign: TextAlign.center,
+          style: ZineText.sub(size: 14),
+        ),
+        const SizedBox(height: 14),
+        // Every failed check as its own warning-icon line (zine ZineErrorMsg style).
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: Zine.card,
+            borderRadius: BorderRadius.circular(Zine.rSm),
+            border: Border.all(color: Zine.ink, width: Zine.bw),
           ),
-          const Spacer(),
-          ZineButton(
-            label: 'Try again',
-            fullWidth: true,
-            fontSize: 19,
-            onPressed: (_attemptsLeft ?? 1) > 0
-                ? () {
-                    setState(() {
-                      _phase = _Phase.intro;
-                      _error = null;
-                    });
-                  }
-                : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [for (final m in msgs) ZineErrorMsg(m)],
           ),
-          const SizedBox(height: 14),
+        ),
+        if (_attemptsLeft != null) ...[
+          const SizedBox(height: 12),
           Center(
-              child: ZineLink('LATER',
-                  onTap: () => Navigator.of(context).pop(false))),
-          const SizedBox(height: 8),
-        ]),
-      );
+            child: Text('Attempts left today: $_attemptsLeft',
+                textAlign: TextAlign.center, style: ZineText.sub(size: 13)),
+          ),
+        ],
+        const SizedBox(height: 16),
+        Center(
+          child: ZineLink('Tips for a good video',
+              onTap: () => LivenessTipsSheet.show(context)),
+        ),
+        const SizedBox(height: 24),
+        ZineButton(
+          label: 'Try again',
+          fullWidth: true,
+          fontSize: 19,
+          onPressed: canRetry
+              ? () {
+                  setState(() {
+                    _phase = _Phase.intro;
+                    _error = null;
+                    _failMessages = const [];
+                  });
+                }
+              : null,
+        ),
+        const SizedBox(height: 14),
+        Center(
+            child: ZineLink('LATER',
+                onTap: () => Navigator.of(context).pop(false))),
+        const SizedBox(height: 8),
+      ]),
+    );
+  }
 }
