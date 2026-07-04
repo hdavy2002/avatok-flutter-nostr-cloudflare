@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:record/record.dart';
@@ -28,8 +29,23 @@ import '../../../core/voice/google_voice.dart';
 import '../../../core/voice/native_voice_audio.dart';
 import 'voice_call_api.dart';
 
-class LiveVoiceController implements VoiceCallApi {
-  LiveVoiceController();
+/// CALL-GLIVE-E: [LiveVoiceController] survives in-app navigation and
+/// backgrounding the same way the P2P [CallSession] does — WITHOUT being
+/// registered into [CallSessionManager] (that manager's `active` slot, the
+/// `gInCall`/`gLiveCallScreens`/glare globals it drives, and its busy/decline
+/// signaling are strictly about 1:1 P2P calls; forcing a Gemini Live session
+/// through it would falsely mark the user "in a call" for push/glare
+/// purposes — a regression, not a fix). Instead this controller becomes its
+/// own lightweight session: it owns a [minimized] flag, starts/stops the
+/// SAME `CallForegroundService` via [NativeVoiceAudio.instance], sets native
+/// communication audio mode, and separates "the view detached" from "the
+/// call actually ended" so backgrounding/navigation never tears down the
+/// Gemini WS. See Specs/CALL-BACKGROUND-PIP-PLAN.md WS-E and
+/// Specs/CALL-SESSION-API.md (for why this can't share CallSessionManager).
+class LiveVoiceController with WidgetsBindingObserver implements VoiceCallApi {
+  LiveVoiceController() {
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   final ValueNotifier<CallState> state = ValueNotifier<CallState>(CallState.preparing);
@@ -47,7 +63,13 @@ class LiveVoiceController implements VoiceCallApi {
   AudioRecorder? _rec;
   StreamSubscription<Uint8List>? _micSub;
   bool _pcmReady = false;
+  // `_disposed` = the CALL itself has ended (hangup/teardown ran). This must
+  // NOT be set just because the view detached/backgrounded — that was the bug:
+  // the old dispose() (screen-tied) set this and blocked reconnection whenever
+  // the user merely navigated away or the app was backgrounded. `_torndown`
+  // guards the actual one-shot teardown so it never runs twice.
   bool _disposed = false;
+  bool _torndown = false;
 
   // Native full-duplex audio engine (Android): one communication audio session
   // with the platform AcousticEchoCanceler attached, so Ava's voice is removed
@@ -61,6 +83,15 @@ class LiveVoiceController implements VoiceCallApi {
   int _reconnects = 0;
   DateTime? _connectedAt;
   Timer? _reconnect;
+
+  // ── CALL-GLIVE-E: background/minimize survival ──────────────────────────────
+  /// True while the call is shown as a minimized pill instead of the full
+  /// [VoiceCallScreen] (back-navigated away, but not ended). Mirrors
+  /// `CallSession.minimized` from the P2P path so the SAME pill/FGS pattern
+  /// applies. A view (or a future shared pill widget) listens to this.
+  final ValueNotifier<bool> minimized = ValueNotifier<bool>(false);
+  bool _fgsStarted = false;
+  bool _backgroundedWhileConnected = false;
 
   // ── rich telemetry: one correlation id (call_id) stitches the whole call ─────
   String _callId = '';
@@ -124,6 +155,88 @@ class LiveVoiceController implements VoiceCallApi {
     _ev('voice_live_resume', {'at_ms': _callSw.elapsedMilliseconds});
   }
 
+  /// CALL-GLIVE-E2/E3: start the ongoing-call FGS + native `MODE_IN_COMMUNICATION`
+  /// via the shared [NativeVoiceAudio.instance] (same instance the P2P
+  /// [CallSession] and the notification hang-up/tap callbacks use — see
+  /// Specs/CALL-SESSION-API.md §5), and register the notification callbacks
+  /// guarded to THIS call's id so we never steal or answer for a P2P call's
+  /// notification actions (and vice versa).
+  void _startBgSurvival() {
+    if (_fgsStarted) return;
+    _fgsStarted = true;
+    if (NativeVoiceAudio.isSupported) {
+      // ignore: unawaited_futures
+      NativeVoiceAudio.instance.startCallForegroundService(
+        callId: _callId,
+        peerName: 'Ava',
+        isVideo: false,
+        at: 'dial',
+      );
+      // ignore: unawaited_futures
+      NativeVoiceAudio.instance.startP2pAudioMode();
+      NativeVoiceAudio.instance.onNotificationHangup = (callId) {
+        if (callId != _callId) return; // not ours — a P2P call owns this hangup
+        // ignore: unawaited_futures
+        dispose();
+      };
+      NativeVoiceAudio.instance.onNotificationTapReturnToCall = (callId) {
+        if (callId != _callId) return;
+        restore();
+      };
+    }
+  }
+
+  /// CALL-GLIVE-E4: minimize (back navigation) — the view pops, but the Gemini
+  /// WS/mic/native engine keep running. The (future) shared pill widget reads
+  /// [minimized] the same way it reads `CallSession.minimized`.
+  void minimize() {
+    if (_disposed || minimized.value) return;
+    minimized.value = true;
+    _ev('glive_minimized', {'at_ms': _callSw.elapsedMilliseconds});
+  }
+
+  /// Return from the pill/notification to the full [VoiceCallScreen]. The
+  /// screen re-presents itself and calls this to clear the minimized flag.
+  void restore() {
+    if (!minimized.value) return;
+    minimized.value = false;
+    _ev('glive_restored', {'at_ms': _callSw.elapsedMilliseconds});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_disposed) return;
+    if (state == AppLifecycleState.paused) {
+      // Keep the call alive in the background: re-assert the FGS defensively
+      // (it was already started at call setup) and touch nothing else — the
+      // Gemini WS, native audio engine and mic stream must keep running so the
+      // reviewer/user hears Ava continue speaking while backgrounded.
+      if (NativeVoiceAudio.isSupported) {
+        // ignore: unawaited_futures
+        NativeVoiceAudio.instance.startCallForegroundService(
+          callId: _callId, peerName: 'Ava', isVideo: false, at: 'accept',
+        );
+      }
+      if (this.state.value == CallState.speaking ||
+          this.state.value == CallState.listening ||
+          this.state.value == CallState.thinking) {
+        _backgroundedWhileConnected = true;
+      }
+      _ev('glive_backgrounded', {
+        'state': this.state.value.name,
+        'minimized': minimized.value,
+      });
+    } else if (state == AppLifecycleState.resumed) {
+      if (_backgroundedWhileConnected && !_disposed) {
+        _ev('glive_bg_survived', {
+          'state': this.state.value.name,
+          'duration_ms': _callSw.elapsedMilliseconds,
+        });
+      }
+      _backgroundedWhileConnected = false;
+    }
+  }
+
   @override
   Future<bool> start() async {
     _callId = 'vc_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
@@ -156,6 +269,11 @@ class LiveVoiceController implements VoiceCallApi {
       return false;
     }
     _model = t['model']?.toString() ?? _model;
+    // CALL-GLIVE-E2: start the SAME ongoing-call foreground service + native
+    // communication audio mode the P2P path uses, at call setup (not on first
+    // audio), so the OS shows the ongoing-call notification + green mic dot and
+    // doesn't kill the process while the app is backgrounded.
+    _startBgSurvival();
     final ok = await _connect(t['token'].toString());
     if (ok) {
       _ev('voice_live_start', {
@@ -505,10 +623,36 @@ class LiveVoiceController implements VoiceCallApi {
     } catch (_) {}
   }
 
+  /// CALL-GLIVE-E4: view-only detach — called from [VoiceCallScreen]'s
+  /// dispose() when the screen is popped by minimize (back navigation), NOT by
+  /// the user ending the call. This must NEVER close the WS/mic/native engine
+  /// or stop the FGS — that would kill the "call survives navigation"
+  /// guarantee. It only removes the app-lifecycle observer duplicate risk is
+  /// avoided (WidgetsBinding dedupes `addObserver`, and the controller outlives
+  /// the screen, so there's nothing else to detach). Kept as an explicit no-op
+  /// method (rather than silence) so the call site's intent is documented.
+  void detach() {
+    // Intentionally does nothing to session resources — see doc comment above.
+  }
+
   @override
   Future<void> dispose() async {
-    if (_disposed) return;
+    if (_torndown) return;
+    _torndown = true;
     _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
+    if (NativeVoiceAudio.isSupported) {
+      if (NativeVoiceAudio.instance.onNotificationHangup != null) {
+        // Only clear if we still own the callback (guard against a P2P call
+        // that may have re-registered its own handler after us).
+        NativeVoiceAudio.instance.onNotificationHangup = null;
+      }
+      NativeVoiceAudio.instance.onNotificationTapReturnToCall = null;
+      // ignore: unawaited_futures
+      NativeVoiceAudio.instance.stopCallForegroundService(reason: 'voice_live_end');
+      // ignore: unawaited_futures
+      NativeVoiceAudio.instance.stopP2pAudioMode();
+    }
     state.value = CallState.ended;
     _ev('voice_live_end', {
       'duration_ms': _callSw.elapsedMilliseconds,

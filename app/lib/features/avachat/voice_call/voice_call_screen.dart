@@ -60,7 +60,14 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))
       ..repeat();
     _call.state.addListener(_onState);
-    _call.start();
+    // If this screen is re-presented for an already-running call (tap the
+    // notification / tap the pill to return), clear minimized instead of
+    // starting a second call.
+    if (_call.minimized.value) {
+      _call.restore();
+    } else {
+      _call.start();
+    }
   }
 
   // Start the segment timer once the call is actually live.
@@ -130,20 +137,41 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
     return '$m:$ss';
   }
 
+  // CALL-GLIVE-E4/E5: guards so we only run ONE of {minimize, real end} when
+  // this screen goes away, and so a real end doesn't also try to minimize.
+  bool _endedByUser = false;
+
   @override
   void dispose() {
+    // View detach ONLY. If the screen is going away because the user tapped
+    // End, `_end()` already ran the real teardown (`_call.dispose()`) before
+    // this pop — `_call.detach()` here is a documented no-op. If the screen is
+    // going away because of minimize (back navigation), the segment timers
+    // must also pause-but-not-cancel is unnecessary: they are UI-only (the
+    // 5-min guardrail) and safe to leave running against the still-live call;
+    // we still cancel them here because they drive `setState` on THIS widget,
+    // which would throw once disposed — the call's own state is untouched.
     _segTimer?.cancel();
     _autoEndTimer?.cancel();
     _call.state.removeListener(_onState);
     _pulse.dispose();
-    _call.dispose();
+    _call.detach();
     super.dispose();
   }
 
   Future<void> _end() async {
+    _endedByUser = true;
     _segTimer?.cancel();
     _autoEndTimer?.cancel();
     await _call.dispose();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Back gesture / system back: minimize, don't hang up. Only the red End
+  /// button (or notification Hang up, wired in the controller) ends the call.
+  void _minimize() {
+    if (_endedByUser) return;
+    _call.minimize();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -156,29 +184,37 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Zine.paper,
-      body: ZinePaper(
-        child: SafeArea(
-          child: Stack(children: [
-            Column(children: [
-              _topBar(),
-              const Spacer(),
-              _orb(),
-              const SizedBox(height: 28),
-              _statusLine(),
-              const SizedBox(height: 18),
-              _captions(),
-              const Spacer(),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                _routeButton(),
-                const SizedBox(width: 16),
-                _endButton(),
+    return PopScope(
+      // Back = minimize (pill/FGS keep the call alive), not hang up.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _minimize();
+      },
+      child: Scaffold(
+        backgroundColor: Zine.paper,
+        body: ZinePaper(
+          child: SafeArea(
+            child: Stack(children: [
+              Column(children: [
+                _topBar(),
+                const Spacer(),
+                _orb(),
+                const SizedBox(height: 28),
+                _statusLine(),
+                const SizedBox(height: 18),
+                _captions(),
+                const Spacer(),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _routeButton(),
+                  const SizedBox(width: 16),
+                  _endButton(),
+                ]),
+                const SizedBox(height: 28),
               ]),
-              const SizedBox(height: 28),
+              if (_needContinue) _continueOverlay(),
             ]),
-            if (_needContinue) _continueOverlay(),
-          ]),
+          ),
         ),
       ),
     );
@@ -240,6 +276,16 @@ class _VoiceCallScreenState extends State<VoiceCallScreen>
   Widget _topBar() => Padding(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
         child: Row(children: [
+          ZinePressable(
+            onTap: _minimize,
+            color: Zine.card,
+            radius: BorderRadius.circular(100),
+            boxShadow: Zine.shadowSm,
+            padding: const EdgeInsets.all(10),
+            child: PhosphorIcon(PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+                size: 18, color: Zine.ink),
+          ),
+          const SizedBox(width: 10),
           ZineMarkTitle(
             pre: 'Talking to ',
             mark: 'Ava',
