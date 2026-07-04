@@ -386,6 +386,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     // user's real phone — preserve any previously-stored real phone instead of
     // overwriting it with the AvaTOK number.
     final phone = existing.phone;
+    // A PRIOR 422 (e.g. server name/photo vetting reject) latches the profile
+    // endpoint's ApiBackoffState into isPermanentlyFailed, after which every
+    // registerProfile short-circuits WITHOUT hitting the server and returns a
+    // fieldless 422 → the user sees the generic "We couldn't save your profile
+    // just now" pinned to the photo and can NEVER save again (even after fixing
+    // the offending field) until an app restart. This IS a user-initiated retry,
+    // so clear that latch first and let the request reach the server so the real,
+    // current vetting result (and its inline message) comes back.
+    Directory.resetProfileBackoff();
     final r = await Directory.registerProfile(
         uid: id.uid, name: fullName, firstName: first, lastName: last,
         email: email, phone: phone, avatarUrl: _avatarUrl, birthYear: by, bio: bio, gender: _gender);
