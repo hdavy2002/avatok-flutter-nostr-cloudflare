@@ -221,7 +221,7 @@ class _LivenessCheckScreenState extends State<LivenessCheckScreen> {
         _Phase.preparing => const Center(child: CircularProgressIndicator(color: Zine.blueInk)),
         _Phase.challenge => _challengeView(),
         _Phase.uploading => _busy('Uploading…'),
-        _Phase.verifying => _busy('Checking your clip…\nThis takes a few seconds.'),
+        _Phase.verifying => _busy('Checking your clip…\nThis can take up to a minute.'),
         _Phase.passed => _done(),
         _Phase.failed => _failed(),
       },

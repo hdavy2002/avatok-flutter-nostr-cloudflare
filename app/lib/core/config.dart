@@ -224,7 +224,8 @@ const String kIdStatusUrl = '$kIdBase/status';             // GET → { phone_ve
 // L2 liveness — Workers AI provider (flag: workersAiLivenessEnabled).
 const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {session_id, challenge}
 const String kLivenessUploadUrl = '$kIdBase/liveness/upload'; // POST ?session=&part= (raw bytes)
-const String kLivenessVerifyUrl = '$kIdBase/liveness/verify'; // POST {session_id}
+const String kLivenessVerifyUrl = '$kIdBase/liveness/verify'; // POST {session_id} → 202 pending
+const String kLivenessResultUrl = '$kIdBase/liveness/result'; // GET ?session= → pending | done (LIVE-V2 P0)
 
 // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
 const String kIdentityBase = '$kApiBase/identity';
