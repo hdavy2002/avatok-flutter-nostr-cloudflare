@@ -32,6 +32,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- CALL-BG-B4: required on Android 14+ (API 34) to declare "camera" in the
+         call service's foregroundServiceType for video calls. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -110,12 +113,18 @@
                 <data android:scheme="avatokauth" />
             </intent-filter>
         </activity>
-        <!-- CALLFIX-20: Foreground service for ongoing calls (keeps VoIP calls alive
-             while backgrounded). Declared with foregroundServiceType="phoneCall|microphone"
-             as required by Android 12+ for call-related services. -->
+        <!-- CALLFIX-20 / CALL-BG-B4: Foreground service for ongoing calls (keeps VoIP
+             calls alive while backgrounded). Declares phoneCall|microphone|camera so
+             BOTH audio-only and video calls are covered — Android 14+ (API 34)
+             requires every type actually started via ServiceCompat.startForeground to
+             be pre-declared here; audio calls simply never pass the camera bit at
+             runtime. android:stopWithTask defaults to false (unset = false), i.e. the
+             service is NOT killed when the app's task is removed from Recents — this
+             is required for the call to survive the user swiping the app away. -->
         <service
             android:name="ai.avatok.avavoiceaudio.CallForegroundService"
-            android:foregroundServiceType="phoneCall|microphone"
+            android:foregroundServiceType="phoneCall|microphone|camera"
+            android:stopWithTask="false"
             android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

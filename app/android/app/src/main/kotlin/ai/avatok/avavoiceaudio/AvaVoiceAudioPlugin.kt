@@ -60,6 +60,29 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         const val METHOD_CHANNEL = "avatok/voice_audio"
         const val EVENT_CHANNEL = "avatok/voice_audio/mic"
         const val TELEPHONY_EVENT_CHANNEL = "avatok/voice_audio/telephony"
+
+        // CALL-BG-B2/B3: a static reference to the live plugin instance (there is at
+        // most one — one Flutter engine per process) so CallForegroundService and
+        // MainActivity can push events to Dart without needing a Binder/bind() dance.
+        // Null when no Flutter engine is attached (e.g. process died); callers must
+        // handle that (the broadcast fallback in CallForegroundService covers it).
+        @Volatile
+        private var activeInstance: AvaVoiceAudioPlugin? = null
+
+        /// CALL-BG-B2: called by CallForegroundService when the notification's
+        /// "Hang up" action is tapped. Forwards to Dart's onNotificationHangup
+        /// callback (wired by CallSession.hangup()) via the method channel.
+        fun notifyHangupRequested(callId: String) {
+            activeInstance?.emit("onNotificationHangup", mapOf("callId" to callId))
+        }
+
+        /// CALL-BG-B3: called by MainActivity.onCreate/onNewIntent when the app was
+        /// launched/foregrounded by tapping the ongoing-call notification. Forwards to
+        /// Dart's onNotificationTapReturnToCall(callId) callback so the app can route
+        /// back to the active call screen instead of landing on the last route.
+        fun notifyNotificationTap(callId: String) {
+            activeInstance?.emit("onNotificationTapReturnToCall", mapOf("callId" to callId))
+        }
     }
 
     private var methodChannel: MethodChannel? = null
@@ -153,11 +176,15 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 }
             })
         }
+        // CALL-BG-B2/B3: register as the active instance so CallForegroundService /
+        // MainActivity can reach Dart via the static helpers above.
+        activeInstance = this
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         stopEngine()
         stopTelephonyMonitoring()
+        if (activeInstance === this) activeInstance = null
         methodChannel?.setMethodCallHandler(null)
         eventChannel?.setStreamHandler(null)
         telephonyEventChannel?.setStreamHandler(null)
@@ -231,10 +258,13 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(null)
             }
             "startCallForegroundService" -> {
-                // CALLFIX-20: start foreground service for ongoing calls
+                // CALLFIX-20 / CALL-BG-B1/B4: start foreground service for ongoing
+                // calls. isVideo determines whether the service declares the camera
+                // foregroundServiceType bit (Android 14+ requirement).
                 val callId = call.argument<String>("callId") ?: ""
                 val peerName = call.argument<String>("peerName") ?: "Unknown"
-                startCallForegroundService(callId, peerName)
+                val isVideo = call.argument<Boolean>("isVideo") ?: false
+                startCallForegroundService(callId, peerName, isVideo)
                 result.success(null)
             }
             "stopCallForegroundService" -> {
@@ -554,13 +584,16 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         } catch (_: Throwable) {}
     }
 
-    // CALLFIX-20: Start foreground service to keep calls alive while backgrounded.
-    // The service shows an ongoing-call notification with a chronometer and hang-up action.
-    private fun startCallForegroundService(callId: String, peerName: String) {
+    // CALLFIX-20 / CALL-BG-B1/B4: Start foreground service to keep calls alive while
+    // backgrounded. The service shows an ongoing-call notification with a chronometer
+    // and hang-up action. Called at CALL SETUP (dial placed / incoming accepted), not
+    // on P2P connect, so a call backgrounded while still ringing/connecting survives.
+    private fun startCallForegroundService(callId: String, peerName: String, isVideo: Boolean) {
         try {
             val intent = Intent(appContext, CallForegroundService::class.java).apply {
                 putExtra("callId", callId)
                 putExtra("peerName", peerName)
+                putExtra("isVideo", isVideo)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 // Android 8+: must use startForegroundService, not startService.
@@ -569,7 +602,7 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 // Older API: startService is sufficient.
                 appContext?.startService(intent)
             }
-            emit("call_foreground_service_started", mapOf("call_id" to callId))
+            emit("call_foreground_service_started", mapOf("call_id" to callId, "is_video" to isVideo))
         } catch (e: Throwable) {
             emit("call_foreground_service_error", mapOf("error" to (e.message ?: e.toString())))
         }

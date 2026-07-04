@@ -195,3 +195,141 @@ decremented in `hangup()`.
 - C/D/E must never call `start()`, close the WS/PC, or dispose the renderers — only `hangup()`
   (via `hangupActive`) tears down. Reuse `localRenderer`/`remoteRenderer`. Key off `phase`
   (enum) + `minimized` + `peerAway`. Do not touch the CallRoom 2-peer cap or re-introduce Nostr.
+
+---
+
+## WS-B integration (Android FGS + ongoing-call notification)
+
+**Status:** native (Kotlin) side + `NativeVoiceAudio` Dart bridge are code-complete.
+NOT wired into `CallSession` yet — that wiring is WS-A's job per the section above
+("WS-B moves it here" for `start()`; "CallKit / notification hang-up seam" for
+`hangup()`). This section is the exact contract to implement against.
+
+### Files WS-B touched
+- `app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/CallForegroundService.kt`
+- `app/android/app/src/main/kotlin/ai/avatok/avavoiceaudio/AvaVoiceAudioPlugin.kt`
+- `app/android/app/src/main/kotlin/ai/avatok/avatok_call/MainActivity.kt`
+- `app/android/app/src/main/AndroidManifest.xml`
+- `app/lib/core/voice/native_voice_audio.dart`
+
+### 1. `CallSession.start()` must start the FGS at CALL SETUP, not on P2P connect
+
+```dart
+if (NativeVoiceAudio.isSupported) {
+  await NativeVoiceAudio.instance.startCallForegroundService(
+    callId: room,
+    peerName: config.title,
+    isVideo: config.video,
+    at: config.outgoing ? 'dial' : 'accept',
+  );
+}
+```
+
+Call this as early in `start()` as possible — outgoing: the instant the dial/offer is
+placed; incoming: the instant the user accepts (before/alongside sending the answer).
+This replaces the OLD call site that used to live at `call_screen.dart:758` (it was
+inside `pc.onTrack`, i.e. only fired after P2P connected — exactly the bug this
+workstream fixes: a call backgrounded while still ringing/connecting had no FGS and
+could be killed by the OS).
+
+### 2. `CallSession.hangup()` must stop the FGS exactly once
+
+```dart
+await NativeVoiceAudio.instance.stopCallForegroundService(reason: reason); // reuse hangup's `reason` taxonomy
+```
+
+Replaces the old call site at `call_screen.dart:1272`. Ride on the existing
+`hangup()` idempotency guard so this fires exactly once per call.
+
+### 3. Wire the notification "Hang up" action → `hangup()`
+
+Native emits method-channel event `onNotificationHangup`; `NativeVoiceAudio` already
+parses it and exposes:
+
+```dart
+NativeVoiceAudio.instance.onNotificationHangup = (callId) {
+  CallSessionManager.instance.hangupActive('local-hangup'); // or a dedicated reason e.g. 'notification-hangup'
+};
+```
+
+Telemetry (`call_notification_hangup {call_id}`) is already fired by `NativeVoiceAudio`
+before the callback runs — don't duplicate it.
+
+### 4. Wire the notification tap → return to the active call screen
+
+Tapping the notification body launches/foregrounds `MainActivity` with extras
+`{callId, from: "call_notification"}`, forwarded to Dart as method-channel event
+`onNotificationTapReturnToCall`:
+
+```dart
+NativeVoiceAudio.instance.onNotificationTapReturnToCall = (callId) {
+  // Re-present CallScreen for callId — e.g. session.minimized.value = false and
+  // push/pop to the call route via the manager's navigator key. Must also work as a
+  // COLD START (app was dead): MainActivity forwards this as soon as the Flutter
+  // engine + AvaVoiceAudioPlugin attach, which can be before any CallSession exists
+  // if the OS killed the Dart process but the FGS/notification survived. In that
+  // case there is no session to return to yet — no-op is acceptable (the call itself
+  // would have ended when the process died; this is a rare edge case worth a
+  // telemetry note if seen, not a blocker).
+};
+```
+
+Telemetry (`call_notification_tap {call_id}`) already fired by `NativeVoiceAudio`.
+
+### 5. IMPORTANT — use ONE shared `NativeVoiceAudio` instance for these callbacks
+
+`NativeVoiceAudio` wraps `MethodChannel('avatok/voice_audio')` — the channel is global
+to the platform side, but `setMethodCallHandler` is set per-Dart-*instance* the first
+time any method is called on it. Only the instance whose handler is currently
+registered will ever see `onNotificationHangup`/`onNotificationTapReturnToCall`. The
+codebase today constructs `NativeVoiceAudio()` ad hoc in several places
+(`call_screen.dart`, `live_voice_controller.dart`, `receptionist_call.dart`) — harmless
+before because nothing depended on instance-scoped callbacks, but it matters now.
+
+**Fixed in WS-B:** `NativeVoiceAudio` now exposes `static final NativeVoiceAudio
+instance = NativeVoiceAudio();`. `CallSession`/`CallSessionManager` MUST use
+`NativeVoiceAudio.instance` (not `NativeVoiceAudio()`) for
+`startCallForegroundService`/`stopCallForegroundService` AND for registering
+`onNotificationHangup`/`onNotificationTapReturnToCall` — register the callbacks on
+`NativeVoiceAudio.instance` once, as early as possible (e.g. in
+`CallSessionManager`'s constructor), so they're live before any call starts. Existing
+ad-hoc `NativeVoiceAudio()` construction elsewhere (`call_screen.dart`,
+`live_voice_controller.dart`, `receptionist_call.dart`) is unaffected as long as WS-A
+doesn't ALSO call a method on a second fresh instance for these particular callbacks —
+those other call sites only use instance-agnostic one-shot methods (`startP2pAudioMode`,
+`getAudioRoute`, etc.) and don't register callback fields, so they don't collide.
+
+### 6. `isVideo` flag
+
+Pass `config.video` through as-is. Android 14+ (API 34) enforces the declared
+foregroundServiceType strictly — passing `true` unconditionally for an audio call
+would be wrong (holds a `camera` FGS type without using the camera); passing `false`
+for a video call would violate the OS's video-call FGS requirement.
+
+### 7. Telemetry already emitted by WS-B (do not duplicate)
+- `call_fgs_started {call_id, is_video, at: 'dial'|'accept'}` — from `startCallForegroundService()`.
+- `call_fgs_stopped {reason}` — from `stopCallForegroundService()`.
+- `call_notification_hangup {call_id}` — from the method-channel handler, pre-callback.
+- `call_notification_tap {call_id}` — from the method-channel handler, pre-callback.
+
+All four go through `Analytics.capture`, which auto-stamps the identified user's
+email/uid.
+
+### 8. Native behavior recap (for WS-F device verification)
+- Notification: `CATEGORY_CALL`, `setOngoing(true)`, `setUsesChronometer(true)` based on
+  the real call start time, peer name in the title, working "Hang up" action, tap →
+  `MainActivity` with routing extras.
+- Manifest: service declares `foregroundServiceType="phoneCall|microphone|camera"`
+  (covers both call types; the `camera` bit is only set at runtime via
+  `ServiceCompat.startForeground` when `isVideo` is true) + `android:stopWithTask="false"`
+  + new `FOREGROUND_SERVICE_CAMERA` permission.
+- The service also self-stops (`stopForeground` + `stopSelf`) when "Hang up" is tapped,
+  independent of Dart calling `stopCallForegroundService()` — both paths are idempotent
+  and safe to run redundantly.
+
+### 9. Explicitly out of scope for WS-B
+- No edits to `call_screen.dart` (WS-A's file).
+- No PiP/minimize UI (WS-C), no reconnect/ICE-restart (WS-D), no Gemini Live parity
+  (WS-E) — though the same `NativeVoiceAudio` calls should work unchanged once WS-E
+  promotes `LiveVoiceController` to a `CallSession`-like shape.
+- iOS: no-op, `NativeVoiceAudio.isSupported` already gates Android-only.
