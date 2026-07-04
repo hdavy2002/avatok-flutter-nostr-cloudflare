@@ -169,12 +169,14 @@ jobs:
           name: avatok-call-aab
           path: dist/avatok-call.aab
 
-      # Universal side-loadable APK — one-off this run (BUILD_APK). The .aab above
-      # stays the Play Store artifact; this .apk is for direct install / testing.
-      - name: Build release APK (universal, side-load)
+      # Side-loadable APK, SPLIT PER ABI. A universal (fat) APK bundles every
+      # native lib and grows to ~220MB, which Android's installer rejects as
+      # "package appears to be invalid." Splitting per ABI yields a lean ~80MB
+      # arm64 APK that installs cleanly (the format that worked before).
+      - name: Build release APK (split per ABI, side-load)
         if: env.BUILD_APK == 'true'
         working-directory: app
-        run: flutter build apk --release --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
+        run: flutter build apk --release --split-per-abi --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
@@ -187,7 +189,11 @@ jobs:
         run: |
           mkdir -p dist
           ls -la app/build/app/outputs/flutter-apk/
-          cp app/build/app/outputs/flutter-apk/app-release.apk dist/avatok-call.apk
+          # arm64-v8a is the primary asset (virtually every modern phone) →
+          # published as the single clean avatok-call.apk. armeabi-v7a kept as a
+          # fallback for older 32-bit devices.
+          cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call.apk
+          cp app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/avatok-call-armv7.apk
           echo "size:"; ls -lh dist/
 
       - name: Upload .apk artifact (side-load)
@@ -204,11 +210,13 @@ jobs:
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
             dist/avatok-call.apk
+            dist/avatok-call-armv7.apk
           fail_on_unmatched_files: false
           body: |
-            Universal side-loadable Android APK (.apk), built by CI from `app/` —
-            the ONLY artifact we ship (owner 2026-07-04: APK only, no AAB).
-            Download `avatok-call.apk` and install it directly on the device
+            Side-loadable Android APK (.apk), split per ABI, built by CI from
+            `app/` (owner 2026-07-04: APK only, no AAB). Install `avatok-call.apk`
+            (arm64 — for virtually every modern phone). Use `avatok-call-armv7.apk`
+            only for old 32-bit devices. Install directly on the device
             (enable "Install unknown apps" for your browser / file manager if
             prompted). No Play Store or App Bundle step is involved.
 
