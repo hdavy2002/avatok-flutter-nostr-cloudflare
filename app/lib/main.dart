@@ -15,6 +15,7 @@ import 'core/app_registry.dart';
 import 'core/apps.dart';
 import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
+import 'core/calls/call_overlay.dart';
 import 'core/calls/call_session_manager.dart';
 import 'core/db.dart';
 import 'core/deep_links.dart';
@@ -199,7 +200,10 @@ class AvaTalkApp extends StatelessWidget {
           builder: (_, userScale, __) => MediaQuery(
             data: mq.copyWith(
                 textScaler: TextScaler.linear((sys * 1.22 * userScale).clamp(0.85, 1.3))),
-            child: child!,
+            // CALL-PIP-C: paint the minimized-call overlay (draggable video
+            // thumbnail / audio pill) ABOVE every route. Renders nothing and
+            // adds no hit-test surface when there's no minimized call.
+            child: CallOverlay(child: child!),
           ),
         );
       },
