@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'remote_config.dart';
+
 /// Creator-marketplace Phase 1: ONE registry of every AvaVerse app. The sidebar
 /// renders `tier == standard` only; hidden apps stay registered so a later
 /// phase can flip them back without re-plumbing. Route values are the
@@ -80,8 +82,15 @@ class AppRegistry {
     return null;
   }
 
+  /// The Marketplace is ADMIN-ONLY during the pro/live launch (owner decision
+  /// 2026-07-04): keep its registry tile out of any derived menu unless the
+  /// current account may see it (global flag on OR admin). See
+  /// [RemoteConfig.marketplaceVisible].
+  static bool _visible(AppEntry a) =>
+      a.id != 'marketplace' || RemoteConfig.marketplaceVisible;
+
   static List<AppEntry> get standard =>
-      kAppRegistry.where((a) => a.tier == AppTier.standard).toList();
+      kAppRegistry.where((a) => a.tier == AppTier.standard && _visible(a)).toList();
 
   /// Apps not in the registry (legacy keys) count as hidden.
   static bool isStandard(String id) => byId(id)?.tier == AppTier.standard;
@@ -106,5 +115,5 @@ class AppRegistry {
   };
 
   static List<AppEntry> get focusMode =>
-      kAppRegistry.where((a) => _focusIds.contains(a.id)).toList();
+      kAppRegistry.where((a) => _focusIds.contains(a.id) && _visible(a)).toList();
 }

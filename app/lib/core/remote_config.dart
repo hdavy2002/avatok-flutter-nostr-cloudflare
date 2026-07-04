@@ -8,6 +8,7 @@ import '../sync/party/party_hub.dart';
 import 'ava_log.dart';
 import 'config.dart';
 import 'feature_flags.dart';
+import 'money_api.dart';
 
 /// Remote kill switches (creator-marketplace Phase 1, audit A2). Mirrors the
 /// Worker's GET /api/config (KV `platform_config`). Fetched at app start and
@@ -23,6 +24,15 @@ class RemoteConfig {
   /// Bumps whenever a fetch lands — listen to re-check flags (e.g. the
   /// minAppBuild gate in RootFlow).
   static final ValueNotifier<int> revision = ValueNotifier(0);
+
+  /// Whether the SIGNED-IN account is a platform admin (uid ∈ server ADMIN_UIDS).
+  /// Resolved by [refreshAdmin] via the existing signed /admin/recon probe. Used
+  /// to surface admin-only, not-yet-launched surfaces (e.g. the Marketplace) to
+  /// the operator without exposing them to ordinary testers. Per-account: it is
+  /// re-resolved on every config refresh, so an account switch on a shared phone
+  /// re-checks against the newly active token.
+  static bool _isAdmin = false;
+  static bool get isAdmin => _isAdmin;
 
   static bool _b(String k, bool dflt) => _cfg[k] is bool ? _cfg[k] as bool : dflt;
 
@@ -138,6 +148,15 @@ class RemoteConfig {
   /// fetch failure and during phased rollout — flip `marketplaceEnabled: true`
   /// in KV `platform_config` to surface the Marketplace menu + agent calls.
   static bool get marketplaceEnabled => _b('marketplaceEnabled', false);
+
+  /// Effective Marketplace visibility for the CURRENT account. The global
+  /// `marketplaceEnabled` KV flag stays false during the phased/pro launch, so
+  /// ordinary testers never see the Marketplace. Admins (see [isAdmin]) get it
+  /// regardless, so the operator can dogfood + fix it in production while it
+  /// stays hidden for everyone else. Toggle it per-tester by adding/removing
+  /// their uid from the server ADMIN_UIDS var; flip `marketplaceEnabled: true`
+  /// in KV `platform_config` for the eventual full launch to all users.
+  static bool get marketplaceVisible => marketplaceEnabled || _isAdmin;
   /// Link previews + inline YouTube (AI Messenger Batch — STREAM C). Mirrors the
   /// KV `linkPreviewsEnabled` flag. Default ON. When false the chat renders raw
   /// link text only and never calls /api/unfurl. Mirrors [kLinkPreviewsEnabledDefault].
@@ -166,8 +185,27 @@ class RemoteConfig {
   /// Fetch now + poll every 15 min. Never throws.
   static Future<void> start() async {
     await refresh();
+    // Resolve admin status alongside config so admin-only surfaces (Marketplace)
+    // appear on this launch. Fire-and-forget: never blocks app start.
+    unawaited(refreshAdmin());
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(minutes: 15), (_) => refresh());
+    _timer = Timer.periodic(const Duration(minutes: 15), (_) {
+      refresh();
+      refreshAdmin();
+    });
+  }
+
+  /// Probe whether the active account is an admin (signed /admin/recon → 200).
+  /// Bumps [revision] on change so drawers/menus re-evaluate [marketplaceVisible].
+  /// Never throws. Call again after an account switch to re-resolve.
+  static Future<void> refreshAdmin() async {
+    try {
+      final was = _isAdmin;
+      _isAdmin = await MoneyApi.isAdmin();
+      if (_isAdmin != was) revision.value++;
+    } catch (e) {
+      AvaLog.I.log('config', 'admin probe failed: $e');
+    }
   }
 
   static Future<void> refresh() async {

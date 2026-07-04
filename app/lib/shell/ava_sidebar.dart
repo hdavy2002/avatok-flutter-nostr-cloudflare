@@ -227,11 +227,13 @@ class _AvaSidebarState extends State<AvaSidebar> {
               _special('invite', 'Contacts', 'Find & manage people',
                   PhosphorIcons.addressBook(PhosphorIconsStyle.bold), Zine.coral),
               // AvaMarketplace — expandable group with its sub-pages (Browse,
-              // Create listing, My listings, Archived). STAGING-ONLY for the
-              // pro/live launch (owner decision 2026-07-01): the whole section +
-              // its submenus show only when RemoteConfig.marketplaceEnabled is
-              // true. Prod KV keeps it false (hidden); staging KV sets it true.
-              if (RemoteConfig.marketplaceEnabled) _marketplaceSection(),
+              // Create listing, My listings, Archived). ADMIN-ONLY during the
+              // pro/live launch (owner decision 2026-07-04): the whole section +
+              // its submenus show only when RemoteConfig.marketplaceVisible is
+              // true — i.e. the global `marketplaceEnabled` KV flag (kept false
+              // in prod) OR the signed-in account is an admin (uid ∈ ADMIN_UIDS).
+              // So the operator dogfoods it in prod while testers never see it.
+              if (RemoteConfig.marketplaceVisible) _marketplaceSection(),
               // Team — AI receptionist + staff routing. HIDDEN from the sidebar
               // (owner decision 2026-06-28). Re-enable by un-commenting this row.
               // _special('team', 'Team', 'AI receptionist & staff',
