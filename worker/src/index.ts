@@ -31,7 +31,7 @@ import { olxCreate, olxBrowse, olxGet, olxUpdate, olxDelete, olxUploadFile, olxB
 import { listPersonas, upsertPersona, converse, getInbox, getInboxItem, approveInbox, agentTask } from "./routes/agent";
 import { agentTts, agentAudio } from "./routes/agent_tts";
 import { listNotifications, unreadCount, markRead } from "./routes/notifications";
-import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
+import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
 import { getConfig, putConfig } from "./routes/config";
@@ -283,6 +283,9 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/msg/react" && req.method === "POST") return await reactMsg(req, env);
       // Phase 5 (ABLY-R2-5): owner-private state from D1 (read/hidden/call-log).
       if (p === "/api/msg/state" && req.method === "GET") return await stateMsg(req, env);
+      // 2026-07-04: server-persisted poll votes (survive reinstall/backup).
+      if (p === "/api/poll/vote" && req.method === "POST") return await pollVote(req, env);
+      if (p === "/api/poll/state" && req.method === "GET") return await pollState(req, env);
       // Call-log multi-device sync (owner's own InboxDO; delete/clear wake asleep devices).
       if (p === "/api/call-log/append" && req.method === "POST") return await callLogAppend(req, env);
       if (p === "/api/call-log/delete" && req.method === "POST") return await callLogDelete(req, env);

@@ -636,6 +636,108 @@ export async function reactMsg(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// ---- POST /api/poll/vote ----------------------------------------------------
+// 2026-07-04: server-persisted poll votes. The poll DEFINITION rides the chat
+// message envelope (t:'poll'); ONLY the votes are stored (poll_votes in DB_META)
+// so tallies survive reinstall / phone transfer + the standard backup. Mirrors
+// reactMsg (auth + membership + analytics) and the sendMsg fan-out (append a
+// {t:'vote'} control envelope to EVERY member's InboxDO so live devices update).
+//
+// Body: { poll_id, conv, options:[int], multi?:bool, target? }
+//   options = the voter's FULL current selection (0-based indices). Empty ⇒ the
+//   voter un-voted entirely. The server replaces the voter's rows atomically, so
+//   single-choice change and multi-select add/remove are one idempotent call.
+export async function pollVote(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const pollId = String(b.poll_id || "");
+  const conv = String(b.conv || "");
+  const multi = b.multi === true;
+  const raw = Array.isArray(b.options) ? b.options : [];
+  if (!pollId || !conv) return json({ error: "poll_id, conv required" }, 400);
+  const mem = await members(env, conv);
+  if (!mem.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+
+  // Sanitise: unique non-negative ints; single-choice keeps at most one.
+  let opts = Array.from(new Set(raw.map((x: any) => Number(x)).filter((n: number) => Number.isInteger(n) && n >= 0 && n < 10)));
+  if (!multi && opts.length > 1) opts = [opts[0]];
+  const now = Date.now();
+
+  // Atomic replace: drop this voter's rows for the poll, then re-insert their
+  // current selection. One row per chosen option (0 rows ⇒ un-voted).
+  const stmts: any[] = [
+    env.DB_META.prepare("DELETE FROM poll_votes WHERE poll_id=?1 AND voter_uid=?2").bind(pollId, ctx.uid),
+  ];
+  for (const idx of opts) {
+    stmts.push(env.DB_META.prepare(
+      "INSERT OR REPLACE INTO poll_votes (poll_id, conv, option_idx, voter_uid, created_at) VALUES (?1,?2,?3,?4,?5)",
+    ).bind(pollId, conv, idx, ctx.uid, now));
+  }
+  try { await env.DB_META.batch(stmts); } catch (e) { return json({ error: "db" }, 500); }
+
+  // Live fan-out — append a {t:'vote'} control envelope to every member's InboxDO
+  // (same delivery lane as a message; offline members get it on next sync). The
+  // client's existing incoming-vote handler re-hydrates the changed poll.
+  const payload = { t: "vote", poll: pollId, conv, voter: ctx.uid, options: opts, multi, ts: now, fromName: "" };
+  await Promise.all(mem.map(async (m) => {
+    try { await appendTo(env, m, payload); } catch { /* best-effort; state endpoint is the source of truth */ }
+  }));
+
+  try {
+    void env.Q_ANALYTICS.send({ event: "poll_vote", uid: ctx.uid, ts: now,
+      props: { conv, poll_id: pollId, options: opts.length, cleared: opts.length === 0,
+        group: mem.length > 2, multi, account_id: ctx.uid,
+        app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
+
+  // Return the fresh tally for this poll so the voter's device is authoritative.
+  const tally = await pollTallyFor(env, [pollId]);
+  return json({ ok: true, poll: tally[pollId] || { counts: {}, voters: {} } });
+}
+
+// ---- GET /api/poll/state?conv=<id> ------------------------------------------
+// 2026-07-04: batch-hydrate every poll's tally for a conversation on thread open
+// so reinstalled / new devices show correct counts + who-voted. Mirrors the
+// GET /api/msg/state batch-by-conv pattern.
+//   → { polls: { <poll_id>: { counts: { <idx>: n }, voters: { <idx>: [uid,…] } } } }
+export async function pollState(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const conv = new URL(req.url).searchParams.get("conv") || "";
+  if (!conv) return json({ error: "conv required" }, 400);
+  const mem = await members(env, conv);
+  if (!mem.includes(ctx.uid)) return json({ error: "not a member" }, 403);
+  const rows = await env.DB_META
+    .prepare("SELECT poll_id, option_idx, voter_uid FROM poll_votes WHERE conv=?1")
+    .bind(conv).all<{ poll_id: string; option_idx: number; voter_uid: string }>();
+  const polls: Record<string, { counts: Record<string, number>; voters: Record<string, string[]> }> = {};
+  for (const r of (rows.results || [])) {
+    const p = polls[r.poll_id] || (polls[r.poll_id] = { counts: {}, voters: {} });
+    const k = String(r.option_idx);
+    p.counts[k] = (p.counts[k] || 0) + 1;
+    (p.voters[k] || (p.voters[k] = [])).push(r.voter_uid);
+  }
+  return json({ polls });
+}
+
+// Aggregate the votes for a set of poll ids into { counts, voters } per poll.
+async function pollTallyFor(env: Env, pollIds: string[]): Promise<Record<string, { counts: Record<string, number>; voters: Record<string, string[]> }>> {
+  const out: Record<string, { counts: Record<string, number>; voters: Record<string, string[]> }> = {};
+  if (pollIds.length === 0) return out;
+  const placeholders = pollIds.map((_, i) => `?${i + 1}`).join(",");
+  const rows = await env.DB_META
+    .prepare(`SELECT poll_id, option_idx, voter_uid FROM poll_votes WHERE poll_id IN (${placeholders})`)
+    .bind(...pollIds).all<{ poll_id: string; option_idx: number; voter_uid: string }>();
+  for (const r of (rows.results || [])) {
+    const p = out[r.poll_id] || (out[r.poll_id] = { counts: {}, voters: {} });
+    const k = String(r.option_idx);
+    p.counts[k] = (p.counts[k] || 0) + 1;
+    (p.voters[k] || (p.voters[k] = [])).push(r.voter_uid);
+  }
+  return out;
+}
+
 // ---- GET /api/msg/sync?cursor=N ---------------------------------------------
 export async function syncMsg(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);

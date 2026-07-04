@@ -147,6 +147,10 @@ const String kMsgArchiveUrl = 'https://$kSignalingHost/api/msg/archive';
 const String kArchivePageUrl = 'https://$kSignalingHost/api/archive/page';
 // Phase 4 (ABLY-R2): persist a per-message reaction toggle (live ride is Ably).
 const String kMsgReactUrl = 'https://$kSignalingHost/api/msg/react';
+// 2026-07-04: server-persisted poll votes (survive reinstall/phone transfer +
+// ride the standard backup). vote = POST, state = batch-hydrate by conv on open.
+const String kPollVoteUrl = 'https://$kSignalingHost/api/poll/vote';
+const String kPollStateUrl = 'https://$kSignalingHost/api/poll/state';
 const String kConversationsUrl = 'https://$kSignalingHost/api/conversations';
 // STREAM C: link-preview unfurl (sender-side, compose time). GET ?url=<encoded>
 // → {type:'link'|'youtube', title, description, image, domain, video_id, thumb}.

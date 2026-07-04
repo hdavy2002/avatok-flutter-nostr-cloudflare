@@ -146,7 +146,11 @@ class _Msg {
   String? special; // 'loc' | 'card' | 'poll' | 'sticker'
   Map<String, dynamic>? extra;
   bool aiLocal; // a PRIVATE @ava question — local-only, never sent to the peer (no delivery ticks)
-  Map<int, int> pollVotes = {}; // option index → count (local tally)
+  // Poll tallies (2026-07-04) — server-persisted (survive reinstall). Hydrated
+  // from GET /api/poll/state on open and kept live via {t:'vote'} envelopes.
+  Map<int, int> pollVotes = {}; // option index → vote count (server-authoritative)
+  Map<int, Set<String>> pollBy = {}; // option index → set of voter uids (who-voted)
+  Set<int> pollMine = {}; // option indices I currently voted for (drives highlight)
   _Msg(this.id, this.me, this.text, this.time,
       {this.ts = 0, this.evId, this.senderLabel, this.reaction, this.media, this.mediaCaption = '', this.localBytes,
        this.uploading = false, this.failed = false, this.sent = false, this.replyTo, this.edited = false,
@@ -647,6 +651,51 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       // live reactions / messages (keyed by uid) — Phase 5.
       if (mounted) setState(() => _memberNames.addAll(names));
     }
+    // 2026-07-04: hydrate server-persisted poll tallies for this conversation so
+    // a reinstalled / new device shows correct counts + my selection + who-voted.
+    unawaited(_hydratePolls());
+  }
+
+  /// Batch-fetch every poll's tally for THIS conversation from the server and
+  /// merge it into the loaded poll bubbles. Runs on open (after cache load) and
+  /// again when a new poll bubble arrives. Server is the source of truth — this
+  /// replaces the local tally rather than adding to it, so reinstalled devices
+  /// converge to the real counts. Best-effort; a failure leaves live-only tallies.
+  Future<void> _hydratePolls() async {
+    final conv = _serverConvId;
+    if (conv == null) return;
+    try {
+      final res = await ApiAuth.getSigned('$kPollStateUrl?conv=${Uri.encodeComponent(conv)}');
+      if (res.statusCode != 200 || !mounted) return;
+      final polls = (jsonDecode(res.body)['polls'] as Map?) ?? const {};
+      if (polls.isEmpty) return;
+      final myUid = _meId?.uid ?? '';
+      setState(() {
+        for (final m in _msgs) {
+          if (m.special != 'poll') continue;
+          final id = m.extra?['id']?.toString();
+          if (id == null) continue;
+          final p = polls[id];
+          if (p is! Map) continue;
+          final counts = (p['counts'] as Map?) ?? const {};
+          final voters = (p['voters'] as Map?) ?? const {};
+          m.pollVotes = {};
+          m.pollBy = {};
+          m.pollMine = {};
+          counts.forEach((k, v) {
+            final idx = int.tryParse(k.toString());
+            if (idx != null) m.pollVotes[idx] = (v as num).toInt();
+          });
+          voters.forEach((k, v) {
+            final idx = int.tryParse(k.toString());
+            if (idx == null || v is! List) return;
+            final set = v.map((e) => e.toString()).toSet();
+            m.pollBy[idx] = set;
+            if (myUid.isNotEmpty && set.contains(myUid)) m.pollMine.add(idx);
+          });
+        }
+      });
+    } catch (_) { /* best-effort; live-only tallies remain */ }
   }
 
   Future<void> _setupGroup(Identity id) async {
@@ -875,10 +924,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['t'] == 'gedit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
-      if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
+      if (env is Map && env['t'] == 'vote') { _applyVote(env); return; }
       if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
+        // A poll bubble just arrived — pull its server tally so late joiners /
+        // reinstalled devices see any votes already cast (best-effort).
+        if (special == 'poll') unawaited(_hydratePolls());
       } else if (env is Map && env['t'] == 'gmedia') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
@@ -1027,10 +1079,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (env is Map && env['t'] == 'edit') { _applyEdit(env['target'].toString(), (env['body'] ?? '').toString()); return; }
       if (env is Map && (env['t'] == 'del' || env['t'] == 'gdel')) { if (!m.mine) _applyDelete(env['target'].toString()); return; }
       if (env is Map && env['t'] == 'hide') { _applyHide(env['target'].toString(), env['hidden'] == true); return; }
-      if (env is Map && env['t'] == 'vote') { _applyVote(env['poll'].toString(), (env['opt'] as num).toInt()); return; }
+      if (env is Map && env['t'] == 'vote') { _applyVote(env); return; }
       if (env is Map && const ['loc', 'live', 'card', 'poll', 'sticker', 'gcall', 'ava', 'ava_private', 'ava_status', 'recept', 'marketplace_deal'].contains(env['t'])) {
         special = env['t'].toString(); extra = env.cast<String, dynamic>();
         text = _specialCaption(special!, extra!);
+        // A poll bubble just arrived — pull its server tally so late joiners /
+        // reinstalled devices see any votes already cast (best-effort).
+        if (special == 'poll') unawaited(_hydratePolls());
       } else if (env is Map && env['t'] == 'media') {
         media = ChatMedia.fromEnvelope(env.cast<String, dynamic>());
         text = _caption(media.kind, media.name);
@@ -1175,6 +1230,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
     _jump();
+    // If any cached poll bubbles were restored, pull their server tallies so a
+    // reinstalled device shows real counts + my selection (survives reinstall).
+    if (loaded.any((m) => m.special == 'poll')) unawaited(_hydratePolls());
   }
 
   void _schedulePersist() {
@@ -2244,19 +2302,90 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _notifyRecipients();
   }
 
-  void _applyVote(String pollId, int opt) {
+  // Incoming {t:'vote'} envelope (server fan-out or a peer's device). It carries
+  // the voter's FULL current selection (`options`), so we REPLACE that voter's
+  // rows in the local tally — idempotent for un-vote (empty options) and vote
+  // change alike. Legacy single-`opt` envelopes are treated as a one-option add.
+  void _applyVote(Map env) {
+    final pollId = (env['poll'] ?? '').toString();
     final i = _msgs.indexWhere((x) => x.special == 'poll' && x.extra?['id'] == pollId);
-    if (i >= 0 && mounted) setState(() => _msgs[i].pollVotes[opt] = (_msgs[i].pollVotes[opt] ?? 0) + 1);
+    if (i < 0 || !mounted) return;
+    final voter = (env['voter'] ?? '').toString();
+    List<int> opts;
+    if (env['options'] is List) {
+      opts = (env['options'] as List).map((e) => (e as num).toInt()).toList();
+    } else if (env['opt'] != null) {
+      opts = [(env['opt'] as num).toInt()];
+    } else {
+      opts = const [];
+    }
+    setState(() {
+      final m = _msgs[i];
+      if (voter.isEmpty) {
+        // Legacy anonymous vote (no voter id) — best-effort increment only.
+        for (final o in opts) m.pollVotes[o] = (m.pollVotes[o] ?? 0) + 1;
+        return;
+      }
+      // Remove this voter from every option, then re-add their current selection.
+      for (final entry in m.pollBy.entries.toList()) {
+        if (entry.value.remove(voter)) {
+          m.pollVotes[entry.key] = ((m.pollVotes[entry.key] ?? 1) - 1).clamp(0, 1 << 30);
+        }
+      }
+      final myUid = _meId?.uid ?? '';
+      if (voter == myUid) m.pollMine = opts.toSet();
+      for (final o in opts) {
+        m.pollBy.putIfAbsent(o, () => <String>{}).add(voter);
+        m.pollVotes[o] = (m.pollVotes[o] ?? 0) + 1;
+      }
+    });
   }
 
+  // Toggle my vote for an option and persist it server-side (survives reinstall).
+  // Single-choice: tapping a new option replaces my vote; tapping my current one
+  // un-votes. Multi-select: each tap toggles that option independently. The POST
+  // sends my FULL selection; the server replaces my rows + fans out {t:'vote'} to
+  // every member's InboxDO for live updates.
   void _vote(_Msg poll, int opt) {
     final pollId = poll.extra?['id']?.toString() ?? '';
-    setState(() => poll.pollVotes[opt] = (poll.pollVotes[opt] ?? 0) + 1);
-    final payload = {'t': 'vote', 'poll': pollId, 'opt': opt, if (_isGroup) 'gid': _group!.id};
-    if (_isGroup && _gdm != null) {
-      _gdm!.send(jsonEncode(payload));
-    } else if (_realMode && _dm != null) {
-      _dm!.send(jsonEncode(payload));
+    if (pollId.isEmpty) return;
+    final multi = poll.extra?['multi'] == true;
+    final mine = Set<int>.from(poll.pollMine);
+    final myUid = _meId?.uid ?? '';
+    if (multi) {
+      if (!mine.remove(opt)) mine.add(opt);
+    } else {
+      if (mine.contains(opt)) { mine.clear(); } else { mine.clear(); mine.add(opt); }
+    }
+    // Optimistic local update (server fan-out will re-affirm).
+    setState(() {
+      if (myUid.isNotEmpty) {
+        for (final entry in poll.pollBy.entries.toList()) {
+          if (entry.value.remove(myUid)) {
+            poll.pollVotes[entry.key] = ((poll.pollVotes[entry.key] ?? 1) - 1).clamp(0, 1 << 30);
+          }
+        }
+        for (final o in mine) {
+          poll.pollBy.putIfAbsent(o, () => <String>{}).add(myUid);
+          poll.pollVotes[o] = (poll.pollVotes[o] ?? 0) + 1;
+        }
+      }
+      poll.pollMine = mine;
+    });
+    HapticFeedback.selectionClick();
+    Analytics.capture('poll_vote', {'options': mine.length, 'cleared': mine.isEmpty, 'multi': multi, 'group': _isGroup});
+    final conv = _serverConvId;
+    if (conv != null) {
+      // Durable, server-persisted vote + fan-out (the source of truth).
+      ApiAuth.postJson(kPollVoteUrl, {
+        'poll_id': pollId, 'conv': conv, 'options': mine.toList(), 'multi': multi,
+      }).then((_) {}, onError: (_) {});
+    } else {
+      // No server conv (rare) — fall back to the legacy live-only envelope so a
+      // 1:1/group device still sees the tick immediately.
+      final payload = {'t': 'vote', 'poll': pollId, 'voter': myUid, 'options': mine.toList(), 'multi': multi, if (_isGroup) 'gid': _group!.id};
+      if (_isGroup && _gdm != null) { _gdm!.send(jsonEncode(payload)); }
+      else if (_realMode && _dm != null) { _dm!.send(jsonEncode(payload)); }
     }
   }
 
@@ -2487,26 +2616,95 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         ]))));
   }
 
+  // Create Poll sheet (zine style): question + 2–10 options + a multi-select
+  // toggle. The poll DEFINITION rides the message envelope (t:'poll'); votes are
+  // persisted server-side (see _vote → /api/poll/vote).
   Future<void> _createPoll() async {
     final q = TextEditingController();
-    final opts = [TextEditingController(), TextEditingController(), TextEditingController()];
-    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Create poll'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: q, decoration: const InputDecoration(hintText: 'Question')),
-        const SizedBox(height: 8),
-        for (var i = 0; i < opts.length; i++)
-          TextField(controller: opts[i], decoration: InputDecoration(hintText: 'Option ${i + 1}')),
-      ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create')),
-      ],
-    ));
+    final opts = <TextEditingController>[TextEditingController(), TextEditingController()];
+    var multi = false;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(PhosphorIcons.chartBar(PhosphorIconsStyle.bold), size: 20, color: Zine.ink),
+              const SizedBox(width: 8),
+              Text('Create poll', style: ZineText.value(size: 16)),
+            ]),
+            const SizedBox(height: 14),
+            TextField(controller: q, autofocus: true, textCapitalization: TextCapitalization.sentences,
+              style: ZineText.value(size: 15),
+              decoration: InputDecoration(hintText: 'Ask a question…',
+                hintStyle: ZineText.sub(size: 15, color: Zine.inkSoft),
+                filled: true, fillColor: Zine.card,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Zine.ink, width: 2)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Zine.ink, width: 2)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Zine.ink, width: 2)))),
+            const SizedBox(height: 12),
+            ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: ListView(shrinkWrap: true, children: [
+              for (var i = 0; i < opts.length; i++)
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
+                  Expanded(child: TextField(controller: opts[i], textCapitalization: TextCapitalization.sentences,
+                    style: ZineText.value(size: 14),
+                    decoration: InputDecoration(hintText: 'Option ${i + 1}',
+                      hintStyle: ZineText.sub(size: 14, color: Zine.inkSoft),
+                      isDense: true, filled: true, fillColor: Zine.card,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Zine.ink, width: 2)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Zine.ink, width: 2)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Zine.ink, width: 2))))),
+                  if (opts.length > 2)
+                    IconButton(
+                      icon: Icon(PhosphorIcons.minusCircle(PhosphorIconsStyle.bold), size: 20, color: Zine.inkSoft),
+                      onPressed: () => setSheet(() { opts.removeAt(i).dispose(); }),
+                    ),
+                ])),
+            ])),
+            if (opts.length < 10)
+              TextButton.icon(
+                onPressed: () => setSheet(() => opts.add(TextEditingController())),
+                icon: Icon(PhosphorIcons.plusCircle(PhosphorIconsStyle.bold), size: 18, color: Zine.ink),
+                label: Text('Add option', style: ZineText.tag(size: 12, color: Zine.ink)),
+              ),
+            const SizedBox(height: 4),
+            InkWell(
+              onTap: () => setSheet(() => multi = !multi),
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Icon(multi ? PhosphorIcons.checkSquare(PhosphorIconsStyle.fill) : PhosphorIcons.square(PhosphorIconsStyle.bold),
+                      size: 22, color: multi ? Zine.accents[1] : Zine.inkSoft),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('Allow multiple answers', style: ZineText.value(size: 14))),
+                ])),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Zine.ink, foregroundColor: Zine.paper,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text('Create poll', style: ZineText.tag(size: 13, color: Zine.paper))),
+            )),
+          ]),
+        )),
+      )),
+    );
     if (ok != true) return;
     final options = opts.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList();
-    if (q.text.trim().isEmpty || options.length < 2) return;
-    _sendSpecial('poll', {'id': const Uuid().v4(), 'q': q.text.trim(), 'options': options}, '📊 ${q.text.trim()}');
+    if (q.text.trim().isEmpty || options.length < 2) {
+      if (mounted) _toast('A poll needs a question and at least 2 options.');
+      return;
+    }
+    Analytics.capture('poll_create', {'options': options.length, 'multi': multi, 'group': _isGroup});
+    _sendSpecial('poll',
+      {'id': const Uuid().v4(), 'q': q.text.trim(), 'options': options, 'multi': multi},
+      '📊 ${q.text.trim()}');
   }
 
   void _stickerPicker() {
@@ -2600,23 +2798,64 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         );
       case 'poll':
         final options = (e['options'] as List?)?.map((x) => x.toString()).toList() ?? [];
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text((e['q'] ?? 'Poll').toString(), style: ZineText.value(size: 14)),
-          const SizedBox(height: 6),
-          for (var i = 0; i < options.length; i++)
-            GestureDetector(onTap: () => _vote(m, i), child: Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                  color: Zine.card,
-                  border: Border.all(color: Zine.ink, width: 2),
-                  borderRadius: BorderRadius.circular(10)),
-              child: Row(children: [
-                Expanded(child: Text(options[i], style: ZineText.sub(size: 13, color: fg))),
-                Text('${m.pollVotes[i] ?? 0}', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
-              ]),
-            )),
-        ]);
+        final multi = e['multi'] == true;
+        // Total votes = distinct voters across options (a multi voter counts once
+        // toward the "N votes" label). Percentage bars use per-option share of the
+        // largest single-option count so bars stay comparable in multi polls.
+        final voters = <String>{};
+        for (final s in m.pollBy.values) voters.addAll(s);
+        final totalVoters = voters.isNotEmpty ? voters.length : m.pollVotes.values.fold<int>(0, (a, b) => a + b);
+        return ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 200),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text((e['q'] ?? 'Poll').toString(), style: ZineText.value(size: 14)),
+            if (multi) Padding(padding: const EdgeInsets.only(top: 2),
+              child: Text('Select one or more', style: ZineText.tag(size: 10, color: Zine.inkSoft))),
+            const SizedBox(height: 8),
+            for (var i = 0; i < options.length; i++)
+              Builder(builder: (_) {
+                final count = m.pollVotes[i] ?? 0;
+                final maxCount = m.pollVotes.values.fold<int>(0, (a, b) => a > b ? a : b);
+                final frac = maxCount > 0 ? count / maxCount : 0.0;
+                final mine = m.pollMine.contains(i);
+                final pct = totalVoters > 0 ? (count * 100 / totalVoters).round() : 0;
+                return GestureDetector(
+                  onTap: () => _vote(m, i),
+                  onLongPress: (_isGroup && (m.pollBy[i]?.isNotEmpty ?? false)) ? () => _showPollVoters(options[i], m.pollBy[i]!) : null,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    decoration: BoxDecoration(
+                        border: Border.all(color: mine ? Zine.accents[1] : Zine.ink, width: 2),
+                        borderRadius: BorderRadius.circular(10)),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Stack(children: [
+                        // Percentage bar fill.
+                        Positioned.fill(child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft, widthFactor: frac.clamp(0.0, 1.0),
+                          child: Container(color: (mine ? Zine.accents[1] : Zine.ink).withValues(alpha: 0.14)))),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          child: Row(children: [
+                            if (mine) Padding(padding: const EdgeInsets.only(right: 6),
+                              child: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 15, color: Zine.accents[1])),
+                            Expanded(child: Text(options[i],
+                              style: ZineText.sub(size: 13, color: fg).copyWith(fontWeight: mine ? FontWeight.w700 : FontWeight.w500))),
+                            Text('$pct%', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                          ]),
+                        ),
+                      ]),
+                    ),
+                  ),
+                );
+              }),
+            Padding(padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                totalVoters == 0 ? 'Tap to vote' : '$totalVoters ${totalVoters == 1 ? 'vote' : 'votes'}'
+                    '${m.pollMine.isNotEmpty ? ' · tap again to change' : ''}',
+                style: ZineText.tag(size: 10, color: Zine.inkSoft))),
+          ]),
+        );
       case 'marketplace_deal':
         return _MarketplaceDealCard(extra: e);
       case 'recept':
@@ -4311,6 +4550,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 leading: Text(e.key, style: const TextStyle(fontSize: 22)),
                 title: Text(_reactorName(uid), style: ZineText.value(size: 14, color: Zine.ink)),
               ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+  }
+
+  // "Who voted" for a poll option (group threads) — long-press an option.
+  void _showPollVoters(String option, Set<String> uids) {
+    if (uids.isEmpty) return;
+    Analytics.capture('poll_voters_view', {'count': uids.length});
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Align(alignment: Alignment.centerLeft,
+                child: Text('Voted "$option"', style: ZineText.value(size: 15))),
+          ),
+          ConstrainedBox(constraints: const BoxConstraints(maxHeight: 360), child: ListView(shrinkWrap: true, children: [
+            for (final uid in uids)
+              ListTile(
+                dense: true,
+                leading: Icon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill), size: 20, color: Zine.accents[1]),
+                title: Text(_reactorName(uid), style: ZineText.value(size: 14, color: Zine.ink)),
+              ),
+          ])),
           const SizedBox(height: 6),
         ]),
       ),
