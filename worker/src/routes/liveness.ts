@@ -32,7 +32,8 @@ import { json } from "../util";
 import { setVerifiedCache } from "../auth";
 import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
-import { track, metric, brainFact } from "../hooks";
+import { trackUser, metric, brainFact } from "../hooks";
+import { emailFor } from "../lib/identity";
 import { notifyUser } from "../notify";
 import { invalidateLevelCache } from "./ladder";
 import { recordLivenessAudit, auditPrefix, deviceCtxFromBody } from "./liveness_audit";
@@ -141,9 +142,18 @@ export async function livenessStart(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   if (!(await workersAiEnabled(env))) {
+    // [LIVENESS-TEL-1] Server-side telemetry for start failures — the 2026-07-04
+    // flag_off outage was invisible in PostHog except via client api_error events.
+    // Email-stamped so support can pull incidents by email.
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+      "liveness_start_blocked", "avaid", { reason: "flag_off", status: 503, provider: "workersai" });
+    metric(env, "liveness_start_blocked", [1], ["flag_off"]);
     return json({ error: "workers-ai liveness disabled", reason: "flag_off" }, 503);
   }
   if (await attemptsLast24h(env, ctx.uid) >= MAX_ATTEMPTS_24H) {
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+      "liveness_start_blocked", "avaid", { reason: "rate_limited", status: 429, provider: "workersai" });
+    metric(env, "liveness_start_blocked", [1], ["rate_limited"]);
     return json({ error: "too many attempts", retry_after_hours: 24 }, 429);
   }
 
@@ -165,7 +175,8 @@ export async function livenessStart(req: Request, env: Env): Promise<Response> {
     ).bind(ctx.uid, sid, now),
   ]);
 
-  track(env, ctx.uid, "liveness_session_started", "avaid", { provider: "workersai" });
+  void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+    "liveness_session_started", "avaid", { provider: "workersai", session_id: sid });
   metric(env, "liveness_wai_session", [1]);
   // The challenge is only revealed now — recording starts immediately, so a
   // pre-prepared clip can't match the random actions + phrase.
@@ -195,7 +206,13 @@ export async function livenessUpload(req: Request, env: Env): Promise<Response> 
     return json({ error: "bad part" }, 400);
   }
   const ch = await env.TOKENS.get(`liveness:ch:${ctx.uid}:${sid}`);
-  if (!ch) return json({ error: "session expired" }, 410);
+  if (!ch) {
+    // [LIVENESS-TEL-1] upload against a dead session — usually a client that sat
+    // on the challenge past CHALLENGE_TTL_S, or an app restart mid-flow.
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+      "liveness_upload_rejected", "avaid", { reason: "session_expired", status: 410, part, session_id: sid });
+    return json({ error: "session expired" }, 410);
+  }
 
   // LIVE-V2 P3: enforce the ≤8 image-parts cap. Only counts NEW image keys — an
   // overwrite of an already-uploaded part does not add to the total.
@@ -278,7 +295,14 @@ export async function livenessVerify(req: Request, env: Env, ctx?: ExecutionCont
   const b = (await req.json().catch(() => ({}))) as { session_id?: string };
   const sid = String(b.session_id || "");
   const chRaw = await env.TOKENS.get(`liveness:ch:${auth.uid}:${sid}`);
-  if (!chRaw) return json({ error: "session expired — start again" }, 410);
+  if (!chRaw) {
+    // [LIVENESS-TEL-1] verify against a dead session — challenge TTL elapsed
+    // between recording and submit (slow upload, backgrounded app, retry loop).
+    void trackUser(env, auth.uid, await emailFor(env, auth.uid).catch(() => null),
+      "liveness_verify_rejected", "avaid", { reason: "session_expired", status: 410, session_id: sid });
+    metric(env, "liveness_verify_rejected", [1], ["session_expired"]);
+    return json({ error: "session expired — start again" }, 410);
+  }
 
   // Idempotency: if this session was already verified, return the stored outcome
   // as done (a client double-tap / re-poll must not re-run LLaVA or re-charge).
@@ -308,8 +332,16 @@ export async function livenessVerify(req: Request, env: Env, ctx?: ExecutionCont
   }
 
   // Kick off the real checks in the background; the client polls /result.
-  const work = runLivenessChecks(env, auth.uid, sid, req).catch((e) => {
+  // [LIVENESS-TEL-1] accepted marker + a crash marker on the background job:
+  // if the pipeline throws, the client polls until its 90s cap with NO stored
+  // result — this event is the only server-side breadcrumb for that hang.
+  void trackUser(env, auth.uid, await emailFor(env, auth.uid).catch(() => null),
+    "liveness_verify_accepted", "avaid", { session_id: sid, image_parts: imageParts.length });
+  const work = runLivenessChecks(env, auth.uid, sid, req).catch(async (e) => {
     console.error("[liveness] background verify failed:", String(e));
+    void trackUser(env, auth.uid, await emailFor(env, auth.uid).catch(() => null),
+      "liveness_verify_error", "avaid", { session_id: sid, error: String(e).slice(0, 300) });
+    metric(env, "liveness_verify_error", [1]);
   });
   if (ctx) ctx.waitUntil(work); else await work; // no ctx in tests → run inline
   return json({ status: "pending", session_id: sid }, 202);
@@ -386,9 +418,12 @@ export async function runLivenessChecks(
     };
     await env.TOKENS.put(resultKey(ctx.uid, sid), JSON.stringify(result), { expirationTtl: RESULT_TTL_S }).catch(() => {});
     const failed = checksArr.filter((c) => !c.pass).map((c) => c.id);
-    track(env, ctx.uid, "liveness_verify_result", "avaid", {
+    // [LIVENESS-TEL-1] email-stamped so support can pull outcomes by email.
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+      "liveness_verify_result", "avaid", {
       pass: opts.verified,
       failed_checks: failed,
+      session_id: sid,
       duration_ms: Date.now() - startedAt,
       provider: VERIFY_PROVIDER,
       llava_calls: opts.telemetry?.llava_calls ?? 0,
@@ -606,7 +641,8 @@ export async function runLivenessChecks(
     await metaDb(env).prepare(
       "UPDATE verification_status SET status='rejected', failure_reason=?2, updated_at=?3 WHERE uid=?1",
     ).bind(ctx.uid, JSON.stringify(failMap), now).run();
-    track(env, ctx.uid, "liveness_failed", "avaid", { provider: "workersai", checks: failMap });
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+      "liveness_failed", "avaid", { provider: "workersai", checks: failMap, session_id: sid });
     metric(env, "liveness_wai_failed", [1]);
     return finalize(checks, { verified: false, telemetry: { llava_calls: budget.calls, rekognition_used: rekognitionUsed } });
   }
@@ -644,7 +680,8 @@ export async function runLivenessChecks(
   await invalidateLevelCache(env, ctx.uid);
 
   brainFact(env, ctx.uid, "identity_verified", "avaid", { method: kycProvider, at: now });
-  track(env, ctx.uid, "id_verified", "avaid", { provider: kycProvider });
+  void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+    "id_verified", "avaid", { provider: kycProvider, session_id: sid });
   metric(env, "liveness_wai_verified", [1]);
   try {
     await notifyUser(env, ctx.uid, {
