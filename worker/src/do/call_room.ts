@@ -1,6 +1,7 @@
 // CallRoom — 1:1 call signaling relay (WebSocket Hibernation). One instance per
 // room id. Pure coordination: relays WebRTC signaling between the two peers in a
-// room; persists nothing (per Rulebook, DOs are coordination, not storage).
+// room; persists nothing durable beyond the short-lived reconnect-grace state
+// below (per Rulebook, DOs are coordination, not storage).
 //
 // Protocol (must stay in lock-step with app/lib/features/avatok/call_screen.dart
 // and the browser test client):
@@ -14,14 +15,59 @@
 // existing peer (the client only calls createOffer() from the `welcome` handler).
 // A dumb fan-out that never sends `welcome` leaves BOTH peers waiting and no call
 // ever connects — this restores the handshake the client depends on.
+//
+// --- CALL-RC-D1: reconnect grace window (WS-D server half) -----------------
+// A WS close/error (screen off, network blip, backgrounding) no longer ends
+// the call instantly. The dropped peer is marked "away" for 30s:
+//   webSocketClose/Error → do NOT send peer-left. Persist away state, send
+//     {type:"peer-away", id} to the other peer, set a DO alarm for 30s.
+//   same peer (identified by its `id` query-param tag, matched against the
+//     room's own DO id as the callId) re-attaches within the window →
+//     cancel the pending away/alarm, send {type:"peer-rejoined", id} to the
+//     other peer, and replay any signaling messages that were buffered for
+//     the away peer while it was gone (offer/answer/candidate; cap 100,
+//     drop-oldest).
+//   alarm fires and the peer is still away → send peer-left + close the room
+//     (today's behavior, now delayed instead of removed).
+//   An explicit {type:"bye"} (hangup) still ends the call immediately for
+//     both sides — no grace, no alarm, matches existing behavior exactly.
+// Only ONE peer can be "away" at a time in a 1:1 room; the 2-peer cap and
+// the join/welcome/offer flow above are untouched.
 import type { Env } from "../types";
+
+interface AwayPeer {
+  id: string;
+  awaySince: number;
+  /** Signaling messages addressed to this peer while it was away, oldest first. */
+  buffered: string[];
+}
+
+const RECONNECT_GRACE_MS = 30_000;
+const MAX_BUFFERED_MESSAGES = 100;
 
 export class CallRoom {
   private state: DurableObjectState;
   private env: Env;
+  /** In-memory mirror of the away peer, if any. Restored lazily from storage
+   *  on first access after a DO restart/hibernation wake so a reconnect or
+   *  the alarm still resolves correctly even if the instance was evicted. */
+  private away: AwayPeer | null | undefined; // undefined = not loaded yet
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+  }
+
+  private async loadAway(): Promise<AwayPeer | null> {
+    if (this.away !== undefined) return this.away;
+    const stored = await this.state.storage.get<AwayPeer>("awayPeer");
+    this.away = stored ?? null;
+    return this.away;
+  }
+
+  private async setAway(peer: AwayPeer | null): Promise<void> {
+    this.away = peer;
+    if (peer) await this.state.storage.put("awayPeer", peer);
+    else await this.state.storage.delete("awayPeer");
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -55,10 +101,18 @@ export class CallRoom {
     const url = new URL(req.url);
     const peerId = (url.searchParams.get("id") || crypto.randomUUID()).slice(0, 64);
 
+    // CALL-RC-D1: is this the SAME peer re-attaching within its grace window?
+    // Identity = the `id` query-param tag (the only identity the client already
+    // sends and reconnects with — there is no separate auth uid on this route).
+    const away = await this.loadAway();
+    const isRejoin = !!away && away.id === peerId;
+
     // STANDARD RULE: AvaTOK calls are strictly 1:1 (P2P). Never allow a third
     // participant — there are no group calls in AvaTOK (group calling lives in
     // AvaConsult). Refuse the join with a 'busy' so the extra caller ends cleanly.
-    if (this.state.getWebSockets().length >= 2) {
+    // An away-peer rejoin doesn't count against the cap: the stale socket for
+    // that peer is already gone (webSocketClose already fired for it).
+    if (!isRejoin && this.state.getWebSockets().length >= 2) {
       const reject = new WebSocketPair();
       reject[1].accept();
       try {
@@ -73,11 +127,41 @@ export class CallRoom {
     // Hibernation: the runtime manages the socket; the peer id rides in the tag
     // so we can address messages and report joins/leaves across hibernation.
     this.state.acceptWebSocket(server, [peerId]);
+    // Keepalive: let hibernated sockets answer client pings without waking the
+    // DO (CALL-RC-D1 item 5). Same JSON ping/pong convention already used by
+    // do/inbox.ts and do/party.ts — the WS-D client half (CallSession reconnect
+    // state machine) sends jsonEncode({'type':'ping'}) every ~15s and expects
+    // {"type":"pong"} back. The manual webSocketMessage handler never sees
+    // these frames once auto-response is armed, so no extra handling needed
+    // there; unmatched/older-client frames just fall through as before.
+    try {
+      this.state.setWebSocketAutoResponse(
+        new WebSocketRequestResponsePair(
+          JSON.stringify({ type: "ping" }),
+          JSON.stringify({ type: "pong" }),
+        ),
+      );
+    } catch { /* older runtimes without auto-response: harmless no-op */ }
 
     const others = this.state.getWebSockets().filter((ws) => ws !== server);
     const otherIds = others
       .map((ws) => this.state.getTags(ws)[0])
       .filter((x) => x && x !== peerId);
+
+    if (isRejoin) {
+      // Cancel the pending alarm/away-state and tell the other peer we're back.
+      await this.setAway(null);
+      try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
+      const buffered = away!.buffered;
+      this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds });
+      for (const ws of others) this.sendTo(ws, { type: "peer-rejoined", id: peerId });
+      // Replay buffered signaling (offer/answer/candidate) addressed to the
+      // rejoined peer, oldest first, in original order.
+      for (const raw of buffered) {
+        try { server.send(raw); } catch { /* client gone again already */ }
+      }
+      return new Response(null, { status: 101, webSocket: client });
+    }
 
     // CALLFIX-R8: when the second peer joins (both peers now present), write the
     // call_answered KV flag so receptionist.ts's abort guard fires. Extract the
@@ -98,7 +182,7 @@ export class CallRoom {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== "string") return;
     let data: Record<string, unknown>;
     try { data = JSON.parse(message); } catch { return; }
@@ -107,12 +191,32 @@ export class CallRoom {
     const all = this.state.getWebSockets();
     const out = JSON.stringify(data);
 
+    // CALL-RC-D1: explicit hangup ends the call immediately for both sides —
+    // no grace period, even if the other peer is currently "away". Clear any
+    // pending away/alarm state before relaying so a lingering alarm can't fire
+    // a stray peer-left after the call already ended cleanly.
+    if (data.type === "bye" || data.type === "hangup") {
+      await this.setAway(null);
+      try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
+    }
+
     if (typeof data.to === "string" && data.to) {
       let delivered = false;
       for (const w of all) {
         if (this.state.getTags(w)[0] === data.to) {
           try { w.send(out); delivered = true; } catch { /* peer gone */ }
         }
+      }
+      // Away-peer buffering (CALL-RC-D1): the target is mid-reconnect-grace,
+      // not gone. Buffer signaling (offer/answer/candidate) so it replays on
+      // rejoin instead of being silently dropped. Explicit hangup is relayed
+      // above via broadcast fallback, never buffered, so it isn't delayed.
+      const away = await this.loadAway();
+      if (!delivered && away && away.id === data.to && data.type !== "bye" && data.type !== "decline" && data.type !== "hangup") {
+        away.buffered.push(out);
+        if (away.buffered.length > MAX_BUFFERED_MESSAGES) away.buffered.shift(); // drop oldest
+        await this.setAway(away);
+        delivered = true; // handled via buffer, not a delivery failure
       }
       // Ringing race (zombie-call hotfix A4.3): a bye/decline addressed to a
       // peer that hasn't registered (hangup-before-welcome) or already left
@@ -129,16 +233,43 @@ export class CallRoom {
     }
   }
 
-  webSocketClose(ws: WebSocket, code: number): void {
-    const from = this.state.getTags(ws)[0];
-    for (const w of this.state.getWebSockets()) {
-      if (w !== ws) this.sendTo(w, { type: "peer-left", id: from });
-    }
-    try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* already closed */ }
+  async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+    await this.beginAwayOrEnd(ws, code);
   }
 
-  webSocketError(ws: WebSocket): void {
-    try { ws.close(1011); } catch { /* ignore */ }
+  async webSocketError(ws: WebSocket): Promise<void> {
+    await this.beginAwayOrEnd(ws, 1011);
+  }
+
+  /** CALL-RC-D1: shared close/error path — start the 30s reconnect grace
+   *  instead of ending the call immediately. */
+  private async beginAwayOrEnd(ws: WebSocket, code: number): Promise<void> {
+    const from = this.state.getTags(ws)[0];
+    try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* already closed */ }
+
+    const others = this.state.getWebSockets().filter((w) => w !== ws);
+    if (!from || others.length === 0) {
+      // No `from` tag, or the other peer already isn't here (e.g. this was the
+      // only socket, or it's already gone) — nothing to grace, nothing to notify.
+      return;
+    }
+
+    await this.setAway({ id: from, awaySince: Date.now(), buffered: [] });
+    try { await this.state.storage.setAlarm(Date.now() + RECONNECT_GRACE_MS); } catch { /* best-effort */ }
+    for (const w of others) this.sendTo(w, { type: "peer-away", id: from });
+  }
+
+  /** CALL-RC-D1: fires ~30s after a peer's WS closed/errored. If it never
+   *  reconnected (still marked away), end the call the old way: peer-left to
+   *  whoever's left, then close their socket too. */
+  async alarm(): Promise<void> {
+    const away = await this.loadAway();
+    if (!away) return; // peer already rejoined and cleared this
+    await this.setAway(null);
+    for (const w of this.state.getWebSockets()) {
+      this.sendTo(w, { type: "peer-left", id: away.id });
+      try { w.close(1000, "peer reconnect grace expired"); } catch { /* already closed */ }
+    }
   }
 
   private sendTo(ws: WebSocket, obj: unknown): void {
