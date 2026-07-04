@@ -59,6 +59,39 @@ export async function getLivenessResults(
   return call(env, "GetFaceLivenessSessionResults", { SessionId: sessionId });
 }
 
+// ── CompareFaces (LIVE-V2 P3 same-person check) ──────────────────────────────
+// Standard Rekognition IMAGE API (NOT the paid Face Liveness API). Free tier for
+// 12 months. Gated behind platform_config.livenessUseRekognition (default OFF) and
+// only called when AWS creds exist. Returns the best match similarity 0..100 (or 0
+// if no face matched). Uses the same SigV4-signed JSON-1.1 `call` helper.
+
+const b64FromBytes = (bytes: Uint8Array): string => {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+};
+
+/**
+ * Compare two face images. Returns the highest FaceMatches[].Similarity (0..100),
+ * or 0 when no match / no face. `similarityThreshold` is the API floor below which
+ * matches are omitted. Throws on a transient/API error (caller decides fail policy).
+ */
+export async function compareFaces(
+  env: Env,
+  sourceBytes: Uint8Array,
+  targetBytes: Uint8Array,
+  similarityThreshold = 80,
+): Promise<{ similarity: number }> {
+  const r = await call<{ FaceMatches?: Array<{ Similarity?: number }> }>(env, "CompareFaces", {
+    SourceImage: { Bytes: b64FromBytes(sourceBytes) },
+    TargetImage: { Bytes: b64FromBytes(targetBytes) },
+    SimilarityThreshold: similarityThreshold,
+  });
+  let best = 0;
+  for (const m of r.FaceMatches ?? []) best = Math.max(best, m.Similarity ?? 0);
+  return { similarity: best };
+}
+
 // ── Content moderation on profile photos (P11 / R2-F2) ───────────────────────
 // DetectModerationLabels returns hierarchical safety labels for an image. We
 // reject an avatar whose labels include the sexual categories below. Uses the
