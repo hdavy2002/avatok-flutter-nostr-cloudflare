@@ -74,6 +74,85 @@ class LadderApi {
     }
   }
 
+  /// The full structured verify outcome the V2 result UX needs. `checks` is the
+  /// list of `{id, pass, user_message}` from the server (LIVE-V2 P3); the fail
+  /// screen renders EVERY failing `user_message` as its own line. `pending` means
+  /// the async verify hasn't finished yet (used by verify-pending resilience —
+  /// LIVE-V2 P4). `noResult` = no stored outcome at all (e.g. session expired).
+  static ({
+    bool pending,
+    bool noResult,
+    bool verified,
+    List<String> failedMessages,
+    int? attemptsRemaining,
+  }) _outcome(Map<String, dynamic>? j) {
+    if (j == null) {
+      return (
+        pending: false,
+        noResult: true,
+        verified: false,
+        failedMessages: const [],
+        attemptsRemaining: null,
+      );
+    }
+    if (j['status'] == 'pending') {
+      return (
+        pending: true,
+        noResult: false,
+        verified: false,
+        failedMessages: const [],
+        attemptsRemaining: null,
+      );
+    }
+    final verified = j['verified'] == true;
+    final msgs = <String>[];
+    if (!verified) {
+      final list = j['checks'] as List?;
+      if (list != null) {
+        for (final c in list) {
+          if (c is Map && c['pass'] == false) {
+            final m = c['user_message']?.toString();
+            if (m != null && m.isNotEmpty && !msgs.contains(m)) msgs.add(m);
+          }
+        }
+      }
+      if (msgs.isEmpty) {
+        final legacy = j['message']?.toString();
+        msgs.add(legacy?.isNotEmpty == true
+            ? legacy!
+            : 'Verification failed — please try again.');
+      }
+    }
+    return (
+      pending: false,
+      noResult: false,
+      verified: verified,
+      failedMessages: msgs,
+      attemptsRemaining: (j['attempts_remaining'] as num?)?.toInt(),
+    );
+  }
+
+  /// GET /api/id/liveness/result?session= and decode into the rich outcome above
+  /// WITHOUT swallowing the pending state (unlike [livenessResult], which returns
+  /// null while pending so a poll loop keeps going). Used by verify-pending
+  /// resilience: on entry-point reopen we ask "is this session done yet?".
+  static Future<({
+    bool pending,
+    bool noResult,
+    bool verified,
+    List<String> failedMessages,
+    int? attemptsRemaining,
+  })> livenessResultOutcome(String sessionId) async {
+    try {
+      final r = await ApiAuth.getSigned('$kLivenessResultUrl?session=$sessionId');
+      if (r.statusCode != 200) return _outcome(null);
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return _outcome(j);
+    } catch (_) {
+      return _outcome(null);
+    }
+  }
+
   /// GET /api/id/liveness/result?session= — poll target for the async verify
   /// (LIVE-V2 P0). Returns null while `{status:"pending"}` (or on a transient
   /// error) so the caller keeps polling; a decoded map once `status:"done"`.
@@ -120,6 +199,42 @@ class LadderApi {
       message: msg,
       attemptsRemaining: (j['attempts_remaining'] as num?)?.toInt(),
     );
+  }
+
+  /// POST /api/id/liveness/verify then poll — returns the RICH outcome (every
+  /// failed check message) for the V2 result UX (LIVE-V2 P4). Same async contract
+  /// as [livenessVerify] (202 → poll every 2s, 90s cap) but surfaces the full
+  /// `checks[]` instead of collapsing to one message. On poll timeout returns
+  /// `pending:true` so the caller can persist the session and resume on reopen.
+  static Future<({
+    bool pending,
+    bool noResult,
+    bool verified,
+    List<String> failedMessages,
+    int? attemptsRemaining,
+  })> livenessVerifyRich(String sessionId) async {
+    try {
+      final r = await ApiAuth.postJson(kLivenessVerifyUrl, {'session_id': sessionId});
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (j['status'] == 'done' || j.containsKey('verified')) {
+        return _outcome(j);
+      }
+      if (r.statusCode == 202 || j['status'] == 'pending') {
+        for (var i = 0; i < 45; i++) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          final res = await livenessResultOutcome(sessionId);
+          if (!res.pending && !res.noResult) return res;
+        }
+        // Timed out waiting — still pending server-side. Caller persists + resumes.
+        return _outcome(<String, dynamic>{'status': 'pending'});
+      }
+      return _outcome(j);
+    } catch (_) {
+      // POST failed (offline) — the background job may still have run.
+      final res = await livenessResultOutcome(sessionId);
+      if (!res.noResult && !res.pending) return res;
+      return _outcome(<String, dynamic>{'status': 'pending'});
+    }
   }
 
   /// POST /api/id/liveness/verify then poll /result — returns (verified, message).
