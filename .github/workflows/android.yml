@@ -28,12 +28,11 @@ env:
   AVATOK_ENV: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
   # AAB-only for the Play Store (owner 2026-07-04: "from now on we make the .aab
   # file and no apk file"). This SUPERSEDES the 2026-06-24 "just apk, no aab"
-  # decision. The Play Store Android App Bundle (.aab) is the ONLY artifact this
-  # workflow builds and publishes; no APK is produced anymore.
-  BUILD_AAB: 'true'
-  # One-off APK build (owner 2026-07-04: "note you create an apk file this time").
-  # AAB stays the default store artifact; this additionally produces a universal
-  # side-loadable .apk for this run. Set back to 'false' to return to AAB-only.
+  # decision. Normally the .aab is the ONLY artifact this workflow builds.
+  # One-off override (owner 2026-07-04, later same day): "i just need a apk
+  # file and not aab etc" for this run — AAB build skipped this time.
+  BUILD_AAB: 'false'
+  # One-off APK build (owner 2026-07-04: apk-only this run per the override above).
   BUILD_APK: 'true'
 
 permissions:
