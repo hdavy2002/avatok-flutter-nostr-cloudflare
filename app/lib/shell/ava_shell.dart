@@ -190,7 +190,32 @@ class _AvaShellState extends State<AvaShell> {
     if (haveCache) {
       unawaited(validateGates()); // user is already in the app
     } else {
-      await validateGates(); // first run: correctness over speed
+      // FIRST RUN (no cached gate flags — a fresh install OR a just-switched
+      // account): correctness-first, but NEVER hang the shell on bad DNS.
+      // validateGates() awaits several network calls with no timeout; when the
+      // device's resolver is failing (observed on Jio: "Failed host lookup:
+      // clerk.avatok.ai / api.avatok.ai") those awaits stall 20-30s, leaving the
+      // user on a spinner mashing the nav button (shell_gate_ms p90 ~2s, max 3s).
+      // GUARD (PERF-DNS): reveal the shell using the LOCAL profile decision if the
+      // network gate hasn't resolved within a short bound; validateGates keeps
+      // running and re-routes if the server disagrees (the same correction path a
+      // cached launch already uses). Fail-open: a hung network never traps the user.
+      final bound = Timer(const Duration(seconds: 3), () async {
+        if (_id != null || !mounted) return; // network gate already revealed
+        var localComplete = false;
+        try { localComplete = (await ProfileStore().load()).isComplete; } catch (_) {/* setup */}
+        if (_id != null || !mounted) return;
+        setState(() { _id = id; _profileComplete = localComplete; _needsNumber = false; });
+        Analytics.capture('shell_gate_ms', {
+          'ms': DateTime.now().difference(gateT0).inMilliseconds,
+          'source': 'local_fallback',
+        });
+      });
+      try {
+        await validateGates(); // first run: correctness over speed
+      } finally {
+        bound.cancel();
+      }
     }
   }
 
