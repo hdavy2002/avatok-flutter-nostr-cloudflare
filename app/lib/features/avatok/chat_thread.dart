@@ -4298,6 +4298,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   if (m.text.trim().isNotEmpty && m.special != 'ava_status')
                     _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
                         () => _inlineTranslate(m)),
+                  // Voice notes: transcribe the audio (cloud Whisper) and/or
+                  // translate that transcript. Viewer-only, cached per message.
+                  if (_isVoiceNote(m)) ...[
+                    _action(ctx, PhosphorIcons.textAa(PhosphorIconsStyle.bold), 'Transcribe',
+                        () => _transcribeVoice(m)),
+                    _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
+                        () => _translateVoice(m)),
+                  ],
                   _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
                   // Share OUT to another app (WhatsApp, Files, etc.) via the OS
                   // share sheet — works for any media, including voice notes.
@@ -5115,6 +5123,166 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     setState(() {
       (m.extra ??= <String, dynamic>{})['translated'] = translated;
       m.extra!['translated_lang'] = lang;
+    });
+  }
+
+  // ---- voice-note Transcribe + Translate ------------------------------------
+  // A voice note is an audio-kind media bubble (recorded via the mic composer).
+  bool _isVoiceNote(_Msg m) =>
+      m.media?.kind == MediaKind.audio && m.special == null;
+
+  /// Stable per-message cache key: the durable rumor id when present, else the
+  /// local monotonic id. Matches the scheme used by inline text translation.
+  String _msgCacheKey(_Msg m) => m.evId ?? '${m.id}';
+
+  /// Fetch the DECRYPTED voice bytes (local-first, per-account MediaService
+  /// cache), POST them to the existing cloud-Whisper transcribe route, and cache
+  /// the transcript per message (account-scoped). Returns '' on failure. The
+  /// transcript is stashed on m.extra['transcript'] so the bubble renders it.
+  Future<String> _ensureTranscript(_Msg m) async {
+    final key = _msgCacheKey(m);
+    // 1) Already on the message this session.
+    final live = (m.extra?['transcript'] as String?)?.trim();
+    if (live != null && live.isNotEmpty) return live;
+    // 2) Per-account disk cache (never re-transcribe on reopen).
+    final cached = await _msgStore.readTranscript(key);
+    if (cached != null && cached.trim().isNotEmpty) {
+      if (mounted) setState(() => (m.extra ??= <String, dynamic>{})['transcript'] = cached);
+      return cached;
+    }
+    // 3) Transcribe: decrypted bytes → /api/stt/transcribe (same route the
+    //    composer's cloud dictation uses). Voice notes are m4a/AAC.
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final bytes = m.localBytes ??
+          (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
+      if (bytes == null || bytes.isEmpty) {
+        Analytics.capture('voice_transcribe', {'ok': false, 'reason': 'no_bytes'});
+        return '';
+      }
+      final r = await ApiAuth.postJson(
+        '$kApiBase/stt/transcribe',
+        {'audio': base64Encode(bytes), 'format': 'm4a'},
+        timeout: const Duration(seconds: 45),
+      );
+      final ms = DateTime.now().millisecondsSinceEpoch - t0;
+      if (r.statusCode != 200) {
+        AvaLog.I.log('voice_stt', 'transcribe HTTP ${r.statusCode}: ${r.body}');
+        Analytics.capture('voice_transcribe', {'ok': false, 'status': r.statusCode, 'ms': ms});
+        return '';
+      }
+      final decoded = jsonDecode(r.body);
+      final text = (decoded is Map && decoded['text'] is String)
+          ? (decoded['text'] as String).trim()
+          : '';
+      Analytics.capture('voice_transcribe', {'ok': text.isNotEmpty, 'ms': ms, 'chars': text.length});
+      if (text.isEmpty) return '';
+      try { await _msgStore.writeTranscript(key, text); } catch (_) {}
+      if (mounted) setState(() => (m.extra ??= <String, dynamic>{})['transcript'] = text);
+      return text;
+    } catch (e) {
+      final ms = DateTime.now().millisecondsSinceEpoch - t0;
+      AvaLog.I.log('voice_stt', 'transcribe FAILED: $e');
+      Analytics.capture('voice_transcribe', {'ok': false, 'reason': 'exception', 'ms': ms});
+      return '';
+    }
+  }
+
+  /// Long-press → Transcribe: show the Whisper transcript below the voice bubble
+  /// (viewer-only, cached). Inline snackbar on failure — never crashes.
+  Future<void> _transcribeVoice(_Msg m) async {
+    if ((m.extra?['transcript'] as String?)?.trim().isNotEmpty == true) return;
+    _toast('Transcribing…');
+    final text = await _ensureTranscript(m);
+    if (!mounted) return;
+    if (text.isEmpty) {
+      _toast("Couldn't transcribe this voice message.");
+    }
+  }
+
+  /// Long-press → Translate a voice note: pick a language, transcribe (if not
+  /// cached), translate the transcript with the existing engine, then show
+  /// "translated (Language)" below the bubble. Viewer-only, cached per message
+  /// in the SAME translation cache keyed by '<msgId>|<lang>'.
+  Future<void> _translateVoice(_Msg m) async {
+    if (!await BrainConsent.isOn('messaging')) {
+      if (mounted) _toast('Turn on AvaBrain for your messages in Settings to translate.');
+      return;
+    }
+    // Reuse the shared language picker sheet.
+    final picked = await _pickVoiceLang();
+    if (picked == null || !mounted) return;
+    final to = picked.code;
+    final key = _msgCacheKey(m);
+    // Translation already cached for this note+language?
+    final cachedTr = await _msgStore.readTranslation(key, to);
+    if (cachedTr != null && cachedTr.trim().isNotEmpty) {
+      if (mounted) _showVoiceTranslation(m, cachedTr, picked.label);
+      return;
+    }
+    _toast('Transcribing…');
+    final transcript = await _ensureTranscript(m);
+    if (!mounted) return;
+    if (transcript.isEmpty) { _toast("Couldn't transcribe this voice message."); return; }
+    _toast('Translating…');
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    final out = await AiChatApi.translate(transcript, to);
+    final ms = DateTime.now().millisecondsSinceEpoch - t0;
+    if (!mounted) return;
+    if (out == null) {
+      Analytics.capture('voice_translate', {'ok': false, 'lang': to, 'ms': ms});
+      _toast('Could not translate.');
+      return;
+    }
+    Analytics.capture('voice_translate', {'ok': true, 'lang': to, 'ms': ms, 'chars': out.length});
+    try { await _msgStore.writeTranslation(key, to, out); } catch (_) {}
+    _showVoiceTranslation(m, out, picked.label);
+  }
+
+  /// Language picker for voice-note translation — same list/sheet style as the
+  /// composer Translate picker, but returns the chosen language instead of
+  /// remembering it as the composer target.
+  Future<ComposerLang?> _pickVoiceLang() => showModalBottomSheet<ComposerLang>(
+        context: context,
+        backgroundColor: Zine.paper,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (ctx) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(children: [
+                PhosphorIcon(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+                    size: 20, color: Zine.ink),
+                const SizedBox(width: 10),
+                Text('Translate into…', style: ZineText.cardTitle(size: 18)),
+              ]),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final l in ComposerAi.languages)
+                    ListTile(
+                      title: Text(l.label, style: ZineText.value(size: 16)),
+                      subtitle: l.code != l.label
+                          ? Text(l.code, style: ZineText.sub(size: 13))
+                          : null,
+                      onTap: () => Navigator.pop(ctx, l),
+                    ),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      );
+
+  /// Stash the transcript translation on the message so the bubble renders it
+  /// as "translated (Language)" below the voice waveform. Viewer-only.
+  void _showVoiceTranslation(_Msg m, String translated, String langLabel) {
+    setState(() {
+      (m.extra ??= <String, dynamic>{})['transcript_translated'] = translated;
+      m.extra!['transcript_translated_lang'] = langLabel;
     });
   }
 
@@ -7184,6 +7352,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                             style: ZineText.sub(size: 13.5, color: Zine.ink)),
                       ),
                     ],
+                    // Voice-note transcript / translation (viewer-only). Rendered
+                    // below the waveform when the user long-pressed → Transcribe
+                    // or Translate. Both are cached per message, per-account.
+                    ..._voiceTranscriptBlock(m),
                   ]
                   else _textContent(m),
                   // [UI-BUBBLE-2] pure media carries its timestamp/status as an
@@ -7462,6 +7634,44 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // send) or, for received/restored messages, whatever rode in the envelope.
   String _mediaCaptionOf(_Msg m) =>
       m.mediaCaption.isNotEmpty ? m.mediaCaption : (m.media?.caption ?? '');
+
+  /// Below-the-waveform transcript + translation for a voice note (viewer-only).
+  /// Styled like the inline text-translate rendering: a hairline rule then the
+  /// text, with a small translate/transcript glyph + label. Empty for anything
+  /// that hasn't been transcribed/translated yet, so it costs nothing until used.
+  List<Widget> _voiceTranscriptBlock(_Msg m) {
+    final transcript = (m.extra?['transcript'] as String?)?.trim();
+    final translated = (m.extra?['transcript_translated'] as String?)?.trim();
+    final tLang = (m.extra?['transcript_translated_lang'] as String?) ?? '';
+    if ((transcript == null || transcript.isEmpty) &&
+        (translated == null || translated.isEmpty)) {
+      return const [];
+    }
+    Widget line(IconData icon, String label, String body) => Padding(
+          padding: const EdgeInsets.only(top: 6, left: 5, right: 5),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(icon, size: 11, color: Zine.blueInk),
+              const SizedBox(width: 4),
+              Text(label, style: ZineText.tag(size: 9.5, color: Zine.blueInk)),
+            ]),
+            const SizedBox(height: 2),
+            Text(body, style: ZineText.sub(size: 13.5, color: Zine.ink)),
+          ]),
+        );
+    return [
+      Container(
+        margin: const EdgeInsets.fromLTRB(-3, 7, -3, 0),
+        height: 2,
+        color: Zine.ink.withValues(alpha: 0.28),
+      ),
+      if (transcript != null && transcript.isNotEmpty)
+        line(PhosphorIcons.textAa(PhosphorIconsStyle.bold), 'transcript', transcript),
+      if (translated != null && translated.isNotEmpty)
+        line(PhosphorIcons.translate(PhosphorIconsStyle.bold),
+            tLang.isEmpty ? 'translated' : 'translated · $tLang', translated),
+    ];
+  }
 
   // Plain-text bubble content: links are tappable, and a YouTube link renders a
   // rich card with inline playback right inside the chat (no leaving the thread).

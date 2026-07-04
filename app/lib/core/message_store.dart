@@ -74,6 +74,42 @@ class MessageStore {
       await DiskCache.write(_trFile, jsonEncode(all));
     }
   }
+
+  // Voice-note TRANSCRIPT cache. One small per-account file maps '<msgId>' →
+  // the Whisper transcript of that voice note, so re-opening a thread never
+  // re-transcribes an already-transcribed note (no network, no cost). DiskCache
+  // is already account-scoped (a parent + each child on one phone keep separate
+  // files), satisfying the per-account-scoping rule. Translations of a transcript
+  // reuse the SAME translation cache above ('<msgId>|<lang>').
+  static const _stFile = 'avatok_transcripts';
+
+  Future<Map<String, String>> _stAll() async {
+    final raw = await DiskCache.read(_stFile);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return (jsonDecode(raw) as Map).map((k, v) => MapEntry(k.toString(), v.toString()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<String?> readTranscript(String msgId) async {
+    if (msgId.isEmpty) return null;
+    final all = await _stAll();
+    return all[msgId];
+  }
+
+  Future<void> writeTranscript(String msgId, String text) async {
+    if (msgId.isEmpty || text.isEmpty) return;
+    final all = await _stAll();
+    all[msgId] = text;
+    if (all.length > 800) {
+      final trimmed = Map<String, String>.fromEntries(all.entries.skip(all.length - 800));
+      await DiskCache.write(_stFile, jsonEncode(trimmed));
+    } else {
+      await DiskCache.write(_stFile, jsonEncode(all));
+    }
+  }
 }
 
 /// F3 (restoreV2): per-conversation cache of DEEP-ARCHIVE pages fetched from
