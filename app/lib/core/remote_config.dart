@@ -12,6 +12,7 @@ import 'config.dart';
 import 'disk_cache.dart';
 import 'feature_flags.dart';
 import 'money_api.dart';
+import 'net/ava_dns.dart';
 
 /// Remote kill switches (creator-marketplace Phase 1, audit A2). Mirrors the
 /// Worker's GET /api/config (KV `platform_config`). Fetched at app start and
@@ -190,6 +191,11 @@ class RemoteConfig {
   /// their uid from the server ADMIN_UIDS var; flip `marketplaceEnabled: true`
   /// in KV `platform_config` for the eventual full launch to all users.
   static bool get marketplaceVisible => marketplaceEnabled || _isAdmin;
+  /// DNS-over-HTTPS fallback (PERF-DNS-2): resolve our hostnames via 1.1.1.1 when
+  /// the device resolver fails. Default ON (works before the first config fetch);
+  /// this is a kill switch — set `dohFallbackEnabled: false` in KV to force pure
+  /// OS resolution if the fallback ever misbehaves. Applied to [AvaDns] in refresh().
+  static bool get dohFallbackEnabled => _b('dohFallbackEnabled', true);
   /// Link previews + inline YouTube (AI Messenger Batch — STREAM C). Mirrors the
   /// KV `linkPreviewsEnabled` flag. Default ON. When false the chat renders raw
   /// link text only and never calls /api/unfurl. Mirrors [kLinkPreviewsEnabledDefault].
@@ -262,6 +268,8 @@ class RemoteConfig {
         final m = jsonDecode(res.body);
         if (m is Map<String, dynamic>) {
           _cfg = m;
+          // PERF-DNS-2 kill switch: let KV disable the DoH fallback if needed.
+          AvaDns.dohEnabled = dohFallbackEnabled;
           // PartyKit realtime layer master switch (replaces Ably). Ships dark
           // until the PartyDO is deployed + this flag flipped on server-side.
           PartyHub.I.setEnabled(m['partyEnabled'] == true);

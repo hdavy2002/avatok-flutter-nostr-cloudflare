@@ -10,6 +10,7 @@ import 'core/account_gate.dart';
 import 'core/account_restore.dart';
 import 'core/account_switcher.dart';
 import 'core/analytics.dart';
+import 'core/net/ava_dns.dart';
 import 'core/api_auth.dart';
 import 'core/app_registry.dart';
 import 'core/apps.dart';
@@ -46,6 +47,11 @@ import 'sync/sync_hub.dart';
 void main() async {
   final t0 = DateTime.now(); // for first_frame_ms telemetry (PERF-6)
   WidgetsFlutterBinding.ensureInitialized();
+  // DNS resilience (PERF-DNS-2): install a process-wide HttpOverrides that
+  // resolves our hostnames OS-first, DoH-to-1.1.1.1 on failure — so a flaky
+  // carrier resolver (Jio and countless others) can no longer stall the app.
+  // Must run before any network call (config fetch, Clerk, the InboxDO socket).
+  installAvaDns();
   // Call background survival: register the app-level call-session manager as a
   // lifecycle observer so a 1:1 call keeps its foreground service + signaling WS
   // alive when the app is backgrounded (CALL-BG-A). Cheap; no I/O.

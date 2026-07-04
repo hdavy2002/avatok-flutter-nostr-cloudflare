@@ -155,6 +155,10 @@ export interface PlatformConfig {
   scamAutoScanEnabled: boolean;              // STREAM G: auto scam-scan on stranger-thread first render
   livenessOnboardingGate: boolean;           // STREAM H: hard liveness gate at signup / existing-user redirect
   unlimitedForwardEnabled: boolean;          // STREAM I: unlimited forwarding + forward-to-groups
+  // PERF-DNS-2: client DNS-over-HTTPS fallback (resolve our hosts via 1.1.1.1 when
+  // the device resolver fails — carrier-proof). Default ON in the client even
+  // without this key; this is a KV kill switch to force pure OS resolution.
+  dohFallbackEnabled: boolean;
   minAppBuild: number;
 }
 
@@ -227,6 +231,7 @@ const DEFAULTS: PlatformConfig = {
   scamAutoScanEnabled: true,             // STREAM G — ships ON
   livenessOnboardingGate: false,         // OFF 2026-07-03: liveness moved to listing-creation gate, NOT onboarding
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
+  dohFallbackEnabled: true,              // PERF-DNS-2 — DoH-to-1.1.1.1 fallback ON
   minAppBuild: 0,
 };
 

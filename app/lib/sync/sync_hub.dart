@@ -9,6 +9,7 @@ import 'package:web_socket_channel/io.dart';
 import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
+import '../core/net/ava_dns.dart';
 import '../core/call_log_store.dart';
 import '../core/chat_state.dart' show ReadStateStore, HiddenStore, DeletedStore;
 import '../core/config.dart';
@@ -392,8 +393,11 @@ class SyncHub {
     for (var i = 0; i < 5; i++) {
       if (!_wantConnected) return false;
       try {
-        final r = await InternetAddress.lookup(host).timeout(const Duration(seconds: 4));
-        if (r.isNotEmpty) return true;
+        // AvaDns (PERF-DNS-2): OS-first with DoH-to-1.1.1.1 fallback, so this
+        // pre-check no longer bails out on carriers whose resolver is failing —
+        // the WS connect itself is routed through the same resolver via the
+        // global HttpOverrides.
+        if (await AvaDns.I.resolve(host) != null) return true;
       } catch (_) {/* transient lookup failure — retry */}
       await Future.delayed(Duration(milliseconds: 400 + 300 * i));
     }
