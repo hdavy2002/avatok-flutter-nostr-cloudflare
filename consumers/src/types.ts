@@ -124,6 +124,14 @@ export interface AutoReplyMsg {
 // `auto-reply` queue; discriminated by `kind:"digest"`.
 export interface AutoDigestMsg { kind: "digest"; uid: string; day?: string; }
 
+// LIVE-V2 P0 — async liveness-verify job. NOT wired to a live queue yet: avatok-api
+// currently runs the checks via ctx.waitUntil (see worker/src/routes/liveness.ts
+// runLivenessChecks + the LIVE-V2 NOTE there), because adding a queue producer +
+// consumer binding is new infra AND runLivenessChecks can't be imported across the
+// worker↔consumers package split. This type + handler exist so a future
+// `liveness-verify` queue can dispatch here (see liveness_verify.ts).
+export interface LivenessVerifyMsg { kind: "liveness_verify"; uid: string; session_id: string; }
+
 // Account-deletion cascade message (producer: avatok-api /api/account/delete).
 export interface DeletionMsg { uid: string; clerk_user_id?: string | null; scheduled_at?: number; pubkey_hex?: string; }
 

@@ -1,6 +1,7 @@
 // avatok-consumers — one Worker consuming all 4 queues + cron cleanup.
-import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg, AutoReplyMsg, AutoDigestMsg } from "./types";
+import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg, AutoReplyMsg, AutoDigestMsg, LivenessVerifyMsg } from "./types";
 import { handleMktAudio } from "./mkt_audio";
+import { handleLivenessVerify } from "./liveness_verify"; // LIVE-V2 P0 — async liveness-verify (dark; no live queue yet, see file header)
 import { handleAutoReply, handleAutoDigest, sweepAutoDigest } from "./auto_reply"; // STREAM F — away auto-responder job + away digest (+ schedule-end sweep)
 import { sweepAbandonedLiveness } from "./liveness_sweep"; // STREAM H — abandoned-liveness sweep (ported from worker/routes/liveness_audit)
 import { handleModeration } from "./moderation";
@@ -37,6 +38,10 @@ export default {
           case "agent-tasks": await handleAgent(msg.body as AgentMsg, env); break;
           case "chat-archive": await handleArchive(msg.body as ArchiveMsg, env); break;
           case "mkt-audio": await handleMktAudio(msg.body as MktAudioMsg, env); break;
+          // LIVE-V2 P0 — DARK: no queue is named "liveness-verify" today (avatok-api
+          // runs the checks via ctx.waitUntil). Wired here so provisioning the queue
+          // later is a one-line producer/binding change. See liveness_verify.ts.
+          case "liveness-verify": await handleLivenessVerify(msg.body as LivenessVerifyMsg, env); break;
           case "auto-reply": { // STREAM F — reply jobs + away-digest jobs share this queue
             const body = msg.body as AutoReplyMsg | AutoDigestMsg;
             if ((body as AutoDigestMsg).kind === "digest") await handleAutoDigest(body as AutoDigestMsg, env);
