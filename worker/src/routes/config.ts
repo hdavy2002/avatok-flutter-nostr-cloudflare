@@ -109,6 +109,11 @@ export interface PlatformConfig {
   // at launch). Fail-closed on the server route — a direct API call from an
   // unverified user is rejected 403 liveness_required.
   listingLivenessGate: boolean;
+  // Liveness V2 (Specs/LIVENESS-V2-PLAN.md): the ML-Kit-gated, detection-driven
+  // selfie-video verification flow that replaces the timer-script V1. Ships DARK
+  // (default OFF); while off the client uses the V1 LivenessCheckScreen unchanged.
+  // Flip ON in KV once V2 pass-rate is proven. Client mirror: RemoteConfig.livenessV2Enabled.
+  livenessV2Enabled: boolean;
   // P6: always-on per-message safety scanning (Nemotron :free via OpenRouter) with
   // red-bubble marking on the recipient. Ships **ON** (this one ships enabled).
   // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
@@ -194,6 +199,7 @@ const DEFAULTS: PlatformConfig = {
   ivrAiFrontDesk: false,           // tap-menu is the default routing; AI front desk is a future upsell
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
   listingLivenessGate: true,       // ON 2026-07-03: mandatory liveness (once) to create/publish a listing
+  livenessV2Enabled: false,        // Liveness V2 ML-Kit-gated flow — dark, flip ON once pass-rate proven
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified

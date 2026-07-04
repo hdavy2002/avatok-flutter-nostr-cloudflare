@@ -85,6 +85,12 @@ class RemoteConfig {
   /// P4: require video-liveness verification before creating/publishing a listing.
   /// Ships dark (default OFF); flip ON at launch. Mirrors config.ts.
   static bool get listingLivenessGate => _b('listingLivenessGate', false);
+  /// Liveness V2 (Specs/LIVENESS-V2-PLAN.md): the ML-Kit-gated, detection-driven
+  /// selfie-video flow that replaces the timer-script V1. Ships DARK (default
+  /// OFF); while off the V1 [LivenessCheckScreen] is used unchanged. Flip
+  /// `livenessV2Enabled: true` in KV `platform_config` once V2 pass-rate is
+  /// proven. Mirrors config.ts.
+  static bool get livenessV2Enabled => _b('livenessV2Enabled', false);
   /// STREAM H (AI Messenger Batch): onboarding "human check" hard gate. When ON,
   /// every account must pass liveness the moment it's created (D12) and existing
   /// unverified users are redirected on app open (D13, non-dismissible). Server

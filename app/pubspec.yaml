@@ -87,6 +87,15 @@ dependencies:
   google_mlkit_language_id: ^0.13.0
   # L2 liveness selfie-clip capture (Trust Ladder — challenge frames + clip)
   camera: ^0.11.0+2
+  # Liveness V2 (Specs/LIVENESS-V2-PLAN.md §3) — on-device, offline, free face
+  # detection powering the real-time pre-capture quality gates (face present /
+  # lit / centered / eyes open / one person / no mask) + head-Euler UX. Gated
+  # behind RemoteConfig.livenessV2Enabled; V1 flow keeps working when off.
+  google_mlkit_face_detection: ^0.13.1
+  # Liveness V2 flash-fill (plan §4 step 1 / A8-A9 mitigation): boost screen
+  # brightness to 100% + white surround as a ring-light while capturing, then
+  # ALWAYS restore the previous brightness on dispose.
+  screen_brightness: ^2.1.0
   file_picker: ^8.1.6
   audioplayers: ^6.1.0
   record: ^7.0.0
