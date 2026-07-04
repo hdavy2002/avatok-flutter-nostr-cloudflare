@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/analytics.dart';
 import '../../core/config.dart' show kSignalingHost;
@@ -7,8 +8,38 @@ import '../../core/feature_flags.dart' show kAvatokEnv, kAppBuild, kAppVersion;
 /// ACCOUNT & SETTINGS → About. Shows the app version, build, environment
 /// (prod/staging) and the exact git build — so a tester/owner can tell at a
 /// glance which build and which backend a device is running.
-class AboutScreen extends StatelessWidget {
+///
+/// Version + build are read from the REAL installed package via
+/// [PackageInfo] — NOT the compile-time [kAppVersion]/[kAppBuild] constants,
+/// which were hardcoded and so never changed after an update (the reported
+/// "build number never changes" bug). CI ships a strictly-increasing
+/// versionCode via `flutter build --build-number`, which PackageInfo surfaces.
+/// The constants remain only as a first-frame fallback until the async load
+/// resolves.
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
+
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
+  // Seeded with the compile-time constants so the row is never blank; replaced
+  // with the real installed values as soon as PackageInfo resolves.
+  String _version = kAppVersion;
+  String _build = '$kAppBuild';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (!mounted) return;
+      setState(() {
+        if (info.version.isNotEmpty) _version = info.version;
+        if (info.buildNumber.isNotEmpty) _build = info.buildNumber;
+      });
+    }).catchError((_) {/* keep constant fallback */});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +64,7 @@ class AboutScreen extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 20),
-          _row('Version', '$kAppVersion (build $kAppBuild)'),
+          _row('Version', '$_version (build $_build)'),
           _row('Environment', env),
           _row('Backend', kSignalingHost),
           _row('Build (git)', Analytics.release),

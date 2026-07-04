@@ -51,6 +51,12 @@ dependencies:
   # launcher-dependent: Pixel shows a dot (count on long-press), Samsung/Oppo/
   # Xiaomi/etc. show the number. iOS/macOS always show the number.
   app_badge_plus: ^1.2.9
+  # Read the REAL installed app version + build number (versionName/versionCode)
+  # at runtime so the About screen reflects what CI actually shipped. CI injects
+  # a strictly-increasing versionCode via `flutter build --build-number` (see
+  # .github/workflows/android.yml), which the old hardcoded kAppBuild constant
+  # never reflected — the build number looked frozen after every update.
+  package_info_plus: ^8.0.2
   # Product analytics + error tracking → PostHog (EU). See lib/core/analytics.dart.
   posthog_flutter: ^4.10.0
   # Native in-app Stripe PaymentSheet for wallet top-ups (card / Apple Pay /
