@@ -150,12 +150,19 @@ class _Entry {
   InternetAddress pick() => addrs[(_rr++) % addrs.length];
 }
 
-/// Process-wide install: routes every dart:io HttpClient (package:http, the
-/// Clerk client, WebSockets) through [AvaDns] while preserving TLS SNI +
-/// certificate validation against the ORIGINAL hostname — we only swap the TCP
-/// target IP. Call ONCE, early in main().
+/// PERF-DNS-4 (2026-07-04) — DISABLED: do NOT install the connectionFactory
+/// override. Field-proven root cause of a total sign-in/API outage: routing
+/// dart:io connections through a resolved TCP IP made Cloudflare's shared edge
+/// answer **400 Bad Request** before the Worker (SNI/routing broke on the
+/// IP-connect path). On carriers with flaky DNS (Jio) the OS lookup fails and
+/// the code was forced onto that broken IP path → hard 400 for Google + email
+/// sign-in AND every /api/* call, on every network. Reverting to pure default
+/// networking restores the known-good behaviour (the 50b4d86 build that signed
+/// in fine). The [AvaDns] DoH resolver is kept for a future, device-TESTED
+/// re-enable (must verify TLS SNI end-to-end against Cloudflare before shipping).
 void installAvaDns() {
-  HttpOverrides.global = AvaHttpOverrides();
+  // Intentionally a no-op — see PERF-DNS-4 note above. Pure OS DNS + default
+  // dart:io connection (identical to the last known-good build).
 }
 
 class AvaHttpOverrides extends HttpOverrides {
