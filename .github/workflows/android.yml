@@ -9,12 +9,19 @@ name: Android build
 # Staging lane (creator-marketplace Phase 1, A1): pushes to the `staging`
 # branch build with --dart-define=AVATOK_ENV=staging (app talks to
 # api-staging.avatok.ai) and publish under the staging-latest tag.
+#
+# AUTO-BUILD ON PUSH IS DISABLED (owner decision 2026-07-04: "no auto build
+# unless I say so — just push to git and I'll trigger a build manually").
+# Builds now run ONLY when the owner starts them by hand from the Actions tab
+# (Run workflow) or `gh workflow run android.yml`. Agents may push commits
+# freely; they must NEVER trigger this workflow without an explicit owner
+# request. Re-enable the `push:` block below to resume auto-build on app/ changes.
 on:
-  push:
-    branches: [main, staging]
-    paths:
-      - 'app/**'
-      - '.github/workflows/android.yml'
+  # push:
+  #   branches: [main, staging]
+  #   paths:
+  #     - 'app/**'
+  #     - '.github/workflows/android.yml'
   workflow_dispatch:
 
 env:

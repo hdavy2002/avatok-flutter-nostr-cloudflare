@@ -141,18 +141,24 @@ building. It governs ALL AvaVerse apps. The two client rules that bite hardest:
 
 ### Git protocol (MANDATORY — this repo is shared by multiple agents)
 
-- **Commit locally only. Do NOT push.** Every push auto-triggers a GitHub Actions build;
-  with hundreds of issues that would exhaust the free-plan quota. A build runs only on
-  the final merge. Never push on your own initiative (e.g. as a reflex after committing).
-- **A local `pre-push` hook BLOCKS all pushes by default.** This is intentional. When —
-  and ONLY when — the user EXPLICITLY asks you to push, push using the override flag:
+- **NO AUTO-BUILD — builds are MANUAL ONLY (owner decision 2026-07-04, PERMANENT).**
+  Every build workflow (`android.yml`, `avaconsult.yml`, `macos.yml`, `web-deploy.yml`)
+  has its `push:` trigger DISABLED and runs on `workflow_dispatch` only. A `git push`
+  therefore NO LONGER triggers any build. The owner starts builds by hand from the
+  Actions tab (Run workflow) or `gh workflow run <file>`. **NEVER trigger a build**
+  (no `gh workflow run`, no `workflow_dispatch` via API, and never re-enable a `push:`
+  trigger) unless the owner EXPLICITLY asks. Do NOT re-add push triggers to the
+  workflows on your own initiative.
+- **Pushing commits is now allowed** (it's safe — no build fires). Still `git fetch`
+  first, keep history clean, and never force-push shared branches.
+- **A local `pre-push` hook still BLOCKS pushes by default** as a safety net. Push using
+  the override flag (this is fine now that builds are manual):
 
   ```bash
   ALLOW_PUSH=1 git push <remote> <branch>
   ```
 
-  Do NOT use `--no-verify` and do NOT remove/disable the hook. The override exists so an
-  explicit "push my commits" request works while accidental/unasked pushes stay blocked.
+  Do NOT use `--no-verify` and do NOT remove/disable the hook.
 - **One issue per commit.** Each commit fixes a single issue, and the message must start
   with the issue ID, e.g. `[ISSUE-123] Fix null check in payout handler`. This keeps the
   history bisectable if the final merge build fails.

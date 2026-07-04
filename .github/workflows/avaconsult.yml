@@ -3,12 +3,15 @@ name: AvaConsult build
 # Separate paid app (RealtimeKit 1:20). Built on GitHub Actions; APK published
 # to the "consult-latest" release for a stable direct download link.
 
+# AUTO-BUILD ON PUSH IS DISABLED (owner decision 2026-07-04: "no auto build
+# unless I say so"). Run manually from the Actions tab (Run workflow) or
+# `gh workflow run avaconsult.yml`. Re-enable the `push:` block to resume.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'avaconsult/**'
-      - '.github/workflows/avaconsult.yml'
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'avaconsult/**'
+  #     - '.github/workflows/avaconsult.yml'
   workflow_dispatch:
 
 permissions:
