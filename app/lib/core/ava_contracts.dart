@@ -63,6 +63,12 @@ class AvaApi {
   static const String ragStore = '/api/ava/rag/store';
   static const String ragBackfill = '/api/ava/rag/backfill';
 
+  /// In-thread "smart search" — semantic search over the user's own AI Search
+  /// shard, best-effort scoped to a conversation so the thread search UI can map
+  /// hits back to local messages. POST { q, conv?, name? } → { ok, hits:[{text,
+  /// inThread, source}] }.
+  static const String brainThreadSearch = '/api/brain/thread-search';
+
   /// AvaApps (PREMIUM) — operate the user's Google apps via Composio, driven by
   /// the user's own Gemini key. connect → OAuth URLs; status → connected apps;
   /// run → natural-language action.

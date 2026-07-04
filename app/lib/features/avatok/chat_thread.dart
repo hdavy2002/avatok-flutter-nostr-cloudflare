@@ -158,6 +158,18 @@ class _Msg {
        this.aiLocal = false});
 }
 
+/// One semantic ("smart search") hit returned by /api/brain/thread-search and
+/// resolved against the local transcript. [localId] is the matched `_Msg.id` when
+/// the snippet fuzzy-matches a message loaded in THIS thread (tappable → scrolls
+/// to it); null means the hit is "from your other chats" (hidden by default).
+class _AiHit {
+  final String snippet;   // server snippet (may carry a "Me: "/"Them: " label)
+  final bool inThread;    // server's coarse this-conversation guess
+  final int? localId;     // matched local _Msg.id, else null
+  final String localText; // the matched local message text (for display)
+  _AiHit(this.snippet, this.inThread, this.localId, this.localText);
+}
+
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // STREAM J (D17): whether incoming media auto-downloads on render in THIS
   // thread. Resolved once on open from MediaAutoDownload.shouldAutoFetch (mode +
@@ -171,6 +183,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // stays null (treated as accepted). A 'pending' thread NEVER auto-downloads.
   String? _threadAcceptState;
   final _ctrl = TextEditingController();
+  final _searchCtrl = TextEditingController(); // in-thread search box (literal + AI)
   final _composerFocus = FocusNode(); // keep the keyboard up after each send
   final _scroll = ScrollController();
   final _picker = ImagePicker();
@@ -303,6 +316,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Map<String, String>? _pinned; // {id, text}
   bool _searchMode = false;
   String _searchQuery = '';
+  // ---- in-thread "smart search" (semantic, over the user's own AI Search) ----
+  // Literal search stays instant/offline; smart search is an EXTRA step, run only
+  // when the user taps "Search with AI" (or has no literal hit). State is reset
+  // whenever the query text changes so stale AI results never show for a new query.
+  bool _aiSearching = false;                 // request in flight (spinner)
+  String _aiSearchedQuery = '';              // the query the current hits answer
+  bool _aiSearchError = false;               // last request failed
+  bool _aiBrainOff = false;                  // messaging AvaBrain toggle is off
+  bool _aiShowOther = false;                 // reveal "from your other chats" hits
+  List<_AiHit> _aiHits = const [];           // matched + unmatched semantic hits
   Map<String, String> _memberNames = {}; // hex → name (group mentions)
   String _wallpaperId = 'default';
   List<String> _mentionMatches = [];
@@ -1493,6 +1516,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _partySub?.cancel();               // PartyKit live layer
     _party?.leave();
     _ctrl.dispose();
+    _searchCtrl.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
     _audio.dispose();
@@ -5673,31 +5697,38 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                       .where((m) => !m.hidden && m.text != 'This message was deleted')
                       .toList();
                 }
-                if (_searchMode && _searchQuery.trim().isNotEmpty) {
+                final searching = _searchMode && _searchQuery.trim().isNotEmpty;
+                if (searching) {
                   final q = _foldSearch(_searchQuery);
                   visible = visible.where((m) => _foldSearch(m.text).contains(q)).toList();
-                  // No literal hit → offer Ava (on-device semantic find over this
-                  // thread). DM/group content stays on the phone, so this can't be
-                  // a server-side Cloudflare AI Search; "Discuss with Ava" reads
-                  // the visible bubbles locally and answers by MEANING.
+                  // No literal hit → keep the user IN the thread and offer BOTH the
+                  // on-device "Discuss with Ava" find AND the server-side smart
+                  // (semantic) search over their own consented index.
                   if (visible.isEmpty) return _searchEmptyState(_searchQuery.trim());
                 }
+                // Smart-search footer: below the literal hits, offer "Search with
+                // AI" (or render the AI results/spinner once run). Only in search
+                // mode with a query, and only when there ARE literal hits (the
+                // empty-state path renders its own AI section).
+                final showAiFooter = searching;
                 // F3 (restoreV2): a leading "Older messages" divider sits above
                 // the oldest loaded row once we've paged (or are paging) the deep
                 // archive, so the extra rows read as history from the backup.
                 final showArchiveHeader = RemoteConfig.restoreV2 &&
-                    !(_searchMode && _searchQuery.trim().isNotEmpty) &&
+                    !searching &&
                     (_hasArchived || _archiveLoading);
                 final headerCount = showArchiveHeader ? 1 : 0;
+                final footerCount = showAiFooter ? 1 : 0;
                 return ListView.builder(
                   controller: _scroll,
                   // [UI-BUBBLE-1] Symmetric 12dp horizontal thread padding for both
                   // incoming & outgoing (bubbles cap at 78% of the thread width).
                   padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-                  itemCount: visible.length + headerCount,
+                  itemCount: visible.length + headerCount + footerCount,
                   itemBuilder: (c, i) {
                     if (showArchiveHeader && i == 0) return _olderMessagesDivider();
                     final vi = i - headerCount;
+                    if (showAiFooter && vi == visible.length) return _aiSearchFooter();
                     final m = visible[vi];
                     // Phase 5: insert a "Today / Yesterday / date" separator above
                     // the first message of each new calendar day.
@@ -6628,54 +6659,333 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     return b.toString().trim();
   }
 
-  /// Empty state shown when an in-thread search finds no literal match. Keeps the
-  /// user IN the thread (the complaint was being kicked out) and offers Ava as a
-  /// meaning-based fallback over the on-device transcript.
-  Widget _searchEmptyState(String query) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
-                size: 30, color: Zine.inkMute),
-            const SizedBox(height: 10),
-            Text('No messages match “$query”.',
-                textAlign: TextAlign.center, style: ZineText.value(size: 14)),
-            const SizedBox(height: 4),
-            Text('Ava can search this chat by meaning, not just exact words.',
-                textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
-            const SizedBox(height: 14),
-            GestureDetector(
-              onTap: () {
-                setState(() { _searchMode = false; _searchQuery = ''; });
-                _discussWithAva();
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                decoration: BoxDecoration(
-                  color: Zine.lilac,
-                  borderRadius: BorderRadius.circular(100),
-                  border: Zine.border,
-                  boxShadow: Zine.shadowXs,
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                      size: 15, color: Zine.blueInk),
-                  const SizedBox(width: 6),
-                  Text('Ask Ava to find it',
-                      style: ZineText.value(size: 13, color: Zine.blueInk)),
-                ]),
-              ),
-            ),
+  /// Reset any smart-search state — called when the query text changes so stale
+  /// AI results/spinner/error never linger for a different query.
+  void _resetAiSearch() {
+    if (_aiSearching || _aiHits.isNotEmpty || _aiSearchError ||
+        _aiSearchedQuery.isNotEmpty || _aiShowOther || _aiBrainOff) {
+      _aiSearching = false;
+      _aiHits = const [];
+      _aiSearchError = false;
+      _aiSearchedQuery = '';
+      _aiShowOther = false;
+      _aiBrainOff = false;
+    }
+  }
+
+  /// Run "smart search": query the user's own semantic index (Cloudflare AI
+  /// Search) scoped best-effort to THIS conversation, then map hits back to local
+  /// messages by fuzzy text match. Literal search is untouched — this is additive.
+  ///
+  /// Gated by the messaging AvaBrain consent (the same ingestion the smart index
+  /// is built from): if it's off we show only the literal results plus a one-line
+  /// "enable AvaBrain" hint. Never throws — errors surface as a graceful state.
+  Future<void> _smartSearch() async {
+    final q = _searchQuery.trim();
+    if (q.isEmpty || _aiSearching) return;
+    // Same query already answered → don't refetch.
+    if (_aiSearchedQuery == q && (_aiHits.isNotEmpty || _aiSearchError)) return;
+
+    // Respect the existing BrainConsent gate (E2E/private content is only ever
+    // indexed under the user's own consented ingestion; if that's off there is
+    // nothing to search and we must not pretend otherwise).
+    if (!await BrainConsent.isOn('messaging')) {
+      if (!mounted) return;
+      setState(() { _aiBrainOff = true; _aiHits = const []; _aiSearchError = false; });
+      return;
+    }
+
+    setState(() { _aiSearching = true; _aiSearchError = false; _aiBrainOff = false; });
+    final t0 = DateTime.now().millisecondsSinceEpoch;
+    var ok = false;
+    var matchedLocal = 0;
+    List<_AiHit> hits = const [];
+    try {
+      final res = await ApiAuth.postJson(
+        _brainSearchUrl(),
+        {'q': q, 'conv': _serverConvId ?? '', 'name': widget.chat.name},
+        timeout: const Duration(seconds: 12),
+      );
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final raw = (body['hits'] as List?) ?? const [];
+        final parsed = <_AiHit>[];
+        for (final h in raw) {
+          if (h is! Map) continue;
+          final snip = (h['text'] ?? '').toString().trim();
+          if (snip.isEmpty) continue;
+          final inThread = h['inThread'] == true;
+          final local = _matchLocalMessage(snip);
+          if (local != null) matchedLocal++;
+          parsed.add(_AiHit(snip, inThread, local?.id, local?.text ?? ''));
+        }
+        // Order: in-thread matches first, then in-thread unmatched, then others.
+        parsed.sort((a, b) {
+          int rank(_AiHit x) => x.localId != null ? 0 : (x.inThread ? 1 : 2);
+          return rank(a).compareTo(rank(b));
+        });
+        hits = parsed;
+        ok = true;
+      }
+    } catch (_) {
+      ok = false;
+    }
+    final ms = DateTime.now().millisecondsSinceEpoch - t0;
+    Analytics.capture('chat_ai_search',
+        {'ok': ok, 'ms': ms, 'hits': hits.length, 'matched_local': matchedLocal});
+    if (!mounted) return;
+    setState(() {
+      _aiSearching = false;
+      _aiSearchedQuery = q;
+      _aiSearchError = !ok;
+      _aiHits = hits;
+    });
+  }
+
+  static String _brainSearchUrl() {
+    final origin = kApiBase.endsWith('/api')
+        ? kApiBase.substring(0, kApiBase.length - '/api'.length)
+        : kApiBase;
+    return '$origin${AvaApi.brainThreadSearch}';
+  }
+
+  /// Fuzzy-match a server snippet to a message loaded in THIS thread. Strips any
+  /// "Me: "/"Them: "/"Ava: " speaker label the index added, folds accents/case,
+  /// then looks for a two-way containment against each local bubble's text.
+  _Msg? _matchLocalMessage(String snippet) {
+    var s = snippet.replaceFirst(RegExp(r'^(me|them|you|ava)\s*:\s*', caseSensitive: false), '').trim();
+    final needle = _foldSearch(s);
+    if (needle.length < 3) return null;
+    _Msg? best;
+    var bestLen = 0;
+    for (final m in _msgs) {
+      if (m.special != null || m.text.trim().isEmpty) continue;
+      final hay = _foldSearch(m.text);
+      if (hay.isEmpty) continue;
+      // Two-way containment: the message contains the snippet, or the snippet
+      // (a longer indexed line) contains the whole message.
+      final overlap = hay.contains(needle) || (needle.length > hay.length && needle.contains(hay));
+      if (overlap && hay.length > bestLen) { best = m; bestLen = hay.length; }
+    }
+    return best;
+  }
+
+  /// Tap a matched AI hit → reuse the existing literal-search filter to reveal the
+  /// message: set the query to a distinctive slice of the matched local text so
+  /// the list filters down to (and shows) that bubble.
+  void _openAiHit(_AiHit hit) {
+    if (hit.localId == null || hit.localText.trim().isEmpty) return;
+    Analytics.capture('chat_ai_search_open', {'in_thread': hit.inThread});
+    // Pick a distinctive slice (first ~5 words) so the literal filter narrows to
+    // this message but the search box stays readable/editable.
+    final words = hit.localText.trim().split(RegExp(r'\s+'));
+    final slice = (words.length > 6 ? words.sublist(0, 6) : words).join(' ');
+    _searchCtrl.text = slice;
+    setState(() {
+      _searchQuery = slice;
+      _resetAiSearch();
+    });
+  }
+
+  /// Compact "AI results" section rendered under the literal hits (or in the empty
+  /// state). Handles spinner / error / empty / consent-off, all in Zine styling.
+  Widget _aiResultsSection() {
+    final children = <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        child: Row(children: [
+          Expanded(child: Container(height: Zine.bw, color: Zine.inkMute.withValues(alpha: 0.4))),
+          const SizedBox(width: 8),
+          PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 13, color: Zine.blueInk),
+          const SizedBox(width: 5),
+          Text('AI RESULTS', style: ZineText.tag(size: 9, color: Zine.blueInk)),
+          const SizedBox(width: 8),
+          Expanded(child: Container(height: Zine.bw, color: Zine.inkMute.withValues(alpha: 0.4))),
+        ]),
+      ),
+    ];
+
+    if (_aiBrainOff) {
+      children.add(Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+        child: Text('Enable AvaBrain for your messages in Settings to search by meaning.',
+            textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
+      ));
+      return Column(mainAxisSize: MainAxisSize.min, children: children);
+    }
+    if (_aiSearching) {
+      children.add(const Padding(
+        padding: EdgeInsets.symmetric(vertical: 14),
+        child: Center(child: SizedBox(
+            width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk))),
+      ));
+      return Column(mainAxisSize: MainAxisSize.min, children: children);
+    }
+    if (_aiSearchError) {
+      children.add(Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+        child: Text("Couldn't reach smart search. Tap to retry.",
+            textAlign: TextAlign.center, style: ZineText.sub(size: 12, color: Zine.coral)),
+      ));
+      children.add(_aiSearchButton(label: 'Retry smart search'));
+      return Column(mainAxisSize: MainAxisSize.min, children: children);
+    }
+
+    final inThread = _aiHits.where((h) => h.localId != null).toList();
+    final other = _aiHits.where((h) => h.localId == null).toList();
+    if (inThread.isEmpty && other.isEmpty) {
+      children.add(Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+        child: Text('No meaning-based matches in this chat.',
+            textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
+      ));
+      return Column(mainAxisSize: MainAxisSize.min, children: children);
+    }
+    for (final h in inThread) children.add(_aiHitTile(h, tappable: true));
+    if (other.isNotEmpty) {
+      children.add(Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: GestureDetector(
+          onTap: () => setState(() => _aiShowOther = !_aiShowOther),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            PhosphorIcon(
+                _aiShowOther ? PhosphorIcons.caretDown(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                size: 12, color: Zine.inkMute),
+            const SizedBox(width: 4),
+            Text('${other.length} from your other chats',
+                style: ZineText.tag(size: 10, color: Zine.inkMute)),
           ]),
+        ),
+      ));
+      if (_aiShowOther) for (final h in other) children.add(_aiHitTile(h, tappable: false));
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: children);
+  }
+
+  /// Footer under the literal hits: either the "Search with AI" opt-in pill (not
+  /// yet run for this query) or the AI results section (spinner/hits/error).
+  Widget _aiSearchFooter() {
+    final q = _searchQuery.trim();
+    final ranForThisQuery = _aiSearchedQuery == q &&
+        (_aiHits.isNotEmpty || _aiSearchError || _aiBrainOff);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: (_aiSearching || ranForThisQuery)
+          ? _aiResultsSection()
+          : _aiSearchButton(),
+    );
+  }
+
+  Widget _aiHitTile(_AiHit h, {required bool tappable}) {
+    final label = h.localId != null ? h.localText : h.snippet;
+    final tile = Container(
+      margin: const EdgeInsets.fromLTRB(16, 3, 16, 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Zine.paper,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tappable ? Zine.ink : Zine.inkMute, width: tappable ? 2 : 1),
+      ),
+      child: Row(children: [
+        Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: ZineText.value(size: 13.5))),
+        if (tappable) ...[
+          const SizedBox(width: 8),
+          PhosphorIcon(PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), size: 15, color: Zine.blueInk),
+        ],
+      ]),
+    );
+    if (!tappable) return tile;
+    return GestureDetector(onTap: () => _openAiHit(h), behavior: HitTestBehavior.opaque, child: tile);
+  }
+
+  /// The explicit "Search with AI" pill — shown under literal results (and in the
+  /// empty state) so the user can opt into the semantic step.
+  Widget _aiSearchButton({String label = 'Search with AI'}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Center(
+          child: GestureDetector(
+            onTap: _smartSearch,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+              decoration: BoxDecoration(
+                color: Zine.lilac,
+                borderRadius: BorderRadius.circular(100),
+                border: Zine.border,
+                boxShadow: Zine.shadowXs,
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), size: 15, color: Zine.blueInk),
+                const SizedBox(width: 6),
+                Text(label, style: ZineText.value(size: 13, color: Zine.blueInk)),
+              ]),
+            ),
+          ),
         ),
       );
 
+  /// Empty state shown when an in-thread search finds no literal match. Keeps the
+  /// user IN the thread (the complaint was being kicked out) and offers Ava as a
+  /// meaning-based fallback over the on-device transcript.
+  Widget _searchEmptyState(String query) {
+    final q = query.trim();
+    final ranForThisQuery = _aiSearchedQuery == q &&
+        (_aiHits.isNotEmpty || _aiSearchError || _aiBrainOff);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+            size: 30, color: Zine.inkMute),
+        const SizedBox(height: 10),
+        Text('No messages match “$query”.',
+            textAlign: TextAlign.center, style: ZineText.value(size: 14)),
+        const SizedBox(height: 4),
+        Text('Search this chat by meaning, not just exact words.',
+            textAlign: TextAlign.center, style: ZineText.sub(size: 12)),
+        const SizedBox(height: 14),
+        // Server-side smart (semantic) search over the user's own consented
+        // index — the primary "AI search" path. Shows spinner/hits/error once run.
+        if (_aiSearching || ranForThisQuery)
+          _aiResultsSection()
+        else
+          _aiSearchButton(),
+        const SizedBox(height: 10),
+        // On-device "Discuss with Ava" — reads the visible bubbles locally and
+        // answers by meaning (kept as a secondary, fully-local option).
+        GestureDetector(
+          onTap: () {
+            setState(() { _searchMode = false; _searchQuery = ''; _resetAiSearch(); });
+            _discussWithAva();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+            decoration: BoxDecoration(
+              color: Zine.paper,
+              borderRadius: BorderRadius.circular(100),
+              border: Zine.border,
+              boxShadow: Zine.shadowXs,
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              PhosphorIcon(PhosphorIcons.chatCircleText(PhosphorIconsStyle.bold),
+                  size: 15, color: Zine.ink),
+              const SizedBox(width: 6),
+              Text('Discuss with Ava',
+                  style: ZineText.value(size: 13, color: Zine.ink)),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
   Widget _searchBar() => Row(children: [
         IconButton(icon: PhosphorIcon(PhosphorIcons.arrowLeft(PhosphorIconsStyle.bold), color: Zine.ink),
-            onPressed: () => setState(() { _searchMode = false; _searchQuery = ''; })),
+            onPressed: () => setState(() { _searchMode = false; _searchQuery = ''; _resetAiSearch(); })),
         Expanded(child: TextField(
           autofocus: true,
-          onChanged: (v) => setState(() => _searchQuery = v),
+          controller: _searchCtrl,
+          onChanged: (v) => setState(() { _searchQuery = v; _resetAiSearch(); }),
           style: ZineText.input(size: 15.5),
           cursorColor: Zine.blueInk,
           decoration: InputDecoration(

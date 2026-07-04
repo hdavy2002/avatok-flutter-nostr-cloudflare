@@ -153,6 +153,104 @@ export async function avaRagBackfill(req: Request, env: Env): Promise<Response> 
   return json({ ok: true, indexed: { conversations, files }, capped });
 }
 
+// POST /api/brain/thread-search — in-thread "smart search". Semantic search over
+// the user's OWN AI Search shard (same store the client ingests chat text into),
+// then a BEST-EFFORT filter to the requesting conversation so the thread search UI
+// can map hits back to local messages.
+//
+// Metadata reality (why filtering is heuristic, not exact): AI Search stores ONE
+// document per conversation — live client ingestion keys it `chat-<chatName>`
+// (content prefixed `Chat with <name>:`) and the history backfill keys it
+// `messages-<serverConv>.txt` (content prefixed `Messenger conversation <conv>:`).
+// There is no per-MESSAGE id and no structured `conv` attribute on AI Search rows,
+// so we cannot hard-filter by conversation server-side. Instead we return each hit
+// with its source doc `name` + snippet and a coarse `inThread` guess (name/conv
+// markers), and let the client fuzzy-match snippet lines to local messages. Hits
+// that don't belong to this thread are flagged `inThread:false` ("from your other
+// chats") and hidden by default in thread search.
+//
+// Gating mirrors /rag/search: open to ALL users (free + premium), premium metered
+// with AvaCoins. During the free launch betaFreePremium makes premium-quality
+// retrieval available to everyone (search itself was never premium-gated here).
+export async function avaThreadSearch(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const { premium } = await isPremiumAI(req, env, ctx.uid);
+
+  let b: any;
+  try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const q = String(b.q ?? b.query ?? "").trim();
+  if (!q) return json({ error: "q required" }, 400);
+  // Conversation scoping hints (best-effort; either/both may be empty):
+  //   conv — server conversation id ('dm_…' | 'g_…'); matches backfill docs.
+  //   name — chat display name; matches live-ingested `chat-<name>` docs.
+  const conv = String(b.conv ?? "").trim();
+  const name = String(b.name ?? "").trim();
+  const topK = Math.max(1, Math.min(Number(b.topK ?? 8) || 8, 16));
+
+  // A doc/snippet belongs to THIS thread if its filename or content carries the
+  // conv id or the chat name marker written at ingest time.
+  const nameLc = name.toLowerCase();
+  const convLc = conv.toLowerCase();
+  const belongs = (docName: string, content: string): boolean => {
+    const dn = docName.toLowerCase();
+    const ct = content.toLowerCase();
+    if (convLc && (dn.includes(convLc) || ct.includes(`conversation ${convLc}`) || ct.includes(convLc))) return true;
+    if (nameLc && (dn.includes(`chat-${nameLc}`) || dn.includes(nameLc) || ct.includes(`chat with ${nameLc}`))) return true;
+    return false;
+  };
+
+  try {
+    const r: any = await searchForUser(env, ctx.uid, q, undefined, { tier: premium ? "premium" : "free", src: "thread_search" });
+    if (premium) await chargeFeature(env, ctx.uid, "ava_memory", crypto.randomUUID()).catch(() => ({ ok: false }));
+
+    // Flatten AI Search rows → per-hit snippet lines with an inThread guess.
+    const rows: any[] = Array.isArray(r?.data) ? r.data
+      : Array.isArray(r?.results) ? r.results
+      : Array.isArray(r?.matches) ? r.matches
+      : Array.isArray(r?.documents) ? r.documents : [];
+    const hits: Array<{ text: string; inThread: boolean; source: string }> = [];
+    const seen = new Set<string>();
+    for (const d of rows) {
+      const docName = String(d?.filename ?? d?.name ?? d?.title ?? "").trim();
+      const raw = String(d?.content ?? d?.snippet ?? d?.text ?? d?.summary ?? "").replace(/\s+/g, " ").trim();
+      if (!raw) continue;
+      const inThread = (conv || name) ? belongs(docName, raw) : true;
+      // The chat docs pack many labelled lines ("Me: …" / "Them: …") into one
+      // document; split so the client can match individual message lines.
+      const parts = raw.split(/(?:^|\s)(?=(?:Me|Them|Ava|You)\s*:\s)/i).map((s) => s.trim()).filter(Boolean);
+      const lines = parts.length > 1 ? parts : [raw];
+      for (const line of lines) {
+        const snip = line.slice(0, 300);
+        const dedupe = snip.toLowerCase();
+        if (seen.has(dedupe)) continue;
+        seen.add(dedupe);
+        hits.push({ text: snip, inThread, source: docName });
+        if (hits.length >= 40) break;
+      }
+      if (hits.length >= 40) break;
+    }
+    // Some AI Search variants synthesise a single answer string instead of rows.
+    if (hits.length === 0 && typeof r?.response === "string" && r.response.trim()) {
+      hits.push({ text: r.response.trim().slice(0, 500), inThread: true, source: "ava" });
+    }
+
+    // In-thread hits first (they're the ones the UI can navigate to), capped to topK.
+    hits.sort((a, b2) => Number(b2.inThread) - Number(a.inThread));
+    const out = hits.slice(0, topK);
+    track(env, ctx.uid, "brain_thread_search", "avaai", {
+      tier: premium ? "premium" : "free",
+      hits: out.length,
+      in_thread: out.filter((h) => h.inThread).length,
+      scoped: Boolean(conv || name),
+    });
+    return json({ ok: true, hits: out });
+  } catch (e: any) {
+    track(env, ctx.uid, "ai_error", "avaai", { route: "thread_search", detail: String(e?.message ?? e).slice(0, 200) });
+    return json({ error: "search failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
+  }
+}
+
 // POST /api/ava/rag/search — semantic search over the user's own indexed files.
 export async function avaRagSearch(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);

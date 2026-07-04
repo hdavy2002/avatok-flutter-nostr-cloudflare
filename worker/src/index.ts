@@ -99,7 +99,7 @@ import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate
 // Specs/ava-build/INTEGRATION-NOTES.md.
 import { avaGemini, avaGeminiStream } from "./routes/ava_gemini";        // P2
 import { avaLiveToken } from "./routes/ava_live";                        // fast online voice
-import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
+import { avaRagIngest, avaRagStore, avaRagSearch, avaRagBackfill, avaThreadSearch } from "./routes/ava_rag"; // RAG (Cloudflare AI Search)
 import { avaAppsCatalog, avaAppsConnect, avaAppsDisconnect, avaAppsStatus, avaAppsRun, avaGenuiAction } from "./routes/ava_apps"; // AvaApps (Composio)
 import { avaGenuiThumb } from "./routes/genui_thumb"; // GenUI preview-thumbnail proxy
 import { avaEmailList, avaEmailGet, avaEmailSpam, avaEmailTrash, avaEmailReply } from "./routes/ava_email"; // in-chat email (Composio Gmail)
@@ -348,6 +348,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/ava/rag/store" && req.method === "GET") return await avaRagStore(req, env);      // RAG
       if (p === "/api/ava/rag/search" && req.method === "POST") return await avaRagSearch(req, env);   // RAG
       if (p === "/api/ava/rag/backfill" && req.method === "POST") return await avaRagBackfill(req, env); // RAG backfill (history → AI Search)
+      if (p === "/api/brain/thread-search" && req.method === "POST") return await avaThreadSearch(req, env); // in-thread smart (semantic) search
       if (p === "/api/ava/apps/catalog" && req.method === "GET") return await avaAppsCatalog(req, env);  // AvaApps
       if (p === "/api/ava/apps/connect" && req.method === "POST") return await avaAppsConnect(req, env); // AvaApps
       if (p === "/api/ava/apps/disconnect" && req.method === "POST") return await avaAppsDisconnect(req, env); // AvaApps
