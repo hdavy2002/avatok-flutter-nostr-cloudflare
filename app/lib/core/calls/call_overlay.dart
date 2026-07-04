@@ -53,25 +53,7 @@ class _MinimizedLayer extends StatelessWidget {
   /// Return to the full call screen: clear the minimized flag and re-present the
   /// CallScreen route. Guards against a duplicate CallScreen — if the session is
   /// no longer minimized, a full view is already on-screen and we do nothing.
-  void _returnToCall() {
-    if (!session.minimized.value) return;
-    session.minimized.value = false;
-    final nav = navigatorKey.currentState;
-    if (nav == null) return;
-    nav.push(MaterialPageRoute(
-      builder: (_) => CallScreen(
-        room: session.config.room,
-        title: session.config.title,
-        seed: session.config.seed,
-        video: session.config.video,
-        outgoing: session.config.outgoing,
-        avatarUrl: session.config.avatarUrl,
-        ringbackUrl: session.config.ringbackUrl,
-        teamId: session.config.teamId,
-        teamSlot: session.config.teamSlot,
-      ),
-    ));
-  }
+  void _returnToCall() => returnToActiveCall();
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +97,34 @@ class _MinimizedLayer extends StatelessWidget {
       },
     );
   }
+}
+
+/// Return to the full call screen for the active session: clear the minimized
+/// flag and re-present the CallScreen route. Guards against a duplicate
+/// CallScreen — if the session is no longer minimized, a full view is already
+/// on-screen and we do nothing. Used both by the in-app overlay (tap pill/
+/// thumbnail) and by the ongoing-call notification tap (CALL-BG-INT1, wired in
+/// main.dart via NativeVoiceAudio.instance.onNotificationTapReturnToCall).
+void returnToActiveCall() {
+  final session = CallSessionManager.instance.current;
+  if (session == null || session.isEnded) return;
+  if (!session.minimized.value) return;
+  session.minimized.value = false;
+  final nav = navigatorKey.currentState;
+  if (nav == null) return;
+  nav.push(MaterialPageRoute(
+    builder: (_) => CallScreen(
+      room: session.config.room,
+      title: session.config.title,
+      seed: session.config.seed,
+      video: session.config.video,
+      outgoing: session.config.outgoing,
+      avatarUrl: session.config.avatarUrl,
+      ringbackUrl: session.config.ringbackUrl,
+      teamId: session.config.teamId,
+      teamSlot: session.config.teamSlot,
+    ),
+  ));
 }
 
 /// Helper used by [CallScreen]'s minimize triggers (back gesture / ⌄ button):

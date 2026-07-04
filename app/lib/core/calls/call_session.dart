@@ -448,9 +448,11 @@ class CallSession {
     // backgrounded while ringing/connecting keeps its FGS and survives.
     if (NativeVoiceAudio.isSupported) {
       try {
-        await NativeVoiceAudio().startCallForegroundService(
+        await NativeVoiceAudio.instance.startCallForegroundService(
           callId: config.room,
           peerName: config.title,
+          isVideo: config.video,
+          at: config.outgoing ? 'dial' : 'accept',
         );
       } catch (_) {}
     }
@@ -1181,7 +1183,7 @@ class CallSession {
     try { await NativeVoiceAudio().stopP2pAudioMode(); } catch (_) {}
     try { await NativeVoiceAudio().stopBluetoothSco(); } catch (_) {}
     try { await NativeVoiceAudio().stopProximitySensor(); } catch (_) {}
-    try { await NativeVoiceAudio().stopCallForegroundService(); } catch (_) {}
+    try { await NativeVoiceAudio.instance.stopCallForegroundService(reason: reason ?? 'hangup'); } catch (_) {}
     try { await NativeVoiceAudio().stopTelephonyMonitoring(); } catch (_) {}
     _telephonySub?.cancel();
     _ended = true;

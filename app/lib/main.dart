@@ -17,6 +17,7 @@ import 'core/ava_bootstrap.dart';
 import 'core/ava_log.dart';
 import 'core/calls/call_overlay.dart';
 import 'core/calls/call_session_manager.dart';
+import 'core/voice/native_voice_audio.dart';
 import 'core/db.dart';
 import 'core/deep_links.dart';
 import 'core/disk_cache.dart';
@@ -49,6 +50,18 @@ void main() async {
   // lifecycle observer so a 1:1 call keeps its foreground service + signaling WS
   // alive when the app is backgrounded (CALL-BG-A). Cheap; no I/O.
   CallSessionManager.instance.register();
+  // CALL-BG-INT1: wire the ongoing-call notification actions to the P2P call
+  // session. These MUST be set on NativeVoiceAudio.instance (the shared
+  // singleton) — the FGS is started via the same instance, which owns the
+  // method-channel handler, so "Hang up" and tap-to-return reach us. Without
+  // this, the notification actions were dead for P2P calls (Gemini Live wired
+  // its own via LiveVoiceController; P2P had none).
+  if (NativeVoiceAudio.isSupported) {
+    NativeVoiceAudio.instance.onNotificationHangup =
+        (callId) => CallSessionManager.instance.hangupActive('notification-hangup');
+    NativeVoiceAudio.instance.onNotificationTapReturnToCall =
+        (callId) => returnToActiveCall();
+  }
   // RAM budget (Scale proposal Phase 1): cap the global decoded-image cache.
   // Flutter's default is 1000 images / 100MB with no upper bound enforcement on
   // some paths; avatar grids + media threads on cheap phones benefit from a hard

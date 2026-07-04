@@ -195,6 +195,14 @@ class NativeVoiceAudio {
     bool isVideo = false,
     String at = 'dial',
   }) async {
+    // CALL-BG-INT1: the P2P call path never calls [start] (it uses flutter_webrtc,
+    // not this native engine), so without this the method-channel handler would
+    // never be bound during a P2P call and the notification Hang-up / tap-return
+    // events would be dropped. Binding here makes whichever instance starts the
+    // FGS own the handler — callers MUST use [NativeVoiceAudio.instance] so the
+    // instance that carries [onNotificationHangup]/[onNotificationTapReturnToCall]
+    // is the one that owns it.
+    _ensureHandler();
     Analytics.capture('call_fgs_started', {
       'call_id': callId,
       'is_video': isVideo,

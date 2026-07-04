@@ -84,9 +84,13 @@ class CallSessionManager with WidgetsBindingObserver {
       // video capture untouched so the reviewer sees media still flowing.
       if (NativeVoiceAudio.isSupported) {
         try {
-          NativeVoiceAudio().startCallForegroundService(
+          // Use the shared singleton (not a fresh instance) so the method-channel
+          // handler carrying the notification callbacks is not stolen (CALL-BG-INT1).
+          NativeVoiceAudio.instance.startCallForegroundService(
             callId: s.room,
             peerName: s.config.title,
+            isVideo: s.video,
+            at: 'accept',
           );
         } catch (_) {}
       }
