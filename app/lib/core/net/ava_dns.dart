@@ -170,10 +170,24 @@ class AvaHttpOverrides extends HttpOverrides {
       if (proxyHost != null) {
         return Socket.startConnect(proxyHost, proxyPort ?? port);
       }
-      final ip = await AvaDns.I.resolve(url.host);
-      // ip==null → let startConnect do a last-ditch OS lookup by hostname, so we
-      // are never worse than the default resolver.
-      return Socket.startConnect(ip ?? url.host, port);
+      // HAPPY PATH — connect by HOSTNAME, exactly like the default resolver.
+      // (PERF-DNS-3 fix) The previous build connected by a pre-resolved IP on
+      // every request; against a shared CDN edge (Cloudflare) that severed the
+      // TLS SNI, so the edge answered 400 Bad Request before the Worker ever
+      // saw the request — breaking ALL sign-in / API calls on every network.
+      // Connecting by hostname preserves SNI + cert validation and is a true
+      // no-op when DNS is healthy (which is ~always).
+      try {
+        return await Socket.startConnect(url.host, port);
+      } catch (osErr) {
+        // Only NOW — a genuine OS resolve/connect failure (the Jio "Failed host
+        // lookup" case PERF-DNS-2 targeted) — do we fall back to a DoH-resolved
+        // IP. TLS SNI still uses url.host via the HttpClient's secure upgrade.
+        if (!AvaDns.dohEnabled) rethrow;
+        final ip = await AvaDns.I.resolve(url.host);
+        if (ip == null) rethrow; // no better answer than the OS had — surface osErr's peer
+        return Socket.startConnect(ip, port);
+      }
     };
     return client;
   }
