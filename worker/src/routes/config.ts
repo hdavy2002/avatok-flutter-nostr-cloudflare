@@ -114,6 +114,14 @@ export interface PlatformConfig {
   // (default OFF); while off the client uses the V1 LivenessCheckScreen unchanged.
   // Flip ON in KV once V2 pass-rate is proven. Client mirror: RemoteConfig.livenessV2Enabled.
   livenessV2Enabled: boolean;
+  // Liveness V2 P3 (Specs/LIVENESS-V2-PLAN.md §3/§6). Optional accuracy booster:
+  // when ON *and* AWS creds (AWS_ACCESS_KEY_ID/SECRET/REGION) exist, the server-side
+  // same-person check (B5) runs the STANDARD Rekognition IMAGE API CompareFaces
+  // (neutral vs a challenge frame, similarity ≥ 90). NEVER the paid managed Face
+  // Liveness API. Default OFF: with it off (or no creds) B5 is skipped-as-pass so a
+  // user is never failed on a check we can't run. Purely additive — verification
+  // stays 100% Workers-AI (LLaVA + Whisper) unless this is flipped.
+  livenessUseRekognition: boolean;
   // P6: always-on per-message safety scanning (Nemotron :free via OpenRouter) with
   // red-bubble marking on the recipient. Ships **ON** (this one ships enabled).
   // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
@@ -200,6 +208,7 @@ const DEFAULTS: PlatformConfig = {
   groupInvitesEnabled: false,      // pending-membership group invites — OFF until migration + test
   listingLivenessGate: true,       // ON 2026-07-03: mandatory liveness (once) to create/publish a listing
   livenessV2Enabled: false,        // Liveness V2 ML-Kit-gated flow — dark, flip ON once pass-rate proven
+  livenessUseRekognition: false,   // Liveness V2 P3: optional AWS CompareFaces same-person (image API, NOT Face Liveness) — OFF; needs AWS creds
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified
