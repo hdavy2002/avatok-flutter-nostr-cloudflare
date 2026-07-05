@@ -283,6 +283,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // the StrangerGateBar and media/link-previews are suppressed in bubbles.
   String? _serverConv;
   bool _strangerGatePending = false;
+  // Show the Accept/Decline/Block/Report overlay exactly once per thread open
+  // when a pending stranger gate is detected (owner request: opening a request
+  // from a non-contact must prompt a decision, not just swap the composer bar).
+  bool _gatePromptShown = false;
   PartyRoom? _party;               // PartyKit live layer for this thread (ephemeral, gated)
   StreamSubscription? _partySub;
   Identity? _meId;
@@ -5842,8 +5846,116 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       if (!mounted) return;
       setState(() { _strangerGatePending = true; _threadAcceptState = 'pending'; });
       StrangerGateBar.trackShown(conv, peerHex);
+      // Prompt a decision up front with a modal overlay (once per open). The
+      // inline StrangerGateBar remains for when the user dismisses the overlay.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowStrangerGateSheet(peerHex));
     } catch (_) { /* fail open — no gate rather than a broken thread */ }
   }
+
+  /// Modal overlay shown when a non-contact thread is opened: Accept, Decline
+  /// (leave it in Message requests), Block or Report. Mirrors StrangerGateBar's
+  /// actions/telemetry so the two entry points stay consistent. Shown once per
+  /// thread open; the inline bar handles subsequent decisions.
+  Future<void> _maybeShowStrangerGateSheet(String peerHex) async {
+    if (!mounted || _gatePromptShown || !_strangerGatePending) return;
+    if (_serverConv == null || !StrangerGateBar.enabled) return;
+    _gatePromptShown = true;
+    final conv = _serverConv!;
+    final name = widget.chat.name.trim().isEmpty ? 'This person' : widget.chat.name.trim();
+    bool busy = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        Future<void> run(Future<void> Function() action, String verb) async {
+          if (busy) return;
+          setSheet(() => busy = true);
+          try { await action(); } catch (_) {}
+        }
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                PhosphorIcon(PhosphorIcons.userCircle(PhosphorIconsStyle.bold), size: 26, color: Zine.blueInk),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Message request', style: ZineText.value(size: 18))),
+              ]),
+              const SizedBox(height: 10),
+              Text('$name is not in your contacts. Accept to reply, or block/report if it looks like spam. Decline keeps it under Message requests.',
+                  style: ZineText.sub(size: 13.5)),
+              const SizedBox(height: 18),
+              // Accept — restore the composer and resume normal receipts.
+              _gateSheetBtn(
+                icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.bold),
+                label: 'Accept', bg: Zine.lime, fg: Zine.ink, busy: busy,
+                onTap: () => run(() async {
+                  await StrangerGateApi.accept(conv);
+                  trackStrangerGate('stranger_gate_accept', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
+                  if (mounted) setState(() { _strangerGatePending = false; _threadAcceptState = 'accepted'; });
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                }, 'accept'),
+              ),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: _gateSheetBtn(
+                  icon: PhosphorIcons.prohibit(PhosphorIconsStyle.bold),
+                  label: 'Block', bg: Zine.lilac, fg: Zine.ink, busy: busy,
+                  onTap: () => run(() async {
+                    await StrangerGateApi.block(conv: conv, uid: peerHex.isEmpty ? null : peerHex);
+                    trackStrangerGate('stranger_gate_block', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                    if (mounted) Navigator.of(context).maybePop(); // leave the thread
+                  }, 'block'),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: _gateSheetBtn(
+                  icon: PhosphorIcons.flag(PhosphorIconsStyle.bold),
+                  label: 'Report', bg: Zine.coral, fg: Colors.white, busy: busy,
+                  onTap: () => run(() async {
+                    final id = await StrangerGateApi.report(conv: conv, lastN: 10);
+                    trackStrangerGate('stranger_gate_report', {'conv': conv, 'peer': peerHex, 'ok': id != null, 'via': 'overlay'});
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                    if (mounted) Navigator.of(context).maybePop();
+                  }, 'report'),
+                )),
+              ]),
+              const SizedBox(height: 10),
+              // Decline = not now: dismiss, keep pending so it stays in Message requests.
+              Center(child: TextButton(
+                onPressed: busy ? null : () {
+                  trackStrangerGate('stranger_gate_decline', {'conv': conv, 'peer': peerHex, 'via': 'overlay'});
+                  Navigator.of(ctx).pop();
+                },
+                child: Text('Decline', style: ZineText.value(size: 15, color: Zine.inkSoft)),
+              )),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _gateSheetBtn({
+    required IconData icon, required String label, required Color bg,
+    required Color fg, required bool busy, required VoidCallback onTap,
+  }) => ZinePressable(
+        onTap: busy ? null : onTap,
+        color: bg,
+        radius: BorderRadius.circular(14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          PhosphorIcon(icon, size: 18, color: fg),
+          const SizedBox(width: 8),
+          Text(label, style: ZineText.value(size: 15, color: fg)),
+        ]),
+      );
 
   Future<void> _loadGuardian() async {
     final conv = _guardianConv;
