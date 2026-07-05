@@ -173,10 +173,13 @@ jobs:
       # native lib and grows to ~220MB, which Android's installer rejects as
       # "package appears to be invalid." Splitting per ABI yields a lean ~80MB
       # arm64 APK that installs cleanly (the format that worked before).
-      - name: Build release APK (split per ABI, side-load)
+      # arm64-ONLY (owner decision 2026-07-05: "I need arm64 apk and nothing else").
+      # --target-platform android-arm64 restricts the split build to a single ABI, so
+      # ONLY app-arm64-v8a-release.apk is produced (no armeabi-v7a, no x86). Faster too.
+      - name: Build release APK (arm64 only, side-load)
         if: env.BUILD_APK == 'true'
         working-directory: app
-        run: flutter build apk --release --split-per-abi --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
+        run: flutter build apk --release --split-per-abi --target-platform android-arm64 --build-number=$((10000 + GITHUB_RUN_NUMBER)) --dart-define=AVATOK_ENV=$AVATOK_ENV --dart-define=GIT_SHA=${{ github.sha }}
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_UPLOAD_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
@@ -189,11 +192,8 @@ jobs:
         run: |
           mkdir -p dist
           ls -la app/build/app/outputs/flutter-apk/
-          # arm64-v8a is the primary asset (virtually every modern phone) →
-          # named -arm64 so it's unmistakable on the release page. armeabi-v7a
-          # kept as a fallback for older 32-bit devices.
+          # arm64-v8a is the ONLY asset (owner 2026-07-05: arm64 and nothing else).
           cp app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/avatok-call-arm64.apk
-          cp app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/avatok-call-armv7.apk
           echo "size:"; ls -lh dist/
 
       - name: Upload .apk artifact (side-load)
@@ -210,16 +210,13 @@ jobs:
           name: ${{ env.AVATOK_ENV == 'staging' && 'AvaTok STAGING (latest)' || 'AvaTok Call Test (latest)' }}
           files: |
             dist/avatok-call-arm64.apk
-            dist/avatok-call-armv7.apk
           fail_on_unmatched_files: false
           body: |
-            Side-loadable Android APK (.apk), split per ABI, built by CI from
-            `app/` (owner 2026-07-04: APK only, no AAB). Install
-            `avatok-call-arm64.apk` (for virtually every modern phone). Use
-            `avatok-call-armv7.apk` only for old 32-bit devices. Install directly
-            on the device (enable "Install unknown apps" for your browser / file
-            manager if
-            prompted). No Play Store or App Bundle step is involved.
+            Side-loadable Android APK (.apk), arm64-v8a ONLY, built by CI from
+            `app/` (owner 2026-07-05: arm64 APK and nothing else). Install
+            `avatok-call-arm64.apk` (for virtually every modern phone). Install
+            directly on the device (enable "Install unknown apps" for your browser /
+            file manager if prompted). No Play Store or App Bundle step is involved.
 
             Signed with the Play upload key when the ANDROID_UPLOAD_KEYSTORE_BASE64
             (+ store/alias/key password) secrets are set; otherwise signed with
