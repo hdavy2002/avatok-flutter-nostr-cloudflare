@@ -309,6 +309,17 @@ export class InboxDO {
       if (url.pathname.endsWith("/call/clear")) return this.callClear();
       if (url.pathname.endsWith("/append")) return this.append(await req.json());
       if (url.pathname.endsWith("/sync")) {
+        // [SYNC-CURSOR-1] Phase 1 (dark): per-conversation catch-up. Taken ONLY when
+        // the client passes ?conv= AND SYNC_CONV_CURSOR_V2 is enabled; otherwise the
+        // legacy global id-cursor path runs verbatim (default, fully reversible — no
+        // current client sends ?conv=, so this is dark until we flip both).
+        const convParam = url.searchParams.get("conv");
+        const convCursorOn = (this.env as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
+        if (convParam && convCursorOn) {
+          return new Response(JSON.stringify(this.syncConvPayload(convParam, Number(url.searchParams.get("after") || 0))), {
+            headers: { "content-type": "application/json" },
+          });
+        }
         return new Response(JSON.stringify(this.syncPayload(Number(url.searchParams.get("cursor") || 0))), {
           headers: { "content-type": "application/json" },
         });
@@ -549,14 +560,35 @@ export class InboxDO {
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
 
-  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[] } {
+  // [SYNC-CURSOR-1] Phase 1: per-conversation catch-up by conv_seq (the Phase 0
+  // stamp). Returns ONLY the messages for one conversation with conv_seq > after,
+  // ordered by the per-conversation sequence, so a device can top up a single thread
+  // without the full-backlog re-download the global id-cursor forces. `seq` is the
+  // conversation's current high-water so the client knows when it is caught up. Dark
+  // until SYNC_CONV_CURSOR_V2=1 AND a client opts in with ?conv=.
+  private syncConvPayload(conv: string, after: number): { type: "sync_conv"; conv: string; after: number; messages: unknown[]; seq: number } {
     const messages = this.sql.exec(
-      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden
+      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq
+       FROM messages WHERE conv = ? AND conv_seq IS NOT NULL AND conv_seq > ? ORDER BY conv_seq ASC LIMIT ?`,
+      conv, after, SYNC_LIMIT,
+    ).toArray();
+    const seqRow = this.sql.exec(`SELECT seq FROM conv_meta WHERE conv = ? LIMIT 1`, conv).toArray();
+    const seq = seqRow.length ? Number(seqRow[0].seq) : 0;
+    return { type: "sync_conv", conv, after, messages, seq };
+  }
+
+  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[] } {
+    // conv_seq (Phase 0 stamp) and conv_meta.seq are added as ADDITIVE fields so a
+    // Phase-1-aware client can learn each conversation's per-stream position from the
+    // ordinary snapshot; older clients simply ignore the extra columns. No behaviour
+    // change to the legacy global-cursor path.
+    const messages = this.sql.exec(
+      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq
        FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`,
       cursor, SYNC_LIMIT,
     ).toArray();
     const receipts = this.sql.exec(`SELECT conv, peer, delivered_id, read_id FROM receipts`).toArray();
-    const convs = this.sql.exec(`SELECT conv, last_id, unread, peer FROM conv_meta`).toArray();
+    const convs = this.sql.exec(`SELECT conv, last_id, unread, peer, seq FROM conv_meta`).toArray();
     // OWNER read high-water per conv — lets a fresh client restore its unread
     // state instead of recounting the whole re-synced backlog as new.
     const reads = this.sql.exec(`SELECT conv, read_ts FROM read_state`).toArray();
