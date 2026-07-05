@@ -47,6 +47,10 @@ class CallSessionConfig {
   final String ringbackUrl;
   final String? teamId;
   final int? teamSlot;
+  /// [TRACE-ID-1] Correlation id minted at the dial boundary (caller) or carried
+  /// in the incoming push (callee). '' when unknown → the session mints one so a
+  /// trace always exists. Rides every call event + the reliability score.
+  final String traceId;
   const CallSessionConfig({
     required this.room,
     required this.title,
@@ -57,6 +61,7 @@ class CallSessionConfig {
     this.ringbackUrl = '',
     this.teamId,
     this.teamSlot,
+    this.traceId = '',
   });
 }
 
@@ -197,6 +202,9 @@ class CallSession {
   Timer? _relayFallbackTimer;
   bool _relayForced = false;
   Timer? _placeCallTimeout;
+  // [TRACE-ID-1] This call's correlation id (adopted from config or minted in
+  // start()). Published to Analytics.currentTraceId for the call's lifetime.
+  String _traceId = '';
   bool _gotWelcome = false;
   // CALL-GEN-1: our current generation, handed to us by the CallRoom DO in every
   // 'welcome'. We stamp it on every outbound signaling frame; the DO drops frames
@@ -239,6 +247,9 @@ class CallSession {
   int? _lastInboundAudioBytes;
   bool _mediaStalledFlagged = false;
   int? _mediaStallStartMs;
+  // [CALL-RELSCORE-1] Cumulative count of distinct media-stall episodes over the
+  // whole call — a reliability_score input on call_ended.
+  int _mediaStalls = 0;
 
   void _startMediaWatchdog() {
     _mediaWatchTimer?.cancel();
@@ -312,6 +323,7 @@ class CallSession {
       }
       if (_mediaStaleCount == 2 && !_mediaStalledFlagged) {
         _mediaStalledFlagged = true;
+        _mediaStalls++; // [CALL-RELSCORE-1] count distinct stall episodes
         Analytics.capture('call_media_stalled', {
           'call_id': config.room,
           'stale_s': 10,
@@ -354,6 +366,13 @@ class CallSession {
     gInCall = true;
     gActiveCallId = config.room;
     gInCallSince = DateTime.now().millisecondsSinceEpoch;
+    // [TRACE-ID-1] Adopt the trace id handed to us (dial boundary on the caller,
+    // incoming push on the callee) or mint one so a trace always exists. Publish
+    // it globally so EVERY Analytics.capture for the life of this call — here AND
+    // in CallTelemetry (call_started/call_connected/call_ended) — carries it,
+    // stitching both devices + the server under one trace_id. Cleared in teardown.
+    _traceId = config.traceId.isNotEmpty ? config.traceId : TraceContext.mint();
+    Analytics.currentTraceId = _traceId;
     Analytics.capture('call_session_extracted', {
       'call_id': config.room,
       'video': config.video,
@@ -1455,6 +1474,16 @@ class CallSession {
     if (gOutgoingCallId == config.room) {
       gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
     }
+    // [CALL-RELSCORE-1] Hand the telemetry the session-level resilience signals it
+    // can't see (mid-call reconnect attempts, forced TURN relay, callee-unreachable
+    // push failure) so call_ended carries a single reliability_score + its
+    // components. media_stalls + packet-loss are already tracked telemetry-side.
+    _telemetry.setReliabilityInputs(
+      reconnectAttempts: _reconnectAttempt,
+      mediaStalls: _mediaStalls,
+      relayForced: _relayForced,
+      unreachable: _callUnreachable,
+    );
     _telemetry.ended(reason ?? (_connected ? 'ended' : _phase));
     if (config.outgoing && !_connected) _notifyCalleeCanceled();
     _timer?.cancel();
@@ -1495,6 +1524,10 @@ class CallSession {
         'reason': reason ?? 'hangup',
       });
     }
+    // [TRACE-ID-1] Stop stamping this call's trace on subsequent (non-call) events
+    // once the call is fully torn down — but only if it's still ours (a newer
+    // action may already have taken the global).
+    if (Analytics.currentTraceId == _traceId) Analytics.currentTraceId = null;
     _bump();
   }
 

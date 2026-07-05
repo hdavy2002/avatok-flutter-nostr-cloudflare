@@ -31,8 +31,14 @@ class ApiAuth {
   static Future<Map<String, String>> _headers(
       String method, String url, {List<int>? body, Map<String, String>? base}) async {
     final h = <String, String>{...?base};
-    // Observability: a trace id per request, propagated through every layer.
-    h['X-Trace-Id'] = _traceId();
+    // Observability: a trace id propagated through every layer. [TRACE-ID-1]
+    // prefers, in order: an explicit X-Trace-Id / x-trace-id the caller put in
+    // `base` (an ACTION-scoped id that stitches call/message journeys across
+    // devices + server), then the current in-flight action trace, then a fresh
+    // per-request id. This keeps the header additive + backward compatible.
+    final explicit = h['X-Trace-Id'] ?? h['x-trace-id'];
+    h.remove('x-trace-id');
+    h['X-Trace-Id'] = explicit ?? Analytics.currentTraceId ?? _traceId();
     try {
       final b = await clerkBearer?.call();
       if (b != null && b.isNotEmpty) h['Authorization'] = 'Bearer $b';

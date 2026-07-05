@@ -116,6 +116,9 @@ class CallScreen extends StatefulWidget {
   final String ringbackUrl;
   final String? teamId;
   final int? teamSlot;
+  /// [TRACE-ID-1] Correlation id for this call, minted at the dial boundary
+  /// (caller) or carried in the incoming push (callee). '' → the session mints one.
+  final String traceId;
   // [CALL-DIAL-FAIL-1] Optional retry hook, wired by launch sites that can
   // cheaply re-run their own dial flow (fresh room id + fresh place-call POST)
   // when this call ends in the 'network-error' terminal state. Null → the
@@ -132,6 +135,7 @@ class CallScreen extends StatefulWidget {
     this.ringbackUrl = '',
     this.teamId,
     this.teamSlot,
+    this.traceId = '',
     this.onRetry,
   });
   @override
@@ -157,6 +161,7 @@ class _CallScreenState extends State<CallScreen> {
       ringbackUrl: widget.ringbackUrl,
       teamId: widget.teamId,
       teamSlot: widget.teamSlot,
+      traceId: widget.traceId, // [TRACE-ID-1]
     ));
     // The session asks us to pop when a call ends (busy/decline/hangup, after
     // the ringback grace delay). Guarded so it fires once.

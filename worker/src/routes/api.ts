@@ -115,6 +115,10 @@ export async function call(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; kind?: string; fromName?: string };
   if (!b.to || !b.callId) return json({ error: "to and callId required" }, 400);
+  // [TRACE-ID-1] Correlation id minted client-side at the dial boundary; propagate
+  // it into the push payload (→ callee) and PostHog captures on this path so the
+  // caller, Worker, and callee all stitch under one trace_id. Additive/optional.
+  const traceId = req.headers.get("x-trace-id") ?? "";
   // Read the callee's device count from the PRIMARY (plain prepare), not an
   // unconstrained replica — avoids a stale 0-token false-404 on a registered device.
   const n = await tokenCount(env.DB_META, b.to);
@@ -127,7 +131,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
       void env.Q_ANALYTICS.send({
         event: "call_no_device", uid: ctx.uid, ts: Date.now(),
         props: {
-          to: b.to, call_id: b.callId, call_type: b.kind ?? "audio",
+          to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
           app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
         },
       });
@@ -176,7 +180,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
       }).catch(() => {});
     }
   } catch { /* best-effort — takeover is an enhancement, never block the call */ }
-  await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", ts: Date.now() });
+  await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now() });
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so
   // the "incoming call shows uid/uid" fix is measurable and call volume/route is
@@ -189,7 +193,7 @@ export async function call(req: Request, env: Env): Promise<Response> {
         // hand-off (fcm_message_id/ok/error) is emitted by the consumer with
         // stage:'fcm_send' (P1). Same event name, disambiguated by `stage`.
         stage: "enqueue",
-        to: b.to, call_id: b.callId, call_type: b.kind ?? "audio",
+        to: b.to, call_id: b.callId, call_type: b.kind ?? "audio", trace_id: traceId,
         name_source: nameSource, devices: n,
         app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
       },

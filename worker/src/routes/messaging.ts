@@ -254,6 +254,12 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const text = b.body == null ? null : String(b.body);
   const mediaRef = b.media_ref == null ? null : String(b.media_ref);
   const clientId = b.client_id == null ? null : String(b.client_id);
+  // [TRACE-ID-1] Message-lifecycle correlation id. The client reuses the unique
+  // per-message client_id AS the trace_id (documented choice: client_id is already
+  // unique per message, so no separate id is minted for sends). If a client ever
+  // sends an explicit x-trace-id header we honour it; otherwise we fall back to
+  // client_id so the whole send→echo journey is queryable by one id in PostHog.
+  const traceId = req.headers.get("x-trace-id") ?? clientId ?? "";
   // [SRV-MSG-IDEMP-1] Optional multi-device origin tag. Passed straight through to
   // the InboxDO append (stored on the row); absent for single-device clients.
   const deviceId = b.device_id == null ? null : String(b.device_id);
@@ -291,7 +297,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // Canonical, chronologically-sortable id shared by the live Ably message, the
   // R2 archive key, and the client dedupe key (Phase 1, ABLY-R2-1).
   const mid = canonicalMsgId(created);
-  const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created, device_id: deviceId, mid };
+  const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created, device_id: deviceId, mid, trace_id: traceId }; // [TRACE-ID-1]
 
   // Is this a delete-for-everyone control? Offline recipients then get a silent,
   // high-priority 'del' push (apply in realtime) instead of a "New message" banner.

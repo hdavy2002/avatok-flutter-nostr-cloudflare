@@ -5,9 +5,38 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'ava_log.dart';
 import 'feature_flags.dart';
+
+/// [TRACE-ID-1] (DETERMINISTIC-CORE #18 / TELEMETRY-FLIGHT-RECORDER §1) A single
+/// correlation id minted at a user-action boundary (call dial, message send) that
+/// is propagated HTTP → Worker → DOs → push payload → receiving client → RTC
+/// telemetry. Every PostHog event captured while a trace is "current" carries it
+/// (see [Analytics._base]), so one PostHog filter (`trace_id = …`) replays a whole
+/// cross-device journey.
+///
+/// Format: a **UUIDv7** (time-ordered) via the pinned `uuid: ^4.5.1` package,
+/// which supports v7 natively — so ids sort chronologically in PostHog with no
+/// extra timestamp column. If a future package downgrade ever lacks v7, callers
+/// may fall back to any unique string (e.g. a message's existing `client_id`,
+/// which is already unique-per-message — see the messaging note in the outbox).
+class TraceContext {
+  static const _uuid = Uuid();
+
+  /// Mint a fresh time-ordered trace id (UUIDv7).
+  static String mint() {
+    try {
+      return _uuid.v7();
+    } catch (_) {
+      // Belt-and-braces fallback (documented format): millis-hex + random-hex,
+      // still time-ordered and unique enough for tracing.
+      final ms = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
+      return '$ms-${_uuid.v4().substring(0, 12)}';
+    }
+  }
+}
 
 /// Central client-side analytics for AvaTOK → PostHog (EU region, project 139917).
 ///
@@ -55,6 +84,13 @@ class Analytics {
   static String? _clerkUid;
   static int _seq = 0; // session_seq — monotonic per app session
   static String _net = 'unknown'; // wifi|cell|offline
+  /// [TRACE-ID-1] The trace id of the CURRENT user action (call/message). When
+  /// non-null it rides EVERY captured event as `trace_id`, stitching one user
+  /// action across both devices and the server. Callers that own a longer-lived
+  /// trace (e.g. a call session) prefer passing `trace_id` explicitly in the
+  /// event props so it survives even if this global is reset by a concurrent
+  /// action; this global is a convenience for action-scoped bursts of events.
+  static String? currentTraceId;
   /// P13: true when the last-known transport is cellular (for latency dashboards).
   static bool get isCellular => _net == 'cell';
 
@@ -270,6 +306,9 @@ class Analytics {
         // Clerk uid (the Worker's distinct_id) on every event so client + server
         // timelines join even before the PostHog alias propagates.
         if (_clerkUid != null) 'clerk_uid': _clerkUid!,
+        // [TRACE-ID-1] Correlation id on every event when an action is in flight;
+        // explicit `trace_id` in props always wins (via `...?p` below).
+        if (currentTraceId != null) 'trace_id': currentTraceId!,
         'build': kAppBuild,
         'env': kAvatokEnv,
         'net': _net,

@@ -160,6 +160,10 @@ export interface PushMsg {
   to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
+  // [TRACE-ID-1] Correlation id minted client-side at the dial boundary, carried
+  // through to the callee's FCM `data.trace_id` so both devices + the Worker
+  // stitch under one trace_id in PostHog. Optional/additive.
+  traceId?: string;
   // kind === "group_invite": the inviter added the recipient to a group. Carries
   // the group name + conv id so the app can deep-link straight to the group and
   // show the Accept/Decline prompt.

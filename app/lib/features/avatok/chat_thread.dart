@@ -2023,6 +2023,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     IceCache.prefetch(); // warm TURN creds in parallel with the FCM ring
     final video = kind == 'video';
     final room = 'avatok-${const Uuid().v4().substring(0, 8)}';
+    // [TRACE-ID-1] Mint ONE correlation id at this dial boundary. It rides the
+    // /api/call POST header (→ Worker → push payload → callee → RTC telemetry)
+    // and is handed to the CallSession so every call event on BOTH devices
+    // stitches under one trace_id in PostHog.
+    final traceId = TraceContext.mint();
     // (`to` already declared above in the CALLFIX-14 glare block)
     AvaLog.I.log('call', 'placing ${video ? "video" : "audio"} call callId=$room to=${to.length > 12 ? to.substring(0, 12) : to}…');
     // The callee's default ringtone (AI Ringback) — comes back on the /api/call
@@ -2038,12 +2043,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (to.startsWith('user_')) {
       try {
         // 'from' is derived server-side from the NIP-98 signature.
-        final res = await ApiAuth.postJson(kCallUrl, {
+        final res = await ApiAuth.postJsonH(kCallUrl, {
           'to': to,
           'fromName': _myName ?? 'AvaTOK',
           'callId': room,
           'kind': video ? 'video' : 'audio',
-        });
+        }, {'x-trace-id': traceId}); // [TRACE-ID-1] propagate to Worker + push
         AvaLog.I.log('call', 'POST /api/call -> HTTP ${res.statusCode}${res.statusCode != 200 ? " body=${res.body.length > 120 ? res.body.substring(0, 120) : res.body}" : ""}');
         final callKind = video ? 'video' : 'audio';
         // [MULTIACCT-4] Parse the distinct reachability signal the server now
@@ -2121,6 +2126,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         builder: (_) => CallScreen(
           room: room, title: widget.chat.name, seed: to, video: video,
           avatarUrl: widget.chat.avatarUrl, ringbackUrl: ringbackUrl,
+          traceId: traceId, // [TRACE-ID-1]
           // [CALL-DIAL-FAIL-1] Retry affordance on the 'network-error' terminal
           // state: re-runs this exact dial flow (fresh room id, fresh POST)
           // instead of leaving the user stuck on a dead call screen.

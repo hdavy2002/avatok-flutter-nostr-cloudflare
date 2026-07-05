@@ -488,6 +488,9 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
       'kind': d['kind'] ?? 'audio',
       'callId': d['callId'] ?? '',
       'fromName': d['fromName'] ?? 'AvaTOK',
+      // [TRACE-ID-1] Carry the caller's correlation id through CallKit so the
+      // callee's CallSession stitches to the same trace as the caller + Worker.
+      'trace_id': d['trace_id'] ?? '',
     },
     android: const AndroidParams(
       isCustomNotification: true,
@@ -1247,6 +1250,7 @@ class PushService {
           seed: (e['from'] ?? 'caller').toString(),
           video: e['kind'] == 'video',
           outgoing: false,
+          traceId: (e['trace_id'] ?? '').toString(), // [TRACE-ID-1]
         ),
       ));
     } catch (_) {}
