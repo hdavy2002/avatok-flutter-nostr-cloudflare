@@ -1,7 +1,7 @@
-# Trust Engine — Canonical Architecture v1.0 (FROZEN)
+# Trust Engine — Canonical Architecture v1.1 (FROZEN — FINAL)
 
-Status: **FROZEN 2026-07-05 (owner decision).** Further gains come from production data, not design work.
-Lineage: v0.1 (fc1f44e, staged-evidence re-arch) → v0.2 (dcabe4d, cost staircase) → **v1.0 (this doc: + 20 hardening additions, architecture complete)**.
+Status: **FROZEN 2026-07-05 (owner decision). Implementation is the next step, not design.**
+Lineage: v0.1 (fc1f44e, staged-evidence re-arch) → v0.2 (dcabe4d, cost staircase) → v1.0 (2b4b5f4, 20 hardening additions) → **v1.1 (final freeze edits: LLM-free verification, AWS Rekognition named as launch FaceProvider/ModerationProvider implementation, quota-aware circuit breaker)**.
 `Specs/TRUST-ENGINE-PLAN-DRAFT.md` is superseded by this file. The liveness code shipped 2026-07-05 ([LIVE-UI-3]/[LIVE-SCALE-1]) is P0 raw material for the strangler migration in §12.
 
 ---
@@ -71,7 +71,7 @@ ML Kit + on-device STT own: blur · brightness · pose · face-in-oval · exactl
 
 **5.1 Tier 1 (~500 KB, no premium providers).** Adaptive frame count from session risk (easy 4 · default 6 · suspicious 10 — triggers: weak/absent attestation, prior fails, fraud pre-screen, D10 list in config). Frames 640 px JPEG ~80 KB, deduped, uploaded sequentially to the DO with early-abort; ~100 KB audio snippet. Server checks: challenge correctness · signatures · timestamp monotonicity/window · frame-order consistency · device attestation verdict · device_score · fraud pre-screen.
 
-**5.2 Tier 2.** Escalation ladder (§6) for moderation + face analysis: DetectFaces-class geometry, CompareFaces-class consistency, moderation labels. Only sessions that survived Tier 1.
+**5.2 Tier 2.** Escalation ladder (§6) for moderation + face analysis: face analysis (AWS Rekognition `DetectFaces`), face consistency (`CompareFaces`), content moderation (`DetectModerationLabels`), and person count (exactly one visible person, via face bounding boxes). Only sessions that survived Tier 1. **No LLM ever participates in a verification decision** — the Trust Engine is deterministic; LLM-based verification is banned by design.
 
 **5.3 Decision.** Made **entirely from Tier 1–2 evidence**. Archived material can never influence a decision (decision evidence ≠ archive evidence — enforced by ordering: the decision is final before Tier 3 begins).
 
@@ -86,11 +86,13 @@ ML Kit + on-device STT own: blur · brightness · pose · face-in-oval · exactl
   cost_usd, provider, model_version, evidence_ref }
 ```
 
-Confidence normalization happens **in the adapter**; everything downstream is provider-independent. Interfaces: `FaceProvider` · `ModerationProvider` · `SpeechProvider` · `AttestationProvider`. Selection by config, never call-site imports.
+Confidence normalization happens **in the adapter**; everything downstream is provider-independent. Interfaces: `FaceProvider` · `ModerationProvider` · `SpeechProvider` · `AttestationProvider`. Selection by config, never call-site imports. Code never names a vendor at a call site — there is no `RekognitionProvider` type in pipeline code, only `FaceProvider`.
+
+**Initial implementations (frozen):** **AWS Rekognition is the launch implementation of both `FaceProvider`** (`DetectFaces`: geometry, eye openness, quality, pose, confidence; `CompareFaces`: same-person consistency; face count/bounding boxes for exactly-one-person) **and `ModerationProvider`** (`DetectModerationLabels`: nudity, explicit, violence, graphic, suggestive). Alternates behind the same interfaces: Azure Face / Google Vision / future (`FaceProvider`); Hive / Google Vision / Workers AI (`ModerationProvider`). AWS is today's implementation, not a dependency. Rekognition is used ONLY for what it excels at — blur, brightness, head tracking, smile, blink, countdown, FPS, face-oval and challenge choreography stay on-device with ML Kit (faster and free).
 
 **Escalation ladder:** on-device verdict (free; ≥.95 confident → done) ▸ Workers AI (~$0.0002/frame; confident → done) ▸ premium (~$0.001/frame, decisive). Premium is reserved for uncertainty, REVIEW band, and the N% audit sample.
 
-**Circuit breaker:** per-provider health (rolling error rate + latency). Open breaker ⇒ degrade gracefully: premium down → ladder tops out at Workers AI and uncertain sessions → REVIEW (never hard-fail a user because a vendor is down); Workers AI down → premium direct (budget-checked) or REVIEW. Breaker state changes are audited + alerted. The system never fully blocks on any single vendor.
+**Circuit breaker (hard invariant: a user is NEVER failed solely because a cloud provider is unavailable).** Per-provider health tracks rolling error rate, latency, AND quota signals — Rekognition `429 Too Many Requests` / `ThrottlingException` / `ProvisionedThroughputExceeded` and regional outages open the breaker exactly like errors do (with per-second TPS budgeting *below* the AWS account quota so we self-throttle before AWS does). Open breaker ⇒ degrade gracefully: `AWS unavailable → Workers AI only → REVIEW → retry later` — the session parks in REVIEW with an automatic re-verify when the breaker half-opens; the user sees "still checking," never a rejection. Workers AI down → premium direct (budget-checked) or REVIEW. Breaker state changes are audited + alerted. The system never fully blocks — and never fails a user — on any single vendor's bad day.
 
 **Feature flags:** every expensive capability individually flagged (`trust.moderation`, `trust.faceCompare`, `trust.historyCompare`, `trust.workersAi`, `trust.premiumAi`, `trust.tier3Archive`…), KV-merged over code defaults (the 2026-07-04 flag lesson), enabling gradual rollout and instant kill.
 
@@ -163,10 +165,10 @@ D1 REVIEW = auto-retry with tightened thresholds at launch; human review console
 
 - **P0 Foundation:** VerificationDO (state machine, timeouts, nonce, incremental-upload contract, budget ledger, manifest assembly) · rule registry w/ versions + B1–B9 mapping · uniform provider adapters (Rekognition, Workers AI, on-device) w/ confidence normalization · `trust_decisions` schema + fingerprint · Fast Fail lane skeleton · flags. Zero behavior change.
 - **P1 Staircase cutover:** Tier-3 pass-only video replaces upload-before-verify · Tier-1 incremental frames · attestation verify + cache ([LIVE-ATTEST-1]) · circuit breakers.
-- **P2 Content Safety + Face Analysis:** escalation ladder live; LLaVA demoted to audit tooling; geometry via FaceProvider.
+- **P2 Content Safety + Face Analysis:** Rekognition-based `FaceProvider` and `ModerationProvider` become the authoritative cloud verification providers. On-device ML Kit continues to own capture quality, pose guidance, blink detection, smile detection, and challenge execution. Premium cloud verification is limited to face analysis, face consistency, and moderation through the provider abstraction layer. All legacy LLaVA code paths deleted.
 - **P3 Fraud + Score + Policy Engine:** velocity counters, geo/clock/network signals, Trust Score, policy configs, ladder integration, `verification_cost` + FRR dashboards.
 - **P4 History + Review:** thumbnail-compare history, human review console, threshold-tuning loop from manifest data.
 
 ## 13. What this kills
 
-LLaVA as decision-maker · `waitUntil` as primary path · anonymous failures · KV-only sessions · vendor lock at call sites · pre-verify video upload · full-clip Whisper · fixed frame counts · duplicate uploads · premium moderation as first resort · unmetered spend · implicit session states · unversioned rules/challenges · provider-specific confidences downstream · hard dependence on any single vendor · product requirements hard-coded in the pipeline.
+Any LLM as a verification decision-maker · `waitUntil` as primary path · anonymous failures · KV-only sessions · vendor lock at call sites · pre-verify video upload · full-clip Whisper · fixed frame counts · duplicate uploads · premium moderation as first resort · unmetered spend · implicit session states · unversioned rules/challenges · provider-specific confidences downstream · hard dependence on any single vendor · product requirements hard-coded in the pipeline.
