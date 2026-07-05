@@ -526,6 +526,10 @@ export class InboxDO {
     }
     const frame = JSON.stringify({
       type: "msg", id, conv: b.conv, sender: b.sender, kind: b.kind || "text",
+      // [SYNC-CURSOR-1] Additive: the per-conversation sequence on the LIVE frame too
+      // (backlog/sync frames already carry it), so a Phase-1 client can track its
+      // per-conv position from live messages. Ignored by older clients.
+      conv_seq: convSeq,
       body: b.body ?? null, media_ref: b.media_ref ?? null, client_id: b.client_id ?? null,
       // created_at is the SENDER's clock (unreliable for latency math). server_ts is
       // the InboxDO append/broadcast instant — the recipient computes

@@ -68,6 +68,16 @@ class SyncHub {
   static const String _kCursorKey = 'ava_inbox_cursor';
   String? _cursorUid;       // account the in-memory _cursor was loaded for
   Timer? _cursorPersistTimer;
+  // [SYNC-CURSOR-1] Phase 1 (client, dark): per-conversation position map {conv: seq},
+  // recorded as messages arrive (backlog + live now carry conv_seq from the server).
+  // This is the client analogue of the Phase 0 server dual-write — NOTHING reads it
+  // yet; it exists so the Phase 1 switch-over (per-conversation catch-up, retiring the
+  // global id-cursor) can turn on WITHOUT a data migration. Persisted per account,
+  // exactly like _cursor. Behaviour today is unchanged.
+  final Map<String, int> _convSeq = {};
+  static const String _kConvSeqKey = 'ava_conv_seq';
+  String? _convSeqUid;      // account the in-memory _convSeq was loaded for
+  Timer? _convSeqPersistTimer;
   // Transport observability — so PostHog shows, PER DEVICE, whether the realtime
   // socket is actually up and receiving frames (this is how we tell a "connected
   // Mac that isn't getting live deletes" from a phone that is). Per-account
@@ -147,6 +157,7 @@ class SyncHub {
     _reconnectTimer?.cancel(); _reconnectTimer = null;
     _pingTimer?.cancel(); _pingTimer = null;
     _cursorPersistTimer?.cancel(); _cursorPersistTimer = null;
+    _convSeqPersistTimer?.cancel(); _convSeqPersistTimer = null;
     _sub?.cancel(); _sub = null;
     try { _ch?.sink.close(); } catch (_) {}
     _ch = null;
@@ -159,6 +170,10 @@ class SyncHub {
     _seen.clear();
     _cursor = 0;
     _cursorUid = null;
+    // [SYNC-CURSOR-1] Drop the per-conversation position map too, so it reloads
+    // scoped to the next account (the persisted per-account file is left intact).
+    _convSeq.clear();
+    _convSeqUid = null;
     // [MSG-OUTBOX-1] Drop the previous account's in-memory outbox mirror so the
     // NEXT account loads its own scoped queue fresh (the persisted per-account file
     // is left intact, so re-login resumes that account's pending sends).
@@ -329,6 +344,19 @@ class SyncHub {
         final raw = await DiskCache.read(_kCursorKey);
         _cursor = int.tryParse(raw ?? '') ?? 0;
         _cursorUid = _myUid;
+      }
+      // [SYNC-CURSOR-1] Phase 1 (dark): load this account's per-conversation position
+      // map once. Parsed but not yet used to drive catch-up (that is the switch-over).
+      if (_convSeqUid != _myUid) {
+        _convSeq.clear();
+        try {
+          final rawSeq = await DiskCache.read(_kConvSeqKey);
+          if (rawSeq != null && rawSeq.isNotEmpty) {
+            final m = jsonDecode(rawSeq) as Map<String, dynamic>;
+            m.forEach((k, v) { final n = (v as num?)?.toInt(); if (n != null) _convSeq[k] = n; });
+          }
+        } catch (_) { /* absent/corrupt → start empty */ }
+        _convSeqUid = _myUid;
       }
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A sync_catchup base
       _send({'type': 'hello', 'cursor': _cursor}); // request backlog since cursor
@@ -608,6 +636,14 @@ class SyncHub {
     final id = (r['id'] as num?)?.toInt() ?? 0;
     if (id > _cursor) { _cursor = id; _scheduleCursorPersist(); }
     final conv = (r['conv'] ?? '').toString();
+    // [SYNC-CURSOR-1] Phase 1 (dark): record the per-conversation position from the
+    // server's conv_seq stamp. Unused until the switch-over; keeps the map warm so it
+    // is already correct the moment per-conv catch-up is enabled.
+    final cseq = (r['conv_seq'] as num?)?.toInt();
+    if (cseq != null && conv.isNotEmpty && cseq > (_convSeq[conv] ?? 0)) {
+      _convSeq[conv] = cseq;
+      _scheduleConvSeqPersist();
+    }
     final sender = (r['sender'] ?? '').toString();
     final body = (r['body'] ?? '').toString();           // our app envelope JSON
     final clientId = (r['client_id'] ?? '').toString();
@@ -893,6 +929,14 @@ class SyncHub {
     _cursorPersistTimer?.cancel();
     _cursorPersistTimer = Timer(const Duration(seconds: 2),
         () => DiskCache.write(_kCursorKey, _cursor.toString()));
+  }
+
+  /// [SYNC-CURSOR-1] Persist the per-conversation position map (debounced, one small
+  /// account-scoped write per burst), mirroring _scheduleCursorPersist.
+  void _scheduleConvSeqPersist() {
+    _convSeqPersistTimer?.cancel();
+    _convSeqPersistTimer = Timer(const Duration(seconds: 2),
+        () => DiskCache.write(_kConvSeqKey, jsonEncode(_convSeq)));
   }
 
   /// Messages for a conversation seen this session (instant, in-memory).
