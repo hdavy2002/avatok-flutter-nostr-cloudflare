@@ -53,6 +53,17 @@ class NativeVoiceAudio {
   /// `Specs/CALL-SESSION-API.md` "WS-B integration".
   void Function(String callId)? onNotificationTapReturnToCall;
 
+  /// CALL-FOCUS-1: fired when the OS takes audio focus away from our call
+  /// (another app started playing / took a call). The call session should HOLD
+  /// the call — mute capture + show an "on hold" state — WITHOUT tearing down
+  /// the RTC session. Delivered via the shared method-channel handler, so
+  /// subscribers MUST use [NativeVoiceAudio.instance].
+  void Function()? onAudioFocusLost;
+
+  /// CALL-FOCUS-1: fired when the OS returns audio focus to our call. The call
+  /// session should RESUME (unmute capture, clear the "on hold" state).
+  void Function()? onAudioFocusRegained;
+
   bool _handlerSet = false;
 
   void _ensureHandler() {
@@ -71,6 +82,10 @@ class NativeVoiceAudio {
             final callId = (args['callId'] ?? '').toString();
             Analytics.capture('call_notification_tap', {'call_id': callId});
             onNotificationTapReturnToCall?.call(callId);
+          } else if (name == 'onAudioFocusLost') {
+            onAudioFocusLost?.call();
+          } else if (name == 'onAudioFocusRegained') {
+            onAudioFocusRegained?.call();
           } else {
             onEvent?.call(args);
           }

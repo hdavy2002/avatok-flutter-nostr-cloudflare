@@ -222,6 +222,14 @@ class CallSession {
   final Map<String, int> _peerGens = {};
   bool _onCellularHold = false;
   StreamSubscription? _telephonySub;
+  // CALL-FOCUS-1: audio-focus hold. When another app (WhatsApp, a cellular call,
+  // a video) takes audio focus, the OS reassigns our route and our capture goes
+  // nowhere — the peer heard silence / the call appeared cut off. We now HOLD the
+  // call on focus loss (mute capture + "on hold" banner, RTC kept alive) and
+  // RESUME on regain. Distinct from _onCellularHold so a focus blip doesn't
+  // clobber a concurrent cellular-hold's mute state.
+  bool _onFocusHold = false;
+  int? _focusLostMs;
 
   // ── CALL-RC-D2: post-connect reconnect state machine ────────────────────
   // Distinct from the pre-connect `_wsReconnects`/`_reconnectSignaling` path
@@ -641,6 +649,42 @@ class CallSession {
           at: config.outgoing ? 'dial' : 'accept',
         );
       } catch (_) {}
+    }
+    // CALL-FOCUS-1: hold the call while another app owns audio focus. Wired on
+    // NativeVoiceAudio.instance — the same singleton that started the FGS and
+    // therefore owns the method-channel handler that carries these callbacks.
+    if (NativeVoiceAudio.isSupported) {
+      NativeVoiceAudio.instance.onAudioFocusLost = () {
+        if (_ended || _onFocusHold) return;
+        _onFocusHold = true;
+        _focusLostMs = DateTime.now().millisecondsSinceEpoch;
+        onCellularHold.value = true; // reuse the "on hold" UI signal
+        if (!_muted) {
+          _muted = true;
+          muted.value = true;
+          _send({'type': 'mute', 'muted': true});
+        }
+        Analytics.capture('call_audio_focus_lost', {'call_id': config.room});
+      };
+      NativeVoiceAudio.instance.onAudioFocusRegained = () {
+        if (!_onFocusHold) return;
+        _onFocusHold = false;
+        final heldMs = _focusLostMs == null
+            ? 0
+            : DateTime.now().millisecondsSinceEpoch - _focusLostMs!;
+        _focusLostMs = null;
+        // Only clear the hold banner if a cellular hold isn't also active.
+        if (!_onCellularHold) onCellularHold.value = false;
+        if (_muted && !_onCellularHold) {
+          _muted = false;
+          muted.value = false;
+          _send({'type': 'mute', 'muted': false});
+        }
+        Analytics.capture('call_audio_focus_regained', {
+          'call_id': config.room,
+          'held_ms': heldMs,
+        });
+      };
     }
     if (NativeVoiceAudio.isSupported) {
       try {
@@ -1519,6 +1563,13 @@ class CallSession {
         .stopCallForegroundService(reason: reason ?? 'hangup'));
     await _safeAwait(() => NativeVoiceAudio().stopTelephonyMonitoring());
     _telephonySub?.cancel();
+    // CALL-FOCUS-1: detach our focus callbacks so a torn-down session can't keep
+    // holding/resuming after the singleton is reused by the next call.
+    if (NativeVoiceAudio.instance.onAudioFocusLost != null ||
+        NativeVoiceAudio.instance.onAudioFocusRegained != null) {
+      NativeVoiceAudio.instance.onAudioFocusLost = null;
+      NativeVoiceAudio.instance.onAudioFocusRegained = null;
+    }
     _ended = true;
     if (gLiveCallScreens > 0) gLiveCallScreens--;
     gInCall = gLiveCallScreens > 0;

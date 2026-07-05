@@ -11,6 +11,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -490,6 +491,28 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         } catch (_: Throwable) {}
     }
 
+    // CALL-FOCUS-1: audio-focus request + change listener. Previously focus was
+    // requested with a NULL listener, so when another app (WhatsApp, a cellular
+    // call, a video) grabbed focus we were never told — our capture kept feeding a
+    // route the system had reassigned and the caller heard silence / got cut off.
+    // Now we register an OnAudioFocusChangeListener: on LOSS(_TRANSIENT) we emit
+    // 'onAudioFocusLost' → Dart holds the call (mute + "on hold"), on GAIN we emit
+    // 'onAudioFocusRegained' → Dart resumes. The RTC session is kept alive
+    // throughout; we never end the call from a focus change.
+    private var focusRequest: AudioFocusRequest? = null
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        when (change) {
+            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK ->
+                emit("onAudioFocusLost", mapOf("change" to change))
+            AudioManager.AUDIOFOCUS_GAIN,
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK ->
+                emit("onAudioFocusRegained", mapOf("change" to change))
+        }
+    }
+
     // CALLFIX-16: Start P2P call audio mode with hardware AEC/NS/AGC + audio focus.
     // Called at P2P call start (after getUserMedia) to set the platform to
     // VOICE_COMMUNICATION mode and request audio focus so the platform applies
@@ -499,21 +522,45 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             val am = audioManager() ?: return
             prevAudioMode = am.mode
             am.mode = AudioManager.MODE_IN_COMMUNICATION
-            // Request transient audio focus for voice communication (music/media pauses).
+            // Request transient audio focus for voice communication (music/media
+            // pauses) WITH a change listener so we can hold/resume the call.
             try {
-                am.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val attrs = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                    val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                        .setAudioAttributes(attrs)
+                        .setOnAudioFocusChangeListener(focusListener, main)
+                        .build()
+                    focusRequest = req
+                    am.requestAudioFocus(req)
+                } else {
+                    @Suppress("DEPRECATION")
+                    am.requestAudioFocus(focusListener, AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                }
             } catch (_: Throwable) {}
         } catch (_: Throwable) {}
     }
 
     // CALLFIX-16: Stop P2P call audio mode and restore normal audio.
     // Called on call end to restore the normal audio mode and release audio focus
-    // so music/media can resume.
+    // so music/media can resume. CALL-FOCUS-1: abandon focus properly (via the
+    // stored request on O+) so the listener is cleanly deregistered.
     private fun stopP2pAudioMode() {
         try {
             val am = audioManager() ?: return
-            am.abandonAudioFocus(null)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    focusRequest?.let { am.abandonAudioFocusRequest(it) }
+                    focusRequest = null
+                } else {
+                    @Suppress("DEPRECATION")
+                    am.abandonAudioFocus(focusListener)
+                }
+            } catch (_: Throwable) {}
             am.mode = prevAudioMode
         } catch (_: Throwable) {}
     }
