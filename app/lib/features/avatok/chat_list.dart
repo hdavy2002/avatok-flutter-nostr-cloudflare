@@ -355,14 +355,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   void _chatRowFlags(Chat c) {
     final k = _keyOf(c);
     bool has(String f) => _flags[f]!.contains(k);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 8),
+    _showActionSheet(
+      children: (ctx) => [
         ListTile(
             leading: PhosphorIcon(
                 PhosphorIcons.pushPin(has('pinned') ? PhosphorIconsStyle.fill : PhosphorIconsStyle.bold),
@@ -406,7 +400,44 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               leading: PhosphorIcon(PhosphorIcons.userMinus(PhosphorIconsStyle.bold), color: Zine.coral),
               title: Text('Remove contact', style: ZineText.value(size: 15, color: Zine.coral)),
               onTap: () { Navigator.pop(ctx); _removeContact(c); }),
-      ])),
+      ],
+    );
+  }
+
+  /// Shared bottom-sheet shell for long-press / overflow action menus. Uses
+  /// isScrollControlled + a scroll view so a TALL list (pin/mute/archive/copy/
+  /// share/forward/block/remove = 8 rows) is never clipped by the default
+  /// half-screen sheet cap — the bug where "Remove contact" sat off-screen and
+  /// couldn't be tapped. Capped at 85% height (scrolls beyond), a grab handle up
+  /// top, and SafeArea + extra bottom padding so the last row always clears the
+  /// gesture nav bar.
+  void _showActionSheet({required List<Widget> Function(BuildContext ctx) children}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+          side: BorderSide(color: Zine.ink, width: Zine.bw),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Grab handle.
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                decoration: BoxDecoration(
+                    color: Zine.ink.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(100)),
+              ),
+              ...children(ctx),
+              const SizedBox(height: 12),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1139,14 +1170,8 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
 
   /// New-chat menu (the green FAB): chat with Ava, message, group, or invite.
   void _openNewChatMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Zine.paper,
-      shape: const RoundedRectangleBorder(
-          side: BorderSide(color: Zine.ink, width: Zine.bw),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 8),
+    _showActionSheet(
+      children: (ctx) => [
         ListTile(
           leading: ZineIconBadge(icon: PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.lilac),
           title: Text('Chat with Ava', style: ZineText.value(size: 15)),
@@ -1166,8 +1191,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
           title: Text('Invite friends to AvaTok', style: ZineText.value(size: 15)),
           subtitle: Text('Find people from your phone contacts', style: ZineText.sub(size: 12.5)),
           onTap: () { Navigator.pop(ctx); _openSearch(); }),
-        const SizedBox(height: 8),
-      ])),
+      ],
     );
   }
 
