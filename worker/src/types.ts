@@ -30,6 +30,12 @@ export interface Env {
   Q_ARCHIVE?: Queue; // chat-archive (Phase 1 ABLY-R2: message body → R2 + D1 index)
   Q_MKT_AUDIO?: Queue; // marketplace negotiation VOICE render (async → avatok-consumers)
   Q_AUTO_REPLY?: Queue; // STREAM F auto-responder job (incoming DM → away auto-reply, async → avatok-consumers)
+  // [LIVE-QUEUE-1] liveness-verify — SELF-consumed by avatok-api (see wrangler.toml
+  // [[queues.consumers]] for "liveness-verify"). Optional/typed-loose because the
+  // queue must be created (`wrangler queues create liveness-verify`) before this
+  // binding resolves at deploy time; livenessVerify() falls back to ctx.waitUntil
+  // when .send() throws (binding missing or queue not yet created).
+  LIVENESS_QUEUE?: Queue;
 
   // Workers AI — image moderation (public uploads)
   AI: Ai;

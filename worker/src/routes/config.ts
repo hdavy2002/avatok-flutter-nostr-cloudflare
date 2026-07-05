@@ -122,6 +122,17 @@ export interface PlatformConfig {
   // user is never failed on a check we can't run. Purely additive — verification
   // stays 100% Workers-AI (LLaVA + Whisper) unless this is flipped.
   livenessUseRekognition: boolean;
+  // [LIVE-DEVAUTH-1] device-authoritative liveness (scaling plan). Default OFF.
+  // When ON, a verify carrying a device_report with ALL checks true skips the
+  // expensive B2/B3/B4/B7 LLaVA calls (marked pass with an `_device` id suffix)
+  // and runs only B1 realness (1 call) + B6 phrase + B9 clip sanity. A random
+  // livenessAuditSampleRate fraction of device-authoritative verifies ALSO runs
+  // the full LLaVA pipeline for disagreement telemetry (liveness_audit_sample).
+  livenessDeviceAuthoritative: boolean;
+  // [LIVE-DEVAUTH-1] fraction (0..1) of device-authoritative verifies that also
+  // run the full server-side LLaVA pipeline, purely for audit/disagreement
+  // telemetry (never changes the verdict served to the client).
+  livenessAuditSampleRate: number;
   // P6: always-on per-message safety scanning (Nemotron :free via OpenRouter) with
   // red-bubble marking on the recipient. Ships **ON** (this one ships enabled).
   // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
@@ -213,6 +224,8 @@ const DEFAULTS: PlatformConfig = {
   listingLivenessGate: true,       // ON 2026-07-03: mandatory liveness (once) to create/publish a listing
   livenessV2Enabled: false,        // Liveness V2 ML-Kit-gated flow — dark, flip ON once pass-rate proven
   livenessUseRekognition: false,   // Liveness V2 P3: optional AWS CompareFaces same-person (image API, NOT Face Liveness) — OFF; needs AWS creds
+  livenessDeviceAuthoritative: false, // [LIVE-DEVAUTH-1] device-authoritative fast path — OFF (dark until device-signal trust is proven)
+  livenessAuditSampleRate: 0.08,      // [LIVE-DEVAUTH-1] 8% of device-authoritative verifies also run full LLaVA for disagreement telemetry
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified
@@ -268,7 +281,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // Whitelist merge — unknown keys are rejected so a typo can't ship a dead flag.
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...DEFAULTS, ...current };
-  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap"]);
+  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {

@@ -110,6 +110,40 @@ export async function sweepAbandonedLiveness(env: Env): Promise<{ swept: number 
 }
 
 /**
+ * [LIVE-PURGE-1] Best-effort deletion of ALL liveness evidence for a user, called
+ * from the account-deletion path so "your video is erased the moment you close
+ * your account" (the UI promise) is actually true, not just a 30-day-grace
+ * D1 row flip. Covers BOTH R2 prefixes liveness.ts writes to:
+ *   - u/<uid>/liveness/<sid>/       — transient in-flight upload prefix
+ *   - liveness/<uid>/<sid>/         — D15 retained audit prefix (pass evidence)
+ * Also drops the identity_proofs 'liveness' row (evidence_ref pointed at the now-
+ * deleted thumbnail) so no dangling R2 reference remains in D1. Paginated via
+ * cursor (R2 list caps at 1000/page) — safe for a user with many sessions.
+ * NEVER throws: this runs inside a teardown flow that must not be blocked by a
+ * single missing bucket/binding.
+ */
+export async function purgeLivenessEvidence(env: Env, uid: string): Promise<{ deleted: number }> {
+  let deleted = 0;
+  const wipe = async (prefix: string) => {
+    try {
+      let cursor: string | undefined;
+      do {
+        const list: any = await env.VERIFICATION.list({ prefix, cursor, limit: 1000 });
+        const keys: string[] = (list.objects ?? []).map((o: { key: string }) => o.key);
+        for (const k of keys) {
+          try { await env.VERIFICATION.delete(k); deleted++; } catch { /* best-effort per key */ }
+        }
+        cursor = list.truncated ? list.cursor : undefined;
+      } while (cursor);
+    } catch { /* best-effort — bucket/list failure never blocks account teardown */ }
+  };
+  await wipe(`u/${uid}/liveness/`);
+  await wipe(`liveness/${uid}/`);
+  try { await metaDb(env).prepare("DELETE FROM identity_proofs WHERE uid=?1 AND proof='liveness'").bind(uid).run(); } catch { /* best-effort */ }
+  return { deleted };
+}
+
+/**
  * Copy the Rekognition audit images from GetFaceLivenessSessionResults into R2
  * under liveness/<uid>/<session>/audit<i>.jpg and return the prefix. Rekognition
  * returns AuditImages[].Bytes as base64 (JSON-1.1). Best-effort per image.

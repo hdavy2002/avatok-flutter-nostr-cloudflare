@@ -141,8 +141,15 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   try { done.push(`r2_blobs:${await deleteR2Prefix(env.BLOBS, `u/${uid}/`)}`); } catch { /* best-effort */ }
 
   // 6. R2 verification (prefix + explicit keys).
+  // [LIVE-PURGE-1] this used to only wipe the transient u/<uid>/ upload prefix —
+  // it MISSED the D15 "store everything on pass" retained audit prefix
+  // liveness/<uid>/<session>/ (see worker/src/routes/liveness.ts retainEvidence).
+  // The immediate-purge path (routes/account.ts, on /api/account/delete) already
+  // wipes both prefixes at request time; this stays as a defense-in-depth
+  // backstop for the 30-day-grace cascade (e.g. rows created before that fix).
   if (env.VERIFICATION) {
     try { await deleteR2Prefix(env.VERIFICATION, `u/${uid}/`); } catch { /* best-effort */ }
+    try { await deleteR2Prefix(env.VERIFICATION, `liveness/${uid}/`); } catch { /* best-effort */ }
     if (verifKeys.length) { try { await env.VERIFICATION.delete(verifKeys); } catch { /* best-effort */ } }
     done.push("r2_verification");
   }
@@ -172,6 +179,7 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
     "DELETE FROM notifications WHERE uid=?1",
     "DELETE FROM verification_status WHERE uid=?1",
     "DELETE FROM verification_attempts WHERE uid=?1",
+    "DELETE FROM identity_proofs WHERE uid=?1 AND proof='liveness'", // [LIVE-PURGE-1]
     "DELETE FROM calendar_slots WHERE uid=?1",
     // A1: bookings/orders KEEP their rows (the counterparty + finance need
     // them) — the deleted party's id is replaced, so nothing is findable by uid.

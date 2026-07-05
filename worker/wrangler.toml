@@ -176,6 +176,19 @@ queue = "mkt-audio"            # NOTE: create once → `wrangler queues create m
 binding = "Q_AUTO_REPLY"       # STREAM F away auto-responder + away-digest jobs (async → avatok-consumers)
 queue = "auto-reply"           # NOTE: create once → `wrangler queues create auto-reply` (+ auto-reply-dlq)
 
+# [LIVE-QUEUE-1] liveness-verify — SELF-consumed (see [[queues.consumers]] below in
+# THIS SAME worker, not avatok-consumers). runLivenessChecks does 8+ LLaVA calls
+# and a Whisper call; moving it off the request's ctx.waitUntil onto a queue frees
+# the Worker to serve other requests during a verify spike. Cross-package import of
+# runLivenessChecks into consumers/ is forbidden (worker↔consumers split), so this
+# queue is consumed by avatok-api itself (src/index.ts queue() handler), exactly
+# like Q_MONEY below. NOTE: create once → `wrangler queues create liveness-verify`
+# (+ liveness-verify-dlq) before this binding resolves; livenessVerify() falls back
+# to ctx.waitUntil(runLivenessChecks(...)) if .send() throws (queue missing/unset).
+[[queues.producers]]
+binding = "LIVENESS_QUEUE"
+queue = "liveness-verify"
+
 # Phase 7: avatok-api consumes its OWN money queue — the engine lives next to
 # the ledger primitives. 5 retries, then the DLQ (alert email + admin retry).
 [[queues.consumers]]
@@ -188,6 +201,16 @@ dead_letter_queue = "money-dlq"
 queue = "money-dlq"
 max_batch_size = 10
 max_retries = 3
+
+# [LIVE-QUEUE-1] self-consumed liveness verify queue (see producer above). Low
+# batch size — each message runs 8+ LLaVA calls + a Whisper call, so keep per-batch
+# concurrency modest. No DLQ: a failed verify already has a safe terminal state
+# (the client's poll simply times out and the user can retry — same UX as today's
+# ctx.waitUntil path throwing).
+[[queues.consumers]]
+queue = "liveness-verify"
+max_batch_size = 5
+max_retries = 2
 
 # ---------------------------------------------------------------------------
 # Workers AI — image moderation on the /upload/public path only.
@@ -512,6 +535,12 @@ queue = "chat-archive-staging"
 binding = "Q_AUTO_REPLY"
 queue = "auto-reply-staging"
 
+# [LIVE-QUEUE-1] mirrored on staging — create with `wrangler queues create
+# liveness-verify-staging` before deploying --env staging with this producer live.
+[[env.staging.queues.producers]]
+binding = "LIVENESS_QUEUE"
+queue = "liveness-verify-staging"
+
 [[env.staging.queues.consumers]]
 queue = "money-settlements-staging"
 max_batch_size = 10
@@ -522,6 +551,11 @@ dead_letter_queue = "money-dlq-staging"
 queue = "money-dlq-staging"
 max_batch_size = 10
 max_retries = 3
+
+[[env.staging.queues.consumers]]
+queue = "liveness-verify-staging"
+max_batch_size = 5
+max_retries = 2
 
 [env.staging.ai]
 binding = "AI"

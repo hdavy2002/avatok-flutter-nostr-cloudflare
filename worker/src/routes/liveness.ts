@@ -4,13 +4,19 @@
 // verifies (vision per frame + Whisper on the clip audio for the spoken phrase).
 // PASS → kyc_status('verified','workersai_liveness') exactly like Rekognition.
 //
-// OWNER DECISION 2026-07-03 (STREAM H, D15 — "STORE EVERYTHING"): this REVERSES
-// the old delete-on-pass/fail behaviour. On BOTH pass and fail we now MOVE the
-// frames + clip into the retained audit prefix liveness/<uid>/<session>/ (R2
-// VERIFICATION bucket) instead of deleting them, and write a liveness_audit row
-// (routes/liveness_audit.ts) with the request geo/IP + client device fingerprint.
-// Evidence is retained for safety review; the "Why are we asking?" popup carries
-// the honest retention sentence. Retry stays within the shared 3/24h budget.
+// OWNER DECISION 2026-07-03 (STREAM H, D15 — "STORE EVERYTHING"): this REVERSED
+// the old delete-on-pass/fail behaviour. On pass we MOVE evidence into the
+// retained audit prefix liveness/<uid>/<session>/ (R2 VERIFICATION bucket)
+// instead of deleting it, and write a liveness_audit row (routes/liveness_audit.ts)
+// with the request geo/IP + client device fingerprint. Fail still deletes
+// everything (LIVE-STORAGE-1, 2026-07-04 — unlimited retries would grow R2
+// unboundedly otherwise). Retry stays within the shared 24h budget.
+//
+// [LIVE-RETAIN-2] (2026-07-05, scaling): SUPERSEDES D15's "retain EVERY part" on
+// the pass path specifically. We now retain ONLY the neutral still (frame0.jpg,
+// keeps the green-tick thumbnail working), ONE profile still, and the clip —
+// every other uploaded part (extra gesture stills, extra profile angles) is
+// DELETED instead of moved. See retainEvidence() in runLivenessChecks.
 //
 //   POST /api/id/liveness/start            → {session_id, challenge}
 //   POST /api/id/liveness/upload?session=&part=frame0|frame1|frame2|clip  (raw body)
@@ -27,6 +33,17 @@
 //
 // Flag-gated by platform_config.workersAiLivenessEnabled — OFF by default;
 // Rekognition remains the default L2 provider until this is tuned.
+//
+// [LIVE-PURGE-1] account-deletion evidence purge: see purgeLivenessEvidence()
+// in ./liveness_audit.ts, wired into routes/account.ts deleteAccount() (runs
+// immediately at request time, not after the 30-day grace) + a defense-in-depth
+// backstop in consumers/src/deletion.ts (30-day cascade).
+//
+// [LIVE-ATTEST-1] TODO: device_report.attestation_token (Play Integrity / App
+// Attest) is currently only length/presence-logged in telemetry + the audit row
+// (see deviceReportFromBody below). Real server-side attestation verification
+// (Google Play Integrity API / Apple App Attest) is a LATER phase — do not treat
+// presence of a token as proof of anything yet.
 import type { Env } from "../types";
 import { json } from "../util";
 import { setVerifiedCache } from "../auth";
@@ -106,12 +123,42 @@ const MASK_PROMPT = "Is the person's face covered by a mask or object over the n
 const PROFILE_PROMPT = "Is the person's head clearly turned or tilted away from facing straight at the camera (in profile or looking up/down/sideways)? Answer only YES or NO.";
 const EYES_OPEN_PROMPT = "Are the person's eyes open? Answer only YES or NO.";
 
-const PHRASE_WORDS = [
+// [LIVE-LANG-1] localized challenge phrase pools. Each pool is 16 common,
+// concrete, phonetically-distinct nouns — chosen so Whisper's multilingual
+// model transcribes them reliably even with background noise/accent variance.
+// English stays the fallback/default for any lang not listed.
+const PHRASE_WORDS_EN = [
   "river", "orange", "window", "tiger", "cloud", "guitar", "marble", "rocket",
   "silver", "candle", "forest", "puzzle", "anchor", "velvet", "comet", "lantern",
 ];
+const PHRASE_WORDS_ES = [
+  "rio", "naranja", "ventana", "tigre", "nube", "guitarra", "marmol", "cohete",
+  "plata", "vela", "bosque", "rompecabezas", "ancla", "terciopelo", "cometa", "farol",
+];
+const PHRASE_WORDS_FR = [
+  "riviere", "orange", "fenetre", "tigre", "nuage", "guitare", "marbre", "fusee",
+  "argent", "bougie", "foret", "puzzle", "ancre", "velours", "comete", "lanterne",
+];
+const PHRASE_WORDS_DE = [
+  "fluss", "orange", "fenster", "tiger", "wolke", "gitarre", "marmor", "rakete",
+  "silber", "kerze", "wald", "puzzle", "anker", "samt", "komet", "laterne",
+];
+const PHRASE_POOLS: Record<string, readonly string[]> = {
+  en: PHRASE_WORDS_EN, es: PHRASE_WORDS_ES, fr: PHRASE_WORDS_FR, de: PHRASE_WORDS_DE,
+};
+const SUPPORTED_LANGS = new Set(["en", "es", "fr", "de"]);
+const normalizeLang = (lang: unknown): string => {
+  const l = String(lang ?? "").toLowerCase().slice(0, 2);
+  return SUPPORTED_LANGS.has(l) ? l : "en";
+};
 
-interface Challenge { actions: string[]; phrase: string; created_at: number; }
+/** [LIVE-LANG-1] strip diacritics/accents (é→e, ñ→n, ü→u, …) so fuzzy phrase
+ * matching against Whisper's (often accent-flattened) transcript works for
+ * non-English challenge words. */
+const stripDiacritics = (s: string): string =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+interface Challenge { actions: string[]; phrase: string; lang: string; created_at: number; }
 
 function workersAiEnabled(env: Env): Promise<boolean> {
   // Merge KV over code DEFAULTS (readConfig) — a raw KV read silently reports
@@ -121,13 +168,43 @@ function workersAiEnabled(env: Env): Promise<boolean> {
     .catch(() => false);
 }
 
+// [LIVE-ATTEMPTS-KV-1] 24h attempt counter moved OFF the D1 hot-path COUNT query
+// (that scan gets expensive at scale — 1M/day verifies). KV key
+// liveness:att:<uid>:<yyyymmdd> (UTC calendar day), incremented ONLY when a
+// verify COMPLETES (pass/fail) in runLivenessChecks — never on /start or an
+// abandoned session, matching the old D1 semantics. We approximate the rolling
+// 24h window by summing TODAY's + YESTERDAY's UTC-day buckets: this over-counts
+// slightly near a day boundary (a user could see a slightly tighter budget for a
+// few hours) but that's fine for an abuse/cost guard, not a UX promise. D1
+// verification_attempts rows are still written for audit — just no longer
+// COUNT-queried on the hot path.
+const dayKey = (uid: string, ts: number): string => {
+  const d = new Date(ts);
+  const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+  return `liveness:att:${uid}:${ymd}`;
+};
+const ATTEMPT_KV_TTL_S = 2 * 86_400; // 2 days — covers today+yesterday buckets with margin
+
 async function attemptsLast24h(env: Env, uid: string): Promise<number> {
-  const row = await metaSession(env)
-    // [LIVE-RETRY-1] pending/abandoned starts don't count (the 2026-07-04 flag_off
-    // outage burned the old 3-attempt budget on starts that never even uploaded).
-    .prepare("SELECT COUNT(*) AS n FROM verification_attempts WHERE uid=?1 AND created_at > ?2 AND result IN ('pass','fail')")
-    .bind(uid, Date.now() - DAY).first<{ n: number }>();
-  return row?.n ?? 0;
+  try {
+    const now = Date.now();
+    const [today, yesterday] = await Promise.all([
+      env.TOKENS.get(dayKey(uid, now)),
+      env.TOKENS.get(dayKey(uid, now - DAY)),
+    ]);
+    return (Number(today) || 0) + (Number(yesterday) || 0);
+  } catch {
+    return 0; // KV unavailable — fail open (never block a verify on a counter read)
+  }
+}
+
+/** [LIVE-ATTEMPTS-KV-1] increment today's UTC-day bucket by 1. Best-effort. */
+async function bumpAttemptCounter(env: Env, uid: string): Promise<void> {
+  try {
+    const key = dayKey(uid, Date.now());
+    const cur = Number(await env.TOKENS.get(key)) || 0;
+    await env.TOKENS.put(key, String(cur + 1), { expirationTtl: ATTEMPT_KV_TTL_S });
+  } catch { /* best-effort — a lost increment only slightly loosens the abuse guard */ }
 }
 
 function pick<T>(arr: readonly T[], n: number): T[] {
@@ -163,10 +240,15 @@ export async function livenessStart(req: Request, env: Env): Promise<Response> {
     return json({ error: "too many attempts", retry_after_hours: 24 }, 429);
   }
 
+  // [LIVE-LANG-1] optional {lang} in the start body — default "en". Any
+  // unrecognized/missing value normalizes to "en" (normalizeLang).
+  const startBody = (await req.json().catch(() => ({}))) as { lang?: string };
+  const lang = normalizeLang(startBody.lang);
+
   const sid = crypto.randomUUID();
   const actions = pick(ACTIONS, 2).map((a) => a.id);
-  const phrase = pick(PHRASE_WORDS, 3).join(" ");
-  const challenge: Challenge = { actions, phrase, created_at: Date.now() };
+  const phrase = pick(PHRASE_POOLS[lang] ?? PHRASE_WORDS_EN, 3).join(" ");
+  const challenge: Challenge = { actions, phrase, lang, created_at: Date.now() };
   await env.TOKENS.put(`liveness:ch:${ctx.uid}:${sid}`, JSON.stringify(challenge), { expirationTtl: CHALLENGE_TTL_S });
 
   const now = Date.now();
@@ -182,13 +264,13 @@ export async function livenessStart(req: Request, env: Env): Promise<Response> {
   ]);
 
   void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
-    "liveness_session_started", "avaid", { provider: "workersai", session_id: sid });
+    "liveness_session_started", "avaid", { provider: "workersai", session_id: sid, lang });
   metric(env, "liveness_wai_session", [1]);
   // The challenge is only revealed now — recording starts immediately, so a
   // pre-prepared clip can't match the random actions + phrase.
   return json({
     session_id: sid,
-    challenge: { actions, phrase, max_seconds: 10 },
+    challenge: { actions, phrase, lang, max_seconds: 10 },
   });
 }
 
@@ -279,26 +361,65 @@ export interface LivenessResult {
   level?: number;
 }
 
-const resultKey = (uid: string, sid: string) => `liveness:result:${uid}:${sid}`;
+// [LIVE-DEVAUTH-1] the on-device signal bundle the client MAY send with verify.
+// checks.* are the client's own detector verdicts (ML Kit face detection +
+// gesture/eye/occlusion heuristics already run on-device for UX gating); when
+// livenessDeviceAuthoritative is ON and ALL of these are true, the server skips
+// the equivalent (expensive) LLaVA calls. ml_kit carries raw scores for audit
+// only — never used to gate the verdict server-side (that would trust the
+// client with the pass/fail decision). attestation_token presence/length is
+// recorded for telemetry now; real verification is [LIVE-ATTEST-1] (later).
+export interface DeviceReport {
+  checks?: { single_face?: boolean; occlusion_clear?: boolean; turn_left?: boolean; turn_right?: boolean; eyes_open?: boolean };
+  ml_kit?: Record<string, number>;
+  attestation_token?: string;
+  platform?: "android" | "ios";
+}
+const deviceReportFromBody = (body: unknown): DeviceReport | undefined => {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const dr = b.device_report as Record<string, unknown> | undefined;
+  if (!dr || typeof dr !== "object") return undefined;
+  const c = (dr.checks ?? {}) as Record<string, unknown>;
+  return {
+    checks: {
+      single_face: c.single_face === true, occlusion_clear: c.occlusion_clear === true,
+      turn_left: c.turn_left === true, turn_right: c.turn_right === true, eyes_open: c.eyes_open === true,
+    },
+    ml_kit: (dr.ml_kit && typeof dr.ml_kit === "object") ? (dr.ml_kit as Record<string, number>) : undefined,
+    attestation_token: typeof dr.attestation_token === "string" ? dr.attestation_token.slice(0, 4096) : undefined,
+    platform: dr.platform === "ios" ? "ios" : dr.platform === "android" ? "android" : undefined,
+  };
+};
+const allDeviceChecksTrue = (d?: DeviceReport): boolean => {
+  const c = d?.checks;
+  if (!c) return false;
+  return !!(c.single_face && c.occlusion_clear && c.turn_left && c.turn_right && c.eyes_open);
+};
 
-// POST /api/id/liveness/verify {session_id}
+const resultKey = (uid: string, sid: string) => `liveness:result:${uid}:${sid}`;
+const deviceReportKey = (uid: string, sid: string) => `liveness:devrep:${uid}:${sid}`;
+
+// [LIVE-QUEUE-1] queue message shape for the self-consumed liveness-verify queue.
+interface LivenessQueueMsg { uid: string; sid: string; }
+
+// POST /api/id/liveness/verify {session_id, device_report?}
 // LIVE-V2 P0: validate the session, then run the checks in the BACKGROUND and
 // return 202 immediately. The client polls GET /api/id/liveness/result.
 //
-// LIVE-V2 NOTE (queue vs waitUntil): the plan prefers enqueuing onto the existing
-// consumers queue, but avatok-api has NO liveness queue producer and avatok-consumers
-// has no liveness consumer binding — wiring one needs new infra (`wrangler queues
-// create liveness-verify` + a [[queues.consumers]] entry + cross-package import of
-// runLivenessChecks, which the worker↔consumers package split forbids, exactly as
-// noted for liveness_sweep.ts). So we take the plan's sanctioned fallback (b):
-// ctx.waitUntil(runLivenessChecks(...)) keeps the request alive past the response
-// while the checks run, storing the outcome in KV. A future queue can call the SAME
-// exported runLivenessChecks. See consumers/src/liveness_verify.ts for the stub.
+// [LIVE-QUEUE-1] preferred path: enqueue {uid, sid} onto LIVENESS_QUEUE, which
+// THIS SAME worker self-consumes (src/index.ts queue handler) — avoids the
+// forbidden cross-package import of runLivenessChecks into consumers/ (see the
+// header comment + wrangler.toml). On ANY send() failure (binding not deployed
+// yet, queue not created via `wrangler queues create liveness-verify`) we fall
+// back to the original ctx.waitUntil(runLivenessChecks(...)) path so nothing
+// breaks before that one-time infra step runs. The queue consumer calls the
+// EXACT SAME exported runLivenessChecks with req=undefined (geo becomes null —
+// already handled, see the device ctx comment inside runLivenessChecks).
 export async function livenessVerify(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return json({ error: auth.error }, auth.status);
 
-  const b = (await req.json().catch(() => ({}))) as { session_id?: string };
+  const b = (await req.json().catch(() => ({}))) as { session_id?: string; device_report?: unknown };
   const sid = String(b.session_id || "");
   const chRaw = await env.TOKENS.get(`liveness:ch:${auth.uid}:${sid}`);
   if (!chRaw) {
@@ -314,6 +435,15 @@ export async function livenessVerify(req: Request, env: Env, ctx?: ExecutionCont
   // as done (a client double-tap / re-poll must not re-run LLaVA or re-charge).
   const existing = await env.TOKENS.get(resultKey(auth.uid, sid), "json").catch(() => null);
   if (existing) return json({ status: "done", ...(existing as LivenessResult) }, 200);
+
+  // [LIVE-DEVAUTH-1] stash the device_report (if any) alongside the challenge so
+  // runLivenessChecks (queue OR waitUntil path — both read from KV, not the
+  // request body) can pick it up. Best-effort; a lost report just means the
+  // verify falls back to the full LLaVA pipeline (safe default).
+  const deviceReport = deviceReportFromBody(b);
+  if (deviceReport) {
+    await env.TOKENS.put(deviceReportKey(auth.uid, sid), JSON.stringify(deviceReport), { expirationTtl: CHALLENGE_TTL_S }).catch(() => {});
+  }
 
   // Required parts present? LIVE-V2 P3: the strict per-check required-parts logic
   // now lives in runLivenessChecks (B8, layout-aware for V1 frame0/frame1 AND V2
@@ -337,19 +467,37 @@ export async function livenessVerify(req: Request, env: Env, ctx?: ExecutionCont
     return json({ status: "done", ...result }, 200);
   }
 
-  // Kick off the real checks in the background; the client polls /result.
+  // [LIVE-QUEUE-1] try the queue first; fall back to waitUntil on ANY error.
+  let queueUsed = false;
+  try {
+    if (env.LIVENESS_QUEUE) {
+      await env.LIVENESS_QUEUE.send({ uid: auth.uid, sid } as LivenessQueueMsg);
+      queueUsed = true;
+    }
+  } catch (e) {
+    // Binding missing / queue not yet created (`wrangler queues create
+    // liveness-verify`) / send() transient error — fall through to waitUntil.
+    console.error("[liveness] LIVENESS_QUEUE.send failed, falling back to waitUntil:", String(e));
+    queueUsed = false;
+  }
+
   // [LIVENESS-TEL-1] accepted marker + a crash marker on the background job:
   // if the pipeline throws, the client polls until its 90s cap with NO stored
   // result — this event is the only server-side breadcrumb for that hang.
   void trackUser(env, auth.uid, await emailFor(env, auth.uid).catch(() => null),
-    "liveness_verify_accepted", "avaid", { session_id: sid, image_parts: imageParts.length });
-  const work = runLivenessChecks(env, auth.uid, sid, req).catch(async (e) => {
-    console.error("[liveness] background verify failed:", String(e));
-    void trackUser(env, auth.uid, await emailFor(env, auth.uid).catch(() => null),
-      "liveness_verify_error", "avaid", { session_id: sid, error: String(e).slice(0, 300) });
-    metric(env, "liveness_verify_error", [1]);
-  });
-  if (ctx) ctx.waitUntil(work); else await work; // no ctx in tests → run inline
+    "liveness_verify_accepted", "avaid", { session_id: sid, image_parts: imageParts.length, queue_used: queueUsed });
+
+  if (!queueUsed) {
+    // Fallback: kick off the real checks in the background via ctx.waitUntil,
+    // exactly as before the queue existed.
+    const work = runLivenessChecks(env, auth.uid, sid, req).catch(async (e) => {
+      console.error("[liveness] background verify failed:", String(e));
+      void trackUser(env, auth.uid, await emailFor(env, auth.uid).catch(() => null),
+        "liveness_verify_error", "avaid", { session_id: sid, error: String(e).slice(0, 300) });
+      metric(env, "liveness_verify_error", [1]);
+    });
+    if (ctx) ctx.waitUntil(work); else await work; // no ctx in tests → run inline
+  }
   return json({ status: "pending", session_id: sid }, 202);
 }
 
@@ -413,7 +561,16 @@ export async function runLivenessChecks(
   // checkMessage(). `telemetry` carries the P3 extras (llava_calls, rekognition_used).
   const finalize = async (
     checksInput: Array<{ id: string; pass: boolean; user_message?: string }> | Record<string, boolean>,
-    opts: { verified: boolean; level?: number; telemetry?: { llava_calls?: number; rekognition_used?: boolean } },
+    opts: {
+      verified: boolean; level?: number;
+      telemetry?: {
+        llava_calls?: number; rekognition_used?: boolean;
+        // [LIVE-DEVAUTH-1]
+        device_authoritative?: boolean; audit_sampled?: boolean;
+        // [LIVE-RETAIN-2]
+        retained_parts?: number;
+      };
+    },
   ): Promise<LivenessResult> => {
     const checksArr = Array.isArray(checksInput)
       ? checksInput.map((c) => ({ id: c.id, pass: c.pass, user_message: c.pass ? "" : (c.user_message ?? checkMessage(c.id)) }))
@@ -439,38 +596,69 @@ export async function runLivenessChecks(
       provider: VERIFY_PROVIDER,
       llava_calls: opts.telemetry?.llava_calls ?? 0,
       rekognition_used: opts.telemetry?.rekognition_used ?? false,
+      device_authoritative: opts.telemetry?.device_authoritative ?? false,
+      audit_sampled: opts.telemetry?.audit_sampled ?? false,
+      ...(opts.telemetry?.retained_parts != null ? { retained_parts: opts.telemetry.retained_parts } : {}),
     });
     metric(env, "liveness_v2_verify", [1]);
     return result;
   };
 
-  // D15 (2026-07-03): STORE EVERYTHING. On BOTH pass and fail, MOVE every part
-  // (frames + clip) from the upload prefix into the retained audit prefix instead
-  // of deleting. `keepThumbAt` names the frame0 copy that also stays the
-  // AvaIdentity green-tick thumbnail. Returns the retained prefix + thumb key.
-  // LIVE-V2 P3: retain EVERY uploaded part, not just the fixed V1 set — the V2 flow
-  // uploads profile_* + extra<n> stills too. We list the whole session prefix and
-  // move each object across, so the audit trail keeps 100% of the evidence (D15).
-  // frame0 stays the AvaIdentity green-tick thumbnail when present.
-  const retainEvidence = async (): Promise<{ prefix: string; thumbKey: string }> => {
+  // [LIVE-RETAIN-2] Retention DIET on pass (2026-07-05 scaling change — supersedes
+  // D15 "store everything" for the RETAIN step, fail-path discardEvidence()
+  // unchanged: still delete-all). Every uploaded part used to be MOVED into the
+  // retained audit prefix (frames + clip, up to 8 image parts). At 1M/day verifies
+  // that's unbounded R2 growth for evidence nobody re-reviews beyond the neutral
+  // still + one profile still. We now retain ONLY:
+  //   - the neutral still (last non-profile still) → saved as frame0.jpg so the
+  //     AvaIdentity green-tick thumbnail keeps working unchanged
+  //   - ONE profile still (first profile_* alphabetically, if any present)
+  //   - the clip (clip.bin)
+  // Every other part (gesture stills, extra profile angles) is DELETED instead of
+  // moved. Classification mirrors the neutral/profile logic used later in the
+  // pipeline (stillParts/profileParts) but is computed independently here because
+  // retainEvidence() can run BEFORE `parts` is loaded (the B8 early-fail path).
+  const retainEvidence = async (): Promise<{ prefix: string; thumbKey: string; retainedParts: number }> => {
     const thumbKey = retainedPrefix + "frame0.jpg";
+    let retainedParts = 0;
     try {
       const listing = await env.VERIFICATION.list({ prefix });
-      for (const o of listing.objects ?? []) {
-        const src = o.key;
-        const part = src.slice(prefix.length); // e.g. "frame0", "profile_left", "clip"
-        if (!part) continue;
-        const dst = part === "clip" ? retainedPrefix + "clip.bin" : `${retainedPrefix}${part}.jpg`;
+      const keys = (listing.objects ?? []).map((o) => o.key.slice(prefix.length)).filter(Boolean);
+      const profiles = keys.filter((k) => k.startsWith("profile_")).sort();
+      const stills = keys.filter((k) => k !== "clip" && !k.startsWith("profile_")).sort();
+      const neutralPart = stills.length ? stills[stills.length - 1] : undefined;
+      const keepProfile = profiles.length ? profiles[0] : undefined;
+      const keepSet = new Set<string>(["clip"]);
+      if (neutralPart) keepSet.add(neutralPart);
+      if (keepProfile) keepSet.add(keepProfile);
+
+      for (const part of keys) {
+        const src = prefix + part;
+        if (!keepSet.has(part)) {
+          // Not one of the kept parts — delete instead of retaining (diet).
+          try { await env.VERIFICATION.delete(src); } catch { /* best-effort */ }
+          continue;
+        }
+        // Kept part: MOVE it into the retained audit prefix. The neutral still is
+        // ALWAYS saved as frame0.jpg (green-tick thumbnail contract); the kept
+        // profile still is saved under its own name; the clip as clip.bin.
+        const dst = part === "clip"
+          ? retainedPrefix + "clip.bin"
+          : part === neutralPart
+            ? retainedPrefix + "frame0.jpg"
+            : `${retainedPrefix}${part}.jpg`;
         try {
           const obj = await env.VERIFICATION.get(src);
           if (!obj) continue;
           await env.VERIFICATION.put(dst, await obj.arrayBuffer());
           await env.VERIFICATION.delete(src); // remove the transient upload copy
+          retainedParts++;
         } catch { /* best-effort per part */ }
       }
     } catch { /* best-effort listing */ }
     try { await env.TOKENS.delete(`liveness:ch:${ctx.uid}:${sid}`); } catch { /* */ }
-    return { prefix: retainedPrefix, thumbKey };
+    try { await env.TOKENS.delete(deviceReportKey(ctx.uid, sid)); } catch { /* */ }
+    return { prefix: retainedPrefix, thumbKey, retainedParts };
   };
 
   // [LIVE-STORAGE-1] Owner decision 2026-07-04 (supersedes D15 "store everything"
@@ -534,10 +722,13 @@ export async function runLivenessChecks(
     : (gestureKeys.length >= 1 && !!neutral && !!clipHead);
   addCheck("b8_session", b8ok);
   if (!b8ok) {
-    const { prefix: rp } = await retainEvidence();
+    const { prefix: rp, retainedParts } = await retainEvidence();
     await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: rp });
     await env.DB_META.prepare("UPDATE verification_attempts SET result='fail' WHERE uid=?1 AND session_id=?2").bind(ctx.uid, sid).run().catch(() => {});
-    return finalize(checks, { verified: false, telemetry: { llava_calls: budget.calls, rekognition_used: false } });
+    // [LIVE-ATTEMPTS-KV-1] a b8_session fail is still a COMPLETED verify (matches
+    // the old D1 `result IN ('pass','fail')` semantics — 'fail' here, not pending).
+    await bumpAttemptCounter(env, ctx.uid);
+    return finalize(checks, { verified: false, telemetry: { llava_calls: budget.calls, rekognition_used: false, retained_parts: retainedParts } });
   }
 
   // B9 — clip sanity: size 200KB–16MB. (Duration/audio-track probing isn't available
@@ -558,44 +749,104 @@ export async function runLivenessChecks(
   if (refFrame) realTargets.push(refFrame);
   if (profileParts.length) realTargets.push(parts[profileParts[0]]);
   else if (gestureKeys.length && parts[gestureKeys[0]] !== refFrame) realTargets.push(parts[gestureKeys[0]]);
-  let b1ok = realTargets.length > 0;
-  for (const t of realTargets.slice(0, 2)) b1ok = b1ok && (await visionYes(env, budget, t, REALNESS_PROMPT));
+
+  // [LIVE-DEVAUTH-1] device-authoritative fast path (default OFF). When the
+  // config flag is ON AND the client sent a device_report with ALL checks true,
+  // we trust the on-device detector for B2/B3/B4/B7 (marked pass with an
+  // `_device` id suffix so the audit trail is honest about what actually ran) and
+  // only spend ONE LLaVA call — B1 realness on the neutral still alone (not the
+  // usual ≤2-image B1). B6 (Whisper phrase) + B9 (clip sanity) still run for
+  // everyone regardless of this flag — those are cheap/free and device-report
+  // has no equivalent for "did they say the right words". A random
+  // livenessAuditSampleRate fraction ALSO runs the FULL LLaVA pipeline anyway,
+  // purely to measure disagreement (never changes the verdict served).
+  let deviceAuthPath = false;
+  let auditSampled = false;
+  try {
+    const cfg = await readConfig(env);
+    const deviceReport = await env.TOKENS.get(deviceReportKey(ctx.uid, sid), "json").catch(() => null) as DeviceReport | null;
+    if (cfg.livenessDeviceAuthoritative && allDeviceChecksTrue(deviceReport ?? undefined)) {
+      deviceAuthPath = true;
+      const rate = Math.min(1, Math.max(0, cfg.livenessAuditSampleRate ?? 0));
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      auditSampled = (buf[0] / 0xffffffff) < rate;
+      // [LIVE-ATTEST-1] TODO: attestation_token presence/length only, no real
+      // verification yet (Play Integrity / App Attest is a later phase).
+      void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+        "liveness_device_report_seen", "avaid", {
+        session_id: sid, platform: deviceReport?.platform ?? null,
+        has_attestation_token: !!deviceReport?.attestation_token,
+        attestation_token_len: deviceReport?.attestation_token?.length ?? 0,
+      });
+    }
+  } catch { /* config/KV read failure → fall back to the full pipeline (safe default) */ }
+
+  let b1ok: boolean;
+  if (deviceAuthPath && !auditSampled) {
+    // Fast path: ONE LLaVA call — realness on the neutral still only.
+    b1ok = refFrame ? await visionYes(env, budget, refFrame, REALNESS_PROMPT) : false;
+  } else {
+    // Full pipeline (default OFF path, OR the sampled-audit run under devauth).
+    b1ok = realTargets.length > 0;
+    for (const t of realTargets.slice(0, 2)) b1ok = b1ok && (await visionYes(env, budget, t, REALNESS_PROMPT));
+  }
   addCheck("b1_realness", b1ok);
 
-  // B2 — exactly one person (LLaVA count on neutral).
-  const b2ok = refFrame ? ((await visionRun(env, budget, refFrame, COUNT_PROMPT))?.startsWith("1") ?? false) : false;
-  addCheck("b2_single_person", b2ok);
+  // B2 — exactly one person (LLaVA count on neutral). Device-authoritative fast
+  // path: trust device_report.checks.single_face, mark pass as `b2_single_person`
+  // with the SAME id (client rendering is unaffected) — the `_device` provenance
+  // lives in the telemetry flag, not the check id, so old clients don't need
+  // updating to understand a new id.
+  let b2ok: boolean;
+  if (deviceAuthPath && !auditSampled) {
+    b2ok = true; // allDeviceChecksTrue() already required single_face === true
+  } else {
+    b2ok = refFrame ? ((await visionRun(env, budget, refFrame, COUNT_PROMPT))?.startsWith("1") ?? false) : false;
+  }
+  addCheck(deviceAuthPath && !auditSampled ? "b2_single_person_device" : "b2_single_person", b2ok);
 
   // B3 — mask / face covering on neutral (prompt asks YES if covered → invert).
-  const b3ok = refFrame ? !(await visionYes(env, budget, refFrame, MASK_PROMPT)) : false;
-  addCheck("b3_mask", b3ok);
+  let b3ok: boolean;
+  if (deviceAuthPath && !auditSampled) {
+    b3ok = true; // occlusion_clear === true required by allDeviceChecksTrue()
+  } else {
+    b3ok = refFrame ? !(await visionYes(env, budget, refFrame, MASK_PROMPT)) : false;
+  }
+  addCheck(deviceAuthPath && !auditSampled ? "b3_mask_device" : "b3_mask", b3ok);
 
   // B4 — challenge gestures. Expression stills use the server-side ACTIONS prompts
   // (matched to the session's random actions when possible; else any ACTIONS prompt
   // whose gesture the frame satisfies). Then up to 2 profile frames are checked for
   // a clear head turn. At least ONE gesture OR profile must pass.
-  const gestureResults: boolean[] = [];
-  for (let i = 0; i < gestureKeys.length; i++) {
-    if (budget.calls >= MAX_LLAVA_CALLS) break;
-    // Prefer the action id at this index; fall back to the first challenge action.
-    const actionId = challenge.actions[i] ?? challenge.actions[0];
-    const action = ACTIONS.find((a) => a.id === actionId) ?? ACTIONS.find((a) => a.id === "smile");
-    const ok = action ? await visionYes(env, budget, parts[gestureKeys[i]], action.prompt) : false;
-    gestureResults.push(ok);
-    addCheck(`b4_challenge_${i}`, ok);
-  }
-  const profileResults: boolean[] = [];
-  for (const pk of profileParts.slice(0, 2)) {
-    if (budget.calls >= MAX_LLAVA_CALLS) break;
-    const ok = await visionYes(env, budget, parts[pk], PROFILE_PROMPT);
-    profileResults.push(ok);
-    addCheck(`b4_profile_${pk.replace("profile_", "")}`, ok);
+  let gestureResults: boolean[] = [];
+  let profileResults: boolean[] = [];
+  if (deviceAuthPath && !auditSampled) {
+    // turn_left/turn_right already confirmed on-device (required true above).
+    // The rollup addCheck below records the single "b4_challenge_device" id.
+    gestureResults = [true];
+  } else {
+    for (let i = 0; i < gestureKeys.length; i++) {
+      if (budget.calls >= MAX_LLAVA_CALLS) break;
+      // Prefer the action id at this index; fall back to the first challenge action.
+      const actionId = challenge.actions[i] ?? challenge.actions[0];
+      const action = ACTIONS.find((a) => a.id === actionId) ?? ACTIONS.find((a) => a.id === "smile");
+      const ok = action ? await visionYes(env, budget, parts[gestureKeys[i]], action.prompt) : false;
+      gestureResults.push(ok);
+      addCheck(`b4_challenge_${i}`, ok);
+    }
+    for (const pk of profileParts.slice(0, 2)) {
+      if (budget.calls >= MAX_LLAVA_CALLS) break;
+      const ok = await visionYes(env, budget, parts[pk], PROFILE_PROMPT);
+      profileResults.push(ok);
+      addCheck(`b4_profile_${pk.replace("profile_", "")}`, ok);
+    }
   }
   const anyGesture = gestureResults.some(Boolean) || profileResults.some(Boolean);
   // A single rolled-up b4 flag drives the verdict + gives the client one message.
-  addCheck("b4_challenge", anyGesture);
+  addCheck(deviceAuthPath && !auditSampled ? "b4_challenge_device" : "b4_challenge", anyGesture);
   const profilesPresent = profileParts.length > 0;
-  const profileTurnOk = !profilesPresent || profileResults.some(Boolean);
+  const profileTurnOk = (deviceAuthPath && !auditSampled) || !profilesPresent || profileResults.some(Boolean);
 
   // B5 — same person. LLaVA image-comparison is unreliable → only run when the
   // livenessUseRekognition flag is ON *and* AWS creds exist, via CompareFaces
@@ -622,15 +873,21 @@ export async function runLivenessChecks(
   checks.push({ id: b5id, pass: b5ok, user_message: b5ok ? "" : checkMessage(b5id) });
 
   // B6 — spoken phrase via Whisper (fuzzy ≥2/3 words, prefix-match tolerant).
+  // [LIVE-LANG-1] normalize accents/diacritics (é→e, ñ→n, ü→u, …) on BOTH the
+  // Whisper transcript and the challenge phrase before matching — the old
+  // `[^a-z0-9\s]` strip DROPPED accented characters entirely (a raw "é" isn't in
+  // a-z0-9), which broke fuzzy matching for es/fr/de words outright. Folding to
+  // base Latin letters first means the same fuzzy 2-of-3 logic works unchanged
+  // for every supported language.
   let phraseOk: boolean | null = null;
   const clipObj = await env.VERIFICATION.get(prefix + "clip");
   if (clipObj) {
     try {
       const audio = await clipObj.arrayBuffer();
       const r: any = await env.AI.run(WHISPER_MODEL as any, { audio: [...new Uint8Array(audio)] } as any);
-      const text = String(r?.text ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+      const text = stripDiacritics(String(r?.text ?? "").toLowerCase()).replace(/[^a-z0-9\s]/g, " ");
       const heard = text.split(/\s+/).filter(Boolean);
-      const words = challenge.phrase.toLowerCase().split(" ");
+      const words = stripDiacritics(challenge.phrase.toLowerCase()).split(" ");
       // Fuzzy: a word matches if the heard transcript contains it, OR shares a
       // ≥4-char prefix with any heard token (tolerates minor misspelling).
       const matched = words.filter((w) => {
@@ -646,18 +903,43 @@ export async function runLivenessChecks(
   const b6ok = phraseOk !== false;
   addCheck("b6_phrase", b6ok);
 
-  // B7 — eyes open on neutral.
-  const b7ok = refFrame ? await visionYes(env, budget, refFrame, EYES_OPEN_PROMPT) : false;
-  addCheck("b7_eyes_open", b7ok);
+  // B7 — eyes open on neutral. Device-authoritative: trust device_report's
+  // eyes_open (required true by allDeviceChecksTrue()).
+  let b7ok: boolean;
+  if (deviceAuthPath && !auditSampled) {
+    b7ok = true;
+  } else {
+    b7ok = refFrame ? await visionYes(env, budget, refFrame, EYES_OPEN_PROMPT) : false;
+  }
+  addCheck(deviceAuthPath && !auditSampled ? "b7_eyes_open_device" : "b7_eyes_open", b7ok);
 
   // ── Verdict (plan §5B / §D-P3): pass iff ALL of B1,B2,B3,B6,B8 pass AND ≥1 B4
   // gesture passes AND B7 passes AND (a profile turn passed OR profiles missing).
   const passed = b1ok && b2ok && b3ok && b6ok && b8ok && anyGesture && b7ok && profileTurnOk;
   const now = Date.now();
 
+  // [LIVE-DEVAUTH-1] audit-sample disagreement telemetry. `auditSampled` verifies
+  // ran the FULL LLaVA pipeline (never the device fast path) purely to compare
+  // against what the fast path WOULD have decided (device_report was already
+  // fully-true when this branch is taken, so the device-trusted verdict is
+  // implicitly "would have passed B2/B3/B4/B7"). Never changes `passed` above.
+  if (deviceAuthPath && auditSampled) {
+    void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
+      "liveness_audit_sample", "avaid", {
+      session_id: sid,
+      device_would_pass: true, // reached this branch only when device checks were all true
+      full_pipeline_pass: passed,
+      agree: passed === true,
+    });
+  }
+
   await env.DB_META.prepare(
     "UPDATE verification_attempts SET result=?1 WHERE uid=?2 AND session_id=?3",
   ).bind(passed ? "pass" : "fail", ctx.uid, sid).run();
+  // [LIVE-ATTEMPTS-KV-1] this verify just COMPLETED (pass or fail) — bump the KV
+  // 24h counter here (NOT in finalize, which is also called on the B8 session-fail
+  // early-exit above where the D1 row + counter are already accounted for).
+  await bumpAttemptCounter(env, ctx.uid);
 
   if (!passed) {
     // [LIVE-STORAGE-1] fail → evidence deleted (audit row keeps the checks/geo,
@@ -672,12 +954,17 @@ export async function runLivenessChecks(
     void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),
       "liveness_failed", "avaid", { provider: "workersai", checks: failMap, session_id: sid });
     metric(env, "liveness_wai_failed", [1]);
-    return finalize(checks, { verified: false, telemetry: { llava_calls: budget.calls, rekognition_used: rekognitionUsed } });
+    return finalize(checks, {
+      verified: false,
+      telemetry: { llava_calls: budget.calls, rekognition_used: rekognitionUsed, device_authoritative: deviceAuthPath, audit_sampled: auditSampled },
+    });
   }
 
-  // PASS — D15: retain ALL evidence under liveness/<uid>/<session>/; frame0 stays
-  // the AvaIdentity green-tick thumbnail (thumbKey now points into the audit prefix).
-  const { prefix: retainedR2Prefix, thumbKey } = await retainEvidence();
+  // PASS — [LIVE-RETAIN-2] retention DIET: only the neutral still (as frame0.jpg),
+  // one profile still, and the clip are retained under liveness/<uid>/<session>/;
+  // frame0 stays the AvaIdentity green-tick thumbnail (thumbKey points into the
+  // audit prefix). Everything else uploaded for this session was deleted.
+  const { prefix: retainedR2Prefix, thumbKey, retainedParts } = await retainEvidence();
   await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "pass", req, device, r2Prefix: retainedR2Prefix });
 
   // F5: if this user ALSO passed the AWS Rekognition selfie-liveness step
@@ -719,5 +1006,11 @@ export async function runLivenessChecks(
     });
   } catch { /* best-effort */ }
 
-  return finalize(checks, { verified: true, level: 2, telemetry: { llava_calls: budget.calls, rekognition_used: rekognitionUsed } });
+  return finalize(checks, {
+    verified: true, level: 2,
+    telemetry: {
+      llava_calls: budget.calls, rekognition_used: rekognitionUsed, retained_parts: retainedParts,
+      device_authoritative: deviceAuthPath, audit_sampled: auditSampled,
+    },
+  });
 }

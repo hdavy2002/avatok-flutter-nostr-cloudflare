@@ -21,7 +21,7 @@ import { consultJoin, consultRoom, consultSfu, consultComplete, consultCancel, c
 import { runMoney, moneyDlq, type MoneyMsg } from "./money_engine";
 import { setTestClock } from "./clock";
 import { stripeIdentityWebhook, agreementStatus, agreementDoc, agreementAccept } from "./routes/kyc";
-import { livenessStart, livenessUpload, livenessVerify, livenessResult } from "./routes/liveness";
+import { livenessStart, livenessUpload, livenessVerify, livenessResult, runLivenessChecks } from "./routes/liveness";
 import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
@@ -153,11 +153,22 @@ export default {
   // Phase 7 — this worker consumes its own money queue (max_retries=5 →
   // money-dlq). The engine is idempotent: a retry or cron re-run can never
   // double-refund (WalletDO op_id dedupe + settlement_log).
+  //
+  // [LIVE-QUEUE-1] this worker ALSO self-consumes liveness-verify (see
+  // wrangler.toml [[queues.consumers]]) — same self-consuming pattern as
+  // money-settlements, for the same reason: runLivenessChecks can't be imported
+  // into consumers/ (worker↔consumers package split). Each message is
+  // {uid, sid}; req is undefined (no live HTTP request in a queue consumer) —
+  // runLivenessChecks already treats a missing req as "no edge geo" (see the
+  // device ctx comment inside it), so this is a safe, already-handled case.
   async queue(batch: MessageBatch, env: Env): Promise<void> {
     for (const msg of batch.messages) {
       try {
         if (batch.queue.startsWith("money-dlq")) {
           await moneyDlq(env, msg.body);
+        } else if (batch.queue.startsWith("liveness-verify")) {
+          const { uid, sid } = msg.body as { uid: string; sid: string };
+          await runLivenessChecks(env, uid, sid, undefined);
         } else {
           await runMoney(env, msg.body as MoneyMsg);
         }

@@ -10,6 +10,7 @@ import { setVerifiedCache } from "../auth";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
+import { purgeLivenessEvidence } from "./liveness_audit";
 
 const GRACE_MS = 30 * 86_400_000; // 30-day grace (§10.5)
 
@@ -27,6 +28,19 @@ export async function deleteAccount(req: Request, env: Env): Promise<Response> {
 
   // Drop any cached verified flag during grace.
   await setVerifiedCache(env, ctx.uid, false);
+
+  // [LIVE-PURGE-1] The identity-verification UI promises "your video is erased
+  // the moment you close your account" — that can't wait for the 30-day grace
+  // cascade (consumers/deletion.ts only wipes the transient u/<uid>/ prefix
+  // anyway, not the D15 retained liveness/<uid>/ audit prefix). Purge liveness
+  // evidence immediately, best-effort, at request time — everything else in the
+  // account still honors the 30-day grace/cancel window.
+  // TRADE-OFF: if the user cancels within the grace window (cancelDeletion
+  // below), their account is fully restored EXCEPT liveness evidence, which is
+  // already gone — a cancel-and-restore user would need to re-verify. This is
+  // the deliberate cost of honoring the "erased the moment you close your
+  // account" promise literally rather than only after the 30-day grace elapses.
+  void purgeLivenessEvidence(env, ctx.uid).catch(() => {});
 
   // Enqueue for the cascade consumer; it honors scheduled_at (re-delays if early).
   try { await env.Q_DELETE.send({ uid: ctx.uid, clerk_user_id: ctx.uid, scheduled_at: scheduled }); } catch { /* cron sweep is the backstop */ }
