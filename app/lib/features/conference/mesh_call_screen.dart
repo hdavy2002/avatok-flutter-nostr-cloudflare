@@ -288,7 +288,12 @@ class _MeshCallScreenState extends State<MeshCallScreen> {
       'peak_participants': _peak, 'video': _video, 'transport_mode': 'p2p_mesh',
     });
     _teardownMedia();
-    if (mounted) Navigator.of(context).maybePop();
+    // CALL-UI-DEAD-1: direct pop — maybePop() is vetoed by this screen's own
+    // PopScope(canPop:false), which made Leave look dead.
+    if (mounted) {
+      final nav = Navigator.of(context);
+      if (nav.canPop()) nav.pop();
+    }
   }
 
   void _teardownMedia() {

@@ -135,5 +135,9 @@ void minimizeActiveCall(CallSession session, BuildContext context) {
     'call_id': session.room,
     'video': session.videoActive.value && session.cameraOn.value,
   });
-  Navigator.of(context).maybePop();
+  // CALL-UI-DEAD-1: direct pop. `maybePop()` consults the CallScreen's
+  // PopScope(canPop:false) and refuses to pop, so the ⌄ minimize button and
+  // the header back circle looked completely dead. `pop()` bypasses the veto.
+  final nav = Navigator.of(context);
+  if (nav.canPop()) nav.pop();
 }

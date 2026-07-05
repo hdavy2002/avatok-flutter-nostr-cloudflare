@@ -1000,8 +1000,20 @@ class CallSession {
     _bump();
   }
 
-  /// Red button / notification "Hang up": durable hangup then request pop.
+  /// Red button / notification "Hang up".
+  /// CALL-UI-DEAD-1: pop the UI IMMEDIATELY, then run the durable teardown in
+  /// the background. The old order (`await hangup()` THEN pop) meant a
+  /// half-dead WS/PC or wedged native channel hung the await forever and the
+  /// red button appeared to do nothing, forcing users to kill the app.
   Future<void> endByUser() async {
+    Analytics.capture('call_end_pressed', {
+      'call_id': config.room,
+      'phase': _phase,
+      'connected': _connected,
+    });
+    final pop = onRequestPop;
+    onRequestPop = null; // consumed here — teardown must not double-fire it
+    pop?.call();
     if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
     if (config.seed.isNotEmpty) {
       ApiAuth.postJson(kCallStatusUrl, {
@@ -1010,7 +1022,6 @@ class CallSession {
     }
     _telemetry.ended('local-hangup');
     await hangup('local-hangup');
-    onRequestPop?.call();
   }
 
   Future<void> _onNoAnswer() async {
@@ -1181,15 +1192,28 @@ class CallSession {
     await _teardown(reason: reason);
   }
 
+  // CALL-UI-DEAD-1: every teardown await is time-boxed so a wedged native
+  // method channel, half-dead RTCPeerConnection or dead WebSocket can never
+  // hang the hangup path indefinitely. Failures/timeouts are swallowed — the
+  // resources are being destroyed anyway.
+  Future<void> _safeAwait(Future<void>? Function() f, {int ms = 2000}) async {
+    try {
+      final fut = f();
+      if (fut != null) await fut.timeout(Duration(milliseconds: ms));
+    } catch (_) {}
+  }
+
   Future<void> _teardown({String? reason}) async {
     if (_ended) return;
+    final sw = Stopwatch()..start();
     try { _receptionist?.hangup(); } catch (_) {}
     try { WakelockPlus.disable(); } catch (_) {}
-    try { await NativeVoiceAudio().stopP2pAudioMode(); } catch (_) {}
-    try { await NativeVoiceAudio().stopBluetoothSco(); } catch (_) {}
-    try { await NativeVoiceAudio().stopProximitySensor(); } catch (_) {}
-    try { await NativeVoiceAudio.instance.stopCallForegroundService(reason: reason ?? 'hangup'); } catch (_) {}
-    try { await NativeVoiceAudio().stopTelephonyMonitoring(); } catch (_) {}
+    await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());
+    await _safeAwait(() => NativeVoiceAudio().stopBluetoothSco());
+    await _safeAwait(() => NativeVoiceAudio().stopProximitySensor());
+    await _safeAwait(() => NativeVoiceAudio.instance
+        .stopCallForegroundService(reason: reason ?? 'hangup'));
+    await _safeAwait(() => NativeVoiceAudio().stopTelephonyMonitoring());
     _telephonySub?.cancel();
     _ended = true;
     if (gLiveCallScreens > 0) gLiveCallScreens--;
@@ -1218,20 +1242,27 @@ class CallSession {
     _reconnectRetryTimer?.cancel();
     _reconnectGiveUpTimer?.cancel();
     _stopPingTimer();
-    try { await FlutterCallkitIncoming.endCall(config.room); } catch (_) {}
+    await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
-    try { await _pc?.close(); } catch (_) {}
-    try { await _ws?.sink.close(); } catch (_) {}
+    await _safeAwait(() => _pc?.close(), ms: 3000);
+    await _safeAwait(() => _ws?.sink.close());
     try { localRenderer.srcObject = null; } catch (_) {}
     try { remoteRenderer.srcObject = null; } catch (_) {}
-    try { await _stream?.dispose(); } catch (_) {}
+    await _safeAwait(() => _stream?.dispose());
     _stream = null;
     _pc = null;
     _ringback.dispose();
     phase.value = CallPhase.ended;
     // Dispose the renderers (they are owned by the session, not any view).
-    try { await localRenderer.dispose(); } catch (_) {}
-    try { await remoteRenderer.dispose(); } catch (_) {}
+    await _safeAwait(() => localRenderer.dispose());
+    await _safeAwait(() => remoteRenderer.dispose());
+    if (sw.elapsedMilliseconds > 5000) {
+      Analytics.capture('call_teardown_slow', {
+        'call_id': config.room,
+        'ms': sw.elapsedMilliseconds,
+        'reason': reason ?? 'hangup',
+      });
+    }
     _bump();
   }
 

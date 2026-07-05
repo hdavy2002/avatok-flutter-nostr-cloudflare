@@ -193,9 +193,14 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   void _popIfMounted() {
-    if (_popped) return;
+    if (_popped || !mounted) return;
     _popped = true;
-    if (mounted) Navigator.maybePop(context);
+    // CALL-UI-DEAD-1: use a DIRECT pop. `Navigator.maybePop()` consults this
+    // screen's PopScope(canPop:false) and silently REFUSES to pop the route —
+    // that deadlock is why end-call/minimize/back all appeared to do nothing
+    // and users had to force-exit the app. `pop()` bypasses the PopScope veto.
+    final nav = Navigator.of(context);
+    if (nav.canPop()) nav.pop();
   }
 
   @override
@@ -226,10 +231,14 @@ class _CallScreenState extends State<CallScreen> {
   /// thumbnail / audio pill via [CallOverlay]. If the call has already ended
   /// (e.g. a busy/declined sticker is showing), fall through to a plain pop.
   void _minimize() {
+    if (_popped) return;
     if (_session.isEnded || _session.phase.value == CallPhase.ended) {
       _popIfMounted();
       return;
     }
+    // Mark popped BEFORE handing off — minimizeActiveCall pops this route, and
+    // a racing onRequestPop/back-gesture must not attempt a second pop.
+    _popped = true;
     minimizeActiveCall(_session, context);
   }
 
@@ -359,7 +368,9 @@ class _CallScreenState extends State<CallScreen> {
             color: light ? null : Zine.ink.withValues(alpha: 0.45),
             padding: EdgeInsets.fromLTRB(16, 16, 16, 20 + (bottomInset > 0 ? bottomInset : 16)),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: () {}),
+              // Chat: minimize the call (keeps it alive as a pill/PiP) so the
+              // user lands back on the thread and can read/send messages.
+              _btn(PhosphorIcons.chatCircle(PhosphorIconsStyle.bold), onTap: _minimize),
               const SizedBox(width: 14),
               _btn(
                   speaker
@@ -404,7 +415,7 @@ class _CallScreenState extends State<CallScreen> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
+        if (didPop || _popped) return;
         _minimize();
       },
       child: Scaffold(
