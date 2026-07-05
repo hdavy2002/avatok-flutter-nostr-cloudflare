@@ -1,28 +1,39 @@
 # Event Bus & Telemetry Contracts — Messaging Architecture
 
-**Status:** DRAFT — feeds the **v6 PostHog telemetry** draft of the
-server-authoritative messaging architecture. This is the contracts layer between
-the frozen **v4** design (`ROUTING-IDENTITY-PRESENCE-ARCH.md`) and the PostHog
-event catalogue that v6 will ratify. No code merged. Where a table proposes a NEW
-event name it is marked **(new, v6)**; where it references an event that already
-exists in the live codebase it is marked **(current)** with the source file.
+**Status:** DRAFT (**v6** telemetry mapping) — feeds the **v6 PostHog telemetry**
+draft of the server-authoritative messaging architecture. This is the contracts
+layer between the **ARCHITECTURALLY FROZEN v4** design — canonical spec
+`ROUTING-IDENTITY-PRESENCE-ARCH.md` — and the PostHog event catalogue that v6 will
+ratify. v6 evolves **independently** of the frozen v4 architecture; it maps v4's
+receipt stages onto telemetry, it does not change the architecture. The nine v4
+concepts (**Identity, Conversation, Routing, Delivery, Presence, Notification,
+Transport, SessionDO, Event Bus**) are named identically here as in the canonical
+spec. No code merged. Where a table proposes a NEW event name it is marked
+**(new, v6)**; where it references an event that already exists in the live
+codebase it is marked **(current)** with the source file.
+
+**Related documents:**
+- `ROUTING-IDENTITY-PRESENCE-ARCH.md` — the **frozen v4 canonical spec**; §7
+  (Event Bus) and §8 (receipts) are the sections this contract instruments.
+- `V4-IMPLEMENTATION-GOVERNANCE.md` — governance/cost artifact whose §6 telemetry
+  registry tracks the LIVE/PLANNED status of the events specified here.
+- `CURRENT-SYNC-SYSTEM-REPORT-2026-07-05.md` — as-built (legacy) restore/sync
+  report feeding the **v5** Sync Engine draft.
 
 ---
 
 ## 1. Purpose & relationship to the other drafts
 
-The v4 architecture doc (`ROUTING-IDENTITY-PRESENCE-ARCH.md`) fixes two things
-this document builds on:
+This document builds on two mechanisms fully defined in the canonical spec
+`ROUTING-IDENTITY-PRESENCE-ARCH.md` (not restated here):
 
-1. **§7 Internal Event Bus** — every subsystem emits *immutable events* and every
-   other subsystem *subscribes* rather than calling it directly. Notification,
-   Sync (v5), Analytics/PostHog (v6), AI, Moderation, Search and badge/unread
-   counters are all bus subscribers, never on the send hot path.
-2. **§8 delivery receipts** — a message walks a fixed, server-generated,
-   per-stage-timestamped pipeline:
+1. **Event Bus** (canonical spec §7) — every subsystem emits immutable events and
+   subscribes rather than calling; Analytics/PostHog (v6) is just another
+   subscriber, never on the send hot path.
+2. **Delivery receipts** (canonical spec §8) — the fixed, server-generated,
+   per-stage-timestamped stage sequence
    `Queued → Resolved → Persisted → Replicated → SocketDelivered → DeviceAck →
-   Rendered → Read`. `Persisted ≠ Replicated`; nothing is "delivered" before
-   durable replication.
+   Rendered → Read` (`Persisted ≠ Replicated`).
 
 This document specifies **(a)** the wire contract of each bus event (fields,
 firing point, subscribers) and **(b)** how those events project onto PostHog so
@@ -147,8 +158,8 @@ incident: **Routing** (v4 §5.3), where `identity_id → current_uid` is resolve
 
 ### 4.1 `msg_routed` **(new, v6)** — the resolve-success row
 
-Emitted by the Routing service once per recipient resolution on the send path,
-*before* Delivery persists.
+Emitted by Routing once per recipient resolution on the send path, *before*
+Delivery persists.
 
 | Property | Value |
 |---------|-------|
@@ -211,7 +222,7 @@ impossible to have *silently*: either `msg_routed(result=routed)` exists for tha
 v6 is additive: the current events keep flowing while the stage events roll in, so
 dashboards never go dark mid-migration. The precursor property `to_kind`
 (`uid` \| `npub` \| `other`) is added to the *current* send/outbox events **first**
-— before any routing service ships — so that even under the legacy
+— before Routing ships — so that even under the legacy
 client-authoritative path we can immediately see how much traffic still addresses
 by npub. That single prop is the cheapest early-warning signal for the exact
 incident class, and it becomes `attempted_alias` once Routing exists.

@@ -1,17 +1,24 @@
 # V4 Messaging Architecture — Implementation Governance & Cost Artifact
 
-**Status:** LIVING governance document for the **FROZEN v4** server-authoritative
-messaging build. Updated as increments land. This is the mandatory implementation
-artifact required by the owner's engineering rules: every component in the build
-must carry a **strangler mapping**, its **five-question PR answers**, a
-**cost-per-scale estimate**, and an entry in the **telemetry registry** before it
-is enabled.
+**Status:** LIVING governance document for the **ARCHITECTURALLY FROZEN v4**
+server-authoritative messaging build. Updated as increments land. The v4
+architecture itself is frozen; only the implementation tracked here evolves. This
+is the mandatory implementation artifact required by the owner's engineering rules:
+every component in the build must carry a **strangler mapping**, its **five-question
+PR answers**, a **cost-per-scale estimate**, and an entry in the **telemetry
+registry** before it is enabled.
 
-**Canonical sources (read-only; this doc references, never restates):**
-- `Specs/ROUTING-IDENTITY-PRESENCE-ARCH.md` — v4 frozen architecture (7+ layers,
-  ownership boundaries, send contract, ordering/idempotency/receipts, cost §14).
-- `Specs/EVENT-BUS-AND-TELEMETRY-CONTRACTS.md` — bus event + PostHog contract (feeds v6).
-- `Specs/CURRENT-SYNC-SYSTEM-REPORT-2026-07-05.md` — as-built restore/sync (feeds v5).
+The canonical spec is **`Specs/ROUTING-IDENTITY-PRESENCE-ARCH.md`**; the nine v4
+concepts (**Identity, Conversation, Routing, Delivery, Presence, Notification,
+Transport, SessionDO, Event Bus**) are named identically there and here. The
+**Sync Engine (v5)** and **PostHog telemetry mapping (v6)** evolve independently.
+
+**Related documents (canonical sources — read-only; this doc references, never restates):**
+- `Specs/ROUTING-IDENTITY-PRESENCE-ARCH.md` — the **frozen v4 canonical spec**
+  (the layers, ownership boundaries, send contract, ordering/idempotency/receipts,
+  cost §14).
+- `Specs/EVENT-BUS-AND-TELEMETRY-CONTRACTS.md` — bus-event + PostHog contract (feeds **v6**).
+- `Specs/CURRENT-SYNC-SYSTEM-REPORT-2026-07-05.md` — as-built (legacy) restore/sync (feeds **v5**).
 
 **Code this doc maps (as landed):** `worker/src/lib/routing.ts`,
 `worker/src/lib/delivery.ts`, `worker/src/lib/transport.ts`,

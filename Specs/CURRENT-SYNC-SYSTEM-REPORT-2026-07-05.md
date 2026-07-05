@@ -1,16 +1,35 @@
 # Current Sync / New-Device Restore System — As-Built Report (2026-07-05)
 
+**Status:** As-built report of the **EXISTING/legacy** restore/sync system. Feeds
+the **v5 Sync Engine** draft, which evolves independently of the frozen v4
+architecture. The target architecture is **ARCHITECTURALLY FROZEN v4**, whose
+canonical spec is **`ROUTING-IDENTITY-PRESENCE-ARCH.md`**. This report describes
+the current (legacy) planes; legacy component names below (e.g. **InboxDO
+(legacy)**, the global **cursor (legacy)**, **`/api/conversations/adopt`
+(legacy)**) are correct for the as-built system and are mapped to their v4
+successors (**Identity, Conversation, Routing, Delivery, Presence, Notification,
+Transport, SessionDO, Event Bus**) on first use in each section.
+
+**Related documents:**
+- `ROUTING-IDENTITY-PRESENCE-ARCH.md` — the **frozen v4 canonical spec** that
+  supersedes the legacy planes described here (Transport/SessionDO owns message
+  truth; the **v5** Sync Engine owns cross-device catch-up).
+- `V4-IMPLEMENTATION-GOVERNANCE.md` — governance/cost artifact for the v4 build
+  (its §2 matrix lists this legacy sync as the not-started **State/Sync (v5)** row).
+- `EVENT-BUS-AND-TELEMETRY-CONTRACTS.md` — bus-event + PostHog contract feeding **v6**.
+
 Scope: how a returning user's data comes back when they sign in on **another
 phone / fresh install**. Sourced from the live codebase + Graphiti
-(`proj_avaflutterapp`). Feeds the **v5 Sync Engine** draft.
+(`proj_avaflutterapp`).
 
 ## TL;DR
 
 Restore is **"just sign in with Clerk."** No password, no recovery key. Three
 independent data planes rebuild the device, each with its own recovery path:
 
-1. **Messages (DMs + groups)** → replayed from the server-authoritative **InboxDO**
-   by a cursor. Durable forever by default.
+1. **Messages (DMs + groups)** → replayed from the server-authoritative **InboxDO
+   (legacy)** (→ v4 Transport/SessionDO) by a global **cursor (legacy)**. Durable
+   forever by default.
 2. **Contacts + prefs (the vault)** → decrypted with an **Account Encryption Key
    (aek)** that is **escrowed server-side** and pulled back on the new device.
 3. **Full SQLite snapshot + media** → **BackupService** to the user's **Google
@@ -36,9 +55,12 @@ device with no local state, `AccountRestore.restoreFromServer()`:
 
 ## 2. Plane A — Messages (InboxDO cursor replay) — PRIMARY
 
-**Server (`worker/src/do/inbox.ts`):** every user has a per-user **InboxDO keyed
-by uid**. `POST /append` writes a message into each member's inbox; `GET
-/sync?cursor=N` (or the WS `{type:'hello', cursor:N}`) **replays every row with
+**InboxDO (legacy)** here maps to v4 **Transport/SessionDO**; the global
+**cursor (legacy)** maps to v4's per-conversation `last_server_sequence` under the
+**v5** Sync Engine. **Server (`worker/src/do/inbox.ts`):** every user has a
+per-user **InboxDO (legacy) keyed by uid**. `POST /append` writes a message into
+each member's inbox; `GET /sync?cursor=N` (or the WS `{type:'hello', cursor:N}`)
+**replays every row with
 id > cursor** (`SYNC_LIMIT = 500` per page) then streams live. Messages are
 **kept forever by default** — `INBOX_RETENTION_DAYS` unset/0 = no pruning;
 optional daily-alarm prune + R2 cold-archive (`chatArchiveV2`) only when enabled.
@@ -54,9 +76,10 @@ the cursor into **local SQLite**, and fans `HubEvent`s to the UI.
   hinted. `_ingestMsg` de-dupes by message id, so replays are idempotent.
 
 **Groups:** server-backed via `conversation_members` (D1). A new device
-re-materializes a group through **`/api/conversations/adopt`**
+re-materializes a group through **`/api/conversations/adopt` (legacy)**
 (`messaging.ts` ~L1050) so groups aren't lost (fix for the earlier
-"reinstall wiped local-only groups" bug).
+"reinstall wiped local-only groups" bug). Under v4, **Conversation** owning
+participants by `identity_id` removes this adopt step entirely (see §5–§7).
 
 ## 3. Plane B — Vault (aek escrow) — contacts + prefs
 
@@ -91,6 +114,9 @@ skipped, ~40 MB cap) and chat-media plaintext is re-cached on demand.
 
 ## 5. How the planes combine on a new phone
 
+(Legacy components below: **InboxDO (legacy)** → v4 Transport/SessionDO;
+**`/api/conversations/adopt` (legacy)** → removed under v4 Conversation.)
+
 ```
 Clerk sign-in
   → GET /api/me → restored → _install()
@@ -104,6 +130,10 @@ Everything is best-effort and self-healing: a plane that fails at sign-in is
 retried on the next launch (e.g. `key_restore_ok` on a later boot).
 
 ## 6. Gaps & risks (input for v5)
+
+(Legacy components in this section: **InboxDO (legacy)** → v4 Transport/SessionDO;
+the global **cursor (legacy)** → v4 per-conversation `last_server_sequence` (v5);
+**`/api/conversations/adopt` (legacy)** → removed under v4 Conversation.)
 
 1. **No unified sync cursor across planes.** Messages sync by a single global
    **InboxDO id-cursor**; the SQLite/media snapshot is a *separate* periodic lane;
@@ -138,13 +168,14 @@ retried on the next launch (e.g. `key_restore_ok` on a later boot).
    best-effort, a device can be "messages back, contacts not yet" until a later
    launch completes the vault fetch.
 
-## 7. How v3/v4 changes this
+## 7. How v4 changes this
 
-The target architecture folds these three ad-hoc planes into named owners:
-**Transport/SessionDO** owns durable message truth (Plane A), the **Sync Engine
-(v5)** owns cross-device catch-up by `conversation_id + last_server_sequence`
-(replacing the global cursor + the snapshot-reconciliation gap), **Conversation**
-owning participants removes `/api/conversations/adopt`, and the vault/backup
+The frozen v4 architecture folds these three ad-hoc (legacy) planes into named
+owners: **Transport/SessionDO** owns durable message truth (Plane A, replacing
+**InboxDO (legacy)**), the **Sync Engine (v5)** owns cross-device catch-up by
+`conversation_id + last_server_sequence` (replacing the global **cursor (legacy)**
++ the snapshot-reconciliation gap), **Conversation** owning participants removes
+**`/api/conversations/adopt` (legacy)**, and the vault/backup
 passphrase escrow stays as the identity-key recovery mechanism. The current system
 already has the two hardest pieces right — **server-durable messages** and
 **recoverable-by-sign-in keys** — which is a strong base to build the unified Sync

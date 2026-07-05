@@ -1,8 +1,22 @@
 # Server-Authoritative Messaging Architecture — Identity, Conversation, Routing, Delivery, Presence, Notification, Transport
 
-**Status:** DRAFT v4 — *approaching freeze*. No code merged. The npub contact
-migration is a *compatibility layer*, not the fix. (Sync Engine → v5 draft;
-PostHog telemetry mapping → v6 draft.)
+**Status:** v4 — **ARCHITECTURALLY FROZEN** (canonical spec; no new services or
+abstractions). Implementation and operational tuning continue; the architecture
+itself does not change. This is **the canonical source of truth** for the nine v4
+concepts — **Identity, Conversation, Routing, Delivery, Presence, Notification,
+Transport, SessionDO, Event Bus** — which are named identically across all four
+documents. The npub contact migration is a *compatibility layer*, not the fix. The
+**Sync Engine (v5)** and the **PostHog telemetry mapping (v6)** are separate drafts
+that evolve **independently** of this frozen v4 architecture.
+
+**Related documents:**
+- `V4-IMPLEMENTATION-GOVERNANCE.md` — living governance/cost artifact mapping this
+  frozen spec to landed code (strangler mapping, five-question PR answers,
+  flag/telemetry registries, cost-per-scale model).
+- `EVENT-BUS-AND-TELEMETRY-CONTRACTS.md` — the bus-event wire contract + PostHog
+  projection that feeds the **v6** telemetry draft.
+- `CURRENT-SYNC-SYSTEM-REPORT-2026-07-05.md` — as-built (legacy) restore/sync
+  report that feeds the **v5** Sync Engine draft.
 
 ## Frozen principles (keep front and centre)
 
@@ -51,8 +65,8 @@ never notices.
 
 Group sends are already server-authoritative (recipients from
 `conversation_members`). DMs are the only path trusting a client `to`. This design
-makes **DMs follow the proven group model** under a canonical identity + layered
-delivery pipeline.
+makes **DMs follow the proven group model** under a canonical Identity + layered
+Delivery.
 
 ## 4. The layered pipeline
 
