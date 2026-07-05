@@ -723,12 +723,28 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     return json({ error: "receptionist_unavailable", reason: "plan_limit", ...planLimitBody(res) }, 402);
   }
 
-  // CALLFIX-8: check if call was already answered by the callee
+  // CALLFIX-8 / CALL-KV-STATE-1: check if the call was already answered by the
+  // callee. The CallRoom DO is now the sole authority (strongly consistent) — ask
+  // it first via GET /state. KV (`call_answered:<callId>`) is a transitional
+  // read-fallback ONLY, kept for ONE release; REMOVE the KV branch once the Call
+  // FSM (CALL-FSM-1) lands and this becomes a straight FSM-state check.
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   if (callId) {
-    const answeredKey = `call_answered:${callId}`;
-    const answered = await env.TOKENS.get(answeredKey).catch(() => null);
-    if (answered === "true") {
+    let answered = false;
+    try {
+      const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+      const r = await stub.fetch("https://call/state", { method: "GET" });
+      if (r.ok) {
+        const st = (await r.json()) as { answered?: boolean };
+        answered = st.answered === true;
+      }
+    } catch { /* DO probe failed — fall through to KV fallback below */ }
+    if (!answered) {
+      // CALL-KV-STATE-1 dual-read fallback — delete with the KV dual-write.
+      const kv = await env.TOKENS.get(`call_answered:${callId}`).catch(() => null);
+      answered = kv === "true";
+    }
+    if (answered) {
       trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_aborted_answered", APP,
         { owner: to, call_id: callId, stage: "scheduled" });
       return json({ error: "receptionist_unavailable", reason: "call_answered" }, 409);

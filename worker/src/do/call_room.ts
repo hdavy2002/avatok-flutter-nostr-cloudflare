@@ -52,9 +52,28 @@ export class CallRoom {
    *  on first access after a DO restart/hibernation wake so a reconnect or
    *  the alarm still resolves correctly even if the instance was evicted. */
   private away: AwayPeer | null | undefined; // undefined = not loaded yet
+  // CALL-KV-STATE-1: authoritative answered/ended state (replaces the KV flag).
+  // In-memory mirrors; hydrated lazily from DO storage after hibernation/eviction.
+  private answeredAt: number | null | undefined; // undefined = not loaded yet
+  private answeredBy: string | null | undefined;
+  private ended: boolean | undefined;
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+  }
+
+  /** CALL-KV-STATE-1: hydrate answered/ended state from DO storage on first use
+   *  after a restart so GET /state is correct even if the instance was evicted. */
+  private async loadCallState(): Promise<void> {
+    if (this.answeredAt !== undefined) return;
+    this.answeredAt = (await this.state.storage.get<number>("answeredAt")) ?? null;
+    this.answeredBy = (await this.state.storage.get<string>("answeredBy")) ?? null;
+    this.ended = (await this.state.storage.get<boolean>("ended")) ?? false;
+  }
+
+  private async markEnded(): Promise<void> {
+    this.ended = true;
+    try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
   }
 
   private async loadAway(): Promise<AwayPeer | null> {
@@ -72,6 +91,21 @@ export class CallRoom {
 
   async fetch(req: Request): Promise<Response> {
     if (req.headers.get("Upgrade") !== "websocket") {
+      // CALL-KV-STATE-1: internal state probe. receptionist.ts asks the DO
+      // (env.CALL_ROOMS.idFromName(callId).fetch('https://call/state')) whether the
+      // call was already answered before spawning Ava — the DO is strongly
+      // consistent, unlike the KV flag this replaces. No auth: DO fetch is only
+      // reachable from within the same Worker (never client-exposed).
+      const stateUrl = new URL(req.url);
+      if (req.method === "GET" && stateUrl.pathname.endsWith("/state")) {
+        await this.loadCallState();
+        return Response.json({
+          answered: this.answeredAt != null,
+          answered_at: this.answeredAt ?? null,
+          answered_by: this.answeredBy ?? null,
+          ended: this.ended === true,
+        });
+      }
       // P1 ring-ack control-plane (Phase 1, receptTakeoverGuard). A server worker
       // (the FCM push consumer) POSTs the outcome of the incoming-call push so the
       // CALLER — the only peer in the room during ring — learns whether the callee's
@@ -163,14 +197,28 @@ export class CallRoom {
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    // CALLFIX-R8: when the second peer joins (both peers now present), write the
-    // call_answered KV flag so receptionist.ts's abort guard fires. Extract the
-    // call_id from the room name (idFromName output); format matches receptionist.ts.
+    // CALL-KV-STATE-1: when the second peer joins (both peers now present) the
+    // call is ANSWERED. Persist that fact in the DO's OWN storage — the DO is the
+    // sole authority for call state, and DO storage is strongly consistent (KV is
+    // eventually consistent and was implicated in receptionist start_failed races).
+    // receptionist.ts now reads this via GET /state (see fetch() above), DO-first.
+    //   DUAL-WRITE (transitional): we still write the call_answered KV flag for ONE
+    //   release as a read-fallback for any receptionist path not yet cut over.
+    //   REMOVE the KV put + the TOKENS fallback read in receptionist.ts once the
+    //   full Call FSM (CALL-FSM-1) lands and ANSWERED becomes an FSM state.
     if (otherIds.length > 0) {
+      await this.loadCallState();
+      if (!this.answeredAt) {
+        this.answeredAt = Date.now();
+        this.answeredBy = peerId;
+        try { await this.state.storage.put("answeredAt", this.answeredAt); } catch { /* best-effort */ }
+        try { await this.state.storage.put("answeredBy", this.answeredBy); } catch { /* best-effort */ }
+      }
       const roomId = this.state.id.name;
       const callId = roomId ? String(roomId).slice(0, 64) : null;
       if (callId) {
         try {
+          // CALL-KV-STATE-1 dual-write fallback — remove when CALL-FSM-1 lands.
           await this.env.TOKENS.put(`call_answered:${callId}`, "true", { expirationTtl: 300 });
         } catch { /* best-effort: KV failure never breaks signaling */ }
       }
@@ -197,6 +245,7 @@ export class CallRoom {
     // a stray peer-left after the call already ended cleanly.
     if (data.type === "bye" || data.type === "hangup") {
       await this.setAway(null);
+      await this.markEnded(); // CALL-KV-STATE-1: call is over — GET /state reports ended
       try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
     }
 
@@ -266,6 +315,7 @@ export class CallRoom {
     const away = await this.loadAway();
     if (!away) return; // peer already rejoined and cleared this
     await this.setAway(null);
+    await this.markEnded(); // CALL-KV-STATE-1: grace expired, call ended
     for (const w of this.state.getWebSockets()) {
       this.sendTo(w, { type: "peer-left", id: away.id });
       try { w.close(1000, "peer reconnect grace expired"); } catch { /* already closed */ }
