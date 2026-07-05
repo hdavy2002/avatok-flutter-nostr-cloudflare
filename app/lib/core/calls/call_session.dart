@@ -1026,8 +1026,8 @@ class CallSession {
         'kind': 'stale_generation_rejected',
         'side': 'client',
         'frame_gen': gv,
-        'current_gen': _gen,
-        'frame_type': d['type']?.toString(),
+        'current_gen': _gen!,
+        'frame_type': d['type']?.toString() ?? 'unknown',
         'call_id': config.room,
       });
       return;
