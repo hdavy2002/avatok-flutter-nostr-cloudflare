@@ -143,6 +143,22 @@ replay_attack_blocked. Baseline is near-zero-but-nonzero; a spike after a releas
 means new code is generating races the guards are absorbing — you find out before
 users do. Standing insight + alert on week-over-week spike.
 
+## Reliability Score (v1.1 addition)
+
+Every call session computes a client-side score on `call_ended`:
+`reliability_score = 100 − packet-loss penalty − reconnect penalty (10/attempt) −
+media-stall penalty (15/stall) − TURN-relay penalty (5) − push-failure penalty (10)`
+(clamped 0–100; exact weights tunable in one place). Property on `call_ended`;
+similar lightweight score on message sessions later. Standing PostHog insight:
+"worst 100 calls today" = sort by reliability_score ascending — triage without log
+diving. Messaging equivalent deferred until call score proves itself.
+
+## Delivery rule (binding)
+
+Telemetry is ALWAYS fire-and-forget: events are queued locally and flushed async
+with drop-oldest overflow; no user-facing operation ever awaits a telemetry write.
+PostHog being down must be invisible to the product.
+
 ## Sampling & cost tiers (non-negotiable at 1M DAU)
 
 - **Tier 1 — 100%, never sampled:** all OUTCOMES (*_succeeded/_failed/_recovered,

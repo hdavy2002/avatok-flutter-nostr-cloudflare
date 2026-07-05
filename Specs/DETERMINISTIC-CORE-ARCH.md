@@ -1,5 +1,9 @@
 # Deterministic Core Architecture — "No More Retries As Strategy"
 
+> **🧊 ARCHITECTURE FROZEN (2026-07-05). Only implementation bugs may change this
+> document. New architectural concepts require production evidence (telemetry),
+> not elegance.**
+
 v1.3 — adopted 2026-07-05, amended same day after three external architecture review
 rounds. Review round 3 verdict: approved for implementation (9.9/10). FEATURE-FROZEN:
 no further architectural additions before implementation — implement exactly in the
@@ -129,6 +133,20 @@ diagnostics) follow immediately after, still flag-gated.
    "Connected" (signaling) and "media active" (RTP flowing) are never conflated.
 8. Every DO exposes a diagnostics view sufficient to answer "why did this die?" in one
    request.
+
+## Implementation risks (v1.4 — watch during build, not architecture)
+1. **CallRoom DO must not become a God Object.** One DO, modular code: `CallFSM`,
+   `LeaseManager`, `AckTracker`, `ParticipantRegistry`, `Diagnostics` as separate
+   modules/files composed by the DO class — never a single 3000-line file.
+2. **Telemetry is fire-and-forget, always.** PostHog is NEVER on the critical path;
+   queue and flush async; the product works when PostHog is down.
+3. **Sampling discipline is religious.** "Should we log every ICE candidate?" — no.
+   Tier table in TELEMETRY-FLIGHT-RECORDER.md is binding.
+4. **Diagnostics responses carry `schema_version` from day one.**
+5. **Feature flags are temporary.** Every flag gets a removal condition written at
+   creation (e.g. `callFsmEnabled`: remove flag + dead code after 2 weeks at 100%
+   with invariant_protected flat). Quarterly flag audit; no permanent flags except
+   true kill switches, which must be listed in this spec.
 
 ## Explicitly rejected (so nobody re-proposes them pre-scale)
 - LRU/in-memory dedupe caches for idempotency (durable indexes only)
