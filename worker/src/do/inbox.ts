@@ -7,8 +7,10 @@
 // then appends to each member's InboxDO and pushes live or enqueues FCM.
 //
 // Internal ops (Worker → DO fetch, never exposed publicly):
-//   POST /append   {conv, sender, owner, kind, body, media_ref, client_id, created_at}
-//                  → {id, live}   (live = at least one socket open)
+//   POST /append   {conv, sender, owner, kind, body, media_ref, client_id, created_at, device_id?}
+//                  → {id, live, already_processed?}   (live = at least one socket
+//                    open; already_processed=true when [SRV-MSG-IDEMP-1] deduped a
+//                    re-sent client_id — the caller/client treats it as a success)
 //   GET  /sync?cursor=N            → {messages, receipts, convs}
 //   POST /receipt  {conv, peer, delivered_id?, read_id?} → {ok, live}
 // WebSocket framing (client ↔ DO):
@@ -20,6 +22,18 @@ import type { Env } from "../types";
 import { type MessageScope, scopeAudience } from "../lib/ava_kinds";
 
 const SYNC_LIMIT = 500;
+
+// [SRV-MSG-IDEMP-1] Cheap 32-bit FNV-1a → 8-hex. Used ONLY to hash a conv id for
+// duplicate-block telemetry so PostHog never carries a raw conversation id. Not a
+// security primitive — collision-resistance is irrelevant for a per-thread counter.
+function fnv1aHex(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
 
 const DAY_MS = 86_400_000;
 // P8 Stage 1 (chatArchiveV2): batch message appends into R2 cold-archive jsonl.
@@ -144,6 +158,19 @@ export class InboxDO {
     // stamped 'pending' explicitly by setAcceptState (client-initiated on a new
     // non-contact thread). SQLite has no "ADD COLUMN IF NOT EXISTS" — try + swallow.
     try { this.sql.exec(`ALTER TABLE conv_meta ADD COLUMN accept_state TEXT NOT NULL DEFAULT 'accepted'`); } catch { /* already present */ }
+    // [SRV-MSG-IDEMP-1] Transactional idempotency. The client mints a per-message
+    // client_id ([MSG-OUTBOX-1]); a durable PARTIAL UNIQUE index on (conv, client_id)
+    // makes a re-sent message (network retry, app-kill mid-send, dual-device echo) a
+    // guaranteed no-op instead of a duplicate row. The index survives DO eviction/
+    // restart/migration for free — an in-memory LRU of processed ids survives none of
+    // them, which is why it's explicitly rejected here. The WHERE guard keeps legacy
+    // rows with a NULL client_id (pre-outbox clients) OUT of the uniqueness set, so
+    // they behave exactly as before. Runs for EXISTING DOs too (idempotent DDL).
+    try { this.sql.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_conv_client ON messages(conv, client_id) WHERE client_id IS NOT NULL`); } catch { /* already present */ }
+    // [SRV-MSG-IDEMP-1] Multi-device readiness: which device originated the send.
+    // Nullable, no backfill; SQLite has no "ADD COLUMN IF NOT EXISTS" so we try +
+    // swallow the duplicate-column error on already-migrated DOs.
+    try { this.sql.exec(`ALTER TABLE messages ADD COLUMN device_id TEXT`); } catch { /* already present */ }
     // P8 Stage 1: tiny durable KV for the archive owner uid + high-water (last
     // archived message id). Kept in DO-SQLite so it survives hibernation cheaply.
     try { this.sql.exec(`CREATE TABLE IF NOT EXISTS meta_kv (k TEXT PRIMARY KEY, v TEXT)`); } catch { /* present */ }
@@ -348,6 +375,23 @@ export class InboxDO {
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
+  // [SRV-MSG-IDEMP-1] Fire-and-forget PostHog signal that the durable index caught a
+  // duplicate append. The conv is HASHED (never the raw id) so the black-box recorder
+  // can slice dedup rate per-thread without leaking conversation identity. Best-effort:
+  // this NEVER runs on the critical path — a telemetry failure can't affect the response.
+  private reportDuplicateBlocked(owner: string, conv: string, clientId: string): void {
+    try {
+      void this.env.Q_ANALYTICS.send({
+        event: "invariant_protected", uid: owner, ts: Date.now(),
+        props: {
+          kind: "duplicate_message_blocked",
+          conv_hash: fnv1aHex(conv), client_id: clientId,
+          app_name: "avatok", service_name: "avatok-api", worker: true, account_id: owner,
+        },
+      });
+    } catch { /* best-effort — telemetry never blocks or breaks dedup */ }
+  }
+
   // ---- internal ops ----------------------------------------------------------
   // `scope` (Phase 0 contract): 'thread' (default) fans out normally; `to:<uid>`
   // marks the row private to that uid. PRIVACY ENFORCEMENT IS SERVER-SIDE: the
@@ -359,7 +403,7 @@ export class InboxDO {
   private append(b: {
     conv: string; sender: string; owner: string; kind?: string;
     body?: string; media_ref?: string; client_id?: string; created_at?: number;
-    scope?: MessageScope;
+    device_id?: string; scope?: MessageScope;
   }): Response {
     const created = b.created_at || Date.now();
     const audience = scopeAudience(b.scope); // null = thread-scoped (default)
@@ -394,11 +438,44 @@ export class InboxDO {
       }
     }
 
-    const row = this.sql.exec(
-      `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id ?? null, created, audience, Date.now(),
-    ).one();
+    // [SRV-MSG-IDEMP-1] Idempotent insert. When the client supplies a client_id we
+    // insert against the partial UNIQUE index (conv, client_id): a re-sent message
+    // hits ON CONFLICT DO NOTHING, so RETURNING yields NO row. That is the ONLY
+    // signal we trust for "already processed" — we then look up the original row id
+    // and short-circuit, firing NONE of the first-time side effects below (no
+    // unread bump, no broadcast, no archive feed). This makes send exactly-once
+    // end-to-end without a client-visible error. Rows with a NULL client_id are
+    // outside the index, so legacy clients keep the plain-INSERT behaviour verbatim.
+    let row: { id: number | string };
+    if (b.client_id) {
+      const inserted = this.sql.exec(
+        `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at, device_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(conv, client_id) WHERE client_id IS NOT NULL DO NOTHING RETURNING id`,
+        b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id, created, audience, Date.now(), b.device_id ?? null,
+      ).toArray();
+      if (inserted.length === 0) {
+        // Duplicate: find the winning row and return it as an ALREADY-PROCESSED
+        // success. Skip the unread bump, broadcast, and archive — they all ran (or
+        // are running) for the first copy. This is an INVARIANT protection, telemetered.
+        const existing = this.sql.exec(
+          `SELECT id FROM messages WHERE conv=? AND client_id=? LIMIT 1`, b.conv, b.client_id,
+        ).toArray();
+        const dupId = existing.length ? Number(existing[0].id) : 0;
+        this.reportDuplicateBlocked(b.owner, b.conv, b.client_id);
+        return new Response(
+          JSON.stringify({ id: dupId, live: false, already_processed: true }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      row = inserted[0] as { id: number | string };
+    } else {
+      row = this.sql.exec(
+        `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at, device_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, null, created, audience, Date.now(), b.device_id ?? null,
+      ).one() as { id: number | string };
+    }
     const id = Number(row.id);
     const incoming = b.sender !== b.owner;
     this.sql.exec(

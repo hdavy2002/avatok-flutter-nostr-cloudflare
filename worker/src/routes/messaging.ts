@@ -122,7 +122,10 @@ async function ensureDm(env: Env, a: string, b: string, context?: string | null)
   return conv;
 }
 
-async function appendTo(env: Env, owner: string, body: Record<string, unknown>): Promise<{ id: number; live: boolean }> {
+// [SRV-MSG-IDEMP-1] `already_processed` surfaces the InboxDO's durable dedup verdict
+// (a re-sent client_id) so the SENDER'S own append result — and, for it, the HTTP
+// response — can treat a duplicate as a success the outbox completes on, not a retry.
+async function appendTo(env: Env, owner: string, body: Record<string, unknown>): Promise<{ id: number; live: boolean; already_processed?: boolean }> {
   const stub = env.INBOX.get(env.INBOX.idFromName(owner));
   const res = await stub.fetch("https://inbox/append", {
     method: "POST", headers: { "content-type": "application/json" },
@@ -251,6 +254,9 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   const text = b.body == null ? null : String(b.body);
   const mediaRef = b.media_ref == null ? null : String(b.media_ref);
   const clientId = b.client_id == null ? null : String(b.client_id);
+  // [SRV-MSG-IDEMP-1] Optional multi-device origin tag. Passed straight through to
+  // the InboxDO append (stored on the row); absent for single-device clients.
+  const deviceId = b.device_id == null ? null : String(b.device_id);
   if (!text && !mediaRef) return json({ error: "empty message" }, 400);
 
   // Resolve the conversation + its members.
@@ -285,7 +291,7 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // Canonical, chronologically-sortable id shared by the live Ably message, the
   // R2 archive key, and the client dedupe key (Phase 1, ABLY-R2-1).
   const mid = canonicalMsgId(created);
-  const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created, mid };
+  const payload = { conv, sender: ctx.uid, kind, body: text, media_ref: mediaRef, client_id: clientId, created_at: created, device_id: deviceId, mid };
 
   // Is this a delete-for-everyone control? Offline recipients then get a silent,
   // high-priority 'del' push (apply in realtime) instead of a "New message" banner.
@@ -441,7 +447,11 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     void partyEmit(env, `thread:${conv}`, { t: "new", conv, seq: mine.id });
   }
 
-  return json({ id: mine.id, conv, created_at: created });
+  // [SRV-MSG-IDEMP-1] Surface the dedup verdict so the client outbox treats a
+  // re-sent message (network retry / app-kill mid-send) as a COMPLETED success
+  // instead of retrying forever. `already_processed` is present + true only on a
+  // durable-index dedup; omitted on a fresh insert (backward compatible).
+  return json({ id: mine.id, conv, created_at: created, ...(mine.already_processed ? { already_processed: true } : {}) });
 }
 
 // ---- POST /api/msg/forward --------------------------------------------------
