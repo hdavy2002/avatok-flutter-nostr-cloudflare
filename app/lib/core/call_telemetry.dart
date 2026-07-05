@@ -48,6 +48,35 @@ class CallTelemetry {
   bool _reported = false;
   bool _startedEmitted = false;
 
+  // ── [CALL-RELSCORE-1] Reliability Score inputs (TELEMETRY-FLIGHT-RECORDER §
+  // "Reliability Score") ────────────────────────────────────────────────────
+  // Session-level signals the telemetry can't observe itself, handed in via
+  // [setReliabilityInputs] just before [ended]. Weights live in ONE place below.
+  int _reconnectAttempts = 0; // mid-call reconnect attempts
+  int _mediaStalls = 0;       // distinct media-stall episodes
+  bool _relayForced = false;  // TURN/relay was forced
+  bool _unreachable = false;  // callee had no reachable device (push failure)
+  // Weights (points docked). Tunable in one place per spec.
+  static const int _wReconnect = 10; // per reconnect attempt
+  static const int _wStall = 15;     // per media stall
+  static const int _wRelay = 5;      // if relay used
+  static const int _wUnreachable = 10; // if callee unreachable
+  static const double _wLossPerPct = 1.0; // per 1% packet loss (cheap, available)
+
+  /// [CALL-RELSCORE-1] Feed the session-level resilience signals used by the
+  /// reliability score. Call once, immediately before [ended].
+  void setReliabilityInputs({
+    int reconnectAttempts = 0,
+    int mediaStalls = 0,
+    bool relayForced = false,
+    bool unreachable = false,
+  }) {
+    _reconnectAttempts = reconnectAttempts;
+    _mediaStalls = mediaStalls;
+    _relayForced = relayForced;
+    _unreachable = unreachable;
+  }
+
   // ── peer geo + ICE/STUN/TURN topology ──────────────────────────────────────
   // The remote party's country, relayed by the signaling server at connect, so a
   // single call_connected / call_ended row carries BOTH ends' countries (the
@@ -444,6 +473,15 @@ class CallTelemetry {
       'net_changes': netChanges,
       // reconnected = we had to restart ICE but still ended while connected.
       'reconnected': iceRestarts > 0 && _tConnected != null,
+      // ── [CALL-RELSCORE-1] Reliability Score + its components ──────────────
+      // 100 minus weighted penalties, clamped 0–100. "Worst 100 calls today" =
+      // sort call_ended by reliability_score ascending — triage without logs.
+      'reliability_score': _reliabilityScore(),
+      'rel_reconnects': _reconnectAttempts,
+      'rel_media_stalls': _mediaStalls,
+      'rel_relay_used': _relayForced,
+      'rel_unreachable': _unreachable,
+      'rel_loss_penalty': (_lossPct * _wLossPerPct).round(),
       'samples': _rttMs.length,
       'video': video,
       'outgoing': outgoing,
@@ -483,6 +521,18 @@ class CallTelemetry {
         'relay_used': _iceType == 'relay',
       });
     }
+  }
+
+  // [CALL-RELSCORE-1] reliability_score = 100 − weighted penalties, clamped 0–100.
+  // Packet-loss penalty uses the last cumulative inbound loss % (cheaply on hand).
+  int _reliabilityScore() {
+    var score = 100.0;
+    score -= _wReconnect * _reconnectAttempts;
+    score -= _wStall * _mediaStalls;
+    score -= _relayForced ? _wRelay : 0;
+    score -= _unreachable ? _wUnreachable : 0;
+    score -= _lossPct * _wLossPerPct;
+    return score.clamp(0, 100).round();
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
