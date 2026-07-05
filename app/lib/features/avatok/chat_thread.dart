@@ -3721,21 +3721,27 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           ? 'gif'
           : (mime.contains('png') ? 'png' : (mime.contains('webp') ? 'webp' : 'jpg'));
       Analytics.capture('chat_image_inserted', {'mime': mime, 'size': bytes.length});
+      // [CHAT-PASTE-1] keyboard/system commitContent path.
+      Analytics.capture('chat_image_pasted', {'via': 'keyboard', 'mime': mime, 'size': bytes.length});
       await _sendImageWithCaption(
           bytes, mime, 'pasted_${DateTime.now().millisecondsSinceEpoch}.$ext');
     } catch (e) {
       AvaLog.I.log('media', 'content insert failed: $e');
       Analytics.capture('chat_image_insert_failed', {'err': e.toString()});
-      if (mounted) _capNote("Couldn't paste that image — try the + → Paste image.");
+      if (mounted) _capNote("Couldn't paste that image — long-press the box to paste.");
     }
   }
 
   /// Composer paste entry point used by both the toolbar "Paste" button and the
   /// hardware Cmd/Ctrl+V shortcut. Tries an image first; on miss, falls back to
   /// the normal text paste (insert at the cursor / replace the selection).
-  Future<void> _onComposerPaste() async {
+  Future<void> _onComposerPaste({String via = 'context_menu'}) async {
     final handledImage = await _tryPasteImage();
-    if (handledImage) return;
+    if (handledImage) {
+      // [CHAT-PASTE-1] toolbar/context-menu Paste or hardware Cmd/Ctrl+V.
+      Analytics.capture('chat_image_pasted', {'via': via});
+      return;
+    }
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text == null || text.isEmpty) return;
@@ -3749,17 +3755,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       selection: TextSelection.collapsed(offset: start + text.length),
     );
     _onInputChanged(newText);
-  }
-
-  /// "Paste image" tile in the + attach sheet. A guaranteed manual path for
-  /// sending a copied image — some platforms hide the toolbar "Paste" button
-  /// when only an image (no text) is on the clipboard, so this always works.
-  Future<void> _pasteImageFromAttach() async {
-    final handled = await _tryPasteImage();
-    if (!handled) {
-      Analytics.capture('chat_image_paste_none', {'from': 'attach_sheet'});
-      if (mounted) _capNote('No image found on the clipboard.');
-    }
   }
 
   // Bottom sheet: image preview + a caption field. Returns the caption (possibly
@@ -5610,8 +5605,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     );
   }
 
+  // [CHAT-PASTE-1] One-time tip (per account) shown the first time the attach
+  // menu is opened, now that the redundant 'Paste image' tile is gone: it tells
+  // users the message box itself pastes images via long-press.
+  static const String _kPasteHintKey = 'chat_paste_hint_shown';
+  Future<void> _maybeShowPasteHint() async {
+    try {
+      final seen = await readScoped(_aiPrefs, _kPasteHintKey);
+      if (seen == '1') return;
+      await _aiPrefs.write(key: scopedKey(_kPasteHintKey), value: '1');
+      if (mounted) _capNote('Tip: long-press the message box to paste images');
+    } catch (_) {/* best-effort */}
+  }
+
   // ---- attach menu (+) ----
   void _attach() {
+    // ignore: unawaited_futures
+    _maybeShowPasteHint();
     showModalBottomSheet(
       context: context,
       backgroundColor: Zine.paper,
@@ -5621,7 +5631,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           padding: const EdgeInsets.all(16),
           child: Wrap(spacing: 18, runSpacing: 18, children: [
             _attachItem(ctx, PhosphorIcons.image(PhosphorIconsStyle.bold), 'Photos', Zine.accents[0], _pickPhotos),
-            _attachItem(ctx, PhosphorIcons.clipboard(PhosphorIconsStyle.bold), 'Paste image', Zine.accents[3], _pasteImageFromAttach),
+            // [CHAT-PASTE-1] 'Paste image' removed — the message box already pastes
+            // images natively (keyboard commitContent + context-menu Paste). A
+            // one-time hint (below) points users at the long-press paste instead.
             _attachItem(ctx, PhosphorIcons.camera(PhosphorIconsStyle.bold), 'Camera', Zine.accents[1], () => _pickImage(ImageSource.camera)),
             _attachItem(ctx, PhosphorIcons.folderOpen(PhosphorIconsStyle.bold), 'Library', Zine.accents[4], _addFromLibrary),
             _attachItem(ctx, PhosphorIcons.videoCamera(PhosphorIconsStyle.bold), 'Video', Zine.accents[2], () => _pickVideo(ImageSource.camera)),
@@ -6202,7 +6214,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               actions: {
                 PasteTextIntent: CallbackAction<PasteTextIntent>(
                   onInvoke: (intent) {
-                    _onComposerPaste();
+                    _onComposerPaste(via: 'keyboard');
                     return null;
                   },
                 ),
