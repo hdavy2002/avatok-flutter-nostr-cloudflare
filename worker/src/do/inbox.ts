@@ -171,6 +171,16 @@ export class InboxDO {
     // Nullable, no backfill; SQLite has no "ADD COLUMN IF NOT EXISTS" so we try +
     // swallow the duplicate-column error on already-migrated DOs.
     try { this.sql.exec(`ALTER TABLE messages ADD COLUMN device_id TEXT`); } catch { /* already present */ }
+    // [SYNC-OPS-1] Phase 0 (State Sync Engine build plan): per-conversation MONOTONIC
+    // sequence — the sync-engine "operation position" that will replace the global
+    // id-cursor in Phase 1. Additive + nullable, and NO reader depends on it yet
+    // (syncPayload still pages by global id), so stamping it is a pure dual-write with
+    // ZERO behaviour change. conv_meta.seq is the per-conversation counter (the InboxDO
+    // is single-threaded, so seq=seq+1 is race-free and strictly monotonic per conv);
+    // messages.conv_seq is the stamped value. Reversible via the SYNC_OPS_V2 wrangler
+    // var (no KV read on the hot path). SQLite has no "ADD COLUMN IF NOT EXISTS" — try+swallow.
+    try { this.sql.exec(`ALTER TABLE messages ADD COLUMN conv_seq INTEGER`); } catch { /* already present */ }
+    try { this.sql.exec(`ALTER TABLE conv_meta ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`); } catch { /* already present */ }
     // P8 Stage 1: tiny durable KV for the archive owner uid + high-water (last
     // archived message id). Kept in DO-SQLite so it survives hibernation cheaply.
     try { this.sql.exec(`CREATE TABLE IF NOT EXISTS meta_kv (k TEXT PRIMARY KEY, v TEXT)`); } catch { /* present */ }
@@ -478,12 +488,31 @@ export class InboxDO {
     }
     const id = Number(row.id);
     const incoming = b.sender !== b.owner;
-    this.sql.exec(
-      `INSERT INTO conv_meta (conv, last_id, unread, peer, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5)
-       ON CONFLICT(conv) DO UPDATE SET last_id=?2, unread=unread+?3, updated_at=?5`,
+    // [SYNC-OPS-1] Phase 0: bump the per-conversation sequence in the SAME upsert that
+    // maintains conv_meta, and RETURN it. The counter always advances (monotonic even
+    // if stamping is later toggled); only writing conv_seq onto the row + the telemetry
+    // are gated by SYNC_OPS_V2 (default ON; set the wrangler var to '0' to disable —
+    // a cheap env read, never a KV fetch). Nothing READS conv_seq until Phase 1, so
+    // this remains a zero-behaviour-change dual-write.
+    const stampSeq = (this.env as Record<string, unknown>).SYNC_OPS_V2 !== "0";
+    const meta = this.sql.exec(
+      `INSERT INTO conv_meta (conv, last_id, unread, peer, updated_at, seq)
+       VALUES (?1, ?2, ?3, ?4, ?5, 1)
+       ON CONFLICT(conv) DO UPDATE SET last_id=?2, unread=unread+?3, updated_at=?5, seq=seq+1
+       RETURNING seq`,
       b.conv, id, incoming ? 1 : 0, b.sender, created,
-    );
+    ).one() as { seq: number | string };
+    const convSeq = Number(meta.seq);
+    if (stampSeq) {
+      this.sql.exec(`UPDATE messages SET conv_seq=? WHERE id=?`, convSeq, id);
+      // op_appended: the sync-engine's core correctness event (State Platform Part XIII).
+      // account_id/uid carry the owner so telemetry is retrievable per user in PostHog.
+      try {
+        void this.env.Q_ANALYTICS.send({ event: "op_appended", uid: b.owner, ts: Date.now(),
+          props: { conv: b.conv, conv_seq: convSeq, msg_id: id, incoming, kind: b.kind || "text",
+            stream: "conversation", app_name: "avatok", service_name: "avatok-api", worker: true, account_id: b.owner } });
+      } catch { /* best-effort telemetry */ }
+    }
     const frame = JSON.stringify({
       type: "msg", id, conv: b.conv, sender: b.sender, kind: b.kind || "text",
       body: b.body ?? null, media_ref: b.media_ref ?? null, client_id: b.client_id ?? null,
