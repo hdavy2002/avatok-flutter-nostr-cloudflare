@@ -6,6 +6,7 @@ import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/config.dart';
 import '../core/disk_cache.dart';
+import '../core/net/connectivity_coordinator.dart';
 import '../identity/identity.dart';
 
 /// [MSG-OUTBOX-1] A durable, per-account queue of outbound DM/group sends that
@@ -146,6 +147,23 @@ class Outbox {
   String? _loadedScope; // AccountScope.id the in-memory queue was loaded for
   final Set<String> _inFlight = {}; // single-flight guard per clientId
   Timer? _tickTimer;
+  StreamSubscription? _netSub; // [NET-COORD-1] coordinator state-change drain trigger
+
+  /// [NET-COORD-1] Subscribe the outbox drain to the ConnectivityCoordinator
+  /// ("NetBrain"): a transition into CONNECTED or RECOVERING means the device can
+  /// reach the server, so flush any queued sends. This is retry trigger (c) and
+  /// is ADDITIVE — the existing triggers (enqueue / app_resume / hub_connected /
+  /// thread_open / self-driving timer) stay. Idempotent; call once at startup.
+  /// TODO [NET-COORD-2]: once the coordinator is the single source of truth, the
+  /// overlapping hub_connected/app_resume drain triggers can be retired per the
+  /// flags-are-temporary / single-owner policy — kept now to avoid regressions.
+  void bindConnectivity() {
+    _netSub ??= ConnectivityCoordinator.I.changes.listen((s) {
+      if (s == NetState.connected || s == NetState.recovering) {
+        unawaited(drain(reason: 'netbrain_${s.name}'));
+      }
+    });
+  }
 
   final _status = StreamController<OutboxStatus>.broadcast();
   Stream<OutboxStatus> get status => _status.stream;

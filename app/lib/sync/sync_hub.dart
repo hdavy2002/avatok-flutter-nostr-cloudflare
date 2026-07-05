@@ -16,6 +16,7 @@ import '../core/config.dart';
 import '../core/db.dart';
 import '../core/disk_cache.dart';
 import '../core/message_store.dart' show SafetyFlagStore;
+import '../core/net/connectivity_coordinator.dart';
 import '../identity/identity.dart';
 import 'dm.dart' show DmMessage;
 import 'legacy_stubs.dart';
@@ -113,6 +114,13 @@ class SyncHub {
   /// Start (idempotent) the shared InboxDO socket. The priv/pub args are legacy
   /// and ignored — identity is the Clerk uid (AccountScope.id).
   NostrClient ensure(String _myPriv, String _myPub) {
+    // [NET-COORD-1] Bring up the device-level ConnectivityCoordinator ("NetBrain")
+    // and bind the outbox drain to its state changes. Both are idempotent and
+    // device-scoped (network is not per-account), so this is safe to call on every
+    // ensure() — including across account switches, where the hub restarts but the
+    // radio does not.
+    try { ConnectivityCoordinator.I.start(); } catch (_) {}
+    try { Outbox.I.bindConnectivity(); } catch (_) {}
     if (!_started && (_myUid?.isNotEmpty ?? false)) {
       _started = true;
       _wantConnected = true;
@@ -217,6 +225,10 @@ class SyncHub {
   }
 
   void onAppResumed() {
+    // [NET-COORD-1] Nudge the coordinator to re-evaluate on resume (a socket may
+    // have died half-open in the background; the reportSocketUp/Down calls below
+    // will feed it the real state). Fires even if we're not _wantConnected.
+    try { ConnectivityCoordinator.I.onAppResumed(); } catch (_) {}
     if (!_wantConnected) return;
     // [MSG-OUTBOX-1] Retry trigger (a): app resume. Flush any queued DM sends that
     // failed while the app was backgrounded/offline, independent of the socket
@@ -298,6 +310,11 @@ class SyncHub {
       // any DM sends that failed while offline. This is retry trigger (b):
       // connectivity/hub reconnect. Safe + single-flight inside the outbox.
       unawaited(Outbox.I.drain(reason: 'hub_connected'));
+      // [NET-COORD-1] Feed the socket-up signal to the ConnectivityCoordinator
+      // ("NetBrain"). SyncHub keeps its own reconnect loop for now; it just
+      // reports state so the coordinator can drive the ONE shared net state that
+      // Outbox et al. react to.
+      try { ConnectivityCoordinator.I.reportSocketUp(); } catch (_) {}
       Analytics.capture('hub_connected', {
         'cursor': _cursor, 'reconnects': _reconnects,
         // P13-A: how long the socket took to establish (ensureConnected → open),
@@ -343,6 +360,9 @@ class SyncHub {
     _pingTimer?.cancel(); _pingTimer = null;
     try { _ch?.sink.close(); } catch (_) {}
     _ch = null;
+    // [NET-COORD-1] Report the socket-down signal to the ConnectivityCoordinator
+    // so it can distinguish RECOVERING from a flap (DEGRADED) and gate drains.
+    try { ConnectivityCoordinator.I.reportSocketDown(); } catch (_) {}
     // Per-device socket-down signal with this connection's uptime + a rollup of how
     // many live frames it actually received (msg/hide/del/sync/…). A device that
     // shows long uptime but zero hide/del frames is the realtime-not-delivering case.
