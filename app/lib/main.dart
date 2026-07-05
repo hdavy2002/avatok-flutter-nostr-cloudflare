@@ -354,6 +354,24 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       // the message still wasn't there" report.
       SyncHub.I.onAppResumed();
     }
+    // [CALL-RESUME-UI-1] Returning to the app with a LIVE call but no CallScreen
+    // mounted (user went to WhatsApp mid-call, came back, and couldn't find the
+    // call to hang up). Re-present the full call UI. `onRequestPop` is non-null
+    // ONLY while a CallScreen is mounted (it registers `_popIfMounted`), so a
+    // null onRequestPop means the screen is gone and we must bring it back.
+    if (state == AppLifecycleState.resumed) {
+      final session = CallSessionManager.instance.current;
+      if (session != null && !session.isEnded && session.onRequestPop == null) {
+        // Not minimized + no screen attached: mark minimized so returnToActiveCall
+        // (which no-ops unless minimized) will re-push the CallScreen route.
+        if (!session.minimized.value) session.minimized.value = true;
+        returnToActiveCall();
+        Analytics.capture('call_resume_ui_shown', {
+          'via': 'app_resume',
+          'call_id': session.room,
+        });
+      }
+    }
   }
 
   static const _kAcct = 'clerk_account_id';

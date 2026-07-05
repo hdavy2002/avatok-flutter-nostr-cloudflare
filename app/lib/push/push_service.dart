@@ -18,6 +18,7 @@ import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/call_log_store.dart';
 import '../core/calls/call_overlay.dart' show returnToActiveCall;
+import '../core/calls/callkit_params.dart' show incomingCallAndroidParams;
 import '../core/calls/call_session_manager.dart';
 import '../core/config.dart';
 import '../core/disk_cache.dart';
@@ -492,14 +493,7 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
       // callee's CallSession stitches to the same trace as the caller + Worker.
       'trace_id': d['trace_id'] ?? '',
     },
-    android: const AndroidParams(
-      isCustomNotification: true,
-      isShowLogo: false,
-      ringtonePath: 'system_ringtone_default',
-      backgroundColor: '#11A37F',
-      actionColor: '#4CAF50',
-      incomingCallNotificationChannelName: 'Incoming calls',
-    ),
+    android: incomingCallAndroidParams,
     ios: const IOSParams(handleType: 'generic', supportsVideo: true),
   );
   await FlutterCallkitIncoming.showCallkitIncoming(params);
