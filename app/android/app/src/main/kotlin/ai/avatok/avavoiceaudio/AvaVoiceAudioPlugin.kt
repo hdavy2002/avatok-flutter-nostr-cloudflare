@@ -200,6 +200,18 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "isSupported" -> result.success(true)
+            "canUseFullScreenIntent" -> {
+                // CALL-FSI-1: Android 14+ (API 34) revokes USE_FULL_SCREEN_INTENT for
+                // non-dialer apps unless the user grants it. Below API 34 it is granted
+                // by manifest declaration alone, so report true there.
+                result.success(canUseFullScreenIntent())
+            }
+            "openFullScreenIntentSettings" -> {
+                // CALL-FSI-1: deep-link to the per-app "Full screen intents" settings
+                // page (ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, API 34+) so the user
+                // can grant lock-screen call UI. Returns true if an activity was launched.
+                result.success(openFullScreenIntentSettings())
+            }
             "start" -> {
                 val micRate = (call.argument<Int>("micSampleRate")) ?: 16000
                 val playRate = (call.argument<Int>("playSampleRate")) ?: 24000
@@ -616,6 +628,43 @@ class AvaVoiceAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             emit("call_foreground_service_stopped", emptyMap())
         } catch (e: Throwable) {
             emit("call_foreground_service_error", mapOf("error" to (e.message ?: e.toString())))
+        }
+    }
+
+    // CALL-FSI-1: whether the app may post full-screen-intent notifications (the
+    // lock-screen incoming-call UI). On API 34+ this can be revoked by the user and
+    // must be checked at runtime; on older APIs the manifest permission suffices.
+    private fun canUseFullScreenIntent(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                val nm = appContext?.getSystemService(Context.NOTIFICATION_SERVICE)
+                    as? android.app.NotificationManager
+                nm?.canUseFullScreenIntent() ?: false
+            } else {
+                true // granted by manifest declaration on API < 34
+            }
+        } catch (_: Throwable) {
+            true // never block the ring path on a check failure
+        }
+    }
+
+    // CALL-FSI-1: open the system per-app "Full screen intents" settings page so the
+    // user can grant the permission. API 34+ only; returns false otherwise.
+    private fun openFullScreenIntentSettings(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                val pkg = appContext?.packageName ?: return false
+                val intent = Intent(
+                    android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                    android.net.Uri.parse("package:$pkg")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                appContext?.startActivity(intent)
+                true
+            } else {
+                false
+            }
+        } catch (_: Throwable) {
+            false
         }
     }
 

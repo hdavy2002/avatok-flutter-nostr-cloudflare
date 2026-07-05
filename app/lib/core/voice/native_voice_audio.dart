@@ -245,4 +245,32 @@ class NativeVoiceAudio {
   Future<void> stopTelephonyMonitoring() async {
     try { await _m.invokeMethod('stopTelephonyMonitoring'); } catch (_) {}
   }
+
+  /// CALL-FSI-1: whether the app may post full-screen-intent notifications — the
+  /// lock-screen incoming-call UI. Android 14+ (API 34) revokes
+  /// USE_FULL_SCREEN_INTENT for non-dialer apps unless the user grants it in
+  /// Settings; without it, an incoming call rings but never wakes the screen /
+  /// shows the call UI. On API < 34 (or non-Android) this returns true.
+  Future<bool> canUseFullScreenIntent() async {
+    if (!isSupported) return true;
+    try {
+      final r = await _m.invokeMethod<bool>('canUseFullScreenIntent');
+      return r ?? true;
+    } catch (_) {
+      return true; // never gate the user on a check failure
+    }
+  }
+
+  /// CALL-FSI-1: open the system per-app "Full screen intents" settings page
+  /// (ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT) so the user can grant lock-screen
+  /// call UI. Returns true if a settings activity was launched (API 34+ only).
+  Future<bool> openFullScreenIntentSettings() async {
+    if (!isSupported) return false;
+    try {
+      final r = await _m.invokeMethod<bool>('openFullScreenIntentSettings');
+      return r ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

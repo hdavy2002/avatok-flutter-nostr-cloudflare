@@ -149,6 +149,62 @@ Future<void> _deferredInit({int? firstFrameMs}) async {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
     await PushService.init();
   } catch (_) {/* push unavailable; app still works */}
+  // CALL-FSI-1: on Android 14+ the OS revokes USE_FULL_SCREEN_INTENT for
+  // non-dialer apps unless the user grants it, so an incoming call rings but the
+  // lock-screen call UI never appears. Check at startup and, if a call-capable
+  // (signed-in) account has NOT granted it, show a one-time prompt deep-linking
+  // to the FSI settings page. Non-blocking + fully guarded.
+  unawaited(_maybePromptFullScreenIntent());
+}
+
+/// CALL-FSI-1: one-time "show calls on lock screen" prompt.
+///
+/// Fires at most once per device (a global one-time flag), only when:
+///  - the native engine is supported (Android), and
+///  - a call-capable account is signed in (AccountScope.id set), and
+///  - the OS reports the full-screen-intent permission is NOT granted.
+/// Tapping "Allow" deep-links to ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT.
+/// Emits `call_fsi_permission {granted}` once per app start regardless.
+Future<void> _maybePromptFullScreenIntent() async {
+  try {
+    if (!NativeVoiceAudio.isSupported) return;
+    final granted = await NativeVoiceAudio.instance.canUseFullScreenIntent();
+    Analytics.capture('call_fsi_permission', {'granted': granted});
+    if (granted) return;
+    // Only prompt a signed-in (call-capable) account.
+    if (AccountScope.id == null || AccountScope.id!.isEmpty) return;
+    // One prompt per device — never nag on every launch.
+    const flag = 'fsi_prompt_shown_v1';
+    if (await DiskCache.readGlobal(flag) == '1') return;
+    await DiskCache.writeGlobal(flag, '1');
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    final allow = await showDialog<bool>(
+      context: ctx,
+      builder: (c) => AlertDialog(
+        title: const Text('Show calls on lock screen'),
+        content: const Text(
+          'To see incoming AvaTOK calls when your phone is locked, allow '
+          'AvaTOK to show full-screen call notifications. Without this, calls '
+          'ring but the call screen may not appear until you open the app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(false),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+    Analytics.capture('call_fsi_prompt_result', {'allow': allow == true});
+    if (allow == true) {
+      await NativeVoiceAudio.instance.openFullScreenIntentSettings();
+    }
+  } catch (_) {/* never block boot on the FSI prompt */}
 }
 
 /// True for transient connectivity failures (no network / DNS / socket / WS drop)
