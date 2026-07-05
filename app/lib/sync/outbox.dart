@@ -45,6 +45,17 @@ class OutboxEntry {
   int attempt;            // POST attempts made so far
   int nextAttemptAt;      // epoch ms — earliest time to try again (backoff)
   String lastError;
+  // [MSG-ECHO-COMPLETE-1] Lifecycle: an entry is Queued→Sending→Acked→Echoed(=
+  // removed). `acked` flips true when the POST returns HTTP 200 (or already_
+  // processed:true), and `ackedAt` records when — but the entry is NOT deleted
+  // then. Deletion happens only when the durable echo of THIS client_id returns
+  // through the InboxDO cursor sync (SyncHub → [completeOnEcho]) — the single
+  // completion point that makes a send exactly-once end-to-end. An acked entry
+  // that is never echoed within [_ackReverifyMs] is re-POSTed on drain (server
+  // dedup [SRV-MSG-IDEMP-1] makes the retry safe; already_processed:true is
+  // treated as an ACK).
+  bool acked;
+  int ackedAt;            // epoch ms of the ACK (0 while not yet acked)
 
   OutboxEntry({
     required this.clientId,
@@ -57,6 +68,8 @@ class OutboxEntry {
     this.attempt = 0,
     this.nextAttemptAt = 0,
     this.lastError = '',
+    this.acked = false,
+    this.ackedAt = 0,
   });
 
   bool get isGroup => conv.isNotEmpty;
@@ -72,6 +85,8 @@ class OutboxEntry {
         'attempt': attempt,
         'nextAttemptAt': nextAttemptAt,
         if (lastError.isNotEmpty) 'lastError': lastError,
+        if (acked) 'acked': true,
+        if (ackedAt > 0) 'ackedAt': ackedAt,
       };
 
   static OutboxEntry? fromJson(Map<String, dynamic> j) {
@@ -92,6 +107,8 @@ class OutboxEntry {
       attempt: (j['attempt'] as num?)?.toInt() ?? 0,
       nextAttemptAt: (j['nextAttemptAt'] as num?)?.toInt() ?? 0,
       lastError: (j['lastError'] ?? '').toString(),
+      acked: j['acked'] == true,
+      ackedAt: (j['ackedAt'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -115,6 +132,12 @@ class Outbox {
   // Give-up policy: stop retrying after ~50 attempts OR 24h, whichever first.
   static const _maxAttempts = 50;
   static const _maxAgeMs = 24 * 60 * 60 * 1000;
+  // [MSG-ECHO-COMPLETE-1] An entry ACKed (HTTP 200) but never echoed back through
+  // cursor sync within this window is re-POSTed on the next drain. The server-side
+  // dedup index ([SRV-MSG-IDEMP-1], landing concurrently) makes the retry safe: a
+  // second POST with the same client_id returns the existing row + already_
+  // processed:true, which we treat as an ACK — no duplicate server row.
+  static const _ackReverifyMs = 60 * 1000;
 
   // In-memory mirror of the persisted queue, keyed by clientId (insertion order
   // preserved so we send oldest-first). Loaded lazily per account.
@@ -202,6 +225,16 @@ class Outbox {
     // on ACK or give-up mid-loop).
     for (final entry in List<OutboxEntry>.of(_q.values)) {
       if (_inFlight.contains(entry.clientId)) continue; // single-flight
+      // [MSG-ECHO-COMPLETE-1] An acked-but-not-yet-echoed entry is normally left
+      // alone (SyncHub's echo is its completion). But if the echo never returned
+      // within _ackReverifyMs of the ACK, re-POST to re-verify — server dedup
+      // makes this safe and the response's already_processed:true counts as ACK.
+      if (entry.acked) {
+        if (entry.ackedAt > 0 && now - entry.ackedAt >= _ackReverifyMs && entry.nextAttemptAt <= now) {
+          unawaited(_attempt(entry));
+        }
+        continue;
+      }
       if (entry.nextAttemptAt > now) continue;          // still backing off
       unawaited(_attempt(entry));
     }
@@ -217,7 +250,10 @@ class Outbox {
     var soonest = now + _maxAgeMs;
     for (final e in _q.values) {
       if (_inFlight.contains(e.clientId)) continue;
-      if (e.nextAttemptAt < soonest) soonest = e.nextAttemptAt;
+      // [MSG-ECHO-COMPLETE-1] An acked entry is driven by its echo, not backoff;
+      // its only timer-relevant deadline is the re-verify window after the ACK.
+      final due = e.acked ? (e.ackedAt > 0 ? e.ackedAt + _ackReverifyMs : soonest) : e.nextAttemptAt;
+      if (due < soonest) soonest = due;
     }
     final waitMs = (soonest - now).clamp(5000, 120000).toInt(); // 5s..2min, matches backoff cap
     _tickTimer = Timer(Duration(milliseconds: waitMs), () => unawaited(drain(reason: 'timer')));
@@ -244,20 +280,31 @@ class Outbox {
         if (entry.isGroup) 'conv': entry.conv else 'to': entry.to,
         'kind': entry.kind, 'body': entry.payload, 'client_id': entry.clientId,
       });
+      // [SRV-MSG-IDEMP-1] A retry of an already-stored client_id returns 200 with
+      // already_processed:true — same as a fresh ACK (the row already exists, no
+      // duplicate is created). Treat both as ACK.
       final ok = res.statusCode == 200;
       if (ok) {
-        // ACKed — remove from the durable queue so it can NEVER be re-posted
-        // (the server does not dedupe client_id; single-flight + removal is the
-        // guarantee against duplicate server rows).
-        _q.remove(entry.clientId);
-        Analytics.capture('msg_outbox_sent', {
-          'attempt': entry.attempt,
-          'latency_ms': DateTime.now().millisecondsSinceEpoch - startedAt,
-          'age_ms': startedAt - entry.createdAt,
-          'kind': entry.kind,
-          'conv_kind': entry.convKey.startsWith('g:') ? 'group' : 'dm',
-        });
-        _emit(OutboxStatus(clientId: entry.clientId, convKey: entry.convKey, ok: true));
+        // [MSG-ECHO-COMPLETE-1] ACK marks the entry `acked` (persisted) — it is
+        // NOT deleted here. The single completion point is the durable echo of
+        // this client_id returning through cursor sync (SyncHub → completeOnEcho),
+        // which finally removes it. This is exactly-once end-to-end: the UI still
+        // shows "sent" on ACK (below), but the durable queue only clears on echo.
+        final wasAcked = entry.acked;
+        entry.acked = true;
+        entry.ackedAt = DateTime.now().millisecondsSinceEpoch;
+        if (!wasAcked) {
+          Analytics.capture('msg_outbox_sent', {
+            'attempt': entry.attempt,
+            'latency_ms': DateTime.now().millisecondsSinceEpoch - startedAt,
+            'age_ms': startedAt - entry.createdAt,
+            'kind': entry.kind,
+            'conv_kind': entry.convKey.startsWith('g:') ? 'group' : 'dm',
+          });
+          // Surface "sent" to the UI on ACK — the checkmark is a UX signal, not a
+          // durability confirmation, so it must not wait for the echo.
+          _emit(OutboxStatus(clientId: entry.clientId, convKey: entry.convKey, ok: true));
+        }
       } else {
         entry.lastError = 'http ${res.statusCode}';
         AvaLog.I.log('outbox', 'send FAILED ${res.statusCode} (attempt ${entry.attempt}) cid=${entry.clientId}');
@@ -268,17 +315,50 @@ class Outbox {
       _afterFailure(entry);
     } finally {
       _inFlight.remove(entry.clientId);
-      // ACK removed the entry above; a terminal give-up removed it in _afterFailure.
-      // A still-retrying entry stays in _q with an advanced nextAttemptAt. Either
-      // way, persist the current queue + re-arm the self-driving retry timer.
+      // [MSG-ECHO-COMPLETE-1] ACK now MARKS the entry `acked` (it stays in _q
+      // until its echo returns via completeOnEcho); a terminal give-up removed it
+      // in _afterFailure. A still-retrying entry stays in _q with an advanced
+      // nextAttemptAt. Persist the current queue + re-arm the self-driving timer.
       await _persist();
       _rearm();
     }
   }
 
   bool _shouldGiveUp(OutboxEntry entry) {
+    // [MSG-ECHO-COMPLETE-1] An acked entry is already durably stored server-side;
+    // its re-verify POSTs must never trigger a "not sent" give-up (the message WAS
+    // sent — we're only waiting for the echo to confirm). Give-up applies only to
+    // never-acked entries.
+    if (entry.acked) return false;
     final age = DateTime.now().millisecondsSinceEpoch - entry.createdAt;
     return entry.attempt >= _maxAttempts || age >= _maxAgeMs;
+  }
+
+  /// [MSG-ECHO-COMPLETE-1] THE single completion point. Called by [SyncHub] the
+  /// instant an inbound message whose `client_id` matches a queued entry is
+  /// ingested — i.e. our own send has durably echoed back through the InboxDO
+  /// cursor sync. Removes the entry (Echoed = Complete) so it can never be
+  /// re-posted, and emits [msg_echo_received] with the ACK→echo round-trip. Safe
+  /// (and expected) to be called for a clientId the outbox has already dropped or
+  /// never held — those are no-ops. Also completes an entry that echoed BEFORE its
+  /// ACK landed (a fast round-trip / re-verify race): the send is durable either
+  /// way, so the echo is authoritative.
+  void completeOnEcho(String clientId) {
+    if (clientId.isEmpty) return;
+    final entry = _q[clientId];
+    if (entry == null) return; // unknown / already completed — nothing to do
+    _q.remove(clientId);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    Analytics.capture('msg_echo_received', {
+      'client_msg_id': clientId,
+      'ack_to_echo_ms': entry.ackedAt > 0 ? now - entry.ackedAt : -1,
+      'acked': entry.acked,
+      'conv_kind': entry.convKey.startsWith('g:') ? 'group' : 'dm',
+    });
+    // Persist the shrunk queue + re-arm (best-effort; async fire-and-forget so the
+    // hot ingest path isn't blocked on a file write).
+    unawaited(_persist());
+    _rearm();
   }
 
   void _afterFailure(OutboxEntry entry) {

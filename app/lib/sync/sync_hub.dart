@@ -598,6 +598,13 @@ class SyncHub {
 
     final myUid = _myUid ?? '';
     final mine = sender == myUid;
+    // [MSG-ECHO-COMPLETE-1] The single completion point for the durable outbox:
+    // our own send has durably echoed back through the InboxDO (the server echoes
+    // a sender's messages into their own InboxDO). Matching client_id → tell the
+    // outbox to remove the entry (Echoed = Complete) and emit ack_to_echo_ms. This
+    // fires for BOTH a first-seen echo and a re-sync of it; completeOnEcho is a
+    // no-op once the entry is gone, so the extra call is harmless.
+    if (mine && clientId.isNotEmpty) Outbox.I.completeOnEcho(clientId);
     final convKey = conv.startsWith('dm_')
         ? '1:${dmPeer(conv, myUid) ?? sender}'
         : 'g:$conv';
