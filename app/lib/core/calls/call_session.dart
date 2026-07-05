@@ -194,6 +194,116 @@ class CallSession {
   Timer? _reconnectGiveUpTimer;
   Timer? _pingTimer;
 
+  // ── [CALL-MEDIA-WATCH-1] mid-call media-flow watchdog ───────────────────
+  // Detects the "connected but silent" failure mode: ICE stays Connected and
+  // the timer keeps ticking, yet inbound audio bytes stop growing (a dead RTP
+  // path the ICE state machine never notices). Polls getStats() every 5s
+  // while _connected and not ended; two consecutive stale polls (~10s) kicks
+  // an ICE restart via the EXISTING _tryIceRestart ladder (same cap/guards as
+  // net-change/transport-state triggers); four stale polls (~20s) ends the
+  // call cleanly via the existing _endWith path, instead of leaving a zombie
+  // call with dead audio. Never throws; every await is try/catch-guarded.
+  Timer? _mediaWatchTimer;
+  int _mediaStaleCount = 0;
+  int? _lastInboundAudioBytes;
+  bool _mediaStalledFlagged = false;
+  int? _mediaStallStartMs;
+
+  void _startMediaWatchdog() {
+    _mediaWatchTimer?.cancel();
+    _mediaStaleCount = 0;
+    _lastInboundAudioBytes = null;
+    _mediaStalledFlagged = false;
+    _mediaStallStartMs = null;
+    _mediaWatchTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollMediaWatchdog());
+  }
+
+  void _stopMediaWatchdog() {
+    _mediaWatchTimer?.cancel();
+    _mediaWatchTimer = null;
+    _mediaStaleCount = 0;
+    _lastInboundAudioBytes = null;
+    _mediaStalledFlagged = false;
+    _mediaStallStartMs = null;
+  }
+
+  Future<void> _pollMediaWatchdog() async {
+    try {
+      if (_ended || !_connected) return;
+      // Media is intentionally paused/replaced during these phases — never
+      // false-trigger the watchdog there.
+      if (isReceptDuo || _onCellularHold) return;
+      // A post-connect signaling reconnect is already handling recovery via
+      // its own ladder; don't double-trigger an ICE restart or end the call
+      // out from under it.
+      if (_reconnecting) return;
+      final pc = _pc;
+      if (pc == null) return;
+      int inboundAudioBytes = 0;
+      bool sawInboundAudio = false;
+      final stats = await pc.getStats();
+      for (final s in stats) {
+        if (s.type != 'inbound-rtp') continue;
+        final v = s.values;
+        final kindRaw = v['kind'] ?? v['mediaType'];
+        final kind = kindRaw?.toString();
+        if (kind != 'audio') continue;
+        sawInboundAudio = true;
+        final b = v['bytesReceived'];
+        if (b is num) inboundAudioBytes += b.toInt();
+      }
+      if (!sawInboundAudio) return; // no inbound audio stat yet — don't judge
+      final prev = _lastInboundAudioBytes;
+      _lastInboundAudioBytes = inboundAudioBytes;
+      if (prev != null && inboundAudioBytes <= prev) {
+        _mediaStaleCount++;
+      } else {
+        if (_mediaStaleCount > 0) {
+          // Recovered.
+          final stalledForS = _mediaStallStartMs == null
+              ? 0
+              : ((DateTime.now().millisecondsSinceEpoch - _mediaStallStartMs!) / 1000).round();
+          Analytics.capture('call_media_recovered', {
+            'call_id': config.room,
+            'stalled_for_s': stalledForS,
+          });
+          if (_mediaStalledFlagged && !_ended && _connected) {
+            _setPhase('connected');
+          }
+        }
+        _mediaStaleCount = 0;
+        _mediaStalledFlagged = false;
+        _mediaStallStartMs = null;
+        return;
+      }
+      if (_mediaStaleCount == 1) {
+        _mediaStallStartMs = DateTime.now().millisecondsSinceEpoch;
+      }
+      if (_mediaStaleCount == 2 && !_mediaStalledFlagged) {
+        _mediaStalledFlagged = true;
+        Analytics.capture('call_media_stalled', {
+          'call_id': config.room,
+          'stale_s': 10,
+          'video': config.video,
+        });
+        _setPhase('reconnecting');
+        // ignore: unawaited_futures
+        _tryIceRestart('media-stalled');
+      } else if (_mediaStaleCount >= 4) {
+        Analytics.capture('call_media_stalled', {
+          'call_id': config.room,
+          'stale_s': 20,
+          'video': config.video,
+        });
+        if (!_reconnecting) {
+          _endWith('ended', reason: 'media-stalled');
+        }
+      }
+    } catch (_) {
+      // Never let watchdog polling throw or keep a call alive.
+    }
+  }
+
   int get avaCount => _avaCount; // for the countdown ring in the view
   bool get isEnded => _ended;
   bool get isConnected => _connected;
@@ -629,6 +739,10 @@ class CallSession {
   void _beginReconnect() {
     if (_ended) return;
     _stopPingTimer();
+    // [CALL-MEDIA-WATCH-1] the signaling reconnect ladder owns recovery now;
+    // stop polling stats so the watchdog can't race it with its own ICE
+    // restart / end-call decision. Re-armed in _completeReconnect.
+    _stopMediaWatchdog();
     if (!_reconnecting) {
       _reconnecting = true;
       _reconnectAttempt = 0;
@@ -698,6 +812,9 @@ class CallSession {
     if (!_ended) {
       _setPhase('connected');
       _startPingTimer();
+      // [CALL-MEDIA-WATCH-1] re-arm now that the reconnect ladder has handed
+      // control back; fresh baseline avoids judging staleness across the gap.
+      _startMediaWatchdog();
     }
   }
 
@@ -774,6 +891,8 @@ class CallSession {
         _connected = true;
         peerAway.value = false;
         _setPhase('connected');
+        // [CALL-MEDIA-WATCH-1] arm the media-flow watchdog now that we're live.
+        _startMediaWatchdog();
       }
     };
     pc.onConnectionState = (s) {
@@ -1295,6 +1414,8 @@ class CallSession {
     _reconnectRetryTimer?.cancel();
     _reconnectGiveUpTimer?.cancel();
     _stopPingTimer();
+    // [CALL-MEDIA-WATCH-1]
+    _stopMediaWatchdog();
     await _safeAwait(() => FlutterCallkitIncoming.endCall(config.room));
     try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
     await _safeAwait(() => _pc?.close(), ms: 3000);
