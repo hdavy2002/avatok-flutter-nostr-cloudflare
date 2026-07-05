@@ -445,7 +445,12 @@ export function composeReceptionistPrompt(
     `Keep the WHOLE call to about a minute. If the caller goes quiet, gently check in ("Anything else, or shall I pass this along to ${who}?") instead of leaving dead air or hanging up in silence.`,
     `WRAP-UP: when you get a system note that time is nearly up (e.g. "[SYSTEM: 20 seconds remain …]"), OR the chat naturally winds down, warmly say that's about all the time you have, give a one-line summary of what you'll pass on, promise to tell ${who}, and say a warm goodbye (e.g. "have a great ${tod}${firstSuffix}") — in your OWN natural words. Then ${endWith}. NEVER end the call silently.`,
     `If the caller clearly has nothing to say, warmly offer to just let ${who} know they called, then wrap up and ${endWith}.`,
-    `When the caller indicates they are finished (says no message, says goodbye, gives their message and confirms nothing else), say ONE short closing line and immediately call end_call. Never ask another question after the caller says they are done.`,
+    // AVA-VM-CLOSE-1: event-driven close. The moment the caller's message is complete
+    // AND they fall silent, OR they say goodbye / "that's all", END the call yourself —
+    // do NOT wait for a timer or leave the line open hoping for more.
+    `END THE CALL YOURSELF as soon as the message is done. When the caller has clearly finished — they have given their message and gone quiet for a few seconds, OR they say "that's all" / "bye" / anything meaning they're done — say ONE short, warm closing line and IMMEDIATELY ${endWith}${ctx?.engine === "cf" ? "" : " with reason 'caller_bye' if they said goodbye, otherwise 'message_complete'"}. Do NOT ask another question, do NOT wait, do NOT re-offer help after they are done.`,
+    // Never surface the time cap in normal flow — the cap is a silent backstop, not the UX.
+    `NEVER mention time, a time limit, or "that's all the time I have" on your own. Only speak about time if you receive an explicit "[SYSTEM: … time is nearly up …]" note. In a normal call you simply take the message and close warmly the moment it's complete.`,
     `If asked who you are, say you're ${who}'s assistant helping out while ${subj}'s away. Stay on topic, be kind, and refuse anything illegal or harmful. If asked, you may say the call is recorded.`,
   ].filter(Boolean);
   // F1: time-bound status note — Ava uses it naturally (e.g. "he's out at lunch,

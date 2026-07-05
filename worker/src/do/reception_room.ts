@@ -127,6 +127,7 @@ export class ReceptionRoom {
   private idleNudges = 0; // silence escalation: 1st = spoken check-in, 2nd = spoken close
   private closePending = false;    // 60s reached while Ava was mid-utterance → close on her next turnComplete
   private avaSpeaking = false;     // true between an Ava audio chunk and her turnComplete
+  private selfClosed = false;      // AVA-VM-CLOSE-1: Ava ended via the end_call tool (healthy close, not a cap)
 
   // Owner contact, resolved once so EVERY event carries email/phone (support
   // pulls a user's receptionist calls by email/phone). v2 telemetry spec.
@@ -313,7 +314,17 @@ export class ReceptionRoom {
     const tools: any[] = [{
       functionDeclarations: [{
         name: "end_call",
-        description: "End the phone call. Invoke this right AFTER you have said goodbye and the caller has nothing more to add.",
+        description: "End the phone call. Invoke this the moment you have finished saying your ONE short goodbye line, once the caller's message is complete and they have nothing more to add. Do NOT wait for a timer — end the call yourself.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            reason: {
+              type: "STRING",
+              description: "Why the call is ending: 'message_complete' (caller finished their message and fell silent), 'caller_bye' (caller said goodbye / that's all).",
+              enum: ["message_complete", "caller_bye"],
+            },
+          },
+        },
       }],
     }];
     // File Search (RAG) is optional and also billable; gate it behind a kill
@@ -452,8 +463,22 @@ export class ReceptionRoom {
     // goodbye) → hang up immediately instead of leaving the line open.
     if (msg.toolCall) {
       const calls = msg.toolCall.functionCalls;
-      if (Array.isArray(calls) && calls.some((c: any) => c?.name === "end_call")) {
-        this.ev("ava_recept_ended_by_agent", { ms: Date.now() - this.startedAt });
+      const endCall = Array.isArray(calls) ? calls.find((c: any) => c?.name === "end_call") : null;
+      if (endCall) {
+        // AVA-VM-CLOSE-1: Ava ended the call herself (event-driven close, not a
+        // timer). Record WHY she closed so we can distinguish a healthy self-close
+        // from a cap-fired GC close. Reason comes from her tool args; default to
+        // message_complete when she omits it.
+        const rawReason = String(endCall?.args?.reason || "").trim();
+        const reason = (rawReason === "caller_bye" || rawReason === "message_complete")
+          ? rawReason : "message_complete";
+        this.selfClosed = true;
+        this.ev("ava_recept_self_closed", {
+          reason,
+          turns: this.turnCount,
+          session_s: Math.round((Date.now() - this.startedAt) / 1000),
+        });
+        this.ev("ava_recept_ended_by_agent", { ms: Date.now() - this.startedAt, reason });
         // Gemini emits end_call right after the goodbye audio chunks; finalize()
         // closes the caller socket, so hanging up instantly clips the tail of her
         // line. Give the audio ~1.6s to drain to the caller, then end. The hard cap
@@ -693,7 +718,10 @@ export class ReceptionRoom {
       summary_tok_in: this.sumTokIn, summary_tok_out: this.sumTokOut, summary_usd: round6(summaryUsd),
       est_usd: round6(estUsd),
       in_rate_usd_min: inRate, out_rate_usd_min: outRate,
-      cutoff_reason: reason, // now includes 'time_up_wrap' (P2 timed close)
+      cutoff_reason: reason, // 'ava_ended' (self-close) vs 'time_up_wrap' (cap-fired GC close)
+      // AVA-VM-CLOSE-1: true only when Ava hung up herself via the end_call tool —
+      // lets dashboards separate a healthy event-driven close from a cap backstop.
+      self_closed: this.selfClosed,
       // P2: did the 40s wrap cue fire, and the caller's detected language (cheap
       // script heuristic over the transcript; owner language_code wins if set).
       wrap_cue_injected: this.wrapCueInjected,
