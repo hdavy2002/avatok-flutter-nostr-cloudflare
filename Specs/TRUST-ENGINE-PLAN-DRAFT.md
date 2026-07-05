@@ -1,4 +1,6 @@
-# Trust Engine — Discussion Draft v0.2
+# Trust Engine — Discussion Draft v0.2 [SUPERSEDED]
+
+> **SUPERSEDED 2026-07-05 by `Specs/TRUST-ENGINE-ARCH.md` (v1.0, FROZEN).** Kept for lineage only.
 
 Status: **DRAFT v0.2 — re-architected around progressive cost escalation (owner review 2026-07-05).**
 Supersedes v0.1 (fc1f44e). The v0.1 stage taxonomy, rule registry, provider interfaces, VerificationDO, and phased migration all stand; what changed is the **shape of the pipeline**: it is now a cost staircase, and the optimization philosophy is a hard rule:
