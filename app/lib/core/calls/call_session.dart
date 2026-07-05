@@ -338,6 +338,7 @@ class CallSession {
       case 'declined':
       case 'busy':
       case 'no-answer':
+      case 'network-error':
         return CallPhase.ended;
       case 'reconnecting':
         return CallPhase.reconnecting;
@@ -520,12 +521,19 @@ class CallSession {
             return;
           }
           _ringback.stop();
+          // [CALL-DIAL-FAIL-1] The /api/call POST returned OK but the signaling
+          // WS never got a 'welcome' within 8s (dead/flaky connection after the
+          // dial). Distinct terminal phase (not generic 'ended') so the caller
+          // sees a clear network sticker/snackbar instead of silently dying —
+          // and we skip straight to it instead of waiting out the full ring
+          // window + a pointless receptionist attempt.
           Analytics.capture('call_place_failed', {
+            'call_id': config.room,
             'stage': 'no_server_confirm',
             'kind': config.video ? 'video' : 'audio',
           });
           _placeCallFailedNotice?.call();
-          _endWith('ended', reason: 'place-call-timeout');
+          _endWith('network-error', reason: 'place-call-timeout');
         }
       });
     }
@@ -1322,6 +1330,8 @@ class CallSession {
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
+        // [CALL-DIAL-FAIL-1]
+        'network-error' => "Can't reach the network — check your connection",
         'ava-countdown' => 'Ava is taking your call…',
         'receptionist-connecting' => 'Connecting you to Ava…',
         'receptionist' => 'Ava is taking a message',

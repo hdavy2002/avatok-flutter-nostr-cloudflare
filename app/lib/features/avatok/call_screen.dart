@@ -116,6 +116,11 @@ class CallScreen extends StatefulWidget {
   final String ringbackUrl;
   final String? teamId;
   final int? teamSlot;
+  // [CALL-DIAL-FAIL-1] Optional retry hook, wired by launch sites that can
+  // cheaply re-run their own dial flow (fresh room id + fresh place-call POST)
+  // when this call ends in the 'network-error' terminal state. Null → the
+  // Retry button is hidden (the user falls back to the normal dial button).
+  final VoidCallback? onRetry;
   const CallScreen({
     super.key,
     required this.room,
@@ -127,6 +132,7 @@ class CallScreen extends StatefulWidget {
     this.ringbackUrl = '',
     this.teamId,
     this.teamSlot,
+    this.onRetry,
   });
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -167,7 +173,16 @@ class _CallScreenState extends State<CallScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text("Couldn't reach ${widget.title} — retry?"),
-            action: SnackBarAction(label: 'Retry', onPressed: _popIfMounted),
+            // [CALL-DIAL-FAIL-1] Redial (not just pop) when the launch site gave
+            // us a hook — mirrors the in-sticker Retry button below.
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () {
+                final retry = widget.onRetry;
+                _popIfMounted();
+                retry?.call();
+              },
+            ),
           ));
         }
       },
@@ -253,7 +268,10 @@ class _CallScreenState extends State<CallScreen> {
     final muted = s.muted.value;
     final showVideo = video && camOn;
     final light = !showVideo; // audio call → zine paper screen
-    final failed = phase == 'declined' || phase == 'busy' || phase == 'no-answer';
+    // [CALL-DIAL-FAIL-1] 'network-error' joins the failed-sticker set so a
+    // dead place-call POST/timeout reads as a clear failure, not a silent hang.
+    final failed = phase == 'declined' || phase == 'busy' || phase == 'no-answer' ||
+        phase == 'network-error';
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final stack = Stack(
       children: [
@@ -356,6 +374,21 @@ class _CallScreenState extends State<CallScreen> {
                     connected ? s.clock : s.statusText,
                     kind: failed ? ZineStickerKind.no : ZineStickerKind.plain,
                   ),
+                  // [CALL-DIAL-FAIL-1] Retry affordance — only on the
+                  // network-error terminal state, only when the launch site
+                  // gave us a redial hook.
+                  if (phase == 'network-error' && widget.onRetry != null) ...[
+                    const SizedBox(height: 20),
+                    ZineButton(
+                      label: 'Retry',
+                      icon: PhosphorIcons.arrowClockwise(PhosphorIconsStyle.bold),
+                      onPressed: () {
+                        final retry = widget.onRetry;
+                        _popIfMounted();
+                        retry?.call();
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),

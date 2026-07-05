@@ -2074,12 +2074,36 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           Analytics.capture('call_place_failed', {'status': res.statusCode, 'kind': callKind});
         }
       } catch (e) {
+        // [CALL-DIAL-FAIL-1] The place-call POST itself threw (network error,
+        // DNS failure, or the ~8s ApiAuth.postJson timeout on a flaky
+        // connection) — PostHog calls avatok-536eaa7a/c85ed3b7/2810780b: the
+        // callee's phone NEVER rang, yet the old code fell through to
+        // Navigator.push(CallScreen(...)) below and let the caller sit through
+        // a full fake ringback window before dying with timeout-ringing. Treat
+        // this exactly like the server-side "unreachable" signal — abort the
+        // dial before the CallScreen ever mounts so no ringback plays into the
+        // void, and offer an immediate Retry.
         AvaLog.I.log('call', 'POST /api/call FAILED: $e');
         final err = e.toString();
-        Analytics.capture('call_place_error', {
+        Analytics.capture('call_place_failed', {
+          'call_id': room,
           'kind': video ? 'video' : 'audio',
           'error': err.length > 160 ? err.substring(0, 160) : err,
         });
+        unreachable = true;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text("Can't reach the network — check your connection"),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () {
+                Analytics.capture('call_retry_pressed', {'call_id': room, 'kind': video ? 'video' : 'audio'});
+                // ignore: unawaited_futures
+                _call(kind);
+              },
+            ),
+          ));
+        }
       }
     } else {
       AvaLog.I.log('call', 'NOT ringing — contact seed is not an uid ($to)');
@@ -2094,7 +2118,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => CallScreen(room: room, title: widget.chat.name, seed: to, video: video, avatarUrl: widget.chat.avatarUrl, ringbackUrl: ringbackUrl),
+        builder: (_) => CallScreen(
+          room: room, title: widget.chat.name, seed: to, video: video,
+          avatarUrl: widget.chat.avatarUrl, ringbackUrl: ringbackUrl,
+          // [CALL-DIAL-FAIL-1] Retry affordance on the 'network-error' terminal
+          // state: re-runs this exact dial flow (fresh room id, fresh POST)
+          // instead of leaving the user stuck on a dead call screen.
+          onRetry: () {
+            Analytics.capture('call_retry_pressed', {'call_id': room, 'kind': kind});
+            // ignore: unawaited_futures
+            _call(kind);
+          },
+        ),
       ),
     );
   }
