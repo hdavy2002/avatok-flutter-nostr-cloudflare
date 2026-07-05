@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/analytics.dart';
+import '../../../core/verification_api.dart';
 import '../ladder_api.dart';
 import 'capture_compress.dart';
 import 'face_gate.dart';
@@ -14,6 +15,7 @@ import 'flash_fill.dart';
 import 'head_circle_step.dart';
 import 'live_theme.dart';
 import 'pending_session.dart';
+import 'phone_stage.dart';
 import 'phrase_step.dart';
 import 'position_step.dart';
 import 'stage_chrome.dart';
@@ -47,6 +49,8 @@ class LivenessV2Screen extends StatefulWidget {
 
 enum _Phase {
   intro,
+  phone, // [LIVE-UI-4] pips step 1 — phone number entry
+  otp, // [LIVE-UI-4] pips step 2 — confirm SMS code
   preparing,
   position,
   recording,
@@ -69,6 +73,15 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
 
   _Phase _phase = _Phase.intro;
   String? _error;
+
+  // [LIVE-UI-4] Front-of-flow phone verification. `_phoneVerified` gates the
+  // skip logic: when the backend already has a verified phone for this account
+  // we start at the face stage (pips 3); otherwise the flow begins at the phone
+  // stage. `_phoneStart` is true once we've decided the first stage is `phone`
+  // (so the restart button knows where "the beginning" is).
+  final PhoneVerifyController _phone = PhoneVerifyController();
+  bool _phoneVerified = false;
+  bool _phoneStart = false;
 
   // Challenge from the server.
   String _sessionId = '';
@@ -112,22 +125,75 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
   @override
   void initState() {
     super.initState();
-    _resumePendingIfAny();
+    _boot();
+    _phone.addListener(_onPhoneChanged);
+    _phone.loadStoredPhone();
   }
 
-  Future<void> _resumePendingIfAny() async {
+  /// [LIVE-UI-4] Startup routing: first resume any pending liveness verify
+  /// (unchanged behaviour). If nothing is pending, ask the backend whether this
+  /// account already verified a phone — if so we skip the phone/otp stages and
+  /// start at the face stage (pips 3); otherwise the flow begins at the phone
+  /// stage (pips 1). The account being fully liveness-verified is still handled
+  /// by the existing pending-resume + result paths.
+  Future<void> _boot() async {
+    final resumed = await _resumePendingIfAny();
+    if (resumed || !mounted) return;
+    bool verified = false;
+    try {
+      verified = await VerificationApi.isPhoneVerified();
+    } catch (_) {/* best-effort — fall through to asking for the phone */}
+    if (!mounted) return;
+    setState(() {
+      _phoneVerified = verified;
+      _phoneStart = !verified;
+      // Skip straight to the intro/face path when the phone is already verified;
+      // otherwise present the phone stage as the first step.
+      if (!verified) {
+        _phase = _Phase.phone;
+        _stage('phone');
+      }
+    });
+    Analytics.capture('verification_started', {
+      'v': 2,
+      'entry': verified ? 'face' : 'phone',
+      'phone_skipped': verified,
+    });
+  }
+
+  /// [LIVE-UI-4] When the shared controller reports the phone is verified, emit
+  /// the screen-level stage event and auto-advance to the face stage — but ONLY
+  /// after Firebase sign-in AND /phone/confirm have both succeeded (never on a
+  /// timer). Rebuilds otherwise so the OTP boxes/pills track live state.
+  void _onPhoneChanged() {
+    if (!mounted) return;
+    if (_phase == _Phase.phone && _phone.codeSent && !_phone.verified) {
+      setState(() => _phase = _Phase.otp);
+      _stage('otp');
+      return;
+    }
+    if (_phase == _Phase.otp && _phone.verified) {
+      _phoneVerified = true;
+      // Both Firebase credential + backend confirm succeeded → into the flow.
+      _begin();
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<bool> _resumePendingIfAny() async {
     final sid = await LivenessPendingSession.get();
-    if (sid == null || sid.isEmpty || !mounted) return;
+    if (sid == null || sid.isEmpty || !mounted) return false;
     setState(() {
       _sessionId = sid;
       _phase = _Phase.verifying;
       _analyzeStep = _AnalyzeStep.voice; // resumed = already past upload/motion
     });
     final res = await LadderApi.livenessResultOutcome(sid);
-    if (!mounted) return;
+    if (!mounted) return true;
     if (res.pending) {
       final done = await _pollResume(sid);
-      if (!mounted) return;
+      if (!mounted) return true;
       if (!done) {
         setState(() {
           _phase = _Phase.intro;
@@ -135,15 +201,15 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
               'in a minute to see the result.';
         });
       }
-      return;
+      return true;
     }
     if (res.noResult) {
       await LivenessPendingSession.clear();
-      if (!mounted) return;
-      setState(() => _phase = _Phase.intro);
-      return;
+      // No prior result — let startup routing decide the first stage.
+      return false;
     }
     await _applyOutcome(res);
+    return true;
   }
 
   Future<bool> _pollResume(String sid) async {
@@ -166,6 +232,8 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
   @override
   void dispose() {
     _recordCap?.cancel();
+    _phone.removeListener(_onPhoneChanged);
+    _phone.dispose();
     _flash.dispose(); // always restores brightness (try/finally inside)
     _cam?.dispose();
     super.dispose();
@@ -546,7 +614,10 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
     await _applyOutcome(r);
   }
 
-  /// Full clean restart (restart button + retry): drop evidence, reset to intro.
+  /// Full clean restart (restart button + retry): drop evidence, reset camera
+  /// state. [LIVE-UI-4] Restarts from the appropriate stage — the phone stage
+  /// when the flow started there and the phone is NOT verified (clearing the
+  /// Firebase verification state cleanly), otherwise the intro/face path.
   Future<void> _restart() async {
     _recordCap?.cancel();
     await _stopRecordingSafely();
@@ -558,14 +629,19 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
     _profileLeft = _profileRight = _neutralFrame = _clip = null;
     _leftDone = _rightDone = false;
     _sessionId = '';
+    // Restart before the phone is verified → back to the phone stage, wiping any
+    // Firebase verification state so the SMS/OTP begins clean.
+    final toPhone = _phoneStart && !_phoneVerified;
+    if (toPhone) _phone.resetAll();
     if (!mounted) return;
     setState(() {
-      _phase = _Phase.intro;
+      _phase = toPhone ? _Phase.phone : _Phase.intro;
       _error = null;
       _failMessages = const [];
       _attemptsLeft = null;
     });
-    Analytics.capture('liveness_restart', const {'v': 2});
+    Analytics.capture('liveness_restart', {'v': 2, 'to': toPhone ? 'phone' : 'intro'});
+    if (toPhone) _stage('phone');
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -576,23 +652,34 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
       _phase == _Phase.headCircle ||
       _phase == _Phase.phrase;
 
+  /// [LIVE-UI-4] Pips are now 1..6: phone=1, otp=2, face/record=3, turn=4,
+  /// read=5, analyze=6.
   int get _activePip => switch (_phase) {
-        _Phase.position || _Phase.recording => 1,
-        _Phase.headCircle => 2,
-        _Phase.phrase => 3,
-        _Phase.uploading || _Phase.verifying => 4,
-        _ => 1,
+        _Phase.phone => 1,
+        _Phase.otp => 2,
+        _Phase.position || _Phase.recording => 3,
+        _Phase.headCircle => 4,
+        _Phase.phrase => 5,
+        _Phase.uploading || _Phase.verifying => 6,
+        _ => 3,
       };
 
   @override
   Widget build(BuildContext context) {
-    // Only intro / passed / failed / unavailable are dismissible; a capture in
-    // progress swallows back and logs abandonment.
+    // Only intro / phone / otp / passed / failed / unavailable are dismissible;
+    // a capture in progress swallows back and logs abandonment. [LIVE-UI-4]
     final canPop = _phase == _Phase.intro ||
+        _phase == _Phase.phone ||
+        _phase == _Phase.otp ||
         _phase == _Phase.passed ||
         _phase == _Phase.failed ||
         _phase == _Phase.unavailable;
-    final showPips = _isCapturePhase || _phase == _Phase.uploading || _phase == _Phase.verifying;
+    // Pips show across all six steps: phone, otp, capture, upload/verify.
+    final showPips = _phase == _Phase.phone ||
+        _phase == _Phase.otp ||
+        _isCapturePhase ||
+        _phase == _Phase.uploading ||
+        _phase == _Phase.verifying;
     return PopScope(
       canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
@@ -613,7 +700,7 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
                 if (showPips && _phase != _Phase.passed) ...[
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: StepPips(total: 4, active: _activePip),
+                    child: StepPips(total: 6, active: _activePip),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -632,6 +719,10 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
     switch (_phase) {
       case _Phase.intro:
         return _intro();
+      case _Phase.phone:
+        return PhoneNumberStage(controller: _phone);
+      case _Phase.otp:
+        return OtpConfirmStage(controller: _phone);
       case _Phase.preparing:
         return const Center(
             child: CircularProgressIndicator(color: LiveTheme.lime));
