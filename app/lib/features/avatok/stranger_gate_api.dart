@@ -38,6 +38,21 @@ String dmConvIdFor(String me, String peer) {
   return 'dm_${lo}__$hi';
 }
 
+/// Inverse of [dmConvIdFor]: pull the OTHER party's uid out of a `dm_<lo>__<hi>`
+/// server conv id, given my own uid. Returns null if the conv isn't a 1:1 DM id
+/// or doesn't contain [me]. Used so a pending "Unknown sender" request (a conv
+/// with no resolved local contact) can still open its real thread — the peer uid
+/// is recoverable from the conv id alone. Clerk uids use single underscores, so
+/// splitting on the `__` join is unambiguous.
+String? peerUidFromConv(String conv, String me) {
+  if (!conv.startsWith('dm_') || me.isEmpty) return null;
+  final parts = conv.substring(3).split('__');
+  if (parts.length != 2) return null;
+  if (parts[0] == me) return parts[1];
+  if (parts[1] == me) return parts[0];
+  return null;
+}
+
 /// Per-account local cache of thread acceptance state, keyed by the SERVER conv
 /// id (`dm_…`). Local-first so the gate renders instantly on open; the server is
 /// the source of truth (multi-device) and reconciles via [StrangerGateApi.state].

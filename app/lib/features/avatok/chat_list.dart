@@ -117,6 +117,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
   // the fresher store-backed data if it happens to resolve later.
   bool _booted = false;
   bool _authoritativeLoaded = false;
+  // [BLANK-GUARD] The chat list is derived entirely from _contacts, and the
+  // per-account caches (DiskCache/Db) silently fall back to a 'default' bucket
+  // whenever AccountScope.id is momentarily null — which happens on first mount
+  // and again on resume, before Clerk re-resolves the current account. A read in
+  // that window returns EMPTY, which used to (a) clobber a populated list and
+  // (b) flip on the "No chats yet" empty state → the chats vanished until a cold
+  // relaunch, and reappeared/​vanished as the scope flickered. We now refuse to
+  // let an empty read under a not-ready scope overwrite good data, and retry the
+  // boot load until the scope resolves. _emptyBootRetries bounds that retry loop
+  // so a genuinely-empty account (or a guest, who legitimately has a null scope)
+  // still reaches the empty state.
+  int _emptyBootRetries = 0;
+  bool get _scopeReady =>
+      AccountScope.id != null && AccountScope.id!.isNotEmpty;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Set<String> _enabledApps = {};
   AccountKind _accountKind = AccountKind.personal;
@@ -272,31 +286,70 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               ),
               pinned: false,
               muted: false,
-              onTap: () => _openChat(Chat(
-                name: p.contact!.name,
-                seed: p.contact!.seed,
-                avatarUrl: p.contact!.avatarUrl,
-                last: '',
-                time: '',
-              )),
+              onTap: () {
+                Analytics.capture('message_request_opened',
+                    {'resolved': true, 'has_peer': true, 'conv': p.conv});
+                _openChat(Chat(
+                  name: p.contact!.name,
+                  seed: p.contact!.seed,
+                  avatarUrl: p.contact!.avatarUrl,
+                  last: '',
+                  time: '',
+                ));
+              },
               onLongPress: () {},
             )
           else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(
-                      color: Zine.ink.withValues(alpha: 0.1), width: 1))),
-              child: Row(children: [
-                PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold),
-                    size: 18, color: Zine.inkSoft),
-                const SizedBox(width: 16),
-                Expanded(
-                    child: Text('Unknown sender',
-                        style: ZineText.sub(size: 13.5, color: Zine.inkSoft))),
-              ]),
+            // Unresolved sender (not in local contacts): recover the peer uid
+            // from the conv id so the row still OPENS its real thread, where the
+            // StrangerGateBar (Accept / Block / Report) is shown. Previously this
+            // was a dead, un-tappable placeholder — the request looked empty and
+            // couldn't be acted on.
+            InkWell(
+              onTap: () => _openMessageRequest(p.conv),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                    border: Border(bottom: BorderSide(
+                        color: Zine.ink.withValues(alpha: 0.1), width: 1))),
+                child: Row(children: [
+                  PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold),
+                      size: 18, color: Zine.inkSoft),
+                  const SizedBox(width: 16),
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text('Unknown sender', style: ZineText.value(size: 14)),
+                        const SizedBox(height: 2),
+                        Text('Wants to send you a message',
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: ZineText.sub(size: 12.5, color: Zine.inkSoft)),
+                      ])),
+                  const SizedBox(width: 8),
+                  PhosphorIcon(PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                      size: 14, color: Zine.inkSoft),
+                ]),
+              ),
             ),
     ];
+  }
+
+  /// Open a pending message request whose sender is NOT a saved contact. The
+  /// peer uid is recovered from the server conv id (`dm_<lo>__<hi>`), so the row
+  /// still lands on the correct 1:1 thread — where the stranger-gate bar lets the
+  /// user Accept, Block or Report. Returning from the thread reconciles the
+  /// "Message requests" section (accept/block may have cleared it).
+  void _openMessageRequest(String conv) {
+    final myUid = _id?.uid ?? '';
+    final peer = peerUidFromConv(conv, myUid);
+    Analytics.capture('message_request_opened', {
+      'resolved': false,
+      'has_peer': peer != null && peer.isNotEmpty,
+      'conv': conv,
+    });
+    if (peer == null || peer.isEmpty) return; // unrecoverable id — nothing to open
+    _openChat(Chat(name: 'Unknown sender', seed: peer, last: '', time: ''));
   }
 
   void _chatRowFlags(Chat c) {
@@ -584,7 +637,20 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
       // relaunched. This is a cheap on-disk read of OUR OWN contact cache — it does
       // NOT touch the device address book (that stays on-demand, Invite/Search only).
       _contactsStore.load().then((list) {
-        if (mounted && list.length != _contacts.length) setState(() => _contacts = list);
+        if (!mounted) return;
+        // [BLANK-GUARD] On resume the scope can be null again for a beat, so a
+        // read may return empty from the 'default' bucket. Never let that wipe a
+        // populated list — that's the "pull down / come back and my chats vanish"
+        // bug. A genuine removal still flows through ContactsStore.changes.
+        if (list.isEmpty && _contacts.isNotEmpty) {
+          Analytics.capture('chat_list_blank_guard', {
+            'reason': 'resume_empty',
+            'had_contacts': _contacts.length,
+            'scope': AccountScope.id ?? 'null',
+          });
+          return;
+        }
+        if (list.length != _contacts.length) setState(() => _contacts = list);
       });
       // NOTE: the device address book is deliberately NOT read on resume/FCM. It's
       // read on demand ONLY when the Invite/Search screen opens (device_contacts.
@@ -631,6 +697,22 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     final enabled = await fEnabled;
     final kind = await fKind;
     final customFilters = await fFilters;
+    // [BLANK-GUARD] If this load came back empty ONLY because the account scope
+    // hasn't resolved yet (DiskCache/Db read the 'default' bucket), do NOT paint
+    // the empty state or wipe a populated list — retry shortly until the scope is
+    // ready. Bounded so a genuinely-empty account / guest still reaches the empty
+    // state. A non-empty load always proceeds immediately.
+    if (contacts.isEmpty && groups.isEmpty && !_scopeReady && _emptyBootRetries < 8) {
+      _emptyBootRetries++;
+      Analytics.capture('chat_list_blank_guard', {
+        'reason': 'scope_not_ready',
+        'retry': _emptyBootRetries,
+        'had_contacts': _contacts.length,
+        'scope': AccountScope.id ?? 'null',
+      });
+      if (mounted) Future.delayed(const Duration(milliseconds: 300), _bootstrap);
+      return; // network refresh (GroupApi.sync etc.) waits for a real scope too
+    }
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
@@ -643,6 +725,17 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     } else {
       _authoritativeLoaded = true;
     }
+    // Rich load telemetry (email auto-stamped) so blank-list regressions are
+    // visible in PostHog: how many contacts/previews we painted, whether the
+    // scope was ready, and how many retries it took to get here.
+    Analytics.capture('chat_list_loaded', {
+      'contacts': contacts.length,
+      'groups': groups.length,
+      'previews': previews.length,
+      'scope_ready': _scopeReady,
+      'retries': _emptyBootRetries,
+      'scope': AccountScope.id ?? 'null',
+    });
     // Refresh the shared snapshot so the next open (or a recreated screen) paints
     // instantly from memory.
     ChatListSnapshot.update(
