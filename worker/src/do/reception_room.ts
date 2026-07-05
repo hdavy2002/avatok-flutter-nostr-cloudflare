@@ -353,9 +353,23 @@ export class ReceptionRoom {
 
   // caller → Gemini : binary = PCM16 16k; (control JSON tolerated but ignored)
   private onClientMessage(ev: MessageEvent): void {
-    if (this.finalized || !this.gem) return;
+    if (this.finalized) return;
     const d = ev.data as any;
-    if (typeof d === "string") return; // no client-supplied control honored
+    if (typeof d === "string") {
+      // [CALL-EXCL-1] Single-audio-authority yield. The ONLY client control we
+      // honor: the caller's device owner accepted a real incoming call, so this
+      // receptionist leg must end WITHOUT posting a voicemail or a caller ack
+      // (there is no message to take — the owner is now on the line directly).
+      // Finalize with reason `owner_answered`; postMessage() skips delivery for it.
+      try {
+        const j = JSON.parse(d);
+        if (j && j.t === "yield") {
+          void this.finalize("owner_answered");
+        }
+      } catch { /* ignore malformed control */ }
+      return;
+    }
+    if (!this.gem) return;
     const bytes = d instanceof ArrayBuffer ? new Uint8Array(d) : null;
     if (!bytes) return;
     // Wrap-up barge-in: once the time cap hits we STOP relaying the caller to
@@ -609,6 +623,29 @@ export class ReceptionRoom {
     const now = Date.now();
     const durationS = Math.max(0, Math.round((now - this.startedAt) / 1000));
     const transcript = this.buildTranscript();
+
+    // [CALL-EXCL-1] owner_answered yield: the device owner picked up the real
+    // incoming call, so this receptionist leg ends with NO voicemail message and
+    // NO caller ack (nothing to take a message about). We still persist the
+    // session row (status/duration/reason) for the record + telemetry, but we
+    // SKIP the recording store, the owner message post, and the caller ack.
+    if (reason === "owner_answered") {
+      try {
+        await this.env.DB_META.prepare(
+          `UPDATE receptionist_sessions SET status='ended', ended_at=?2, duration_s=?3, cutoff_reason=?4,
+             updated_at=?2 WHERE id=?1`,
+        ).bind(init.sid, now, durationS, reason).run();
+      } catch { /* ignore */ }
+      this.ev("ava_recept_yielded", {
+        reason: "owner_answered", duration_s: durationS, turns: this.turnCount,
+      });
+      this.ev("ava_recept_session_ended", {
+        cutoff_reason: reason, duration_s: durationS, got_audio: this.firstAudioSent,
+        yielded: true, turns: this.turnCount,
+      });
+      metric(this.env, "ava_recept_yielded", [1, durationS]);
+      return;
+    }
 
     // Recording → R2 (WAV, 24 kHz mono PCM16). Best-effort.
     let recordingUrl: string | null = null;

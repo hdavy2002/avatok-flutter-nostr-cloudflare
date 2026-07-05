@@ -1271,6 +1271,12 @@ class PushService {
         });
         return;
       }
+      // [CALL-EXCL-1] Single audio authority: BEFORE opening the accepted call,
+      // make it the ONLY audio-owning session on this device — gracefully yield
+      // any live receptionist (Ava) session (no voicemail/ack) and cleanly bye
+      // any other live call leg. This is the acceptance path's single authority
+      // point (delegated to the CallSessionManager).
+      try { await CallSessionManager.instance.prepareForAccept(room); } catch (_) {}
       navigatorKey.currentState?.push(MaterialPageRoute(
         builder: (_) => CallScreen(
           room: (e['callId'] ?? '').toString(),

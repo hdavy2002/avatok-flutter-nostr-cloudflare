@@ -1269,6 +1269,42 @@ class CallSession {
     await hangup('local-hangup');
   }
 
+  /// [CALL-EXCL-1] Is this session currently talking to the receptionist (Ava)?
+  bool get hasLiveReceptionist => _receptionist != null && !_ended;
+
+  /// [CALL-EXCL-1] Single-audio-authority yield: the device owner just accepted a
+  /// real incoming call. If THIS session is a live receptionist leg, end it via
+  /// the DO `owner_answered` path (no voicemail, no caller ack) and tear down.
+  /// Returns true if it actually yielded a receptionist session.
+  Future<bool> yieldReceptionistToOwner() async {
+    final r = _receptionist;
+    if (r == null || _ended) return false;
+    try { await r.yieldToOwner(); } catch (_) {}
+    // The receptionist's done future normally ends the session; end it directly
+    // here too so the accept path can proceed deterministically without waiting.
+    if (!_ended) await hangup('owner-answered-yield');
+    return true;
+  }
+
+  /// [CALL-EXCL-1] End this call leg QUIETLY before the device accepts another
+  /// call: send a proper `bye` to the peer (NOT a busy) and tear down, without
+  /// touching navigation (the accept path drives the UI). Distinct from the busy
+  /// path — the peer sees a clean hangup, not a busy dead-end.
+  Future<void> endQuiet(String reason) async {
+    if (_ended) return;
+    if (_remoteId != null) _send({'type': 'bye', 'to': _remoteId});
+    if (config.seed.isNotEmpty) {
+      ApiAuth.postJson(kCallStatusUrl, {
+        'to': config.seed, 'callId': config.room, 'status': 'ended',
+      }).ignore();
+    }
+    Analytics.capture('call_ended_for_accept', {
+      'call_id': config.room,
+      'reason': reason,
+    });
+    await hangup(reason);
+  }
+
   Future<void> _onNoAnswer() async {
     _ringback.stop();
     if (!config.video && !_ended) {

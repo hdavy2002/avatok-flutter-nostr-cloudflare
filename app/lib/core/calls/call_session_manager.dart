@@ -123,6 +123,43 @@ class CallSessionManager with WidgetsBindingObserver {
     return session;
   }
 
+  /// [CALL-EXCL-1] SINGLE AUDIO AUTHORITY. Called from the accept path BEFORE a
+  /// newly-accepted incoming call ([room]) starts, so exactly one audio-owning
+  /// session exists on the device. This is the one authority point:
+  ///   (a) any live receptionist (Ava) session gracefully YIELDS — the DO
+  ///       finalizes with `owner_answered`, posting NO voicemail + NO caller ack;
+  ///   (b) any OTHER live CallSession (a different room) ends QUIETLY with a
+  ///       proper `bye` to its peer (not a busy), so accepting never leaves two
+  ///       concurrent audio sessions (the 2026-07-05 "Ava listened to davy talk
+  ///       to Sat" bug). A live session for [room] itself is left untouched — the
+  ///       accept path re-attaches to it.
+  Future<void> prepareForAccept(String room) async {
+    Analytics.capture('call_prepare_for_accept', {'accept_room': room});
+    for (final s in List<CallSession>.of(_byRoom.values)) {
+      if (s.isEnded) continue;
+      if (s.room == room) continue; // the call being accepted — keep it
+      try {
+        if (s.hasLiveReceptionist) {
+          await s.yieldReceptionistToOwner();
+        } else {
+          await s.endQuiet('owner-accepted-other-call');
+        }
+      } catch (_) {}
+    }
+    // Also cover a session sitting in `_active` that (for any reason) isn't in the
+    // keyed registry.
+    final a = _active.value;
+    if (a != null && !a.isEnded && a.room != room && !_byRoom.containsValue(a)) {
+      try {
+        if (a.hasLiveReceptionist) {
+          await a.yieldReceptionistToOwner();
+        } else {
+          await a.endQuiet('owner-accepted-other-call');
+        }
+      } catch (_) {}
+    }
+  }
+
   /// End the current session (if any) via the single teardown path.
   Future<void> hangupActive(String reason) async {
     final s = _active.value;

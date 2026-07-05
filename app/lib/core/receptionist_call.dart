@@ -410,6 +410,27 @@ class ReceptionistCall {
 
   Future<void> hangup() => _finish('caller_hangup');
 
+  /// [CALL-EXCL-1] Single-audio-authority yield: the device owner just accepted a
+  /// real incoming call, so this receptionist leg must end WITHOUT posting a
+  /// voicemail or a caller ack (Ava was mid-listen, but the owner is now on the
+  /// line directly — there's nothing to "take a message" about). We send an
+  /// explicit control frame so the ReceptionRoom DO finalizes with reason
+  /// `owner_answered` (skips the voicemail message + caller ack) BEFORE the socket
+  /// closes; if the socket is already gone the DO's close handler still finalizes.
+  Future<void> yieldToOwner() async {
+    if (_ended) return;
+    Analytics.capture('ava_recept_yielded', {
+      'reason': 'owner_answered',
+      'engine': _useNative ? 'native' : 'fallback',
+      if (callId case final id?) 'call_id': id,
+    });
+    try { _ws?.sink.add('{"t":"yield","reason":"owner_answered"}'); } catch (_) {}
+    // Give the control frame a beat to reach the DO before we tear the socket
+    // down (the DO finalizes on the frame; the close is the backstop).
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await _finish('owner_answered');
+  }
+
   Future<void> _finish(String reason) async {
     if (_ended) return;
     _ended = true;
