@@ -70,8 +70,32 @@ class CallSessionConfig {
 /// This is a verbatim extraction of the logic that used to live in
 /// `_CallScreenState`; the hard-won phantom-busy/glare protections
 /// (call_screen.dart:33–108) and every teardown-race guard are preserved.
+/// [CALL-REG-SEAL-1] Capability token that authorizes constructing a
+/// [CallSession]. The ONLY instance is [CallSessionManager]'s private
+/// [CallSessionManager.sessionToken]; because this class has a private
+/// constructor, no code outside `call_session.dart` can mint one. Passing it to
+/// [CallSession.internalByManager] is therefore proof the caller is the manager
+/// — the sealed-registry invariant (§#4 of DETERMINISTIC-CORE-ARCH) is enforced
+/// at the type level, not just by convention.
+class CallSessionToken {
+  const CallSessionToken._();
+}
+
+/// [CALL-REG-SEAL-1] The single token the manager presents to build sessions.
+const CallSessionToken kCallSessionToken = CallSessionToken._();
+
 class CallSession {
-  CallSession(this.config);
+  /// [CALL-REG-SEAL-1] Sealed construction. A [CallSession] may be built ONLY by
+  /// [CallSessionManager], which is the sole holder of a [CallSessionToken]
+  /// (mintable only inside this library). This preserves the [CALL-DUP-SESSION-1]
+  /// registry invariant: every session is created through `manager.attach()`, so
+  /// the `_byRoom` dedup map can never be bypassed by a stray direct construction.
+  /// The name is deliberately awkward ("internalByManager") to signal at every
+  /// (would-be) call site that this is not a public API. The assert is a
+  /// debug-build tripwire in case a token is ever smuggled out.
+  CallSession.internalByManager(CallSessionToken token, this.config)
+      : assert(identical(token, kCallSessionToken),
+            'CallSession must be constructed via CallSessionManager.attach()');
 
   final CallSessionConfig config;
   String get room => config.room;

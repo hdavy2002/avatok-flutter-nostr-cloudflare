@@ -17,6 +17,14 @@ class CallSessionManager with WidgetsBindingObserver {
   CallSessionManager._();
   static final CallSessionManager instance = CallSessionManager._();
 
+  // [CALL-REG-SEAL-1] The manager is the SOLE holder of the capability token that
+  // authorizes constructing a [CallSession] (the token's ctor is private to
+  // call_session.dart, so nothing else can mint one). Every session is therefore
+  // built through [attach] below, keeping the [CALL-DUP-SESSION-1] `_byRoom`
+  // registry the only construction path — no code can open a rogue CallRoom WS by
+  // `new CallSession(...)` anymore.
+  static const CallSessionToken _sessionToken = kCallSessionToken;
+
   final ValueNotifier<CallSession?> _active = ValueNotifier<CallSession?>(null);
   ValueListenable<CallSession?> get active => _active;
   CallSession? get current => _active.value;
@@ -86,7 +94,8 @@ class CallSessionManager with WidgetsBindingObserver {
       _byRoom[config.room] = existing;
       return existing;
     }
-    final session = CallSession(config);
+    // [CALL-REG-SEAL-1] Sole construction site, gated by the manager-held token.
+    final session = CallSession.internalByManager(_sessionToken, config);
     // [CALL-DUP-SESSION-1] Teach this session how to tell whether ANOTHER live
     // session already owns its room on this device. Belt-and-braces with the
     // attach() dedup above: if a duplicate leg ever does slip through (e.g. a
