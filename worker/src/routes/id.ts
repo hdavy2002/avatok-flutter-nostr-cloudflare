@@ -14,6 +14,7 @@ import { requireUser, isFail } from "../authz";
 import { metaDb, metaSession } from "../db/shard";
 import { createLivenessSession, getLivenessResults, rekognitionConfigured } from "../aws/rekognition";
 import { stripeKycSession, stripeIdentityConfigured } from "./kyc";
+import { invalidateLevelCache } from "./ladder";
 import { track, trackUser, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { recordLivenessAudit, storeRekognitionAuditImages, deviceCtxFromBody, edgeCtx } from "./liveness_audit";
@@ -420,6 +421,14 @@ export async function idPhoneConfirm(req: Request, env: Env): Promise<Response> 
        ON CONFLICT(uid, proof) DO UPDATE SET status='verified', verified_at=?2, updated_at=?2`,
     ).bind(ctx.uid, now),
   ]);
+
+  // The Trust Ladder level (proofs map, incl. the 'phone' green tick in the
+  // AvaIdentity hub) is cached in KV under idlevel:<uid>. Without this, the
+  // freshly-written identity_proofs('phone','verified') row is masked by the
+  // stale cache and the phone tick stays grey until the TTL lapses. The
+  // liveness pass path already invalidates; mirror it here so phone turns
+  // green immediately after OTP confirm.
+  await invalidateLevelCache(env, ctx.uid).catch(() => { /* best-effort */ });
 
   track(env, ctx.uid, "phone_verification_completed", "avaid", {});
   metric(env, "phone_confirmed", [1]);
