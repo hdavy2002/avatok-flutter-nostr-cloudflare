@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:math';
 
-import '../core/api_auth.dart';
-import '../core/config.dart';
 import '../core/db.dart';
 import '../core/group_store.dart';
+import 'outbox.dart';
 import 'sync_hub.dart';
 
 class GroupMessage {
@@ -42,17 +41,22 @@ class AvaGroupDm {
   }
 
   /// Send [payload] (already gid-stamped) to the group conversation. Returns the
-  /// client_id. Write-to-DB-first for instant local echo.
+  /// client_id. Write-to-DB-first for instant local echo, then ENQUEUE to the
+  /// durable outbox so the send survives a flaky link / app restart and retries
+  /// automatically. [MSG-OUTBOX-1] The old path did a fire-and-forget POST that
+  /// swallowed ALL errors (`onError: (_) {}`) — a group message that failed to
+  /// send just silently disappeared, with not even a failed status surfaced.
   String send(String payload) {
     final clientId = _randId();
+    final convKey = 'g:${group.id}';
     try {
       Db.I.upsertMessage(MessagesCompanion.insert(
-          rumorId: clientId, convKey: 'g:${group.id}', mine: true, payload: payload,
+          rumorId: clientId, convKey: convKey, mine: true, payload: payload,
           createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000));
     } catch (_) {}
-    unawaited(ApiAuth.postJson(kMsgSendUrl, {
-      'conv': group.id, 'kind': 'text', 'body': payload, 'client_id': clientId,
-    }).then((_) {}, onError: (_) {}));
+    unawaited(Outbox.I.enqueue(
+      clientId: clientId, conv: group.id, payload: payload, convKey: convKey, kind: 'text',
+    ));
     return clientId;
   }
 

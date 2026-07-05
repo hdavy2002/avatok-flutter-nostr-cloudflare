@@ -61,6 +61,7 @@ import '../../identity/identity.dart';
 import '../../core/db.dart';
 import '../../core/device_contacts.dart';
 import '../../sync/dm.dart';
+import '../../sync/outbox.dart';
 import '../../sync/group_dm.dart';
 import '../../sync/party/party_hub.dart';
 import '../../sync/legacy_stubs.dart';
@@ -1207,6 +1208,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // reopen without a second /api/archive/page round-trip. Independent of the
     // hot cache below (which may be empty on a fresh device).
     unawaited(_restoreArchiveCache());
+    // [MSG-OUTBOX-1] Load the durable outbox first so isPending() below is accurate
+    // when we restore not-yet-ACKed bubbles (sending… vs not-sent affordance).
+    await Outbox.I.ensureLoaded();
     final cached = await _msgStore.load(key);
     if (cached.isEmpty || !mounted) return;
     final loaded = <_Msg>[];
@@ -1246,6 +1250,21 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         starred: j['starred'] == true,
         hidden: j['hidden'] == true || _hiddenIds[ev] == true,
       );
+      // [MSG-OUTBOX-1] Restore a NOT-yet-ACKed send with the right affordance so it
+      // never silently vanishes (the original bug). If its clientId (=evId) is STILL
+      // queued in the durable outbox, it's genuinely in flight → show "sending…"
+      // and let the outbox status flip it to sent/failed. If it's no longer queued
+      // (gave up, or a media upload that can't auto-resume), show the failed
+      // "not sent · tap to retry" affordance so the user can re-send manually.
+      if (j['pending'] == true && msg.me) {
+        final stillQueued = ev != null && Outbox.I.isPending(ev);
+        final mediaPending = j['mediaPending'] == true;
+        if (stillQueued && !mediaPending) {
+          msg.sent = false; msg.failed = false; // "sending…" — outbox is retrying
+        } else {
+          msg.sent = false; msg.failed = true;   // "not sent · tap to retry"
+        }
+      }
       // A peer hard-deleted this for everyone (durable tombstone) — collapse the
       // stale cached body/media to the deleted pill before showing it.
       if (ev != null && _deletedIds.contains(ev)) _tombstone(msg);
@@ -1272,8 +1291,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (key == null) return;
     final out = <Map<String, dynamic>>[];
     for (final m in _msgs) {
-      if (m.uploading || m.failed) continue; // in-flight/failed: not durable yet
       if (m.text.contains('"t":"receipt"')) continue; // never cache a stray receipt
+      // [MSG-OUTBOX-1] PERSIST failed / still-sending messages instead of dropping
+      // them. The old `if (m.uploading || m.failed) continue;` is exactly why a DM
+      // that failed to POST silently vanished from the sender's own thread on
+      // reopen (the warm cache excluded it). We now cache them WITH their state:
+      //   • text that isn't ACKed yet (failed, or my bubble not `sent`) → the
+      //     durable outbox is still retrying it, so restore it as pending and let
+      //     the outbox status update the bubble; a tap re-enqueues.
+      //   • uploading/failed MEDIA → restore as a failed placeholder so it doesn't
+      //     disappear. NOTE: the raw bytes live only in memory (never cached), so a
+      //     media upload interrupted by a restart cannot auto-resume — the user
+      //     re-sends via the failed-bubble tap. Text sends DO auto-resume via the
+      //     outbox. (Media-upload resume is out of scope here — see report.)
+      final notAcked = m.me && !m.hidden && (m.failed || m.uploading || (!m.sent && m.evId != null));
       out.add({
         'me': m.me, 'text': m.text, 'ts': m.ts,
         if (m.evId != null) 'evId': m.evId,
@@ -1288,6 +1319,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (m.reaction != null) 'reaction': m.reaction,
         if (m.starred) 'starred': true,
         if (m.hidden) 'hidden': true, // soft-delete survives reopen; data retained for Undo
+        // Restore hint: this bubble was NOT yet confirmed on the server. `mediaPending`
+        // distinguishes a stuck media upload (no auto-resume) from a text send the
+        // outbox will keep retrying.
+        if (notAcked) 'pending': true,
+        if (notAcked && (m.uploading || m.media != null)) 'mediaPending': true,
       });
     }
     await _msgStore.save(key, out);

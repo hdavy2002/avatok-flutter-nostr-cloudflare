@@ -19,6 +19,7 @@ import '../core/message_store.dart' show SafetyFlagStore;
 import '../identity/identity.dart';
 import 'dm.dart' show DmMessage;
 import 'legacy_stubs.dart';
+import 'outbox.dart';
 
 
 /// A delivered message, server-routed plaintext (Cloudflare-native; Nostr gone).
@@ -150,6 +151,10 @@ class SyncHub {
     _seen.clear();
     _cursor = 0;
     _cursorUid = null;
+    // [MSG-OUTBOX-1] Drop the previous account's in-memory outbox mirror so the
+    // NEXT account loads its own scoped queue fresh (the persisted per-account file
+    // is left intact, so re-login resumes that account's pending sends).
+    Outbox.I.reset();
     AvaLog.I.log('hub', 'sync stopped (account switch/logout)');
   }
 
@@ -213,6 +218,10 @@ class SyncHub {
 
   void onAppResumed() {
     if (!_wantConnected) return;
+    // [MSG-OUTBOX-1] Retry trigger (a): app resume. Flush any queued DM sends that
+    // failed while the app was backgrounded/offline, independent of the socket
+    // state below (the outbox is single-flight, so this can't double-post).
+    unawaited(Outbox.I.drain(reason: 'app_resume'));
     // P13-A: time-to-first-message is measured from every foreground.
     _foregroundAt = DateTime.now().millisecondsSinceEpoch;
     _ttfmEmitted = false;
@@ -285,6 +294,10 @@ class SyncHub {
       _connectedAt = DateTime.now().millisecondsSinceEpoch;
       _lastRecvAt = _connectedAt; // fresh connection counts as just-heard-from
       _frameCounts.clear();
+      // [MSG-OUTBOX-1] A live socket means connectivity is (probably) back — flush
+      // any DM sends that failed while offline. This is retry trigger (b):
+      // connectivity/hub reconnect. Safe + single-flight inside the outbox.
+      unawaited(Outbox.I.drain(reason: 'hub_connected'));
       Analytics.capture('hub_connected', {
         'cursor': _cursor, 'reconnects': _reconnects,
         // P13-A: how long the socket took to establish (ensureConnected → open),
