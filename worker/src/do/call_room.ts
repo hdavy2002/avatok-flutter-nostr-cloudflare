@@ -290,13 +290,23 @@ export class CallRoom {
     // superseded transport (an old socket that reconnected under a newer gen) — it
     // must not be relayed or it could disrupt the live call. Frames WITHOUT a gen
     // (old app versions) are processed exactly as before — fully backward compatible.
+    // CALL-GEN-2: the drop-check is PER-SENDER (keyed on `fromId`), and every relayed
+    // frame is RE-STAMPED with the SENDER's authoritative gen from the `gens` map —
+    // never the client-asserted value. That way each RECEIVER learns the correct
+    // per-sender gen (which it tracks in its own `_peerGens[fromId]`), and a client
+    // can never spoof a higher gen to defeat the receiver's stale-frame guard.
     const fromId = typeof data.from === "string" ? data.from : "";
-    if (typeof data.gen === "number" && fromId) {
+    if (fromId) {
       const cur = await this.currentGen(fromId);
-      if (data.gen < cur) {
+      if (typeof data.gen === "number" && data.gen < cur) {
         this.reportStaleGen(fromId, data.gen, cur, typeof data.type === "string" ? data.type : "");
         return; // stale artifact — drop silently, no side effects
       }
+      // Re-stamp with the sender's authoritative gen so receivers see per-sender
+      // truth. Only stamp when the sender actually has a gen (>0) — an old client
+      // that never got a `welcome` gen has cur===0, and we leave the frame gen-less
+      // so old receivers behave exactly as before (fully backward compatible).
+      if (cur > 0) data.gen = cur;
     }
 
     const all = this.state.getWebSockets();

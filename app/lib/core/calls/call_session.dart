@@ -206,13 +206,20 @@ class CallSession {
   // start()). Published to Analytics.currentTraceId for the call's lifetime.
   String _traceId = '';
   bool _gotWelcome = false;
-  // CALL-GEN-1: our current generation, handed to us by the CallRoom DO in every
-  // 'welcome'. We stamp it on every outbound signaling frame; the DO drops frames
-  // stamped with a gen below our current one (stale zombie sockets). We also drop
-  // any INBOUND frame whose gen is present and lower than ours. Null until the
-  // first welcome / when talking to an old server that never sends gen — in that
-  // case we omit it and behave exactly as before (backward compatible).
+  // CALL-GEN-1: our OWN current generation, handed to us by the CallRoom DO in every
+  // 'welcome'. We stamp it on every OUTBOUND signaling frame (see _send); the DO
+  // drops frames stamped with a gen below our current one (stale zombie sockets).
+  // Null until the first welcome / when talking to an old server that never sends
+  // gen — in that case we omit it and behave exactly as before (backward compatible).
   int? _gen;
+  // CALL-GEN-2: per-SENDER generations for INBOUND frames, keyed by the frame's
+  // `from` id. The DO re-stamps every relayed frame with the SENDER's authoritative
+  // gen, so we drop an inbound frame ONLY if its gen is lower than the last gen we
+  // saw FOR THAT SENDER — never against our own `_gen`. Comparing the peer's frames
+  // against our own gen was the CALL-GEN-1 bug: after OUR reconnect bumped `_gen`,
+  // the peer's (correct, older-numbered) frames were dropped forever, going deaf on
+  // signaling. Senders/frames without a gen are processed as before (backward compat).
+  final Map<String, int> _peerGens = {};
   bool _onCellularHold = false;
   StreamSubscription? _telephonySub;
 
@@ -1014,23 +1021,35 @@ class CallSession {
     }
     if (_ended) return;
     final d = jsonDecode(raw as String) as Map<String, dynamic>;
-    // CALL-GEN-1: drop stale-generation inbound frames. If a frame carries a
-    // numeric `gen` LOWER than our current gen, it originated from a superseded
-    // transport (a zombie socket that we've since reconnected past) — ignore it so
-    // it can't disrupt the live call. Frames without a gen (old server / old peer)
-    // are processed as today. 'welcome' is exempt: it CARRIES our new gen and may
-    // legitimately raise it (adopted below), so it's never judged against the old.
+    // CALL-GEN-2: drop stale-generation inbound frames PER SENDER. The DO re-stamps
+    // every relayed frame with the sender's authoritative gen, and stamps `from` with
+    // the sender's id. A frame is stale ONLY if its gen is lower than the last gen we
+    // saw FROM THAT SENDER — compared against `_peerGens[from]`, never our own `_gen`.
+    // (CALL-GEN-1 wrongly judged the peer's frames against OUR `_gen`; after our own
+    // reconnect bumped `_gen`, the peer's correct older-numbered frames were dropped
+    // forever and signaling went deaf.) 'welcome' is server-originated (carries OUR
+    // gen, no sender `from`) → exempt, handled below. Frames without a gen or without
+    // a `from` (old server / old peer) are processed as today (backward compatible).
     final dynamic gv = d['gen'];
-    if (gv is num && _gen != null && gv < _gen! && d['type'] != 'welcome') {
-      Analytics.capture('invariant_protected', {
-        'kind': 'stale_generation_rejected',
-        'side': 'client',
-        'frame_gen': gv,
-        'current_gen': _gen!,
-        'frame_type': d['type']?.toString() ?? 'unknown',
-        'call_id': config.room,
-      });
-      return;
+    final String frameFrom = (d['from'] is String) ? d['from'] as String : '';
+    if (gv is num && frameFrom.isNotEmpty && d['type'] != 'welcome') {
+      final known = _peerGens[frameFrom];
+      final int fg = gv.toInt();
+      if (known != null && fg < known) {
+        Analytics.capture('invariant_protected', {
+          'kind': 'stale_generation_rejected',
+          'side': 'client',
+          'sender': frameFrom,
+          'frame_gen': fg,
+          'current_gen': known,
+          'frame_type': d['type']?.toString() ?? 'unknown',
+          'call_id': config.room,
+        });
+        return;
+      }
+      // Not stale → record this sender's newest gen so subsequent lower-gen zombie
+      // frames from the SAME sender are rejected (monotonic per sender).
+      if (known == null || fg > known) _peerGens[frameFrom] = fg;
     }
     if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
     switch (d['type']) {
