@@ -34,7 +34,8 @@ import { listNotifications, unreadCount, markRead } from "./routes/notifications
 import { wsInbox, wsParty, sendMsg, syncMsg, receiptMsg, readMsg, hideMsg, reactMsg, stateMsg, pollVote, pollState, convList, convCreate, convAdopt, convMembers, convAddMembers, convRemoveMember, convSetRole, convLeave, convDelete, convInvites, convInviteRespond, callLogAppend, callLogDelete, callLogClear } from "./routes/messaging";
 import { archiveList, archivePage } from "./routes/archive";
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder"; // STREAM F — away auto-responder settings
-import { getConfig, putConfig } from "./routes/config";
+import { getConfig, putConfig, readConfig } from "./routes/config";
+import { createConversation, listConversations, getParticipants } from "./routes/conversations2";
 import { getPlans } from "./routes/plans";
 import * as num from "./routes/number";
 import * as keybk from "./routes/keybackup";
@@ -304,6 +305,19 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/conversations" && req.method === "GET") return await convList(req, env);
       if (p === "/api/conversations" && req.method === "POST") return await convCreate(req, env);
       if (p === "/api/conversations/adopt" && req.method === "POST") return await convAdopt(req, env);
+      // --- v4 server-authoritative routing path (ARCH-ROUTING-V2) — ADDITIVE and
+      //     DORMANT behind the routingV2Enabled kill switch. Strangler pattern: this
+      //     coexists with the legacy /api/conversations + /api/msg/send path above
+      //     and NOTHING here executes until the flag is flipped ON in KV per-cohort.
+      //     Frozen architecture: Specs/ROUTING-IDENTITY-PRESENCE-ARCH.md.
+      if (p.startsWith("/api/v2/")) {
+        const cfg = await readConfig(env);
+        if (!cfg.routingV2Enabled) return json({ error: "v2_disabled" }, 404);
+        if (p === "/api/v2/conversations" && req.method === "POST") return await createConversation(req, env);
+        if (p === "/api/v2/conversations" && req.method === "GET") return await listConversations(req, env);
+        if (p === "/api/v2/conversations/participants" && req.method === "GET") return await getParticipants(req, env);
+        return json({ error: "not found" }, 404);
+      }
       // Group membership management (Group Info screen).
       if (p === "/api/conversations/members" && req.method === "GET") return await convMembers(req, env);
       if (p === "/api/conversations/members/add" && req.method === "POST") return await convAddMembers(req, env);

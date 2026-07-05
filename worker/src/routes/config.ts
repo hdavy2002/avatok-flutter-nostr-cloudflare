@@ -170,6 +170,13 @@ export interface PlatformConfig {
   // the device resolver fails — carrier-proof). Default ON in the client even
   // without this key; this is a KV kill switch to force pure OS resolution.
   dohFallbackEnabled: boolean;
+  // [ARCH-ROUTING-V2] Master kill switch for the v4 server-authoritative routing
+  // path (Identity/Conversation/Routing/Delivery/Transport — frozen architecture,
+  // Specs/ROUTING-IDENTITY-PRESENCE-ARCH.md). Default OFF: the new /api/v2/*
+  // endpoints answer 404 and NOTHING in the v4 path runs. Purely additive while
+  // OFF — the legacy /api/conversations + /api/msg/send path is untouched. Flip ON
+  // in KV per-cohort to strangle the legacy path over. Reversible with one KV edit.
+  routingV2Enabled: boolean;
   minAppBuild: number;
 }
 
@@ -245,6 +252,7 @@ const DEFAULTS: PlatformConfig = {
   livenessOnboardingGate: false,         // OFF 2026-07-03: liveness moved to listing-creation gate, NOT onboarding
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
   dohFallbackEnabled: true,              // PERF-DNS-2 — DoH-to-1.1.1.1 fallback ON
+  routingV2Enabled: false,               // [ARCH-ROUTING-V2] v4 routing path — DORMANT until wired + validated; legacy path unaffected
   minAppBuild: 0,
 };
 

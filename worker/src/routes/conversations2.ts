@@ -21,6 +21,16 @@ import { requireUser, isFail } from "../authz";
 import { resolveRoute, ensureIdentityForUid } from "../lib/routing";
 import { newIdentityId } from "../lib/identity_ids";
 
+// [ARCH-ROUTING-V2] Telemetry-before-enable: every v4 component emits PostHog
+// before it is switched on (governance rule). Best-effort, never blocks a
+// request. Same {event,uid,ts,props} shape as the rest of the Worker.
+function track(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
+  try {
+    void env.Q_ANALYTICS?.send({ event, uid, ts: Date.now(),
+      props: { ...props, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+  } catch { /* telemetry is never load-bearing */ }
+}
+
 // Random conversation id. Reuses the same ULID generator as identities (§5.2:
 // "conv_id RANDOM; encodes nothing") — we just swap the `idn_` prefix for `conv_`
 // so the two id spaces never collide while sharing one monotonic-random source.
@@ -127,7 +137,10 @@ export async function createConversation(req: Request, env: Env): Promise<Respon
   // it. Matched by set equality (same members AND same count) over the `dm` kind.
   if (kind === "dm") {
     const existing = await findDmByParticipants(env, participants);
-    if (existing) return json({ conv_id: existing, participants });
+    if (existing) {
+      track(env, ctx.uid, "conv2_created", { conv_id: existing, kind, participants: participants.length, deduped: true });
+      return json({ conv_id: existing, participants });
+    }
   }
 
   const convId = newConvId();
@@ -144,6 +157,7 @@ export async function createConversation(req: Request, env: Env): Promise<Respon
     ).bind(convId, idp, now));
   }
   await env.DB_META.batch(stmts);
+  track(env, ctx.uid, "conv2_created", { conv_id: convId, kind, participants: participants.length, deduped: false });
   return json({ conv_id: convId, participants });
 }
 
@@ -203,6 +217,7 @@ export async function listConversations(req: Request, env: Env): Promise<Respons
       participants: (mem.results ?? []).map((m) => m.identity_id),
     });
   }
+  track(env, ctx.uid, "conv2_listed", { count: conversations.length });
   return json({ conversations });
 }
 
