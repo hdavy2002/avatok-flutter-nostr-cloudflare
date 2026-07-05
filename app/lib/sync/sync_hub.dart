@@ -212,7 +212,7 @@ class SyncHub {
     if (_ch == null) { ensureConnected(); return; } // socket down → reconnect (which sends hello)
     try {
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A
-      _send({'type': 'hello', 'cursor': _cursor});
+      _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server)
     } catch (_) {
       ensureConnected();
     }
@@ -227,7 +227,7 @@ class SyncHub {
     if (_ch == null) { ensureConnected(); return; }
     try {
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch;
-      _send({'type': 'hello', 'cursor': _cursor});
+      _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server)
     } catch (_) { ensureConnected(); }
   }
 
@@ -359,7 +359,7 @@ class SyncHub {
         _convSeqUid = _myUid;
       }
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A sync_catchup base
-      _send({'type': 'hello', 'cursor': _cursor}); // request backlog since cursor
+      _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server) // request backlog since cursor
       _pingTimer?.cancel();
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
         // Zombie-socket watchdog: if we've received NOTHING (not even a pong)

@@ -581,6 +581,34 @@ export class InboxDO {
     return { type: "sync_conv", conv, after, messages, seq };
   }
 
+  // [SYNC-CURSOR-3] Phase 1 switch-over: the HYBRID live-sync payload. It is the plain
+  // global sweep (syncPayload) PLUS, for each conversation the client reports a position
+  // for, any messages it is missing IN THAT THREAD that sit at/below the global cursor
+  // (the projection-repair / selective-gap case the global sweep alone can't reach).
+  // SAFETY INVARIANT: the result is a strict SUPERSET of syncPayload, so enabling this
+  // can never deliver FEWER messages than today — at worst a few de-duped extras. The
+  // per-conv backfill is bounded by SYNC_LIMIT so the payload stays capped.
+  private syncPayloadHybrid(globalCursor: number, cc: Record<string, number>): ReturnType<InboxDO["syncPayload"]> {
+    const base = this.syncPayload(globalCursor);
+    const seen = new Set<number>((base.messages as Array<{ id: number }>).map((r) => Number(r.id)));
+    const extra: unknown[] = [];
+    let budget = SYNC_LIMIT;
+    for (const conv of Object.keys(cc)) {
+      if (budget <= 0) break;
+      const after = Number(cc[conv]) || 0;
+      const rows = this.sql.exec(
+        `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq
+         FROM messages WHERE conv = ? AND conv_seq IS NOT NULL AND conv_seq > ? AND id <= ? ORDER BY conv_seq ASC LIMIT ?`,
+        conv, after, globalCursor, budget,
+      ).toArray();
+      for (const r of rows) {
+        const id = Number((r as { id: number }).id);
+        if (!seen.has(id)) { extra.push(r); seen.add(id); budget--; }
+      }
+    }
+    return { ...base, messages: [...base.messages, ...extra] };
+  }
+
   private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[] } {
     // conv_seq (Phase 0 stamp) and conv_meta.seq are added as ADDITIVE fields so a
     // Phase-1-aware client can learn each conversation's per-stream position from the
@@ -800,7 +828,20 @@ export class InboxDO {
       return;
     }
     if (m.type === "hello" || m.type === "sync") {
-      try { ws.send(JSON.stringify(this.syncPayload(Number(m.cursor || 0)))); } catch { /* */ }
+      // [SYNC-CURSOR-3] Phase 1 switch-over (dark): when the client reports per-conv
+      // positions (`cc`) AND SYNC_CONV_CURSOR_V2 is on, reply with the HYBRID payload
+      // — the complete global sweep PLUS a per-conversation backfill. The hybrid is a
+      // strict SUPERSET of the plain global sweep, so it can NEVER deliver fewer
+      // messages (no message loss, ever); the client de-dupes the extras. Flag off, or
+      // no `cc` → identical legacy behaviour.
+      const convCursorOn = (this.env as Record<string, unknown>).SYNC_CONV_CURSOR_V2 === "1";
+      try {
+        if (convCursorOn && m.cc && typeof m.cc === "object") {
+          ws.send(JSON.stringify(this.syncPayloadHybrid(Number(m.cursor || 0), m.cc as Record<string, number>)));
+        } else {
+          ws.send(JSON.stringify(this.syncPayload(Number(m.cursor || 0))));
+        }
+      } catch { /* */ }
       return;
     }
     // ONLINE message search — across ALL of THIS user's conversations, server-side.
