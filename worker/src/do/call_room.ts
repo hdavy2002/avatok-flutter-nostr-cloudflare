@@ -57,6 +57,13 @@ export class CallRoom {
   private answeredAt: number | null | undefined; // undefined = not loaded yet
   private answeredBy: string | null | undefined;
   private ended: boolean | undefined;
+  // CALL-GEN-1: per-peer generation counter. Each accepted (re)join / reconnect of
+  // a peer id bumps its gen; the 'welcome' tells the client its current gen, and it
+  // stamps gen on every frame. A frame whose gen is LOWER than the DO's current gen
+  // for that sender is a stale artifact from a superseded transport → dropped, so a
+  // gen-1 zombie socket can never disrupt a gen-2 call. Persisted so it survives
+  // hibernation/eviction (a re-hydrated DO must not hand out a lower gen).
+  private gens: Record<string, number> | undefined; // undefined = not loaded yet
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
@@ -74,6 +81,42 @@ export class CallRoom {
   private async markEnded(): Promise<void> {
     this.ended = true;
     try { await this.state.storage.put("ended", true); } catch { /* best-effort */ }
+  }
+
+  /** CALL-GEN-1: bump + return the new generation for a peer id (accepted join/
+   *  rejoin/reconnect). Hydrates the map from storage on first use, persists the
+   *  bump so an evicted-then-rehydrated DO never regresses a peer's generation. */
+  private async bumpGen(peerId: string): Promise<number> {
+    if (this.gens === undefined) {
+      this.gens = (await this.state.storage.get<Record<string, number>>("gens")) ?? {};
+    }
+    const next = (this.gens[peerId] ?? 0) + 1;
+    this.gens[peerId] = next;
+    try { await this.state.storage.put("gens", this.gens); } catch { /* best-effort */ }
+    return next;
+  }
+
+  private async currentGen(peerId: string): Promise<number> {
+    if (this.gens === undefined) {
+      this.gens = (await this.state.storage.get<Record<string, number>>("gens")) ?? {};
+    }
+    return this.gens[peerId] ?? 0;
+  }
+
+  /** CALL-GEN-1: fire-and-forget telemetry when a stale-gen frame was dropped.
+   *  Follows the inbox.ts invariant_protected pattern; never on the critical path. */
+  private reportStaleGen(peerId: string, frameGen: number, curGen: number, type: string): void {
+    try {
+      void this.env.Q_ANALYTICS.send({
+        event: "invariant_protected", uid: peerId, ts: Date.now(),
+        props: {
+          kind: "stale_generation_rejected", side: "server",
+          frame_gen: frameGen, current_gen: curGen, frame_type: type,
+          call_id: this.state.id.name ? String(this.state.id.name).slice(0, 64) : null,
+          app_name: "avatok", service_name: "avatok-api", worker: true,
+        },
+      });
+    } catch { /* best-effort — telemetry never blocks or breaks signaling */ }
   }
 
   private async loadAway(): Promise<AwayPeer | null> {
@@ -187,7 +230,10 @@ export class CallRoom {
       await this.setAway(null);
       try { await this.state.storage.deleteAlarm(); } catch { /* no alarm set */ }
       const buffered = away!.buffered;
-      this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds });
+      // CALL-GEN-1: a rejoin is a NEW transport for this peer — bump its gen and
+      // tell it, so its post-reconnect frames outrank any lingering old-socket ones.
+      const rejoinGen = await this.bumpGen(peerId);
+      this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds, gen: rejoinGen });
       for (const ws of others) this.sendTo(ws, { type: "peer-rejoined", id: peerId });
       // Replay buffered signaling (offer/answer/candidate) addressed to the
       // rejoined peer, oldest first, in original order.
@@ -224,7 +270,9 @@ export class CallRoom {
       }
     }
 
-    this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds });
+    // CALL-GEN-1: fresh join — assign this peer its generation and stamp welcome.
+    const joinGen = await this.bumpGen(peerId);
+    this.sendTo(server, { type: "welcome", id: peerId, peers: otherIds, gen: joinGen });
     for (const ws of others) this.sendTo(ws, { type: "peer-joined", id: peerId });
 
     return new Response(null, { status: 101, webSocket: client });
@@ -236,6 +284,21 @@ export class CallRoom {
     try { data = JSON.parse(message); } catch { return; }
 
     data.from = this.state.getTags(ws)[0];
+
+    // CALL-GEN-1: drop stale-generation frames server-side. A frame that carries a
+    // numeric `gen` LOWER than the DO's current gen for this sender came from a
+    // superseded transport (an old socket that reconnected under a newer gen) — it
+    // must not be relayed or it could disrupt the live call. Frames WITHOUT a gen
+    // (old app versions) are processed exactly as before — fully backward compatible.
+    const fromId = typeof data.from === "string" ? data.from : "";
+    if (typeof data.gen === "number" && fromId) {
+      const cur = await this.currentGen(fromId);
+      if (data.gen < cur) {
+        this.reportStaleGen(fromId, data.gen, cur, typeof data.type === "string" ? data.type : "");
+        return; // stale artifact — drop silently, no side effects
+      }
+    }
+
     const all = this.state.getWebSockets();
     const out = JSON.stringify(data);
 

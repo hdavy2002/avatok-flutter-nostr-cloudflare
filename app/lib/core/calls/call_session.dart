@@ -198,6 +198,13 @@ class CallSession {
   bool _relayForced = false;
   Timer? _placeCallTimeout;
   bool _gotWelcome = false;
+  // CALL-GEN-1: our current generation, handed to us by the CallRoom DO in every
+  // 'welcome'. We stamp it on every outbound signaling frame; the DO drops frames
+  // stamped with a gen below our current one (stale zombie sockets). We also drop
+  // any INBOUND frame whose gen is present and lower than ours. Null until the
+  // first welcome / when talking to an old server that never sends gen — in that
+  // case we omit it and behave exactly as before (backward compatible).
+  int? _gen;
   bool _onCellularHold = false;
   StreamSubscription? _telephonySub;
 
@@ -861,6 +868,11 @@ class CallSession {
   }
 
   void _send(Map<String, dynamic> o) {
+    // CALL-GEN-1: stamp our current generation on every frame so the DO can drop
+    // frames from a superseded transport. Omitted until we've received a 'welcome'
+    // with a gen (old server / pre-connect) — an old server ignores the field and
+    // an old client never sees it, so this is fully backward compatible.
+    if (_gen != null && !o.containsKey('gen')) o['gen'] = _gen;
     try { _ws?.sink.add(jsonEncode(o)); } catch (_) {/* socket closed / gone */}
   }
 
@@ -983,10 +995,32 @@ class CallSession {
     }
     if (_ended) return;
     final d = jsonDecode(raw as String) as Map<String, dynamic>;
+    // CALL-GEN-1: drop stale-generation inbound frames. If a frame carries a
+    // numeric `gen` LOWER than our current gen, it originated from a superseded
+    // transport (a zombie socket that we've since reconnected past) — ignore it so
+    // it can't disrupt the live call. Frames without a gen (old server / old peer)
+    // are processed as today. 'welcome' is exempt: it CARRIES our new gen and may
+    // legitimately raise it (adopted below), so it's never judged against the old.
+    final dynamic gv = d['gen'];
+    if (gv is num && _gen != null && gv < _gen! && d['type'] != 'welcome') {
+      Analytics.capture('invariant_protected', {
+        'kind': 'stale_generation_rejected',
+        'side': 'client',
+        'frame_gen': gv,
+        'current_gen': _gen,
+        'frame_type': d['type']?.toString(),
+        'call_id': config.room,
+      });
+      return;
+    }
     if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
     switch (d['type']) {
       case 'welcome':
         _gotWelcome = true;
+        // CALL-GEN-1: adopt the generation the DO assigned us. On a reconnect the
+        // DO bumps our gen, so this raises _gen and our subsequent frames outrank
+        // any lingering old-socket frames. Absent on old servers → stays null.
+        if (d['gen'] is num) _gen = (d['gen'] as num).toInt();
         _placeCallTimeout?.cancel();
         final peers = (d['peers'] as List).cast<String>();
         if (peers.isNotEmpty) {
