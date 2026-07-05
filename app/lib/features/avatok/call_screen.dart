@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -399,6 +400,17 @@ class _CallScreenState extends State<CallScreen> {
             ),
           ),
 
+        // [CALL-NETHUD-1] animated network health HUD — sits just under the
+        // header, tap for a detail sheet. Only while the call is live.
+        if (connected && !s.isReceptDuo)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 58,
+            left: 0, right: 0,
+            child: Center(
+              child: _CallNetHud(session: s, onVideo: showVideo),
+            ),
+          ),
+
         // control row — bordered zine circles; hang-up = coral circle.
         Positioned(
           left: 0, right: 0, bottom: 0,
@@ -671,4 +683,274 @@ class _LinkPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LinkPainter old) =>
       old.phase != phase || old.mic != mic || old.ava != ava;
+}
+
+/// [CALL-NETHUD-1] Compact, animated network-health strip shown on the live call
+/// screen. Reads [CallSession.netStats] (published by the media watchdog every
+/// ~5s — no extra poller) and [Connectivity] for the transport label. Renders a
+/// 5-bar quality meter, live up/down kbps, cumulative MB used, and a subtle
+/// "peer on weak network" badge when inbound stats degrade. Fades/slides in when
+/// it first appears; tap → an expandable detail sheet (rtt, loss, transport).
+/// Works for audio (paper) + video (dark chrome), light + dark variants.
+class _CallNetHud extends StatefulWidget {
+  const _CallNetHud({required this.session, required this.onVideo});
+  final CallSession session;
+  final bool onVideo; // true = over dark video chrome; false = paper screen
+
+  @override
+  State<_CallNetHud> createState() => _CallNetHudState();
+}
+
+class _CallNetHudState extends State<_CallNetHud>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _appear;
+  StreamSubscription<List<ConnectivityResult>>? _connSub;
+  String _transport = 'Network';
+
+  @override
+  void initState() {
+    super.initState();
+    _appear = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 420))
+      ..forward();
+    _resolveTransport();
+    _connSub = Connectivity()
+        .onConnectivityChanged
+        .listen((r) => _applyTransport(r));
+  }
+
+  Future<void> _resolveTransport() async {
+    try {
+      final r = await Connectivity().checkConnectivity();
+      _applyTransport(r);
+    } catch (_) {/* keep default label */}
+  }
+
+  void _applyTransport(List<ConnectivityResult> r) {
+    String label;
+    if (r.contains(ConnectivityResult.wifi)) {
+      label = 'Wi-Fi';
+    } else if (r.contains(ConnectivityResult.ethernet)) {
+      label = 'Ethernet';
+    } else if (r.contains(ConnectivityResult.mobile)) {
+      // Carrier name + SIM slot aren't cheaply available without a platform
+      // channel/telephony permission; show the generic label per spec.
+      label = 'Mobile data';
+    } else if (r.contains(ConnectivityResult.vpn)) {
+      label = 'VPN';
+    } else {
+      label = 'Network';
+    }
+    if (mounted && label != _transport) setState(() => _transport = label);
+  }
+
+  @override
+  void dispose() {
+    _connSub?.cancel();
+    _appear.dispose();
+    super.dispose();
+  }
+
+  Color get _fg => widget.onVideo ? Colors.white : Zine.ink;
+  Color get _bg => widget.onVideo
+      ? Colors.black.withValues(alpha: 0.38)
+      : Zine.card;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CallNetStats>(
+      valueListenable: widget.session.netStats,
+      builder: (context, ns, _) {
+        // Slide down + fade the whole strip on first appearance.
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: _appear, curve: Curves.easeOut),
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -0.35),
+              end: Offset.zero,
+            ).animate(
+                CurvedAnimation(parent: _appear, curve: Curves.easeOutCubic)),
+            child: _strip(ns),
+          ),
+        );
+      },
+    );
+  }
+
+  bool _peerWeak(CallNetStats ns) =>
+      (ns.lossPct >= 0 && ns.lossPct > 8) ||
+      (ns.downKbps > 0 && ns.downKbps < 12);
+
+  Widget _strip(CallNetStats ns) {
+    final weak = _peerWeak(ns);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openDetail(ns),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
+        decoration: BoxDecoration(
+          color: _bg,
+          borderRadius: BorderRadius.circular(100),
+          border: widget.onVideo ? null : Zine.border,
+          boxShadow: widget.onVideo ? const [] : Zine.shadowXs,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PhosphorIcon(
+                _transport == 'Wi-Fi'
+                    ? PhosphorIcons.wifiHigh(PhosphorIconsStyle.bold)
+                    : PhosphorIcons.broadcast(PhosphorIconsStyle.bold),
+                size: 15, color: _fg),
+            const SizedBox(width: 6),
+            Text(_transport,
+                style: ZineText.tag(size: 11, color: _fg)),
+            const SizedBox(width: 10),
+            _QualityBars(quality: ns.quality, color: _fg),
+            const SizedBox(width: 10),
+            _rateChip(
+                PhosphorIcons.arrowDownLeft(PhosphorIconsStyle.bold), ns.downKbps),
+            const SizedBox(width: 6),
+            _rateChip(
+                PhosphorIcons.arrowUpRight(PhosphorIconsStyle.bold), ns.upKbps),
+            const SizedBox(width: 10),
+            Text('${ns.dataMb.toStringAsFixed(ns.dataMb < 10 ? 1 : 0)} MB',
+                style: ZineText.tag(size: 11, color: _fg)),
+            if (weak) ...[
+              const SizedBox(width: 8),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: weak ? 1 : 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Zine.coral,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: Text('WEAK',
+                      style: ZineText.tag(size: 9, color: Colors.white)),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _rateChip(IconData icon, int kbps) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      PhosphorIcon(icon, size: 12, color: _fg),
+      const SizedBox(width: 2),
+      Text('$kbps',
+          style: ZineText.tag(size: 11, color: _fg)),
+    ]);
+  }
+
+  void _openDetail(CallNetStats ns) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Zine.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Connection', style: ZineText.hero(size: 24)),
+              const SizedBox(height: 4),
+              Text(_transport, style: ZineText.tag(size: 12)),
+              const SizedBox(height: 16),
+              _detailRow('Signal', _qualityLabel(ns.quality)),
+              _detailRow('Round-trip',
+                  ns.rttMs >= 0 ? '${ns.rttMs} ms' : '—'),
+              _detailRow('Packet loss',
+                  ns.lossPct >= 0 ? '${ns.lossPct.toStringAsFixed(1)}%' : '—'),
+              _detailRow('Download', '${ns.downKbps} kbps'),
+              _detailRow('Upload', '${ns.upKbps} kbps'),
+              _detailRow('Data used', '${ns.dataMb.toStringAsFixed(2)} MB'),
+              if (_peerWeak(ns)) ...[
+                const SizedBox(height: 12),
+                Row(children: [
+                  PhosphorIcon(PhosphorIcons.warning(PhosphorIconsStyle.bold),
+                      size: 16, color: Zine.coral),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('The other side is on a weak network.',
+                        style: ZineText.tag(size: 12, color: Zine.coral)),
+                  ),
+                ]),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String k, String v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(k, style: ZineText.tag(size: 13)),
+            Text(v, style: ZineText.cardTitle(size: 14)),
+          ],
+        ),
+      );
+
+  static String _qualityLabel(int q) => switch (q) {
+        0 => 'Very poor',
+        1 => 'Poor',
+        2 => 'Fair',
+        3 => 'Good',
+        _ => 'Excellent',
+      };
+}
+
+/// [CALL-NETHUD-1] 5-bar quality meter. Bars up to [quality] fill (green→amber→
+/// coral by level); the rest are faint. Bar heights ramp so it reads as a signal
+/// meter. Fills animate via AnimatedContainer for smooth transitions.
+class _QualityBars extends StatelessWidget {
+  const _QualityBars({required this.quality, required this.color});
+  final int quality; // 0..4
+  final Color color; // foreground (for the empty-bar tint)
+
+  Color get _fillColor {
+    if (quality <= 1) return Zine.coral;
+    if (quality == 2) return const Color(0xFFF5B942); // amber
+    return Zine.mintInk;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const n = 5;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: List.generate(n, (i) {
+        final on = i <= quality;
+        final h = 5.0 + i * 2.4; // ramp
+        return Padding(
+          padding: EdgeInsets.only(right: i == n - 1 ? 0 : 2),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOut,
+            width: 3.2,
+            height: h,
+            decoration: BoxDecoration(
+              color: on ? _fillColor : color.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        );
+      }),
+    );
+  }
 }

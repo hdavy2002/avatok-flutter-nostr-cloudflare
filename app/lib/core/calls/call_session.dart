@@ -89,6 +89,39 @@ class CallSessionToken {
 /// [CALL-REG-SEAL-1] The single token the manager presents to build sessions.
 const CallSessionToken kCallSessionToken = CallSessionToken._();
 
+/// [CALL-NETHUD-1] A snapshot of live network health for the in-call HUD.
+/// Published on [CallSession.netStats] every watchdog tick (~5s) from the SAME
+/// `getStats()` poll the media watchdog already runs (no second poller). All
+/// fields are cheap derivations of the RTCStatsReport.
+@immutable
+class CallNetStats {
+  /// Round-trip time in ms (from the selected candidate pair), -1 if unknown.
+  final int rttMs;
+  /// Inbound (down) bitrate in kbps, computed from the byte delta / interval.
+  final int downKbps;
+  /// Outbound (up) bitrate in kbps.
+  final int upKbps;
+  /// Cumulative bytes sent + received this call (for the "data used" readout).
+  final int bytesTotal;
+  /// Inbound packet-loss percentage (0–100), -1 if unknown.
+  final double lossPct;
+  /// Discrete quality bucket 0 (worst) … 4 (best), derived from rtt + loss.
+  final int quality;
+  const CallNetStats({
+    this.rttMs = -1,
+    this.downKbps = 0,
+    this.upKbps = 0,
+    this.bytesTotal = 0,
+    this.lossPct = -1,
+    this.quality = 0,
+  });
+
+  static const CallNetStats empty = CallNetStats();
+
+  /// Total data used this call, in MB.
+  double get dataMb => bytesTotal / (1024 * 1024);
+}
+
 class CallSession {
   /// [CALL-REG-SEAL-1] Sealed construction. A [CallSession] may be built ONLY by
   /// [CallSessionManager], which is the sole holder of a [CallSessionToken]
@@ -129,6 +162,10 @@ class CallSession {
   /// may still be flowing (today: set on 'peer-left', cleared on reconnect /
   /// 'welcome'). WS-D wires the grace-period semantics onto it.
   final ValueNotifier<bool> peerAway = ValueNotifier<bool>(false);
+  /// [CALL-NETHUD-1] Live network health for the in-call HUD. Updated on every
+  /// media-watchdog tick from the same getStats() poll (no second poller).
+  final ValueNotifier<CallNetStats> netStats =
+      ValueNotifier<CallNetStats>(CallNetStats.empty);
   /// Generic "session changed" tick so a view can rebuild on anything (e.g. the
   /// receptionist duo appearing). Bumped whenever notable non-notifier state moves.
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
@@ -266,6 +303,17 @@ class CallSession {
   // whole call — a reliability_score input on call_ended.
   int _mediaStalls = 0;
 
+  // [CALL-NETHUD-1] Rolling state for the network HUD, derived from the SAME
+  // getStats() poll the watchdog already runs. `_lastNetTotalBytes`/`_lastNetTs`
+  // let us turn cumulative byte counters into an instantaneous kbps rate.
+  int? _lastNetSentBytes;
+  int? _lastNetRecvBytes;
+  int? _lastNetTs;
+  // Running EMA of the last observed up/down kbps for a smoother call_ended
+  // summary + the reliability payload.
+  double _emaUpKbps = 0;
+  double _emaDownKbps = 0;
+
   void _startMediaWatchdog() {
     _mediaWatchTimer?.cancel();
     _mediaStaleCount = 0;
@@ -298,17 +346,43 @@ class CallSession {
       if (pc == null) return;
       int inboundAudioBytes = 0;
       bool sawInboundAudio = false;
+      // [CALL-NETHUD-1] accumulate net-HUD signals from the same report.
+      int totalRecvBytes = 0, totalSentBytes = 0;
+      int inboundPacketsRecv = 0, inboundPacketsLost = 0;
+      int rttMs = -1;
       final stats = await pc.getStats();
       for (final s in stats) {
-        if (s.type != 'inbound-rtp') continue;
         final v = s.values;
-        final kindRaw = v['kind'] ?? v['mediaType'];
-        final kind = kindRaw?.toString();
-        if (kind != 'audio') continue;
-        sawInboundAudio = true;
-        final b = v['bytesReceived'];
-        if (b is num) inboundAudioBytes += b.toInt();
+        if (s.type == 'inbound-rtp') {
+          final kind = (v['kind'] ?? v['mediaType'])?.toString();
+          final b = v['bytesReceived'];
+          if (b is num) totalRecvBytes += b.toInt();
+          final pr = v['packetsReceived'];
+          if (pr is num) inboundPacketsRecv += pr.toInt();
+          final pl = v['packetsLost'];
+          if (pl is num) inboundPacketsLost += pl.toInt();
+          if (kind == 'audio') {
+            sawInboundAudio = true;
+            if (b is num) inboundAudioBytes += b.toInt();
+          }
+        } else if (s.type == 'outbound-rtp') {
+          final b = v['bytesSent'];
+          if (b is num) totalSentBytes += b.toInt();
+        } else if (s.type == 'candidate-pair') {
+          // Prefer the nominated/selected pair's RTT (seconds → ms).
+          final selected = v['selected'] == true || v['nominated'] == true;
+          final rtt = v['currentRoundTripTime'];
+          if (selected && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
+          else if (rttMs < 0 && rtt is num) rttMs = (rtt.toDouble() * 1000).round();
+        }
       }
+      _publishNetStats(
+        totalRecvBytes: totalRecvBytes,
+        totalSentBytes: totalSentBytes,
+        packetsRecv: inboundPacketsRecv,
+        packetsLost: inboundPacketsLost,
+        rttMs: rttMs,
+      );
       if (!sawInboundAudio) return; // no inbound audio stat yet — don't judge
       final prev = _lastInboundAudioBytes;
       _lastInboundAudioBytes = inboundAudioBytes;
@@ -360,6 +434,68 @@ class CallSession {
     } catch (_) {
       // Never let watchdog polling throw or keep a call alive.
     }
+  }
+
+  /// [CALL-NETHUD-1] Turn cumulative byte/packet counters into an instantaneous
+  /// up/down kbps + loss %, bucket a 0–4 quality, and publish to [netStats].
+  /// Runs off the media-watchdog poll — never adds its own timer.
+  void _publishNetStats({
+    required int totalRecvBytes,
+    required int totalSentBytes,
+    required int packetsRecv,
+    required int packetsLost,
+    required int rttMs,
+  }) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    int upKbps = 0, downKbps = 0;
+    final prevTs = _lastNetTs;
+    if (prevTs != null && _lastNetSentBytes != null && _lastNetRecvBytes != null) {
+      final dtSec = (nowMs - prevTs) / 1000.0;
+      if (dtSec > 0.1) {
+        final dSent = (totalSentBytes - _lastNetSentBytes!).clamp(0, 1 << 62);
+        final dRecv = (totalRecvBytes - _lastNetRecvBytes!).clamp(0, 1 << 62);
+        upKbps = ((dSent * 8) / dtSec / 1000).round();
+        downKbps = ((dRecv * 8) / dtSec / 1000).round();
+        // Light EMA smoothing so the HUD doesn't jitter between polls.
+        _emaUpKbps = _emaUpKbps == 0 ? upKbps : (_emaUpKbps * 0.5 + upKbps * 0.5);
+        _emaDownKbps = _emaDownKbps == 0 ? downKbps : (_emaDownKbps * 0.5 + downKbps * 0.5);
+      }
+    }
+    _lastNetSentBytes = totalSentBytes;
+    _lastNetRecvBytes = totalRecvBytes;
+    _lastNetTs = nowMs;
+
+    double lossPct = -1;
+    final totalPkts = packetsRecv + packetsLost;
+    if (totalPkts > 0) lossPct = (packetsLost / totalPkts) * 100.0;
+
+    // Quality bucket 0–4 from rtt + loss (worst of the two dominates).
+    int q = 4;
+    if (rttMs >= 0) {
+      if (rttMs > 500) q = 0;
+      else if (rttMs > 300) q = 1;
+      else if (rttMs > 180) q = 2;
+      else if (rttMs > 90) q = 3;
+    }
+    if (lossPct >= 0) {
+      int lq = 4;
+      if (lossPct > 8) lq = 0;
+      else if (lossPct > 4) lq = 1;
+      else if (lossPct > 2) lq = 2;
+      else if (lossPct > 0.5) lq = 3;
+      if (lq < q) q = lq;
+    }
+    // If we have no signal at all yet, hold mid so the HUD isn't alarming.
+    if (rttMs < 0 && lossPct < 0) q = 3;
+
+    netStats.value = CallNetStats(
+      rttMs: rttMs,
+      upKbps: _emaUpKbps.round(),
+      downKbps: _emaDownKbps.round(),
+      bytesTotal: totalSentBytes + totalRecvBytes,
+      lossPct: lossPct,
+      quality: q,
+    );
   }
 
   int get avaCount => _avaCount; // for the countdown ring in the view
@@ -1584,11 +1720,17 @@ class CallSession {
     // can't see (mid-call reconnect attempts, forced TURN relay, callee-unreachable
     // push failure) so call_ended carries a single reliability_score + its
     // components. media_stalls + packet-loss are already tracked telemetry-side.
+    final ns = netStats.value;
     _telemetry.setReliabilityInputs(
       reconnectAttempts: _reconnectAttempt,
       mediaStalls: _mediaStalls,
       relayForced: _relayForced,
       unreachable: _callUnreachable,
+      // [CALL-NETHUD-1] carry the last HUD snapshot onto call_ended.
+      hudUpKbps: ns.upKbps,
+      hudDownKbps: ns.downKbps,
+      hudRttMs: ns.rttMs,
+      hudLossPct: ns.lossPct,
     );
     _telemetry.ended(reason ?? (_connected ? 'ended' : _phase));
     if (config.outgoing && !_connected) _notifyCalleeCanceled();

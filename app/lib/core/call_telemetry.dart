@@ -56,6 +56,13 @@ class CallTelemetry {
   int _mediaStalls = 0;       // distinct media-stall episodes
   bool _relayForced = false;  // TURN/relay was forced
   bool _unreachable = false;  // callee had no reachable device (push failure)
+  // [CALL-NETHUD-1] Last HUD snapshot the session observed (up/down kbps, rtt,
+  // loss %) — surfaced on call_ended so the network HUD's own numbers land in
+  // the reliability payload. -1 means "not captured".
+  int _hudUpKbps = -1;
+  int _hudDownKbps = -1;
+  int _hudRttMs = -1;
+  double _hudLossPct = -1;
   // Weights (points docked). Tunable in one place per spec.
   static const int _wReconnect = 10; // per reconnect attempt
   static const int _wStall = 15;     // per media stall
@@ -70,11 +77,20 @@ class CallTelemetry {
     int mediaStalls = 0,
     bool relayForced = false,
     bool unreachable = false,
+    // [CALL-NETHUD-1] Last network-HUD snapshot (-1 = not captured).
+    int hudUpKbps = -1,
+    int hudDownKbps = -1,
+    int hudRttMs = -1,
+    double hudLossPct = -1,
   }) {
     _reconnectAttempts = reconnectAttempts;
     _mediaStalls = mediaStalls;
     _relayForced = relayForced;
     _unreachable = unreachable;
+    _hudUpKbps = hudUpKbps;
+    _hudDownKbps = hudDownKbps;
+    _hudRttMs = hudRttMs;
+    _hudLossPct = hudLossPct;
   }
 
   // ── peer geo + ICE/STUN/TURN topology ──────────────────────────────────────
@@ -482,6 +498,11 @@ class CallTelemetry {
       'rel_relay_used': _relayForced,
       'rel_unreachable': _unreachable,
       'rel_loss_penalty': (_lossPct * _wLossPerPct).round(),
+      // [CALL-NETHUD-1] network-HUD summary (only if the HUD captured a sample).
+      if (_hudUpKbps >= 0) 'hud_up_kbps': _hudUpKbps,
+      if (_hudDownKbps >= 0) 'hud_down_kbps': _hudDownKbps,
+      if (_hudRttMs >= 0) 'hud_rtt_ms': _hudRttMs,
+      if (_hudLossPct >= 0) 'hud_loss_pct': _round2(_hudLossPct),
       'samples': _rttMs.length,
       'video': video,
       'outgoing': outgoing,
