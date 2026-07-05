@@ -1202,6 +1202,32 @@ class PushService {
       final e = (extra as Map);
       final room = (e['callId'] ?? '').toString();
       if (room.isEmpty) return;
+      // [CALL-DUP-SESSION-2] SYNCHRONOUS reservation BEFORE any await. This is the
+      // last duplicate-session construction leak: on a CallKit accept while the app
+      // is backgrounded, the first accept pushed a CallScreen route whose initState
+      // (→ manager.attach() → the _byRoom registry) does NOT run until the widget is
+      // built, which is deferred while backgrounded. Meanwhile a second accept path
+      // fires — the OS re-delivering actionCallAccept on FGS bring-to-front, or the
+      // resume-time _recoverAcceptedCall — and reaches _openCall again. The existing
+      // guards below (managerHasLive / gActiveCallId) all read state that is only
+      // set AFTER initState runs, so during that window they see nothing and let a
+      // SECOND CallScreen through → a 3rd peer → 2-peer-cap busy → the busy handler
+      // kills the live call (PostHog avatok-3a2d4f15, 2026-07-05). Even the CALLFIX-15
+      // idempotency gate leaked here: its first-ever call awaits a DiskCache load
+      // before recording the id, so two concurrent _openCall calls both pass it.
+      // Fix: claim the room in a plain in-memory field with NO await between the
+      // check and the set, so the second concurrent open is rejected deterministically
+      // regardless of how the route/registry state has (not) settled yet.
+      final nowSync = DateTime.now().millisecondsSinceEpoch;
+      if (room == _openedCallId && nowSync - _openedAt < 60000) {
+        Analytics.capture('call_dup_session_blocked', {
+          'call_id': room,
+          'via': 'open_call_reserve',
+        });
+        return;
+      }
+      _openedCallId = room;
+      _openedAt = nowSync;
       // CALLFIX-15: idempotent accept handling. Each call_id processed exactly once.
       if (await _isCallIdProcessed(room)) {
         Analytics.capture('call_duplicate_open_ignored', {
@@ -1233,16 +1259,18 @@ class PushService {
         try { returnToActiveCall(); } catch (_) {}
         return;
       }
-      if (gActiveCallId == room ||
-          (room == _openedCallId && now - _openedAt < 60000)) {
+      // [CALL-DUP-SESSION-2] The (_openedCallId, _openedAt) reservation is now
+      // claimed SYNCHRONOUSLY at the top of _openCall (before any await), so it is
+      // no longer re-checked or re-set here — doing so would always self-trip since
+      // we already set _openedCallId = room above. The remaining guard is the
+      // on-screen id, which catches a session that has already mounted its route.
+      if (gActiveCallId == room) {
         Analytics.capture('call_duplicate_open_ignored', {
           'call_id': room,
           'reason': 'race_condition',
         });
         return;
       }
-      _openedCallId = room;
-      _openedAt = now;
       navigatorKey.currentState?.push(MaterialPageRoute(
         builder: (_) => CallScreen(
           room: (e['callId'] ?? '').toString(),

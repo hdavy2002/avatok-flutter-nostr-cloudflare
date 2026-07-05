@@ -184,12 +184,47 @@ export class CallRoom {
     const away = await this.loadAway();
     const isRejoin = !!away && away.id === peerId;
 
+    // CALL-DUP-SESSION-2 (server backstop): a join whose `id` ALREADY has a live
+    // socket in this room is the same peer re-attaching on a fresh transport (a
+    // reconnect that beat webSocketClose, or a duplicate accept leg that reused the
+    // peer id) — NOT a genuine third participant. ADOPT the new socket and close the
+    // stale one, rather than counting it toward the 2-peer cap and busy-rejecting it
+    // (which, on the caller's client, tripped the busy handler that killed the live
+    // call — PostHog avatok-3a2d4f15). We choose adopt-and-close over `already_joined`
+    // to match the room's existing rejoin semantics (CALL-RC-D1 also swaps the peer's
+    // transport in place), so the newest socket always wins and signaling stays live.
+    const dupSockets = this.state
+      .getWebSockets()
+      .filter((w) => this.state.getTags(w)[0] === peerId);
+    if (dupSockets.length > 0) {
+      for (const stale of dupSockets) {
+        try { stale.close(1000, "superseded by newer socket for same peer"); } catch { /* already gone */ }
+      }
+      try {
+        void this.env.Q_ANALYTICS.send({
+          event: "call_dup_session_blocked", uid: peerId, ts: Date.now(),
+          props: {
+            via: "server_adopt_same_peer", side: "server",
+            call_id: this.state.id.name ? String(this.state.id.name).slice(0, 64) : null,
+            app_name: "avatok", service_name: "avatok-api", worker: true,
+          },
+        });
+      } catch { /* best-effort telemetry */ }
+    }
+
     // STANDARD RULE: AvaTOK calls are strictly 1:1 (P2P). Never allow a third
     // participant — there are no group calls in AvaTOK (group calling lives in
     // AvaConsult). Refuse the join with a 'busy' so the extra caller ends cleanly.
     // An away-peer rejoin doesn't count against the cap: the stale socket for
     // that peer is already gone (webSocketClose already fired for it).
-    if (!isRejoin && this.state.getWebSockets().length >= 2) {
+    // CALL-DUP-SESSION-2: count only sockets belonging to a DIFFERENT peer id — any
+    // stale socket for THIS peer id was just adopted+closed above and must not push
+    // us over the cap (a closed socket can still briefly appear in getWebSockets()).
+    // So a same-peer reconnect/duplicate is never busy-rejected as a phantom 3rd peer.
+    const otherPeerSockets = this.state
+      .getWebSockets()
+      .filter((w) => this.state.getTags(w)[0] !== peerId);
+    if (!isRejoin && otherPeerSockets.length >= 2) {
       const reject = new WebSocketPair();
       reject[1].accept();
       try {
