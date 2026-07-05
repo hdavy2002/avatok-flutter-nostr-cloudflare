@@ -2059,6 +2059,42 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         // ring-ack — the all-tokens-pruned case). A 404 is always unreachable.
         bool reachableFalse = false;
         try { reachableFalse = jsonDecode(res.body)['reachable'] == false; } catch (_) {}
+        // [CALL-GLARE-2] Server-side mutual-dial resolution. The callee was ALREADY
+        // dialing us within the glare window, so the server folded both dials into
+        // one winning call (smaller callId) instead of ringing a second room. Join
+        // that winning room deterministically instead of mounting a new outgoing
+        // CallScreen — no busy dead-end. Both devices compute the same winner.
+        String glareJoin = '';
+        try {
+          final jb = jsonDecode(res.body);
+          if (jb is Map && jb['glare'] == true) {
+            glareJoin = (jb['join_call_id'] ?? '').toString();
+          }
+        } catch (_) {}
+        if (glareJoin.isNotEmpty) {
+          Analytics.capture('call_glare_autoconnect', {
+            'winner_call_id': glareJoin,
+            'my_call_id': room,
+            'kind': video ? 'video' : 'audio',
+          });
+          _dialing = false;
+          if (!mounted) return;
+          final outgoingWon = glareJoin == room;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CallScreen(
+                room: glareJoin, title: widget.chat.name, seed: to, video: video,
+                avatarUrl: widget.chat.avatarUrl,
+                // The winner's placer keeps dialing (outgoing); the loser joins the
+                // winning room as the answering side so exactly one room forms.
+                outgoing: outgoingWon,
+                traceId: traceId,
+              ),
+            ),
+          );
+          return;
+        }
         if (res.statusCode == 200 && !reachableFalse) {
           try { ringbackUrl = (jsonDecode(res.body)['ringbackUrl'] ?? '').toString(); } catch (_) {}
           Analytics.capture('call_place_ok', {'kind': callKind, 'has_ringback': ringbackUrl.isNotEmpty});

@@ -180,6 +180,30 @@ export async function call(req: Request, env: Env): Promise<Response> {
       }).catch(() => {});
     }
   } catch { /* best-effort — takeover is an enhancement, never block the call */ }
+  // [CALL-GLARE-2] Deterministic mutual-dial (glare) resolution — server side.
+  // Before we push the ring, check a PAIR-keyed CallRoom DO instance (addressed by
+  // sorted-uid pair, so both dial directions hit the SAME instance) for a reciprocal
+  // pending invite from the callee within the 30s glare window. If the callee is
+  // ALREADY dialing us, we don't open a second room and ring them — we fold both
+  // dials into the winning call (smaller callId) and tell this caller to auto-accept
+  // it. The client's CALL-GLARE-1 heuristic stays as the fallback for old servers.
+  // Best-effort: any DO hiccup falls through to the normal ring below.
+  try {
+    const lo = ctx.uid < b.to ? ctx.uid : b.to;
+    const hi = ctx.uid < b.to ? b.to : ctx.uid;
+    const pairStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(`glare:${lo}__${hi}`));
+    const gr = await pairStub.fetch("https://call/glare-place", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ placer: ctx.uid, peer: b.to, callId: b.callId }),
+    });
+    const gj = (await gr.json().catch(() => ({}))) as { glare?: boolean; join_call_id?: string };
+    if (gj.glare === true && gj.join_call_id) {
+      // Mutual dial: this caller auto-accepts the winning call instead of placing a
+      // new one. No push is enqueued for this leg — the peer's leg already rang (or
+      // will resolve identically), and both devices join the one winning room.
+      return json({ glare: true, join_call_id: gj.join_call_id, reachable: true, sent: 0 });
+    }
+  } catch { /* best-effort — glare detection never blocks placing a call */ }
   await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now() });
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so

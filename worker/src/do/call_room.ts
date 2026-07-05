@@ -155,6 +155,52 @@ export class CallRoom {
       // phone could ring. Broadcast to every connected socket (only the caller is
       // here pre-answer); the client ignores unknown frames when the flag is OFF.
       // No sockets connected → harmless no-op. Never persists anything.
+      // [CALL-GLARE-2] Deterministic mutual-dial (glare) resolution — server side.
+      // This DO instance is addressed by a PAIR key (glare:<lo>__<hi>), NOT a call
+      // id, so both directions of a mutual dial land on the SAME instance. On each
+      // place, we record the placer's pending invite (callId + placer uid + ts) and
+      // check whether the OTHER party already has a live pending invite (a reciprocal
+      // dial) within the 30s glare window. If so the two calls are folded into ONE:
+      // the lexicographically SMALLER callId wins as "the call", and BOTH placers are
+      // told to auto-accept it instead of opening a second room. DO storage is
+      // strongly consistent (no ordered state in KV), and this holds no socket.
+      if (req.method === "POST" && stateUrl.pathname.endsWith("/glare-place")) {
+        let body: Record<string, unknown> = {};
+        try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
+        const placer = typeof body.placer === "string" ? body.placer : "";
+        const peer = typeof body.peer === "string" ? body.peer : "";
+        const callId = typeof body.callId === "string" ? body.callId : "";
+        if (!placer || !peer || !callId) {
+          return Response.json({ error: "placer, peer, callId required" }, { status: 400 });
+        }
+        const GLARE_MS = 30_000;
+        const now = Date.now();
+        // Reciprocal = a pending invite recorded by the PEER (peer→placer) still
+        // inside the window. Stored per-direction keyed by the placer uid.
+        const recip = await this.state.storage.get<{ callId: string; ts: number }>(`glare_invite:${peer}`);
+        if (recip && recip.callId && recip.callId !== callId && now - recip.ts < GLARE_MS) {
+          // Mutual dial detected. Deterministic winner = smaller callId (both sides
+          // compute the SAME verdict from the same two ids). Clear both pendings so a
+          // later unrelated dial isn't mis-folded, and tell THIS placer to auto-accept
+          // the winner (their own client CALL-GLARE-1 stays as the fallback).
+          const winner = callId < recip.callId ? callId : recip.callId;
+          try { await this.state.storage.delete(`glare_invite:${placer}`); } catch { /* best-effort */ }
+          try { await this.state.storage.delete(`glare_invite:${peer}`); } catch { /* best-effort */ }
+          try {
+            void this.env.Q_ANALYTICS.send({
+              event: "call_glare_autoconnect", uid: placer, ts: now,
+              props: {
+                winner_call_id: winner, this_call_id: callId, peer_call_id: recip.callId,
+                app_name: "avatok", service_name: "avatok-api", worker: true,
+              },
+            });
+          } catch { /* best-effort telemetry */ }
+          return Response.json({ glare: true, join_call_id: winner });
+        }
+        // No reciprocal yet — record this placer's pending invite for the window.
+        try { await this.state.storage.put(`glare_invite:${placer}`, { callId, ts: now }); } catch { /* best-effort */ }
+        return Response.json({ glare: false });
+      }
       if (req.method === "POST") {
         let body: Record<string, unknown> = {};
         try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
