@@ -40,7 +40,11 @@ import { recordLivenessAudit, auditPrefix, deviceCtxFromBody } from "./liveness_
 import { readConfig } from "./config";
 import { rekognitionConfigured, compareFaces } from "../aws/rekognition";
 
-const MAX_ATTEMPTS_24H = 3;             // shared budget with the other providers
+// [LIVE-RETRY-1] Owner decision 2026-07-04: users may retry until they pass —
+// a legit user can need many takes (lighting, accent, gestures). 20/24h is an
+// abuse/cost guard only (each verify ≤ MAX_LLAVA_CALLS model calls), not UX.
+// Only COMPLETED verifies (pass/fail) count — abandoned starts don't burn budget.
+const MAX_ATTEMPTS_24H = 20;
 const DAY = 86_400_000;
 const CHALLENGE_TTL_S = 900;            // 15 min to finish a session
 const MAX_FRAME_BYTES = 1_500_000;      // ~1.5 MB JPEG
@@ -119,7 +123,9 @@ function workersAiEnabled(env: Env): Promise<boolean> {
 
 async function attemptsLast24h(env: Env, uid: string): Promise<number> {
   const row = await metaSession(env)
-    .prepare("SELECT COUNT(*) AS n FROM verification_attempts WHERE uid=?1 AND created_at > ?2")
+    // [LIVE-RETRY-1] pending/abandoned starts don't count (the 2026-07-04 flag_off
+    // outage burned the old 3-attempt budget on starts that never even uploaded).
+    .prepare("SELECT COUNT(*) AS n FROM verification_attempts WHERE uid=?1 AND created_at > ?2 AND result IN ('pass','fail')")
     .bind(uid, Date.now() - DAY).first<{ n: number }>();
   return row?.n ?? 0;
 }
@@ -384,6 +390,11 @@ export async function runLivenessChecks(
       attempts_remaining: Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, ctx.uid))),
     };
     await env.TOKENS.put(resultKey(ctx.uid, sid), JSON.stringify(result), { expirationTtl: RESULT_TTL_S }).catch(() => {});
+    // [LIVE-STORAGE-1] delete any staged uploads for the dead session too.
+    try {
+      const listing = await env.VERIFICATION.list({ prefix: sessionPrefix(ctx.uid, sid) });
+      for (const o of listing.objects ?? []) { try { await env.VERIFICATION.delete(o.key); } catch { /* */ } }
+    } catch { /* best-effort */ }
     return result;
   }
   const challenge = JSON.parse(chRaw) as Challenge;
@@ -460,6 +471,21 @@ export async function runLivenessChecks(
     } catch { /* best-effort listing */ }
     try { await env.TOKENS.delete(`liveness:ch:${ctx.uid}:${sid}`); } catch { /* */ }
     return { prefix: retainedPrefix, thumbKey };
+  };
+
+  // [LIVE-STORAGE-1] Owner decision 2026-07-04 (supersedes D15 "store everything"
+  // for FAILS): a failed verify DELETES its evidence (frames + clip) instead of
+  // retaining it. With retries now effectively unlimited (LIVE-RETRY-1), keeping
+  // every failed take would grow R2 unboundedly — up to 20 clips/user/day.
+  // Evidence is retained ONLY on pass (audit trail + green-tick thumbnail).
+  const discardEvidence = async (): Promise<void> => {
+    try {
+      const listing = await env.VERIFICATION.list({ prefix });
+      for (const o of listing.objects ?? []) {
+        try { await env.VERIFICATION.delete(o.key); } catch { /* best-effort per part */ }
+      }
+    } catch { /* best-effort listing */ }
+    try { await env.TOKENS.delete(`liveness:ch:${ctx.uid}:${sid}`); } catch { /* */ }
   };
 
   // ── LIVE-V2 P3: multi-frame verify pipeline (plan §5B). ────────────────────
@@ -634,8 +660,10 @@ export async function runLivenessChecks(
   ).bind(passed ? "pass" : "fail", ctx.uid, sid).run();
 
   if (!passed) {
-    const { prefix: rp } = await retainEvidence(); // D15: keep evidence on fail too
-    await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: rp });
+    // [LIVE-STORAGE-1] fail → evidence deleted (audit row keeps the checks/geo,
+    // r2_prefix stays NULL). Retention on pass only.
+    await discardEvidence();
+    await recordLivenessAudit(env, { uid: ctx.uid, provider: "workersai", status: "fail", req, device, r2Prefix: null });
     const failMap: Record<string, boolean> = {};
     for (const c of checks) failMap[c.id] = c.pass;
     await metaDb(env).prepare(
