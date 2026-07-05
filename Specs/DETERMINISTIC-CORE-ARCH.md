@@ -3,6 +3,9 @@
 v1.2 — adopted 2026-07-05, amended same day after two external architecture review rounds.
 Supersedes the reactive parts of PRODUCTION-HARDENING-PLAN.md; that plan's
 scale/rollout/observability sections still apply.
+Telemetry companion: **Specs/TELEMETRY-FLIGHT-RECORDER.md** — PostHog as the
+black-box flight recorder (trace-stitched lifecycles, diagnostic_snapshot,
+invariant_protected, sampling tiers). Its rollout is mapped to Phases A/B.
 
 Principle: **failures become ordinary, expected events with deterministic outcomes.**
 Exactly-once user actions via client idempotency keys; Durable Objects as the sole
