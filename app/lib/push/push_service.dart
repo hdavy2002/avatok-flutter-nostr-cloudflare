@@ -17,6 +17,8 @@ import '../core/analytics.dart';
 import '../core/api_auth.dart';
 import '../core/ava_log.dart';
 import '../core/call_log_store.dart';
+import '../core/calls/call_overlay.dart' show returnToActiveCall;
+import '../core/calls/call_session_manager.dart';
 import '../core/config.dart';
 import '../core/disk_cache.dart';
 import '../core/ice_cache.dart';
@@ -1210,6 +1212,24 @@ class PushService {
       // don't push a second one — a second leg joins the room, gets 'busy', and
       // hands the caller to Ava mid-call (issues 2 & 3).
       final now = DateTime.now().millisecondsSinceEpoch;
+      // [CALL-DUP-SESSION-1] Defense in depth: also consult the CallSession
+      // manager's live-session registry, not just the `gActiveCallId` global
+      // (which is set only AFTER the pushed CallScreen's initState → start()
+      // runs, leaving a window a second accept/restore can slip through). If a
+      // live session already owns this room, just foreground/re-attach the
+      // existing call screen instead of pushing a SECOND CallScreen (whose
+      // attach() would dedup anyway, but pushing a duplicate route is wasteful
+      // and briefly double-stacks the UI).
+      final managerHasLive = CallSessionManager.instance.hasLiveSession(room);
+      if (managerHasLive) {
+        Analytics.capture('call_duplicate_open_ignored', {
+          'call_id': room,
+          'reason': 'manager_live_session',
+        });
+        // Re-present the existing call screen if it was minimized.
+        try { returnToActiveCall(); } catch (_) {}
+        return;
+      }
       if (gActiveCallId == room ||
           (room == _openedCallId && now - _openedAt < 60000)) {
         Analytics.capture('call_duplicate_open_ignored', {

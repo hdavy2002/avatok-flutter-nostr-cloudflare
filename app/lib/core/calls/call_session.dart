@@ -114,6 +114,19 @@ class CallSession {
   /// route (set by the manager/view). Never owns navigation itself.
   void Function()? onRequestPop;
 
+  // [CALL-DUP-SESSION-1] Wired by CallSessionManager. Returns true when ANOTHER
+  // live (non-ended) CallSession for THIS room already owns the room on this
+  // device — i.e. this session is a duplicate/non-primary leg. Used to (a) make
+  // a 'busy' signal that lands on this duplicate leg self-immune (never trigger
+  // the receptionist or cancel/end fan-out that would kill the real call), and
+  // (b) suppress bye/cancel/ended signalling from this leg's teardown so it can
+  // never tear down the genuine call owned by the other session. Null → treat as
+  // the sole owner (default single-session behaviour, unchanged).
+  bool Function()? anotherLiveSessionOwnsRoom;
+  bool get _anotherOwns {
+    try { return anotherLiveSessionOwnsRoom?.call() ?? false; } catch (_) { return false; }
+  }
+
   // ── Internal call state (ex-_CallScreenState fields, verbatim) ──────────────
   WebSocketChannel? _ws;
   RTCPeerConnection? _pc;
@@ -962,6 +975,15 @@ class CallSession {
 
   void _notifyCalleeCanceled() {
     if (config.seed.isEmpty) return;
+    // [CALL-DUP-SESSION-1] Never fan out a 'cancel' for a room that ANOTHER live
+    // session owns. This is the teardown of a duplicate/non-primary leg (e.g. a
+    // busy-rejected 3rd peer, or a redundant restore session losing the `_active`
+    // slot). Sending 'cancel' here pushed a terminal status the real session
+    // acted on and ended the genuine call for both parties.
+    if (_anotherOwns) {
+      Analytics.capture('call_cancel_suppressed_dup', {'call_id': config.room});
+      return;
+    }
     ApiAuth.postJson(kCallStatusUrl, {
       'to': config.seed, 'callId': config.room, 'status': 'cancel',
     }).ignore();
@@ -1036,6 +1058,21 @@ class CallSession {
 
   Future<void> _onBusy() async {
     if (_ended || _connected) return;
+    // [CALL-DUP-SESSION-1] Self-inflicted-busy immunity. A 'busy' that lands on a
+    // DUPLICATE/non-primary leg (this session is NOT the one connected, but
+    // another live session for the same room IS connected/answered on this
+    // device) is the room's 2-peer cap rejecting OUR OWN extra leg — NOT the
+    // remote callee being busy. Honouring it here used to trigger the
+    // receptionist + a cancel/ended fan-out that destroyed the genuine live call
+    // (PostHog avatok-cdcc815d / avatok-23692246). Ignore it and let this
+    // duplicate leg wither without side effects.
+    if (_anotherOwns) {
+      Analytics.capture('call_self_busy_ignored', {
+        'call_id': config.room,
+        'reason': 'another_live_session_owns_room',
+      });
+      return;
+    }
     _ringTimeout?.cancel();
     _ringback.stop();
     Analytics.capture('call_busy_received', {
@@ -1116,6 +1153,14 @@ class CallSession {
     if (_connected) {
       Analytics.capture('ava_recept_signal_suppressed',
           {'channel': 'connected_race', 'call_id': config.room});
+      return false;
+    }
+    // [CALL-DUP-SESSION-1] A duplicate/non-primary leg for a room another live
+    // session owns must NEVER start the receptionist — doing so would send a
+    // 'bye'/cancel over the shared room and hand the caller to Ava mid-call,
+    // killing the genuine connected call. Refuse without side effects.
+    if (_anotherOwns) {
+      Analytics.capture('ava_recept_suppressed_dup_session', {'call_id': config.room});
       return false;
     }
     if (_receptionistActive || _receptionist != null || _avaCountingDown) {
