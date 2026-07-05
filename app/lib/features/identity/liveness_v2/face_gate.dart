@@ -144,6 +144,12 @@ class FaceGate {
       eulerY: y,
       eulerX: x,
       eulerZ: z,
+      // [LIVE-DEVAUTH-1] representative classification scores (worst-eye open
+      // prob so a half-closed eye isn't masked; smiling prob if present).
+      eyeOpenProb: (leftEye != null || rightEye != null)
+          ? math.min(leftEye ?? 1, rightEye ?? 1)
+          : null,
+      smilingProb: face.smilingProbability,
       faceRectNorm: Rect.fromLTWH(
         box.left / frameW,
         box.top / frameH,
@@ -280,6 +286,8 @@ class FaceGateStatus {
     this.eulerY = 0,
     this.eulerX = 0,
     this.eulerZ = 0,
+    this.eyeOpenProb,
+    this.smilingProb,
     this.faceRectNorm,
   });
 
@@ -324,6 +332,12 @@ class FaceGateStatus {
   final double eulerY;
   final double eulerX;
   final double eulerZ;
+
+  /// [LIVE-DEVAUTH-1] Representative ML Kit classification scores (min of the two
+  /// eye-open probabilities; smiling probability). Null when classification did
+  /// not return a value for this frame.
+  final double? eyeOpenProb;
+  final double? smilingProb;
   final Rect? faceRectNorm;
 
   bool get allPass =>

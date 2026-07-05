@@ -95,7 +95,11 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
       ok = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
               builder: (_) => RemoteConfig.livenessV2Enabled
-                  ? const LivenessV2Screen()
+                  ? LivenessV2Screen(
+                      // [LIVE-UI-3] pass listing context so the Accepted screen
+                      // shows a "Create a listing" CTA (else "Done").
+                      listingContext: widget.source == HumanCheckSource.listing,
+                    )
                   : const LivenessCheckScreen(),
             ),
           ) ==

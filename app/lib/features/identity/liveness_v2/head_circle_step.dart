@@ -41,11 +41,37 @@ class HeadCircleStep extends StatefulWidget {
     required this.onFaceLost,
     required this.onFaceBack,
     required this.onSecondFace,
+    this.leftRight = false,
+    this.onProgress,
+    this.onTurnCaptured,
+    this.hideBuiltInChrome = false,
   });
 
   final CameraController controller;
 
-  /// Fired once all 12 segments are lit. Delivers the captured profile stills
+  /// [LIVE-UI-3] When true, the challenge simplifies to "turn LEFT, then RIGHT"
+  /// (the new design has no 12-segment circle): the step completes once the head
+  /// has cleared the left extreme AND the right extreme. Head Euler-Y detection
+  /// is unchanged; only the completion condition + capture set differ (we grab
+  /// the two profiles, up/down are left null).
+  final bool leftRight;
+
+  /// [LIVE-UI-3] Reports (leftDone, rightDone) so a parent can render the new
+  /// design's caret arrows + status pills. Fires only in [leftRight] mode.
+  final void Function(bool leftDone, bool rightDone)? onProgress;
+
+  /// [LIVE-DEVAUTH-1] Reports the head Euler-Y at the moment each turn extreme is
+  /// captured (`side` = 'left' | 'right', `eulerY` = the device-frame angle), so
+  /// the orchestrator can record representative ml_kit scores for the
+  /// device_report. Fires only in [leftRight] mode.
+  final void Function(String side, double eulerY)? onTurnCaptured;
+
+  /// [LIVE-UI-3] When true, this step paints ONLY its CustomPaint overlay (or
+  /// nothing) and lets the parent own all headings/pills/chrome — used by the
+  /// new dark stage which draws the arrows itself.
+  final bool hideBuiltInChrome;
+
+  /// Fired once the challenge completes. Delivers the captured profile stills
   /// (any of the four may be null if capture failed at that extreme).
   final void Function(
     Uint8List? profileLeft,
@@ -91,6 +117,12 @@ class _HeadCircleStepState extends State<HeadCircleStep> {
   // Captured extreme stills.
   Uint8List? _left, _right, _up, _down;
 
+  // [LIVE-UI-3] left/right-mode progress. In leftRight mode we require the head
+  // to clear the left extreme, THEN the right extreme (order enforced so the
+  // pills read "Turn left" → "✓ Left" → "Turn right").
+  bool _leftReached = false;
+  bool _rightReached = false;
+
   int _startMs = DateTime.now().millisecondsSinceEpoch;
   int _retries = 0;
   Timer? _timeout;
@@ -134,8 +166,10 @@ class _HeadCircleStepState extends State<HeadCircleStep> {
         _lit[i] = false;
       }
       _left = _right = _up = _down = null;
+      _leftReached = _rightReached = false;
       _startMs = DateTime.now().millisecondsSinceEpoch;
     });
+    widget.onProgress?.call(false, false);
     _startSweep();
   }
 
@@ -172,6 +206,25 @@ class _HeadCircleStepState extends State<HeadCircleStep> {
     final face = faces.first;
     final y = face.headEulerAngleY ?? 0; // + = user's right, − = user's left (device frame)
     final x = face.headEulerAngleX ?? 0; // + = up, − = down (approx)
+
+    if (widget.leftRight) {
+      // [LIVE-UI-3] Simplified LEFT-then-RIGHT gating. Head Euler-Y: negative =
+      // user's left, positive = user's right (device frame, as documented above).
+      if (!_leftReached && y <= -_extreme) {
+        _leftReached = true;
+        _left ??= await _still();
+        widget.onTurnCaptured?.call('left', y);
+        widget.onProgress?.call(_leftReached, _rightReached);
+      } else if (_leftReached && !_rightReached && y >= _extreme) {
+        _rightReached = true;
+        _right ??= await _still();
+        widget.onTurnCaptured?.call('right', y);
+        widget.onProgress?.call(_leftReached, _rightReached);
+      }
+      if (mounted) setState(() {});
+      if (_leftReached && _rightReached) _finish();
+      return;
+    }
 
     _lightSegmentFor(y, x);
     _maybeCaptureExtreme(y, x);
@@ -276,6 +329,13 @@ class _HeadCircleStepState extends State<HeadCircleStep> {
 
   @override
   Widget build(BuildContext context) {
+    // [LIVE-UI-3] In the new dark stage the parent draws all chrome/arrows and
+    // gates detection; this step becomes headless (just runs the ML Kit loop),
+    // only surfacing the timeout-retry card so the flow can never dead-end.
+    if (widget.hideBuiltInChrome) {
+      if (!_timedOut) return const SizedBox.expand();
+      return Center(child: _timeoutCard());
+    }
     final done = _lit.where((s) => s).length;
     return Stack(
       fit: StackFit.expand,
@@ -307,38 +367,37 @@ class _HeadCircleStepState extends State<HeadCircleStep> {
             ],
           ),
         ),
-        if (_timedOut)
-          Center(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 32),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Zine.paper,
-                borderRadius: BorderRadius.circular(Zine.rSm),
-                border: Border.all(color: Zine.ink, width: Zine.bwLg),
-                boxShadow: Zine.shadow,
-              ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text("Let's try that again",
-                    textAlign: TextAlign.center, style: ZineText.hero(size: 20)),
-                const SizedBox(height: 8),
-                Text('Move your head slowly so the whole circle fills.',
-                    textAlign: TextAlign.center, style: ZineText.sub(size: 14)),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: 200,
-                  child: ZineButton(
-                    label: 'Retry',
-                    fullWidth: true,
-                    onPressed: _retry,
-                  ),
-                ),
-              ]),
-            ),
-          ),
+        if (_timedOut) Center(child: _timeoutCard()),
       ],
     );
   }
+
+  Widget _timeoutCard() => Container(
+        margin: const EdgeInsets.symmetric(horizontal: 32),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Zine.paper,
+          borderRadius: BorderRadius.circular(Zine.rSm),
+          border: Border.all(color: Zine.ink, width: Zine.bwLg),
+          boxShadow: Zine.shadow,
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text("Let's try that again",
+              textAlign: TextAlign.center, style: ZineText.hero(size: 20)),
+          const SizedBox(height: 8),
+          Text(
+              widget.leftRight
+                  ? 'Turn your head left, then right — nice and slow.'
+                  : 'Move your head slowly so the whole circle fills.',
+              textAlign: TextAlign.center,
+              style: ZineText.sub(size: 14)),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: 200,
+            child: ZineButton(label: 'Retry', fullWidth: true, onPressed: _retry),
+          ),
+        ]),
+      );
 
   // ── ML Kit input conversion (mirrors face_gate.dart) ──────────────────────
 

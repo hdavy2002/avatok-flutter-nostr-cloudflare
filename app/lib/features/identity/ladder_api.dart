@@ -44,9 +44,17 @@ class LadderApi {
   // ── Workers AI liveness (L2) ───────────────────────────────────────────────
 
   /// POST /api/id/liveness/start → session + the random challenge.
-  static Future<({String sessionId, List<String> actions, String phrase})?> livenessStart() async {
+  ///
+  /// [LIVE-UI-3] Optional [lang] ('en'|'es'|'fr'|'de') asks the server for a
+  /// localized read-aloud phrase (server-side support is being added in
+  /// parallel — an older server simply ignores the field and returns the
+  /// English phrase, which the client then shows as-is). We also read back the
+  /// server's own `challenge.lang` when present so the caller can label the
+  /// phrase card correctly even if the server substituted a different language.
+  static Future<({String sessionId, List<String> actions, String phrase, String lang})?>
+      livenessStart({String lang = 'en'}) async {
     try {
-      final r = await ApiAuth.postJson(kLivenessStartUrl, const {});
+      final r = await ApiAuth.postJson(kLivenessStartUrl, {'lang': lang});
       if (r.statusCode != 200) return null;
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final ch = (j['challenge'] as Map?) ?? const {};
@@ -54,6 +62,9 @@ class LadderApi {
         sessionId: (j['session_id'] ?? '').toString(),
         actions: ((ch['actions'] as List?) ?? const []).map((e) => e.toString()).toList(),
         phrase: (ch['phrase'] ?? '').toString(),
+        // Echo back the language the server actually used (falls back to what we
+        // requested so the UI chip label is always sensible).
+        lang: (ch['lang'] ?? lang).toString(),
       );
     } catch (_) {
       return null;
@@ -212,9 +223,14 @@ class LadderApi {
     bool verified,
     List<String> failedMessages,
     int? attemptsRemaining,
-  })> livenessVerifyRich(String sessionId) async {
+  })> livenessVerifyRich(String sessionId,
+      {Map<String, dynamic>? deviceReport}) async {
     try {
-      final r = await ApiAuth.postJson(kLivenessVerifyUrl, {'session_id': sessionId});
+      // [LIVE-DEVAUTH-1] Optionally attach the device-observed outcomes; the
+      // server ignores it unless the device-authoritative flag is ON.
+      final body = <String, dynamic>{'session_id': sessionId};
+      if (deviceReport != null) body['device_report'] = deviceReport;
+      final r = await ApiAuth.postJson(kLivenessVerifyUrl, body);
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       if (j['status'] == 'done' || j.containsKey('verified')) {
         return _outcome(j);

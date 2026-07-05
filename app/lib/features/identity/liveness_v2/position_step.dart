@@ -4,34 +4,51 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/ui/zine.dart';
-import '../../../core/ui/zine_widgets.dart';
 import 'face_gate.dart';
 import 'flash_fill.dart';
+import 'live_theme.dart';
 
-/// Liveness V2 — POSITION step (Specs/LIVENESS-V2-PLAN.md §4 step 2). Shows the
-/// front-camera preview inside an oval cutout with the flash-fill ring-light,
-/// live coaching text under it, a row of gate chips, and — when EVERY gate
-/// passes continuously for 1.0s — a green ring + [onReady] auto-advance, then a
-/// 3-2-1 countdown ([onCountdownDone]).
+/// Liveness V2 — POSITION step (Specs/LIVENESS-V2-PLAN.md §4 step 2), restyled
+/// to the new dark stage [LIVE-UI-3].
 ///
-/// The caller owns the [CameraController] (already initialized) and the
-/// [FlashFillController] (already activated). This widget attaches a [FaceGate]
-/// to the controller and detaches it on dispose.
+/// Shows the live front-camera preview inside the rounded camera card with a
+/// dashed oval that turns solid lime when EVERY ML Kit gate passes (face present
+/// / single / in-frame / level / lit / eyes open). A "Camera on" pill (blinking
+/// coral dot) sits at the top; while searching a lime scanning line sweeps and an
+/// "Align your face" pill shows; on lock a lime "Face locked" pill pops. After
+/// the gates hold ~1s the step auto-advances (no visible 3-2-1 — the design
+/// locks and moves straight on).
+///
+/// CRITICAL BUG FIX [LIVE-UI-3]: the OLD position view rendered requirement chips
+/// in a bottom Wrap with no SafeArea, so on Android they slid UNDER the system
+/// nav bar and became untappable ("menu buttons hidden underneath and do
+/// nothing"). The redesign removes that chip row entirely (the single lock pill
+/// replaces it) and the orchestrator wraps the whole stage in SafeArea, so
+/// nothing is ever clipped by the nav bar.
+///
+/// The caller owns the [CameraController] (initialized) and [FlashFillController]
+/// (activated). This widget attaches a [FaceGate] and detaches it on lock/dispose.
 class PositionStep extends StatefulWidget {
   const PositionStep({
     super.key,
     required this.controller,
     required this.flashFill,
     required this.onCountdownDone,
+    this.onLockedGate,
   });
 
   final CameraController controller;
   final FlashFillController flashFill;
 
-  /// Fired once, after the gates hold for 1s AND the 3-2-1 countdown finishes.
-  /// The orchestrator (Agent C) starts recording here.
+  /// Fired once the gates hold for ~1s (the orchestrator then captures the
+  /// neutral still + starts recording). Named for source-compat with the old flow.
   final VoidCallback onCountdownDone;
+
+  /// [LIVE-DEVAUTH-1] Reports the ML Kit gate snapshot at the moment of lock so
+  /// the orchestrator can build the optional `device_report` (single_face,
+  /// eyes_open, occlusion-clear + representative scores). Best-effort — null when
+  /// no all-pass snapshot was captured.
+  final void Function(FaceGateStatus locked)? onLockedGate;
 
   @override
   State<PositionStep> createState() => _PositionStepState();
@@ -41,13 +58,11 @@ class _PositionStepState extends State<PositionStep> {
   FaceGate? _gate;
   FaceGateStatus _status = FaceGateStatus.searching();
 
-  Timer? _holdTimer; // fires onReady after a continuous 1s all-pass
-  bool _ready = false; // all gates held → countdown running
-  int _count = 3; // 3-2-1
-  Timer? _countTimer;
+  Timer? _holdTimer; // fires _onHeld after a continuous ~1s all-pass
+  bool _locked = false;
 
   final int _stepStartMs = DateTime.now().millisecondsSinceEpoch;
-  final Set<String> _seenHints = {}; // throttle coach-hint telemetry per session
+  final Set<String> _seenHints = {};
 
   @override
   void initState() {
@@ -56,10 +71,7 @@ class _PositionStepState extends State<PositionStep> {
   }
 
   Future<void> _attachGate() async {
-    final gate = FaceGate(
-      controller: widget.controller,
-      onStatus: _onStatus,
-    );
+    final gate = FaceGate(controller: widget.controller, onStatus: _onStatus);
     _gate = gate;
     try {
       await gate.start();
@@ -67,10 +79,9 @@ class _PositionStepState extends State<PositionStep> {
   }
 
   void _onStatus(FaceGateStatus s) {
-    if (!mounted || _ready) return;
+    if (!mounted || _locked) return;
     setState(() => _status = s);
 
-    // Throttle: one liveness_coach_hint per hint-id per session.
     final id = s.hintId;
     if (id != null && _seenHints.add(id)) {
       Analytics.capture('liveness_coach_hint', {'hint_id': id, 'step': 'position'});
@@ -85,38 +96,30 @@ class _PositionStepState extends State<PositionStep> {
   }
 
   void _onHeld() {
-    if (!mounted || _ready) return;
+    if (!mounted || _locked) return;
     Analytics.capture('liveness_step', {
       'step': 'position',
       'outcome': 'passed',
       'ms': DateTime.now().millisecondsSinceEpoch - _stepStartMs,
     });
-    setState(() {
-      _ready = true;
-      _count = 3;
-    });
-    _countTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      if (_count <= 1) {
-        t.cancel();
-        // Detach the gate before capture so its image stream doesn't fight the
-        // orchestrator's video recording.
-        _gate?.dispose();
-        _gate = null;
-        widget.onCountdownDone();
-      } else {
-        setState(() => _count--);
-      }
+    setState(() => _locked = true);
+    // [LIVE-DEVAUTH-1] Surface the all-pass gate snapshot at lock (single_face,
+    // eyes-open, occlusion-clear + scores) for the optional device_report.
+    widget.onLockedGate?.call(_status);
+    // Brief lock-pop, then hand back so the orchestrator can grab the neutral
+    // still and start recording. Detach the gate first so its image stream does
+    // not fight the video recording.
+    Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      _gate?.dispose();
+      _gate = null;
+      widget.onCountdownDone();
     });
   }
 
   @override
   void dispose() {
     _holdTimer?.cancel();
-    _countTimer?.cancel();
     _gate?.dispose();
     super.dispose();
   }
@@ -124,117 +127,188 @@ class _PositionStepState extends State<PositionStep> {
   @override
   Widget build(BuildContext context) {
     final cam = widget.controller;
-    final ready = _status.allPass;
+    final reduced = LiveTheme.reducedMotion(context);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: FlashFillSurround(
-              active: widget.flashFill.isActive,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(Zine.rSm),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (cam.value.isInitialized)
-                      CameraPreview(cam)
-                    else
-                      const ColoredBox(color: Zine.ink),
-                    // Oval cutout + ring (green when all gates pass).
-                    CustomPaint(
-                      painter: _OvalPainter(
-                        ringColor: ready ? Zine.mint : Zine.paper,
-                        ringWidth: ready ? 6 : 3,
-                      ),
+          child: LiveTheme.cameraStage(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (cam.value.isInitialized)
+                  FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: cam.value.previewSize?.height ?? 1,
+                      height: cam.value.previewSize?.width ?? 1,
+                      child: CameraPreview(cam),
                     ),
-                    if (_ready)
-                      Center(
-                        child: Text(
-                          '$_count',
-                          style: ZineText.hero(size: 96, color: Zine.paper),
-                        ),
-                      ),
-                  ],
+                  )
+                else
+                  const ColoredBox(color: LiveTheme.cameraCard),
+
+                // "Camera on" pill, top-centre.
+                Positioned(
+                  top: 14,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: LiveTheme.pill(
+                      label: 'Camera on',
+                      filled: LiveTheme.card,
+                      textOnFill: LiveTheme.ink,
+                      leadingDotBlink: true,
+                    ),
+                  ),
                 ),
-              ),
+
+                // Dashed oval → solid lime on lock, + scanning line while searching.
+                CustomPaint(
+                  painter: _OvalPainter(
+                    locked: _locked || _status.allPass,
+                    reducedMotion: reduced,
+                  ),
+                ),
+
+                // Bottom status pill.
+                Positioned(
+                  bottom: 16,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: (_locked || _status.allPass)
+                        ? LiveTheme.pill(
+                            label: 'Face locked',
+                            filled: LiveTheme.lime,
+                            icon: Icons.check,
+                          )
+                        : LiveTheme.pill(
+                            label: _shortHint(),
+                            filled: LiveTheme.card,
+                            textOnFill: LiveTheme.ink,
+                          ),
+                  ),
+                ),
+
+                // Scanning line (searching only).
+                if (!_locked && !_status.allPass && !reduced)
+                  const Positioned.fill(child: _ScanLine()),
+              ],
             ),
           ),
         ),
-        // Live coaching line.
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-          child: Text(
-            _ready
-                ? 'Hold still…'
-                : (_status.hint ?? 'Perfect — hold it there'),
-            textAlign: TextAlign.center,
-            style: ZineText.cardTitle(
-              size: 18,
-              color: ready ? Zine.mintInk : Zine.ink,
-            ),
-          ),
-        ),
-        // Gate chips.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _chip('Face', _status.faceFound),
-              _chip('Only you', _status.singleFace),
-              _chip('In frame', _status.insideOval && _status.sizeOk),
-              _chip('Level', _status.levelOk),
-              _chip('Well lit', _status.brightOk && _status.notBacklit),
-              _chip('Eyes open', _status.eyesOpen),
-            ],
-          ),
+        const SizedBox(height: 16),
+        LiveTheme.stageHeadline('Fit your face in the ', markWord: 'oval'),
+        const SizedBox(height: 6),
+        Text(
+          "Hold your phone at eye level — I'll lock on automatically.",
+          style: LiveTheme.subStyle,
         ),
       ],
     );
   }
 
-  Widget _chip(String label, bool ok) => ZineChip(label: label, active: ok);
+  /// A very short coach label for the bottom pill (design shows "Align your
+  /// face"; we surface the specific gate hint when we have one so users still
+  /// get the actionable feedback the old chips gave, just in one line).
+  String _shortHint() {
+    final h = _status.hint;
+    if (h == null || h.isEmpty) return 'Align your face';
+    return h.length > 24 ? 'Align your face' : h;
+  }
 }
 
-/// Darkens everything outside a centered oval and draws the ring on its edge.
+/// Dashed oval (searching) → solid lime oval (locked), with a subtle pulse.
 class _OvalPainter extends CustomPainter {
-  _OvalPainter({required this.ringColor, required this.ringWidth});
-
-  final Color ringColor;
-  final double ringWidth;
+  _OvalPainter({required this.locked, required this.reducedMotion});
+  final bool locked;
+  final bool reducedMotion;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final oval = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.46),
-      width: size.width * 0.66,
-      height: size.height * 0.6,
+    final rect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height * 0.5),
+      width: size.width * 0.5,
+      height: size.height * 0.42,
     );
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = locked ? LiveTheme.lime : LiveTheme.dimPaper;
 
-    // Scrim outside the oval (even-odd cutout).
-    final scrim = Path()
-      ..addRect(Offset.zero & size)
-      ..addOval(oval)
-      ..fillType = PathFillType.evenOdd;
-    canvas.drawPath(
-      scrim,
-      Paint()..color = Zine.ink.withValues(alpha: 0.45),
-    );
+    if (locked) {
+      canvas.drawOval(rect, paint);
+    } else {
+      // Dashed oval.
+      _dashedOval(canvas, rect, paint);
+    }
+  }
 
-    // Ring on the oval edge.
-    canvas.drawOval(
-      oval,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = ringWidth
-        ..color = ringColor,
-    );
+  void _dashedOval(Canvas canvas, Rect rect, Paint paint) {
+    final path = Path()..addOval(rect);
+    const dash = 10.0, gap = 8.0;
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        final seg = metric.extractPath(d, d + dash);
+        canvas.drawPath(seg, paint);
+        d += dash + gap;
+      }
+    }
   }
 
   @override
-  bool shouldRepaint(_OvalPainter old) =>
-      old.ringColor != ringColor || old.ringWidth != ringWidth;
+  bool shouldRepaint(_OvalPainter old) => old.locked != locked;
+}
+
+/// A lime scanning line that sweeps top→bottom while the face is being found.
+class _ScanLine extends StatefulWidget {
+  const _ScanLine();
+  @override
+  State<_ScanLine> createState() => _ScanLineState();
+}
+
+class _ScanLineState extends State<_ScanLine>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        return LayoutBuilder(builder: (context, box) {
+          final y = box.maxHeight * (0.06 + 0.74 * _c.value);
+          return Stack(children: [
+            Positioned(
+              left: box.maxWidth * 0.09,
+              right: box.maxWidth * 0.09,
+              top: y,
+              child: Container(
+                height: 22,
+                decoration: const BoxDecoration(
+                  color: Color(0x29BFEB56), // lime @16%
+                  border: Border(top: BorderSide(color: LiveTheme.lime, width: 2.5)),
+                ),
+              ),
+            ),
+          ]);
+        });
+      },
+    );
+  }
 }
