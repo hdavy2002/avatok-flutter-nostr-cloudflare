@@ -72,6 +72,7 @@ import '../../push/push_service.dart';
 import '../../core/remote_config.dart';
 import '../ava/ava_invoke.dart';
 import 'ava_email.dart';
+import 'file_viewer_screen.dart';
 import '../genui/a2ui_renderer.dart';
 import '../../core/apps_service.dart';
 import '../conference/conference_api.dart';
@@ -137,6 +138,7 @@ class _Msg {
   String mediaCaption; // caption shown UNDER the photo in the SAME bubble (WhatsApp-style)
   Uint8List? localBytes; // instant preview of self-sent media
   bool uploading;
+  bool fileOpening = false; // [CHAT-PDFVIEW-1] tap→download/decrypt in progress (bubble spinner)
   bool failed;
   bool sent; // relay ACKed this event (["OK", id, true]) — it's on the relay
   Map<String, dynamic>? replyTo; // {id, preview, who}
@@ -8413,7 +8415,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           final w = cons.maxWidth.isFinite && cons.maxWidth > 0
               ? cons.maxWidth
               : MediaQuery.of(context).size.width * 0.78;
-          return ChatFileCard(
+          final card = ChatFileCard(
             key: ValueKey('file_${m.media?.id ?? m.id}'),
             media: m.media,
             localBytes: m.localBytes,
@@ -8424,33 +8426,69 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             autoFetch: _mediaAutoFetch,
             onOpen: () => _openFile(m, fname),
           );
+          // [CHAT-PDFVIEW-1] Overlay a spinner while the tap downloads/decrypts
+          // so the bubble shows progress instead of appearing dead.
+          if (!m.fileOpening) return card;
+          return Stack(alignment: Alignment.center, children: [
+            card,
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(Zine.rSm)),
+                child: const Center(
+                    child: SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2))),
+              ),
+            ),
+          ]);
         });
     }
   }
 
-  /// Open / download a non-media file. Decrypts (or uses cached bytes), writes a
-  /// temp copy, and hands it to the OS open-with sheet via a file:// URL.
+  /// [CHAT-PDFVIEW-1] Open an attachment. Downloads + decrypts (or reuses cached
+  /// bytes) with a bubble spinner, then routes PDFs/images to the in-app viewer
+  /// (pinch-zoom, page indicator, share). Any other type goes to the OS open sheet
+  /// with a CLEAR snackbar when no handler exists — replacing the old silent
+  /// `launchUrl(external)` that "did nothing" when no app claimed the file.
   Future<void> _openFile(_Msg m, String name) async {
+    if (m.fileOpening) return;
     Analytics.capture('chat_file_open', {
       'kind': 'file',
       'mime': m.media?.contentType ?? '',
     });
+    setState(() => m.fileOpening = true);
     try {
       final bytes = m.localBytes ??
           (m.media != null ? await MediaService.downloadAndDecrypt(m.media!) : null);
-      if (bytes == null) return;
+      if (!mounted) return;
+      if (bytes == null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Couldn't load $name")));
+        return;
+      }
       m.localBytes = bytes;
-      final dir = await getTemporaryDirectory();
-      final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
-      final f = File('${dir.path}/${DateTime.now().millisecondsSinceEpoch}_$safe');
-      await f.writeAsBytes(bytes, flush: true);
-      await launchUrl(Uri.file(f.path), mode: LaunchMode.externalApplication);
+      final mime = m.media?.contentType ?? '';
+      if (FileViewerScreen.canView(mime, name)) {
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => FileViewerScreen(bytes: bytes, name: name, mime: mime),
+        ));
+      } else {
+        final ok = await openFileWithOs(bytes, name, mime);
+        if (!ok && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text("No app on this device can open $name — tap share to send it elsewhere.")));
+        }
+      }
     } catch (e) {
       AvaLog.I.log('media', 'open file failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text("Couldn't open $name")));
       }
+    } finally {
+      if (mounted) setState(() => m.fileOpening = false);
     }
   }
 
