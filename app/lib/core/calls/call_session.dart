@@ -457,8 +457,8 @@ class CallSession {
         upKbps = ((dSent * 8) / dtSec / 1000).round();
         downKbps = ((dRecv * 8) / dtSec / 1000).round();
         // Light EMA smoothing so the HUD doesn't jitter between polls.
-        _emaUpKbps = _emaUpKbps == 0 ? upKbps : (_emaUpKbps * 0.5 + upKbps * 0.5);
-        _emaDownKbps = _emaDownKbps == 0 ? downKbps : (_emaDownKbps * 0.5 + downKbps * 0.5);
+        _emaUpKbps = _emaUpKbps == 0 ? upKbps.toDouble() : (_emaUpKbps * 0.5 + upKbps * 0.5);
+        _emaDownKbps = _emaDownKbps == 0 ? downKbps.toDouble() : (_emaDownKbps * 0.5 + downKbps * 0.5);
       }
     }
     _lastNetSentBytes = totalSentBytes;
