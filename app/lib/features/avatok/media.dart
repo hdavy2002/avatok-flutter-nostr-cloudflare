@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -77,31 +79,58 @@ class ChatMedia {
 class MediaService {
   static final _aes = AesGcm.with256bits();
 
+  // [CHAT-UPLOAD-1] When a live call is in progress the caller passes inCall:true.
+  // A full-speed upload saturates the uplink and starves WebRTC (evidence: a PDF
+  // upload triggered a both-sides reconnect). While in-call we (a) run the AES
+  // encryption off the UI isolate (compute) and (b) pace the ciphertext PUT at
+  // ~200 KB/s so the call keeps its bandwidth; off-call we upload full speed.
+  static const int _kInCallUploadBytesPerSec = 200 * 1024;
+
   static Future<ChatMedia> encryptAndUpload(
     Uint8List bytes, {
     required MediaKind kind,
     required String contentType,
     required String name,
     String caption = '',
+    bool inCall = false,
   }) async {
     final secretKey = await _aes.newSecretKey();
     final nonce = _aes.newNonce();
-    final box = await _aes.encrypt(bytes, secretKey: secretKey, nonce: nonce);
     final keyBytes = await secretKey.extractBytes();
+    // (a) Encrypt off the main thread when a call is live so the isolate crunch
+    // never janks the call UI. Off-call we stay on the async path (cheap enough).
+    final _EncResult enc = inCall
+        ? await compute(_encryptInIsolate,
+            _EncInput(bytes: bytes, key: Uint8List.fromList(keyBytes), nonce: Uint8List.fromList(nonce)))
+        : await () async {
+            final box = await _aes.encrypt(bytes, secretKey: secretKey, nonce: nonce);
+            return _EncResult(
+                cipherText: Uint8List.fromList(box.cipherText),
+                mac: Uint8List.fromList(box.mac.bytes));
+          }();
 
-    final res = await ApiAuth.postBytes(
-      kUploadPrivateUrl,
-      box.cipherText,
+    final extraHeaders = {
       // The bytes are opaque ciphertext; these headers let the server categorise
       // the sender's AvaLibrary entry (never used to scan — it can't read them).
-      extraHeaders: {
-        'x-content-type': contentType,
-        'x-real-mime': contentType,
-        'x-file-name': name,
-        'x-app': 'avatok',
-      },
-      timeout: const Duration(seconds: 60),
-    );
+      'x-content-type': contentType,
+      'x-real-mime': contentType,
+      'x-file-name': name,
+      'x-app': 'avatok',
+    };
+    // (b) In-call → paced streamed PUT; otherwise the normal single POST.
+    final http.Response res = inCall
+        ? await _pacedUpload(enc.cipherText, extraHeaders)
+        : await ApiAuth.postBytes(
+            kUploadPrivateUrl,
+            enc.cipherText,
+            extraHeaders: extraHeaders,
+            timeout: const Duration(seconds: 60),
+          );
+    if (inCall) {
+      Analytics.capture('chat_upload_during_call', {
+        'size': bytes.length, 'kind': kind.name, 'paced': true,
+      });
+    }
     if (res.statusCode != 200) {
       AvaLog.I.log('media', 'UPLOAD FAILED kind=${kind.name} ${bytes.length}B -> HTTP ${res.statusCode}');
       // Telemetry (email rides in the envelope): a failed upload is why a sent
@@ -119,7 +148,7 @@ class MediaService {
       id: (j['key'] ?? j['hash'] ?? j['id']).toString(),
       keyB64: base64Encode(keyBytes),
       nonceB64: base64Encode(nonce),
-      macB64: base64Encode(box.mac.bytes),
+      macB64: base64Encode(enc.mac),
       contentType: contentType,
       name: name,
       size: bytes.length,
@@ -130,6 +159,44 @@ class MediaService {
     // now our own photos/videos/voice/files load instantly local-first too.
     await _cacheWrite(media.id, bytes);
     return media;
+  }
+
+  /// [CHAT-UPLOAD-1] Paced PUT of the ciphertext: emits the body in ~32 KB chunks
+  /// spaced so throughput stays under [_kInCallUploadBytesPerSec], leaving uplink
+  /// headroom for the live WebRTC call. Auth is a Bearer JWT (no body HMAC), so a
+  /// StreamedRequest is signature-safe. Never blocks the UI (runs on the event
+  /// loop between paced delays).
+  static Future<http.Response> _pacedUpload(
+      Uint8List cipherText, Map<String, String> extraHeaders) async {
+    final headers = await ApiAuth.signedHeaders('POST', kUploadPrivateUrl, extra: extraHeaders);
+    headers.remove('Content-Type'); // opaque ciphertext, not JSON
+    headers['Content-Type'] = 'application/octet-stream';
+    final req = http.StreamedRequest('POST', Uri.parse(kUploadPrivateUrl));
+    req.headers.addAll(headers);
+    req.contentLength = cipherText.length;
+
+    const chunk = 32 * 1024;
+    const perChunkMs = (chunk * 1000) ~/ _kInCallUploadBytesPerSec; // ~156ms/32KB
+    // Feed the sink on a paced schedule; do NOT await here or the request never
+    // gets sent. send() below awaits the response.
+    () async {
+      var off = 0;
+      try {
+        while (off < cipherText.length) {
+          final end = (off + chunk < cipherText.length) ? off + chunk : cipherText.length;
+          req.sink.add(cipherText.sublist(off, end));
+          off = end;
+          if (off < cipherText.length) {
+            await Future<void>.delayed(const Duration(milliseconds: perChunkMs));
+          }
+        }
+      } finally {
+        await req.sink.close();
+      }
+    }();
+
+    final streamed = await http.Client().send(req).timeout(const Duration(seconds: 180));
+    return http.Response.fromStream(streamed);
   }
 
   /// Fetches ciphertext by hash and decrypts back to plaintext bytes.
@@ -250,4 +317,30 @@ class MediaUploadException implements Exception {
   MediaUploadException(this.message);
   @override
   String toString() => message;
+}
+
+// ---- [CHAT-UPLOAD-1] off-main-thread AES-GCM encryption ----
+class _EncInput {
+  final Uint8List bytes;
+  final Uint8List key;
+  final Uint8List nonce;
+  _EncInput({required this.bytes, required this.key, required this.nonce});
+}
+
+class _EncResult {
+  final Uint8List cipherText;
+  final Uint8List mac;
+  _EncResult({required this.cipherText, required this.mac});
+}
+
+/// Runs on a background isolate via `compute` so a large in-call attachment's
+/// encryption never janks the call UI.
+Future<_EncResult> _encryptInIsolate(_EncInput inp) async {
+  final aes = AesGcm.with256bits();
+  final box = await aes.encrypt(inp.bytes,
+      secretKey: SecretKey(inp.key), nonce: inp.nonce);
+  return _EncResult(
+    cipherText: Uint8List.fromList(box.cipherText),
+    mac: Uint8List.fromList(box.mac.bytes),
+  );
 }

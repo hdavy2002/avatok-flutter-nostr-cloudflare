@@ -47,6 +47,7 @@ import '../../core/ava_identity.dart';
 import '../../core/chat_state.dart';
 import '../../core/wallpaper.dart';
 import '../../core/config.dart';
+import '../../core/calls/call_session_manager.dart';
 import '../../core/ice_cache.dart';
 import '../../core/profile_store.dart';
 import '../../core/drive_service.dart';
@@ -3468,7 +3469,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<void> _upload(_Msg msg, Uint8List bytes, MediaKind kind, String ct, String name, {String caption = ''}) async {
     setState(() { msg.uploading = true; msg.failed = false; });
     try {
-      final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name, caption: caption);
+      // [CHAT-UPLOAD-1] A live 1:1 call shares this device's uplink. Encrypt off
+      // the main thread + pace the ciphertext PUT so the upload never starves
+      // WebRTC (which previously forced both-sides reconnects). Full speed off-call.
+      final live = CallSessionManager.instance.current;
+      final inCall = live != null && !live.isEnded;
+      final m = await MediaService.encryptAndUpload(bytes, kind: kind, contentType: ct, name: name, caption: caption, inCall: inCall);
       if (!mounted) return;
       setState(() { msg.media = m; msg.uploading = false; });
       final keyShort = m.id.length > 12 ? m.id.substring(m.id.length - 8) : m.id;
