@@ -60,6 +60,17 @@ LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
 # deliberately NOT set (Android-only launch): unset ⇒ no App Store badge.
 PLAY_PACKAGE_ID = "ai.avatok.avatok_call"
 
+# State Sync Engine flags (worker/src/do/inbox.ts).
+# SYNC_OPS_V2: per-conversation sequence stamping + op_appended telemetry. Default ON
+#   in code ("!= '0'"); pinned here for clarity. Set "0" to disable stamping.
+# SYNC_CONV_CURSOR_V2: Phase 1 switch-over — per-conversation catch-up (HTTP /sync?conv=
+#   and the hybrid WS reply). SAFE: the hybrid payload is a strict SUPERSET of the plain
+#   global sweep (never fewer messages), and it only activates for clients that report
+#   `cc` per-conv positions in hello — current apps don't, so this is inert until the
+#   cc-sending APK is installed. Set "0" (or unset) to disable.
+SYNC_OPS_V2 = "1"
+SYNC_CONV_CURSOR_V2 = "1"
+
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
 # Relay starts single; sharding router (src/db/shard.ts) can fan to 16 later.
