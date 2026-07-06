@@ -14,6 +14,12 @@ import type { NormalizedFace } from "./liveness_provider";
 // they remain explainable after this constant moves forward.
 export const LIVENESS_RULESET_V3_0 = "LIVENESS_RULESET_V3_0";
 
+// V3_1 (2026-07-06): adds the AI-avatar / second-phone / injected-camera defense
+// layer (lib/liveness_avatar_defense.ts). Its weighted suspicion signals fold in
+// via the caller as REVIEW-class / informational reason codes — the core rules
+// engine below is UNCHANGED. Verdicts stamped with whichever ruleset was live.
+export const LIVENESS_RULESET_V3_1 = "LIVENESS_RULESET_V3_1";
+
 // Machine-readable reason codes (LIVENESS-V3 plan §4-A.3). Every verdict lists
 // the codes that fired; PASS verdicts carry the positive/`OK` codes so analytics
 // and appeals can group on either outcome.
@@ -30,6 +36,17 @@ export type ReasonCode =
   | "ATTESTATION_FAIL"
   | "MOTION_IMPLAUSIBLE"
   | "PROVIDER_DEGRADED"
+  // AI-avatar / second-phone / injected-camera defense layer (ruleset V3_1).
+  // ALL of these are REVIEW-class or informational — NONE are FAIL-class. They
+  // are emitted by lib/liveness_avatar_defense.ts and merged by the caller; a
+  // high combined suspicion escalates to REVIEW (or policy escalation), never a
+  // standalone automatic FAIL.
+  | "DISPLAY_SUSPECTED"          // weighted display-attack suspicion ≥ threshold
+  | "FLASH_MISMATCH"            // face didn't brighten to the screen flash sequence
+  | "SENSOR_MISMATCH"          // bbox grew but the device never moved (flat rig)
+  | "CAMERA_PATH_COMPROMISED"  // rooted/emulator/virtual-camera/instrumentation
+  | "TIMING_ANOMALY"           // implausibly instant / machine-uniform reactions
+  | "DEVICE_CONTEXT_CHANGED"   // informational: new device + new country (Trust Engine consumes)
   | "OK";
 
 export type Verdict = "PASS" | "REVIEW" | "FAIL";

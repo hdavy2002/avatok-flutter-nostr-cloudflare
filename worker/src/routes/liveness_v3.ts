@@ -47,11 +47,20 @@ import {
   normalizeRekognition, normalizeWorkersAiFace,
 } from "../lib/liveness_provider";
 import {
-  evaluateV3, motionMonotonic, LIVENESS_RULESET_V3_0,
+  evaluateV3, motionMonotonic, LIVENESS_RULESET_V3_1,
   type FrameEvidence, type ReasonCode, type Verdict,
 } from "../lib/liveness_rules_v3";
+import {
+  buildActiveChecks, parseCaptureMeta, evaluateAvatarDefense,
+  type ActiveChecks, type CaptureMeta, type AvatarDefenseSignals,
+} from "../lib/liveness_avatar_defense";
 
 // ── Config / limits ──────────────────────────────────────────────────────────
+// Active ruleset stamp. Bumped to V3_1 when the AI-avatar / second-phone /
+// injected-camera defense layer (lib/liveness_avatar_defense.ts) shipped
+// (2026-07-06). Every verdict/telemetry event carries this so a decision is
+// reproducible against the exact weights/thresholds that produced it.
+const RULESET = LIVENESS_RULESET_V3_1;
 const DAY = 86_400_000;
 const SESSION_TTL_S = 900;              // 15 min to finish a session
 const MAX_VIDEO_BYTES = 15_000_000;     // 15 MB cap (plan §3 upload path)
@@ -129,6 +138,7 @@ const sessionKvKey = (uid: string, sid: string) => `livenessv3:sess:${uid}:${sid
 const resultKvKey = (uid: string, sid: string) => `livenessv3:result:${uid}:${sid}`;
 const deviceRepKvKey = (uid: string, sid: string) => `livenessv3:devrep:${uid}:${sid}`;
 const edgeCtxKvKey = (uid: string, sid: string) => `livenessv3:edge:${uid}:${sid}`;
+const captureMetaKvKey = (uid: string, sid: string) => `livenessv3:capmeta:${uid}:${sid}`;
 
 // Hashed edge/verification-farm correlation props (plan §4-A "PostHog properties
 // to capture NOW ... hashed/bucketed, not raw PII"). IP is HASHED (never raw);
@@ -162,6 +172,11 @@ interface V3Session {
   challenges: string[];
   overlay: { shape: string; position: string; offset_x: number; offset_y: number; size_factor: number };
   capture_offsets: number[]; // 0..1 fractions of the clip to sample frames at
+  // Server-randomized active probes (ruleset V3_1 — AI-avatar/second-phone
+  // defense). flash_sequence (2–4 colored screen flashes), optional vibrate, and
+  // one random gap per challenge. The client executes these; the verify pipeline
+  // correlates the client-reported actuals (capture_meta) against them.
+  active_checks: ActiveChecks;
   created_at: number;
 }
 
@@ -223,22 +238,28 @@ export async function livenessV3Session(req: Request, env: Env): Promise<Respons
   const capture_offsets = Array.from({ length: SAMPLE_FRAMES }, () => Number(randFloat(0.05, 0.95).toFixed(3)))
     .sort((a, b) => a - b);
 
+  // Server-randomized active probes (ruleset V3_1). Reuses the same crypto-random
+  // source so the schedule is unpredictable per session (kills a universal replay).
+  const active_checks = buildActiveChecks(challenges.length, { int: randInt, float: randFloat });
+
   const now = Date.now();
-  const sess: V3Session = { sid, uid: ctx.uid, policy_id, requester, nonce, challenges, overlay, capture_offsets, created_at: now };
+  const sess: V3Session = { sid, uid: ctx.uid, policy_id, requester, nonce, challenges, overlay, capture_offsets, active_checks, created_at: now };
   await env.TOKENS.put(sessionKvKey(ctx.uid, sid), JSON.stringify(sess), { expirationTtl: SESSION_TTL_S });
 
-  // Persist the append-only session row (D1). status starts 'created'.
+  // Persist the append-only session row (D1). status starts 'created'. active_checks
+  // is stored so a verdict is reproducible against the exact schedule it faced.
   await metaDb(env).prepare(
     `INSERT INTO liveness_v3_sessions
-       (session_id, uid, policy_id, requester, nonce, challenges, overlay, capture_offsets, status, created_at, updated_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'created',?9,?9)`,
+       (session_id, uid, policy_id, requester, nonce, challenges, overlay, capture_offsets, active_checks, status, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'created',?10,?10)`,
   ).bind(
     sid, ctx.uid, policy_id, requester, nonce,
-    JSON.stringify(challenges), JSON.stringify(overlay), JSON.stringify(capture_offsets), now,
+    JSON.stringify(challenges), JSON.stringify(overlay), JSON.stringify(capture_offsets),
+    JSON.stringify(active_checks), now,
   ).run().catch(() => { /* KV mirror is authoritative on the hot path; D1 is the audit copy */ });
 
   void telemetry(env, ctx.uid, "liveness_v3_session_started", {
-    session_id: sid, policy_id, requester, challenge_count: challenges.length, ruleset_version: LIVENESS_RULESET_V3_0,
+    session_id: sid, policy_id, requester, challenge_count: challenges.length, ruleset_version: RULESET,
   });
   metric(env, "liveness_v3_session", [1]);
 
@@ -253,10 +274,11 @@ export async function livenessV3Session(req: Request, env: Env): Promise<Respons
     challenges,
     overlay,
     capture_offsets,
+    active_checks,
     upload,
     max_video_bytes: MAX_VIDEO_BYTES,
     ttl_seconds: SESSION_TTL_S,
-    ruleset_version: LIVENESS_RULESET_V3_0,
+    ruleset_version: RULESET,
   });
 }
 
@@ -307,12 +329,26 @@ export async function livenessV3Verify(req: Request, env: Env, ctx?: ExecutionCo
 
   const b = (await req.json().catch(() => ({}))) as {
     session_id?: string; object_key?: string; device_report?: unknown; client_sequence?: unknown;
+    capture_meta?: unknown;
   };
   const sid = String(b.session_id || "");
   const sessRaw = await env.TOKENS.get(sessionKvKey(auth.uid, sid));
   if (!sessRaw) {
     void telemetry(env, auth.uid, "liveness_v3_verify_rejected", { reason: "session_expired", status: 410, session_id: sid });
     return json({ error: "session expired — start again" }, 410);
+  }
+
+  // Optional capture_meta (ruleset V3_1 — sensor/luma/flash/vibrate timelines +
+  // device integrity). Size-capped ~32KB; reject an oversize payload POLITELY
+  // (verify still runs without it — the defense layer degrades to null scores).
+  const parsedMeta = parseCaptureMeta(b.capture_meta);
+  if (parsedMeta.tooLarge) {
+    void telemetry(env, auth.uid, "liveness_v3_verify_rejected", { reason: "capture_meta_too_large", status: 413, session_id: sid });
+    return json({ error: "capture_meta too large — cap is 32KB", reason: "capture_meta_too_large" }, 413);
+  }
+  if (parsedMeta.meta) {
+    await env.TOKENS.put(captureMetaKvKey(auth.uid, sid), JSON.stringify(parsedMeta.meta),
+      { expirationTtl: SESSION_TTL_S }).catch(() => {});
   }
 
   // Idempotency: a re-poll / double-tap returns the stored verdict, no re-run.
@@ -335,7 +371,7 @@ export async function livenessV3Verify(req: Request, env: Env, ctx?: ExecutionCo
     { expirationTtl: SESSION_TTL_S }).catch(() => {});
 
   void telemetry(env, auth.uid, "liveness_verify_start", {
-    session_id: sid, ruleset_version: LIVENESS_RULESET_V3_0, v3: true, ...edgeCorr,
+    session_id: sid, ruleset_version: RULESET, v3: true, ...edgeCorr,
   });
 
   // Prefer the shared liveness-verify queue (index.ts self-consumes); the {v3:true}
@@ -396,7 +432,7 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
     verdict: Verdict, reasonCodes: ReasonCode[], level?: number,
   ): Promise<V3Result> => {
     const result: V3Result = {
-      verdict, reason_codes: reasonCodes, ruleset_version: LIVENESS_RULESET_V3_0,
+      verdict, reason_codes: reasonCodes, ruleset_version: RULESET,
       attempts_remaining: Math.max(0, MAX_ATTEMPTS_24H - (await attemptsLast24h(env, uid))),
       ...(level != null ? { level } : {}),
     };
@@ -572,7 +608,7 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
     }
   } catch { /* leave null → rule skipped */ }
 
-  // ── 8. Deterministic verdict (LLM-free). ────────────────────────────────────
+  // ── 8. Deterministic core verdict (LLM-free). ──────────────────────────────
   const v = evaluateV3({
     frames,
     replayHashSeen: false,
@@ -584,30 +620,91 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
     anyProviderDegraded: anyDegraded,
   });
 
+  // ── 9. AI-avatar / second-phone / injected-camera defense (ruleset V3_1). ───
+  // Weighted suspicion SIGNALS — never a standalone FAIL. A high combined score,
+  // a hard camera-path compromise, a flash/sensor/timing mismatch → escalate the
+  // verdict to REVIEW (only if the core didn't already FAIL). All emitted codes
+  // are REVIEW-class or informational.
+  const capMeta = await env.TOKENS.get(captureMetaKvKey(uid, sid), "json").catch(() => null) as CaptureMeta | null;
+  const defense = evaluateAvatarDefense(frames, sess.active_checks ?? null, capMeta);
+
+  // ── 10. Device-binding evidence (informational; Trust Engine consumes later). ─
+  // Compare this verify's device context + IP country against the account's last
+  // PASS verdict. New device + new country within a short window → DEVICE_CONTEXT_
+  // CHANGED. This NEVER blocks — it rides on the verdict + telemetry only.
+  const deviceCtx = await deviceContextEvidence(env, uid, sess, capMeta, edgeCorr);
+  if (deviceCtx.changed) defense.review_codes.push("DEVICE_CONTEXT_CHANGED");
+
+  // Merge the defense codes into the final verdict. Core FAIL stays FAIL (spoof/
+  // quality is decisive); otherwise any REVIEW-class defense code lifts PASS/REVIEW
+  // to REVIEW. DEVICE_CONTEXT_CHANGED is informational and does NOT change verdict.
+  const reviewClass = defense.review_codes.filter((c) => c !== "DEVICE_CONTEXT_CHANGED");
+  let finalVerdict: Verdict = v.verdict;
+  if (finalVerdict !== "FAIL" && reviewClass.length > 0) finalVerdict = "REVIEW";
+  const mergedCodes = uniqCodes([...v.reason_codes, ...(defense.review_codes as ReasonCode[])]);
+
   const costUsd = Number((rekCalls * REK_COST_PER_IMAGE).toFixed(4));
-  await writeVerdictRow(env, uid, sess, v.verdict, v.reason_codes, v.rule_pass_map, providerName, costUsd);
+  await writeVerdictRow(env, uid, sess, finalVerdict, mergedCodes, v.rule_pass_map, providerName, costUsd, defense, capMeta, deviceCtx.changed, edgeCorr);
   await bumpAttempt(env, uid);
-  void verdictTelemetry(env, uid, sid, sess, v.verdict, v.reason_codes, providerName, costUsd, queueWaitMs, startedAt, false, edgeCorr);
+  void verdictTelemetry(env, uid, sid, sess, finalVerdict, mergedCodes, providerName, costUsd, queueWaitMs, startedAt, false, edgeCorr, defense);
   // Surface any spoof signal codes as their own telemetry event (plan §4).
   for (const c of v.reason_codes) {
     if (c === "PHONE_SCREEN" || c === "REPLAY_ATTACK" || c === "MOTION_IMPLAUSIBLE" || c === "MULTIPLE_PEOPLE") {
       void telemetry(env, uid, "liveness_spoof_signal", { session_id: sid, signal: c });
     }
   }
+  // Rich per-signal defense telemetry (plan §0-C / §4-A).
+  void emitDefenseTelemetry(env, uid, sid, sess, defense, capMeta, deviceCtx);
 
-  if (v.verdict === "PASS") {
+  if (finalVerdict === "PASS") {
     // Retain ONLY the reference (sharpest) frame as frame0.jpg (green-tick thumb),
     // tag pass, delete the raw video (R2 lifecycle pass=24h on the retained still).
     const thumbKey = await retainPassEvidence(env, uid, sid, frameBufs, frames);
     await recordLivenessAudit(env, { uid, provider: "workersai", status: "pass", req, device: deviceCtxFromBody({}), r2Prefix: auditPrefix(uid, sid) });
     await applyPassToLadder(env, uid, sid, thumbKey, sess);
-    return finalize("PASS", v.reason_codes, 2);
+    return finalize("PASS", mergedCodes, 2);
   }
 
   // FAIL or REVIEW → tag + discard, write audit row with r2 null.
-  await recordLivenessAudit(env, { uid, provider: "workersai", status: v.verdict === "FAIL" ? "fail" : "abandoned", req, device: deviceCtxFromBody({}), r2Prefix: null });
-  await tagAndDiscard(env, uid, sid, v.verdict === "FAIL" ? "fail" : "review");
-  return finalize(v.verdict, v.reason_codes);
+  await recordLivenessAudit(env, { uid, provider: "workersai", status: finalVerdict === "FAIL" ? "fail" : "abandoned", req, device: deviceCtxFromBody({}), r2Prefix: null });
+  await tagAndDiscard(env, uid, sid, finalVerdict === "FAIL" ? "fail" : "review");
+  return finalize(finalVerdict, mergedCodes);
+}
+
+function uniqCodes(a: ReasonCode[]): ReasonCode[] { return [...new Set(a)]; }
+
+// ── Device-binding evidence (plan §0-C.6). Informational only — never blocks. ──
+// A PASS "green tick" from a new device in a new country within a short window is
+// a Trust-Engine signal (account takeover / farm), not a liveness FAIL. We compare
+// against the account's LAST verdict row (device model + IP country captured then).
+interface DeviceContextEvidence { changed: boolean; new_device: boolean; new_country: boolean; }
+async function deviceContextEvidence(
+  env: Env, uid: string, sess: V3Session, capMeta: CaptureMeta | null, edgeCorr: Record<string, unknown> | null,
+): Promise<DeviceContextEvidence> {
+  try {
+    const curCountry = (edgeCorr?.country as string | null) ?? null;
+    const curDevice = capMeta?.camera?.model || null;
+    // Last verdict for this account (any outcome) carries the prior context props.
+    const last = await metaSession(env)
+      .prepare(
+        `SELECT camera_path, created_at FROM liveness_v3_verdicts
+          WHERE uid=?1 AND camera_path IS NOT NULL ORDER BY created_at DESC LIMIT 1`,
+      ).bind(uid).first<{ camera_path: string; created_at: number }>();
+    if (!last) return { changed: false, new_device: false, new_country: false };
+    // The prior device/country live on the last verdict's stored capture context.
+    let priorCountry: string | null = null; let priorDevice: string | null = null;
+    try {
+      const cp = JSON.parse(last.camera_path) as { _ctx_country?: string | null; _ctx_device?: string | null };
+      priorCountry = cp._ctx_country ?? null; priorDevice = cp._ctx_device ?? null;
+    } catch { /* prior row predates ctx capture — treat as unknown, no change */ }
+    const WINDOW = 7 * DAY; // "short window" for takeover/farm correlation
+    const recent = Date.now() - (last.created_at ?? 0) <= WINDOW;
+    const new_country = !!priorCountry && !!curCountry && priorCountry !== curCountry;
+    const new_device = !!priorDevice && !!curDevice && priorDevice !== curDevice;
+    return { changed: recent && new_country && new_device, new_device, new_country };
+  } catch {
+    return { changed: false, new_device: false, new_country: false };
+  }
 }
 
 // ── Frame extraction. ─────────────────────────────────────────────────────────
@@ -683,21 +780,50 @@ async function applyPassToLadder(env: Env, uid: string, sid: string, thumbKey: s
 }
 
 // ── Append-only verdict row (never update-in-place). ──────────────────────────
+// The last 3 args are the ruleset-V3_1 avatar-defense signals + the raw
+// capture_meta + the device-context-changed flag. They are OPTIONAL so the early
+// bail-out callsites (missing video / replay / extraction failure) can write a
+// verdict row without them — the columns default NULL for those rows.
 async function writeVerdictRow(
   env: Env, uid: string, sess: V3Session, verdict: Verdict, reasonCodes: ReasonCode[],
   rulePassMap: unknown[], provider: string, costUsd: number,
+  defense?: AvatarDefenseSignals, capMeta?: CaptureMeta | null, deviceContextChanged?: boolean,
+  edgeCorr?: Record<string, unknown> | null,
 ): Promise<void> {
   try {
+    // Stash the device+country context ON the camera_path JSON so a FUTURE verify's
+    // deviceContextEvidence() can compare against it (no schema churn for 2 fields).
+    let cameraPathJson: string | null = null;
+    if (defense) {
+      cameraPathJson = JSON.stringify({
+        ...defense.camera_path,
+        _ctx_country: (edgeCorr?.country as string | null) ?? null,
+        _ctx_device: capMeta?.camera?.model || null,
+      });
+    }
     await metaDb(env).prepare(
       `INSERT INTO liveness_v3_verdicts
         (id, session_id, uid, verdict, reason_codes, rule_pass_map, ruleset_version,
-         provider, provider_version, cost_usd_estimate, requester, policy_id, created_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)`,
+         provider, provider_version, cost_usd_estimate, requester, policy_id, created_at,
+         display_suspicion_score, flash_correlation_score, sensor_correlation_score,
+         display_signals, camera_path, timing_anomaly, policy_escalation,
+         device_context_changed, capture_meta)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,
+               ?14,?15,?16,?17,?18,?19,?20,?21,?22)`,
     ).bind(
       crypto.randomUUID(), sess.sid, uid, verdict, JSON.stringify(reasonCodes),
-      JSON.stringify(rulePassMap), LIVENESS_RULESET_V3_0, provider,
+      JSON.stringify(rulePassMap), RULESET, provider,
       provider === "aws_rekognition" || provider === "mixed" ? "detectfaces-2016-06-27" : "workers_ai",
       costUsd, sess.requester, sess.policy_id, Date.now(),
+      defense?.display_suspicion_score ?? null,
+      defense?.flash_correlation_score ?? null,
+      defense?.sensor_correlation_score ?? null,
+      defense ? JSON.stringify(defense.display_signals) : null,
+      cameraPathJson,
+      defense ? (defense.timing_anomaly ? 1 : 0) : null,
+      defense ? (defense.policy_escalation ? 1 : 0) : null,
+      deviceContextChanged != null ? (deviceContextChanged ? 1 : 0) : null,
+      capMeta ? JSON.stringify(capMeta).slice(0, 32_768) : null,
     ).run();
     // Advance the session row status (append-only verdicts; session row tracks state).
     await metaDb(env).prepare("UPDATE liveness_v3_sessions SET status=?2, updated_at=?3 WHERE session_id=?1")
@@ -714,14 +840,76 @@ function telemetry(env: Env, uid: string, event: string, props: Record<string, u
 function verdictTelemetry(
   env: Env, uid: string, sid: string, sess: V3Session, verdict: Verdict, reasonCodes: ReasonCode[],
   provider: string, costUsd: number, queueWaitMs: number, startedAt: number, replay = false,
-  edgeCorr: Record<string, unknown> | null = null,
+  edgeCorr: Record<string, unknown> | null = null, defense: AvatarDefenseSignals | null = null,
 ): Promise<void> {
   metric(env, "liveness_v3_verdict", [costUsd, Date.now() - startedAt], [verdict]);
   return telemetry(env, uid, "liveness_verdict", {
     session_id: sid, verdict, reason_codes: reasonCodes, provider,
     cost_usd: costUsd, queue_wait_ms: queueWaitMs, duration_ms: Date.now() - startedAt,
-    requester: sess.requester, policy_id: sess.policy_id, ruleset_version: LIVENESS_RULESET_V3_0,
+    requester: sess.requester, policy_id: sess.policy_id, ruleset_version: RULESET,
     replay, v3: true, ...(edgeCorr ?? {}),
+    // Ruleset-V3_1 avatar-defense summary on the core verdict event (plan §0-C.8).
+    ...(defense ? {
+      display_suspicion_score: defense.display_suspicion_score,
+      flash_correlation_score: defense.flash_correlation_score,
+      sensor_correlation_score: defense.sensor_correlation_score,
+      timing_anomaly: defense.timing_anomaly,
+      policy_escalation: defense.policy_escalation,
+      integrity_rooted: defense.camera_path.rooted,
+      integrity_emulator: defense.camera_path.emulator,
+      integrity_virtual_camera: defense.camera_path.virtual_camera,
+      integrity_instrumentation: defense.camera_path.instrumentation,
+      integrity_play_integrity: defense.camera_path.play_integrity,
+      integrity_compromised: defense.camera_path.compromised,
+      defense_codes: defense.review_codes,
+      weights_version: defense.weights_version,
+    } : {}),
+  });
+}
+
+// ── Rich avatar-defense telemetry (plan §0-C.8). Separate events for the active
+//    checks, each weighted display signal, the camera-path integrity, and the
+//    device-context comparison — all email/phone-stamped via telemetry(). ────────
+function emitDefenseTelemetry(
+  env: Env, uid: string, sid: string, sess: V3Session, defense: AvatarDefenseSignals,
+  capMeta: CaptureMeta | null, deviceCtx: DeviceContextEvidence,
+): void {
+  // liveness_active_check — one per scheduled active probe (flash, then vibrate).
+  const flashes = sess.active_checks?.flash_sequence ?? [];
+  const flashEvents = capMeta?.flash_events ?? [];
+  flashes.forEach((f, i) => {
+    void telemetry(env, uid, "liveness_active_check", {
+      session_id: sid, check: "flash",
+      scheduled: f.t_offset_ms, actual: flashEvents[i]?.t_actual_ms ?? null,
+      correlation_score: defense.flash_correlation_score, color: f.color, v3: true,
+    });
+  });
+  if (sess.active_checks?.vibrate) {
+    void telemetry(env, uid, "liveness_active_check", {
+      session_id: sid, check: "vibrate",
+      scheduled: sess.active_checks.vibrate.t_offset_ms,
+      actual: capMeta?.vibrate_event?.t_actual_ms ?? null,
+      correlation_score: null, v3: true,
+    });
+  }
+  // liveness_display_signal — one per weighted display signal (value/weight/total).
+  for (const s of defense.display_signals) {
+    void telemetry(env, uid, "liveness_display_signal", {
+      session_id: sid, signal: s.signal, value: s.value, weight: s.weight,
+      score_total: defense.display_suspicion_score, v3: true,
+    });
+  }
+  // liveness_camera_path — the device-integrity summary (verbatim play_integrity).
+  void telemetry(env, uid, "liveness_camera_path", {
+    session_id: sid,
+    rooted: defense.camera_path.rooted, emulator: defense.camera_path.emulator,
+    virtual_camera: defense.camera_path.virtual_camera, instrumentation: defense.camera_path.instrumentation,
+    play_integrity: defense.camera_path.play_integrity, compromised: defense.camera_path.compromised, v3: true,
+  });
+  // liveness_device_context — informational new-device / new-country signal.
+  void telemetry(env, uid, "liveness_device_context", {
+    session_id: sid, changed: deviceCtx.changed, new_country: deviceCtx.new_country,
+    new_device: deviceCtx.new_device, v3: true,
   });
 }
 
@@ -739,7 +927,7 @@ async function retainPassEvidence(env: Env, uid: string, sid: string, frameBufs:
   try {
     if (thumb) {
       await env.VERIFICATION.put(thumbKey, thumb, {
-        customMetadata: { liveness_verdict: "pass", retain: "24h", ruleset: LIVENESS_RULESET_V3_0 },
+        customMetadata: { liveness_verdict: "pass", retain: "24h", ruleset: RULESET },
       });
     }
   } catch { /* best-effort */ }
@@ -756,6 +944,7 @@ async function discardEvidence(env: Env, uid: string, sid: string): Promise<void
   try { await env.TOKENS.delete(sessionKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(deviceRepKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(edgeCtxKvKey(uid, sid)); } catch { /* */ }
+  try { await env.TOKENS.delete(captureMetaKvKey(uid, sid)); } catch { /* */ }
 }
 // Fail/review: tag the video with the verdict retention window, THEN discard the
 // transient copy. (For fail we could keep 7d for appeal; here we tag then rely on
@@ -768,7 +957,7 @@ async function tagAndDiscard(env: Env, uid: string, sid: string, state: "fail" |
     if (obj) {
       // Re-put with the retention tag so lifecycle expires it (fail 7d).
       await env.VERIFICATION.put(key, await obj.arrayBuffer(), {
-        customMetadata: { liveness_verdict: state, retain: "7d", ruleset: LIVENESS_RULESET_V3_0 },
+        customMetadata: { liveness_verdict: state, retain: "7d", ruleset: RULESET },
       }).catch(() => {});
     }
   } catch { /* best-effort */ }
@@ -776,6 +965,7 @@ async function tagAndDiscard(env: Env, uid: string, sid: string, state: "fail" |
   try { await env.TOKENS.delete(sessionKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(deviceRepKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(edgeCtxKvKey(uid, sid)); } catch { /* */ }
+  try { await env.TOKENS.delete(captureMetaKvKey(uid, sid)); } catch { /* */ }
 }
 
 function arraysEqual(a: string[], b: string[]): boolean {

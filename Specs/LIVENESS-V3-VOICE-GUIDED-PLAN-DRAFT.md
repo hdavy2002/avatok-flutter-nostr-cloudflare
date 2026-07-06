@@ -32,6 +32,80 @@ Layered so each cheap layer kills a class of attack before the expensive one run
 
 ---
 
+## 0-C. AI-avatar & second-phone defense layer (2026-07-06)
+
+Added after an owner-ratified security review of the "someone points a second phone playing an AI avatar / a deepfake video / an injected virtual-camera feed at the front camera" threat. Server-side implementation: `worker/src/lib/liveness_avatar_defense.ts` (new module) wired into `runLivenessV3Checks` (`worker/src/routes/liveness_v3.ts`); ruleset stamp bumped **`LIVENESS_RULESET_V3_0` → `LIVENESS_RULESET_V3_1`**; additive migration `worker/migrations/liveness_v3_1_avatar_defense.sql` (does NOT edit the committed `liveness_v3.sql`).
+
+### Design philosophy (obey strictly — this is the whole point of the layer)
+
+- **Suspicion SIGNALS accumulate; no single display/forensic heuristic is a standalone pass/fail rule.** A high combined score → **REVIEW** (or policy escalation), **NEVER an automatic FAIL**. This is the Trust Engine breaker rule applied to anti-spoof: we do not FAIL a real user on a fragile forensic guess.
+- **Extractors produce NUMBERS; versioned weights/thresholds combine them.** Recalibrating detection = editing `DISPLAY_WEIGHTS_V1` (and the threshold constants) — never rewriting the architecture. The scoring framework exists and combines *whatever signals are present*; signals we cannot compute yet return `null` and are documented as extractor TODOs.
+- **Deterministic only. No LLM anywhere** (Trust Engine invariant preserved).
+- **Rejected as fragile (do NOT build):** PRNU sensor fingerprinting, rolling-shutter analysis, frequency-domain / FFT forensics (plan §4-A Tier C — forensic-grade in papers, operationally false-positive-prone).
+
+### Shared client↔server contract
+
+**1. Session response gains `active_checks`** (server-randomized per session, persisted in `liveness_v3_sessions.active_checks`):
+
+```
+active_checks: {
+  flash_sequence: [{ color: "white"|"red"|"blue", t_offset_ms, duration_ms }],  // 2–4 flashes, random colors/timings within the face stage
+  vibrate: { t_offset_ms, duration_ms } | null,
+  challenge_gaps_ms: [ /* random 700–1900 per challenge */ ]
+}
+```
+
+**2. Verify POST body gains optional `capture_meta`** (stored with the session; size-capped ~32KB — an oversize payload is rejected politely with 413 `capture_meta_too_large`, and verify still runs without it, degrading the defense scores to `null`):
+
+```
+capture_meta: {
+  sensor_timeline: [{ t, ax, ay, az, gx?, gy?, gz? }],   // downsampled ≤50 samples
+  luma_timeline:   [{ t, luma }],                        // mean frame luminance ≤60 samples
+  flash_events:    [{ color, t_actual_ms }],
+  vibrate_event:   { t_actual_ms } | null,
+  integrity: { rooted: bool|null, emulator: bool|null, virtual_camera: bool|null, instrumentation: bool|null, play_integrity: string|null },
+  camera:    { model, resolution, fps }
+}
+```
+
+### The checks (all fold into the verdict as REVIEW-class / informational — never FAIL-class)
+
+1. **Flash-response check** — during each scheduled screen flash (`active_checks.flash_sequence` vs client `flash_events`), the `luma_timeline` should show a correlated brightness RISE with plausible latency (<300ms) then decay: a real face lit by the phone screen brightens. → `flash_correlation_score` 0–100. Missing/degraded data → `null` (contributes to REVIEW escalation only under strict policy, never a FAIL).
+2. **Sensor-motion correlation** — during the approach (face bbox growth across sampled frames), `sensor_timeline` should show non-trivial device motion. bbox grows while the accelerometer is flat → `sensor_mismatch` (a static injected feed / propped second phone). → `sensor_correlation_score` 0–100 (deterministic accel variance/energy over the growth window vs thresholds).
+3. **Display-suspicion score** (weighted, versioned `DISPLAY_WEIGHTS_V1`) — signals + default weights: `horizontal_banding +20`, `moire +15`, `pwm_flicker +20` (periodic 50–240Hz luma oscillation aliasing in `luma_timeline`), `rgb_subpixel +25`, `flat_depth +30`, `display_reflection +10`. Computed from normalized Rekognition frame data (sharpness/brightness dynamics), luma-timeline periodicity, and inter-frame brightness dynamics. **Score ≥ 60 → reason code `DISPLAY_SUSPECTED` → verdict REVIEW (never FAIL).**
+4. **Camera-path integrity** — from `capture_meta.integrity`: `rooted`/`emulator`/`virtual_camera`/`instrumentation` true → reason code `CAMERA_PATH_COMPROMISED` → REVIEW + a `policy_escalation` flag (the Policy Engine/Trust Engine decides what escalation means). `play_integrity` string recorded verbatim on the verdict for future enforcement.
+5. **Timing consistency** — flash/vibrate actual-vs-scheduled offsets that are implausibly instant (<200ms reaction) or exactly machine-uniform → `timing_anomaly` → reason code `TIMING_ANOMALY` into the suspicion pool.
+6. **Device-binding evidence** — at verify time compare device context (`capture_meta.camera.model`) + IP country against the account's last verdict row; new device + new country within a short (7-day) window → reason code `DEVICE_CONTEXT_CHANGED` (**informational only** — rides on the verdict + telemetry; the Trust Engine consumes it later; it does **not** block or change the verdict).
+
+### New reason codes (`liveness_rules_v3.ts`) — all REVIEW-class or informational, none FAIL-class
+
+`DISPLAY_SUSPECTED`, `FLASH_MISMATCH`, `SENSOR_MISMATCH`, `CAMERA_PATH_COMPROMISED`, `TIMING_ANOMALY`, `DEVICE_CONTEXT_CHANGED`.
+
+### Verdict row + telemetry
+
+New verdict columns (migration): `display_suspicion_score`, `flash_correlation_score`, `sensor_correlation_score`, `display_signals` (per-signal weighted breakdown), `camera_path` (integrity summary + stashed device/country context), `timing_anomaly`, `policy_escalation`, `device_context_changed`, `capture_meta` (≤32KB). The `liveness_verdict` PostHog event is extended with the three scores, the integrity summary, `defense_codes`, and `ruleset_version=LIVENESS_RULESET_V3_1`. New events (email/phone-stamped): `liveness_active_check` `{check: flash|vibrate, scheduled, actual, correlation_score}`, `liveness_display_signal` `{signal, value, weight, score_total}`, `liveness_camera_path` `{rooted, emulator, virtual_camera, instrumentation, play_integrity}`, `liveness_device_context` `{changed, new_country, new_device}`.
+
+### Priority table (cost-effectiveness — what actually stops injection)
+
+| Priority | Defense | Why |
+|---|---|---|
+| **Top** | Play Integrity / App Attest + camera-path integrity (rooted/emulator/virtual-camera/instrumentation) | Blocks injected feeds at the API door; one hard flag beats any pixel analysis |
+| **Top** | Device reputation / cross-account correlation | One device verifying 80 accounts beats any image forensic (Sentinel evidence buckets) |
+| High | Sensor-motion vs bbox-growth correlation | A propped second phone / static feed doesn't move when the "approach" happens |
+| High | Randomized active checks (flash sequence, vibrate, timing) + flash-response luma correlation | A pre-rendered avatar can't react to a per-session random screen-flash schedule |
+| Medium | Weighted display-suspicion signals (banding/moiré/PWM/sub-pixel/flat-depth/reflection) | Accumulate; combined ≥60 → REVIEW; individually weak, never decisive |
+| **Rejected** | PRNU sensor fingerprinting, rolling-shutter, FFT forensics | Fragile, false-positive-prone — explicitly not built |
+
+### Extractor TODOs (return `null` today; the weighted framework already combines everything present)
+
+- `horizontal_banding` — per-pixel scan-line banding extractor over decoded frames (needs the frame pipeline).
+- `moire` — screen pixel-grid interference detector (grid-domain, **FFT-free** per the rejected-forensics rule).
+- `rgb_subpixel` — RGB sub-pixel structure detector on a high-res face crop (needs the frame pipeline).
+
+The three computed-today display signals are `flat_depth` (from `flat_suspect` fraction + low inter-frame brightness spread), `pwm_flicker` (luma-timeline oscillation ratio), and `display_reflection` (extreme-brightness outlier proxy).
+
+---
+
 ## 0. Why the current screen is dead (root causes — already confirmed via Graphiti/memory)
 
 | Symptom | Root cause | Fix owner |
