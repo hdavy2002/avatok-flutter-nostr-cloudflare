@@ -30,6 +30,16 @@ import { isPremiumAI, premiumUpsell } from "../lib/premium";
 import { enforceAllowance, planLimitBody } from "../lib/usage";
 import { tierOf } from "./plans";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
+import {
+  authorityEnabled,
+  authorityAcquire,
+  authorityTransition,
+  authorityQuery,
+  authorityPreemptForCallback,
+  authorityAbandonReceptionist,
+  authorityRelease,
+  shadowRecord,
+} from "../lib/call_authority"; // control-plane authority — fail-open, flag-gated (see file header)
 
 // Receptionist gating is SUBSCRIPTION-DRIVEN (not a hard premium wall): it reads
 // the OWNER's tier's daily `recept` allowance from plans.ts, which merges the KV
@@ -749,6 +759,48 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
       const kv = await env.TOKENS.get(`call_answered:${callId}`).catch(() => null);
       answered = kv === "true";
     }
+
+    // CONTROL-PLANE AUTHORITY shadow check (§3, §8B): ask the OWNER's authority
+    // whether it independently thinks this call is answered/preempted, and
+    // record the legacy-vs-authority divergence. Best-effort, flag-gated,
+    // fail-open — a slow/erroring authority NEVER blocks or changes this route
+    // unless authorityEnforced is on AND the authority agrees a preempt/connect
+    // happened, in which case we align with the EXISTING `answered` suppression
+    // path below (no new suppression path is introduced).
+    if (authorityEnabled(cfg)) {
+      try {
+        const [queryRes, preemptRes] = await Promise.all([
+          authorityQuery(env, to),
+          authorityPreemptForCallback(env, to, { caller: ctx.uid, call_id: callId }),
+        ]);
+        const authorityPhase = (queryRes?.phase as string | undefined) ?? null;
+        const authorityDecision = (preemptRes?.decision as string | undefined) ?? null;
+        const authoritySaysConnected =
+          authorityPhase === "connected" || authorityPhase === "connecting";
+        const authoritySaysPreempted =
+          authorityDecision === "preempt" || authorityDecision === "busy";
+        const authorityVerdict = authoritySaysConnected || authoritySaysPreempted;
+        void shadowRecord(env, to, "authority_shadow_decision", {
+          call_id: callId,
+          owner: to,
+          caller: ctx.uid,
+          stage: "receptionist_start_answered_check",
+          legacy_answered: answered,
+          authority_phase: authorityPhase,
+          authority_decision: authorityDecision,
+          authority_verdict: authorityVerdict,
+          diverged: answered !== authorityVerdict,
+          enforced: cfg.authorityEnforced === true,
+        });
+        if (cfg.authorityEnforced === true && authorityVerdict && !answered) {
+          // Authority is the enforced source of truth and disagrees with legacy
+          // (legacy said "not answered" but authority says connected/preempted):
+          // align by reusing the EXISTING answered-suppression path below.
+          answered = true;
+        }
+      } catch { /* fail-open — legacy `answered` value stands unchanged */ }
+    }
+
     if (answered) {
       trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_aborted_answered", APP,
         { owner: to, call_id: callId, stage: "scheduled" });
@@ -782,6 +834,32 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
       // no-op reattach as "stay on the session you have").
       return json({ error: "receptionist_unavailable", reason: "reattach_blocked", session_id: existing }, 409);
     }
+  }
+
+  // CONTROL-PLANE AUTHORITY (shadow/read/write, §3): the receptionist session
+  // for `to` (the OWNER) IS going to start at this point — legacy logic has
+  // already decided so above this line. Best-effort, flag-gated, fail-open:
+  // move the OWNER's authority to RECEPTIONIST_ACTIVE with receptionist_target
+  // = the CALLER's uid. On ANY failure/timeout/flag-off this is a pure no-op —
+  // it can never block or alter the legacy start below.
+  if (authorityEnabled(cfg)) {
+    try {
+      const acquireRes = await authorityAcquire(env, to, {
+        peer: ctx.uid,
+        call_id: callId || "",
+        direction: "in",
+        rtc_provider: "unknown",
+      });
+      await authorityTransition(env, to, {
+        to: "receptionist_active",
+        reason: "receptionist_start",
+        // receptionist_target_uid: the DO's current /transition handler does not
+        // persist this field yet (only /preempt-callback sets it) — passed here so
+        // the DO can start honoring it once wired, without another call-site change.
+        ...( { receptionist_target_uid: ctx.uid } as Record<string, unknown> ),
+      });
+      void acquireRes; // shadow-only for now; never read for a legacy decision here
+    } catch { /* fail-open — legacy start proceeds unaffected */ }
   }
 
   const sid = crypto.randomUUID();
@@ -948,6 +1026,18 @@ export async function receptionistFinish(req: Request, env: Env): Promise<Respon
   ).bind(sid, now, reason, Math.round((now - Number(s.started_at)) / 1000)).run();
   await env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {});
   track(env, ctx.uid, "ava_recept_session_failed", APP, { owner: s.owner_uid, reason });
+
+  // CONTROL-PLANE AUTHORITY (§3): the receptionist session is finalizing —
+  // best-effort return the OWNER's authority to idle. Flag-gated, fail-open:
+  // never blocks or affects the response to the caller either way.
+  try {
+    const cfg = await readConfig(env);
+    if (authorityEnabled(cfg) && s.owner_uid) {
+      await authorityAbandonReceptionist(env, String(s.owner_uid), { reason: `receptionist_finish:${reason}` });
+      await authorityRelease(env, String(s.owner_uid), { reason: `receptionist_finish:${reason}` });
+    }
+  } catch { /* fail-open — finalize response below is unaffected */ }
+
   return json({ ok: true, ended: true });
 }
 
