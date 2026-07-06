@@ -73,6 +73,13 @@ export interface Env {
   // deprecated). Hibernatable WS + DO-local SQLite message log. Keyed by uid.
   INBOX: DurableObjectNamespace;
 
+  // Durable Object — per-account call-state control-plane authority (Phase A
+  // plumbing only — dormant). Single writer for call/receptionist state
+  // (epoch CAS + lease + reservations). Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md.
+  // Not read/written by any route yet; gated by authorityShadowEnabled /
+  // authorityReadEnabled / authorityWriteEnabled / authorityEnforced (all off).
+  CALL_STATE_AUTHORITY: DurableObjectNamespace;
+
   // Durable Object — Guardian Sentinel per-user HOT CACHE (S1). Velocity windows,
   // last-N event-id dedup ring, per-bucket score cache. NEVER a system of record —
   // rehydrates from D1 (the append-only sentinel_evidence log). Keyed by uid. DARK

@@ -356,6 +356,15 @@ class_name = "ReceptionRoom"
 name = "RECEPTION_ROOM_CF"
 class_name = "ReceptionRoomCf"
 
+# Per-account call-state control-plane authority (Phase A plumbing only — dormant).
+# Single writer for call/receptionist state (epoch CAS + lease + reservations).
+# Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md. DARK: no route reads/writes it yet;
+# gated by authorityShadowEnabled/authorityReadEnabled/authorityWriteEnabled/
+# authorityEnforced (all default false/legacy in routes/config.ts).
+[[durable_objects.bindings]]
+name = "CALL_STATE_AUTHORITY"
+class_name = "CallStateAuthorityDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -415,6 +424,12 @@ new_sqlite_classes = ["PartyDO"]
 [[migrations]]
 tag = "v12"
 new_sqlite_classes = ["SentinelDO"]
+
+# Per-account call-state control-plane authority DO (Phase A plumbing only —
+# dormant). Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md.
+[[migrations]]
+tag = "v13"
+new_sqlite_classes = ["CallStateAuthorityDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -669,6 +684,12 @@ class_name = "ReceptionRoom"
 name = "RECEPTION_ROOM_CF"
 class_name = "ReceptionRoomCf"
 
+# Per-account call-state control-plane authority (Phase A plumbing only —
+# dormant, mirrored from prod). Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md.
+[[env.staging.durable_objects.bindings]]
+name = "CALL_STATE_AUTHORITY"
+class_name = "CallStateAuthorityDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -719,3 +740,9 @@ new_sqlite_classes = ["PartyDO"]
 [[env.staging.migrations]]
 tag = "v12"
 new_sqlite_classes = ["SentinelDO"]
+
+# Per-account call-state control-plane authority DO (Phase A plumbing only —
+# dormant, mirrored from prod). Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md.
+[[env.staging.migrations]]
+tag = "v13"
+new_sqlite_classes = ["CallStateAuthorityDO"]

@@ -218,6 +218,14 @@ export interface PlatformConfig {
   // hidden, and NOTHING is wired to enforcement. Flip ON via KV (never code).
   guardianGateEnabled: boolean;
   minAppBuild: number;
+  // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md
+  // §5 — protocol-v1/v2 shadow rollout). All default OFF/legacy: CallStateAuthorityDO
+  // is wired (wrangler binding + v13 migration) but fully dormant until these flip.
+  authorityShadowEnabled: boolean;  // shadow-write only, never read for decisions
+  authorityReadEnabled: boolean;    // routes may READ authority state (still legacy writes)
+  authorityWriteEnabled: boolean;   // routes WRITE through the authority DO
+  authorityEnforced: boolean;       // authority verdicts are enforced (legacy path fully replaced)
+  callProtocolVersion: number;      // client/server call-signaling protocol version (1 = legacy)
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -300,6 +308,13 @@ const DEFAULTS: PlatformConfig = {
   guardianInlineBudgetMs: 600,           // G3 fast-lane hard budget (ms) for the single Nemotron moderate() call
   guardianGateEnabled: false,            // U1-lite manual "Require verification" gate — DARK; server modes 403 + client control hidden
   minAppBuild: 0,
+  // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md §5)
+  // — Phase A plumbing only. All OFF/legacy: CallStateAuthorityDO is bound but dark.
+  authorityShadowEnabled: false,
+  authorityReadEnabled: false,
+  authorityWriteEnabled: false,
+  authorityEnforced: false,
+  callProtocolVersion: 1,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
@@ -335,7 +350,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // Whitelist merge — unknown keys are rejected so a typo can't ship a dead flag.
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...DEFAULTS, ...current };
-  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate", "guardianInlineBudgetMs"]);
+  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate", "guardianInlineBudgetMs", "callProtocolVersion"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
