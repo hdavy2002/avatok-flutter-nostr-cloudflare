@@ -176,3 +176,46 @@ export async function presignGetUrl(p: PresignParams): Promise<string> {
   const signature = toHex(await hmac(kSigning, stringToSign));
   return `${u.origin}${u.pathname}?${canonicalQuery}&X-Amz-Signature=${signature}`;
 }
+
+/**
+ * SigV4 query-string presigned PUT URL (Liveness V3 upload). Identical scheme to
+ * [presignGetUrl] but the canonical HTTP method is PUT, so the client can upload
+ * the recorded clip directly to R2's S3 API without the bytes ever passing
+ * through the Worker body (Trust Engine / V3 scale rule: never stream video
+ * through the Worker). The returned URL is a plain `PUT <url>` with the raw body;
+ * no Authorization header needed for `expiresSec` seconds.
+ */
+export async function presignPutUrl(p: PresignParams): Promise<string> {
+  const u = new URL(p.url);
+  const now = p.now ?? new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const expires = String(p.expiresSec ?? 300);
+  const credentialScope = `${dateStamp}/${p.region}/${p.service}/aws4_request`;
+  const signedHeaders = "host";
+
+  const q = new URLSearchParams();
+  q.set("X-Amz-Algorithm", "AWS4-HMAC-SHA256");
+  q.set("X-Amz-Credential", `${p.accessKeyId}/${credentialScope}`);
+  q.set("X-Amz-Date", amzDate);
+  q.set("X-Amz-Expires", expires);
+  q.set("X-Amz-SignedHeaders", signedHeaders);
+  const canonicalQuery = [...q.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+
+  const canonicalRequest = [
+    "PUT",
+    u.pathname,
+    canonicalQuery,
+    `host:${u.host}\n`,
+    signedHeaders,
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, await sha256Hex(canonicalRequest)].join("\n");
+  const kSigning = await signingKey(p.secretAccessKey, dateStamp, p.region, p.service);
+  const signature = toHex(await hmac(kSigning, stringToSign));
+  return `${u.origin}${u.pathname}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}

@@ -179,3 +179,98 @@ queue = "analytics"
 - [ ] KV namespace created
 - [ ] 4 Queues created (moderation, push-notifications, email, analytics)
 - [ ] Secrets set via `wrangler secret put` (CLERK_JWKS_URL, OPENAI_API_KEY, TURN_KEY_API_TOKEN, FCM_SERVICE_ACCOUNT, RESEND_API_KEY)
+
+---
+
+## Liveness V3 — additions (2026-07-06, dark behind `livenessV3Enabled`)
+
+Server side of Liveness V3 (`worker/src/routes/liveness_v3.ts`, provider
+normalization + deterministic rules). EXTENDS V2 — reuses the existing
+`liveness-verify` queue, the `VERIFICATION` R2 bucket (`avatok-verification`),
+`DB_META`, `identity_proofs`, and the `invalidateLevelCache` pattern. Nothing
+below is auto-applied — the owner/orchestrator applies migrations and edits infra.
+
+### 1. D1 migration (apply to DB_META — do NOT auto-apply)
+
+    worker/migrations/liveness_v3.sql
+
+Creates three additive tables: `liveness_v3_sessions`, `liveness_v3_hashes`
+(content-hash dedupe / replay defense), `liveness_v3_verdicts` (append-only).
+
+### 2. Queue — reuse the existing `liveness-verify` queue
+
+No NEW queue. V3 verify messages are sent onto the SAME `liveness-verify` queue
+avatok-api already self-consumes, discriminated by a `v3:true` flag on the body
+(index.ts routes them to `runLivenessV3Checks`). If that queue is not yet created,
+V3 falls back to `ctx.waitUntil` exactly like V2. Once created:
+
+    wrangler queues create liveness-verify   # (shared with V2; create once)
+
+and ensure both the producer binding (`LIVENESS_QUEUE`) and the
+`[[queues.consumers]]` entry for `liveness-verify` exist on avatok-api (they are
+already declared for V2).
+
+### 3. R2 presigned PUT upload — S3 creds required for the production path
+
+The session response hands the client a presigned R2 **PUT** URL so the ≤15 MB
+video never streams through the Worker body (`presignPutUrl` in `aws/sigv4.ts`,
+bucket `avatok-verification`). This needs the R2 S3-API creds already used by
+AvaOLX:
+
+    R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY   # wrangler secret put
+
+If unset, V3 degrades to a Worker-proxied upload (`PUT /api/liveness/v3/upload`) —
+functional for dev/staging but bytes pass through the Worker; set the creds for
+production scale.
+
+### 4. R2 lifecycle rules — expire liveness evidence by verdict (plan §5)
+
+V3 tags objects with `customMetadata`: retained pass thumbnail → `retain=24h`,
+fail/review video → `retain=7d`. R2 lifecycle rules cannot yet filter on custom
+metadata, so drive expiry by **key prefix** instead. Configure lifecycle on the
+`avatok-verification` bucket (Cloudflare dashboard → R2 → bucket → Settings →
+Object lifecycle rules, or via the S3 API):
+
+- Prefix `u/<uid>/livenessv3/` (transient uploads + fail/review videos): **expire
+  after 7 days**. Passes already delete their raw video in-code; this reaps
+  fail/review videos and any orphaned transient uploads.
+- Prefix `liveness/<uid>/` (retained pass thumbnails, shared with V2): keep per the
+  existing V2 retention policy (the green-tick thumbnail must survive for
+  `identity_proofs.evidence_ref`). To honor the "pass thumbnail 24h" target from
+  the plan, add a tighter rule ONLY if the product later stops needing the
+  thumbnail long-term — today the ladder reads it, so it must persist.
+
+Note: the 24h/7d split in the plan is expressed via the `retain` customMetadata
+tag for forward-compat if/when R2 lifecycle gains metadata filters; the prefix
+rule above is the mechanism that actually reaps objects today.
+
+### 5. Optional media-extract binding (frame extraction)
+
+The Workers runtime cannot decode MP4/H.264 in-process. `runLivenessV3Checks`
+looks for an optional `MEDIA_EXTRACT` service binding (a Cloudflare Container /
+media Worker that takes the video + `x-offsets` header and returns base64 JPEG
+frames). Until that binding exists, extraction "fails" cleanly → the pipeline
+records `EXTRACTION_FAILED` → **REVIEW** (never a false FAIL), so V3 is safe to
+ship dark without it. To enable real verification, stand up the extractor and add:
+
+    [[services]]
+    binding = "MEDIA_EXTRACT"
+    service = "<your-media-extract-worker>"
+
+### 6. AWS Rekognition — DetectFaces
+
+V3 uses `DetectFaces` (added to `aws/rekognition.ts`) as the launch `FaceProvider`.
+Needs the AWS creds already named for V2 CompareFaces:
+
+    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION      # wrangler secret put
+
+Without them the pipeline degrades to the Workers AI face-present fallback →
+REVIEW (breaker rule: never FAIL on our infra problem). File the Rekognition
+service-quota raise (~100 TPS) before ramping past 5% (plan §3).
+
+### 7. KV flag
+
+`platform_config.livenessV3Enabled` defaults `false` in code. Remember the
+2026-07-04 lesson: **patch the KV `platform_config` blob** to flip it on — readers
+merge KV OVER code defaults, they do not fall back to a code default that was only
+added after the KV blob was last written.

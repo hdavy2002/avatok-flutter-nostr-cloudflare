@@ -133,6 +133,14 @@ export interface PlatformConfig {
   // run the full server-side LLaVA pipeline, purely for audit/disagreement
   // telemetry (never changes the verdict served to the client).
   livenessAuditSampleRate: number;
+  // Liveness V3 (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md) — voice-guided,
+  // randomized head-and-neck capture, Rekognition DetectFaces via the provider-
+  // normalization + deterministic-rules pipeline (worker/src/routes/liveness_v3.ts).
+  // EXTENDS V2 (never replaces it): V2 stays the default flow. Ships DARK (default
+  // OFF). When ON, the client can open the /api/liveness/v3/* Policy-Engine
+  // entrypoint; while OFF those routes 503 `flag_off`. Flip ON in KV (never code —
+  // 2026-07-04 lesson). Client mirror: RemoteConfig.livenessV3Enabled.
+  livenessV3Enabled: boolean;
   // P6: always-on per-message safety scanning (Nemotron :free via OpenRouter) with
   // red-bubble marking on the recipient. Ships **ON** (this one ships enabled).
   // Async, fail-open — a scan never blocks or delays delivery. Adult opt-out lives
@@ -265,6 +273,7 @@ const DEFAULTS: PlatformConfig = {
   livenessUseRekognition: false,   // Liveness V2 P3: optional AWS CompareFaces same-person (image API, NOT Face Liveness) — OFF; needs AWS creds
   livenessDeviceAuthoritative: false, // [LIVE-DEVAUTH-1] device-authoritative fast path — OFF (dark until device-signal trust is proven)
   livenessAuditSampleRate: 0.08,      // [LIVE-DEVAUTH-1] 8% of device-authoritative verifies also run full LLaVA for disagreement telemetry
+  livenessV3Enabled: false,           // Liveness V3 voice-guided/Rekognition pipeline — DARK; extends V2, flip ON in KV once proven
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified

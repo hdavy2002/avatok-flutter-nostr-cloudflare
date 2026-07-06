@@ -22,6 +22,7 @@ import { runMoney, moneyDlq, type MoneyMsg } from "./money_engine";
 import { setTestClock } from "./clock";
 import { stripeIdentityWebhook, agreementStatus, agreementDoc, agreementAccept } from "./routes/kyc";
 import { livenessStart, livenessUpload, livenessVerify, livenessResult, runLivenessChecks } from "./routes/liveness";
+import { livenessV3Session, livenessV3Upload, livenessV3Verify, livenessV3Result, runLivenessV3Checks } from "./routes/liveness_v3";
 import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
@@ -169,8 +170,13 @@ export default {
         if (batch.queue.startsWith("money-dlq")) {
           await moneyDlq(env, msg.body);
         } else if (batch.queue.startsWith("liveness-verify")) {
-          const { uid, sid } = msg.body as { uid: string; sid: string };
-          await runLivenessChecks(env, uid, sid, undefined);
+          // [LIVENESS-V3] the shared liveness-verify queue now carries BOTH V2
+          // ({uid,sid}) and V3 ({v3:true,uid,sid}) messages. Discriminate on the
+          // `v3` flag so V3 dispatches to runLivenessV3Checks (its own deterministic
+          // Rekognition pipeline) while V2 stays on runLivenessChecks unchanged.
+          const m = msg.body as { v3?: boolean; uid: string; sid: string };
+          if (m.v3) await runLivenessV3Checks(env, m.uid, m.sid, undefined);
+          else await runLivenessChecks(env, m.uid, m.sid, undefined);
         } else {
           await runMoney(env, msg.body as MoneyMsg);
         }
@@ -509,6 +515,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/id/liveness/verify" && req.method === "POST") return await livenessVerify(req, env, ctx);
       // LIVE-V2 P0: async-verify poll target (verify now returns 202 immediately).
       if (p === "/api/id/liveness/result" && req.method === "GET") return await livenessResult(req, env);
+      // [LIVENESS-V3] Policy-Engine entrypoint (dark behind livenessV3Enabled).
+      // Extends V2 — same async liveness-verify queue, Rekognition DetectFaces +
+      // deterministic rules, append-only verdicts. See routes/liveness_v3.ts.
+      if (p === "/api/liveness/v3/session" && req.method === "POST") return await livenessV3Session(req, env);
+      if (p === "/api/liveness/v3/upload" && req.method === "PUT") return await livenessV3Upload(req, env);
+      if (p === "/api/liveness/v3/verify" && req.method === "POST") return await livenessV3Verify(req, env, ctx);
+      if (p === "/api/liveness/v3/result" && req.method === "GET") return await livenessV3Result(req, env);
       // Progressive Identity ladder — guest tier (no auth) + level (Clerk auth).
       if (p === "/api/identity/guest" && req.method === "POST") return await guestCreate(req, env);
       if (p === "/api/identity/guest/check" && req.method === "GET") return await guestHandleCheck(req, env);

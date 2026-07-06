@@ -59,6 +59,64 @@ export async function getLivenessResults(
   return call(env, "GetFaceLivenessSessionResults", { SessionId: sessionId });
 }
 
+// ── DetectFaces (Liveness V3 FaceProvider primary op) ────────────────────────
+// Standard Rekognition IMAGE API. Returns per-face geometry, quality, pose,
+// landmarks, and eye state with ALL attributes. Liveness V3 normalizes the raw
+// response in worker/src/lib/liveness_provider.ts — deterministic rules NEVER
+// read the raw Rekognition shape (Trust Engine §6 uniform-provider rule).
+//
+// This helper throws on transient/API errors (429/ThrottlingException/regional
+// outage) so the V3 pipeline's quota breaker (Rekognition → Workers AI → REVIEW,
+// never FAIL) can catch and degrade. Uses the same SigV4-signed JSON-1.1 `call`.
+
+export interface RekBoundingBox { Width?: number; Height?: number; Left?: number; Top?: number; }
+export interface RekFaceDetail {
+  BoundingBox?: RekBoundingBox;
+  Confidence?: number;                 // 0..100 that this IS a face
+  Sharpness?: number;                  // Quality.Sharpness 0..100
+  Brightness?: number;                 // Quality.Brightness 0..100
+  Pose?: { Roll?: number; Yaw?: number; Pitch?: number };
+  EyesOpen?: { Value?: boolean; Confidence?: number };
+  Eyeglasses?: { Value?: boolean; Confidence?: number };
+  Sunglasses?: { Value?: boolean; Confidence?: number };
+  Quality?: { Sharpness?: number; Brightness?: number };
+}
+export interface DetectFacesResult { FaceDetails: RekFaceDetail[]; }
+
+/**
+ * DetectFaces with ALL attributes on raw image bytes. Returns every detected
+ * face's detail (empty array when no face). Throws on API/throttle/outage so the
+ * V3 breaker can catch it.
+ */
+export async function detectFaces(
+  env: Env,
+  imageBytes: Uint8Array,
+): Promise<DetectFacesResult> {
+  let bin = "";
+  for (let i = 0; i < imageBytes.length; i++) bin += String.fromCharCode(imageBytes[i]);
+  const b64 = btoa(bin);
+  const r = await call<{ FaceDetails?: RekFaceDetail[] }>(env, "DetectFaces", {
+    Image: { Bytes: b64 },
+    Attributes: ["ALL"],
+  });
+  return { FaceDetails: r.FaceDetails ?? [] };
+}
+
+/**
+ * True when a thrown Rekognition error is a quota/availability failure that the
+ * V3 circuit breaker must treat as "degrade to Workers AI / REVIEW, never FAIL"
+ * (Trust Engine §6). Matches 429 / ThrottlingException / ProvisionedThroughput /
+ * ServiceUnavailable / 5xx substrings on the Error message thrown by `call`.
+ */
+export function isRekognitionQuotaOrOutage(err: unknown): boolean {
+  const m = String((err as { message?: string })?.message ?? err ?? "").toLowerCase();
+  return (
+    m.includes(" 429") || m.includes("throttl") || m.includes("provisionedthroughput") ||
+    m.includes("serviceunavailable") || m.includes(" 503") || m.includes(" 500") ||
+    m.includes(" 502") || m.includes(" 504") || m.includes("limitexceeded")
+  );
+}
+
 // ── CompareFaces (LIVE-V2 P3 same-person check) ──────────────────────────────
 // Standard Rekognition IMAGE API (NOT the paid Face Liveness API). Free tier for
 // 12 months. Gated behind platform_config.livenessUseRekognition (default OFF) and
