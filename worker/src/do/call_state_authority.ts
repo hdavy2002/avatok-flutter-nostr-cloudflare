@@ -124,23 +124,16 @@ interface MutationResult {
   actual_epoch?: number;
 }
 
-/** Cache of the last result per mutation_uuid so a duplicate request returns
- *  the same outcome instead of re-executing (§2.5 idempotency). Stored as a
- *  JSON blob on the single call_state row (last_mutation_uuid + a shadow
- *  result column would bloat the row, so we keep the last result in-memory
- *  only — a retried mutation_uuid that arrives after eviction re-derives an
- *  equivalent response from current state, which is safe because the state
- *  itself is already idempotent-applied). */
-interface LastMutationCache {
-  mutation_uuid: string;
-  result: MutationResult;
-}
+/** Idempotency store: every mutation_uuid's response is persisted in the
+ *  `idempotency` SQLite table (see initSchema) so a duplicate mutation
+ *  returns the identical result even after this DO hibernates/evicts and
+ *  is re-instantiated (§2.5). This is the ONLY source of truth for
+ *  idempotency decisions — there is no in-memory fallback. */
 
 export class CallStateAuthorityDO {
   private state: DurableObjectState;
   private env: Env;
   private sql: SqlStorage;
-  private lastMutation: LastMutationCache | undefined; // undefined = not loaded yet this wake
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -186,7 +179,13 @@ export class CallStateAuthorityDO {
          expires_at INTEGER,
          epoch INTEGER
        );
-       CREATE INDEX IF NOT EXISTS idx_reservations_peer ON reservations(peer_uid);`,
+       CREATE INDEX IF NOT EXISTS idx_reservations_peer ON reservations(peer_uid);
+       CREATE TABLE IF NOT EXISTS idempotency (
+         mutation_uuid TEXT PRIMARY KEY,
+         response_json TEXT NOT NULL,
+         created_at INTEGER NOT NULL
+       );
+       CREATE INDEX IF NOT EXISTS idx_idem_created ON idempotency(created_at);`,
     );
   }
 
@@ -310,22 +309,44 @@ export class CallStateAuthorityDO {
     return row;
   }
 
-  /** §2.5: "if idem exists -> return prior; never execute twice." Checked against
-   *  the in-memory cache populated during this DO's current wake. A mutation_uuid
-   *  replayed after the DO was evicted and re-instantiated re-executes — this is
-   *  an accepted narrow gap for Phase A scaffolding (nothing calls this DO yet);
-   *  a durable idempotency table can be added before Phase B dual-write ships. */
+  /** §2.5: "if idem exists -> return prior; never execute twice." Persisted in
+   *  the `idempotency` SQLite table, so a replayed mutation_uuid returns the
+   *  same response even after this DO hibernates/evicts and wakes fresh. */
   private checkIdempotent(mutationUuid: string | undefined): MutationResult | null {
     if (!mutationUuid) return null;
-    if (this.lastMutation && this.lastMutation.mutation_uuid === mutationUuid) {
-      return this.lastMutation.result;
-    }
-    return null;
+    const stored = this.idempotentGet(mutationUuid);
+    return stored != null ? (stored as MutationResult) : null;
   }
 
   private rememberMutation(mutationUuid: string | undefined, result: MutationResult): void {
     if (!mutationUuid) return;
-    this.lastMutation = { mutation_uuid: mutationUuid, result };
+    this.idempotentPut(mutationUuid, result);
+  }
+
+  /** Reads a previously-stored mutation response from SQLite, if any. */
+  private idempotentGet(mutationUuid: string): unknown | undefined {
+    const rows = this.sql
+      .exec(`SELECT response_json FROM idempotency WHERE mutation_uuid = ?`, mutationUuid)
+      .toArray() as unknown as Array<{ response_json: string }>;
+    if (rows.length === 0) return undefined;
+    try {
+      return JSON.parse(rows[0].response_json);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Persists a mutation response keyed by mutation_uuid, and best-effort
+   *  prunes entries older than 1 hour so the table never grows unbounded. */
+  private idempotentPut(mutationUuid: string, response: unknown): void {
+    const now = Date.now();
+    this.sql.exec(
+      `INSERT OR REPLACE INTO idempotency (mutation_uuid, response_json, created_at) VALUES (?,?,?)`,
+      mutationUuid, JSON.stringify(response), now,
+    );
+    try {
+      this.sql.exec(`DELETE FROM idempotency WHERE created_at < ?`, now - 3_600_000);
+    } catch { /* best-effort */ }
   }
 
   /** §2.3: busy ⇔ (phase != idle) OR an active (non-expired) reservation exists.
@@ -465,6 +486,14 @@ export class CallStateAuthorityDO {
     const toPhase = typeof body.to === "string" ? (body.to as CallPhase) : row.phase;
     if (fromPhase && row.phase !== fromPhase) return this.conflict(row.epoch);
     if (!toPhase) return Response.json({ error: "to phase required" }, { status: 400 });
+
+    // Persist the receptionist target when entering RECEPTIONIST_ACTIVE so a later
+    // preemptForCallback can match the caller (§2.5); clear it on leaving the phase.
+    if (typeof body.receptionist_target_uid === "string") {
+      row.receptionist_target_uid = body.receptionist_target_uid;
+    } else if (toPhase !== "receptionist_active" && row.phase === "receptionist_active") {
+      row.receptionist_target_uid = null;
+    }
 
     // Refresh the lease whenever we (re)enter CONNECTED, per §2.4 heartbeat contract.
     if (toPhase === "connected") row.lease_expiry_ms = Date.now() + LEASE_MS;
