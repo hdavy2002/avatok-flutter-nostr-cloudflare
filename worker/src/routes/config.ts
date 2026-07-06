@@ -310,11 +310,11 @@ const DEFAULTS: PlatformConfig = {
   minAppBuild: 0,
   // Call-state control-plane authority (Specs/CALL-CONTROL-PLANE-UNIFIED-PLAN.md §5)
   // — Phase A plumbing only. All OFF/legacy: CallStateAuthorityDO is bound but dark.
-  authorityShadowEnabled: false,
-  authorityReadEnabled: false,
-  authorityWriteEnabled: false,
-  authorityEnforced: false,
-  callProtocolVersion: 1,
+  authorityShadowEnabled: true,   // CALL-AUTH-LIVE-1: authority observes + records vs legacy
+  authorityReadEnabled: true,     // routes may READ authority state
+  authorityWriteEnabled: true,    // routes WRITE call state through the authority DO (fail-open)
+  authorityEnforced: false,       // verdicts NOT yet enforced — one KV flip when shadow data is clean
+  callProtocolVersion: 2,
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
