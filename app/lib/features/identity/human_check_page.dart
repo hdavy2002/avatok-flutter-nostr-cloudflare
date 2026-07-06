@@ -9,6 +9,7 @@ import 'ladder_api.dart';
 import 'liveness_check_screen.dart';
 import 'liveness_v2/liveness_v2_screen.dart';
 import 'liveness_v2/pending_session.dart';
+import 'liveness_v3/liveness_v3_screen.dart';
 
 /// STREAM H (AI Messenger Batch) — the onboarding "human check" hard gate.
 ///
@@ -69,7 +70,9 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
     // (app backgrounded mid-check), reopen the V2 screen so it can resume that
     // session's result instead of making the user redo the whole video. The V2
     // screen's initState does the actual poll/render. Flag-gated so V1 is unchanged.
-    if (RemoteConfig.livenessV2Enabled) _resumePendingV2();
+    if (RemoteConfig.livenessV3Enabled || RemoteConfig.livenessV2Enabled) {
+      _resumePendingV2();
+    }
   }
 
   Future<void> _resumePendingV2() async {
@@ -94,13 +97,27 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
     try {
       ok = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
-              builder: (_) => RemoteConfig.livenessV2Enabled
-                  ? LivenessV2Screen(
-                      // [LIVE-UI-3] pass listing context so the Accepted screen
-                      // shows a "Create a listing" CTA (else "Done").
-                      listingContext: widget.source == HumanCheckSource.listing,
-                    )
-                  : const LivenessCheckScreen(),
+              builder: (_) {
+                // V3 (voice-guided) takes precedence when its flag is on, then V2
+                // (ML-Kit-gated), else V1. `requester` records who invoked the
+                // check (plan §0-A): a marketplace listing gate vs onboarding.
+                if (RemoteConfig.livenessV3Enabled) {
+                  return LivenessV3Screen(
+                    listingContext: widget.source == HumanCheckSource.listing,
+                    requester: widget.source == HumanCheckSource.listing
+                        ? 'marketplace_publish'
+                        : 'onboarding',
+                  );
+                }
+                if (RemoteConfig.livenessV2Enabled) {
+                  return LivenessV2Screen(
+                    // [LIVE-UI-3] pass listing context so the Accepted screen
+                    // shows a "Create a listing" CTA (else "Done").
+                    listingContext: widget.source == HumanCheckSource.listing,
+                  );
+                }
+                return const LivenessCheckScreen();
+              },
             ),
           ) ==
           true;

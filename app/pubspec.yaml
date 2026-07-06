@@ -98,6 +98,13 @@ dependencies:
   screen_brightness: ^2.1.0
   file_picker: ^8.1.6
   audioplayers: ^6.1.0
+  # Liveness V3 voice fallback (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §1):
+  # when a language's pre-recorded Ava clip is missing (download failed / not yet
+  # cached), speak the localized instruction via the device's built-in TTS engine
+  # so the flow is NEVER blocked on a voice pack. NATIVE plugin (AVSpeechSynthesizer
+  # / android.speech.tts) — must be validated by a CI APK build; the app degrades
+  # gracefully (English clips + on-screen text) if TTS init fails on a device.
+  flutter_tts: ^4.2.0
   record: ^7.0.0
   # Live voice translation — raw 24 kHz PCM playback of Gemini Live Translate
   # output (lib/features/translation/translation_engine.dart).
@@ -235,6 +242,11 @@ flutter:
     - assets/stickers/ava_hearts/
     - assets/stickers/ava_reactions/
     - assets/stickers/ava_paws/
+    # Liveness V3 (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §1): English Ava
+    # voice clips bundled in the APK so a check always works offline. Non-English
+    # packs download from the CDN at runtime (kVoicePackCdnBase). Filenames MUST
+    # match LivenessPackManifest in features/identity/liveness_v3/voice_packs.dart.
+    - assets/liveness_voice/en/
   # AvaTOK design system fonts (bundled — offline-safe; see AVATOK-DESIGN-SYSTEM):
   # Nunito is the single app-wide font (owner request 2026-06-19).
   fonts:

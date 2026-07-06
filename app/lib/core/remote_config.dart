@@ -135,6 +135,14 @@ class RemoteConfig {
   /// `livenessV2Enabled: true` in KV `platform_config` once V2 pass-rate is
   /// proven. Mirrors config.ts.
   static bool get livenessV2Enabled => _b('livenessV2Enabled', false);
+  /// Liveness V3 (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md): the voice-guided
+  /// flow — language picker, on-device ML Kit coaching with pre-recorded Ava voice
+  /// packs, server-randomized challenges, per-stage no-dead-screen watchdog, and
+  /// background upload to presigned R2. Ships DARK (default OFF); while off the V2
+  /// [LivenessV2Screen] (or V1) is used unchanged. Flip `livenessV3Enabled: true`
+  /// in KV `platform_config` once V3 pass-rate is proven. Mirrors config.ts. Takes
+  /// precedence over V2 when both are on.
+  static bool get livenessV3Enabled => _b('livenessV3Enabled', false);
   /// STREAM H (AI Messenger Batch): onboarding "human check" hard gate. When ON,
   /// every account must pass liveness the moment it's created (D12) and existing
   /// unverified users are redirected on app open (D13, non-dismissible). Server

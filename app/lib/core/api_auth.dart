@@ -143,6 +143,14 @@ class ApiAuth {
     return _tracked(url, () => http.post(Uri.parse(url), headers: headers, body: Uint8List.fromList(bytes)).timeout(timeout));
   }
 
+  /// Signed PUT with a raw byte body (e.g. the Liveness V3 worker-proxy upload
+  /// fallback, which is `requireUser`-authed on the Worker).
+  static Future<http.Response> putBytes(String url, List<int> bytes,
+      {Map<String, String>? extraHeaders, Duration timeout = const Duration(seconds: 60)}) async {
+    final headers = await _headers('PUT', url, body: bytes, base: extraHeaders);
+    return _tracked(url, () => http.put(Uri.parse(url), headers: headers, body: Uint8List.fromList(bytes)).timeout(timeout));
+  }
+
   /// Signed GET (for authed reads like /api/library).
   static Future<http.Response> getSigned(String url,
       {Duration timeout = const Duration(seconds: 8)}) async {

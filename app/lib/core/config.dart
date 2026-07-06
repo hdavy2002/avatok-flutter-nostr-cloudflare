@@ -230,6 +230,17 @@ const String kLivenessStartUrl = '$kIdBase/liveness/start';   // POST -> {sessio
 const String kLivenessUploadUrl = '$kIdBase/liveness/upload'; // POST ?session=&part= (raw bytes)
 const String kLivenessVerifyUrl = '$kIdBase/liveness/verify'; // POST {session_id} → 202 pending
 const String kLivenessResultUrl = '$kIdBase/liveness/result'; // GET ?session= → pending | done (LIVE-V2 P0)
+// Liveness V3 (voice-guided, randomized challenges) — Specs/LIVENESS-V3-VOICE-
+// GUIDED-PLAN-DRAFT.md. The session endpoint returns {session_id, nonce,
+// challenges[], overlay{shape,position,offset_x,offset_y,size_factor},
+// capture_offsets[], upload{mode,url|path,method,object_key,max_bytes},
+// max_video_bytes, ttl_seconds, ruleset_version}. verify/result are the DEDICATED
+// V3 routes below (NOT the V2 /api/id/liveness/* ones) — the verdict arrives via
+// the same async 202→poll/push path but keyed by the V3 pipeline.
+const String kLivenessV3SessionUrl = '$kApiBase/liveness/v3/session'; // POST {policy_id, requester, lang}
+const String kLivenessV3VerifyUrl = '$kApiBase/liveness/v3/verify';   // POST {session_id, object_key?} → 202 pending
+const String kLivenessV3ResultUrl = '$kApiBase/liveness/v3/result';   // GET ?session= → pending | done
+const String kLivenessV3UploadUrl = '$kApiBase/liveness/v3/upload';   // PUT ?session= (worker-proxy fallback, raw bytes)
 
 // Progressive Identity ladder (PROPOSAL-PROGRESSIVE-IDENTITY.md).
 const String kIdentityBase = '$kApiBase/identity';

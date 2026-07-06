@@ -37,6 +37,7 @@ import 'features/auth/restore_screen.dart';
 import 'features/avatok/contacts.dart';
 import 'features/identity/human_check_page.dart';
 import 'features/identity/ladder_api.dart';
+import 'features/identity/liveness_v3/voice_packs.dart';
 import 'features/onboarding/handle_claim_screen.dart';
 import 'features/onboarding/onboarding_flow.dart';
 import 'features/onboarding/welcome_screen.dart';
@@ -155,6 +156,22 @@ Future<void> _deferredInit({int? firstFrameMs}) async {
   // (signed-in) account has NOT granted it, show a one-time prompt deep-linking
   // to the FSI settings page. Non-blocking + fully guarded.
   unawaited(_maybePromptFullScreenIntent());
+  // Liveness V3 (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §1): after first
+  // launch completes, quietly background-download the Ava voice pack for the
+  // device locale (~1 MB, 15 clips) so a non-English check is warm before the
+  // user reaches it. Device-wide public asset (NOT account-scoped). English is
+  // bundled, so this is a no-op for en; gated on the V3 flag + non-en locale.
+  unawaited(_maybePrefetchLivenessVoicePack());
+}
+
+/// Fire-and-forget: warm the device-locale liveness voice pack (V3 only).
+Future<void> _maybePrefetchLivenessVoicePack() async {
+  try {
+    if (!RemoteConfig.livenessV3Enabled) return;
+    final lang = LivenessVoice.deviceLang();
+    if (lang == 'en') return; // bundled in the APK
+    await LivenessVoice.I.prefetchLocale(lang);
+  } catch (_) {/* never block boot / never surface — best-effort */}
 }
 
 /// CALL-FSI-1: one-time "show calls on lock screen" prompt.
