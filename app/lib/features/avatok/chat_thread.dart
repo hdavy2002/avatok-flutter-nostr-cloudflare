@@ -94,6 +94,7 @@ import 'chat_media_cards.dart';
 import '../messaging/widgets/link_preview_card.dart';
 import 'data.dart';
 import '../ava_guardian/guardian_settings.dart'; // shield watchdog (Nemotron) per-chat toggle
+import '../identity/human_check_page.dart'; // U1-lite: guardian verify_request → face check
 import 'live_location.dart';
 import 'group_info_screen.dart';
 import 'media.dart';
@@ -7488,6 +7489,72 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  // U1-lite: a Guardian human-verification REQUEST (meta.verify_request) posted
+  // privately to ME because the other participant asked Ava to confirm a human
+  // is behind this account. Rendered by _verifyRequestBubble.
+  bool _isVerifyRequest(_Msg m) {
+    if (m.special != 'ava_private') return false;
+    final meta = m.extra?['meta'];
+    return meta is Map && meta['verify_request'] == true;
+  }
+
+  /// Lilac request card: warning text + "Start face check" → the existing
+  /// liveness [HumanCheckPage] (source: guardian). On PASS the server-side
+  /// liveness success path calls markGatePassed() → the chat's gate flips to
+  /// 'passed' with no further client work; we just confirm with a toast.
+  Widget _verifyRequestBubble(_Msg m) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
+        decoration: BoxDecoration(
+          color: Zine.lilac,
+          border: Border.all(color: Zine.ink, width: 2),
+          boxShadow: Zine.shadowXs,
+          borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16), topRight: Radius.circular(16),
+              bottomLeft: Radius.circular(4), bottomRight: Radius.circular(16)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            PhosphorIcon(PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill), size: 14, color: Zine.ink),
+            const SizedBox(width: 5),
+            Text('AVA · HUMAN CHECK', style: TextStyle(color: Zine.ink, fontSize: 9.5,
+                fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+          ]),
+          const SizedBox(height: 4),
+          Text(m.text, style: TextStyle(color: Zine.ink, fontSize: 13.5, height: 1.3,
+              fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Zine.ink, foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                Analytics.capture('verify_human_started', {'trigger': 'chat_prompt'});
+                final passed = await Navigator.of(context).push<bool>(MaterialPageRoute(
+                    builder: (_) => const HumanCheckPage(source: HumanCheckSource.guardian)));
+                if (passed == true && mounted) {
+                  _toast('Verified — thanks for keeping chats human.');
+                }
+              },
+              child: const Text('Start face check',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(m.time, style: TextStyle(color: Zine.ink.withValues(alpha: 0.55), fontSize: 10)),
+        ]),
+      ),
+    );
+  }
+
   // A guardian SAFETY ALERT (private warning Ava posts to the at-risk user).
   bool _isGuardianWarn(_Msg m) {
     if (m.special != 'ava_private') return false;
@@ -7804,6 +7871,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // SOFT-DELETED (by me) — a slim "deleted" pill with an Undo so I can recover my
     // own data. The real content stays in `m` (hidden, not erased) until I confirm.
     if (m.hidden) return _hiddenBubble(m);
+    // U1-lite: a Guardian "verify you're human" request from the other side —
+    // renders as a lilac card with a Start-face-check button (opens the existing
+    // liveness HumanCheckPage; on PASS the server flips the gate automatically).
+    if (_isVerifyRequest(m)) return _verifyRequestBubble(m);
     // RED FLAGS — Ava's safety alert, and any incoming message Ava flagged as
     // unsafe. Both render red/white so the danger is obvious to the child.
     if (_isGuardianWarn(m)) return _redFlagBubble(m, 'AVA · SAFETY ALERT');

@@ -31,7 +31,11 @@ import 'liveness_v3/liveness_v3_screen.dart';
 ///      create a marketplace listing (owner decision 2026-07-03: liveness is a
 ///      one-time "sell" gate, not an onboarding gate). The user can back out; on
 ///      PASS the server flips kyc_status → 'verified' and they never see it again.
-enum HumanCheckSource { signup, redirect, listing }
+///   4. GUARDIAN — a DISMISSIBLE check opened from a Guardian "verify you're
+///      human" request in a chat (U1-lite require-verify). On PASS the server's
+///      liveness success path calls markGatePassed() → the guardian gate for the
+///      requesting chat flips to 'passed' automatically.
+enum HumanCheckSource { signup, redirect, listing, guardian }
 
 class HumanCheckPage extends StatefulWidget {
   const HumanCheckPage({
@@ -59,6 +63,7 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
         HumanCheckSource.signup => 'signup',
         HumanCheckSource.redirect => 'redirect',
         HumanCheckSource.listing => 'listing',
+        HumanCheckSource.guardian => 'guardian',
       };
 
   @override
