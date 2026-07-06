@@ -29,7 +29,7 @@ import 'voice_packs.dart';
 ///   • off-centre / tilted    → face-left/right/up/down nudges toward centre
 ///   • stable + framed ≥2s    → holdStill (the caller starts/continues recording)
 class CoachingEngine {
-  CoachingEngine({required this.controller, this.onState, this.onLuma});
+  CoachingEngine({required this.controller, this.onState, this.onLuma, this.onImage});
 
   final CameraController controller;
 
@@ -41,6 +41,12 @@ class CoachingEngine {
   /// second image stream — the coach already decodes each frame. Best-effort;
   /// the collector downsamples to ≤60 samples for the verify body.
   final void Function(double meanLuma)? onLuma;
+
+  /// Fired on every processed frame with the raw [CameraImage] so the interim
+  /// client-frame path ([FrameCapture]) can grab stills at the server capture
+  /// offsets WITHOUT opening a second image stream (the coach already owns it).
+  /// Best-effort; the collector decides whether this frame is a planned capture.
+  final void Function(CameraImage image)? onImage;
 
   final FaceDetector _detector = FaceDetector(
     options: FaceDetectorOptions(
@@ -92,7 +98,13 @@ class CoachingEngine {
   }
 
   void _onFrame(CameraImage image) {
-    if (!_running || _busy) return;
+    if (!_running) return;
+    // Offer every frame to the interim client-frame collector (cheap timestamp
+    // check; it self-throttles and encodes at most one frame at a time). Done
+    // before the ML Kit busy-guard so a frame can be captured even while the
+    // previous frame is still being analysed.
+    onImage?.call(image);
+    if (_busy) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastMs < _minFrameGapMs) return;
     _lastMs = now;

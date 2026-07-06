@@ -19,6 +19,7 @@ import '../liveness_v2/stage_chrome.dart';
 import 'active_checks.dart';
 import 'challenge_session.dart';
 import 'coaching_engine.dart';
+import 'frame_capture.dart';
 import 'language_picker_step.dart';
 import 'overlay_painter.dart';
 import 'sensor_capture.dart';
@@ -112,6 +113,14 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   Color? _flashColor; // non-null → full-screen colour wash is showing
   IntegrityReport _integrity = const IntegrityReport();
   CameraInfo _cameraInfo = const CameraInfo();
+
+  // ── Interim client-frame path (plan §0-C) ──
+  // Grabs still JPEGs at the session capture_offsets from the coach's camera
+  // stream and uploads them in the verify body so the server has a frame set
+  // WITHOUT the (not-yet-bound) MEDIA_EXTRACT decoder. See frame_capture.dart.
+  FrameCapture? _frameCapture;
+  int _sensorOrientation = 0;
+  CameraLensDirection _lensDirection = CameraLensDirection.front;
 
   // Fail state.
   List<String> _failMessages = const [];
@@ -364,6 +373,8 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   }
 
   void _captureCameraInfo(CameraDescription desc) {
+    _sensorOrientation = desc.sensorOrientation;
+    _lensDirection = desc.lensDirection;
     try {
       final ps = _cam?.value.previewSize;
       _cameraInfo = CameraInfo(
@@ -379,10 +390,20 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   void _startCoaching() {
     final cam = _cam;
     if (cam == null) return;
+    // Interim client-frame collector (plan §0-C). Built here so it can receive the
+    // coach's stream frames; armed only once recording actually starts.
+    _frameCapture = FrameCapture(
+      captureOffsets: _session?.captureOffsets ?? const [],
+      sensorOrientation: _sensorOrientation,
+      lensDirection: _lensDirection,
+    );
     final coach = CoachingEngine(
       controller: cam,
       onState: _onCoachState,
       onLuma: _onLuma,
+      onImage: (image) {
+        if (_recording) _frameCapture?.offer(image);
+      },
     );
     _coach = coach;
     unawaited(coach.start());
@@ -451,6 +472,12 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _scheduleActiveChecks();
     // Safety cap on the clip length (plan §3 — ≤~20s, 720p).
     final capS = _session?.maxClipSeconds ?? 20;
+    // Arm the interim client-frame capture over the expected clip window so the
+    // server capture_offsets map onto real record-start-relative times (plan §0-C).
+    _frameCapture?.arm(
+      recordStartMs: _recordStartMs,
+      expectedClipMs: capS * 1000,
+    );
     _recordCap = Timer(Duration(seconds: capS), () {
       Analytics.capture('liveness_record_capped', {'seconds': capS, 'v': 3});
       _finishCapture();
@@ -745,12 +772,24 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
 
     // 2) Kick the async V3 verify + persist the session for resume-on-reopen.
     //    Echo the object_key from the upload contract so the pipeline finds the
-    //    exact R2 object.
+    //    exact R2 object. Also attach the INTERIM client frames (plan §0-C): still
+    //    JPEGs the server uses as its frame set until MEDIA_EXTRACT exists.
+    final captured = _frameCapture?.frames ?? const <CapturedFrame>[];
+    if (captured.isNotEmpty) {
+      final totalBytes = captured.fold<int>(0, (a, f) => a + f.jpeg.lengthInBytes);
+      Analytics.capture('liveness_frames_uploaded', {
+        'count': captured.length,
+        'bytes': totalBytes,
+        'source': 'client',
+        'v': 3,
+      });
+    }
     await LivenessPendingSession.set(session.sessionId);
     final r = await LivenessV3Api.verify(
       session.sessionId,
       objectKey: session.upload.objectKey,
       captureMeta: _captureMeta,
+      frames: captured,
     );
     if (!mounted) return;
     if (r.pending) {
@@ -818,6 +857,8 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _flashColor = null;
     _recordStartMs = 0;
     _captureMeta = null;
+    _frameCapture?.reset();
+    _frameCapture = null;
     _session = null;
     _retries++;
     final toPhone = _phoneStart && !_phoneVerified;

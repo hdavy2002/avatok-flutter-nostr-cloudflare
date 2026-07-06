@@ -104,6 +104,14 @@ New verdict columns (migration): `display_suspicion_score`, `flash_correlation_s
 
 The three computed-today display signals are `flat_depth` (from `flat_suspect` fraction + low inter-frame brightness spread), `pwm_flicker` (luma-timeline oscillation ratio), and `display_reflection` (extreme-brightness outlier proxy).
 
+### Interim frame path (client-supplied frames — 2026-07-06)
+
+Cloudflare Workers cannot decode H.264/MP4 in-process, and the long-term server-side `MEDIA_EXTRACT` service binding **does not exist yet**. Consequence: every verify hit `extractFrames()` → `media_extract_unbound` → `EXTRACTION_FAILED` → `REVIEW`, so **no PASS was ever producible**. Interim fix: the **client** captures still JPEG frames from the same ML Kit camera stream the coach already decodes, at the session's server-designated `capture_offsets` (fractions of the face stage), and uploads them in the verify body.
+
+- **Contract.** Verify body gains `frames: [{t_offset_ms:int, jpeg_b64:string}]`. Caps: **≤6 frames**, **≤200 KB each**, **<~1 MB total** (base64), each JPEG **≤640 px** long edge, **quality ~80**. Encoding is a pure-Dart YUV/NV21/BGRA → RGB → JPEG in `app/lib/features/identity/liveness_v3/frame_capture.dart` (no `takePicture`, so it never interrupts the active video recording). The video clip is still uploaded to R2 as before; the video becomes optional when frames are present.
+- **Server behaviour** (`worker/src/routes/liveness_v3.ts`, `runLivenessV3Checks` §3a). If `frames[]` is present it is the frame set and **MEDIA_EXTRACT is skipped**; if absent, the existing extractor path runs unchanged (`extractFrames` + its TODO stay intact as the **long-term hardened path**). Verdicts carry `frame_source` ∈ {`client`, `server_extract`, `none`} in the `liveness_v3_verdicts` row (additive migration `liveness_v3_2_frame_source.sql`) and on every `liveness_verify_start` / `liveness_verdict` / `liveness_frames_uploaded` telemetry event.
+- **Security — this is an interim trust tradeoff.** Client frames are **attacker-controllable pre-attestation** (the client can send any JPEGs). `frame_source:"client"` is load-bearing for fraud analytics: PASS rates must be segmentable by provenance. Mitigations already in place: **per-frame content-hash dedupe** (a set of byte-identical stills = one image copied N times = replay/2D tell; collapsed, and <2 unique frames → `EXTRACTION_FAILED`/REVIEW), **CompareFaces consistency** across frames + vs the account's existing proof, the **avatar-defense display/timing/sensor/integrity signals**, and the replay content-hash (hashes the frame set when no video is present). **Future hardening:** Play Integrity attestation enforcement, and cutting back to server-side `MEDIA_EXTRACT` decode once the binding ships (at which point client frames can be demoted to a corroborating signal or dropped).
+
 ---
 
 ## 0. Why the current screen is dead (root causes — already confirmed via Graphiti/memory)

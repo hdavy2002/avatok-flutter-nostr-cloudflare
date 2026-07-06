@@ -1,0 +1,28 @@
+-- Liveness V3.2 — INTERIM client-frame path: frame_source provenance column
+-- (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §0-C "Interim frame path", 2026-07-06).
+--
+-- ADDITIVE ONLY. Does NOT edit the already-committed migrations
+-- (worker/migrations/liveness_v3.sql, liveness_v3_1_avatar_defense.sql).
+--
+-- WHY: Workers cannot decode H.264/MP4 in-process, and the long-term MEDIA_EXTRACT
+-- service binding does not exist yet — so every verify hit EXTRACTION_FAILED →
+-- REVIEW and no PASS was ever producible. The interim path lets the CLIENT upload
+-- still JPEG frames (at the session's capture_offsets) alongside the video; the
+-- server uses those as the frame set and skips MEDIA_EXTRACT.
+--
+-- Client frames are attacker-controllable pre-attestation, so EVERY verdict records
+-- whether its frames came from the client ("client") or the server extractor
+-- ("server_extract"). This column is load-bearing for fraud analytics: a fraud
+-- review must be able to segment verdicts by frame provenance.
+--
+-- Applied to DB_META (same shard as the base V3 tables).
+-- DO NOT apply automatically — the orchestrator/owner applies migrations.
+-- SQLite/D1 has no "ADD COLUMN IF NOT EXISTS"; a re-run erroring on "duplicate
+-- column" is benign (idempotent-by-once-at-rollout, same convention as v3_1).
+
+-- ── Verdict provenance of the frames the decision was computed on. ────────────
+-- 'client'         → frames were client-supplied stills (INTERIM trust tradeoff).
+-- 'server_extract' → frames were extracted server-side via MEDIA_EXTRACT (hardened).
+-- 'none'           → no frames (missing video / replay / extraction failure bail-outs).
+-- NULL for verdict rows written before this rollout.
+ALTER TABLE liveness_v3_verdicts ADD COLUMN frame_source TEXT;  -- client | server_extract | none | NULL

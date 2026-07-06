@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../../core/api_auth.dart';
 import '../../../core/config.dart';
 import 'active_checks.dart';
+import 'frame_capture.dart';
 import 'voice_packs.dart';
 
 /// Liveness V3 — SESSION + CHALLENGE client (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-
@@ -79,15 +80,29 @@ class LivenessV3Api {
   /// the exact R2 object. [captureMeta] carries the V3 active-checks evidence
   /// (sensor/luma timelines, flash/vibrate fire times, integrity, camera) — kept
   /// ≤32 KB by [CaptureMeta.toJsonCapped]. Absent → body unchanged.
+  ///
+  /// [frames] is the INTERIM client-frame path (plan §0-C "Interim frame path"):
+  /// still JPEGs captured at the session capture_offsets, base64-encoded into
+  /// `frames: [{t_offset_ms, jpeg_b64}]`. The server uses them as its frame set
+  /// (skipping the not-yet-bound MEDIA_EXTRACT decoder) and stamps the verdict
+  /// frame_source:"client". The whole body is kept <1MB by the ≤6 × ≤200KB caps
+  /// enforced at capture time (frame_capture.dart) and again on the server.
   static Future<LivenessV3Outcome> verify(
     String sessionId, {
     String? objectKey,
     CaptureMeta? captureMeta,
+    List<CapturedFrame> frames = const [],
   }) async {
     try {
       final body = <String, dynamic>{'session_id': sessionId};
       if (objectKey != null && objectKey.isNotEmpty) body['object_key'] = objectKey;
       if (captureMeta != null) body['capture_meta'] = captureMeta.toJsonCapped();
+      if (frames.isNotEmpty) {
+        body['frames'] = [
+          for (final f in frames)
+            {'t_offset_ms': f.tOffsetMs, 'jpeg_b64': base64Encode(f.jpeg)},
+        ];
+      }
       final r = await ApiAuth.postJson(kLivenessV3VerifyUrl, body);
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       if (j['status'] == 'done' || j.containsKey('verdict')) {

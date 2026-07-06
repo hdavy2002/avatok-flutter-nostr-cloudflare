@@ -15,7 +15,10 @@
 //        → {session_id, nonce, challenges[], overlay, capture_offsets[],
 //           upload{url|part_path, method, max_bytes}}
 //   POST /api/liveness/v3/verify  {session_id, object_key?, device_report?,
-//                                   client_sequence?[]}  → 202 {status:"pending"}
+//                                   client_sequence?[], capture_meta?,
+//                                   frames?:[{t_offset_ms,jpeg_b64}]} → 202 pending
+//        (frames[] is the INTERIM client-frame path — plan §0-C "Interim frame
+//         path" — used until the MEDIA_EXTRACT server-decode binding exists.)
 //   GET  /api/liveness/v3/result?session=<sid>          → {status} | verdict
 //
 // Verify runs ASYNC on the SAME `liveness-verify` queue as V2 (index.ts self-
@@ -67,6 +70,14 @@ const MAX_VIDEO_BYTES = 15_000_000;     // 15 MB cap (plan §3 upload path)
 const RESULT_TTL_S = 3600;              // verdict cached in KV 1h for the poll
 const MAX_ATTEMPTS_24H = 20;            // per-account/day abuse+cost guard (matches V2)
 const SAMPLE_FRAMES = 6;                // frames extracted per verify (plan §2.1)
+// ── Interim client-frame path limits (plan §0-C "Interim frame path"). ─────────
+// Workers can't decode MP4 and the MEDIA_EXTRACT binding doesn't exist yet, so
+// until it does the CLIENT uploads still JPEG frames at the session capture_offsets
+// alongside the video. Hard caps keep the (base64) verify body <1MB and bound the
+// per-frame Rekognition spend. See runLivenessV3Checks §3b + the security note.
+const MAX_CLIENT_FRAMES = 6;            // ≤6 frames (matches SAMPLE_FRAMES)
+const MAX_CLIENT_FRAME_BYTES = 200_000; // ≤200KB per decoded JPEG (plan §1)
+const MAX_CLIENT_FRAMES_TOTAL_BYTES = 900_000; // whole frame set <~1MB decoded
 // Rough per-check Rekognition cost estimate (DetectFaces ~ $0.001/image). Used
 // only for the cost_usd_estimate on the verdict row + telemetry, never a decision.
 const REK_COST_PER_IMAGE = 0.001;
@@ -139,6 +150,9 @@ const resultKvKey = (uid: string, sid: string) => `livenessv3:result:${uid}:${si
 const deviceRepKvKey = (uid: string, sid: string) => `livenessv3:devrep:${uid}:${sid}`;
 const edgeCtxKvKey = (uid: string, sid: string) => `livenessv3:edge:${uid}:${sid}`;
 const captureMetaKvKey = (uid: string, sid: string) => `livenessv3:capmeta:${uid}:${sid}`;
+// Interim client-supplied frames (base64 JPEG stills at the session capture_offsets).
+// Stored transiently so the async verify pipeline reads them off the request path.
+const clientFramesKvKey = (uid: string, sid: string) => `livenessv3:frames:${uid}:${sid}`;
 
 // Hashed edge/verification-farm correlation props (plan §4-A "PostHog properties
 // to capture NOW ... hashed/bucketed, not raw PII"). IP is HASHED (never raw);
@@ -329,7 +343,7 @@ export async function livenessV3Verify(req: Request, env: Env, ctx?: ExecutionCo
 
   const b = (await req.json().catch(() => ({}))) as {
     session_id?: string; object_key?: string; device_report?: unknown; client_sequence?: unknown;
-    capture_meta?: unknown;
+    capture_meta?: unknown; frames?: unknown;
   };
   const sid = String(b.session_id || "");
   const sessRaw = await env.TOKENS.get(sessionKvKey(auth.uid, sid));
@@ -348,6 +362,21 @@ export async function livenessV3Verify(req: Request, env: Env, ctx?: ExecutionCo
   }
   if (parsedMeta.meta) {
     await env.TOKENS.put(captureMetaKvKey(auth.uid, sid), JSON.stringify(parsedMeta.meta),
+      { expirationTtl: SESSION_TTL_S }).catch(() => {});
+  }
+
+  // Interim client-supplied frames (plan §0-C "Interim frame path"): still JPEGs
+  // captured at the session capture_offsets, uploaded in the verify body so the
+  // pipeline has a frame set WITHOUT MEDIA_EXTRACT (which isn't bound yet). Bounded
+  // to keep the base64 body <1MB; an oversize set is rejected POLITELY (verify still
+  // runs and falls back to server extraction → EXTRACTION_FAILED/REVIEW).
+  const parsedFrames = parseClientFrames(b);
+  if (parsedFrames.tooLarge) {
+    void telemetry(env, auth.uid, "liveness_v3_verify_rejected", { reason: "frames_too_large", status: 413, session_id: sid });
+    return json({ error: "frames too large — cap is 6 × 200KB, <1MB total", reason: "frames_too_large" }, 413);
+  }
+  if (parsedFrames.frames.length > 0) {
+    await env.TOKENS.put(clientFramesKvKey(auth.uid, sid), JSON.stringify(parsedFrames.frames),
       { expirationTtl: SESSION_TTL_S }).catch(() => {});
   }
 
@@ -370,9 +399,23 @@ export async function livenessV3Verify(req: Request, env: Env, ctx?: ExecutionCo
   await env.TOKENS.put(edgeCtxKvKey(auth.uid, sid), JSON.stringify(edgeCorr),
     { expirationTtl: SESSION_TTL_S }).catch(() => {});
 
+  // frame_source on verify_start = which frame set the pipeline WILL use: the
+  // interim client-supplied stills if present, else the server extractor. The
+  // authoritative provenance is re-stamped on the verdict (extraction can still
+  // fail server-side and fall back).
+  const intendedFrameSource = parsedFrames.frames.length > 0 ? "client" : "server_extract";
   void telemetry(env, auth.uid, "liveness_verify_start", {
-    session_id: sid, ruleset_version: RULESET, v3: true, ...edgeCorr,
+    session_id: sid, ruleset_version: RULESET, v3: true, frame_source: intendedFrameSource, ...edgeCorr,
   });
+  // liveness_frames_uploaded {count, bytes, source} — one event per verify that
+  // carried client frames (plan §4 telemetry). bytes = approx decoded JPEG total.
+  if (parsedFrames.frames.length > 0) {
+    const bytes = parsedFrames.frames.reduce((a, f) => a + Math.floor((f.jpeg_b64.length * 3) / 4), 0);
+    void telemetry(env, auth.uid, "liveness_frames_uploaded", {
+      session_id: sid, count: parsedFrames.frames.length, bytes, source: "client", v3: true,
+    });
+    metric(env, "liveness_frames_uploaded", [parsedFrames.frames.length, bytes], ["client"]);
+  }
 
   // Prefer the shared liveness-verify queue (index.ts self-consumes); the {v3:true}
   // discriminator routes it to runLivenessV3Checks. Fall back to waitUntil on any
@@ -422,6 +465,49 @@ function deviceReportFromBody(body: unknown): V3DeviceReport | undefined {
   };
 }
 
+// ── Interim client-supplied frames (plan §0-C "Interim frame path"). ──────────
+// SECURITY: these are ATTACKER-CONTROLLABLE pre-attestation — the client can send
+// any JPEGs it likes. They are accepted ONLY as an interim measure until the
+// MEDIA_EXTRACT service binding exists (server-side decode is the hardened path).
+// Every verdict computed from them is stamped frame_source:"client" for fraud
+// analytics, and they are subject to the SAME defenses as extracted frames:
+//   • per-frame content-hash dedupe (a set of identical/duplicated stills is a
+//     tell — see runLivenessV3Checks §3b),
+//   • CompareFaces consistency across frames + vs the account's existing proof,
+//   • the avatar-defense display/timing/sensor/integrity signals,
+//   • (future) Play Integrity attestation enforcement.
+// Shape: [{t_offset_ms:int, jpeg_b64:string}]. Bounded to MAX_CLIENT_FRAMES,
+// MAX_CLIENT_FRAME_BYTES each, MAX_CLIENT_FRAMES_TOTAL_BYTES combined.
+interface ClientFrame { t_offset_ms: number; jpeg_b64: string; }
+function parseClientFrames(body: unknown): { frames: ClientFrame[]; tooLarge: boolean } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const raw = b.frames;
+  if (!Array.isArray(raw) || raw.length === 0) return { frames: [], tooLarge: false };
+  const out: ClientFrame[] = [];
+  let total = 0;
+  for (const item of raw.slice(0, MAX_CLIENT_FRAMES)) {
+    const o = (item ?? {}) as Record<string, unknown>;
+    const b64 = typeof o.jpeg_b64 === "string" ? o.jpeg_b64 : "";
+    if (!b64) continue;
+    // base64 decoded size ≈ len * 3/4; reject an oversize single frame.
+    const approxBytes = Math.floor((b64.length * 3) / 4);
+    if (approxBytes > MAX_CLIENT_FRAME_BYTES) return { frames: [], tooLarge: true };
+    total += approxBytes;
+    if (total > MAX_CLIENT_FRAMES_TOTAL_BYTES) return { frames: [], tooLarge: true };
+    const t = typeof o.t_offset_ms === "number" && isFinite(o.t_offset_ms) ? Math.max(0, Math.round(o.t_offset_ms)) : 0;
+    out.push({ t_offset_ms: t, jpeg_b64: b64 });
+  }
+  return { frames: out, tooLarge: false };
+}
+// Decode a base64 JPEG to bytes (no data-URI prefix expected; strip one if present).
+function decodeJpegB64(b64: string): Uint8Array {
+  const clean = b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64;
+  const bin = atob(clean);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  runLivenessV3Checks — the async verify pipeline. Called from the queue
 //  consumer (index.ts) AND the waitUntil fallback. Never throws to the caller.
@@ -453,29 +539,48 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
   // Enqueue-time queue wait (telemetry) — created_at → now.
   const queueWaitMs = Date.now() - sess.created_at;
 
-  // ── 1. Load the video object. Missing → REVIEW (never FAIL on our problem). ──
+  // Interim client-supplied frames (plan §0-C). Loaded FIRST so we know whether we
+  // even need the video object: on the interim path the frames carry the decision,
+  // so an absent/late video no longer forces REVIEW. The video is still required
+  // for the server-extract fallback path.
+  const clientFramesRaw = await env.TOKENS.get(clientFramesKvKey(uid, sid), "json").catch(() => null) as ClientFrame[] | null;
+  const haveClientFrames = !!clientFramesRaw && clientFramesRaw.length > 0;
+
+  // ── 1. Load the video object. Missing → REVIEW UNLESS the interim client frames
+  //    are present (then the video is optional). Never FAIL on our own problem. ──
   const key = videoKey(uid, sid);
   const obj = await env.VERIFICATION.get(key).catch(() => null);
-  if (!obj) {
-    void verdictTelemetry(env, uid, sid, sess, "REVIEW", ["EXTRACTION_FAILED"], "none", 0, queueWaitMs, startedAt, false, edgeCorr);
-    await writeVerdictRow(env, uid, sess, "REVIEW", ["EXTRACTION_FAILED"], [], "none", 0);
+  if (!obj && !haveClientFrames) {
+    void verdictTelemetry(env, uid, sid, sess, "REVIEW", ["EXTRACTION_FAILED"], "none", 0, queueWaitMs, startedAt, false, edgeCorr, null, "none");
+    await writeVerdictRow(env, uid, sess, "REVIEW", ["EXTRACTION_FAILED"], [], "none", 0, undefined, undefined, undefined, undefined, "none");
     await discardEvidence(env, uid, sid);
     await bumpAttempt(env, uid);
     return finalize("REVIEW", ["EXTRACTION_FAILED"]);
   }
-  const bytes = new Uint8Array(await obj.arrayBuffer());
+  const bytes = obj ? new Uint8Array(await obj.arrayBuffer()) : new Uint8Array(0);
 
   // ── 2. Content-hash idempotency / replay dedupe (plan §3, failure runbook). ─
-  // SHA-256 of the object. Same hash seen before (any user) → REPLAY_ATTACK with
-  // NO Rekognition spend. Insert-first-wins into liveness_v3_hashes.
-  const hash = await sha256Hex(bytes);
+  // Hash the video object when present; otherwise (interim frames, no video) hash
+  // the concatenated frame bytes so a replayed frame SET is still caught. Same hash
+  // seen before (any user) → REPLAY_ATTACK with NO Rekognition spend.
+  let hashInput = bytes;
+  if (bytes.byteLength === 0 && haveClientFrames) {
+    try {
+      const parts = clientFramesRaw!.map((f) => decodeJpegB64(f.jpeg_b64));
+      let total = 0; for (const p of parts) total += p.byteLength;
+      const merged = new Uint8Array(total); let off = 0;
+      for (const p of parts) { merged.set(p, off); off += p.byteLength; }
+      hashInput = merged;
+    } catch { /* fall back to empty — dedupe skipped */ }
+  }
+  const hash = await sha256Hex(hashInput);
   let replaySeen = false;
   try {
     const seen = await metaSession(env)
       .prepare("SELECT session_id FROM liveness_v3_hashes WHERE content_hash=?1 LIMIT 1")
       .bind(hash).first<{ session_id: string }>();
     if (seen && seen.session_id !== sid) replaySeen = true;
-    if (!replaySeen) {
+    if (!replaySeen && hashInput.byteLength > 0) {
       await metaDb(env).prepare(
         "INSERT OR IGNORE INTO liveness_v3_hashes (content_hash, uid, session_id, created_at) VALUES (?1,?2,?3,?4)",
       ).bind(hash, uid, sid, Date.now()).run();
@@ -487,30 +592,81 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
       frames: [], replayHashSeen: true, extractionFailed: false, attestationOk: null,
       sequenceMatched: null, sameFaceOk: null, motionMonotonicOk: null, anyProviderDegraded: false,
     });
-    void verdictTelemetry(env, uid, sid, sess, v.verdict, v.reason_codes, "none", 0, queueWaitMs, startedAt, true, edgeCorr);
-    await writeVerdictRow(env, uid, sess, v.verdict, v.reason_codes, v.rule_pass_map, "none", 0);
+    void verdictTelemetry(env, uid, sid, sess, v.verdict, v.reason_codes, "none", 0, queueWaitMs, startedAt, true, edgeCorr, null, haveClientFrames ? "client" : "none");
+    await writeVerdictRow(env, uid, sess, v.verdict, v.reason_codes, v.rule_pass_map, "none", 0, undefined, undefined, undefined, undefined, haveClientFrames ? "client" : "none");
     await tagAndDiscard(env, uid, sid, "fail");
     await bumpAttempt(env, uid);
     return finalize(v.verdict, v.reason_codes);
   }
 
-  // ── 3. Poison-pill quarantine (plan failure runbook). A prior decode failure
-  //    for this object marks it quarantined → skip extraction on retry → REVIEW. ─
-  const quarantineKey = `livenessv3:quarantine:${uid}:${sid}`;
-  const quarantined = await env.TOKENS.get(quarantineKey).catch(() => null);
+  // ── 3. Obtain the frame set. Two paths, in priority order:
+  //    (a) INTERIM CLIENT PATH (plan §0-C "Interim frame path"): the client
+  //        uploaded still JPEGs at the session capture_offsets in the verify body.
+  //        We use them directly and SKIP MEDIA_EXTRACT. Provenance is stamped
+  //        frame_source:"client" on the verdict — these are attacker-controllable
+  //        pre-attestation, mitigated by the per-frame content-hash dedupe below,
+  //        CompareFaces consistency (§5), and the avatar-defense signals (§9).
+  //    (b) SERVER EXTRACT (LONG-TERM HARDENED PATH — keep intact): decode frames
+  //        from the MP4 via the MEDIA_EXTRACT service binding. Until that binding
+  //        exists this throws → EXTRACTION_FAILED → REVIEW (never a false FAIL).
+  //    The poison-pill quarantine only guards the server decode path (a client
+  //    frame set can't crash the decoder).
+  let frameSource: "client" | "server_extract" | "none" = "none";
   let extractionFailed = false;
   let frameBufs: Uint8Array[] = [];
-  if (quarantined) {
-    extractionFailed = true;
-  } else {
+
+  if (haveClientFrames) {
+    // ── 3a. Interim client frame path. ──
     try {
-      frameBufs = await extractFrames(env, bytes, sess.capture_offsets);
-      if (frameBufs.length === 0) throw new Error("no_frames_extracted");
-    } catch (e) {
+      frameBufs = clientFramesRaw!
+        .map((f) => decodeJpegB64(f.jpeg_b64))
+        .filter((u) => u.byteLength > 0 && u.byteLength <= MAX_CLIENT_FRAME_BYTES)
+        .slice(0, MAX_CLIENT_FRAMES);
+    } catch { frameBufs = []; }
+    if (frameBufs.length === 0) {
       extractionFailed = true;
-      // First failure → quarantine so retries skip decode (never re-crash).
-      await env.TOKENS.put(quarantineKey, "1", { expirationTtl: SESSION_TTL_S }).catch(() => {});
-      void telemetry(env, uid, "liveness_spoof_signal", { session_id: sid, signal: "extraction_failed", error: String(e).slice(0, 200) });
+    } else {
+      frameSource = "client";
+      // Per-frame content-hash dedupe (reuse the content-hash pattern): a set of
+      // byte-identical stills means the "frames" are one image copied N times — a
+      // strong replay/2D tell. Collapse duplicates; if <2 unique frames remain we
+      // can't run the cross-frame consistency checks, so treat as extraction-poor.
+      const seenHashes = new Set<string>();
+      const unique: Uint8Array[] = [];
+      let dupCount = 0;
+      for (const fb of frameBufs) {
+        const h = await sha256Hex(fb);
+        if (seenHashes.has(h)) { dupCount++; continue; }
+        seenHashes.add(h);
+        unique.push(fb);
+      }
+      if (dupCount > 0) {
+        void telemetry(env, uid, "liveness_spoof_signal", { session_id: sid, signal: "client_frame_duplicate", dup_count: dupCount, frame_source: "client" });
+      }
+      void telemetry(env, uid, "liveness_frames_uploaded", {
+        session_id: sid, count: frameBufs.length, unique: unique.length,
+        bytes: frameBufs.reduce((a, u) => a + u.byteLength, 0), source: "client", stage: "consumed", v3: true,
+      });
+      frameBufs = unique;
+      if (frameBufs.length === 0) extractionFailed = true;
+    }
+  } else {
+    // ── 3b. Server extract path (poison-pill guarded). ──
+    const quarantineKey = `livenessv3:quarantine:${uid}:${sid}`;
+    const quarantined = await env.TOKENS.get(quarantineKey).catch(() => null);
+    if (quarantined) {
+      extractionFailed = true;
+    } else {
+      try {
+        frameBufs = await extractFrames(env, bytes, sess.capture_offsets);
+        if (frameBufs.length === 0) throw new Error("no_frames_extracted");
+        frameSource = "server_extract";
+      } catch (e) {
+        extractionFailed = true;
+        // First failure → quarantine so retries skip decode (never re-crash).
+        await env.TOKENS.put(quarantineKey, "1", { expirationTtl: SESSION_TTL_S }).catch(() => {});
+        void telemetry(env, uid, "liveness_spoof_signal", { session_id: sid, signal: "extraction_failed", error: String(e).slice(0, 200) });
+      }
     }
   }
 
@@ -519,8 +675,8 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
       frames: [], replayHashSeen: false, extractionFailed: true, attestationOk: null,
       sequenceMatched: null, sameFaceOk: null, motionMonotonicOk: null, anyProviderDegraded: false,
     });
-    void verdictTelemetry(env, uid, sid, sess, v.verdict, v.reason_codes, "none", 0, queueWaitMs, startedAt, false, edgeCorr);
-    await writeVerdictRow(env, uid, sess, v.verdict, v.reason_codes, v.rule_pass_map, "none", 0);
+    void verdictTelemetry(env, uid, sid, sess, v.verdict, v.reason_codes, "none", 0, queueWaitMs, startedAt, false, edgeCorr, null, "none");
+    await writeVerdictRow(env, uid, sess, v.verdict, v.reason_codes, v.rule_pass_map, "none", 0, undefined, undefined, undefined, undefined, "none");
     await tagAndDiscard(env, uid, sid, "review");
     await bumpAttempt(env, uid);
     return finalize(v.verdict, v.reason_codes);
@@ -644,9 +800,9 @@ export async function runLivenessV3Checks(env: Env, uid: string, sid: string, re
   const mergedCodes = uniqCodes([...v.reason_codes, ...(defense.review_codes as ReasonCode[])]);
 
   const costUsd = Number((rekCalls * REK_COST_PER_IMAGE).toFixed(4));
-  await writeVerdictRow(env, uid, sess, finalVerdict, mergedCodes, v.rule_pass_map, providerName, costUsd, defense, capMeta, deviceCtx.changed, edgeCorr);
+  await writeVerdictRow(env, uid, sess, finalVerdict, mergedCodes, v.rule_pass_map, providerName, costUsd, defense, capMeta, deviceCtx.changed, edgeCorr, frameSource);
   await bumpAttempt(env, uid);
-  void verdictTelemetry(env, uid, sid, sess, finalVerdict, mergedCodes, providerName, costUsd, queueWaitMs, startedAt, false, edgeCorr, defense);
+  void verdictTelemetry(env, uid, sid, sess, finalVerdict, mergedCodes, providerName, costUsd, queueWaitMs, startedAt, false, edgeCorr, defense, frameSource);
   // Surface any spoof signal codes as their own telemetry event (plan §4).
   for (const c of v.reason_codes) {
     if (c === "PHONE_SCREEN" || c === "REPLAY_ATTACK" || c === "MOTION_IMPLAUSIBLE" || c === "MULTIPLE_PEOPLE") {
@@ -707,7 +863,11 @@ async function deviceContextEvidence(
   }
 }
 
-// ── Frame extraction. ─────────────────────────────────────────────────────────
+// ── Frame extraction (LONG-TERM HARDENED PATH — keep intact). ─────────────────
+// This is the server-side, NON-attacker-controllable frame path. It stays the
+// production target; the interim client-frame path (parseClientFrames + §3a in
+// runLivenessV3Checks) is a stopgap ONLY until MEDIA_EXTRACT is bound. Do NOT
+// delete this or its TODO when wiring the interim path.
 // NOTE (owner gap): the Workers runtime cannot decode H.264/MP4 in-process. In
 // production, frame extraction runs in a Cloudflare Container / media Worker (plan
 // §3 "frame extraction in a Cloudflare Container/Workers"). Until that binding
@@ -789,6 +949,11 @@ async function writeVerdictRow(
   rulePassMap: unknown[], provider: string, costUsd: number,
   defense?: AvatarDefenseSignals, capMeta?: CaptureMeta | null, deviceContextChanged?: boolean,
   edgeCorr?: Record<string, unknown> | null,
+  // Provenance of the frame set this verdict was computed on (plan §0-C interim
+  // frame path): "client" = attacker-controllable client stills, "server_extract"
+  // = MEDIA_EXTRACT decode, "none" = no frames (early bail-outs). Load-bearing for
+  // fraud analytics — segment PASS rates by provenance.
+  frameSource?: "client" | "server_extract" | "none",
 ): Promise<void> {
   try {
     // Stash the device+country context ON the camera_path JSON so a FUTURE verify's
@@ -807,9 +972,9 @@ async function writeVerdictRow(
          provider, provider_version, cost_usd_estimate, requester, policy_id, created_at,
          display_suspicion_score, flash_correlation_score, sensor_correlation_score,
          display_signals, camera_path, timing_anomaly, policy_escalation,
-         device_context_changed, capture_meta)
+         device_context_changed, capture_meta, frame_source)
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,
-               ?14,?15,?16,?17,?18,?19,?20,?21,?22)`,
+               ?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)`,
     ).bind(
       crypto.randomUUID(), sess.sid, uid, verdict, JSON.stringify(reasonCodes),
       JSON.stringify(rulePassMap), RULESET, provider,
@@ -824,6 +989,7 @@ async function writeVerdictRow(
       defense ? (defense.policy_escalation ? 1 : 0) : null,
       deviceContextChanged != null ? (deviceContextChanged ? 1 : 0) : null,
       capMeta ? JSON.stringify(capMeta).slice(0, 32_768) : null,
+      frameSource ?? null,
     ).run();
     // Advance the session row status (append-only verdicts; session row tracks state).
     await metaDb(env).prepare("UPDATE liveness_v3_sessions SET status=?2, updated_at=?3 WHERE session_id=?1")
@@ -841,10 +1007,11 @@ function verdictTelemetry(
   env: Env, uid: string, sid: string, sess: V3Session, verdict: Verdict, reasonCodes: ReasonCode[],
   provider: string, costUsd: number, queueWaitMs: number, startedAt: number, replay = false,
   edgeCorr: Record<string, unknown> | null = null, defense: AvatarDefenseSignals | null = null,
+  frameSource: "client" | "server_extract" | "none" = "none",
 ): Promise<void> {
-  metric(env, "liveness_v3_verdict", [costUsd, Date.now() - startedAt], [verdict]);
+  metric(env, "liveness_v3_verdict", [costUsd, Date.now() - startedAt], [verdict, frameSource]);
   return telemetry(env, uid, "liveness_verdict", {
-    session_id: sid, verdict, reason_codes: reasonCodes, provider,
+    session_id: sid, verdict, reason_codes: reasonCodes, provider, frame_source: frameSource,
     cost_usd: costUsd, queue_wait_ms: queueWaitMs, duration_ms: Date.now() - startedAt,
     requester: sess.requester, policy_id: sess.policy_id, ruleset_version: RULESET,
     replay, v3: true, ...(edgeCorr ?? {}),
@@ -945,6 +1112,7 @@ async function discardEvidence(env: Env, uid: string, sid: string): Promise<void
   try { await env.TOKENS.delete(deviceRepKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(edgeCtxKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(captureMetaKvKey(uid, sid)); } catch { /* */ }
+  try { await env.TOKENS.delete(clientFramesKvKey(uid, sid)); } catch { /* */ }
 }
 // Fail/review: tag the video with the verdict retention window, THEN discard the
 // transient copy. (For fail we could keep 7d for appeal; here we tag then rely on
@@ -966,6 +1134,7 @@ async function tagAndDiscard(env: Env, uid: string, sid: string, state: "fail" |
   try { await env.TOKENS.delete(deviceRepKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(edgeCtxKvKey(uid, sid)); } catch { /* */ }
   try { await env.TOKENS.delete(captureMetaKvKey(uid, sid)); } catch { /* */ }
+  try { await env.TOKENS.delete(clientFramesKvKey(uid, sid)); } catch { /* */ }
 }
 
 function arraysEqual(a: string[], b: string[]): boolean {
