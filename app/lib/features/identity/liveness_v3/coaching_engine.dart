@@ -29,12 +29,18 @@ import 'voice_packs.dart';
 ///   • off-centre / tilted    → face-left/right/up/down nudges toward centre
 ///   • stable + framed ≥2s    → holdStill (the caller starts/continues recording)
 class CoachingEngine {
-  CoachingEngine({required this.controller, this.onState});
+  CoachingEngine({required this.controller, this.onState, this.onLuma});
 
   final CameraController controller;
 
   /// Fired on every processed frame with the current coaching snapshot.
   final void Function(CoachState state)? onState;
+
+  /// Fired on every processed frame with the frame's mean luminance (0..255).
+  /// Feeds the V3 active-checks `luma_timeline` so the screen doesn't need a
+  /// second image stream — the coach already decodes each frame. Best-effort;
+  /// the collector downsamples to ≤60 samples for the verify body.
+  final void Function(double meanLuma)? onLuma;
 
   final FaceDetector _detector = FaceDetector(
     options: FaceDetectorOptions(
@@ -106,6 +112,9 @@ class CoachingEngine {
     if (!_running) return;
 
     final meanLuma = _meanLuma(image);
+    // Feed the active-checks luma timeline (flash detection) on every frame,
+    // face or not — a flash wash raises luma regardless of detection state.
+    onLuma?.call(meanLuma);
 
     if (faces.isEmpty) {
       _lastCenter = null;

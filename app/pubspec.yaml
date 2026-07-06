@@ -96,6 +96,17 @@ dependencies:
   # brightness to 100% + white surround as a ring-light while capturing, then
   # ALWAYS restore the previous brightness on dispose.
   screen_brightness: ^2.1.0
+  # Liveness V3 active anti-avatar checks (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN):
+  # accelerometer (+ gyroscope) capture during the face stage → the `capture_meta`
+  # sensor_timeline the server correlates against the scheduled haptic buzz (a
+  # rigid tripod / emulator has no hand micro-tremor + no buzz spike). NATIVE
+  # plugin (android.hardware.Sensor / CoreMotion) — validated by a CI APK build;
+  # a missing sensor leaves the timeline empty and the flow proceeds.
+  sensors_plus: ^6.1.0
+  # Liveness V3 camera-path integrity probe: emulator detection (isPhysicalDevice)
+  # + Android build-tags root heuristic for the `capture_meta.integrity` block.
+  # NATIVE plugin — validated by a CI APK build; unknowable fields stay null.
+  device_info_plus: ^10.1.2
   file_picker: ^8.1.6
   audioplayers: ^6.1.0
   # Liveness V3 voice fallback (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-DRAFT.md §1):

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/api_auth.dart';
 import '../../../core/config.dart';
+import 'active_checks.dart';
 import 'voice_packs.dart';
 
 /// Liveness V3 — SESSION + CHALLENGE client (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-
@@ -75,11 +76,18 @@ class LivenessV3Api {
   /// then poll /result. Maps the V3 verdict shape ({verdict, reason_codes,
   /// attempts_remaining, level}) into the outcome record the screen consumes.
   /// [objectKey] is echoed from the session upload contract so the pipeline finds
-  /// the exact R2 object.
-  static Future<LivenessV3Outcome> verify(String sessionId, {String? objectKey}) async {
+  /// the exact R2 object. [captureMeta] carries the V3 active-checks evidence
+  /// (sensor/luma timelines, flash/vibrate fire times, integrity, camera) — kept
+  /// ≤32 KB by [CaptureMeta.toJsonCapped]. Absent → body unchanged.
+  static Future<LivenessV3Outcome> verify(
+    String sessionId, {
+    String? objectKey,
+    CaptureMeta? captureMeta,
+  }) async {
     try {
       final body = <String, dynamic>{'session_id': sessionId};
       if (objectKey != null && objectKey.isNotEmpty) body['object_key'] = objectKey;
+      if (captureMeta != null) body['capture_meta'] = captureMeta.toJsonCapped();
       final r = await ApiAuth.postJson(kLivenessV3VerifyUrl, body);
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       if (j['status'] == 'done' || j.containsKey('verdict')) {
@@ -398,6 +406,7 @@ class LivenessV3Session {
     required this.overlay,
     required this.captureOffsets,
     required this.upload,
+    this.activeChecks = const ActiveChecks.none(),
     this.lang = 'en',
     this.maxClipBytes = 15 * 1024 * 1024,
     this.maxClipSeconds = 20,
@@ -407,6 +416,10 @@ class LivenessV3Session {
   final String nonce;
   final List<LivenessChallenge> challenges;
   final LivenessOverlay overlay;
+
+  /// Server-scheduled active anti-avatar checks (screen flashes, haptic buzz,
+  /// randomized gaps). Absent → [ActiveChecks.none] and the flow runs unchanged.
+  final ActiveChecks activeChecks;
 
   /// Randomized capture-frame offsets as FRACTIONS of the clip (0..1) the server
   /// samples (server field `capture_offsets`). The client records continuously and
@@ -449,6 +462,7 @@ class LivenessV3Session {
       overlay: LivenessOverlay.fromJson(j['overlay'] as Map<String, dynamic>?),
       captureOffsets: offsets,
       upload: LivenessV3Upload.fromJson(j['upload'] as Map<String, dynamic>?),
+      activeChecks: ActiveChecks.fromJson(j['active_checks'] as Map<String, dynamic>?),
       lang: (j['lang'] ?? 'en').toString(),
       maxClipBytes: (j['max_video_bytes'] as num?)?.toInt() ?? 15 * 1024 * 1024,
       maxClipSeconds: (j['max_clip_seconds'] as num?)?.toInt() ?? 20,

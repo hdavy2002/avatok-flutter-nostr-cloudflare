@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/analytics.dart';
@@ -14,10 +16,12 @@ import '../liveness_v2/live_theme.dart';
 import '../liveness_v2/pending_session.dart';
 import '../liveness_v2/phone_stage.dart';
 import '../liveness_v2/stage_chrome.dart';
+import 'active_checks.dart';
 import 'challenge_session.dart';
 import 'coaching_engine.dart';
 import 'language_picker_step.dart';
 import 'overlay_painter.dart';
+import 'sensor_capture.dart';
 import 'voice_packs.dart';
 import 'watchdog.dart';
 
@@ -97,6 +101,18 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   Timer? _challengeTimer;
   StageWatchdog? _activeWatch;
 
+  // ── Active anti-avatar checks (screen flash / vibrate / motion / integrity) ──
+  final math.Random _rng = math.Random();
+  final SensorCapture _sensors = SensorCapture();
+  final List<LumaSample> _lumaBuf = [];
+  final List<FlashEvent> _flashEvents = [];
+  final List<Timer> _activeTimers = []; // scheduled flash/vibrate fire timers
+  int? _vibrateEventMs;
+  int _recordStartMs = 0;
+  Color? _flashColor; // non-null → full-screen colour wash is showing
+  IntegrityReport _integrity = const IntegrityReport();
+  CameraInfo _cameraInfo = const CameraInfo();
+
   // Fail state.
   List<String> _failMessages = const [];
   int? _attemptsLeft;
@@ -134,6 +150,9 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       'requester': widget.requester,
       'policy_id': widget.policyId,
       'language': _lang,
+      // Not yet known at flow entry — the session (with its active_checks block)
+      // is fetched later in _begin, which re-emits this with the resolved value.
+      'active_checks': 'pending',
       'v': 3,
     });
   }
@@ -156,6 +175,11 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   void dispose() {
     _recordCap?.cancel();
     _challengeTimer?.cancel();
+    for (final t in _activeTimers) {
+      t.cancel();
+    }
+    _activeTimers.clear();
+    unawaited(_sensors.drain());
     _activeWatch?.dispose();
     _phone.removeListener(_onPhoneChanged);
     _phone.dispose();
@@ -281,6 +305,20 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       return;
     }
     _session = s;
+    // Record whether this session carried server-scheduled active checks (screen
+    // flashes / haptic buzz / randomized gaps) — plan telemetry.
+    Analytics.capture('liveness_flow_start', {
+      'requester': widget.requester,
+      'policy_id': widget.policyId,
+      'language': _lang,
+      'active_checks': s.activeChecks.present,
+      'flash_steps': s.activeChecks.flashSequence.length,
+      'has_vibrate': s.activeChecks.vibrate != null,
+      'v': 3,
+    });
+
+    // Camera-path integrity probe (best-effort; runs off the critical path).
+    unawaited(_probeIntegrity());
 
     try {
       final cams = await availableCameras();
@@ -291,6 +329,7 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       // 720p cap (plan §6). medium ≈ 480–720p, keeps the clip small.
       _cam = CameraController(front, ResolutionPreset.medium, enableAudio: true);
       await _cam!.initialize();
+      _captureCameraInfo(front);
     } catch (_) {
       setState(() {
         _phase = _Phase.intro;
@@ -309,12 +348,42 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _setStage(_Phase.faceNeck);
   }
 
+  Future<void> _probeIntegrity() async {
+    try {
+      final r = await IntegrityProbe.probe();
+      if (!mounted) return;
+      _integrity = r;
+      // Analytics requires non-null values → coalesce unknown bools to 'unknown'.
+      Analytics.capture('liveness_integrity_probe', {
+        'rooted': r.rooted ?? 'unknown',
+        'emulator': r.emulator ?? 'unknown',
+        'physical_device': r.emulator == null ? 'unknown' : !r.emulator!,
+        'v': 3,
+      });
+    } catch (_) {/* leave the empty report — flow proceeds */}
+  }
+
+  void _captureCameraInfo(CameraDescription desc) {
+    try {
+      final ps = _cam?.value.previewSize;
+      _cameraInfo = CameraInfo(
+        model: desc.name,
+        resolution: ps == null ? null : '${ps.width.round()}x${ps.height.round()}',
+        fps: null, // camera plugin doesn't surface a fixed fps; server derives it
+      );
+    } catch (_) {/* null fields — flow proceeds */}
+  }
+
   // ── Face + neck stage: coaching → record → challenges ───────────────────────
 
   void _startCoaching() {
     final cam = _cam;
     if (cam == null) return;
-    final coach = CoachingEngine(controller: cam, onState: _onCoachState);
+    final coach = CoachingEngine(
+      controller: cam,
+      onState: _onCoachState,
+      onLuma: _onLuma,
+    );
     _coach = coach;
     unawaited(coach.start());
   }
@@ -343,6 +412,16 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     setState(() {});
   }
 
+  /// Collect the mean frame luminance for the active-checks `luma_timeline`
+  /// (flash detection). Timestamps are offsets from recording start; samples
+  /// before recording are ignored. Buffered raw, downsampled to ≤60 on drain.
+  void _onLuma(double meanLuma) {
+    if (!_recording || _recordStartMs == 0) return;
+    if (_lumaBuf.length >= 400) return; // headroom over the ≤60 final cap
+    final t = DateTime.now().millisecondsSinceEpoch - _recordStartMs;
+    _lumaBuf.add(LumaSample(t: t < 0 ? 0 : t, luma: meanLuma));
+  }
+
   final Set<LivenessInstruction> _hintsSeen = {};
   void _emitCoachHint(LivenessInstruction i) {
     if (_hintsSeen.add(i)) {
@@ -366,6 +445,10 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       _stageFail('face_neck', 'record_start_failed');
       return;
     }
+    // t0 for every active-checks timeline / event offset (record start).
+    _recordStartMs = DateTime.now().millisecondsSinceEpoch;
+    _sensors.start(_recordStartMs);
+    _scheduleActiveChecks();
     // Safety cap on the clip length (plan §3 — ≤~20s, 720p).
     final capS = _session?.maxClipSeconds ?? 20;
     _recordCap = Timer(Duration(seconds: capS), () {
@@ -375,6 +458,83 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     // Begin the first challenge.
     _challengeIndex = 0;
     _announceChallenge();
+  }
+
+  /// Schedule the server's flash sequence + haptic buzz relative to record start.
+  /// Each fire records its ACTUAL timestamp (for server correlation against the
+  /// luma / motion timelines) and never stops recording. Best-effort: a missing
+  /// plugin or a failed flash just skips that step and telemetry notes it.
+  void _scheduleActiveChecks() {
+    final active = _session?.activeChecks;
+    if (active == null || !active.present) return;
+    for (final f in active.flashSequence) {
+      final t = Timer(Duration(milliseconds: f.tOffsetMs.clamp(0, 60000)), () {
+        if (!mounted || !_recording) return;
+        _fireFlash(f);
+      });
+      _activeTimers.add(t);
+    }
+    final vib = active.vibrate;
+    if (vib != null) {
+      final t = Timer(Duration(milliseconds: vib.tOffsetMs.clamp(0, 60000)), () {
+        if (!mounted || !_recording) return;
+        _fireVibrate(vib);
+      });
+      _activeTimers.add(t);
+    }
+  }
+
+  static const Map<String, Color> _flashColors = {
+    'white': Color(0xFFFFFFFF),
+    'red': Color(0xFFFF2D2D),
+    'blue': Color(0xFF2D6BFF),
+  };
+
+  void _fireFlash(FlashStep f) {
+    final color = _flashColors[f.color] ?? _flashColors['white']!;
+    final actual = DateTime.now().millisecondsSinceEpoch - _recordStartMs;
+    _flashEvents.add(FlashEvent(color: f.color, tActualMs: actual < 0 ? 0 : actual));
+    Analytics.capture('liveness_active_check', {
+      'check': 'flash',
+      'color': f.color,
+      'scheduled_ms': f.tOffsetMs,
+      'actual_ms': actual < 0 ? 0 : actual,
+      'v': 3,
+    });
+    Analytics.capture('liveness_flash_shown', {
+      'color': f.color,
+      'duration_ms': f.durationMs,
+      'v': 3,
+    });
+    // Show the full-screen colour wash, then fade it out after duration_ms.
+    setState(() => _flashColor = color);
+    final dur = f.durationMs.clamp(60, 1500);
+    final t = Timer(Duration(milliseconds: dur), () {
+      if (!mounted) return;
+      setState(() => _flashColor = null);
+    });
+    _activeTimers.add(t);
+  }
+
+  Future<void> _fireVibrate(VibrateStep v) async {
+    final actual = (DateTime.now().millisecondsSinceEpoch - _recordStartMs).clamp(0, 60000);
+    _vibrateEventMs = actual;
+    Analytics.capture('liveness_active_check', {
+      'check': 'vibrate',
+      'scheduled_ms': v.tOffsetMs,
+      'actual_ms': actual,
+      'v': 3,
+    });
+    // HapticFeedback is a built-in Flutter service (no plugin). heavyImpact gives
+    // the sharpest accelerometer signature for the server to correlate. Repeat a
+    // couple of times for a longer buzz when duration_ms is generous.
+    try {
+      await HapticFeedback.heavyImpact();
+      if (v.durationMs >= 250) {
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        await HapticFeedback.heavyImpact();
+      }
+    } catch (_) {/* no haptics on this device — motion timeline still captured */}
   }
 
   void _announceChallenge() {
@@ -397,6 +557,7 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   }
 
   void _evaluateChallenge(CoachState s) {
+    if (_gapActive) return; // holding between prompts (randomized gap)
     final ch = _session?.challenges;
     if (ch == null || _challengeIndex >= ch.length) return;
     final c = ch[_challengeIndex];
@@ -448,18 +609,46 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       if (_challengeIndex >= ch.length) {
         _finishCapture();
       } else {
-        _announceChallenge();
+        // Randomized wait between prompts so the challenge cadence isn't
+        // predictable (server value if present, else local 700–1900 ms). During
+        // the gap we hold evaluation so a lingering pose can't clear the NEXT
+        // challenge before it's announced.
+        final gapMs = (_session?.activeChecks ?? const ActiveChecks.none())
+            .gapForIndex(_challengeIndex - 1, _rng);
+        _gapActive = true;
+        Analytics.capture('liveness_active_check', {
+          'check': 'gap',
+          'scheduled_ms': gapMs,
+          'actual_ms': gapMs,
+          'v': 3,
+        });
+        _challengeTimer?.cancel();
+        _challengeTimer = Timer(Duration(milliseconds: gapMs), () {
+          _gapActive = false;
+          if (mounted && _recording) _announceChallenge();
+        });
       }
     }
   }
+
+  bool _gapActive = false;
 
   Future<void> _finishCapture() async {
     _recordCap?.cancel();
     _challengeTimer?.cancel();
     _activeWatch?.cancel();
+    for (final t in _activeTimers) {
+      t.cancel();
+    }
+    _activeTimers.clear();
+    _flashColor = null;
+    final recordMs =
+        _recordStartMs == 0 ? 0 : DateTime.now().millisecondsSinceEpoch - _recordStartMs;
     await _coach?.dispose();
     _coach = null;
     await _stopRecording();
+    // Assemble the active-checks evidence while the buffers are fresh.
+    await _buildCaptureMeta(recordMs);
     if (!mounted) return;
     unawaited(LivenessVoice.I.play(LivenessInstruction.done));
     await _flash.deactivate();
@@ -468,6 +657,33 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     // User proceeds IMMEDIATELY — the check runs in the background (plan §6).
     setState(() => _phase = _Phase.done);
     unawaited(_uploadAndVerify());
+  }
+
+  CaptureMeta? _captureMeta;
+
+  /// Drain the motion buffer and build the ≤32 KB `capture_meta` block, emitting
+  /// the sensor/luma telemetry. Best-effort: any missing signal → null/empty field.
+  Future<void> _buildCaptureMeta(int recordMs) async {
+    List<SensorSample> sensors = const [];
+    try {
+      sensors = await _sensors.drain();
+    } catch (_) {/* empty timeline — flow proceeds */}
+    final luma = downsample(List<LumaSample>.of(_lumaBuf), 60);
+    _captureMeta = CaptureMeta(
+      sensorTimeline: sensors,
+      lumaTimeline: luma,
+      flashEvents: List<FlashEvent>.of(_flashEvents),
+      vibrateEventMs: _vibrateEventMs,
+      integrity: _integrity,
+      camera: _cameraInfo,
+    );
+    Analytics.capture('liveness_sensor_capture', {
+      'samples': sensors.length,
+      'raw_samples': _sensors.rawSampleCount,
+      'gyro': _sensors.gyroAvailable,
+      'duration_ms': recordMs,
+      'v': 3,
+    });
   }
 
   Future<void> _stopRecording() async {
@@ -496,6 +712,8 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       'brightness': _coachState.brightness.round(),
       'face_ratio': double.parse(_coachState.faceRatio.toStringAsFixed(3)),
       'retries': _retries,
+      'luma_samples': _captureMeta?.lumaTimeline.length ?? _lumaBuf.length,
+      'flash_events': _flashEvents.length,
       'v': 3,
     });
   }
@@ -532,6 +750,7 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     final r = await LivenessV3Api.verify(
       session.sessionId,
       objectKey: session.upload.objectKey,
+      captureMeta: _captureMeta,
     );
     if (!mounted) return;
     if (r.pending) {
@@ -571,6 +790,13 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _recordCap?.cancel();
     _challengeTimer?.cancel();
     _activeWatch?.cancel();
+    for (final t in _activeTimers) {
+      t.cancel();
+    }
+    _activeTimers.clear();
+    try {
+      await _sensors.drain();
+    } catch (_) {}
     await _coach?.dispose();
     _coach = null;
     await _stopRecording();
@@ -581,9 +807,17 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _cam = null;
     _clip = null;
     _recording = false;
+    _gapActive = false;
     _challengeIndex = 0;
     _challengesDone.clear();
     _hintsSeen.clear();
+    // Reset active-check buffers so a retry captures a clean session.
+    _lumaBuf.clear();
+    _flashEvents.clear();
+    _vibrateEventMs = null;
+    _flashColor = null;
+    _recordStartMs = 0;
+    _captureMeta = null;
     _session = null;
     _retries++;
     final toPhone = _phoneStart && !_phoneVerified;
@@ -781,6 +1015,20 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
                       label: _hintLabel(),
                       filled: framed ? LiveTheme.lime : LiveTheme.card,
                       textOnFill: LiveTheme.ink,
+                    ),
+                  ),
+                ),
+                // Active-check SCREEN FLASH: a full-preview colour wash at high
+                // brightness (white/red/blue) that the camera must SEE — recording
+                // never stops, and the wash fades subtly in/out (~120ms). A printed
+                // photo / emulator / injected virtual camera won't show the reflected
+                // light in the luma_timeline.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: _flashColor != null ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 120),
+                      child: ColoredBox(color: _flashColor ?? Colors.transparent),
                     ),
                   ),
                 ),
