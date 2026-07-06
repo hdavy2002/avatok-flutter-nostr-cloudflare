@@ -877,6 +877,29 @@ class PushService {
           }
           return;
         }
+        // [RECEPT-CALLBACK-PREEMPT-1] Missed-call-then-callback bug: if we are
+        // currently leaving a voice message on B's Ava (a live receptionist
+        // session — gReceptionistTargetPub == B) and THIS incoming call is
+        // FROM B calling us back, do NOT auto-busy it — let it ring and
+        // connect instead. A receptionist session makes callIsGenuinelyActive()
+        // true (gLiveCallScreens > 0), which is exactly what used to busy the
+        // callback before it ever rang. Fail-safe: if the target is unknown or
+        // this caller is someone else, fall straight through to the existing
+        // autobusy below — unchanged behavior for every other case (including
+        // the correct "third caller gets busy while we're on B's Ava" case).
+        final receptTarget = gReceptionistTargetPub;
+        final callbackFromPub = (d['fromPub'] ?? '').toString();
+        if (receptTarget != null &&
+            receptTarget.isNotEmpty &&
+            callbackFromPub.isNotEmpty &&
+            callbackFromPub == receptTarget) {
+          Analytics.capture('recept_preempted_by_callback',
+              {'call_id': incomingId, 'from': callbackFromPub});
+          gIncomingRingingFrom = (d['from'] ?? '').toString();
+          gIncomingRingingCallId = incomingId;
+          _showIncoming(d);
+          return;
+        }
         if (callIsGenuinelyActive()) {
           _signalStatus(incomingId, 'busy', (d['fromPub'] ?? '').toString());
           Analytics.capture('call_incoming_autobusy', {

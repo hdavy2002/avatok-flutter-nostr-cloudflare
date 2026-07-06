@@ -28,6 +28,11 @@ import '../../push/push_service.dart';
 // and are DRIVEN from here. Imported for scope; call_screen.dart also imports
 // this file — Dart permits the library cycle. See call_screen.dart:33-108.
 import '../../features/avatok/call_screen.dart';
+// [RECEPT-CALLBACK-PREEMPT-1] gReceptionistTargetPub lives in
+// call_session_manager.dart (mirrors the gInCall-style globals above);
+// call_session_manager.dart also imports this file — same permitted library
+// cycle as call_screen.dart above.
+import 'call_session_manager.dart';
 
 /// Coarse call lifecycle exposed via [CallSession.phase]. Wave 2 (PiP/pill,
 /// reconnect, Gemini parity) keys off THIS enum; the full call view also reads
@@ -1641,6 +1646,11 @@ class CallSession {
       _avaCountingDown = false;
       if (!ok) return false;
       _receptionist = call;
+      // [RECEPT-CALLBACK-PREEMPT-1] Publish the receptionist's target (the
+      // callee whose Ava we're now talking to) so an incoming callback FROM
+      // that exact person can be recognized and let through to ring instead
+      // of being auto-busied. Cleared in _teardown.
+      if (config.seed.isNotEmpty) gReceptionistTargetPub = config.seed;
       _setPhase('receptionist');
       call.release();
       call.done.then((_) {
@@ -1715,6 +1725,12 @@ class CallSession {
     }
     if (gOutgoingCallId == config.room) {
       gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
+    }
+    // [RECEPT-CALLBACK-PREEMPT-1] Clear the receptionist target when THIS
+    // session's own receptionist leg is the one that set it (guards against
+    // clobbering a different session's still-live target).
+    if (config.seed.isNotEmpty && gReceptionistTargetPub == config.seed) {
+      gReceptionistTargetPub = null;
     }
     // [CALL-RELSCORE-1] Hand the telemetry the session-level resilience signals it
     // can't see (mid-call reconnect attempts, forced TURN relay, callee-unreachable

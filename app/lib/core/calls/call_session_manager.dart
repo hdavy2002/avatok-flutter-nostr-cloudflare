@@ -5,6 +5,21 @@ import '../analytics.dart';
 import '../voice/native_voice_audio.dart';
 import 'call_session.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  RECEPT-CALLBACK-PREEMPT-1: receptionist-session target tracking.
+//
+//  Mirrors the gInCall/gLiveCallScreens pattern in call_screen.dart. While the
+//  local device is leaving a voice message on someone's Ava (a "receptionist"
+//  leg — see CallSession._tryReceptionist), that peer's uid is published here
+//  so the incoming-call push handler (push_service.dart) can tell "B is
+//  calling me back while I'm on B's Ava" apart from "some other call arrived
+//  while I'm on a call" BEFORE it auto-replies busy. Set the instant the
+//  receptionist leg actually starts (CallSession._tryReceptionist, on success);
+//  cleared the instant that leg ends (CallSession._teardown), same as every
+//  other call-scoped global. Null when no receptionist leg is live.
+// ─────────────────────────────────────────────────────────────────────────────
+String? gReceptionistTargetPub;
+
 /// App-level singleton that owns the current [CallSession] so a 1:1 call
 /// survives in-app navigation and backgrounding. A [WidgetsBindingObserver]:
 /// on `paused` with an active session it ensures the foreground service is
