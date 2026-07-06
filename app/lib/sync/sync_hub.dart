@@ -523,6 +523,30 @@ class SyncHub {
             try { unawaited(CallLogStore().applyServerSnapshot(calls)); } catch (_) {/* bad call rows never abort the sync */}
           }
         }
+        // [G2] Guardian safety-flag snapshot — merge the server's red-bubble state
+        // (server wins for dismissed) so red bubbles + "This is fine" dismissals
+        // survive reinstall and reach a fresh/2nd device. Then fan out the NON-
+        // dismissed flags to any open thread so it paints those bubbles now. This
+        // is the durable counterpart to the live `safety_flag` frame below.
+        {
+          final flags = (m['safety_flags'] as List? ?? const [])
+              .map((e) => (e as Map).cast<String, dynamic>())
+              .toList();
+          if (flags.isNotEmpty) {
+            try {
+              unawaited(SafetyFlagStore().hydrate(flags));
+              for (final f in flags) {
+                final dismissed = f['dismissed'] == true || f['dismissed'] == 1;
+                if (dismissed) continue; // dismissed → nothing to paint
+                _emitSafetyFlag(
+                  conv: (f['conv'] ?? '').toString(),
+                  msgId: (f['msg_id'] ?? '').toString(),
+                  category: (f['category'] ?? '').toString(),
+                );
+              }
+            } catch (_) {/* bad flag rows never abort the sync */}
+          }
+        }
         // After a backlog/restore sync the local DB now holds conversations that
         // P13-A sync_catchup: one row per (re)connect cursor sync.
         {
@@ -617,19 +641,38 @@ class SyncHub {
           final conv = (m['conv'] ?? '').toString();
           final msgId = (m['msg_id'] ?? '').toString();
           final category = (m['category'] ?? '').toString();
+          // [G2] The live frame is now store-and-forward: a `dismissed:true` frame
+          // means the owner tapped "This is fine" on ANOTHER device — record the
+          // dismissal locally (server wins) instead of re-painting the bubble.
+          final dismissed = m['dismissed'] == true || m['dismissed'] == 1;
           if (msgId.isNotEmpty) {
-            unawaited(SafetyFlagStore().put(msgId, conv: conv, category: category));
-            final myUid = _myUid ?? '';
-            final convKey = conv.startsWith('dm_')
-                ? '1:${dmPeer(conv, myUid) ?? conv}'
-                : 'g:$conv';
-            _safetyFlags.add({
-              'convKey': convKey, 'conv': conv, 'msg_id': msgId, 'category': category,
-            });
+            if (dismissed) {
+              unawaited(SafetyFlagStore().dismiss(msgId));
+              // No paint — the other-device dismiss propagates. (An already-open
+              // thread keeps its bubble until reopen; acceptable, rare cross-device
+              // race and the durable store is correct.)
+            } else {
+              unawaited(SafetyFlagStore().put(msgId, conv: conv, category: category));
+              _emitSafetyFlag(conv: conv, msgId: msgId, category: category);
+            }
           }
         }
         break;
     }
+  }
+
+  /// [G2] Fan out a (non-dismissed) guardian safety flag to any open thread. Derives
+  /// the `convKey` the threads filter on (shared by the live frame + the /sync seed
+  /// paths). Persistence is handled by the caller (put/hydrate).
+  void _emitSafetyFlag({required String conv, required String msgId, required String category}) {
+    if (msgId.isEmpty) return;
+    final myUid = _myUid ?? '';
+    final convKey = conv.startsWith('dm_')
+        ? '1:${dmPeer(conv, myUid) ?? conv}'
+        : 'g:$conv';
+    _safetyFlags.add({
+      'convKey': convKey, 'conv': conv, 'msg_id': msgId, 'category': category,
+    });
   }
 
   void _ingestMsg(Map<String, dynamic> r, {bool fromSync = false}) {

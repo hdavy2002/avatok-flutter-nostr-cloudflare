@@ -219,6 +219,37 @@ class SafetyFlagStore {
     await _saveAll(all);
   }
 
+  /// [G2] Merge a server safety-flag snapshot (from the `/sync` `safety_flags`
+  /// array) into the local store. SERVER WINS for the dismissed state — a "This is
+  /// fine" made on another device (or before a reinstall) is respected here — while
+  /// LOCAL-ONLY entries the server hasn't seen yet are preserved. This is what makes
+  /// red bubbles + dismissals cross devices and survive reinstall. Idempotent; one
+  /// disk write. Each row is `{msg_id, conv, category, severity?, dismissed}`.
+  Future<void> hydrate(List<Map<String, dynamic>> serverRows) async {
+    if (serverRows.isEmpty) return;
+    final all = await load();
+    var changed = false;
+    for (final r in serverRows) {
+      final msgId = (r['msg_id'] ?? '').toString();
+      if (msgId.isEmpty) continue;
+      final conv = (r['conv'] ?? '').toString();
+      final category = (r['category'] ?? '').toString();
+      // Server dismissed flag can be an int (0/1) or a bool over the wire.
+      final serverDismissed = r['dismissed'] == true || r['dismissed'] == 1;
+      final prev = all[msgId];
+      // Server wins for dismissed (a dismiss on any device propagates), but never
+      // un-dismisses a local choice the server hasn't caught up on yet (OR the two).
+      final dismissed = serverDismissed || (prev?['dismissed'] == true);
+      all[msgId] = <String, dynamic>{
+        'conv': conv.isNotEmpty ? conv : (prev?['conv'] ?? '').toString(),
+        'category': category.isNotEmpty ? category : (prev?['category'] ?? '').toString(),
+        'dismissed': dismissed,
+      };
+      changed = true;
+    }
+    if (changed) await _saveAll(all);
+  }
+
   /// Local dismiss ("This is fine") — hides the red state on THIS device. The
   /// sender is never notified (no network call).
   Future<void> dismiss(String msgId) async {

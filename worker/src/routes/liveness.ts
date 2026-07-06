@@ -53,6 +53,7 @@ import { trackUser, metric, brainFact } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { notifyUser } from "../notify";
 import { invalidateLevelCache } from "./ladder";
+import { markGatePassed } from "./ava_guardian"; // U1-lite: flip pending verify gate on liveness pass (dark)
 import { recordLivenessAudit, auditPrefix, deviceCtxFromBody } from "./liveness_audit";
 import { readConfig } from "./config";
 import { rekognitionConfigured, compareFaces } from "../aws/rekognition";
@@ -993,6 +994,13 @@ export async function runLivenessChecks(
   ]);
   await setVerifiedCache(env, ctx.uid, true);
   await invalidateLevelCache(env, ctx.uid);
+
+  // U1-lite (Guardian gate): a live face check just PASSED → flip any pending
+  // "Require verification" gate row for this user to 'passed'. Best-effort, detached,
+  // and self-gated on guardianGateEnabled (markGatePassed no-ops when the flag is off,
+  // so this is a zero-cost dark hook until U1 is turned on). Emits verify_human_passed.
+  // TODO(liveness-wire): this is the ONE authoritative liveness-success call site.
+  void markGatePassed(env, ctx.uid);
 
   brainFact(env, ctx.uid, "identity_verified", "avaid", { method: kycProvider, at: now });
   void trackUser(env, ctx.uid, await emailFor(env, ctx.uid).catch(() => null),

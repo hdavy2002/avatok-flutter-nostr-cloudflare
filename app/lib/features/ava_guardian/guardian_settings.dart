@@ -7,20 +7,22 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/api_auth.dart';
 import '../../core/config.dart';
 import '../../core/disk_cache.dart';
+import '../../core/remote_config.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 
 /// Per-chat Ava GUARDIAN controls (Phase 8 — Safety) + warning-display prefs.
 ///
-/// Two opt-in protections a user sets FOR ONE CONVERSATION (typically a chat with
-/// a stranger):
+/// A single opt-in protection a user sets FOR ONE CONVERSATION (typically a chat
+/// with a stranger):
 ///
-///   • "Secure-chat mode"        — FREE. Turns on Guardian monitoring for this
-///     chat: the AI security classifier (Claude Opus 4.8) runs on every incoming
-///     message and a PRIVATE warning (only you can see it) appears if the sender
-///     looks predatory / scammy / unsafe.
-///   • "Always-on deep monitoring" — FREE on all plans (no paywall). Same deep
-///     check; kept as an explicit opt-in row.
+///   • "Guardian is watching this chat" — FREE. Turns on Guardian monitoring for
+///     this chat: the AI security classifier (Claude Opus 4.8) runs on every
+///     incoming message and a PRIVATE warning (only you can see it) appears if the
+///     sender looks predatory / scammy / unsafe.
+///
+/// G0: the redundant "always-on deep monitoring" toggle has been removed — with
+/// secure-chat ON the deep classifier already runs on every message.
 ///
 /// Storage: the server is the source of truth (`POST /api/ava/guardian/scan` with
 /// a `{prefs}` / `{get_prefs}` body — the route IS wired by Phase 0). If a call
@@ -39,17 +41,21 @@ class GuardianSettingsSheet extends StatefulWidget {
   /// A friendly chat label for the header (group name / peer name).
   final String? chatLabel;
 
-  const GuardianSettingsSheet({super.key, required this.conv, this.chatLabel});
+  /// U1-lite: the PEER's uid for a 1:1 chat (null for groups). When non-null AND
+  /// [RemoteConfig.guardianGateEnabled] is on, the "Require verification" row shows.
+  final String? peerUid;
+
+  const GuardianSettingsSheet({super.key, required this.conv, this.chatLabel, this.peerUid});
 
   /// Show as a modal bottom sheet. Returns when dismissed.
-  static Future<void> show(BuildContext context, {required String conv, String? chatLabel}) {
+  static Future<void> show(BuildContext context, {required String conv, String? chatLabel, String? peerUid}) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Zine.paper,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (_) => GuardianSettingsSheet(conv: conv, chatLabel: chatLabel),
+      builder: (_) => GuardianSettingsSheet(conv: conv, chatLabel: chatLabel, peerUid: peerUid),
     );
   }
 
@@ -81,9 +87,27 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
     if (mounted) setState(() => _prefs = next);
   }
 
-  Future<void> _setDeep(bool v) async {
-    final next = await GuardianPrefsClient.I.set(widget.conv, deepMonitor: v);
-    if (mounted) setState(() => _prefs = next);
+  bool _verifyRequested = false;
+  bool _verifyBusy = false;
+
+  /// U1-lite: whether to surface the (dark) "Require verification" row. 1:1 only
+  /// (peerUid present) AND behind the guardianGateEnabled kill switch.
+  bool get _showRequireVerify =>
+      RemoteConfig.guardianGateEnabled &&
+      widget.peerUid != null &&
+      widget.peerUid!.isNotEmpty;
+
+  Future<void> _requireVerification() async {
+    if (_verifyBusy || widget.peerUid == null) return;
+    setState(() => _verifyBusy = true);
+    final ok = await GuardianPrefsClient.I.requireVerify(widget.conv, widget.peerUid!);
+    if (!mounted) return;
+    setState(() {
+      _verifyBusy = false;
+      if (ok) _verifyRequested = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok ? 'Verification requested' : "Couldn't request verification — try again.")));
   }
 
   @override
@@ -110,21 +134,14 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
               child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
             )
           else ...[
-            // FREE — secure-chat mode.
+            // FREE — the single "Guardian is watching this chat" switch.
             _ToggleRow(
               icon: PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
-              title: 'Secure-chat mode',
+              title: 'Guardian is watching this chat',
               subtitle: 'Let Ava watch this chat for scams, spam, and unsafe behaviour. '
                   'If something looks off, only you get a private heads-up.',
               value: _prefs.secureChat,
               onChanged: _setSecure,
-            ),
-            const SizedBox(height: 12),
-            // PREMIUM — always-on deep monitoring. Enable gated; disable free.
-            _DeepRow(
-              value: _prefs.deepMonitor,
-              onEnable: () => _setDeep(true),
-              onDisable: () => _setDeep(false),
             ),
             const SizedBox(height: 14),
             Container(
@@ -146,6 +163,43 @@ class _GuardianSettingsSheetState extends State<GuardianSettingsSheet> {
                 ),
               ]),
             ),
+            // U1-lite: MANUAL "Require verification" for 1:1 chats (dark behind
+            // guardianGateEnabled). Asks the peer to complete a live face check.
+            if (_showRequireVerify) ...[
+              const SizedBox(height: 14),
+              ZineCard(
+                radius: Zine.rSm,
+                padding: const EdgeInsets.all(14),
+                boxShadow: Zine.shadowXs,
+                child: Row(children: [
+                  ZineIconBadge(
+                      icon: PhosphorIcons.userFocus(PhosphorIconsStyle.fill),
+                      color: Zine.blue, size: 34),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Require verification', style: ZineText.value(size: 14.5)),
+                      const SizedBox(height: 2),
+                      Text(
+                        _verifyRequested
+                            ? 'Verification requested — Ava asked them to prove a live human face.'
+                            : "Ask this person to prove they're a real, live human with a quick face check.",
+                        style: ZineText.sub(size: 12),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 10),
+                  if (_verifyBusy)
+                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.2))
+                  else
+                    ZineButton(
+                      label: _verifyRequested ? 'Requested' : 'Ask',
+                      variant: _verifyRequested ? ZineButtonVariant.ghost : ZineButtonVariant.blue,
+                      onPressed: _verifyRequested ? null : _requireVerification,
+                    ),
+                ]),
+              ),
+            ],
             if (!GuardianPrefsClient.I.serverLive) ...[
               const SizedBox(height: 8),
               Text(
@@ -193,45 +247,6 @@ class _ToggleRow extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         ZineToggle(value: value, onChanged: onChanged),
-      ]),
-    );
-  }
-}
-
-/// Deep-monitoring row — FREE on all plans (no paywall). A plain toggle.
-class _DeepRow extends StatelessWidget {
-  final bool value;
-  final Future<void> Function() onEnable;
-  final Future<void> Function() onDisable;
-
-  const _DeepRow({required this.value, required this.onEnable, required this.onDisable});
-
-  @override
-  Widget build(BuildContext context) {
-    return ZineCard(
-      radius: Zine.rSm,
-      padding: const EdgeInsets.all(14),
-      boxShadow: Zine.shadowXs,
-      child: Row(children: [
-        ZineIconBadge(icon: PhosphorIcons.eye(PhosphorIconsStyle.fill), color: Zine.lilac, size: 34),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Flexible(child: Text('Always-on deep monitoring', style: ZineText.value(size: 14.5))),
-            const SizedBox(height: 2),
-            Text(
-              value
-                  ? 'Ava runs the deeper safety check on every message here, not just '
-                      'when something obvious is spotted.'
-                  : 'Run the deeper safety check on every message in this chat '
-                      'for the strongest protection.',
-              style: ZineText.sub(size: 12),
-            ),
-          ]),
-        ),
-        const SizedBox(width: 10),
-        // Free on all plans — no paywall (owner decision 2026-06-24).
-        ZineToggle(value: value, onChanged: (v) => v ? onEnable() : onDisable()),
       ]),
     );
   }
@@ -312,12 +327,15 @@ class GuardianPrefsClient {
     return _readCache(conv);
   }
 
-  /// Update one or both toggles for [conv]. Optimistic local write, then a
-  /// best-effort server sync. A 402 (premium required for deep monitoring) is
-  /// surfaced by reverting the optimistic value for [deepMonitor].
-  Future<GuardianPrefs> set(String conv, {bool? secureChat, bool? deepMonitor}) async {
+  /// Update the guardian watch state for [conv]. Optimistic local write, then a
+  /// best-effort server sync. [source] tags whether the flip came from an explicit
+  /// shield 'tap' or a 'stranger_accept' auto-enable (passed through to telemetry).
+  ///
+  /// G0: the guardian is FREE on all plans — there is no premium/402 path. The
+  /// [deepMonitor] param is retained for wire compat but is IGNORED by the server.
+  Future<GuardianPrefs> set(String conv, {bool? secureChat, bool? deepMonitor, String source = 'tap'}) async {
     final cur = await _readCache(conv);
-    final next = cur.copyWith(secureChat: secureChat, deepMonitor: deepMonitor);
+    final next = cur.copyWith(secureChat: secureChat);
     await _writeCache(conv, next); // local-first
 
     try {
@@ -325,7 +343,7 @@ class GuardianPrefsClient {
         'prefs': {
           'conv': conv,
           if (secureChat != null) 'secureChat': secureChat,
-          if (deepMonitor != null) 'deepMonitor': deepMonitor,
+          'source': source,
         },
       };
       final res = await ApiAuth.postJson(_url, body, timeout: const Duration(seconds: 8));
@@ -335,21 +353,50 @@ class GuardianPrefsClient {
           final j = jsonDecode(res.body) as Map<String, Object?>;
           final pj = j['prefs'];
           if (pj is Map<String, Object?>) {
-            final p = GuardianPrefs(secureChat: pj['secureChat'] == true, deepMonitor: pj['deepMonitor'] == true);
+            final p = GuardianPrefs(secureChat: pj['secureChat'] == true, deepMonitor: false);
             await _writeCache(conv, p);
             return p;
           }
         } catch (_) {/* keep optimistic value */}
-      } else if (res.statusCode == 402 && deepMonitor == true) {
-        // Premium required — revert the optimistic deep-monitor flip.
-        final reverted = next.copyWith(deepMonitor: false);
-        await _writeCache(conv, reverted);
-        return reverted;
       }
     } catch (e) {
       if (kDebugMode) debugPrint('GuardianPrefsClient.set sync deferred: $e');
     }
     return next;
+  }
+
+  /// [G2] Push a "This is fine" dismissal to the server so it reaches the caller's
+  /// OTHER devices and survives a reinstall. The server marks the flag dismissed in
+  /// the caller's own InboxDO (store-and-forward) and tracks the false-positive.
+  /// Best-effort, fire-and-forget: the local dismiss is already applied by the
+  /// caller, so a network failure here is non-fatal (the next /sync reconciles).
+  Future<void> dismissFlag(String msgId, {String conv = ''}) async {
+    if (msgId.isEmpty) return;
+    try {
+      await ApiAuth.postJson(_url, {
+        'dismiss_flag': {'msg_id': msgId, 'conv': conv},
+      }, timeout: const Duration(seconds: 8));
+    } catch (e) {
+      if (kDebugMode) debugPrint('GuardianPrefsClient.dismissFlag deferred: $e');
+    }
+  }
+
+  /// U1-lite: ask [peerUid] to complete a live face check for [conv]. Server-side
+  /// this is DARK behind guardianGateEnabled (403 `feature_off` when off) — the
+  /// client only calls it when [RemoteConfig.guardianGateEnabled] is already on, so
+  /// a 200 means the request was recorded + a private prompt posted to the peer.
+  /// Returns true on success. Best-effort; never throws.
+  Future<bool> requireVerify(String conv, String peerUid) async {
+    if (conv.isEmpty || peerUid.isEmpty) return false;
+    try {
+      final res = await ApiAuth.postJson(_url, {
+        'require_verify': {'conv': conv, 'peer_uid': peerUid},
+      }, timeout: const Duration(seconds: 8));
+      return res.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) debugPrint('GuardianPrefsClient.requireVerify failed: $e');
+      return false;
+    }
   }
 }
 

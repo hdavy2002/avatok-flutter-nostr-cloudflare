@@ -10,7 +10,7 @@ import { nameFor } from "../lib/identity";        // resolve inviter display nam
 import { readConfig } from "./config";            // groupInvitesEnabled kill switch
 import { novuGroupInvite } from "../notify_novu"; // optional Novu orchestration
 import { delegateScan } from "./ava_delegate";   // P7 — Phase 11 hook
-import { guardianScan } from "./ava_guardian";    // P8 — Phase 11 hook
+import { guardianScan, guardianFastScan, hasGuardianOnRecipient } from "./ava_guardian"; // P8 + G3 inline two-lane scan
 import { canonicalMsgId } from "../util"; // canonical, chronologically-sortable message id
 import { inboxAcceptState } from "./safety"; // STREAM B — read-receipt suppression for pending stranger threads
 // STREAM F — auto-responder ("Ava replies while you're away"). Hot-path hook only:
@@ -342,6 +342,47 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
     } catch { /* best-effort; the message still delivered live + via InboxDO */ }
   }
 
+  // Sender's origin geo/network (from req.cf) — reused by both the inline fast lane
+  // and the detached deep guardian scan for the spam-origination telemetry map.
+  const _cf: any = (req as any).cf || {};
+  const _guardGeo = {
+    country: _cf.country ?? null, region: _cf.region ?? null, city: _cf.city ?? null,
+    colo: _cf.colo ?? null, ip: req.headers.get("CF-Connecting-IP"),
+    asn: _cf.asn ?? null, asOrganization: _cf.asOrganization ?? null, isProxy: _cf.isProxy ?? null,
+  };
+
+  // ── G3: INLINE two-lane guardian scan (dark behind guardianInlineEnabled) ────
+  // When ON *and* the conv has ≥1 guardian-ON recipient, run the cheap FAST lane
+  // (regex + ONE Nemotron call, hard budget) BEFORE fan-out and attach the verdict
+  // to the fanned-out payload as payload.safety so the recipient paints the bubble
+  // red on arrival. On timeout/error we fan out immediately (fail-open) and emit a
+  // budget-breach event. The detached DEEP lane (Opus) still runs after fan-out and
+  // receives fastVerdict so it does not double-warn. When guardianInlineEnabled is
+  // FALSE this whole block is skipped → EXACTLY today's behaviour (deep lane only).
+  let _fastVerdict: { category: string; severity: number } | null = null;
+  const _guardCache = new Map<string, boolean>();
+  try {
+    const _cfg = await readConfig(env);
+    if (_cfg.guardianInlineEnabled === true && recipients.length > 0) {
+      const _guardedConv = await hasGuardianOnRecipient(env, conv, mem, ctx.uid, _guardCache);
+      if (_guardedConv) {
+        const _budget = Number(_cfg.guardianInlineBudgetMs) || 600;
+        const _fs = await guardianFastScan(env, {
+          text: text ?? "", conv, senderUid: ctx.uid, isGroup: mem.length > 2, geo: _guardGeo,
+        });
+        if (_fs.flag) {
+          _fastVerdict = _fs.flag;
+          (payload as any).safety = { category: _fs.flag.category, severity: _fs.flag.severity };
+        }
+        if (_fs.timed_out || _fs.ms > _budget) {
+          void env.Q_ANALYTICS?.send({ event: "guardian_inline_latency_budget_breach", uid: ctx.uid, ts: Date.now(),
+            props: { conv, ms: _fs.ms, budget_ms: _budget, lane: "fast", timed_out: _fs.timed_out,
+              account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+        }
+      }
+    }
+  } catch { /* fail-open: inline scan never blocks or delays a send */ }
+
   // Delivery: a small fan-out is delivered synchronously in parallel; a large one
   // is handed to Queues (the router never loops >FANOUT_SYNC_MAX synchronous DO
   // calls). The delete-for-everyone path keeps precise synchronous delivery + telemetry.
@@ -437,13 +478,14 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   // detached (no ctx.waitUntil in this route signature) so they never block the
   // send. `payload` is the exact fanned-out object; `mem` the member list.
   void delegateScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid });
-  // Pass the sender's origin geo/IP through so the guardian telemetry can record
-  // where flagged messages come from (country/IP) alongside who→who.
-  const _cf: any = (req as any).cf || {};
-  void guardianScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid, geo: {
-    country: _cf.country ?? null, region: _cf.region ?? null, city: _cf.city ?? null,
-    colo: _cf.colo ?? null, ip: req.headers.get("CF-Connecting-IP"),
-  } });
+  // Deep (slow) guardian lane. Runs detached AFTER fan-out. Pass the sender's origin
+  // geo/network for telemetry, and (G3) the fast-lane verdict so the deep lane never
+  // double-warns for a category the inline fast lane already surfaced.
+  void guardianScan(env, {
+    conv, message: payload, members: mem, senderUid: ctx.uid,
+    geo: _guardGeo,
+    fastVerdict: _fastVerdict as any,
+  });
 
   // P13-B PartyKit delivery hint (dark until PARTY_ENABLED=1): nudge anyone with
   // this thread open to do a targeted fetch instantly, instead of waiting on the

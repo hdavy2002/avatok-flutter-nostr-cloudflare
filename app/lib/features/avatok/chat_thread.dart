@@ -302,6 +302,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _saveBannerDismissed = false;
   // Shield watchdog (Ava guardian) state for THIS chat. Green shield = on.
   GuardianPrefs _guardian = GuardianPrefs.off;
+  // G1.3: minor accounts have Guardian force-ON (server ignores secure_chat=0 for
+  // minors). The shield renders locked-on with no toggle for a minor.
+  bool _isMinorAccount = false;
   // created_at (ms) of incoming messages Ava flagged as unsafe → painted RED so
   // they're an obvious red flag to the child. Populated from guardian warnings.
   final Set<int> _flaggedTs = <int>{};
@@ -534,7 +537,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     });
     ProfileStore().load().then((p) {
       if (!mounted) return;
-      setState(() { if (p.displayName.isNotEmpty) _myName = p.displayName; _sharePresence = p.sharePresence; _myAvatarUrl = p.avatarUrl; });
+      setState(() { if (p.displayName.isNotEmpty) _myName = p.displayName; _sharePresence = p.sharePresence; _myAvatarUrl = p.avatarUrl; _isMinorAccount = p.isMinor; });
     });
     _starStore.load().then((s) { if (mounted) setState(() => _starred = s); });
     // Restore the remembered translate target (account-scoped — a parent and a
@@ -1102,6 +1105,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     int? exp;
     String? special;
     Map<String, dynamic>? extra;
+    // G3 (inline two-lane scan): an incoming envelope may carry a top-level
+    // `safety:{category,severity}` verdict stamped by the server's FAST lane before
+    // fan-out. Treat it like a live safety_flag frame — mark the bubble red on
+    // arrival via the existing SafetyFlagStore + _safetyFlags path (below), so the
+    // recipient sees the red flag instantly instead of waiting for the deep lane's
+    // separate safety_flag push. Only for incoming (peer) messages.
+    String? inlineSafetyCat;
     try {
       final env = jsonDecode(m.payload);
       if (env is Map && env['t'] == 'receipt') { _applyReceipt(m.mine, env); return; } // status, never a bubble
@@ -1132,6 +1142,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         if (env['replyTo'] is Map) replyMeta = (env['replyTo'] as Map).cast<String, dynamic>();
         forwarded = env['forwarded'] == true;
         exp = (env['exp'] as num?)?.toInt();
+        // G3 inline safety verdict on the envelope → red bubble on arrival.
+        if (!m.mine && env['safety'] is Map) {
+          final cat = ((env['safety'] as Map)['category'] ?? '').toString();
+          if (cat.isNotEmpty) inlineSafetyCat = cat;
+        }
         // STREAM C: sender-embedded link preview → render from the envelope.
         if (env['preview'] is Map) {
           extra = {...?extra, 'preview': (env['preview'] as Map).cast<String, dynamic>()};
@@ -1160,8 +1175,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           sent: m.mine, // my own messages reaching here are already on the relay
           starred: _starred.contains(m.rumorId), hidden: _hiddenIds[m.rumorId] == true));
       _noteGuardianFlag(special, extra);
+      // G3: an inline fast-lane safety verdict paints THIS bubble red immediately,
+      // exactly like a live safety_flag frame (keyed by the message's rumor id).
+      if (inlineSafetyCat != null && !_safetyFlaggedIds.containsKey(m.rumorId)) {
+        _safetyFlaggedIds[m.rumorId] = inlineSafetyCat!;
+      }
       _msgs.sort((a, b) => a.ts.compareTo(b.ts));
     });
+    // Persist the inline flag so the red bubble survives reopen (mirrors how the
+    // deep-lane safety_flag frame is persisted). Best-effort.
+    if (inlineSafetyCat != null) {
+      unawaited(_safetyStore.put(m.rumorId,
+          conv: _serverConvId ?? _convKey ?? '', category: inlineSafetyCat!));
+    }
     // Full-thread RAG: index a peer's LIVE text into my own store (not seeded
     // history, not media/special envelopes).
     if (!m.mine && !seed && special == null && media == null) {
@@ -1764,6 +1790,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _threadAcceptState = 'accepted';
       StrangerGateApi.accept(_serverConv!);
       trackStrangerGate('stranger_gate_accept', {'conv': _serverConv!, 'implicit': true});
+      // G1.2: an implicit accept (replying to a stranger) also auto-enables Guardian.
+      _autoEnableGuardianOnAccept();
     }
     HapticFeedback.selectionClick(); // P9: subtle send confirmation
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -5896,7 +5924,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                 conv: _serverConv!,
                 peerUid: _peerNpub ?? widget.chat.seed,
                 peerName: widget.chat.name,
-                onAccepted: () => setState(() { _strangerGatePending = false; _threadAcceptState = 'accepted'; }),
+                onAccepted: () {
+                  setState(() { _strangerGatePending = false; _threadAcceptState = 'accepted'; });
+                  // G1.2: accepting a stranger auto-enables Guardian for this chat.
+                  _autoEnableGuardianOnAccept();
+                },
                 onBlockedOrReported: () { if (mounted) Navigator.of(context).maybePop(); },
               ))
             else SafeArea(top: false, child: _inputBar()),
@@ -6100,16 +6132,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   // Tap the shield → toggle Ava watching THIS chat for scams/grooming/unsafe
-  // behaviour (Nemotron). Green = on. Long-press opens the full guardian sheet
-  // (incl. premium deep monitoring).
+  // behaviour. Green = on. Single tap toggles off with no confirmation. Long-press
+  // opens the full guardian sheet. G1.3: for MINOR accounts Guardian is force-ON —
+  // the shield is locked and this is a no-op (guarded in _shieldAction too).
   Future<void> _toggleGuardian() async {
+    if (_isMinorAccount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Guardian always protects this account')));
+      return;
+    }
     final conv = _guardianConv;
     if (conv == null) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Guardian isn’t available for this chat yet')));
       return;
     }
-    final next = await GuardianPrefsClient.I.set(conv, secureChat: !_guardian.secureChat);
+    final next = await GuardianPrefsClient.I.set(conv, secureChat: !_guardian.secureChat, source: 'tap');
     if (!mounted) return;
     setState(() => _guardian = next);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -6118,10 +6156,32 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
             : 'Ava watch turned off for this chat')));
   }
 
+  // G1.2: when the user ACCEPTS a message request from a non-contact stranger,
+  // auto-enable Guardian for the chat (source: 'stranger_accept') and show a brief
+  // notice. Best-effort — a failed prefs write never blocks the accept. Skipped for
+  // minors (already force-ON) and when the shield is already on.
+  Future<void> _autoEnableGuardianOnAccept() async {
+    if (_isMinorAccount || _guardian.secureChat) return;
+    final conv = _guardianConv;
+    if (conv == null) return;
+    try {
+      final next = await GuardianPrefsClient.I.set(conv, secureChat: true, source: 'stranger_accept');
+      if (!mounted) return;
+      setState(() => _guardian = next);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Ava Guardian is on for this chat — tap the shield to turn it off.')));
+    } catch (_) {/* best-effort — never block the accept */}
+  }
+
   void _openGuardianSheet() {
     final conv = _guardianConv;
     if (conv == null) return;
-    GuardianSettingsSheet.show(context, conv: conv, chatLabel: widget.chat.name)
+    // U1-lite: pass the peer uid for 1:1 chats so the (dark) "Require verification"
+    // row can address the peer. Null for groups → the row is hidden there.
+    GuardianSettingsSheet.show(context,
+            conv: conv,
+            chatLabel: widget.chat.name,
+            peerUid: _isGroup ? null : _peerNpub)
         .then((_) => _loadGuardian());
   }
 
@@ -6139,9 +6199,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         constraints: const BoxConstraints(minWidth: 46, minHeight: 46),
       );
 
-  // Shield watchdog toggle: GREEN when Ava is watching this chat. Tap toggles;
-  // long-press opens the full guardian settings (incl. premium deep monitoring).
+  // Shield watchdog toggle: GREEN when Ava is watching this chat. Single tap
+  // toggles (no confirmation); long-press opens the full guardian settings.
+  // G1.3: for MINOR accounts the shield is LOCKED-ON — green, no toggle, a tooltip
+  // explaining Guardian always protects the account.
   Widget _shieldAction() {
+    if (_isMinorAccount) {
+      return Tooltip(
+        message: 'Guardian always protects this account',
+        child: _headerAction(
+          PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
+          () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Guardian always protects this account'))),
+          color: Zine.mintInk,
+        ),
+      );
+    }
     final on = _guardian.secureChat;
     return GestureDetector(
       onLongPress: _openGuardianSheet,
@@ -7664,6 +7737,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       return;
     }
     Analytics.capture('safety_flag_block', {'category': category, 'is_group': _isGroup});
+    // Guardian telemetry spec §2.2 — user acted on a warning (block).
+    Analytics.capture('guardian_warning_actioned', {'action': 'block', 'category': category, 'is_group': _isGroup});
     try {
       // Same `blocks` table the messaging gate reads — a block silently stops all
       // future sends from this uid. The sender is not notified.
@@ -7677,6 +7752,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Future<void> _reportFlagged(_Msg m, String category) async {
     Analytics.capture('safety_flag_report', {'category': category, 'is_group': _isGroup});
+    // Guardian telemetry spec §2.2 — user acted on a warning (report).
+    Analytics.capture('guardian_warning_actioned', {'action': 'report', 'category': category, 'is_group': _isGroup});
     final targetId = _peerNpub ?? _convKey ?? '';
     try {
       // Generic moderation report (POST /api/report {targetType,targetId,reason}).
@@ -7701,8 +7778,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final id = m.evId;
     if (id == null || id.isEmpty) return;
     Analytics.capture('safety_flag_dismissed', {'category': category, 'is_group': _isGroup});
+    // Guardian telemetry spec §2.2 — user acted on a warning (dismiss = "This is fine").
+    Analytics.capture('guardian_warning_actioned', {'action': 'dismiss', 'category': category, 'is_group': _isGroup});
     setState(() => _safetyFlaggedIds.remove(id));
     await _safetyStore.dismiss(id);
+    // [G2] Also push the dismissal to the server so "This is fine" reaches my OTHER
+    // devices and survives a reinstall (store-and-forward). Best-effort — the local
+    // dismiss above already applied; a failed round-trip reconciles on the next sync.
+    unawaited(GuardianPrefsClient.I.dismissFlag(id, conv: _serverConvId ?? ''));
   }
 
   void _toast(String msg) {

@@ -177,6 +177,12 @@ class RemoteConfig {
   /// Guardian settings section is not registered and the per-chat shield icon is
   /// hidden. Live (pro) build sets `guardianEnabled:false` in prod KV.
   static bool get guardianEnabled => _b('guardianEnabled', kGuardianEnabledDefault);
+  /// U1-lite (Guardian Sentinel §U1): MANUAL "Require verification" gate. When ON,
+  /// the guardian settings sheet shows a "Require verification" row for 1:1 chats
+  /// that asks the peer to complete a live face check (Trust Engine liveness).
+  /// Fully DARK by default (server modes 403 `feature_off`; the client row is
+  /// hidden). Mirrors config.ts `guardianGateEnabled`. Flip ON in KV platform_config.
+  static bool get guardianGateEnabled => _b('guardianGateEnabled', false);
   /// AvaMarketplace (buy/sell/social + agent negotiation, Specs/AVAMARKETPLACE-
   /// FINAL-PROPOSAL.md). Default OFF so the feature stays dark after a config
   /// fetch failure and during phased rollout — flip `marketplaceEnabled: true`

@@ -16,19 +16,23 @@ import '../../core/ui/zine_widgets.dart';
 ///
 /// A guardian `ava_private` message carries (in its JSON body envelope):
 ///   { t:'ava_private', text:<warning>, source:'guardian',
-///     meta:{ guardian:true, category:'scam'|'spam'|'grooming'|'deepfake', severity:int } }
+///     meta:{ guardian:true, category:'scam'|'spam'|'grooming'|..., severity:int } }
 /// [GuardianWarningInfo.fromMeta] parses that meta so a host screen can build the
 /// card; if a screen only has the bubble text it can still construct one with
 /// [GuardianWarningInfo.text].
 
 /// The kinds of safety signal Guardian raises.
-enum GuardianCategory { scam, spam, grooming, deepfake, unknown }
+///
+/// G0: 'deepfake' has been REMOVED — media/deepfake scanning is deleted and the
+/// server never emits it. A legacy 'deepfake' meta on an old message parses to
+/// [GuardianCategory.unknown] (generic Ava-safety rendering).
+enum GuardianCategory { scam, spam, grooming, unknown }
 
 GuardianCategory _categoryFromWire(String? s) => switch (s) {
       'scam' => GuardianCategory.scam,
       'spam' => GuardianCategory.spam,
       'grooming' => GuardianCategory.grooming,
-      'deepfake' => GuardianCategory.deepfake,
+      // 'deepfake' (legacy) falls through to unknown.
       _ => GuardianCategory.unknown,
     };
 
@@ -71,7 +75,6 @@ class GuardianWarningInfo {
         GuardianCategory.grooming => 'Safety warning',
         GuardianCategory.scam => 'Possible scam',
         GuardianCategory.spam => 'Possible spam',
-        GuardianCategory.deepfake => 'This image may be fake',
         GuardianCategory.unknown => 'Ava safety',
       };
 
@@ -79,7 +82,6 @@ class GuardianWarningInfo {
         GuardianCategory.grooming => PhosphorIcons.warning(PhosphorIconsStyle.fill),
         GuardianCategory.scam => PhosphorIcons.warningCircle(PhosphorIconsStyle.fill),
         GuardianCategory.spam => PhosphorIcons.megaphone(PhosphorIconsStyle.fill),
-        GuardianCategory.deepfake => PhosphorIcons.imageBroken(PhosphorIconsStyle.fill),
         GuardianCategory.unknown => PhosphorIcons.shieldCheck(PhosphorIconsStyle.fill),
       };
 

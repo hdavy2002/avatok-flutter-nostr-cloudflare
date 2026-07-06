@@ -9,7 +9,6 @@ import '../../../core/analytics.dart';
 import '../../../core/api_auth.dart';
 import '../../../core/config.dart';
 import '../../../core/disk_cache.dart';
-import '../../../core/paid_feature.dart';
 import '../../../core/profile_store.dart';
 import '../../../core/remote_config.dart';
 import '../../../core/ui/zine.dart';
@@ -30,8 +29,6 @@ const bool kParentDigestUiEnabled = false;
 ///   • Scam-shield                 — FREE, always-on. Ava flags likely scams/spam
 ///     and warns you privately. A read-only assurance row (it cannot be turned off
 ///     — basic safety is bundled), plus the warning-display preference.
-///   • Always-on deep monitoring   — PREMIUM. The account-wide DEFAULT for new
-///     stranger chats; the enable is wrapped in [PaidFeature].
 ///   • Weekly parent digest        — PARENT ACCOUNTS ONLY. Opt in to a weekly
 ///     safety digest covering your linked children. Shown only when the account
 ///     kind is `parent`.
@@ -69,12 +66,7 @@ void registerGuardianSection() {
 class GuardianDefaults {
   GuardianDefaults._();
 
-  static const _kDeepDefault = 'ava_guardian_default_deep';
   static const _kParentDigest = 'ava_guardian_parent_digest';
-
-  /// Default for "always-on deep monitoring" in new stranger chats. Default OFF
-  /// (premium + conservative).
-  static final ValueNotifier<bool> deepDefault = ValueNotifier<bool>(false);
 
   /// Parent-account opt-in to the weekly safety digest. Default ON for parents
   /// (the whole point of a custodial account), but only shown/used for parents.
@@ -85,17 +77,10 @@ class GuardianDefaults {
 
   static Future<void> load() async {
     try {
-      final d = await DiskCache.read(_kDeepDefault);
       final pd = await DiskCache.read(_kParentDigest);
-      deepDefault.value = d == '1';
       parentDigest.value = pd == null || pd.isEmpty ? true : pd == '1';
     } catch (_) {/* keep defaults */}
     _loaded = true;
-  }
-
-  static Future<void> setDeepDefault(bool v) async {
-    deepDefault.value = v;
-    await DiskCache.write(_kDeepDefault, v ? '1' : '0');
   }
 
   static Future<void> setParentDigest(bool v) async {
@@ -214,34 +199,9 @@ class _GuardianCardState extends State<_GuardianCard> {
             ]),
           ),
         ],
-        const SizedBox(height: 12),
-        const Divider(height: 1, thickness: 1, color: Zine.inkMute),
-        const SizedBox(height: 12),
-        // PREMIUM — always-on deep monitoring default. Enable is paid-gated.
-        ValueListenableBuilder<bool>(
-          valueListenable: GuardianDefaults.deepDefault,
-          builder: (context, on, _) => Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Flexible(child: Text('Always-on deep monitoring', style: ZineText.value(size: 13.5))),
-                  const SizedBox(width: 8),
-                  const PaidBadge(),
-                ]),
-                Text('Default new stranger chats to the deeper safety check.', style: ZineText.sub(size: 11.5)),
-              ]),
-            ),
-            const SizedBox(width: 10),
-            if (on)
-              ZineToggle(value: true, onChanged: (_) => GuardianDefaults.setDeepDefault(false))
-            else
-              PaidFeature(
-                actionLabel: 'Enable deep monitoring by default',
-                onRun: () async => GuardianDefaults.setDeepDefault(true),
-                child: const IgnorePointer(child: ZineToggle(value: false, onChanged: null)),
-              ),
-          ]),
-        ),
+        // G0: the account-wide "always-on deep monitoring" default (premium/
+        // PaidFeature) has been removed — guardian is free and secure-chat already
+        // runs the deep classifier per message.
         // PARENT ACCOUNTS — weekly safety digest opt-in.
         // DISABLED 2026-07-04 (owner decision): no scheduled delivery job exists
         // yet, so the toggle over-promises. Backend (runParentDigests + scan

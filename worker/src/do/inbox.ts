@@ -134,7 +134,23 @@ export class InboxDO {
          deleted INTEGER NOT NULL DEFAULT 0,
          updated_at INTEGER
        );
-       CREATE INDEX IF NOT EXISTS idx_call_ts ON call_log(ts);`,
+       CREATE INDEX IF NOT EXISTS idx_call_ts ON call_log(ts);
+       -- [G2] GUARDIAN SAFETY FLAGS (store-and-forward). The recipient's own
+       -- red-bubble state for a flagged message: one row per flagged msg_id (the
+       -- flagged message's client_id). dismissed=1 records the owner's "This is
+       -- fine" so it survives reinstall AND reaches their other devices. Owner
+       -- state → lives in THIS user's InboxDO. Seeded on /sync (like hidden/reads/
+       -- calls), broadcast live on write (store-and-forward replaces the old
+       -- broadcast-only /event push). The SENDER's InboxDO is never written.
+       CREATE TABLE IF NOT EXISTS safety_flags (
+         msg_id     TEXT PRIMARY KEY,
+         conv       TEXT,
+         category   TEXT,
+         severity   INTEGER,
+         dismissed  INTEGER NOT NULL DEFAULT 0,
+         ts         INTEGER NOT NULL DEFAULT 0
+       );
+       CREATE INDEX IF NOT EXISTS idx_safety_flags_ts ON safety_flags(ts);`,
     );
     // Additive migration for the Ava visibility scope. Guarded: on a fresh DO
     // the column is created by the (extended) CREATE above's absence — SQLite has
@@ -336,6 +352,11 @@ export class InboxDO {
         });
       }
       if (url.pathname.endsWith("/hide")) return this.hide(await req.json());
+      // [G2] Guardian safety flag: upsert the owner's red-bubble/dismiss state,
+      // then broadcast it live (store-and-forward). Replaces the old broadcast-only
+      // /event push for this frame type so red bubbles survive reinstall + reach
+      // every device.
+      if (url.pathname.endsWith("/safety_flag")) return this.safetyFlag(await req.json());
       if (url.pathname.endsWith("/read")) return this.markRead(await req.json());
       if (url.pathname.endsWith("/event")) return this.event(await req.json());
       // Transient "Ava is working…" chip — broadcast only, never persisted.
@@ -381,6 +402,7 @@ export class InboxDO {
         this.sql.exec("DELETE FROM conv_meta");
         this.sql.exec("DELETE FROM read_state");
         try { this.sql.exec("DELETE FROM call_log"); } catch { /* table may predate this migration */ }
+        try { this.sql.exec("DELETE FROM safety_flags"); } catch { /* table may predate this migration */ }
         return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
       }
     } catch (e: any) {
@@ -609,7 +631,7 @@ export class InboxDO {
     return { ...base, messages: [...base.messages, ...extra] };
   }
 
-  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[] } {
+  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[]; safety_flags: unknown[] } {
     // conv_seq (Phase 0 stamp) and conv_meta.seq are added as ADDITIVE fields so a
     // Phase-1-aware client can learn each conversation's per-stream position from the
     // ordinary snapshot; older clients simply ignore the extra columns. No behaviour
@@ -633,7 +655,17 @@ export class InboxDO {
         `SELECT entry_id, name, seed, video, dir, ts, deleted FROM call_log ORDER BY ts DESC LIMIT 200`,
       ).toArray();
     } catch { /* table may predate this migration on an old DO */ }
-    return { type: "sync", messages, receipts, convs, reads, calls };
+    // [G2] Guardian safety-flag snapshot (owner's red-bubble state). Seeded on /sync
+    // like reads/calls/hidden so red bubbles + "This is fine" dismissals survive a
+    // reinstall and reach a fresh/2nd device. Small + capped; the client merges by
+    // msg_id (server wins for dismissed). Table may predate this migration → guard.
+    let safety_flags: unknown[] = [];
+    try {
+      safety_flags = this.sql.exec(
+        `SELECT msg_id, conv, category, severity, dismissed FROM safety_flags ORDER BY ts DESC LIMIT 500`,
+      ).toArray();
+    } catch { /* table may predate this migration on an old DO */ }
+    return { type: "sync", messages, receipts, convs, reads, calls, safety_flags };
   }
 
   // Owner marks a conversation read up to `read_ts` (unix seconds). Monotonic —
@@ -663,6 +695,40 @@ export class InboxDO {
     const hidden = b.hidden ? 1 : 0;
     this.sql.exec(`UPDATE messages SET hidden=?1 WHERE conv=?2 AND client_id=?3`, hidden, conv, target);
     const live = this.broadcast(JSON.stringify({ type: "hide", conv, target, hidden: !!b.hidden }));
+    return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // [G2] Guardian safety flag — store-and-forward. Upserts the OWNER's red-bubble
+  // state for a flagged message (keyed by the flagged message's client_id), then
+  // broadcasts a live frame so an open thread paints/clears the bubble now AND a
+  // second device reflects it. A dismissed:true write records "This is fine" (it
+  // wins over an existing red flag and survives reinstall via /sync seeding). A
+  // fresh flag write must not clobber a prior dismissal — MAX(dismissed) keeps the
+  // owner's choice sticky (mirrors the client's put() preserve-dismiss rule).
+  private safetyFlag(b: { msg_id?: string; conv?: string; category?: string; severity?: number; dismissed?: boolean | number }): Response {
+    const msgId = String(b.msg_id ?? "").trim();
+    const conv = String(b.conv ?? "");
+    if (!msgId) return new Response(JSON.stringify({ ok: false, error: "msg_id required" }), { headers: { "content-type": "application/json" } });
+    const dismissed = (b.dismissed === true || b.dismissed === 1) ? 1 : 0;
+    const category = b.category != null ? String(b.category) : null;
+    const severity = b.severity != null ? Math.floor(Number(b.severity)) || 0 : null;
+    // Upsert: keep the first non-null conv/category/severity if a later frame omits
+    // them (a dismiss-only write carries just msg_id+dismissed). dismissed is sticky
+    // via MAX so a re-pushed flag never un-dismisses the owner's choice.
+    this.sql.exec(
+      `INSERT INTO safety_flags (msg_id, conv, category, severity, dismissed, ts)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+       ON CONFLICT(msg_id) DO UPDATE SET
+         conv=COALESCE(NULLIF(?2,''), conv),
+         category=COALESCE(?3, category),
+         severity=COALESCE(?4, severity),
+         dismissed=MAX(dismissed, ?5),
+         ts=?6`,
+      msgId, conv, category, severity, dismissed, Date.now(),
+    );
+    const live = this.broadcast(JSON.stringify({
+      type: "safety_flag", conv, msg_id: msgId, category, dismissed: dismissed === 1,
+    }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
   }
 

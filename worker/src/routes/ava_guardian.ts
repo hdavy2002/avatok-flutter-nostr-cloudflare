@@ -1,24 +1,34 @@
 // ava_guardian.ts — Phase 8 (Guardian: Safety).
 //
-// Ava's safety layer. Three jobs, all behind a CHEAP CLASSIFIER GATE so a normal
-// message costs (almost) nothing:
-//   1. SCAM / SPAM flag           — FREE tier, always-on. Keyword/heuristic first;
-//                                     llama-guard only on a heuristic hit.
-//   2. GROOMING / LURING detect    — escalates a suspicious thread; on a confident
-//                                     signal Ava posts a PRIVATE warning to the
-//                                     at-risk person ONLY (never the other party).
-//   3. DEEPFAKE / AI-IMAGE check   — on incoming media: structure is real; the
-//                                     score is STUBBED until a detector model is
-//                                     wired (documented TODO + model choice below).
-// Plus a weekly PARENT DIGEST builder for the parent account of a child user.
+// Ava's chat safety layer. Two jobs, both FREE on all plans (no premium gating):
+//   1. SCAM / SPAM / GROOMING flag — cheap regex heuristics first (free, always),
+//                                     then Nemotron content-safety (moderate()) and,
+//                                     for WATCHED chats, the Opus deep classifier
+//                                     (classifyThreat()). On a confident signal Ava
+//                                     posts a PRIVATE warning to the at-risk person
+//                                     ONLY (never the other party).
+//   2. Weekly PARENT DIGEST builder for the parent account of a child user.
 //
-// COST DISCIPLINE (the hard rule, same shape as P7 delegate):
-//   • Every fanned-out message hits the FREE cheap gate (string heuristics). Only a
-//     heuristic hit escalates to llama-guard (`@cf/meta/llama-guard-3-8b` via
-//     ai_gate.isSafe), and a confident scam/grooming verdict triggers the warning.
-//   • ALWAYS-ON DEEP MONITORING (running the classifier on every message even with
-//     no heuristic hit, for premium guardians) is PREMIUM — gated by `isEntitled`.
-//     The basic scam/spam flag + a child's guardian monitoring (parent-paid) are free.
+// SCAN PIPELINE (the cost staircase):
+//   cheap regex → Nemotron moderate() → classifyThreat() deep classifier (Opus).
+//   The deep classifier runs only for WATCHED recipients (prefs.secureChat || a
+//   cheap-regex hit). Nemotron always runs as the illegal-content floor.
+//
+// ACTIVATION MODEL (G1): model scanning is skipped entirely for recipients WITHOUT
+//   secure_chat=1, EXCEPT the Nemotron illegal-content floor which still runs but
+//   only ACTS (flag + warning) for csae/trafficking on unwatched recipients (record
+//   flag + telemetry, no user-facing warning unless the chat is guardian-ON). Cheap
+//   regex may still run for free but only produces flags/warnings for guardian-ON
+//   recipients. Minors are always treated as secure_chat=1 (force-ON). Everything is
+//   fail-open and detached — safety machinery can never block or delay delivery.
+//
+// NOTE (G0): media/deepfake scanning has been DELETED. There is no synthetic-media
+//   detector; the {media_ref} scan mode, checkMedia/detectSynthetic, and the
+//   'deepfake' category are gone from all server code paths (the client may still
+//   render a legacy 'deepfake' meta for old messages, but the server never emits it).
+//
+// COST DISCIPLINE: a clean message in an unwatched chat costs only the cheap regex
+//   scan + one Nemotron pass; the Opus classifier is touched only in watched chats.
 //
 // ── WIRING (index.ts is wired; messaging.ts is FROZEN — one Phase-11 hook) ──
 //   • ROUTE: index.ts ALREADY routes `POST /api/ava/guardian/scan` →
@@ -35,15 +45,14 @@
 //         void guardianScan(env, { conv, message: payload, members: mem, senderUid: ctx.uid });
 //
 //     `payload` is the object messaging.ts already builds
-//     (`{ conv, sender, kind, body, media_ref, client_id, created_at }`); `mem` is
-//     its resolved member list; `ctx.uid` is the sender. `guardianScan` self-gates
-//     (cheap heuristics first), so a clean message adds only a string scan.
+//     (`{ conv, sender, kind, body, client_id, created_at }`); `mem` is its resolved
+//     member list; `ctx.uid` is the sender. `guardianScan` self-gates (cheap
+//     heuristics first), so a clean message adds only a string scan.
 //
-// Reuses: postAvaMessage (P3 ava_thread.ts) for the PRIVATE warning; isSafe
-// (P2 ai_gate.ts) as the heavier classifier; the existing push queue (env.Q_PUSH
-// "notify") for the parent digest delivery hook. Per-user/per-chat secure-chat
-// prefs + parent↔child links live in SELF-CREATING D1 tables (DB_META), mirroring
-// P7's ava_delegate_prefs self-create pattern (no migration).
+// Reuses: postAvaMessage (P3 ava_thread.ts) for the PRIVATE warning; the existing
+// push queue (env.Q_PUSH "notify") for the parent digest delivery hook. Per-user/
+// per-chat secure-chat prefs + parent↔child links live in SELF-CREATING D1 tables
+// (DB_META), mirroring P7's ava_delegate_prefs self-create pattern (no migration).
 
 import type { Env } from "../types";
 import { json } from "../util";
@@ -55,18 +64,37 @@ import { track, trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Entitlement — the premium authority. STUB (mirrors routes/ava_tools.ts +
-// routes/backup.ts): returns false until the wallet/subscription phase lands.
-// "Always-on deep monitoring" is the only PREMIUM guardian capability; the basic
-// scam/spam flag and a child's parent-paid monitoring are FREE. Signature stable.
+// Telemetry PII overhaul (Specs/GUARDIAN-TELEMETRY-SPEC §1). Data minimization:
+// raw email + raw IP are NEVER stamped as event properties. A flagged event may
+// carry an IP HASH (sha256, first 16 hex) so a spam-origination map can group by
+// network without storing the raw address. Best-effort; a hash failure omits it.
 // ─────────────────────────────────────────────────────────────────────────────
-async function isEntitled(_env: Env, _uid: string): Promise<boolean> {
-  // Owner decision 2026-06-24: the guardian / shield watchdog is FREE on ALL plans
-  // — no premium gating. (Deep monitoring is redundant now anyway: secure-chat ON
-  // already runs the AI security classifier on every message.)
-  return true;
+async function ipHash(ip?: string | null): Promise<string | null> {
+  const v = (ip ?? "").trim();
+  if (!v) return null;
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v));
+    const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return hex.slice(0, 16);
+  } catch {
+    return null;
+  }
 }
 
+/** UTC hour (0..23) of `ts` — a coarse, non-identifying time-of-day analytics dim. */
+function hourUtc(ts: number): number {
+  return new Date(ts).getUTCHours();
+}
+// Guardian Sentinel (S1) — single best-effort ingest hook. DARK behind
+// sentinelEnabled (the ingest self-gates on the KV flag; the caller also checks).
+// Fail-open, detached (void). Full event-bus consumption arrives with the consumers
+// wiring (plan §S1.5); this hook is the minimal in-worker fan-in point at launch.
+import { sentinelIngest } from "../sentinel/ingest";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G0: the guardian / shield watchdog is FREE on ALL plans — no premium gating
+// (owner decision 2026-06-24). The former isEntitled() stub + all entitlement
+// checks have been DELETED; everything is treated as always-entitled.
 // ─────────────────────────────────────────────────────────────────────────────
 // Self-creating D1 tables (DB_META): secure-chat prefs + parent↔child links.
 //   ava_guardian_prefs : per-(uid,conv) "secure-chat mode" + deep-monitor opt-in.
@@ -84,8 +112,8 @@ async function ensureTables(env: Env): Promise<void> {
       `CREATE TABLE IF NOT EXISTS ava_guardian_prefs (
          uid           TEXT NOT NULL,
          conv          TEXT NOT NULL,
-         secure_chat   INTEGER NOT NULL DEFAULT 0,  -- 1 → monitor this chat-with-stranger
-         deep_monitor  INTEGER NOT NULL DEFAULT 0,  -- 1 → PREMIUM always-on deep scan
+         secure_chat   INTEGER NOT NULL DEFAULT 0,  -- 1 → Guardian is watching this chat
+         deep_monitor  INTEGER NOT NULL DEFAULT 0,  -- G0: DEPRECATED/IGNORED (kept for D1 compat)
          updated_at    INTEGER NOT NULL DEFAULT 0,
          PRIMARY KEY (uid, conv)
        )`,
@@ -96,7 +124,7 @@ async function ensureTables(env: Env): Promise<void> {
          uid         TEXT NOT NULL,        -- the at-risk / protected user
          conv        TEXT NOT NULL,
          peer        TEXT,                 -- the other party (sender), if any
-         category    TEXT NOT NULL,        -- 'scam' | 'spam' | 'grooming' | 'deepfake'
+         category    TEXT NOT NULL,        -- 'scam' | 'spam' | 'grooming' | 'csae' | ...
          severity    INTEGER NOT NULL,     -- 1 low … 3 high
          detail      TEXT,                 -- short human note
          created_at  INTEGER NOT NULL
@@ -123,6 +151,21 @@ async function ensureTables(env: Env): Promise<void> {
          uid           TEXT PRIMARY KEY,
          adult_optout  INTEGER NOT NULL DEFAULT 0,  -- 1 → hide adult-only content warnings
          updated_at    INTEGER NOT NULL DEFAULT 0
+       )`,
+    ),
+    // U1-lite: MANUAL "Require verification" gate (Specs/GUARDIAN-SENTINEL §U1).
+    // One row per (conv, peer) verification request. status 'pending' until the
+    // peer passes/declines a live face check. DARK behind guardianGateEnabled — no
+    // row is ever written unless the flag is ON. Self-creating (no migration).
+    env.DB_META.prepare(
+      `CREATE TABLE IF NOT EXISTS ava_guardian_gate (
+         conv         TEXT NOT NULL,
+         uid          TEXT NOT NULL,        -- the PEER being asked to verify
+         requested_by TEXT NOT NULL,        -- the owner who tapped "Require verification"
+         status       TEXT NOT NULL,        -- 'pending' | 'passed' | 'declined'
+         created_at   INTEGER NOT NULL,
+         updated_at   INTEGER NOT NULL,
+         PRIMARY KEY (conv, uid)
        )`,
     ),
   ]);
@@ -191,9 +234,13 @@ export async function setAdultOptOut(
 // ─────────────────────────────────────────────────────────────────────────────
 // Prefs read/write.
 // ─────────────────────────────────────────────────────────────────────────────
+// G0: deep_monitor is DEPRECATED. `secureChat` is the single "Guardian is watching
+// this chat" switch. `deepMonitor` is retained on the type only for wire/back-compat
+// but is ALWAYS false (never read in logic). The D1 column is kept (written as 0) so
+// old rows and clients don't break.
 export interface GuardianPrefs {
   secureChat: boolean;
-  deepMonitor: boolean;
+  deepMonitor: boolean; // G0: always false — deprecated, ignored in all logic
   updatedAt: number;
 }
 const PREFS_OFF: GuardianPrefs = { secureChat: false, deepMonitor: false, updatedAt: 0 };
@@ -203,11 +250,12 @@ export async function getGuardianPrefs(env: Env, uid: string, conv: string): Pro
   try {
     await ensureTables(env);
     const r = await env.DB_META
-      .prepare("SELECT secure_chat, deep_monitor, updated_at FROM ava_guardian_prefs WHERE uid=?1 AND conv=?2")
+      .prepare("SELECT secure_chat, updated_at FROM ava_guardian_prefs WHERE uid=?1 AND conv=?2")
       .bind(uid, conv)
-      .first<{ secure_chat: number; deep_monitor: number; updated_at: number }>();
+      .first<{ secure_chat: number; updated_at: number }>();
     if (!r) return PREFS_OFF;
-    return { secureChat: !!r.secure_chat, deepMonitor: !!r.deep_monitor, updatedAt: r.updated_at ?? 0 };
+    // G0: deepMonitor collapsed into secureChat — always false in the returned prefs.
+    return { secureChat: !!r.secure_chat, deepMonitor: false, updatedAt: r.updated_at ?? 0 };
   } catch {
     return PREFS_OFF;
   }
@@ -217,21 +265,137 @@ export async function setGuardianPrefs(
   env: Env,
   uid: string,
   conv: string,
-  prefs: { secureChat?: boolean; deepMonitor?: boolean },
+  prefs: { secureChat?: boolean; deepMonitor?: boolean }, // deepMonitor accepted but IGNORED (G0)
 ): Promise<GuardianPrefs> {
   await ensureTables(env);
   const cur = await getGuardianPrefs(env, uid, conv);
   const next: GuardianPrefs = {
     secureChat: prefs.secureChat ?? cur.secureChat,
-    deepMonitor: prefs.deepMonitor ?? cur.deepMonitor,
+    deepMonitor: false, // G0: deprecated — never persisted as anything but 0
     updatedAt: Date.now(),
   };
   await env.DB_META.prepare(
     `INSERT INTO ava_guardian_prefs (uid, conv, secure_chat, deep_monitor, updated_at)
-     VALUES (?1,?2,?3,?4,?5)
-     ON CONFLICT(uid, conv) DO UPDATE SET secure_chat=?3, deep_monitor=?4, updated_at=?5`,
-  ).bind(uid, conv, next.secureChat ? 1 : 0, next.deepMonitor ? 1 : 0, next.updatedAt).run();
+     VALUES (?1,?2,?3,0,?4)
+     ON CONFLICT(uid, conv) DO UPDATE SET secure_chat=?3, deep_monitor=0, updated_at=?4`,
+  ).bind(uid, conv, next.secureChat ? 1 : 0, next.updatedAt).run();
   return next;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G3 — cheap "is Guardian ON for anyone in this conversation?" gate. Used ONLY to
+// decide whether to pay for the fast-lane inline scan BEFORE fan-out. ONE chunked
+// IN query over ava_guardian_prefs for all recipients (secure_chat=1), plus a
+// minor-account check (minors are force-ON). Per-REQUEST memoised so a send that
+// scans + fans out doesn't re-read D1. Fail-open toward "scan" is NOT wanted here
+// (we don't want to pay latency on unwatched chats), so on error we return false
+// (no inline scan → today's behaviour: the detached deep lane still runs).
+// ─────────────────────────────────────────────────────────────────────────────
+const _GUARDIAN_ON_CHUNK = 90; // D1 100-bound-param limit
+export async function hasGuardianOnRecipient(
+  env: Env,
+  conv: string,
+  members: string[],
+  senderUid: string,
+  cache?: Map<string, boolean>,
+): Promise<boolean> {
+  const key = `${conv}`;
+  if (cache && cache.has(key)) return cache.get(key)!;
+  let result = false;
+  try {
+    await ensureTables(env);
+    const recips = (members ?? []).filter((u) => u && u !== senderUid);
+    if (!recips.length) { cache?.set(key, false); return false; }
+    // Any explicit secure_chat=1 for this conv among the recipients?
+    for (let i = 0; i < recips.length && !result; i += _GUARDIAN_ON_CHUNK) {
+      const chunk = recips.slice(i, i + _GUARDIAN_ON_CHUNK);
+      const rs = await env.DB_META.prepare(
+        `SELECT uid FROM ava_guardian_prefs
+          WHERE conv=?1 AND secure_chat=1
+            AND uid IN (${chunk.map((_, j) => `?${j + 2}`).join(",")}) LIMIT 1`,
+      ).bind(conv, ...chunk).all<{ uid: string }>();
+      if ((rs.results ?? []).length) result = true;
+    }
+    // Minors are force-ON regardless of the stored pref.
+    if (!result) {
+      for (const uid of recips) {
+        if (await isMinorAccount(env, uid)) { result = true; break; }
+      }
+    }
+  } catch {
+    result = false; // never delay a send on this gate's read failure
+  }
+  cache?.set(key, result);
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// U1-lite — MANUAL "Require verification" gate (Specs/GUARDIAN-SENTINEL §U1).
+// Fully DARK behind guardianGateEnabled; the route handler enforces the flag (403
+// feature_off) before any of this runs. These helpers never enforce anything —
+// they record a request and, when a liveness pass is confirmed, mark it passed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GateRow {
+  conv: string; uid: string; requested_by: string;
+  status: string; created_at: number; updated_at: number;
+}
+
+/** Record a pending verification request for `peerUid` in `conv`. Idempotent
+ *  (re-requesting refreshes updated_at, keeps a prior 'passed' if already passed). */
+async function requireVerify(env: Env, conv: string, peerUid: string, requestedBy: string): Promise<void> {
+  await ensureTables(env);
+  const now = Date.now();
+  await env.DB_META.prepare(
+    `INSERT INTO ava_guardian_gate (conv, uid, requested_by, status, created_at, updated_at)
+     VALUES (?1,?2,?3,'pending',?4,?4)
+     ON CONFLICT(conv, uid) DO UPDATE SET
+        requested_by=?3,
+        updated_at=?4,
+        status=CASE WHEN ava_guardian_gate.status='passed' THEN 'passed' ELSE 'pending' END`,
+  ).bind(conv, peerUid, requestedBy, now).run();
+}
+
+/** Read all gate rows for a conv (for the owner to see the peer's verification state). */
+async function gateStatus(env: Env, conv: string): Promise<GateRow[]> {
+  try {
+    await ensureTables(env);
+    const rs = await env.DB_META
+      .prepare("SELECT conv, uid, requested_by, status, created_at, updated_at FROM ava_guardian_gate WHERE conv=?1")
+      .bind(conv).all<GateRow>();
+    return rs.results ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Mark EVERY pending verification gate for `uid` as passed. Called (best-effort,
+ * guarded by guardianGateEnabled) from the liveness verify SUCCESS path so that
+ * when the peer completes a live face check, any conv that asked them to verify
+ * flips to 'passed'. Fail-open, never throws. Returns how many rows flipped.
+ *
+ * TODO(liveness-wire): the ONE authoritative call site is the liveness verify
+ * success point in worker/src/routes/liveness*.ts (see LIVE-GATE markGatePassed).
+ * If the liveness pipeline moves, keep this the single place that flips gate rows.
+ */
+export async function markGatePassed(env: Env, uid: string): Promise<number> {
+  if (!uid) return 0;
+  try {
+    if ((await readConfig(env)).guardianGateEnabled !== true) return 0;
+    await ensureTables(env);
+    const now = Date.now();
+    const r = await env.DB_META.prepare(
+      "UPDATE ava_guardian_gate SET status='passed', updated_at=?2 WHERE uid=?1 AND status='pending'",
+    ).bind(uid, now).run();
+    const n = Number((r as any)?.meta?.changes ?? 0);
+    if (n > 0) {
+      void track(env, uid, "verify_human_passed", "guardian", { rows: n, trigger: "manual_t4" });
+    }
+    return n;
+  } catch {
+    return 0;
+  }
 }
 
 /** Record a parent↔child link (custodial). Self-creating table; idempotent. */
@@ -304,7 +468,9 @@ const GROOM_MEET = /\b(meet (up|in person|me)|come (over|to my)|can i (see|visit
 const GROOM_AGE = /\b(how old are you|are you (over )?\d{1,2}|don'?t (act|look) your age|mature for your age)\b/i;
 const GROOM_INTIMATE = /\b(send (me )?(a )?(pic|photo|selfie|picture)|what are you wearing|you'?re (so )?(cute|pretty|hot|beautiful)|our (relationship|love))\b/i;
 
-export type GuardianCategory = "scam" | "spam" | "grooming" | "deepfake"
+// G0: 'deepfake' REMOVED — media/deepfake scanning is deleted; the server never
+// emits it. (The client may still render a legacy 'deepfake' meta for old messages.)
+export type GuardianCategory = "scam" | "spam" | "grooming"
   | "hate" | "csae" | "trafficking" | "threat"; // P6 Nemotron categories
 
 export interface CheapVerdict {
@@ -348,77 +514,12 @@ function cheapScan(text: string): CheapVerdict {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DEEPFAKE / AI-IMAGE detection on incoming media.
-//
-// STRUCTURE IS REAL; the SCORE is STUBBED. There is no first-party deepfake /
-// synthetic-image detector in the Workers-AI catalog today
-// (`@cf/meta/llama-guard-*` is text-only; image models are caption/embed/gen, not
-// authenticity classifiers). So this fetches the media bytes (real), runs a
-// pluggable detector, and — until a real model is wired — returns a conservative
-// stub score with a clear TODO.
-//
-// DOCUMENTED MODEL CHOICE (for whoever wires it): a binary "real vs AI-generated /
-// manipulated" classifier. Options, in order of preference:
-//   1. A Workers-AI image-classification model fine-tuned for synthetic detection,
-//      if/when one appears in the catalog (call via env.AI.run(<model>, { image })).
-//   2. An external detector (Hive, Sightengine, Reality Defender) behind a Worker
-//      secret + fetch — return {score, label}.
-//   3. A self-hosted ONNX classifier (e.g. an EfficientNet/ViT trained on the
-//      DFDC / FaceForensics++ corpus) reached over a self-hosted endpoint/sidecar.
-// Wire by replacing `detectSynthetic` below; the pipeline + flag-raising stays.
+// G0: media/deepfake detection has been DELETED. There is no synthetic-media
+// detector in the platform and the 'deepfake' surface was a dead path (the old
+// detectSynthetic() always returned not_checked). Removed: DeepfakeResult,
+// DEEPFAKE_FLAG_THRESHOLD, detectSynthetic, fetchMediaBytes, checkMedia, the
+// {media_ref} API mode, and the mediaHit branch in guardianScan.
 // ─────────────────────────────────────────────────────────────────────────────
-
-export interface DeepfakeResult {
-  checked: boolean;
-  score: number;        // 0..1 likelihood of being AI-generated / manipulated
-  label: "likely_real" | "uncertain" | "likely_synthetic" | "not_checked";
-  stub: boolean;        // true while the score is the documented stub
-  detail?: string;
-}
-
-const DEEPFAKE_FLAG_THRESHOLD = 0.7;
-
-async function detectSynthetic(env: Env, bytes: Uint8Array | null): Promise<DeepfakeResult> {
-  // Pipeline is real: we have the bytes; a real detector plugs in here.
-  // TODO(deepfake-model): replace this stub with a real authenticity classifier
-  // (see the documented model choices above). For now we DO NOT raise false
-  // alarms — we return an "uncertain" stub so the structure is exercised end to
-  // end without blocking on a model that isn't in the catalog yet.
-  void env; void bytes;
-  return {
-    checked: true,
-    score: 0.0,
-    label: "not_checked",
-    stub: true,
-    detail: "deepfake detector not yet wired (structure ready; see detectSynthetic TODO)",
-  };
-}
-
-/** Fetch media bytes for a media ref/url (best-effort; null on failure). */
-async function fetchMediaBytes(env: Env, mediaRef: string): Promise<Uint8Array | null> {
-  try {
-    // media_ref is typically an R2 object key under the media bucket, or an
-    // absolute URL. Try R2 first (if a MEDIA-style bucket exists), then a plain
-    // fetch for absolute URLs. Kept defensive — a miss just means "not checked".
-    const anyEnv = env as any;
-    if (anyEnv.MEDIA && typeof anyEnv.MEDIA.get === "function" && !/^https?:\/\//i.test(mediaRef)) {
-      const obj = await anyEnv.MEDIA.get(mediaRef);
-      if (obj) return new Uint8Array(await obj.arrayBuffer());
-    }
-    if (/^https?:\/\//i.test(mediaRef)) {
-      const res = await fetch(mediaRef);
-      if (res.ok) return new Uint8Array(await res.arrayBuffer());
-    }
-  } catch { /* best-effort */ }
-  return null;
-}
-
-/** Public: run the deepfake/AI-image check on a media ref. */
-export async function checkMedia(env: Env, mediaRef: string): Promise<DeepfakeResult> {
-  if (!mediaRef) return { checked: false, score: 0, label: "not_checked", stub: true };
-  const bytes = await fetchMediaBytes(env, mediaRef);
-  return detectSynthetic(env, bytes);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flag log + the PRIVATE warning. A confident signal records a flag (powers the
@@ -495,9 +596,6 @@ function warningText(category: GuardianCategory, severity: number): string {
     case "spam":
       return "Ava noticed this might be spam or an unsolicited promo. You can ignore, block, or "
         + "report it. (Only you can see this message.)";
-    case "deepfake":
-      return "⚠️ Ava safety: This image may be AI-generated or manipulated. Treat it with caution — "
-        + "things that look real can be faked. (Only you can see this message.)";
     default:
       // P6 Nemotron categories (hate / csae / trafficking / threat) and any future
       // harm label — one careful, non-graphic safety line.
@@ -564,30 +662,38 @@ async function warnPrivately(
 //   guardianScan(env, { conv, message, members, senderUid })
 //
 // `message` is the same `payload` messaging.ts fanned out:
-//   { conv, sender, kind, body, media_ref, client_id, created_at }
+//   { conv, sender, kind, body, client_id, created_at }
 //
 // Flow (each step short-circuits to keep cost near zero):
-//   1. Skip Ava's own kinds. Read text + media_ref.
+//   1. Skip Ava's own kinds. Read text.
 //   2. CHEAP scam/spam/grooming heuristic scan (FREE) on the text. NO model.
-//   3. If a media ref is present → deepfake/AI-image check (structure real).
-//   4. The PROTECTED users are the RECIPIENTS (the ones at risk from the sender),
-//      not the sender. For each recipient:
-//        • free basic flag is always evaluated;
-//        • PREMIUM "deep monitoring" additionally runs llama-guard even with NO
-//          heuristic hit (entitlement-gated; a child's parent-paid monitoring is
-//          treated as entitled via the parent's entitlement);
-//        • a secure-chat-mode pref or being a monitored child raises the floor.
-//   5. On a confident scam/grooming signal → record a flag + PRIVATE warning to
-//      that recipient only.
+//   3. G1 ACTIVATION GATE — per recipient, work out whether Guardian is ON
+//      (secure_chat=1, or a minor account = always-ON). For OFF recipients we skip
+//      ALL model scanning; only the Nemotron illegal-content floor is honoured, and
+//      even then it only ACTS on csae/trafficking (flag + telemetry, NO user-facing
+//      warning). The cheap regex may flag but only warns guardian-ON recipients.
+//   4. For guardian-ON recipients: run the Nemotron content-safety pass + the Opus
+//      deep classifier (classifyThreat), record a flag + PRIVATE warning on a hit.
+//   5. Escalation (grooming/scam): repeat offenders auto-block + parent alert.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface GuardianScanArgs {
   conv: string;
-  message: { sender?: string; body?: string | null; kind?: string; media_ref?: string | null; [k: string]: unknown };
+  message: { sender?: string; body?: string | null; kind?: string; client_id?: string; created_at?: number; [k: string]: unknown };
   members: string[];
   senderUid: string;
   // Origin geo/IP of the sender's request (from messaging.ts req.cf) for telemetry.
-  geo?: { country?: string | null; region?: string | null; city?: string | null; colo?: string | null; ip?: string | null };
+  // G3/PII-overhaul: extended with asn/as_org/is_proxy from req.cf; raw ip is HASHED
+  // (never stamped raw). Country + colo stay on clean scans; full geo on flags.
+  geo?: {
+    country?: string | null; region?: string | null; city?: string | null; colo?: string | null;
+    ip?: string | null; asn?: number | string | null; asOrganization?: string | null;
+    isProxy?: boolean | null;
+  };
+  // G3: the FAST-lane verdict already surfaced pre-fanout (if any). The detached
+  // DEEP lane receives this so it does NOT double-warn for the same category the
+  // fast lane already flagged. undefined ⇒ inline lane didn't run (today's path).
+  fastVerdict?: { category: GuardianCategory; severity: number } | null;
 }
 
 export interface GuardianScanResult {
@@ -597,11 +703,113 @@ export interface GuardianScanResult {
   reason?: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// G3 — FAST-lane inline scan (Specs/GUARDIAN-SENTINEL-FINAL-PLAN §G3).
+//
+//   guardianFastScan(env, { text, conv, senderUid, isGroup, geo })
+//
+// The CHEAP lane only: regex heuristics (free, sync) + ONE Nemotron moderate()
+// call under a HARD timeout (Promise.race vs guardianInlineBudgetMs, default 600).
+// NO Opus call here — the deep classifier stays in the detached slow lane. Returns
+// {flag, ms, timed_out}. Fail-open: on timeout/error → flag reflects only what the
+// cheap regex found (or null), timed_out=true. Never throws. The caller awaits this
+// BEFORE fan-out ONLY when guardianInlineEnabled AND a guarded recipient exists.
+// ─────────────────────────────────────────────────────────────────────────────
+export interface FastScanResult {
+  flag: { category: GuardianCategory; severity: number } | null;
+  ms: number;
+  timed_out: boolean;
+  cheap_hit: boolean;
+  rule_id?: string | null; // matched cheap-signal name(s), for guardian_rule_hit
+}
+
+export async function guardianFastScan(
+  env: Env,
+  args: {
+    text: string; conv: string; senderUid: string; isGroup?: boolean;
+    geo?: GuardianScanArgs["geo"];
+  },
+): Promise<FastScanResult> {
+  const t0 = Date.now();
+  const text = extractText(String(args.text ?? ""));
+
+  // 1. CHEAP regex scan (sync, free). This alone can flag even if the model times out.
+  const cheap = cheapScan(text);
+  let flag: { category: GuardianCategory; severity: number } | null =
+    cheap.hit && cheap.category ? { category: cheap.category, severity: cheap.severity } : null;
+
+  // Fast lane can be model-free if there's no text; still emit the scan telemetry.
+  let timedOut = false;
+  let budget = 600;
+  try { budget = Number((await readConfig(env)).guardianInlineBudgetMs) || 600; } catch { budget = 600; }
+
+  if (text.trim()) {
+    // ONE Nemotron moderate() call, HARD-bounded by Promise.race. On timeout we keep
+    // whatever the cheap regex produced (fail-open) — delivery is NEVER delayed past
+    // the budget. Nemotron is the illegal-content floor; adult content is not flagged.
+    let scanOn = true;
+    try { scanOn = (await readConfig(env)).safetyScanEnabled !== false; } catch { scanOn = true; }
+    if (scanOn) {
+      const timeout = new Promise<"__timeout__">((resolve) =>
+        setTimeout(() => resolve("__timeout__"), Math.max(50, budget)));
+      try {
+        const raced = await Promise.race([moderate(env, { text }), timeout]);
+        if (raced === "__timeout__") {
+          timedOut = true;
+        } else if (raced && (raced as any).ok) {
+          const mod = raced as { safe: boolean; categories: string[] };
+          const nemo = mod.safe ? null : mapNemotronCategories(mod.categories);
+          // The Nemotron floor upgrades/fills the verdict but never DOWNGRADES a
+          // cheap-regex hit (max severity, prefer the more specific category).
+          if (nemo) {
+            if (!flag) flag = nemo;
+            else flag = { category: flag.category, severity: Math.max(flag.severity, nemo.severity) };
+          }
+        }
+      } catch {
+        // moderate() itself fails open (ok:false) — treated as no model signal.
+      }
+    }
+  }
+
+  const ms = Date.now() - t0;
+  const budgetExceeded = ms > budget;
+
+  // guardian_inline_scan {lane:'fast', ...} per scan (§2.2).
+  try {
+    void track(env, args.senderUid, "guardian_inline_scan", "guardian", {
+      lane: "fast", conv: args.conv, is_group: !!args.isGroup,
+      verdict: flag?.category ?? null, severity: flag?.severity ?? 0,
+      ms, timed_out: timedOut, budget_exceeded: budgetExceeded, budget_ms: budget,
+      model: MOD_MODEL, cheap_hit: cheap.hit,
+    });
+    // guardian_rule_hit — the cheap deterministic rule(s) that fired, pre-classifier.
+    if (cheap.hit && cheap.category) {
+      void track(env, args.senderUid, "guardian_rule_hit", "guardian", {
+        conv: args.conv, rule_id: cheap.signals.join(",") || cheap.category,
+        category: cheap.category, is_group: !!args.isGroup,
+      });
+    }
+    // guardian_budget_fallback — the Nemotron escalation was blocked by the latency
+    // budget (timed out) so the fast lane fell back to the cheap regex verdict alone.
+    if (timedOut) {
+      void track(env, args.senderUid, "guardian_budget_fallback", "guardian", {
+        conv: args.conv, lane: "fast", reason: "latency_budget", ms, budget_ms: budget,
+        fell_back_to: "cheap_regex", verdict: flag?.category ?? null,
+      });
+    }
+  } catch { /* telemetry best-effort */ }
+
+  return {
+    flag, ms, timed_out: timedOut, cheap_hit: cheap.hit,
+    rule_id: cheap.signals.join(",") || null,
+  };
+}
+
 export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<GuardianScanResult> {
   const conv = String(args.conv ?? "");
   const senderUid = args.senderUid || String(args.message?.sender ?? "");
   const kind = String(args.message?.kind ?? "text");
-  const mediaRef = args.message?.media_ref ? String(args.message.media_ref) : "";
   // The offending message's client id + timestamp → the warning carries these so
   // the client can paint THAT message red (an obvious red flag for the child).
   const flaggedClientId = String(args.message?.client_id ?? "");
@@ -623,31 +831,41 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
   const rawBody = String(args.message?.body ?? "");
   const text = extractText(rawBody);
 
-  // 2. CHEAP heuristic scan (free). 3. Deepfake check if media present.
+  // 2. CHEAP heuristic scan (free, every message).
   const cheap = cheapScan(text);
-  let media: DeepfakeResult | null = null;
-  if (mediaRef) media = await checkMedia(env, mediaRef);
-  const mediaHit = !!media && media.label === "likely_synthetic" && media.score >= DEEPFAKE_FLAG_THRESHOLD;
 
   const recipients = (args.members ?? []).filter((u) => u && u !== senderUid);
   if (!recipients.length) return { scanned: true, flagged: 0, warned: 0, reason: "no_recipient" };
 
   // Telemetry context (best-effort). geo/IP comes from messaging.ts (sender's req.cf).
   const geo = args.geo ?? {};
-  const senderEmail = await emailFor(env, senderUid).catch(() => null);
   const isGroup = (args.members?.length ?? 0) > 2;
-  // Every scan: who sent, to how many, where from. "eyes" on all traffic in watched chats.
+  // Standard ruleset/flag-state props (telemetry spec §6 + §1 KV lesson).
+  let cfgSnapshot: { guardianInlineEnabled?: boolean; safetyScanEnabled?: boolean } = {};
+  try {
+    const c = await readConfig(env);
+    cfgSnapshot = { guardianInlineEnabled: c.guardianInlineEnabled, safetyScanEnabled: c.safetyScanEnabled };
+  } catch { /* best-effort */ }
+  // PII OVERHAUL (telemetry spec §1): CLEAN scans stamp NO raw email + NO raw IP.
+  // Identity is the track() distinct id (uid); geo is coarse (country + colo) plus
+  // hour_utc + guardian_enabled. Full geo + ip_hash are added only on guardian_flag.
+  // Every scan: who sent (uid via track), to how many, where from (country/colo).
   void track(env, senderUid, "guardian_scan", "guardian", {
     conv, kind, is_group: isGroup, recipients: recipients.length, msg_len: text.length,
-    cheap_hit: cheap.hit, sender_email: senderEmail,
-    country: geo.country ?? null, region: geo.region ?? null, city: geo.city ?? null,
-    colo: geo.colo ?? null, ip: geo.ip ?? null,
+    cheap_hit: cheap.hit,
+    country: geo.country ?? null, colo: geo.colo ?? null,
+    hour_utc: hourUtc(Date.now()),
+    guardian_enabled: cfgSnapshot.guardianInlineEnabled ?? false,
+    guardianInlineEnabled: cfgSnapshot.guardianInlineEnabled ?? false,
+    safetyScanEnabled: cfgSnapshot.safetyScanEnabled ?? true,
   });
 
-  // P6: ALWAYS-ON message-level safety scan via Nemotron (:free). Runs once per
-  // message (text is identical for all recipients). Async + FAIL-OPEN: any error
+  // ILLEGAL-CONTENT FLOOR: message-level safety scan via Nemotron (:free). Runs once
+  // per message (text is identical for all recipients). Async + FAIL-OPEN: any error
   // → no flag, `safety_scan_error`, delivery already happened. Adult sexual content
   // is NOT flagged (policy in mapNemotronCategories). Ships ON (safetyScanEnabled).
+  // G1: for guardian-OFF recipients this still runs, but only csae/trafficking are
+  // ACTED on (flag + telemetry, no user-facing warning) — see the per-recipient gate.
   let nemotron: { category: GuardianCategory; severity: number } | null = null;
   try {
     let scanOn = true;
@@ -671,15 +889,12 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
 
   await Promise.all(recipients.map(async (uid) => {
     const prefs = await getGuardianPrefs(env, uid, conv);
-    // Is this recipient eligible for ALWAYS-ON DEEP monitoring? (PREMIUM)
-    //   • their own deep_monitor pref + entitlement, OR
-    //   • they are a child whose parent is entitled (parent-paid protection).
-    let deep = false;
-    if (prefs.deepMonitor && (await isEntitled(env, uid))) deep = true;
-    if (!deep) {
-      const parent = await parentOf(env, uid);
-      if (parent && (await isEntitled(env, parent))) deep = true; // child protected by parent's plan
-    }
+
+    // G1 ACTIVATION GATE. Guardian is ON for this recipient when they have
+    // secure_chat=1 for this conv, OR they are a MINOR account (force-ON always).
+    // Minors can never be guardian-OFF regardless of the stored pref.
+    const minor = await isMinorAccount(env, uid);
+    const guardianOn = prefs.secureChat || minor;
 
     let category: GuardianCategory | null = null;
     let severity = 0;
@@ -688,17 +903,14 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     let classifierMs = 0;                // AI classifier latency (telemetry)
     let modelCategory = "";              // the model's raw category label (telemetry)
 
-    if (mediaHit) {
-      category = "deepfake"; severity = 2;
-      detail = `synthetic media score ${(media!.score).toFixed(2)}`;
-    } else {
-      // Cheap keyword heuristic is a fast first flag (free, every recipient).
+    if (guardianOn) {
+      // Guardian-ON: full pipeline. Cheap keyword heuristic is a fast first flag.
       if (cheap.hit) { category = cheap.category; severity = cheap.severity; detail = cheap.signals.join(", "); }
-      // Run the AI SECURITY classifier (Claude Opus 4.8) when this chat is being
-      // WATCHED — shield / secure-chat ON (FREE), under deep monitoring, or to
-      // triage a cheap hit. THIS is what catches nuanced grooming the keyword
-      // list misses (e.g. "don't tell your mom, meet me secretly tonight").
-      if (prefs.secureChat || deep || cheap.hit) {
+      // Run the AI SECURITY classifier (Claude Opus 4.8): the deep classifier runs
+      // when the chat is watched OR to triage a cheap-regex hit. THIS is what catches
+      // nuanced grooming the keyword list misses ("don't tell your mom, meet me
+      // secretly tonight").
+      if (prefs.secureChat || minor || cheap.hit) {
         const threat = await classifyThreat(env, text);
         classifierMs = threat.ms; modelCategory = threat.category;
         if (threat.unsafe) {
@@ -707,55 +919,104 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
           if (threat.reason) { detail = threat.reason; advisory = threat.reason; }
         }
       }
+      // Nemotron illegal-content floor fills in when nothing more specific fired.
+      if (!category && nemotron) { category = nemotron.category; severity = Math.max(severity, nemotron.severity); detail = detail ?? `nemotron:${nemotron.category}`; }
+    } else {
+      // G1 GUARDIAN-OFF: no model scanning for this recipient. We honour ONLY the
+      // Nemotron illegal-content floor, and only for csae/trafficking — recorded as
+      // a flag + telemetry with NO user-facing warning (see suppressWarning below).
+      // The cheap regex does NOT flag guardian-OFF recipients.
+      if (nemotron && (nemotron.category === "csae" || nemotron.category === "trafficking")) {
+        category = nemotron.category;
+        severity = nemotron.severity;
+        detail = `nemotron:${nemotron.category}`;
+      }
     }
 
-    // P6: the message-level Nemotron flag applies to EVERY recipient (adult sexual
-    // content already excluded). Only fills in when nothing more specific fired.
-    if (!category && nemotron) { category = nemotron.category; severity = Math.max(severity, nemotron.severity); detail = detail ?? `nemotron:${nemotron.category}`; }
+    if (!category) return; // clean / not acted on for this recipient → no cost beyond the scan
 
-    if (!category) return; // clean for this recipient → no cost beyond the scan
+    // G3: DON'T double-warn. If the FAST lane already surfaced this same category
+    // pre-fanout (fastVerdict), the recipient already saw a red bubble/warning on
+    // arrival — the slow lane records the (possibly higher-severity) flag for
+    // evidence/parent-digest but SUPPRESSES a second user-facing warning for the
+    // same category. A DIFFERENT/escalated category still warns.
+    const fastSameCategory = !!(args.fastVerdict && args.fastVerdict.category === category);
+
+    // G1: a guardian-OFF recipient never gets a user-facing warning frame/message
+    // (illegal-content floor is recorded silently for platform T&S, not shown).
+    const suppressWarning = !guardianOn;
 
     await recordFlag(env, { uid, conv, peer: senderUid, category, severity, detail });
     flagged++;
 
-    // F6: dedicated safety_flag annotation frame over the recipient's InboxDO — the
-    // chat marks THAT bubble red directly, without parsing the private-warning
-    // message. Live-only (offline recipients still get the warning + the durable
-    // ava_guardian_flags row). The SENDER never receives this. Best-effort.
+    // Guardian Sentinel (S1) — best-effort, detached, fail-open. The FLAGGED actor
+    // is the SENDER (senderUid), so the evidence is ABOUT them. DARK behind
+    // sentinelEnabled (sentinelIngest self-gates on the KV flag; a no-op when off).
+    // This is the single minimal in-worker fan-in point; full event-bus consumption
+    // arrives with the consumers wiring (plan §S1.5). Never blocks or throws.
+    void sentinelIngest(env, {
+      type: "guardian_flag",
+      uid: senderUid,
+      source_event: `guardian_flag:${conv}:${flaggedClientId || Date.now()}:${category}`,
+      ts: Date.now(),
+      payload: { category, severity, conv, is_group: isGroup },
+    }, { source: "guardianScan" });
+
+    // F6 + G2: dedicated safety_flag over the recipient's InboxDO — the chat marks
+    // THAT bubble red directly, without parsing the private-warning message. G2 makes
+    // this STORE-AND-FORWARD: the InboxDO /safety_flag endpoint PERSISTS the flag in
+    // DO-local SQLite (so the red bubble survives reinstall + reaches every device via
+    // /sync seeding) AND broadcasts it live — replacing the old broadcast-only /event
+    // push. Offline recipients still also get the durable warning + ava_guardian_flags
+    // row. The SENDER never receives this. Best-effort, detached.
+    // G1: suppressed for guardian-OFF recipients (silent illegal-content floor).
     try {
-      if (env.INBOX && flaggedClientId) {
+      if (!suppressWarning && env.INBOX && flaggedClientId) {
         const stub = env.INBOX.get(env.INBOX.idFromName(uid));
-        void stub.fetch("https://inbox/event", {
+        void stub.fetch("https://inbox/safety_flag", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ type: "safety_flag", conv, msg_id: flaggedClientId, category }),
+          body: JSON.stringify({ type: "safety_flag", conv, msg_id: flaggedClientId, category, severity }),
         });
       }
     } catch { /* best-effort — the private warning + red bubble still fire */ }
 
-    // Telemetry: a flag was raised. WHO→WHO (sender→recipient + emails), WHAT
-    // (category/severity/detail), WHERE (country/IP), and the classifier used.
-    void trackUser(env, uid, await emailFor(env, uid).catch(() => null), "guardian_flag", "guardian", {
+    // Telemetry: a flag was raised. PII OVERHAUL (telemetry spec §1): NO raw emails,
+    // NO raw IP. Identity = uid props (sender_uid/recipient_uid + PostHog person map
+    // via track's distinct id, so email lookup still works). FULL geo (country/region/
+    // city/colo) + network facts (asn/as_org/ip_hash/is_proxy) for the spam-origination
+    // map (§3). Plus ruleset/flag-state standard props (§6).
+    void track(env, uid, "guardian_flag", "guardian", {
       conv, is_group: isGroup, category, severity, detail,
-      sender_uid: senderUid, sender_email: senderEmail, recipient_uid: uid,
-      watched: prefs.secureChat, deep_monitor: deep, classifier_ms: classifierMs, model_category: modelCategory,
-      engine: mediaHit ? "deepfake-detector" : "claude-opus-4.8",
+      sender_uid: senderUid, recipient_uid: uid,
+      watched: prefs.secureChat, guardian_on: guardianOn, minor, suppressed: suppressWarning,
+      classifier_ms: classifierMs, model_category: modelCategory,
+      engine: "claude-opus-4.8",
       country: geo.country ?? null, region: geo.region ?? null, city: geo.city ?? null,
-      colo: geo.colo ?? null, ip: geo.ip ?? null,
+      colo: geo.colo ?? null,
+      asn: geo.asn ?? null, as_org: geo.asOrganization ?? null,
+      is_proxy: geo.isProxy ?? null, ip_hash: await ipHash(geo.ip),
+      hour_utc: hourUtc(Date.now()),
+      guardianInlineEnabled: cfgSnapshot.guardianInlineEnabled ?? false,
+      safetyScanEnabled: cfgSnapshot.safetyScanEnabled ?? true,
+      fast_prewarned: fastSameCategory,
     });
 
     // Warn privately for the harmful categories. Spam is logged but only warned
     // at severity≥2 (avoid nagging). Always private → the sender never sees it.
     // The warning carries the offending message's id so the client paints it red.
-    const shouldWarn = category === "grooming" || category === "scam" || category === "deepfake"
+    // G1: no user-facing warning for guardian-OFF recipients (suppressWarning).
+    // G3: no SECOND warning if the fast lane already warned the same category
+    // (fastSameCategory) — the red bubble + private warning already fired on arrival.
+    const shouldWarn = !suppressWarning && !fastSameCategory && (category === "grooming" || category === "scam"
       || category === "csae" || category === "trafficking" || category === "threat" || category === "hate"
-      || (category === "spam" && severity >= 2);
+      || (category === "spam" && severity >= 2));
     if (shouldWarn && (await warnPrivately(env, {
       uid, conv, category, severity, peer: senderUid, advisory, flaggedClientId, flaggedCreatedAt,
     }))) {
       warned++;
       void track(env, uid, "guardian_warning_sent", "guardian", {
         conv, is_group: isGroup, category, severity, sender_uid: senderUid, recipient_uid: uid,
-        country: geo.country ?? null, ip: geo.ip ?? null,
+        country: geo.country ?? null, // PII: raw ip removed (spec §1)
       });
     }
 
@@ -768,7 +1029,7 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
         await blockSender(env, uid, senderUid);
         void track(env, uid, "guardian_sender_blocked", "guardian", {
           conv, is_group: isGroup, sender_uid: senderUid, recipient_uid: uid, flags: count, category,
-          country: geo.country ?? null, ip: geo.ip ?? null,
+          country: geo.country ?? null, // PII: raw ip removed (spec §1)
         });
         await warnPrivately(env, {
           uid, conv, category, severity,
@@ -924,11 +1185,12 @@ export async function runParentDigests(env: Env, windowDays = 7): Promise<{ pare
 // Modes (one request, dual-auth via requireUser — uid is the caller, never body):
 //   { conv, message:{...} | text, members?, sender? }  → scan a message NOW
 //        (the caller scans a chat they're in; we protect the caller).
-//   { media_ref }                                       → deepfake/AI-image check
-//   { prefs: { conv, secureChat?, deepMonitor? } }      → set secure-chat prefs
+//   { prefs: { conv, secureChat?, source? } }          → set secure-chat prefs
+//        (G0: deepMonitor is accepted but IGNORED; source: 'tap'|'stranger_accept')
 //   { get_prefs: { conv } }                             → read secure-chat prefs
 //   { digest: true, windowDays? }                       → the caller's parent digest
 //   { link_child: { child_uid } }                       → record a parent↔child link
+// (G0: the {media_ref} deepfake mode has been REMOVED.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function avaGuardianScan(req: Request, env: Env): Promise<Response> {
@@ -942,18 +1204,21 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
   if (b && b.prefs && typeof b.prefs === "object") {
     const conv = String(b.prefs.conv ?? "").trim();
     if (!conv) return json({ error: "conv required" }, 400);
-    // No premium gate — the guardian/shield is free on all plans (owner decision 2026-06-24).
+    // No premium gate — the guardian/shield is free on all plans (owner decision
+    // 2026-06-24). G0: deepMonitor is accepted for wire compat but IGNORED.
     const next = await setGuardianPrefs(env, ctx.uid, conv, {
       secureChat: typeof b.prefs.secureChat === "boolean" ? b.prefs.secureChat : undefined,
-      deepMonitor: typeof b.prefs.deepMonitor === "boolean" ? b.prefs.deepMonitor : undefined,
     });
+    // G1.4: the client passes source:'tap'|'stranger_accept' so we can distinguish
+    // an explicit shield tap from a stranger-accept auto-enable in telemetry.
+    const src = typeof b.prefs.source === "string" ? b.prefs.source : "tap";
     // Telemetry: shield toggle, stamped with email + origin country for analytics.
     const cf: any = (req as any).cf || {};
     void trackUser(env, ctx.uid, await emailFor(env, ctx.uid), "guardian_shield_toggled", "guardian", {
-      secure_chat: next.secureChat, deep_monitor: next.deepMonitor, is_group: conv.startsWith("g"),
+      secure_chat: next.secureChat, source: src, is_group: conv.startsWith("g"),
       country: cf.country ?? null, region: cf.region ?? null, city: cf.city ?? null, colo: cf.colo ?? null,
     });
-    return json({ ok: true, prefs: { conv, secureChat: next.secureChat, deepMonitor: next.deepMonitor, updatedAt: next.updatedAt } });
+    return json({ ok: true, prefs: { conv, secureChat: next.secureChat, deepMonitor: false, updatedAt: next.updatedAt } });
   }
   if (b && b.get_prefs && typeof b.get_prefs === "object") {
     const conv = String(b.get_prefs.conv ?? "").trim();
@@ -991,6 +1256,72 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
     return json({ ok: true });
   }
 
+  // --- U1-lite: MANUAL "Require verification" (fully DARK) ---------------------
+  // { require_verify: { conv, peer_uid } } → the CALLER (owner) asks the PEER to
+  // complete a live face check. Writes a pending ava_guardian_gate row and posts a
+  // PRIVATE ava_private-style system message to the PEER only. 403 feature_off when
+  // guardianGateEnabled is off. Nothing is enforced — this is Detect, not Act.
+  if (b && b.require_verify && typeof b.require_verify === "object") {
+    let gateOn = false;
+    try { gateOn = (await readConfig(env)).guardianGateEnabled === true; } catch { gateOn = false; }
+    if (!gateOn) return json({ error: "feature_off" }, 403);
+    const conv = String(b.require_verify.conv ?? "").trim();
+    const peerUid = String(b.require_verify.peer_uid ?? "").trim();
+    if (!conv || !peerUid) return json({ error: "conv and peer_uid required" }, 400);
+    if (peerUid === ctx.uid) return json({ error: "cannot verify self" }, 400);
+    await requireVerify(env, conv, peerUid, ctx.uid);
+    // Post a private system message to the PEER (only they see it) — reuses the
+    // ava_private bubble path. meta flags it as a verify request for future UI.
+    void postAvaMessage(env, {
+      ownerUid: peerUid,
+      conv,
+      text: "The other person asked Ava to confirm there is a human here. Complete a quick face check to continue.",
+      private: true,
+      source: "guardian",
+      meta: { guardian: true, verify_request: true, requested_by: ctx.uid },
+    });
+    void track(env, ctx.uid, "verify_human_requested", "guardian", {
+      conv, peer_uid: peerUid, trigger: "manual_t4", is_group: conv.startsWith("g"),
+    });
+    return json({ ok: true, requested: true });
+  }
+  // { gate_status: { conv } } → the owner reads the verification state of a conv.
+  if (b && b.gate_status && typeof b.gate_status === "object") {
+    let gateOn = false;
+    try { gateOn = (await readConfig(env)).guardianGateEnabled === true; } catch { gateOn = false; }
+    if (!gateOn) return json({ error: "feature_off" }, 403);
+    const conv = String(b.gate_status.conv ?? "").trim();
+    if (!conv) return json({ error: "conv required" }, 400);
+    const rows = await gateStatus(env, conv);
+    return json({ conv, gates: rows });
+  }
+
+  // --- G2: dismiss a safety flag ("This is fine") -----------------------------
+  // { dismiss_flag: { msg_id, conv } } → mark the flag dismissed in the CALLER's
+  // OWN InboxDO (store-and-forward: persists + broadcasts to the caller's other
+  // devices). The client also writes it locally first; this is the cross-device
+  // path. Best-effort, detached — a failed forward never blocks the local dismiss.
+  if (b && b.dismiss_flag && typeof b.dismiss_flag === "object") {
+    const msgId = String(b.dismiss_flag.msg_id ?? "").trim();
+    const conv = String(b.dismiss_flag.conv ?? "").trim();
+    if (!msgId) return json({ error: "msg_id required" }, 400);
+    try {
+      if (env.INBOX) {
+        const stub = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
+        void stub.fetch("https://inbox/safety_flag", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "safety_flag", conv, msg_id: msgId, dismissed: 1 }),
+        });
+      }
+    } catch { /* best-effort — local dismiss already applied client-side */ }
+    // Telemetry: a red-flagged message was dismissed by the recipient — the primary
+    // signal for false-positive rate. msg_id_present avoids leaking the raw id.
+    void track(env, ctx.uid, "guardian_false_positive_dismissed", "guardian", {
+      conv, msg_id_present: !!msgId,
+    });
+    return json({ ok: true });
+  }
+
   // --- parent digest (the caller's own) ---------------------------------------
   if (b && b.digest === true) {
     const windowDays = Number(b.windowDays) > 0 ? Math.min(31, Number(b.windowDays)) : 7;
@@ -998,11 +1329,7 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
     return json({ digest });
   }
 
-  // --- deepfake / AI-image check on a media ref -------------------------------
-  if (b && b.media_ref && !b.message && !b.text) {
-    const result = await checkMedia(env, String(b.media_ref));
-    return json({ media: result });
-  }
+  // (G0: the {media_ref} deepfake check mode has been REMOVED.)
 
   // --- scan a message NOW (protect the caller) --------------------------------
   // The caller scans a chat they're in. We protect the CALLER, so we model the
@@ -1011,7 +1338,7 @@ export async function avaGuardianScan(req: Request, env: Env): Promise<Response>
   if (!conv) return json({ error: "conv required" }, 400);
   const message = (b.message && typeof b.message === "object")
     ? b.message
-    : { sender: String(b.sender ?? "peer"), body: String(b.text ?? ""), kind: String(b.kind ?? "text"), media_ref: b.media_ref ?? null };
+    : { sender: String(b.sender ?? "peer"), body: String(b.text ?? ""), kind: String(b.kind ?? "text") };
   const sender = String(message.sender ?? b.sender ?? "peer");
   // members = [sender, caller] so the caller is the protected recipient.
   const members = Array.isArray(b.members) && b.members.length
