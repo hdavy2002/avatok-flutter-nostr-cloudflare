@@ -11,6 +11,10 @@ import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
 import { purgeLivenessEvidence } from "./liveness_audit";
+// [SENTINEL-MEM0-PURGE] Guardian Sentinel S2 — best-effort mem0 behaviour-memory
+// purge. Enqueue + retry asynchronously; NEVER blocks canonical deletion (plan §1.1
+// rule 5: an external SaaS can never block account deletion). No-ops without a key.
+import { enqueueMem0Purge } from "../sentinel/purge";
 
 const GRACE_MS = 30 * 86_400_000; // 30-day grace (§10.5)
 
@@ -41,6 +45,15 @@ export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   // the deliberate cost of honoring the "erased the moment you close your
   // account" promise literally rather than only after the 30-day grace elapses.
   void purgeLivenessEvidence(env, ctx.uid).catch(() => {});
+
+  // [SENTINEL-MEM0-PURGE] Queue a mem0 behaviour-memory purge and move on. This is
+  // best-effort and DETACHED — canonical deletion must never wait on an external SaaS
+  // (plan §1.1 rule 5). The row is drained/retried with backoff by
+  // processPurgeQueue (called opportunistically from the Sentinel summariser).
+  // No-ops cleanly if MEM0_API_KEY is unset; the queue row is a derived record only
+  // (mem0 holds no owner-of-truth data — the account's evidence log is wiped by the
+  // canonical cascade regardless).
+  void enqueueMem0Purge(env, ctx.uid).catch(() => {});
 
   // Enqueue for the cascade consumer; it honors scheduled_at (re-delays if early).
   try { await env.Q_DELETE.send({ uid: ctx.uid, clerk_user_id: ctx.uid, scheduled_at: scheduled }); } catch { /* cron sweep is the backstop */ }

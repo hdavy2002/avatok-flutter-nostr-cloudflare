@@ -311,6 +311,14 @@ class_name = "ConversationDO"
 name = "INBOX"
 class_name = "InboxDO"
 
+# Guardian Sentinel per-user HOT CACHE (S1). SQLite-backed for the durable backend,
+# but stores ONLY ephemeral caches (velocity windows, dedup ring, bucket scores) —
+# NEVER a system of record; rehydrates from D1 (sentinel_evidence). DARK behind
+# sentinelEnabled. Specs/GUARDIAN-SENTINEL-FINAL-PLAN-2026-07-06.md §S1.
+[[durable_objects.bindings]]
+name = "SENTINEL"
+class_name = "SentinelDO"
+
 # PartyKit realtime layer (ephemeral; replaces Ably). One DO per ROOM, holding the
 # room's hibernatable WebSockets for the live-only layer (typing, presence,
 # receipts, marketplace agent stream, viewer counts, …). No persistence — durable
@@ -401,6 +409,12 @@ new_sqlite_classes = ["ReceptionRoomCf"]
 [[migrations]]
 tag = "v11"
 new_sqlite_classes = ["PartyDO"]
+
+# Guardian Sentinel per-user hot-cache DO (S1). SQLite-backed (hot caches only;
+# rehydrates from D1). DARK behind sentinelEnabled.
+[[migrations]]
+tag = "v12"
+new_sqlite_classes = ["SentinelDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -624,6 +638,12 @@ class_name = "ConversationDO"
 name = "INBOX"
 class_name = "InboxDO"
 
+# Guardian Sentinel per-user hot-cache DO (S1) — mirrored from prod. DARK behind
+# sentinelEnabled.
+[[env.staging.durable_objects.bindings]]
+name = "SENTINEL"
+class_name = "SentinelDO"
+
 # PartyKit realtime layer (mirrored from prod 2026-07-01) — ephemeral presence/
 # typing/receipts/reactions. Was missing on staging, degrading those features.
 [[env.staging.durable_objects.bindings]]
@@ -694,3 +714,8 @@ new_sqlite_classes = ["ReceptionRoomCf"]
 [[env.staging.migrations]]
 tag = "v11"
 new_sqlite_classes = ["PartyDO"]
+
+# Guardian Sentinel per-user hot-cache DO (S1) — mirrored from prod.
+[[env.staging.migrations]]
+tag = "v12"
+new_sqlite_classes = ["SentinelDO"]

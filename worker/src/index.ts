@@ -127,6 +127,7 @@ export { CallRoom } from "./do/call_room";
 export { MeshRoom } from "./do/mesh_room";
 export { GroupCallRoom } from "./do/group_call_room"; // CF Realtime SFU group AUDIO (≤32)
 export { InboxDO } from "./do/inbox";
+export { SentinelDO } from "./sentinel/do"; // Guardian Sentinel S1 hot-cache DO (DARK behind sentinelEnabled)
 export { PartyDO } from "./do/party"; // PartyKit realtime layer (ephemeral; replaces Ably)
 export { UserBrain } from "./do/user_brain";
 export { WalletDO } from "./do/wallet";

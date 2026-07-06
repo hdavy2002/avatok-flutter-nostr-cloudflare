@@ -73,6 +73,12 @@ export interface Env {
   // deprecated). Hibernatable WS + DO-local SQLite message log. Keyed by uid.
   INBOX: DurableObjectNamespace;
 
+  // Durable Object — Guardian Sentinel per-user HOT CACHE (S1). Velocity windows,
+  // last-N event-id dedup ring, per-bucket score cache. NEVER a system of record —
+  // rehydrates from D1 (the append-only sentinel_evidence log). Keyed by uid. DARK
+  // behind sentinelEnabled. Specs/GUARDIAN-SENTINEL-FINAL-PLAN-2026-07-06.md §S1.
+  SENTINEL: DurableObjectNamespace;
+
   // Durable Object — PartyKit realtime layer (ephemeral; replaces Ably). One DO
   // per ROOM (thread:<conv>, listing:<id>, neg:<negId>, user:<uid>, conf:<gid>).
   // Holds the room's hibernatable WebSockets; broadcast-only, no persistence.
@@ -135,6 +141,14 @@ export interface Env {
 
   // Clerk Backend API (account deletion cascade, Phase 1). Gated.
   CLERK_SECRET_KEY?: string;
+
+  // Guardian Sentinel S2 — mem0 managed-cloud behaviour memory (derived cache).
+  // `wrangler secret put MEM0_API_KEY` (also note in secrets/secret-values.env).
+  // Unset → the mem0 summariser/purge code cleanly no-ops (fail-open). Everything
+  // is additionally DARK behind sentinelMem0Enabled. mem0 is NEVER an owner of
+  // truth — every memory carries derived_from event ids and regenerates from the
+  // append-only sentinel_evidence log. Specs/GUARDIAN-SENTINEL-FINAL-PLAN §S2.
+  MEM0_API_KEY?: string;
 
   // Store-review login bypass (routes/review.ts). When set, the allowlisted
   // reviewer account signs in with email+password and NO email OTP. Unset →

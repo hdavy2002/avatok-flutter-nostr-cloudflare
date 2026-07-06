@@ -177,6 +177,38 @@ export interface PlatformConfig {
   // OFF — the legacy /api/conversations + /api/msg/send path is untouched. Flip ON
   // in KV per-cohort to strangle the legacy path over. Reversible with one KV edit.
   routingV2Enabled: boolean;
+  // Guardian Sentinel (Specs/GUARDIAN-SENTINEL-FINAL-PLAN-2026-07-06.md, phase S1).
+  // Master kill switch for the derived safety-projection engine (deterministic
+  // extractors → append-only EvidenceAdded → snapshot+tail fold → SentinelDO hot
+  // caches). Default OFF: the whole worker/src/sentinel/* pipeline is DARK — the
+  // best-effort ingest hooks (e.g. after guardianScan.recordFlag) no-op, nothing is
+  // written, no DO is touched. Flipping ON requires a KV patch of platform_config
+  // (code defaults NEVER win over KV — 2026-07-04 lesson). S1 is telemetry-only; no
+  // LLM, no mem0, no enforcement — thresholds ship dark and are tuned before any act.
+  sentinelEnabled: boolean;
+  // Sentinel S2 (behaviour memory via mem0) — gates the async summariser
+  // (sentinel/summariser.ts). Default OFF. Also requires MEM0_API_KEY; both absent →
+  // clean no-op. mem0 is a DERIVED cache, never an owner of truth (plan §1.1 rule 5).
+  sentinelMem0Enabled: boolean;
+  // Guardian G3 — INLINE two-lane scan (Specs/GUARDIAN-SENTINEL-FINAL-PLAN §G3).
+  // When ON, messaging.ts awaits a cheap FAST-lane scan (regex + ONE Nemotron
+  // moderate() call, hard-timeout budget guardianInlineBudgetMs) BEFORE fan-out in
+  // guardian-ON chats and attaches the verdict to the fanned-out payload so the
+  // recipient's bubble paints red on arrival. The detached DEEP lane (Opus) still
+  // runs after fan-out (slow lane). Default OFF: with it off messaging.ts behaves
+  // EXACTLY as today (deep lane only, no pre-fanout await). Fail-open everywhere —
+  // a timeout/error never delays or blocks delivery. Flip ON via KV (never code).
+  guardianInlineEnabled: boolean;
+  // Fast-lane hard budget (ms) for the single Nemotron moderate() call in G3.
+  // Promise.race trips at this bound → fan out immediately (fail-open) and emit
+  // guardian_inline_latency_budget_breach. Numeric KV key (400–600 ms per plan).
+  guardianInlineBudgetMs: number;
+  // U1-lite — MANUAL "Require verification" gate (Specs/GUARDIAN-SENTINEL §U1, dark).
+  // When ON, a 1:1 owner control can ask the peer to complete a live face check
+  // (Trust Engine liveness) before continuing. Fully DARK by default: the server
+  // require_verify/gate_status modes 403 `feature_off`, the client control is
+  // hidden, and NOTHING is wired to enforcement. Flip ON via KV (never code).
+  guardianGateEnabled: boolean;
   minAppBuild: number;
 }
 
@@ -253,6 +285,11 @@ const DEFAULTS: PlatformConfig = {
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
   dohFallbackEnabled: true,              // PERF-DNS-2 — DoH-to-1.1.1.1 fallback ON
   routingV2Enabled: false,               // [ARCH-ROUTING-V2] v4 routing path — DORMANT until wired + validated; legacy path unaffected
+  sentinelEnabled: false,                // Guardian Sentinel S1 — DARK; flip ON in KV platform_config (never code) after telemetry review
+  sentinelMem0Enabled: false,            // Sentinel S2 behaviour memory (mem0) — DARK; needs KV flag ON + MEM0_API_KEY secret
+  guardianInlineEnabled: false,          // Guardian G3 inline two-lane scan — DARK; with it off messaging.ts is unchanged (deep lane only)
+  guardianInlineBudgetMs: 600,           // G3 fast-lane hard budget (ms) for the single Nemotron moderate() call
+  guardianGateEnabled: false,            // U1-lite manual "Require verification" gate — DARK; server modes 403 + client control hidden
   minAppBuild: 0,
 };
 
@@ -289,7 +326,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // Whitelist merge — unknown keys are rejected so a typo can't ship a dead flag.
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...DEFAULTS, ...current };
-  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate"]);
+  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate", "guardianInlineBudgetMs"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {
