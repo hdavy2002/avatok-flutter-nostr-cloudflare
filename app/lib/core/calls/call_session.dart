@@ -220,6 +220,25 @@ class CallSession {
   bool _receptionistActive = false;
   int _avaCount = 0;
   bool _avaCountingDown = false;
+  // [AVA-CLIENT-1] Server "ava-live" ack gate. The confident "Ava is taking your
+  // call" status (phase 'receptionist') must NOT be driven by the client timer /
+  // WS-connected alone — the receptionist engine can 403/throw and never speak,
+  // leaving a frozen countdown with dead air (PostHog ava_recept_skipped
+  // reason=start_failed/unavailable). We only open this gate — flip to
+  // 'receptionist' — once the server confirms Ava is actually LIVE: either a
+  // {type:"ready"}/{type:"ava_live"} control frame OR the first real Ava audio
+  // frame (observed here via ReceptionistCall.avaLevel rising, its client-side
+  // proxy for first-audio). Until then we stay 'receptionist-connecting'
+  // ("Connecting you to Ava…"). Backward-compatible: if no ack ever arrives the
+  // watchdog retries once, then surfaces an honest 'receptionist-unavailable'.
+  bool _avaLiveGateOpen = false;      // true once the ava-live ack has been seen
+  bool _avaLiveConnecting = false;    // true while we're waiting for the ack
+  int _avaLiveConnectAtMs = 0;        // when we entered receptionist-connecting
+  int _avaLiveAttempt = 0;            // 1 on first wait, 2 after the single retry
+  Timer? _avaLiveWatchdog;            // fires if no ack within the timeout window
+  VoidCallback? _avaLevelListener;    // listens to ReceptionistCall.avaLevel
+  ReceptionistCall? _avaLevelSource;  // the call we attached _avaLevelListener to
+  static const int _avaLiveTimeoutMs = 4000; // ~4s per the remediation plan
   String _myAvatar = '';
   String _myName = 'You';
   String _mySeed = 'me';
@@ -655,6 +674,8 @@ class CallSession {
       case 'busy':
       case 'no-answer':
       case 'network-error':
+      // [AVA-CLIENT-1] terminal honest fallback — Ava never went live.
+      case 'receptionist-unavailable':
         return CallPhase.ended;
       case 'reconnecting':
         return CallPhase.reconnecting;
@@ -1631,12 +1652,32 @@ class CallSession {
           speaker: _speaker, teamId: config.teamId, teamSlot: config.teamSlot);
       call.onStatus = (s) {
         if (_ended || _avaCountingDown) return;
-        _setPhase(switch (s) {
-          'connecting' => 'receptionist-connecting',
-          'connected' => 'receptionist',
-          'wrapup' => 'receptionist-wrapup',
-          _ => _phase,
-        });
+        switch (s) {
+          case 'connecting':
+            // [AVA-CLIENT-1] WS is dialing — honest "Connecting you to Ava…".
+            // Do NOT jump to the confident line yet; the ava-live gate does that.
+            _setPhase('receptionist-connecting');
+            break;
+          case 'connected':
+            // [AVA-CLIENT-1] The socket connected + mic opened, but the ENGINE
+            // may still fail to start / never speak. This is exactly the
+            // start_failed/unavailable window. Stay 'receptionist-connecting'
+            // and arm the ava-live watchdog; only a real ava-live ack (first
+            // audio via avaLevel, or a wrapup) opens the gate to 'receptionist'.
+            if (!_avaLiveGateOpen) {
+              _setPhase('receptionist-connecting');
+              _armAvaLiveWatchdog(call);
+            }
+            break;
+          case 'wrapup':
+            // Ava reached her soft-cap → she is unambiguously live: open the
+            // gate (if not already) then show the wrap-up line.
+            _openAvaLiveGate();
+            _setPhase('receptionist-wrapup');
+            break;
+          default:
+            break;
+        }
       };
       _avaCountingDown = true;
       call.beginHold();
@@ -1651,7 +1692,17 @@ class CallSession {
       // that exact person can be recognized and let through to ring instead
       // of being auto-busied. Cleared in _teardown.
       if (config.seed.isNotEmpty) gReceptionistTargetPub = config.seed;
-      _setPhase('receptionist');
+      // [AVA-CLIENT-1] The engine reports "connected" (WS + mic up), but we do
+      // NOT yet claim "Ava is taking your call". Hold at 'receptionist-connecting'
+      // and let the ava-live gate flip us to 'receptionist' when Ava is truly
+      // live (first audio / ready ack). If the gate already opened during the
+      // countdown, honour it; otherwise arm the watchdog now.
+      if (_avaLiveGateOpen) {
+        _setPhase('receptionist');
+      } else {
+        _setPhase('receptionist-connecting');
+        _armAvaLiveWatchdog(call);
+      }
       call.release();
       call.done.then((_) {
         if (!_ended) _endWith('ended', reason: 'receptionist-done');
@@ -1659,6 +1710,120 @@ class CallSession {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [AVA-CLIENT-1] ava-live ack gate + watchdog
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Arm the ava-live watchdog for [call]. We treat the FIRST real Ava audio
+  /// frame as the "ava_live" ack — observed here without touching
+  /// ReceptionistCall by watching its [avaLevel] ValueNotifier (which is driven
+  /// only by inbound Ava audio frames; it never rises unless Ava actually spoke).
+  /// If the server later sends an explicit {type:"ready"}/{type:"ava_live"}
+  /// control frame that ReceptionistCall surfaces (e.g. via a future onStatus
+  /// 'live'/'ready'), [_openAvaLiveGate] can be called from there too — this
+  /// path degrades gracefully and stays backward-compatible if no such frame
+  /// exists yet.
+  ///
+  /// Timeline: on entering 'receptionist-connecting' we wait [_avaLiveTimeoutMs]
+  /// (~4s). No ack → retry ONCE (a second window). Still nothing → surface the
+  /// honest 'receptionist-unavailable' end state instead of a frozen countdown.
+  void _armAvaLiveWatchdog(ReceptionistCall call) {
+    if (_ended || _avaLiveGateOpen) return;
+    // Already waiting on this attempt — don't re-arm / double-count.
+    if (_avaLiveConnecting && _avaLiveWatchdog != null) return;
+    _avaLiveConnecting = true;
+    if (_avaLiveAttempt == 0) {
+      _avaLiveAttempt = 1;
+      _avaLiveConnectAtMs = DateTime.now().millisecondsSinceEpoch;
+    }
+    // Attach the avaLevel listener once — first non-trivial level = first audio.
+    if (_avaLevelListener == null) {
+      _avaLevelListener = () {
+        if (_ended || _avaLiveGateOpen) return;
+        if (call.avaLevel.value > 0.02) _openAvaLiveGate();
+      };
+      call.avaLevel.addListener(_avaLevelListener!);
+      _avaLevelSource = call;
+      // Guard the race where audio already arrived before we attached.
+      if (call.avaLevel.value > 0.02) { _openAvaLiveGate(); return; }
+    }
+    _avaLiveWatchdog?.cancel();
+    _avaLiveWatchdog = Timer(
+        const Duration(milliseconds: _avaLiveTimeoutMs), () => _onAvaLiveTimeout(call));
+  }
+
+  /// The ava-live ack arrived (first Ava audio / ready frame). Open the gate:
+  /// flip the confident "Ava is taking your call" status and stop the watchdog.
+  void _openAvaLiveGate() {
+    if (_avaLiveGateOpen || _ended) return;
+    _avaLiveGateOpen = true;
+    _avaLiveConnecting = false;
+    _avaLiveWatchdog?.cancel();
+    _avaLiveWatchdog = null;
+    final delay = _avaLiveConnectAtMs > 0
+        ? DateTime.now().millisecondsSinceEpoch - _avaLiveConnectAtMs
+        : 0;
+    Analytics.capture('ava_ready_gate_opened', {
+      'call_id': config.room,
+      'announcement_delay_ms': delay,
+      'attempt': _avaLiveAttempt,
+    });
+    // Only advance the label if we're still in a receptionist-connecting state
+    // (don't stomp a wrapup/ended phase that may have raced in).
+    if (_phase == 'receptionist-connecting') _setPhase('receptionist');
+  }
+
+  /// No ava-live ack within the window. Retry once; on the second miss surface
+  /// an honest fallback instead of a frozen "taking your call" with dead air.
+  void _onAvaLiveTimeout(ReceptionistCall call) {
+    if (_ended || _avaLiveGateOpen) return;
+    Analytics.capture('ava_live_timeout', {
+      'call_id': config.room,
+      'timeout_ms': _avaLiveTimeoutMs,
+      'attempt': _avaLiveAttempt,
+      'reason': 'no_ava_live_ack',
+    });
+    if (_avaLiveAttempt < 2) {
+      // Single retry: give Ava one more ~4s window. (We cannot restart the
+      // inner engine from here without touching receptionist_call.dart; the
+      // retry re-arms the same session's ack wait — Ava may simply have been
+      // slow to produce first audio.)
+      _avaLiveAttempt = 2;
+      Analytics.capture('ava_live_retry', {
+        'call_id': config.room,
+        'attempt': _avaLiveAttempt,
+        'reason': 'no_ava_live_ack',
+      });
+      _avaLiveWatchdog?.cancel();
+      _avaLiveWatchdog = Timer(
+          const Duration(milliseconds: _avaLiveTimeoutMs), () => _onAvaLiveTimeout(call));
+      return;
+    }
+    // Second miss → honest failure. Do not sit on a fake countdown/dead air.
+    Analytics.capture('ava_recept_skipped', {
+      'call_id': config.room,
+      'reason': 'ava_live_timeout',
+      'activation_mode': call.activationMode,
+    });
+    _clearAvaLiveGate();
+    if (!_ended && !_connected) {
+      _endWith('receptionist-unavailable', reason: 'ava-live-timeout');
+    }
+  }
+
+  /// Detach the avaLevel listener + cancel the watchdog. Safe to call repeatedly.
+  void _clearAvaLiveGate() {
+    _avaLiveWatchdog?.cancel();
+    _avaLiveWatchdog = null;
+    _avaLiveConnecting = false;
+    final l = _avaLevelListener;
+    if (l != null) {
+      try { _avaLevelSource?.avaLevel.removeListener(l); } catch (_) {}
+      _avaLevelListener = null;
+      _avaLevelSource = null;
     }
   }
 
@@ -1700,6 +1865,9 @@ class CallSession {
   Future<void> _teardown({String? reason}) async {
     if (_ended) return;
     final sw = Stopwatch()..start();
+    // [AVA-CLIENT-1] cancel the ava-live watchdog + detach the avaLevel listener
+    // so nothing keeps firing after teardown (no leaked timers/listeners).
+    _clearAvaLiveGate();
     try { _receptionist?.hangup(); } catch (_) {}
     try { WakelockPlus.disable(); } catch (_) {}
     await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());
@@ -1812,6 +1980,9 @@ class CallSession {
         'receptionist-connecting' => 'Connecting you to Ava…',
         'receptionist' => 'Ava is taking a message',
         'receptionist-wrapup' => 'Ava is wrapping up…',
+        // [AVA-CLIENT-1] honest fallback when Ava never went live (ack timeout /
+        // engine start_failed) — never a frozen countdown with dead air.
+        'receptionist-unavailable' => "Couldn't reach Ava — try again",
         'reconnecting' => 'Reconnecting…',
         'ended' => 'Call ended',
         _ => 'Connecting…',
