@@ -14,6 +14,7 @@ import '../../core/calls/call_session.dart';
 import '../../core/calls/call_session_manager.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
+import 'busy_card.dart';
 // Ringing globals (gIncomingRingingFrom/CallId) live here — cleared by
 // clearCallState() on account switch. push_service.dart also imports this file
 // (Dart permits the library cycle).
@@ -376,10 +377,37 @@ class _CallScreenState extends State<CallScreen> {
                         style: ZineText.hero(size: 30)),
                   ],
                   const SizedBox(height: 16),
-                  ZineSticker(
-                    connected ? s.clock : s.statusText,
-                    kind: failed ? ZineStickerKind.no : ZineStickerKind.plain,
-                  ),
+                  // [BUSY-CARD-1] Personalized busy card — replaces the cold
+                  // "User is busy" sticker when the server told us WHY the callee
+                  // is busy (Specs §3.1). Only on the terminal 'busy' phase and
+                  // only when the field/flag gate is satisfied; otherwise the
+                  // legacy sticker below renders unchanged.
+                  if (s.showBusyCard)
+                    BusyCard(
+                      name: widget.title,
+                      busyReason: s.busyReason ?? '',
+                      pronoun: s.busyPronoun,
+                      receptionistEnabled: s.busyReceptionistEnabled,
+                      notifyInFlight: s.busyNotifyInFlight,
+                      notifyRegistered: s.busyNotifyRegistered,
+                      onCancel: () {
+                        s.busyCancel();
+                        _popIfMounted();
+                      },
+                      onNotifyMe: () {
+                        // ignore: unawaited_futures
+                        s.busyNotifyMe();
+                      },
+                      onLeaveMessage: () {
+                        // ignore: unawaited_futures
+                        s.busyLeaveMessage();
+                      },
+                    )
+                  else
+                    ZineSticker(
+                      connected ? s.clock : s.statusText,
+                      kind: failed ? ZineStickerKind.no : ZineStickerKind.plain,
+                    ),
                   // [CALL-DIAL-FAIL-1] Retry affordance — only on the
                   // network-error terminal state, only when the launch site
                   // gave us a redial hook.

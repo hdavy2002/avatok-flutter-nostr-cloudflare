@@ -244,6 +244,17 @@ class CallSession {
   String _mySeed = 'me';
   String _receptMode = 'rings';
   int _receptRings = 5;
+  // [BUSY-CARD-1] Server-provided busy metadata for the personalized busy card.
+  // Populated from the 'busy' call-status only when the server sends it; null /
+  // false ⇒ old cold "User is busy" behaviour (the card never renders). See
+  // Specs/CALL-MESSAGING-RECEPTIONIST-REMEDIATION-PLAN.md §3.1.
+  String? _busyReason;                 // active_call | receptionist | do_not_disturb
+  bool _busyReceptionistEnabled = false; // gates the "Leave a message for Ava" button
+  String _busyPronoun = 'they';        // he | she | they (best-effort, defaults neutral)
+  bool _busyNotifyInFlight = false;    // "Notify me" register POST in flight
+  bool _busyNotifyRegistered = false;  // "Notify me" succeeded (button flips)
+  bool _busyCardShownLogged = false;   // one-shot busy_card_shown telemetry guard
+  Timer? _busyCardTimeout;             // abandons an untouched busy card after 60s
   StreamSubscription? _statusSub;
   bool _takeoverGuard = false;
   Duration? _pendingRingWindow;
@@ -629,6 +640,12 @@ class CallSession {
           return;
         }
         if (e.status == 'busy') {
+          // [BUSY-CARD-1] Capture the server's busy metadata (why + whether the
+          // callee's receptionist can take a message + pronoun) BEFORE handling
+          // busy, so _onBusy can decide whether to render the personalized card.
+          _busyReason = e.busyReason;
+          _busyReceptionistEnabled = e.receptionistEnabled;
+          if (e.pronoun != null && e.pronoun!.isNotEmpty) _busyPronoun = e.pronoun!;
           // ignore: unawaited_futures
           _onBusy();
           return;
@@ -1545,12 +1562,165 @@ class CallSession {
       'recept_mode': _receptMode,
       'video': config.video,
     });
+    // [BUSY-CARD-1] Personalized busy card. When the server told us WHY the callee
+    // is busy (busy_reason present) AND the client kill switch is on, show the
+    // warm card (§3.1) and let the caller CHOOSE — Ava never auto-engages on a
+    // busy call (§3.0: busy ≠ no-answer). We do NOT auto-start the receptionist
+    // here in that case; that only happens if they tap "Leave a message for Ava".
+    // When there is no busy_reason (old server / kill switch off) we fall through
+    // to the UNCHANGED legacy behaviour below.
+    if (_showBusyCard) {
+      // Terminal 'busy' phase renders the card in the view; keep the session
+      // alive (no teardown / auto-pop) so the user can act on the buttons.
+      _setPhase('busy');
+      _logBusyCardShown();
+      // Safety: an abandoned busy card must not hold the mic/session forever.
+      // If the user neither acts nor navigates within 60s, end cleanly. (Any
+      // button tap that hands off/ends cancels this via _teardown / _endWith.)
+      _busyCardTimeout?.cancel();
+      _busyCardTimeout = Timer(const Duration(seconds: 60), () {
+        if (!_ended && _phase == 'busy' && !_receptionistActive) {
+          Analytics.capture('busy_card_cancelled', {
+            'call_id': config.room,
+            'busy_reason': _busyReason ?? '',
+            'reason': 'timeout',
+          });
+          _endWith('ended', reason: 'busy-card-timeout');
+        }
+      });
+      return;
+    }
     if (!config.video) {
       final started = await _tryReceptionist(
           activationMode: _receptMode == 'first_ring' ? 'first_ring' : 'rings');
       if (started) return;
     }
     if (!_connected && !_ended) _endWith('busy', reason: 'busy');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [BUSY-CARD-1] Personalized busy card — state + actions (Specs §3.1)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// True only when the server gave us a busy_reason AND the client kill switch
+  /// is on. This is the FIELD gate that keeps the card off for old servers. The
+  /// card renders on the audio call screen (§3.1); video busy calls keep the
+  /// legacy busy line (no card surface in the video layout).
+  bool get _showBusyCard =>
+      !config.video &&
+      (_busyReason != null && _busyReason!.isNotEmpty) &&
+      RemoteConfig.busyCardEnabled;
+
+  /// View-facing accessors (read by CallScreen when uiPhase == 'busy').
+  bool get showBusyCard => _showBusyCard && _phase == 'busy';
+  String? get busyReason => _busyReason;
+  bool get busyReceptionistEnabled => _busyReceptionistEnabled;
+  String get busyPronoun => _busyPronoun;
+  bool get busyNotifyInFlight => _busyNotifyInFlight;
+  bool get busyNotifyRegistered => _busyNotifyRegistered;
+
+  void _logBusyCardShown() {
+    if (_busyCardShownLogged) return;
+    _busyCardShownLogged = true;
+    Analytics.capture('busy_card_shown', {
+      'call_id': config.room,
+      'busy_reason': _busyReason ?? '',
+      'receptionist_enabled': _busyReceptionistEnabled,
+    });
+    Analytics.capture('busy_receptionist_offered', {
+      'call_id': config.room,
+      'busy_reason': _busyReason ?? '',
+    });
+  }
+
+  void _logBusyButtonTapped(String button) {
+    Analytics.capture('busy_card_button_tapped', {
+      'call_id': config.room,
+      'button': button,
+      'busy_reason': _busyReason ?? '',
+    });
+  }
+
+  /// Cancel → dismiss/end the busy card (no ring, no second leg). §3.1 (1).
+  void busyCancel() {
+    _logBusyButtonTapped('cancel');
+    Analytics.capture('busy_card_cancelled', {
+      'call_id': config.room,
+      'busy_reason': _busyReason ?? '',
+    });
+    Analytics.capture('busy_receptionist_declined', {
+      'call_id': config.room,
+      'button': 'cancel',
+    });
+    if (!_ended) _endWith('ended', reason: 'busy-card-cancel');
+  }
+
+  /// Notify me → register the caller in the callee's authority waiter list so a
+  /// "now free" FCM fires when the callee returns to idle. §3.1 (2). Degrades
+  /// gracefully: a 404 (endpoint not deployed yet) still shows the confirmed
+  /// state locally so the button never dead-ends.
+  Future<void> busyNotifyMe() async {
+    if (_busyNotifyInFlight || _busyNotifyRegistered) return;
+    _logBusyButtonTapped('notify_me');
+    _busyNotifyInFlight = true;
+    _bump();
+    final ok = await _registerNowFreeWaiter();
+    _busyNotifyInFlight = false;
+    _busyNotifyRegistered = true; // confirmed locally regardless of server state
+    _bump();
+    Analytics.capture('busy_notify_registered', {
+      'call_id': config.room,
+      'busy_reason': _busyReason ?? '',
+      'server_ok': ok,
+    });
+    Analytics.capture('busy_receptionist_declined', {
+      'call_id': config.room,
+      'button': 'notify',
+    });
+  }
+
+  /// POST the notify-register request to the server. ASSUMED shape (reconcile
+  /// with the server agent): POST /api/call/notify-register
+  /// {callee_uid, caller_uid, call_id}. Any non-2xx / throw → false (degrade).
+  Future<bool> _registerNowFreeWaiter() async {
+    try {
+      final r = await ApiAuth.postJson(
+        'https://$kSignalingHost/api/call/notify-register',
+        {
+          'callee_uid': config.seed,
+          'caller_uid': _mySeed,
+          'call_id': config.room,
+        },
+      );
+      return r.statusCode >= 200 && r.statusCode < 300;
+    } catch (_) {
+      return false; // endpoint missing / offline → still confirm locally
+    }
+  }
+
+  /// Leave a message for Ava → start a receptionist voicemail session to the
+  /// callee with activation_mode='busy'. Reuses the exact no-answer receptionist
+  /// path, just tagged 'busy' so Ava's script is the busy variant. §3.1 (3).
+  Future<void> busyLeaveMessage() async {
+    _logBusyButtonTapped('leave_message');
+    Analytics.capture('busy_leave_message_selected', {
+      'call_id': config.room,
+      'busy_reason': _busyReason ?? '',
+      'language': '',
+    });
+    Analytics.capture('busy_receptionist_started', {
+      'call_id': config.room,
+      'trigger': 'leave_message_button',
+    });
+    if (_ended || config.video) {
+      // Video calls never route to voicemail — just end cleanly.
+      if (!_ended) _endWith('ended', reason: 'busy-card-leave-video');
+      return;
+    }
+    final started = await _tryReceptionist(activationMode: 'busy');
+    if (!started && !_connected && !_ended) {
+      _endWith('receptionist-unavailable', reason: 'busy-receptionist-unavailable');
+    }
   }
 
   Future<void> _probeReceptionist() async {
@@ -1868,6 +2038,9 @@ class CallSession {
     // [AVA-CLIENT-1] cancel the ava-live watchdog + detach the avaLevel listener
     // so nothing keeps firing after teardown (no leaked timers/listeners).
     _clearAvaLiveGate();
+    // [BUSY-CARD-1] cancel the abandoned-busy-card safety timer.
+    _busyCardTimeout?.cancel();
+    _busyCardTimeout = null;
     try { _receptionist?.hangup(); } catch (_) {}
     try { WakelockPlus.disable(); } catch (_) {}
     await _safeAwait(() => NativeVoiceAudio().stopP2pAudioMode());

@@ -82,6 +82,25 @@ const LEASE_MS = 30_000; // §2.4: lease = now + 30s, heartbeat refresh every 10
 const CALLBACK_RESERVATION_TTL_MS = 8_000; // §2.5 reserveCallback: expires = +8s
 const TRANSITIONS_RETENTION_MS = 24 * 60 * 60 * 1000; // §2.2: 24h retention, debugging only
 
+// -----------------------------------------------------------------------------
+// Busy-card "Notify me" — bounded waiter list (plan §3.1 / §7 item 7 / §9.1).
+// A busy caller can register to be pinged when this callee frees up. HARD RULES:
+//   • BOUNDED: at most WAITER_MAX rows; on overflow the OLDEST is trimmed
+//     (newest-wins) so a busy period with 100 callers never fans out 100 FCMs.
+//   • DEDUPED per caller: one row per (account_uid → waiter) with a retry `count`
+//     + `last_attempt`, never 30 rows for 30 retries.
+//   • GENERATION-numbered: a monotonic `generation` on the call_state row is
+//     bumped every time the authority returns to idle. Each waiter row and each
+//     now-free FCM carries the generation it was registered under so a late
+//     "busy" push can never land after a "now free" (stale generation is dropped).
+// All of this is DO-local SQLite, per-account (this DO === one account_uid), and
+// touched only lazily on write / on the idle transition — NO always-on alarm, so
+// the DO still hibernates to nothing between calls (§7 item 7, CLAUDE.md).
+// -----------------------------------------------------------------------------
+const WAITER_MAX = 10; // §7.7 "max ~10, newest wins"
+const WAITER_TTL_MS = 30 * 60 * 1000; // waiters expire after 30min so a never-freed callee can't hold a stale list
+const NOW_FREE_FANOUT_MAX = 10; // hard cap on FCMs fired per free-up (bounds the §9.3 alert-6 leak)
+
 /** DO-local SQLite row shape for the single `call_state` row (§2.2). */
 interface CallStateRow {
   uid: string;
@@ -101,6 +120,18 @@ interface CallStateRow {
   last_transition_ms: number | null;
   last_mutation_uuid: string | null;
   updated_at: number | null;
+  // Busy-card waiter generation (§7.7): monotonic, bumped on every return to idle.
+  // Nullable in the row shape for back-compat with pre-migration rows (treated as 0).
+  waiter_generation?: number | null;
+}
+
+/** One bounded/deduped waiter for the busy-card "Notify me" flow (§7.7). */
+interface WaiterRow {
+  waiter_uid: string;
+  generation: number;
+  count: number;
+  first_seen: number;
+  last_attempt: number;
 }
 
 interface ReservationRow {
@@ -122,6 +153,12 @@ interface MutationResult {
   reservation?: { reservation_id: string; authority_epoch: number; expires_at: number; peer_uid: string } | null;
   error?: string;
   actual_epoch?: number;
+  // Busy-card enrichment (§3.1) — present only when the caller passes
+  // busy_card_enabled=true on /acquire. receptionist_enabled drives the "Leave a
+  // message for Ava" button; generation lets a subsequent /notify-register guard
+  // against a stale busy view.
+  receptionist_enabled?: boolean;
+  generation?: number;
 }
 
 /** Idempotency store: every mutation_uuid's response is persisted in the
@@ -161,7 +198,8 @@ export class CallStateAuthorityDO {
          callroom_id                TEXT,
          last_transition_ms         INTEGER,
          last_mutation_uuid         TEXT,
-         updated_at                 INTEGER
+         updated_at                 INTEGER,
+         waiter_generation          INTEGER NOT NULL DEFAULT 0
        );
        CREATE TABLE IF NOT EXISTS call_transitions (
          epoch INTEGER,
@@ -185,8 +223,20 @@ export class CallStateAuthorityDO {
          response_json TEXT NOT NULL,
          created_at INTEGER NOT NULL
        );
-       CREATE INDEX IF NOT EXISTS idx_idem_created ON idempotency(created_at);`,
+       CREATE INDEX IF NOT EXISTS idx_idem_created ON idempotency(created_at);
+       CREATE TABLE IF NOT EXISTS waiters (
+         waiter_uid   TEXT PRIMARY KEY,
+         generation   INTEGER NOT NULL DEFAULT 0,
+         count        INTEGER NOT NULL DEFAULT 1,
+         first_seen   INTEGER NOT NULL,
+         last_attempt INTEGER NOT NULL
+       );
+       CREATE INDEX IF NOT EXISTS idx_waiters_first_seen ON waiters(first_seen);`,
     );
+    // Back-compat: a call_state table created before the waiter feature won't have
+    // the waiter_generation column; add it lazily (idempotent — ignore "duplicate
+    // column" on already-migrated DOs). Never blocks construction.
+    try { this.sql.exec(`ALTER TABLE call_state ADD COLUMN waiter_generation INTEGER NOT NULL DEFAULT 0`); } catch { /* already present */ }
   }
 
   // -------------------------------------------------------------------------
@@ -220,12 +270,16 @@ export class CallStateAuthorityDO {
         last_transition_ms: null,
         last_mutation_uuid: null,
         updated_at: Date.now(),
+        waiter_generation: 0,
       };
       this.persistRow(row);
       return row;
     }
     row = rows[0];
-    // §2.9 hibernation wake: lease_expired? -> CONNECTED -> IDLE.
+    if (row.waiter_generation == null) row.waiter_generation = 0;
+    // §2.9 hibernation wake: lease_expired? -> CONNECTED -> IDLE. This is one of the
+    // three "return to idle" edges that must fire the busy-card now-free FCM
+    // (§3.1 "Notify me" / handleRelease / handleAbandonReceptionist being the others).
     if (row.phase === "connected" && row.lease_expiry_ms != null && Date.now() > row.lease_expiry_ms) {
       row = this.applyTransition(row, "idle", "lease_expired_on_wake");
       row.peer_uid = null;
@@ -234,6 +288,9 @@ export class CallStateAuthorityDO {
       row.owner_device_id = null;
       row.lease_expiry_ms = null;
       this.persistRow(row);
+      // Lazy (no alarm): on the natural wake that observes the expired lease, notify
+      // any bounded waiters and bump the generation. Fire-and-forget; never blocks.
+      this.onReturnedToIdle("lease_expired_on_wake");
     }
     return row;
   }
@@ -246,8 +303,8 @@ export class CallStateAuthorityDO {
          lease_expiry_ms, owner_session_id, owner_device_id,
          receptionist_target_uid, callback_reserved_peer,
          callback_reservation_until, callroom_id, last_transition_ms,
-         last_mutation_uuid, updated_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         last_mutation_uuid, updated_at, waiter_generation
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(uid) DO UPDATE SET
          call_id=excluded.call_id,
          peer_uid=excluded.peer_uid,
@@ -264,12 +321,13 @@ export class CallStateAuthorityDO {
          callroom_id=excluded.callroom_id,
          last_transition_ms=excluded.last_transition_ms,
          last_mutation_uuid=excluded.last_mutation_uuid,
-         updated_at=excluded.updated_at`,
+         updated_at=excluded.updated_at,
+         waiter_generation=excluded.waiter_generation`,
       row.uid, row.call_id, row.peer_uid, row.phase, row.direction, row.rtc_provider,
       row.epoch, row.lease_expiry_ms, row.owner_session_id, row.owner_device_id,
       row.receptionist_target_uid, row.callback_reserved_peer,
       row.callback_reservation_until, row.callroom_id, row.last_transition_ms,
-      row.last_mutation_uuid, row.updated_at,
+      row.last_mutation_uuid, row.updated_at, row.waiter_generation ?? 0,
     );
   }
 
@@ -379,6 +437,241 @@ export class CallStateAuthorityDO {
   }
 
   // -------------------------------------------------------------------------
+  // Busy-card telemetry + waiter list + now-free FCM (plan §3.1 / §7.7 / §9.1).
+  // All best-effort and self-contained: a failure here can NEVER affect a call
+  // decision (the busy-card feature is additive + flag-gated at the call-site).
+  // -------------------------------------------------------------------------
+
+  /** Emit a PostHog event with the SAME base envelope hooks.track uses
+   *  (account_id, email, app_name, app_version, trace_id, service_name), via
+   *  Q_ANALYTICS. `uid` is this authority's account (the callee's perspective).
+   *  Best-effort — never throws, never awaited on the request path. */
+  private emit(event: string, props: Record<string, unknown> = {}): void {
+    try {
+      const uid = this.accountUid();
+      void (this.env as unknown as { Q_ANALYTICS?: { send: (m: unknown) => Promise<unknown> } }).Q_ANALYTICS?.send({
+        event,
+        uid,
+        ts: Date.now(),
+        props: {
+          ...props,
+          trace_id: crypto.randomUUID(),
+          app_name: "call_authority",
+          app: "call_authority",
+          app_version: "server",
+          release: String((this.env as unknown as { WORKER_RELEASE?: string }).WORKER_RELEASE ?? "dev"),
+          service_name: "avatok-api",
+          worker: true,
+          account_id: uid,
+        },
+      });
+    } catch { /* best-effort */ }
+  }
+
+  /** Current generation (monotonic, bumped on every return to idle). */
+  private generationOf(row: CallStateRow): number {
+    return row.waiter_generation ?? 0;
+  }
+
+  /** Live (non-expired) waiter count. */
+  private waiterCount(now = Date.now()): number {
+    try {
+      const r = this.sql.exec(`SELECT COUNT(*) as c FROM waiters WHERE last_attempt > ?`, now - WAITER_TTL_MS)
+        .toArray() as unknown as Array<{ c: number }>;
+      return r[0]?.c ?? 0;
+    } catch { return 0; }
+  }
+
+  /** Whether this callee has the Ava receptionist ON — drives the "Leave a message
+   *  for Ava" button on the busy card (§3.1 conditionality). Reads the callee's
+   *  receptionist_settings row from D1 (DB_META), mirroring the route's DEFAULT-ON
+   *  rule: NO row → enabled (Ava answers out of the box); an explicit enabled=0 row
+   *  → disabled. Fail-open to `true` so a D1 hiccup never hides the differentiator
+   *  the caller expects. (The GLOBAL receptionistEnabled kill switch is layered by
+   *  the call-site helper, which has the config in hand.) */
+  private async receptionistEnabledFor(uid: string): Promise<boolean> {
+    try {
+      const db = (this.env as unknown as { DB_META?: D1Database }).DB_META;
+      if (!db) return true;
+      const r = await db.prepare("SELECT enabled FROM receptionist_settings WHERE owner_uid=?1")
+        .bind(uid).first<{ enabled: number | null }>();
+      if (!r) return true; // DEFAULT-ON: never configured → Ava is on
+      return Number(r.enabled) !== 0;
+    } catch {
+      return true; // fail-open
+    }
+  }
+
+  /** POST /notify-register — busy-card "Notify me". Registers `caller_uid` as a
+   *  bounded/deduped waiter to be pinged when this callee returns to idle (§3.1).
+   *  Idempotent per caller (dedupe: bump count + last_attempt, never a new row);
+   *  bounded (WAITER_MAX, newest-wins trim); generation-stamped. */
+  private handleNotifyRegister(body: Record<string, unknown>): Response {
+    const callerUid = typeof body.caller_uid === "string" ? body.caller_uid.slice(0, 128) : "";
+    if (!callerUid) return Response.json({ ok: false, error: "caller_uid required" }, { status: 400 });
+
+    const row = this.loadRow();
+    const now = Date.now();
+    const generation = this.generationOf(row);
+
+    // Lazy prune of TTL-expired waiters on this natural write, so the bound/trim
+    // arithmetic below counts only live rows (no alarm — hibernation preserved).
+    try {
+      const stale = this.sql.exec(`SELECT waiter_uid FROM waiters WHERE last_attempt <= ?`, now - WAITER_TTL_MS)
+        .toArray() as unknown as Array<{ waiter_uid: string }>;
+      if (stale.length > 0) {
+        this.sql.exec(`DELETE FROM waiters WHERE last_attempt <= ?`, now - WAITER_TTL_MS);
+        for (const s of stale) this.emit("waiter_removed", { reason: "expired", waiter: s.waiter_uid, generation });
+      }
+    } catch { /* best-effort */ }
+
+    // Only a genuinely-busy callee should accept waiters. If we're idle, tell the
+    // caller to just call — no point queueing (avoids a stuck waiter that never fires).
+    if (!this.isBusy(row)) {
+      this.emit("busy_notify_rejected", { reason: "not_busy", generation, waiter_count: this.waiterCount(now) });
+      return Response.json({ ok: false, rejected: true, reason: "not_busy", generation, waiter_count: this.waiterCount(now) });
+    }
+
+    // Requested generation guard: a stale client that saw an older busy card must not
+    // register against a generation we've already advanced past (the callee already
+    // freed + re-busied). Reject so the client re-reads the fresh busy state.
+    const reqGen = typeof body.generation === "number" ? body.generation : undefined;
+    if (reqGen != null && reqGen < generation) {
+      this.emit("busy_notify_rejected", { reason: "expired", generation, requested_generation: reqGen });
+      return Response.json({ ok: false, rejected: true, reason: "expired", generation });
+    }
+
+    let deduped = false;
+    try {
+      const existing = this.sql.exec(`SELECT waiter_uid, count FROM waiters WHERE waiter_uid = ?`, callerUid)
+        .toArray() as unknown as Array<{ waiter_uid: string; count: number }>;
+      if (existing.length > 0) {
+        // DEDUPE: same caller retrying → bump count + last_attempt, re-stamp the
+        // current generation. Never a second row (§7.7 "not 30 rows for 30 retries").
+        deduped = true;
+        this.sql.exec(
+          `UPDATE waiters SET count = count + 1, last_attempt = ?, generation = ? WHERE waiter_uid = ?`,
+          now, generation, callerUid,
+        );
+        this.emit("busy_notify_registered", { waiter_added: false, deduped: true, generation, waiter_count: this.waiterCount(now), ttl: WAITER_TTL_MS });
+        return Response.json({ ok: true, registered: true, deduped: true, generation, waiter_count: this.waiterCount(now), ttl_ms: WAITER_TTL_MS });
+      }
+
+      // New waiter. Enforce the bound BEFORE insert: if full, trim the OLDEST
+      // (newest-wins) so we never exceed WAITER_MAX.
+      const total = this.waiterCount(now);
+      if (total >= WAITER_MAX) {
+        const before = total;
+        // Remove oldest rows down to WAITER_MAX-1 so the incoming one fits.
+        const victims = this.sql.exec(
+          `SELECT waiter_uid FROM waiters ORDER BY first_seen ASC LIMIT ?`,
+          Math.max(1, before - (WAITER_MAX - 1)),
+        ).toArray() as unknown as Array<{ waiter_uid: string }>;
+        for (const v of victims) {
+          this.sql.exec(`DELETE FROM waiters WHERE waiter_uid = ?`, v.waiter_uid);
+          this.emit("waiter_removed", { reason: "overflow", waiter: v.waiter_uid, generation });
+        }
+        const after = this.waiterCount(now);
+        this.emit("waiter_list_trimmed", { removed: victims.length, before, after, reason: "overflow" });
+      }
+
+      this.sql.exec(
+        `INSERT INTO waiters (waiter_uid, generation, count, first_seen, last_attempt) VALUES (?,?,?,?,?)`,
+        callerUid, generation, 1, now, now,
+      );
+      deduped = false;
+      const count = this.waiterCount(now);
+      this.emit("waiter_added", { generation, waiter_count: count, deduped: false, position: count, oldest_age: 0 });
+      this.emit("busy_notify_registered", { waiter_added: true, deduped: false, generation, waiter_count: count, ttl: WAITER_TTL_MS });
+      return Response.json({ ok: true, registered: true, deduped: false, generation, waiter_count: count, ttl_ms: WAITER_TTL_MS });
+    } catch (e) {
+      this.emit("busy_notify_rejected", { reason: "list_full", generation, deduped });
+      return Response.json({ ok: false, rejected: true, reason: "list_full", generation }, { status: 500 });
+    }
+  }
+
+  /** Fire the bounded "now free" FCM fan-out to all live waiters, then clear the
+   *  list and bump the generation. Called on EVERY return-to-idle edge (release /
+   *  abandon-receptionist / lease-expiry on wake). Lazy — never an alarm. The
+   *  generation bump happens even with zero waiters so a subsequent stale register
+   *  is rejected. Best-effort; never throws into the caller. */
+  private onReturnedToIdle(reason: string): void {
+    const now = Date.now();
+    let waiters: WaiterRow[] = [];
+    try {
+      // Drop expired waiters first (lazy prune on this natural write).
+      try { this.sql.exec(`DELETE FROM waiters WHERE last_attempt <= ?`, now - WAITER_TTL_MS); } catch { /* best-effort */ }
+      waiters = this.sql.exec(`SELECT * FROM waiters ORDER BY first_seen ASC`).toArray() as unknown as WaiterRow[];
+    } catch { waiters = []; }
+
+    // Bump generation regardless (so a late register against the old generation is
+    // rejected as "expired"). Persist onto the row.
+    let genForThisCycle = 0;
+    try {
+      const rows = this.sql.exec(`SELECT waiter_generation FROM call_state WHERE uid = ?`, this.accountUid())
+        .toArray() as unknown as Array<{ waiter_generation: number | null }>;
+      genForThisCycle = rows[0]?.waiter_generation ?? 0;
+      const newGen = genForThisCycle + 1;
+      this.sql.exec(`UPDATE call_state SET waiter_generation = ? WHERE uid = ?`, newGen, this.accountUid());
+      this.emit("waiter_generation_incremented", { old_generation: genForThisCycle, new_generation: newGen });
+    } catch { /* best-effort — generation stays put if this fails */ }
+
+    if (waiters.length === 0) return;
+
+    // Bound the fan-out (defence-in-depth against a leak; the list is already
+    // capped at WAITER_MAX). Newest waiters win if somehow over-cap.
+    const targets = waiters.slice(-NOW_FREE_FANOUT_MAX);
+    const dedupedCount = waiters.reduce((n, w) => n + (w.count > 1 ? 1 : 0), 0);
+
+    this.emit("now_free_fcm_prepared", {
+      generation: genForThisCycle,
+      fanout_size: targets.length,
+      deduped_count: dedupedCount,
+      waiter_count: waiters.length,
+      reason,
+    });
+
+    let success = 0;
+    let failure = 0;
+    const q = (this.env as unknown as { Q_PUSH?: { send: (m: unknown) => Promise<unknown> } }).Q_PUSH;
+    for (const w of targets) {
+      try {
+        // Reuse the existing Q_PUSH path (kind:"call-status" / "notify" shape).
+        // The push consumer resolves device tokens + delivers FCM/APNs; we only
+        // enqueue. Payload shape documented in the handover for the client agent.
+        void q?.send({
+          kind: "call-status",
+          status: "now_free",
+          to: w.waiter_uid,        // recipient = the waiting caller
+          from: this.accountUid(), // the callee who just freed up
+          callee_uid: this.accountUid(),
+          generation: genForThisCycle,
+          deeplink: `/call?to=${encodeURIComponent(this.accountUid())}`,
+          title: "Now free",
+          body: "is now free — tap to call.",
+          ts: now,
+        });
+        success += 1;
+      } catch {
+        failure += 1;
+      }
+    }
+
+    this.emit("now_free_fcm_sent", {
+      fanout_size: targets.length,
+      success_count: success,
+      failure_count: failure,
+      generation: genForThisCycle,
+    });
+
+    // Clear the list (each waiter has been pinged for this generation).
+    try {
+      for (const w of waiters) this.emit("waiter_removed", { reason: "called", waiter: w.waiter_uid, generation: genForThisCycle });
+      this.sql.exec(`DELETE FROM waiters`);
+    } catch { /* best-effort */ }
+  }
+
+  // -------------------------------------------------------------------------
   // fetch() router — internal-only, never client-exposed (called Worker-to-DO,
   // matching the CallRoom /state and /glare-place convention). Phase A: no
   // caller wires this up yet.
@@ -398,6 +691,7 @@ export class CallStateAuthorityDO {
     let body: Record<string, unknown> = {};
     try { body = (await request.json()) as Record<string, unknown>; } catch { /* empty body */ }
 
+    if (path.endsWith("/notify-register")) return this.handleNotifyRegister(body);
     if (path.endsWith("/acquire")) return this.handleAcquire(body);
     if (path.endsWith("/transition")) return this.handleTransition(body);
     if (path.endsWith("/query")) return this.handleQuery(); // POST fallback, read-only
@@ -415,10 +709,15 @@ export class CallStateAuthorityDO {
 
   /** POST /acquire — acquireCall(caller,peer,call_id,dir,idem,expected_epoch).
    *  Claim a call. IDLE -> acquire (epoch++, OK); else BUSY(reason). */
-  private handleAcquire(body: Record<string, unknown>): Response {
+  private async handleAcquire(body: Record<string, unknown>): Promise<Response> {
     const mutationUuid = typeof body.mutation_uuid === "string" ? body.mutation_uuid : undefined;
     const cached = this.checkIdempotent(mutationUuid);
     if (cached) return Response.json(cached);
+
+    // Busy-card enrichment is opt-in via the caller passing busy_card_enabled=true
+    // (the call-site reads the busyCardEnabled kill switch and forwards it). Default
+    // OFF → the acquire response is byte-for-byte identical to today's behaviour.
+    const busyCardEnabled = body.busy_card_enabled === true;
 
     const row = this.loadRow();
     const expectedEpoch = typeof body.expected_epoch === "number" ? body.expected_epoch : row.epoch;
@@ -436,15 +735,38 @@ export class CallStateAuthorityDO {
     const ownerDeviceId = typeof body.owner_device_id === "string" ? body.owner_device_id : null;
 
     if (this.isBusy(row)) {
+      const busyReason = this.busyReasonFor(row);
       const result: MutationResult = {
         ok: false,
         decision: "busy",
         epoch: row.epoch,
         phase: row.phase ?? "idle",
         busy: true,
-        busy_reason: this.busyReasonFor(row),
+        busy_reason: busyReason,
         call_id: row.call_id,
       };
+      // Busy-card enrichment (§3.1): tell the caller whether "Leave a message for
+      // Ava" should show (receptionist enabled?) and the current waiter generation
+      // for a subsequent /notify-register. Additive, flag-gated — when the flag is
+      // OFF these fields are simply absent and the response is unchanged.
+      if (busyCardEnabled) {
+        result.receptionist_enabled = await this.receptionistEnabledFor(this.accountUid());
+        result.generation = this.generationOf(row);
+      }
+      // §9.1 authority_acquire_decided — the most-used decision event.
+      this.emit("authority_acquire_decided", {
+        decision: "busy",
+        busy_reason: busyReason,
+        phase: row.phase ?? "idle",
+        epoch: row.epoch,
+        session_id: typeof body.owner_session_id === "string" ? body.owner_session_id : null,
+        receptionist_enabled: busyCardEnabled ? result.receptionist_enabled : undefined,
+        generation: busyCardEnabled ? result.generation : undefined,
+        busy_card_enabled: busyCardEnabled,
+      });
+      // Preserve the original idempotency behaviour (a repeated mutation_uuid
+      // returns the identical busy result). The enrichment fields are computed
+      // from the same row/generation, so the cached copy stays consistent.
       this.rememberMutation(mutationUuid, result);
       return Response.json(result);
     }
@@ -468,6 +790,13 @@ export class CallStateAuthorityDO {
       busy: false,
       call_id: row.call_id,
     };
+    this.emit("authority_acquire_decided", {
+      decision: "allow",
+      phase: row.phase ?? toPhase,
+      epoch: row.epoch,
+      session_id: ownerSessionId,
+      busy_card_enabled: busyCardEnabled,
+    });
     this.rememberMutation(mutationUuid, result);
     return Response.json(result);
   }
@@ -648,6 +977,8 @@ export class CallStateAuthorityDO {
     row.owner_device_id = null;
     row.lease_expiry_ms = null;
     this.persistRow(row);
+    // Returned to idle → notify busy-card waiters + bump generation (lazy, no alarm).
+    this.onReturnedToIdle(reason);
 
     const result: MutationResult = {
       ok: true,
@@ -686,6 +1017,8 @@ export class CallStateAuthorityDO {
     row.lease_expiry_ms = null;
     this.persistRow(row);
     try { this.sql.exec(`DELETE FROM reservations WHERE expires_at < ?`, Date.now()); } catch { /* best-effort */ }
+    // Returned to idle → notify busy-card waiters + bump generation (lazy, no alarm).
+    this.onReturnedToIdle(typeof body.reason === "string" ? body.reason : "release_call");
 
     const result: MutationResult = {
       ok: true,

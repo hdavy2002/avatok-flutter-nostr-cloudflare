@@ -115,6 +115,13 @@ class RemoteConfig {
   static bool get billingEnabled => _b('billingEnabled', false);
   /// AI receptionist (Gemini Live) — ON for the free launch. Mirrors KV.
   static bool get receptionistEnabled => _b('receptionistEnabled', true);
+  /// [BUSY-CARD-1] Personalized busy card (Cancel / Notify me / Leave a message
+  /// for Ava) shown when a call resolves to 'busy'. Client kill switch mirroring
+  /// the server's busy-card flag. The card ALSO requires the server to send a
+  /// `busy_reason` on the busy status — so even with this ON, an old server that
+  /// sends no reason falls back to the plain "User is busy" line. Default ON;
+  /// flip to false in KV to force legacy behaviour everywhere. Mirrors config.ts.
+  static bool get busyCardEnabled => _b('busyCardEnabled', true);
   /// MKT-LANG (AI Messenger Batch, STREAM A): the "Marketplace Agent" settings
   /// surface (default language/voice/tone + negotiation guardrails). Default ON;
   /// the settings tile hides when false. Mirrors config.ts.

@@ -31,7 +31,20 @@ final navigatorKey = GlobalKey<NavigatorState>();
 
 /// Broadcasts call-status updates (declined / busy / ended) pushed by the server
 /// to the active CallScreen — reliable even when the WS path couldn't be held.
-final callStatusBus = StreamController<({String callId, String status})>.broadcast();
+///
+/// [BUSY-CARD-1] The optional busy metadata (`busyReason`, `receptionistEnabled`,
+/// `pronoun`) is carried ONLY on a `busy` status when the server provides it. It
+/// drives the personalized busy card (Specs §3.1). When absent (old server /
+/// kill switch off) these are null/false and the caller falls back to the plain
+/// "User is busy" line — existing behaviour is unchanged.
+typedef CallStatusEvent = ({
+  String callId,
+  String status,
+  String? busyReason,
+  bool receptionistEnabled,
+  String? pronoun,
+});
+final callStatusBus = StreamController<CallStatusEvent>.broadcast();
 
 // CALLFIX-14: Glare detection — track the currently ringing incoming call so if
 // the user starts dialing while an incoming call from the same peer is ringing,
@@ -166,6 +179,11 @@ void _onNotifTap(String? payload) {
     navigatorKey.currentState?.popUntil((r) => r.isFirst);
     return;
   }
+  // [BUSY-CARD-1] Cold-start tap on the now-free banner routes to the redial flow.
+  if (payload == 'now_free') {
+    _handleNowFreeCallback(payload);
+    return;
+  }
   // CALLFIX-R7: 'chat' payload opens inbox (main notification tap on missed-call or message).
   // Callback action is handled separately in _handleMissedCallCallback.
   if (payload != 'chat') return;
@@ -236,6 +254,10 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
       if (callId.isNotEmpty && _terminalCallStatus((d['status'] ?? '').toString())) {
         await FlutterCallkitIncoming.endCall(callId);
       }
+    } else if (type == 'now_free' || type == 'call_now_free') {
+      // [BUSY-CARD-1] A callee we asked to be notified about is now free →
+      // surface the tap-to-call banner even when backgrounded/killed.
+      await _showNowFreeNotif(d);
     } else {
       await _showIncoming(d);
     }
@@ -467,6 +489,72 @@ Future<void> _showMissedCallNotif(Map<String, dynamic> d) async {
     payload: 'chat',
   );
   await _bgTrack('push_shown', {'channel': 'calls', 'type': 'missed', 'has_callback': hasCallbackAction});
+}
+
+/// [BUSY-CARD-1] "Now free" banner — the callee the caller asked to be notified
+/// about (via the busy card's "Notify me") has returned to idle. Deep-links to a
+/// redial: tapping the banner (or its "Call" action) stores the callee peer id
+/// and routes the same way a missed-call "Call back" does. Server push ASSUMED
+/// shape (reconcile with the server agent): {type:'now_free'|'call_now_free',
+/// fromPub|callee_uid, fromName|callerName (the callee's display name),
+/// generation}. Rendered on the dedicated Calls channel so it reads distinctly.
+Future<void> _showNowFreeNotif(Map<String, dynamic> d) async {
+  final who = (d['fromName'] ?? d['calleeName'] ?? d['callerName'] ?? 'Your contact')
+      .toString();
+  // The callee's dial id — same field the missed-call callback uses (fromPub).
+  final peerId = (d['fromPub'] ?? d['callee_uid'] ?? '').toString();
+  final title = '$who is now free';
+  final body = 'Tap to call';
+  final count = await _bumpBadge();
+  if (peerId.isNotEmpty) {
+    // Reuse the existing callback plumbing: the tap handler reads this key.
+    await DiskCache.write('last_missed_call_peer_id', peerId);
+  }
+  await _ensureLocalInit();
+  final androidDetails = AndroidNotificationDetails(
+    _callsChannel.id, _callsChannel.name,
+    channelDescription: _callsChannel.description,
+    importance: Importance.high, priority: Priority.high,
+    number: count,
+    ticker: title,
+    category: AndroidNotificationCategory.call,
+    actions: peerId.isNotEmpty ? [
+      AndroidNotificationAction(
+        'now_free_call',
+        'Call',
+        titleColor: const Color.fromARGB(255, 76, 175, 80),
+        cancelNotification: false,
+      ),
+    ] : [],
+  );
+  // Payload distinguishes a now-free tap from a plain chat tap so the tap handler
+  // can emit now_free_callback_started and route to redial.
+  await _local.show(
+    8003, // dedicated id so it doesn't overwrite the missed-call banner
+    title,
+    body,
+    NotificationDetails(android: androidDetails),
+    payload: 'now_free',
+  );
+  await _bgTrack('now_free_fcm_shown', {
+    'callee_uid': peerId,
+    'generation': (d['generation'] ?? '').toString(),
+  });
+}
+
+/// [BUSY-CARD-1] The now-free banner (or its "Call" action) was tapped → the
+/// caller wants to redial the now-free callee. Emits now_free_callback_started
+/// and routes to the dial flow, reusing the missed-call callback plumbing.
+Future<void> _handleNowFreeCallback(String? payload) async {
+  final peerId = await DiskCache.read('last_missed_call_peer_id');
+  Analytics.capture('now_free_callback_started', {
+    'peer_id': peerId ?? '',
+  });
+  _clearBadge();
+  navigatorKey.currentState?.popUntil((r) => r.isFirst);
+  // The redial itself is driven by the chat/dial flow the missed-call callback
+  // already routes to (peerId stored above); wiring a cold-start auto-dial is a
+  // follow-up, kept identical to _handleMissedCallCallback so behaviour matches.
 }
 
 /// Show the native full-screen incoming-call UI (CallKit / ConnectionService),
@@ -712,6 +800,9 @@ class PushService {
         // CALLFIX-R7: Handle action IDs (e.g., 'callback' on missed-call notification)
         if (resp.actionId == 'callback') {
           _handleMissedCallCallback(resp.payload);
+        } else if (resp.actionId == 'now_free_call' || resp.payload == 'now_free') {
+          // [BUSY-CARD-1] "Call" action OR a body-tap on the now-free banner.
+          _handleNowFreeCallback(resp.payload);
         } else {
           _onNotifTap(resp.payload);
         }
@@ -744,7 +835,29 @@ class PushService {
       if (d['type'] == 'call-status') {
         final callId = (d['callId'] ?? '').toString();
         final status = (d['status'] ?? '').toString();
-        callStatusBus.add((callId: callId, status: status));
+        // [BUSY-CARD-1] On a BUSY status the server MAY include busy_reason (why),
+        // receptionist_enabled (whether "Leave a message for Ava" can show) and an
+        // optional pronoun. Present → the caller shows the personalized busy card;
+        // absent → plain "User is busy" (unchanged). Only read on status=='busy' so
+        // no other status path is affected.
+        final busyReason = status == 'busy'
+            ? (d['busy_reason']?.toString().trim().isNotEmpty == true
+                ? d['busy_reason'].toString()
+                : null)
+            : null;
+        callStatusBus.add((
+          callId: callId,
+          status: status,
+          busyReason: busyReason,
+          receptionistEnabled:
+              status == 'busy' && (d['receptionist_enabled']?.toString() == '1' ||
+                  d['receptionist_enabled'] == true),
+          pronoun: status == 'busy'
+              ? (d['pronoun']?.toString().trim().isNotEmpty == true
+                  ? d['pronoun'].toString()
+                  : null)
+              : null,
+        ));
         // If we're the callee still ringing, dismiss the incoming-call UI.
         if (callId.isNotEmpty && _terminalCallStatus(status)) {
           FlutterCallkitIncoming.endCall(callId);
@@ -754,6 +867,19 @@ class PushService {
             gIncomingRingingCallId = null;
           }
         }
+        return;
+      }
+      // [BUSY-CARD-1] "Now free" callback — the callee we asked to be notified
+      // about (via the busy card's "Notify me") has returned to idle. Surface a
+      // tap-to-call banner. Defensive: unknown push kinds must never break the
+      // existing handling, so this is a distinct, isolated branch.
+      if (d['type'] == 'now_free' || d['type'] == 'call_now_free') {
+        Analytics.capture('now_free_fcm_opened', {
+          'callee_uid': (d['fromPub'] ?? d['callee_uid'] ?? '').toString(),
+          'generation': (d['generation'] ?? '').toString(),
+          'state': 'foreground',
+        });
+        _showNowFreeNotif(d);
         return;
       }
       if (d['type'] == 'message') {
@@ -861,7 +987,13 @@ class PushService {
             // peer to stop ringing (our cancel), then answer the incoming call.
             final outId = gOutgoingCallId!;
             _signalStatus(outId, 'cancel', (d['fromPub'] ?? '').toString());
-            callStatusBus.add((callId: outId, status: 'glare-yield'));
+            callStatusBus.add((
+              callId: outId,
+              status: 'glare-yield',
+              busyReason: null,
+              receptionistEnabled: false,
+              pronoun: null,
+            ));
             gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
             gIncomingRingingFrom = glareFrom;
             gIncomingRingingCallId = incomingId;

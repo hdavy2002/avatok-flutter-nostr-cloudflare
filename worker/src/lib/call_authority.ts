@@ -25,6 +25,15 @@ export interface AuthorityFlags {
   authorityReadEnabled?: boolean;
   authorityWriteEnabled?: boolean;
   authorityEnforced?: boolean;
+  // Busy-card master kill switch (Specs/CALL-MESSAGING-RECEPTIONIST-REMEDIATION-PLAN
+  // §3). Gates the /acquire busy enrichment, the waiter list, and the now-free FCM.
+  busyCardEnabled?: boolean;
+}
+
+/** True if the busy-card server feature is enabled (§3). The call-site forwards
+ *  this into /acquire (busy_card_enabled) and gates /notify-register on it. */
+export function busyCardEnabled(cfg: AuthorityFlags | null | undefined): boolean {
+  return cfg?.busyCardEnabled === true;
 }
 
 /** True if ANY of the 3 rollout flags is on (shadow/read/write). Enforced
@@ -105,9 +114,28 @@ export async function authorityAcquire(
     owner_device_id?: string;
     mutation_uuid?: string;
     expected_epoch?: number;
+    // Busy-card enrichment opt-in (§3). When true, a busy result also carries
+    // receptionist_enabled + generation for the caller's busy card. Forward the
+    // busyCardEnabled kill switch here from the call-site.
+    busy_card_enabled?: boolean;
   },
 ): Promise<Record<string, unknown> | null> {
   return postAuthority(env, accountUid, "acquire", args);
+}
+
+/** POST /notify-register — busy-card "Notify me": register `caller_uid` as a
+ *  bounded/deduped waiter on `accountUid`'s (the busy callee's) authority, to be
+ *  pinged with a "now free" FCM when they return to idle. Fail-open (null on any
+ *  error). Caller MUST gate this on busyCardEnabled(cfg). */
+export async function authorityNotifyRegister(
+  env: Env,
+  accountUid: string,
+  args: {
+    caller_uid: string;
+    generation?: number;
+  },
+): Promise<Record<string, unknown> | null> {
+  return postAuthority(env, accountUid, "notify-register", args);
 }
 
 /** POST /transition — move accountUid's authority to a new phase (CAS). */

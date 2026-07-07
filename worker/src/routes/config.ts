@@ -226,6 +226,15 @@ export interface PlatformConfig {
   authorityWriteEnabled: boolean;   // routes WRITE through the authority DO
   authorityEnforced: boolean;       // authority verdicts are enforced (legacy path fully replaced)
   callProtocolVersion: number;      // client/server call-signaling protocol version (1 = legacy)
+  // Personalized BUSY CARD (Specs/CALL-MESSAGING-RECEPTIONIST-REMEDIATION-PLAN.md
+  // §3). Master kill switch for the whole busy-card server feature: the /acquire
+  // busy-response enrichment (receptionist_enabled + generation), the bounded
+  // waiter list ("Notify me"), and the "now free" FCM fan-out on return-to-idle.
+  // Default OFF — while off, the acquire busy response is byte-for-byte today's
+  // shape, no waiter rows are accepted, and no now-free push ever fires, so a bug
+  // in this path can NEVER touch live calls. Flip ON in KV once the client card
+  // ships + is device-verified. Client mirror: RemoteConfig.busyCardEnabled.
+  busyCardEnabled: boolean;
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -315,6 +324,7 @@ const DEFAULTS: PlatformConfig = {
   authorityWriteEnabled: true,    // routes WRITE call state through the authority DO (fail-open)
   authorityEnforced: false,       // verdicts NOT yet enforced — one KV flip when shadow data is clean
   callProtocolVersion: 2,
+  busyCardEnabled: false,          // Busy-card server feature (waiter list + now-free FCM + acquire enrichment) — DARK; flip ON in KV once the client card ships + is device-verified
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
