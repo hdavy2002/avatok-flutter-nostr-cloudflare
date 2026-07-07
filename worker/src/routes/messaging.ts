@@ -189,6 +189,24 @@ async function pushDelete(env: Env, toUid: string, conv: string, target: string)
   }
 }
 
+// [MSG-DELETE-1] Author-only unsend gate (Issue 3, plan §7 item 4 + §2.2). A
+// per-MESSAGE delete-for-everyone ({"t":"del"|"gdel", target}) must be applied ONLY
+// by the message's ORIGINAL AUTHOR — otherwise a recipient could unsend a message on
+// the other person's phone (one of the two enforcement gaps behind the wipe). We ask
+// the SENDER's own InboxDO for the stored author of `target` (their own copy of the
+// conversation) and require it to equal ctx.uid. Fail-CLOSED: an unknown/missing
+// author (message not found here) rejects the retract.
+async function verifyAuthor(env: Env, uid: string, conv: string, target: string): Promise<boolean> {
+  try {
+    const stub = env.INBOX.get(env.INBOX.idFromName(uid));
+    const res = await stub.fetch(
+      `https://inbox/msg_author?conv=${encodeURIComponent(conv)}&target=${encodeURIComponent(target)}`,
+    );
+    const j = (await res.json().catch(() => ({}))) as { author?: string };
+    return !!j.author && j.author === uid;
+  } catch { return false; } // fail-closed
+}
+
 // STREAM F — decide + enqueue an auto-reply for one incoming DM.
 // Gates (all must pass): feature flag ON, recipient's responder ACTIVE now,
 // audience matches (known-contacts-only vs everyone-except-blocked), and the peer
@@ -315,6 +333,36 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   if (others.length === 1 && blockers.has(others[0])) return json({ error: "blocked" }, 403);
   const recipients = others.filter((m) => !blockers.has(m)); // group: silently skip blockers
 
+  // [MSG-DELETE-1] AUTHOR-ONLY UNSEND (Issue 3). A per-message delete-for-everyone is
+  // peer-visible, so we MUST verify ctx.uid actually authored the target message
+  // BEFORE applying/fanning it out. An unauthored retract is rejected (403) and never
+  // reaches any peer's InboxDO. Whole-thread clears are self-scoped (see hideMsg's
+  // thread-clear branch) and never take this path.
+  const _email = (req.headers.get("x-user-email") || "").toString();
+  if (delTarget) {
+    try {
+      void env.Q_ANALYTICS.send({ event: "msg_retract_requested", uid: ctx.uid, ts: Date.now(),
+        props: { message_id: delTarget, author_uid: ctx.uid, target_uid: others[0] ?? null, op_id: clientId ?? "",
+          message_age_seconds: 0, trace_id: traceId, email: _email, account_id: ctx.uid,
+          app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
+    } catch { /* best-effort */ }
+    const t0 = Date.now();
+    const authored = await verifyAuthor(env, ctx.uid, conv, delTarget);
+    if (!authored) {
+      try {
+        void env.Q_ANALYTICS.send({ event: "msg_retract_rejected", uid: ctx.uid, ts: Date.now(),
+          props: { message_id: delTarget, reason: "not_author", op_id: clientId ?? "", trace_id: traceId,
+            email: _email, account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
+      } catch { /* best-effort */ }
+      return json({ error: "not_author", message: "Only the author can unsend this message." }, 403);
+    }
+    try {
+      void env.Q_ANALYTICS.send({ event: "msg_retract_authorized", uid: ctx.uid, ts: Date.now(),
+        props: { message_id: delTarget, author_verified: true, message_owner_uid: ctx.uid, authorization_ms: Date.now() - t0,
+          trace_id: traceId, email: _email, account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
+    } catch { /* best-effort */ }
+  }
+
   // Append to the sender's own log first (its id anchors the client's cursor).
   const mine = await appendTo(env, ctx.uid, payload);
 
@@ -424,6 +472,13 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
         void env.Q_ANALYTICS.send({ event: "chat_delete_fanout", uid: ctx.uid, ts: Date.now(),
           props: { delete_id: delTarget, conv, recipients: recipients.length,
             live: delLive, push: delPush, app_name: "avatok", service_name: "avatok-api", worker: true } });
+      } catch { /* best-effort */ }
+      // [MSG-DELETE-1] Author-only unsend committed + fanned out to the peer(s).
+      try {
+        void env.Q_ANALYTICS.send({ event: "msg_retract_committed", uid: ctx.uid, ts: Date.now(),
+          props: { message_id: delTarget, visible: false, reason: "author_retract", peer_fanout: true,
+            peer_count: recipients.length, live: delLive, push: delPush, trace_id: traceId, email: _email,
+            account_id: ctx.uid, app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
       } catch { /* best-effort */ }
     }
   } else {
@@ -860,6 +915,65 @@ export async function readMsg(req: Request, env: Env): Promise<Response> {
   return json({ ok: true });
 }
 
+// [MSG-DELETE-1] SELF-SCOPED whole-thread clear (Issue 3, plan §2.2 permanent model).
+// Writes the per-account clear cursor to the ACTOR's OWN InboxDO and NOTHING else —
+// PROVABLY zero peer writes / zero peer pushes (that is the whole fix). The cursor is
+// anchored on the GLOBAL canonical mid (cursor_mid), the InboxDO enforces
+// monotonic-max so a stale device can't move it backward. Body:
+//   { clear:true, conv, cursor_mid, cursor_seq?, op_id?, client_cursor? }
+async function threadClear(req: Request, env: Env, uid: string, b: any): Promise<Response> {
+  const conv = String(b.conv ?? "");
+  const cursorMid = String(b.cursor_mid ?? b.cursor ?? "");
+  const opId = b.op_id != null ? String(b.op_id) : "";
+  const traceId = req.headers.get("x-trace-id") ?? opId ?? "";
+  const email = (req.headers.get("x-user-email") || "").toString();
+  if (!conv || !cursorMid) return json({ error: "conv and cursor_mid required" }, 400);
+  // Decision/Mutation telemetry (plan §9.1). scope:"self" is the invariant PostHog
+  // uses to prove no recipient ever receives a self-clear.
+  try {
+    void env.Q_ANALYTICS.send({ event: "thread_clear_requested", uid, ts: Date.now(),
+      props: { conv_id: conv, op_id: opId, account_uid: uid, scope: "self", requested_cursor: cursorMid,
+        client_cursor: b.client_cursor != null ? String(b.client_cursor) : "", client_message_id: cursorMid,
+        client_device_id: b.device_id != null ? String(b.device_id) : "", trace_id: traceId, email, account_id: uid,
+        app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
+  // The ONLY DO touched is the actor's own InboxDO. No pushDelete, no peer append.
+  const stub = env.INBOX.get(env.INBOX.idFromName(uid));
+  const res = await stub.fetch("https://inbox/thread_clear", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ conv, cursor_mid: cursorMid, cursor_seq: Number(b.cursor_seq) || 0, op_id: opId || null }),
+  });
+  const r = (await res.json().catch(() => ({}))) as { ok?: boolean; cursor_before?: string; cursor_after?: string; cursor_seq?: number; clamped?: boolean; live?: boolean };
+  const before = r.cursor_before ?? "";
+  const after = r.cursor_after ?? cursorMid;
+  const clamped = r.clamped === true;
+  // Wake the actor's OTHER (possibly sleeping) devices so the clear applies in
+  // realtime — SELF only (same uid → all my tokens; never the peer). Silent data push.
+  let pushed = false;
+  try { await env.Q_PUSH.send({ kind: "thread_clear", to: uid, conv, cursor_mid: after }); pushed = true; }
+  catch { /* best-effort; live frame + next /sync converge */ }
+  // The canonical event (plan §9.1). peer_writes:0 / peer_pushes:0 are INVARIANT
+  // fields emitted on the happy path so PostHog can compute compliance, not just catch
+  // catastrophes. cursor_clamped flags a stale-device attempt to move the cursor back.
+  try {
+    void env.Q_ANALYTICS.send({ event: "thread_clear_committed", uid, ts: Date.now(),
+      props: { conv_id: conv, op_id: opId, cursor_before: before, cursor_after: after,
+        canonical_message_id: after, canonical_seq: r.cursor_seq ?? 0, monotonic_applied: true,
+        cursor_clamped: clamped, scope: "self", peer_writes: 0, peer_pushes: 0, live: r.live === true,
+        pushed, trace_id: traceId, email, account_id: uid,
+        app_name: "avatok", app_version: "", service_name: "avatok-api", worker: true } });
+  } catch { /* best-effort */ }
+  if (clamped) {
+    try {
+      void env.Q_ANALYTICS.send({ event: "thread_clear_cursor_clamped", uid, ts: Date.now(),
+        props: { conv_id: conv, existing_cursor: before, incoming_cursor: cursorMid, effective_cursor: after,
+          device_id: b.device_id != null ? String(b.device_id) : "", app_version: "", trace_id: traceId,
+          email, account_id: uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+    } catch { /* best-effort */ }
+  }
+  return json({ ok: true, conv, cursor_after: after, cursor_before: before, clamped });
+}
+
 // ---- POST /api/msg/hide -----------------------------------------------------
 // Owner soft-hides / un-hides one of their OWN messages (delete-for-me, the owner
 // side of delete-for-everyone, or Undo). Writes to MY OWN InboxDO only (never the
@@ -868,6 +982,13 @@ export async function hideMsg(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  // [MSG-DELETE-1] WHOLE-THREAD CLEAR (Issue 3) — SELF-SCOPED, never touches the peer.
+  // A "clear/delete thread for me" is a per-account append-only cursor write to the
+  // ACTOR's OWN InboxDO. It fixes the data-loss wipe: no pushDelete, no peer InboxDO
+  // write, no tombstone on anyone else. Rides this existing route (b.clear===true) so
+  // it fixes ALL app versions without a new route/wiring. Anchored on the GLOBAL
+  // canonical mid the client passes (cursor_mid), enforced monotonic-max server-side.
+  if (b.clear === true) return await threadClear(req, env, ctx.uid, b);
   if (!b.conv || !b.target) return json({ error: "conv and target required" }, 400);
   const stub = env.INBOX.get(env.INBOX.idFromName(ctx.uid));
   const hideRes = await stub.fetch("https://inbox/hide", {

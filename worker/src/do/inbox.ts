@@ -150,7 +150,25 @@ export class InboxDO {
          dismissed  INTEGER NOT NULL DEFAULT 0,
          ts         INTEGER NOT NULL DEFAULT 0
        );
-       CREATE INDEX IF NOT EXISTS idx_safety_flags_ts ON safety_flags(ts);`,
+       CREATE INDEX IF NOT EXISTS idx_safety_flags_ts ON safety_flags(ts);
+       -- [MSG-DELETE-1] Per-account THREAD CLEAR cursor (Issue 3, self-scoped clear).
+       -- One row per conversation, owned by THIS user's InboxDO — a "clear/delete
+       -- thread for me" is an append-only, self-only op that NEVER touches the peer.
+       -- The cursor is ANCHORED ON THE GLOBAL CANONICAL MESSAGE ID (canonicalMsgId /
+       -- mid: "<13-digit-ms>.<8hex>", chronologically sortable as a STRING), NOT the
+       -- local autoincrement id (which diverges across devices and resurrects history
+       -- on re-sync — the #1 risk called out in the plan §7). Materialization hides
+       -- messages at/below cleared_through_mid for this account only; a newer message
+       -- (mid > cursor) reappears normally. Monotonic-max: the server enforces
+       -- cleared_through_mid = MAX(existing, incoming) on every write so a stale
+       -- offline device can never move the cursor backward.
+       CREATE TABLE IF NOT EXISTS thread_clears (
+         conv                 TEXT PRIMARY KEY,
+         cleared_through_mid  TEXT NOT NULL,
+         cleared_through_seq  INTEGER NOT NULL DEFAULT 0,
+         op_id                TEXT,
+         updated_at           INTEGER NOT NULL DEFAULT 0
+       );`,
     );
     // Additive migration for the Ava visibility scope. Guarded: on a fresh DO
     // the column is created by the (extended) CREATE above's absence — SQLite has
@@ -197,6 +215,20 @@ export class InboxDO {
     // var (no KV read on the hot path). SQLite has no "ADD COLUMN IF NOT EXISTS" — try+swallow.
     try { this.sql.exec(`ALTER TABLE messages ADD COLUMN conv_seq INTEGER`); } catch { /* already present */ }
     try { this.sql.exec(`ALTER TABLE conv_meta ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`); } catch { /* already present */ }
+    // [MSG-DELETE-1] Persist the GLOBAL canonical message id (mid) on the row so the
+    // per-account thread-clear cursor can hide/keep messages by a device-stable,
+    // chronologically-sortable key (not the local autoincrement id). Legacy rows get
+    // NULL and are treated as "always visible" (never hidden by a clear) — safe, and
+    // they age out via the archive/retention lanes. New rows carry it from the router.
+    try { this.sql.exec(`ALTER TABLE messages ADD COLUMN mid TEXT`); } catch { /* already present */ }
+    try { this.sql.exec(`CREATE INDEX IF NOT EXISTS idx_msg_conv_mid ON messages(conv, mid)`); } catch { /* already present */ }
+    // [MSG-DELETE-1] Author-only unsend keeps the row (replies/reactions/counts
+    // survive) but records WHY it is hidden. reason='author_retract' on a peer copy.
+    try { this.sql.exec(`ALTER TABLE messages ADD COLUMN retract_reason TEXT`); } catch { /* already present */ }
+    // [MSG-DELETE-1] Cache the highest visible conv_seq per conversation so the chat
+    // list render is O(1) (no O(messages) scan) even for a cleared thread. Maintained
+    // on append + thread_clear; NULL/0 means "compute lazily".
+    try { this.sql.exec(`ALTER TABLE conv_meta ADD COLUMN visible_last_seq INTEGER NOT NULL DEFAULT 0`); } catch { /* already present */ }
     // P8 Stage 1: tiny durable KV for the archive owner uid + high-water (last
     // archived message id). Kept in DO-SQLite so it survives hibernation cheaply.
     try { this.sql.exec(`CREATE TABLE IF NOT EXISTS meta_kv (k TEXT PRIMARY KEY, v TEXT)`); } catch { /* present */ }
@@ -352,6 +384,19 @@ export class InboxDO {
         });
       }
       if (url.pathname.endsWith("/hide")) return this.hide(await req.json());
+      // [MSG-DELETE-1] Whole-thread clear for THIS account (Issue 3). Self-scoped
+      // append-only cursor write — never touches the peer. See threadClear().
+      if (url.pathname.endsWith("/thread_clear")) return this.threadClear(await req.json());
+      // [MSG-DELETE-1] Author-only unsend gate: return the stored author (sender)
+      // of a message by its client_id so the router can verify ctx.uid authored it
+      // BEFORE fanning out a delete-for-everyone. Reads the owner's OWN copy.
+      if (url.pathname.endsWith("/msg_author")) {
+        const conv = url.searchParams.get("conv") || "";
+        const target = url.searchParams.get("target") || "";
+        return new Response(JSON.stringify({ author: this.msgAuthor(conv, target) }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
       // [G2] Guardian safety flag: upsert the owner's red-bubble/dismiss state,
       // then broadcast it live (store-and-forward). Replaces the old broadcast-only
       // /event push for this frame type so red bubbles survive reinstall + reach
@@ -403,6 +448,7 @@ export class InboxDO {
         this.sql.exec("DELETE FROM read_state");
         try { this.sql.exec("DELETE FROM call_log"); } catch { /* table may predate this migration */ }
         try { this.sql.exec("DELETE FROM safety_flags"); } catch { /* table may predate this migration */ }
+        try { this.sql.exec("DELETE FROM thread_clears"); } catch { /* table may predate this migration */ }
         return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } });
       }
     } catch (e: any) {
@@ -446,10 +492,13 @@ export class InboxDO {
   private append(b: {
     conv: string; sender: string; owner: string; kind?: string;
     body?: string; media_ref?: string; client_id?: string; created_at?: number;
-    device_id?: string; scope?: MessageScope;
+    device_id?: string; scope?: MessageScope; mid?: string;
   }): Response {
     const created = b.created_at || Date.now();
     const audience = scopeAudience(b.scope); // null = thread-scoped (default)
+    // [MSG-DELETE-1] Global canonical id used by the thread-clear cursor. Absent for
+    // legacy/callers that don't stamp it → stored NULL (always visible).
+    const mid = b.mid != null ? String(b.mid) : null;
 
     // DELETE-FOR-EVERYONE. A {t:'del'|'gdel', target:<client_id>} control is NEVER
     // stored as a message row — a stored control renders as raw `{"t":"del",...}`
@@ -469,13 +518,18 @@ export class InboxDO {
       if (target) {
         let live = false;
         if (b.owner !== b.sender) {
+          // [MSG-DELETE-1] Author-only unsend NEVER physically deletes the row —
+          // replies/quotes/reactions/counts must survive (plan §7 item 4). We keep
+          // the row, mark it hidden as a tombstone, and record WHY (author_retract).
+          // The author-verification gate itself lives in the router (sendMsg) before
+          // this fan-out ever runs, so an unauthored retract never reaches here.
           this.sql.exec(
-            `UPDATE messages SET kind='deleted', body='{"t":"deleted"}', media_ref=NULL, edited_at=? WHERE conv=? AND client_id=?`,
+            `UPDATE messages SET kind='deleted', body='{"t":"deleted"}', media_ref=NULL, retract_reason='author_retract', edited_at=? WHERE conv=? AND client_id=?`,
             Date.now(), b.conv, target,
           );
           live = this.broadcast(JSON.stringify({ type: "del", conv: b.conv, target }));
           try { void this.env.Q_ANALYTICS.send({ event: "message_tombstoned", uid: b.owner, ts: Date.now(),
-            props: { conv: b.conv, target, delete_id: target, by: b.sender, app_name: "avatok", service_name: "avatok-api", worker: true, account_id: b.owner } }); } catch { /* best-effort */ }
+            props: { conv: b.conv, target, delete_id: target, by: b.sender, reason: "author_retract", app_name: "avatok", service_name: "avatok-api", worker: true, account_id: b.owner } }); } catch { /* best-effort */ }
         }
         return new Response(JSON.stringify({ id: 0, live }), { headers: { "content-type": "application/json" } });
       }
@@ -492,10 +546,10 @@ export class InboxDO {
     let row: { id: number | string };
     if (b.client_id) {
       const inserted = this.sql.exec(
-        `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at, device_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at, device_id, mid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(conv, client_id) WHERE client_id IS NOT NULL DO NOTHING RETURNING id`,
-        b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id, created, audience, Date.now(), b.device_id ?? null,
+        b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, b.client_id, created, audience, Date.now(), b.device_id ?? null, mid,
       ).toArray();
       if (inserted.length === 0) {
         // Duplicate: find the winning row and return it as an ALREADY-PROCESSED
@@ -514,9 +568,9 @@ export class InboxDO {
       row = inserted[0] as { id: number | string };
     } else {
       row = this.sql.exec(
-        `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at, device_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, null, created, audience, Date.now(), b.device_id ?? null,
+        `INSERT INTO messages (conv, sender, kind, body, media_ref, client_id, created_at, audience, stored_at, device_id, mid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        b.conv, b.sender, b.kind || "text", b.body ?? null, b.media_ref ?? null, null, created, audience, Date.now(), b.device_id ?? null, mid,
       ).one() as { id: number | string };
     }
     const id = Number(row.id);
@@ -536,6 +590,17 @@ export class InboxDO {
       b.conv, id, incoming ? 1 : 0, b.sender, created,
     ).one() as { seq: number | string };
     const convSeq = Number(meta.seq);
+    // [MSG-DELETE-1] Keep visible_last_seq O(1) for the chat-list render. A newly
+    // appended message that sits ABOVE this conv's clear cursor (or a conv that was
+    // never cleared) makes the thread visible again → advance the cached high-water.
+    // Anchored on the canonical mid so it stays device-stable; legacy rows (mid=NULL)
+    // are always visible, so they advance it too.
+    try {
+      const clearedMid = this.clearedThroughMid(b.conv);
+      if (!clearedMid || mid === null || mid > clearedMid) {
+        this.sql.exec(`UPDATE conv_meta SET visible_last_seq=?2 WHERE conv=?1 AND visible_last_seq < ?2`, b.conv, convSeq);
+      }
+    } catch { /* best-effort; syncPayload recomputes visibility from the cursor anyway */ }
     if (stampSeq) {
       this.sql.exec(`UPDATE messages SET conv_seq=? WHERE id=?`, convSeq, id);
       // op_appended: the sync-engine's core correctness event (State Platform Part XIII).
@@ -592,15 +657,17 @@ export class InboxDO {
   // without the full-backlog re-download the global id-cursor forces. `seq` is the
   // conversation's current high-water so the client knows when it is caught up. Dark
   // until SYNC_CONV_CURSOR_V2=1 AND a client opts in with ?conv=.
-  private syncConvPayload(conv: string, after: number): { type: "sync_conv"; conv: string; after: number; messages: unknown[]; seq: number } {
+  private syncConvPayload(conv: string, after: number): { type: "sync_conv"; conv: string; after: number; messages: unknown[]; seq: number; cleared_through_mid: string | null } {
     const messages = this.sql.exec(
-      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq
+      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq, mid
        FROM messages WHERE conv = ? AND conv_seq IS NOT NULL AND conv_seq > ? ORDER BY conv_seq ASC LIMIT ?`,
       conv, after, SYNC_LIMIT,
     ).toArray();
     const seqRow = this.sql.exec(`SELECT seq FROM conv_meta WHERE conv = ? LIMIT 1`, conv).toArray();
     const seq = seqRow.length ? Number(seqRow[0].seq) : 0;
-    return { type: "sync_conv", conv, after, messages, seq };
+    // [MSG-DELETE-1] Carry this conv's clear cursor so a single-thread catch-up
+    // applies the same self-scoped hide as the global snapshot.
+    return { type: "sync_conv", conv, after, messages, seq, cleared_through_mid: this.clearedThroughMid(conv) };
   }
 
   // [SYNC-CURSOR-3] Phase 1 switch-over: the HYBRID live-sync payload. It is the plain
@@ -619,7 +686,7 @@ export class InboxDO {
       if (budget <= 0) break;
       const after = Number(cc[conv]) || 0;
       const rows = this.sql.exec(
-        `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq
+        `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq, mid
          FROM messages WHERE conv = ? AND conv_seq IS NOT NULL AND conv_seq > ? AND id <= ? ORDER BY conv_seq ASC LIMIT ?`,
         conv, after, globalCursor, budget,
       ).toArray();
@@ -631,13 +698,27 @@ export class InboxDO {
     return { ...base, messages: [...base.messages, ...extra] };
   }
 
-  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[]; safety_flags: unknown[] } {
+  // [MSG-DELETE-1] Per-account thread-clear cursor snapshot for /sync. Small (one row
+  // per cleared conv), so a full snapshot every sync is cheap. The client applies it
+  // locally — render only messages whose mid > cleared_through_mid[conv] — so a
+  // cleared thread stays hidden across devices/reinstalls until a newer message
+  // arrives. Additive: older clients ignore this field entirely.
+  private threadClearsSnapshot(): unknown[] {
+    try {
+      return this.sql.exec(
+        `SELECT conv, cleared_through_mid, cleared_through_seq FROM thread_clears`,
+      ).toArray();
+    } catch { return []; }
+  }
+
+  private syncPayload(cursor: number): { type: "sync"; messages: unknown[]; receipts: unknown[]; convs: unknown[]; reads: unknown[]; calls: unknown[]; safety_flags: unknown[]; thread_clears: unknown[] } {
     // conv_seq (Phase 0 stamp) and conv_meta.seq are added as ADDITIVE fields so a
     // Phase-1-aware client can learn each conversation's per-stream position from the
     // ordinary snapshot; older clients simply ignore the extra columns. No behaviour
-    // change to the legacy global-cursor path.
+    // change to the legacy global-cursor path. [MSG-DELETE-1] `mid` (canonical global
+    // id) is also selected so the client can apply the thread-clear cursor locally.
     const messages = this.sql.exec(
-      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq
+      `SELECT id, conv, sender, kind, body, media_ref, client_id, created_at, edited_at, audience, hidden, conv_seq, mid
        FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?`,
       cursor, SYNC_LIMIT,
     ).toArray();
@@ -665,7 +746,7 @@ export class InboxDO {
         `SELECT msg_id, conv, category, severity, dismissed FROM safety_flags ORDER BY ts DESC LIMIT 500`,
       ).toArray();
     } catch { /* table may predate this migration on an old DO */ }
-    return { type: "sync", messages, receipts, convs, reads, calls, safety_flags };
+    return { type: "sync", messages, receipts, convs, reads, calls, safety_flags, thread_clears: this.threadClearsSnapshot() };
   }
 
   // Owner marks a conversation read up to `read_ts` (unix seconds). Monotonic —
@@ -696,6 +777,98 @@ export class InboxDO {
     this.sql.exec(`UPDATE messages SET hidden=?1 WHERE conv=?2 AND client_id=?3`, hidden, conv, target);
     const live = this.broadcast(JSON.stringify({ type: "hide", conv, target, hidden: !!b.hidden }));
     return new Response(JSON.stringify({ ok: true, live }), { headers: { "content-type": "application/json" } });
+  }
+
+  // [MSG-DELETE-1] The author (sender) of a message in THIS user's own copy, by
+  // client_id. Used by the router to enforce author-only unsend. Empty string when
+  // the message isn't found here (fail-closed at the router → reject the retract).
+  private msgAuthor(conv: string, target: string): string {
+    if (!conv || !target) return "";
+    try {
+      const r = this.sql.exec(`SELECT sender FROM messages WHERE conv=? AND client_id=? LIMIT 1`, conv, target).toArray();
+      return r.length ? String((r[0] as { sender?: string }).sender ?? "") : "";
+    } catch { return ""; }
+  }
+
+  // [MSG-DELETE-1] The current clear high-water (canonical mid) for a conversation,
+  // or null if this account never cleared it. String-comparable (mid is
+  // "<13-digit-ms>.<8hex>", lexicographically == chronologically sortable).
+  private clearedThroughMid(conv: string): string | null {
+    if (!conv) return null;
+    try {
+      const r = this.sql.exec(`SELECT cleared_through_mid FROM thread_clears WHERE conv=? LIMIT 1`, conv).toArray();
+      if (!r.length) return null;
+      const v = String((r[0] as { cleared_through_mid?: string }).cleared_through_mid ?? "");
+      return v || null;
+    } catch { return null; }
+  }
+
+  // [MSG-DELETE-1] SELF-SCOPED whole-thread clear (Issue 3, the frozen design). A
+  // "clear/delete thread for me" is an append-only, monotonic-max cursor row in THIS
+  // account's InboxDO. It deletes NOTHING and touches NO peer. The cursor is anchored
+  // on the GLOBAL canonical mid (not the local autoincrement id), so two devices on
+  // the same account converge and old messages never resurrect after a re-sync. The
+  // server enforces cleared_through_mid = MAX(existing, incoming): a stale offline
+  // device uploading an older cursor can NEVER move it backward.
+  //   body: { conv, cursor_mid, cursor_seq?, op_id? }
+  //     cursor_mid — hide every message with mid <= cursor_mid for this account.
+  //     cursor_seq — the matching conv_seq (materialization high-water; optional).
+  private threadClear(b: { conv?: string; cursor_mid?: string; cursor_seq?: number; op_id?: string }): Response {
+    const conv = String(b.conv ?? "");
+    const incoming = String(b.cursor_mid ?? "");
+    const opId = b.op_id != null ? String(b.op_id) : null;
+    if (!conv || !incoming) {
+      return new Response(JSON.stringify({ ok: false, error: "conv + cursor_mid required" }), { headers: { "content-type": "application/json" } });
+    }
+    const before = this.clearedThroughMid(conv);
+    // Idempotency / stale-device guard: if we already have this exact op, or the
+    // incoming cursor is not newer, DO NOT move the cursor backward. Report it so the
+    // stale-client detector (thread_clear_cursor_clamped) fires in the router.
+    let clamped = false;
+    if (before !== null && incoming <= before) {
+      clamped = true;
+    }
+    const effective = clamped ? (before as string) : incoming;
+    // Derive the effective conv_seq for the clamped/non-clamped case. When we accept
+    // the incoming cursor use its seq (falls back to the max message conv_seq at/below
+    // the mid); on a clamp keep whatever we had.
+    let effectiveSeq = Math.max(0, Math.floor(Number(b.cursor_seq) || 0));
+    if (!clamped) {
+      if (effectiveSeq <= 0) {
+        try {
+          const r = this.sql.exec(
+            `SELECT MAX(conv_seq) AS s FROM messages WHERE conv=? AND mid IS NOT NULL AND mid <= ?`, conv, effective,
+          ).toArray();
+          effectiveSeq = r.length ? Number((r[0] as { s?: number }).s ?? 0) || 0 : 0;
+        } catch { /* best-effort */ }
+      }
+      this.sql.exec(
+        `INSERT INTO thread_clears (conv, cleared_through_mid, cleared_through_seq, op_id, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(conv) DO UPDATE SET
+           cleared_through_mid=MAX(cleared_through_mid, ?2),
+           cleared_through_seq=MAX(cleared_through_seq, ?3),
+           op_id=?4, updated_at=?5`,
+        conv, effective, effectiveSeq, opId, Date.now(),
+      );
+      // The thread is now hidden up to the cursor → recompute its visible high-water
+      // (O(1): the current conv seq if a newer message exists, else 0). This keeps the
+      // chat-list render O(1) without an O(messages) scan on read.
+      try {
+        const vr = this.sql.exec(
+          `SELECT COALESCE(MAX(conv_seq),0) AS s FROM messages WHERE conv=? AND (mid IS NULL OR mid > ?)`, conv, effective,
+        ).toArray();
+        const vis = vr.length ? Number((vr[0] as { s?: number }).s ?? 0) || 0 : 0;
+        this.sql.exec(`UPDATE conv_meta SET visible_last_seq=?2 WHERE conv=?1`, conv, vis);
+      } catch { /* best-effort */ }
+    }
+    // Broadcast to the owner's OTHER open sockets so a second device (Mac/PC) hides
+    // the thread live too — same multi-device pattern as read/hide. SELF only.
+    const live = this.broadcast(JSON.stringify({ type: "thread_clear", conv, cursor_mid: effective, cursor_seq: effectiveSeq }));
+    return new Response(JSON.stringify({
+      ok: true, conv, cursor_before: before ?? "", cursor_after: effective,
+      cursor_seq: effectiveSeq, clamped, live,
+    }), { headers: { "content-type": "application/json" } });
   }
 
   // [G2] Guardian safety flag — store-and-forward. Upserts the OWNER's red-bubble
