@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -608,6 +609,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           else ...[
             _primary('Turn on notifications', () async {
               await Permission.notification.request();
+              if (Platform.isAndroid) {
+                try { await Permission.ignoreBatteryOptimizations.request(); } catch (_) {}
+              }
               setState(() => _notifEnabled = true);
             }, icon: PhosphorIcons.bell(PhosphorIconsStyle.bold)),
             const SizedBox(height: 14),

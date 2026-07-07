@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import 'auth/clerk_client.dart';
@@ -525,7 +527,24 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     } catch (_) {/* offline — keep showing the local session */}
   }
 
-  void _to(_Stage s) { if (mounted) setState(() => _stage = s); }
+  void _to(_Stage s) {
+    if (mounted) {
+      setState(() => _stage = s);
+      if (s == _Stage.shell) {
+        _checkBatteryOptimizations();
+      }
+    }
+  }
+
+  void _checkBatteryOptimizations() {
+    if (Platform.isAndroid) {
+      Permission.ignoreBatteryOptimizations.isGranted.then((isGranted) {
+        if (!isGranted) {
+          Permission.ignoreBatteryOptimizations.request();
+        }
+      }).catchError((_) {});
+    }
+  }
 
   /// STREAM H [LIVE-GATE-4]: the onboarding human-check gate. An existing member
   /// who has NOT passed liveness is redirected to the non-dismissible human check
