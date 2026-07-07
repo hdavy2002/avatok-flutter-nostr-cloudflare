@@ -1033,7 +1033,17 @@ class PushService {
           return;
         }
         if (callIsGenuinelyActive()) {
-          _signalStatus(incomingId, 'busy', (d['fromPub'] ?? '').toString());
+          // [BUSY-CARD-1] Tell the caller WHY (on another call) and whether Ava can
+          // take a message, so they get the busy card. receptionist_enabled comes
+          // from the per-account local mirror (works even when cold-woken). Always
+          // signals busy even if the read fails (fail-safe → no metadata → legacy).
+          final fromPub = (d['fromPub'] ?? '').toString();
+          (() async {
+            bool re = false;
+            try { re = (await DiskCache.read('receptionist_enabled')) == '1'; } catch (_) {}
+            _signalStatus(incomingId, 'busy', fromPub,
+                busyReason: 'active_call', receptionistEnabled: re);
+          })();
           Analytics.capture('call_incoming_autobusy', {
             'call_id': incomingId, 'kind': kind, 'busy_reason': 'on_another_call',
           });
@@ -1127,20 +1137,32 @@ class PushService {
 
   /// Tell the caller a call was declined / busy — over the WS room (fast path)
   /// AND via the server push (works even if the socket can't be held).
-  static void _signalStatus(String callId, String status, String callerNpub) {
+  static void _signalStatus(String callId, String status, String callerNpub,
+      {String? busyReason, bool receptionistEnabled = false, String? pronoun}) {
     if (callId.isEmpty) return;
-    // fast path: signaling room
+    // [BUSY-CARD-1] When we auto-busy a caller, attach why we're busy + whether Ava
+    // can take a message, so the CALLER renders the personalized busy card instead
+    // of a cold "User is busy". Additive: old callers ignore the extra fields.
+    final extra = <String, dynamic>{};
+    if (status == 'busy' && busyReason != null && busyReason.isNotEmpty) {
+      extra['busy_reason'] = busyReason;
+      extra['receptionist_enabled'] = receptionistEnabled;
+      if (pronoun != null && pronoun.isNotEmpty) extra['pronoun'] = pronoun;
+    }
+    // fast path: signaling room (carries the metadata too, so the card shows without
+    // waiting for the durable FCM — avoids a race where the plain WS 'busy' wins).
     try {
       final ch = WebSocketChannel.connect(
           Uri.parse('wss://$kSignalingHost/room/$callId?id=ctl-${DateTime.now().millisecondsSinceEpoch}'));
-      ch.sink.add(jsonEncode({'type': status}));
+      ch.sink.add(jsonEncode({'type': status, ...extra}));
       Future.delayed(const Duration(milliseconds: 800), () {
         try { ch.sink.close(); } catch (_) {}
       });
     } catch (_) {/* best effort */}
     // durable path: server pushes the status to the caller
     if (callerNpub.isNotEmpty) {
-      ApiAuth.postJson(kCallStatusUrl, {'to': callerNpub, 'callId': callId, 'status': status}).ignore();
+      ApiAuth.postJson(kCallStatusUrl,
+          {'to': callerNpub, 'callId': callId, 'status': status, ...extra}).ignore();
     }
   }
 

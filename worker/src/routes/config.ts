@@ -324,7 +324,7 @@ const DEFAULTS: PlatformConfig = {
   authorityWriteEnabled: true,    // routes WRITE call state through the authority DO (fail-open)
   authorityEnforced: false,       // verdicts NOT yet enforced — one KV flip when shadow data is clean
   callProtocolVersion: 2,
-  busyCardEnabled: false,          // Busy-card server feature (waiter list + now-free FCM + acquire enrichment) — DARK; flip ON in KV once the client card ships + is device-verified
+  busyCardEnabled: true,           // Busy-card feature (personalized card + waiter list + now-free FCM) — LIVE 2026-07-07 (glue wired end-to-end). Flip false in KV to force legacy "User is busy".
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */

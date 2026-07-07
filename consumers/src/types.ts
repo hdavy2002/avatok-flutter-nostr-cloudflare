@@ -160,6 +160,11 @@ export interface PushMsg {
   to?: string; to_uid?: string | null; from?: string; from_pubkey?: string;
   callType?: string; room?: string | null; status?: string;
   fromName?: string; callId?: string;
+  // [BUSY-CARD-1] kind === "call-status": optional busy metadata forwarded to the
+  // CALLER so their device renders the personalized busy card; and the "now free"
+  // signal (status === "now_free") the busy callee's authority fans out to waiters.
+  busy_reason?: string; receptionist_enabled?: boolean; pronoun?: string;
+  callee_uid?: string; generation?: number;
   // [TRACE-ID-1] Correlation id minted client-side at the dial boundary, carried
   // through to the callee's FCM `data.trace_id` so both devices + the Worker
   // stitch under one trace_id in PostHog. Optional/additive.

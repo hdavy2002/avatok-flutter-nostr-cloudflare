@@ -15,6 +15,7 @@ import { nameFor } from "../lib/identity";
 import { brainFact, track } from "../hooks";
 import { guardWrite } from "./moderate"; // save-time content validation (Nemotron)
 import { readConfig } from "./config"; // P11: profileCompletionGate
+import { authorityNotifyRegister } from "../lib/call_authority"; // [BUSY-CARD-1] "Notify me" waiter register
 import { rateLimit } from "../money"; // abuse limits (Phase 3 hardening)
 // R2-F2: avatar nudity moderation (AWS Rekognition DetectModerationLabels; SigV4
 // signing reused from ../aws/sigv4 via ../aws/rekognition).
@@ -263,10 +264,40 @@ export async function notify(req: Request, env: Env): Promise<Response> {
 export async function callStatus(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const b = (await req.json().catch(() => ({}))) as { to?: string; callId?: string; status?: string };
+  const b = (await req.json().catch(() => ({}))) as {
+    to?: string; callId?: string; status?: string;
+    // [BUSY-CARD-1] Optional busy metadata the busy CALLEE attaches to a 'busy'
+    // status so the CALLER's device can render the personalized busy card. Purely
+    // additive: absent → the caller shows the legacy "User is busy" line.
+    busy_reason?: string; receptionist_enabled?: boolean | string | number; pronoun?: string;
+  };
   if (!b.to || !b.callId || !b.status) return json({ error: "to, callId, status required" }, 400);
-  await env.Q_PUSH.send({ kind: "call-status", to: b.to, callId: b.callId, status: b.status, ts: Date.now() });
+  const re = b.receptionist_enabled;
+  await env.Q_PUSH.send({
+    kind: "call-status", to: b.to, callId: b.callId, status: b.status, ts: Date.now(),
+    ...(b.busy_reason ? { busy_reason: String(b.busy_reason) } : {}),
+    ...(re != null ? { receptionist_enabled: re === true || re === "1" || re === 1 } : {}),
+    ...(b.pronoun ? { pronoun: String(b.pronoun) } : {}),
+  });
   return json({ sent: 1 });
+}
+
+// [BUSY-CARD-1] "Notify me" — register the caller as a bounded/deduped waiter on
+// the busy callee's CallStateAuthorityDO, to be pinged with a "now free" FCM when
+// the callee returns to idle. Fail-open: if the authority is unreachable the
+// helper returns null and we report a soft rejection (the client confirms locally).
+export async function callNotifyRegister(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const b = (await req.json().catch(() => ({}))) as { callee_uid?: string; caller_uid?: string; generation?: number };
+  const callee = String(b.callee_uid ?? "");
+  const caller = String(b.caller_uid ?? ctx.uid ?? "");
+  if (!callee || !caller) return json({ error: "callee_uid and caller_uid required" }, 400);
+  const res = await authorityNotifyRegister(env, callee, {
+    caller_uid: caller,
+    generation: typeof b.generation === "number" ? b.generation : undefined,
+  });
+  return json(res ?? { ok: false, rejected: true, reason: "unavailable" });
 }
 
 // ---- directory: /api/profile (auth) /api/resolve /api/search /api/handle/check (public) ----

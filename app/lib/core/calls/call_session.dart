@@ -1346,6 +1346,17 @@ class CallSession {
         }
         break;
       case 'busy':
+        // [BUSY-CARD-1] Capture busy metadata off the FAST WS path too (not just the
+        // durable callStatusBus) so the personalized card can render immediately and
+        // beat the plain-'busy' race. Absent fields ⇒ legacy "User is busy".
+        final busyReasonWs = (d['busy_reason'] ?? '').toString();
+        if (busyReasonWs.isNotEmpty) {
+          _busyReason = busyReasonWs;
+          final re = d['receptionist_enabled'];
+          _busyReceptionistEnabled = re == true || re == '1' || re == 1;
+          final pr = (d['pronoun'] ?? '').toString();
+          if (pr.isNotEmpty) _busyPronoun = pr;
+        }
         // ignore: unawaited_futures
         _onBusy();
         break;

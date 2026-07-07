@@ -62,7 +62,7 @@ export async function handlePush(msg: PushMsg, env: Env): Promise<void> {
   // Reversible: set the var to "0" (or delete it) in consumers/wrangler.toml and
   // redeploy avatok-consumers to restore all notifications.
   if ((env as any).DEMO_MUTE_NONCALL_PUSH === "1" &&
-      payload.data.type !== "call" && payload.data.type !== "call-status") {
+      payload.data.type !== "call" && payload.data.type !== "call-status" && payload.data.type !== "now_free") {
     await capturePush(env, "push_muted_demo", uid, { kind: msg.kind, type: payload.data.type });
     return;
   }
@@ -212,7 +212,26 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     } };
   }
   if (msg.kind === "call-status") {
-    return { highPriority: true, data: { type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "" } };
+    // [BUSY-CARD-1] "Now free" — the busy callee returned to idle; ping the waiter
+    // who tapped "Notify me". The client listens for type:"now_free" (not
+    // call-status), so translate here. The caller resolves the callee's display
+    // name locally from callee_uid (they just called them), so no name lookup here.
+    if (msg.status === "now_free") {
+      return { highPriority: true, data: {
+        type: "now_free",
+        fromPub: msg.from ?? msg.callee_uid ?? "",
+        callee_uid: msg.callee_uid ?? msg.from ?? "",
+        generation: String(msg.generation ?? ""),
+      } };
+    }
+    // [BUSY-CARD-1] Forward the busy metadata (why + whether Ava can take a message)
+    // so the CALLER shows the personalized busy card. Absent → legacy "User is busy".
+    return { highPriority: true, data: {
+      type: "call-status", callId: msg.callId ?? "", status: msg.status ?? "",
+      ...(msg.busy_reason ? { busy_reason: String(msg.busy_reason) } : {}),
+      ...(msg.receptionist_enabled != null ? { receptionist_enabled: msg.receptionist_enabled ? "1" : "0" } : {}),
+      ...(msg.pronoun ? { pronoun: String(msg.pronoun) } : {}),
+    } };
   }
   if (msg.kind === "group_invite") {
     // "X added you to <group>" — HIGH priority so it wakes the device. The app
