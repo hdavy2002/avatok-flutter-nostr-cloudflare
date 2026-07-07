@@ -57,6 +57,48 @@ const AURA_FEMALE = new Set([
   "harmonia", "helena", "iris", "juno", "minerva", "ophelia", "pandora", "phoebe",
   "thalia", "theia", "vesta", "amalthea", "andromeda", "callista", "electra",
 ]);
+
+// ── LANGUAGE (RECEPT-1) ───────────────────────────────────────────────────────
+// The owner's language MUST flow end-to-end: STT, TTS, and the composed prompt.
+// `language_code` in the init blob is a BCP-47 tag (e.g. "hi-IN", "en-US"); we
+// reduce it to a base ISO-639 language ("hi", "en") for the model params below.
+function baseLang(code?: string | null): string {
+  const c = (code || "").trim().toLowerCase();
+  if (!c) return "";
+  // "cmn-CN" (Gemini's Mandarin tag) → "zh" for Deepgram/Aura naming.
+  if (c.startsWith("cmn")) return "zh";
+  return c.split(/[-_]/)[0];
+}
+function isEnglish(code?: string | null): boolean {
+  const b = baseLang(code);
+  return b === "" || b === "en";
+}
+// Deepgram Nova-3 STT: multilingual model handles most launch languages; feed the
+// specific BCP-47 tag when we have one so recognition is tuned. English keeps the
+// exact prior behaviour (en-US). Empty/unknown → "multi" (Nova auto language).
+function sttLangParam(code?: string | null): string {
+  const c = (code || "").trim();
+  if (!c) return "multi";
+  if (isEnglish(c)) return "en-US";
+  return c; // e.g. "hi", "hi-IN", "es-ES" — Nova accepts BCP-47/ISO codes
+}
+// Deepgram Aura-2 TTS is per-language (aura-2-en is ENGLISH ONLY). For a
+// non-English owner we must NOT force an English Aura voice or output is English
+// phonemes ("Hindi accent"). Map base language → the best available multilingual/
+// language-specific TTS path. Aura-2 currently ships strong ES; everything else
+// routes to the multilingual model. English is left 100% unchanged.
+//   returns { model, voice } — voice "" lets the model pick its default speaker.
+function ttsForLang(code: string | null | undefined, englishVoice: string,
+                    envTtsModel: string): { model: string; voice: string; fallback: boolean } {
+  const b = baseLang(code);
+  if (b === "" || b === "en") return { model: envTtsModel, voice: englishVoice, fallback: false };
+  // Spanish → Aura-2 Spanish model with a female speaker.
+  if (b === "es") return { model: "@cf/deepgram/aura-2-es", voice: "celeste", fallback: false };
+  // Everything else Aura-2 can't cover → multilingual TTS. If the deployment has a
+  // dedicated multilingual model configured, prefer it; else fall back to the
+  // multilingual MeloTTS on Workers AI. `fallback:true` flags "best-effort path".
+  return { model: "@cf/myshell-ai/melotts", voice: "", fallback: true };
+}
 // VOICEMAIL: a long endpoint so natural pauses don't cut the caller off mid-message;
 // a big max so a continuous monologue is still captured in one shot; a 50s window.
 const CF_ENDPOINT_MS = 2500;                // ~2.5s trailing silence ends a caller turn. Was 1000ms, which
@@ -97,6 +139,7 @@ export class ReceptionRoomCf {
   private ownerEmail: string | null = null;
   private ownerPhone: string | null = null;
   private firstAudioSent = false;
+  private readyAckSent = false; // RECEPT-1: "ava_live" control frame fired at most once
 
   private inText: string[] = [];
   private outText: string[] = [];
@@ -135,10 +178,17 @@ export class ReceptionRoomCf {
   // close is final and input is ignored.
   private cfMsgTimer: ReturnType<typeof setTimeout> | null = null;
   private cfTimeUp = false;
+  // DOUBLE SIGN-OFF latch (RECEPT-1): both onMsgCap (timer) and the endpoint path can
+  // each trigger a FINAL closing turn → Ava says goodbye twice. `cfClosing` is set the
+  // instant a final close turn STARTS; `saidGoodbye` once it has fully run. After a
+  // final close no second closing/LLM turn may run — a later time-up just finalizes.
+  private cfClosing = false;
+  private saidGoodbye = false;
   // Streaming STT (Deepgram Nova over WebSocket): transcribe the caller live so the
   // transcript is ready the instant they stop (no post-speech STT round-trip).
   private stt: WebSocket | null = null;
   private sttFinals: string[] = []; // final transcript segments accumulated live
+  private langMismatchEmitted = false; // RECEPT-1: fire ava_language_mismatch at most once
 
   private static IDLE_MS = 10_000;
   private static MAX_REC_BYTES = 12 * 1024 * 1024;
@@ -162,8 +212,11 @@ export class ReceptionRoomCf {
     const token = url.searchParams.get("t") || "";
 
     const raw = await this.env.TOKENS.get(`recept_rtc:${sid}`, "json").catch(() => null);
-    const init = raw as InitBlob | null;
+    const init = raw as (InitBlob & { rtc_uses?: number }) | null;
     if (!init || init.rtc_token !== token) return new Response("forbidden", { status: 403 });
+    // If THIS DO instance already ran and finalized (the reconnect raced the close of a
+    // completed session), don't re-run the engine — the voicemail was already taken.
+    if (this.finalized) return new Response("gone", { status: 410 });
     this.init = init;
     this.startedAt = Date.now();
     try { const c = await contactFor(this.env, init.owner_uid); this.ownerEmail = c.email; this.ownerPhone = c.phone; } catch { /* best-effort */ }
@@ -176,7 +229,21 @@ export class ReceptionRoomCf {
     server.addEventListener("close", () => this.finalize("caller_hangup"));
     server.addEventListener("error", () => this.finalize("error"));
 
-    this.env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {}); // single-use
+    // AVA-LIVE ACK (RECEPT-1): tolerate ONE reconnect. A strictly single-use token
+    // makes the app's reconnect-grace retry 403 (Issue 1). Instead of deleting the
+    // token outright, we allow up to 2 uses within a short grace window: on the FIRST
+    // connect we re-put it with a bumped use-count and a 20s TTL; the SECOND connect
+    // (reconnect) still validates, then the token is finally removed. A 3rd use 403s.
+    const uses = Number(init.rtc_uses || 0) + 1;
+    if (uses >= 2) {
+      // This is the tolerated reconnect (2nd use) — allow it, then remove the token
+      // so a 3rd use 403s.
+      this.env.TOKENS.delete(`recept_rtc:${sid}`).catch(() => {});
+      this.ev("ava_live_retry", { attempt: uses, reason: "ws_reconnect" });
+    } else {
+      // First use — keep the token alive briefly so ONE reconnect can re-validate.
+      this.env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify({ ...init, rtc_uses: uses }), { expirationTtl: 20 }).catch(() => {});
+    }
 
     void this.connectStt(); // live transcription in parallel with the greeting
     this.startCfEngine().catch((e) => {
@@ -197,18 +264,48 @@ export class ReceptionRoomCf {
         engine: "cf", model: i.model, voice: this.cfVoice() }, i.sid);
   }
 
+  // English (or unset) → the configured Aura female voice, EXACTLY as before. For a
+  // non-English owner, ttsForLang() picks a language-appropriate speaker (or "" to
+  // let a multilingual model use its default), so we never force asteria onto Hindi.
   private cfVoice(): string {
+    const englishVoice = this.cfEnglishVoice();
+    if (isEnglish(this.langCode())) return englishVoice;
+    return ttsForLang(this.langCode(), englishVoice, this.cfEnvTtsModel()).voice;
+  }
+  private cfEnglishVoice(): string {
     const v = (this.init?.cf_voice || "").trim().toLowerCase();
     return AURA_FEMALE.has(v) ? v : "asteria";
   }
+  /** Owner's chosen language (BCP-47) or "" for auto. */
+  private langCode(): string { return (this.init?.language_code || "").trim(); }
   private cfSttModel(): string { return String((this.env as any).RECEPT_CF_STT_MODEL || CF_STT_MODEL_DEFAULT); }
   private cfLlmModel(): string { return String((this.env as any).RECEPT_CF_LLM_MODEL || CF_LLM_MODEL_DEFAULT); }
-  private cfTtsModel(): string { return String((this.env as any).RECEPT_CF_TTS_MODEL || CF_TTS_MODEL_DEFAULT); }
+  private cfEnvTtsModel(): string { return String((this.env as any).RECEPT_CF_TTS_MODEL || CF_TTS_MODEL_DEFAULT); }
+  // English uses the configured (English) Aura model unchanged; non-English routes
+  // to a language-appropriate / multilingual model so output isn't English phonemes.
+  private cfTtsModel(): string {
+    const env = this.cfEnvTtsModel();
+    if (isEnglish(this.langCode())) return env;
+    return ttsForLang(this.langCode(), this.cfEnglishVoice(), env).model;
+  }
 
   private async startCfEngine(): Promise<void> {
     const init = this.init!;
+    // LANGUAGE (RECEPT-1): record what language we actually resolved end-to-end so a
+    // Hindi-spoke-English regression is visible in one event.
+    const requestedLang = this.langCode() || "auto";
+    const ttsSel = ttsForLang(this.langCode(), this.cfEnglishVoice(), this.cfEnvTtsModel());
+    this.ev("ava_language_selected", {
+      requested: requestedLang,
+      effective: isEnglish(this.langCode()) ? "en" : baseLang(this.langCode()),
+      stt: sttLangParam(this.langCode()),
+      tts: this.cfTtsModel(),
+      tts_voice: this.cfVoice(),
+      fallback: ttsSel.fallback,
+    });
     this.ev("ava_recept_cf_started", {
       latency_ms: Date.now() - this.startedAt,
+      language_code: this.langCode() || null,
       voice: this.cfVoice(), stt_model: this.cfSttModel(), llm_model: this.cfLlmModel(), tts_model: this.cfTtsModel(),
     });
     this.cfHistory = [{ role: "system", content: init.system_prompt }];
@@ -234,6 +331,14 @@ export class ReceptionRoomCf {
   private onMsgCap(): void {
     if (this.finalized) return;
     this.cfTimeUp = true;
+    // DOUBLE SIGN-OFF: if a final close already ran (or is running), do NOT start a
+    // second closing turn — just finalize. This is the timer-vs-endpoint race that
+    // produced two goodbyes.
+    if (this.saidGoodbye || this.cfClosing) {
+      this.ev("ava_double_closing_blocked", { duplicate_source: "timer" });
+      void this.finalize("time_up");
+      return;
+    }
     if (this.cfSpeaking || this.cfBusy) return; // a turn/close is already running → it will finalize
     void this.processCfTurn();
   }
@@ -309,6 +414,17 @@ export class ReceptionRoomCf {
    *  it, we keep listening instead of ending. Only time-up (or no interruption) ends. */
   private async processCfTurn(): Promise<void> {
     if (this.finalized || this.cfBusy) return;
+    // DOUBLE SIGN-OFF: once a FINAL close has run (or is running), never start another
+    // closing/LLM turn. A time-up that lands after a completed close just finalizes.
+    if (this.saidGoodbye || this.cfClosing) {
+      this.ev("ava_double_closing_blocked", { duplicate_source: this.cfTimeUp ? "timer" : "endpoint" });
+      if (this.saidGoodbye && !this.finalized) void this.finalize("time_up");
+      return;
+    }
+    // A close is FINAL when the message window has elapsed — latch it up-front so a
+    // racing endpoint/timer can't sneak a second closing turn in behind it.
+    const isFinalClose = this.cfTimeUp;
+    if (isFinalClose) { this.cfClosing = true; this.ev("ava_closing_started", { closing_reason: "time_up" }); }
     if (this.cfEndpointTimer) { clearTimeout(this.cfEndpointTimer); this.cfEndpointTimer = null; }
     if (this.cfTimeUp && this.cfMsgTimer) { clearTimeout(this.cfMsgTimer); this.cfMsgTimer = null; }
     const frames = this.cfTurnBuf; const total = this.cfTurnBytes;
@@ -345,6 +461,7 @@ export class ReceptionRoomCf {
     } finally {
       this.cfBusy = false;
     }
+    if (isFinalClose) { this.saidGoodbye = true; this.ev("ava_closing_completed", { duration: Date.now() - this.startedAt }); }
     if (this.finalized) return;
     if (this.cfTimeUp) { void this.finalize("time_up"); }              // 50s up → final close → end
     else {
@@ -391,7 +508,11 @@ export class ReceptionRoomCf {
     const token = (this.env as any).AI_WS_TOKEN as string | undefined;
     const acc = (this.env as any).CF_ACCOUNT_ID as string | undefined;
     if (!token || !acc) return; // no token → Whisper fallback path stays in effect
-    const url = `https://api.cloudflare.com/client/v4/accounts/${acc}/ai/run/@cf/deepgram/nova-3?encoding=linear16&sample_rate=16000&interim_results=true&endpointing=1000&punctuate=true&language=en-US`;
+    // LANGUAGE (RECEPT-1): thread the owner's chosen language into Deepgram Nova so a
+    // Hindi/Spanish/etc caller isn't transcribed as garbled English. English is
+    // unchanged (en-US); unset → "multi" (Nova auto-detect).
+    const sttLang = sttLangParam(this.langCode());
+    const url = `https://api.cloudflare.com/client/v4/accounts/${acc}/ai/run/@cf/deepgram/nova-3?encoding=linear16&sample_rate=16000&interim_results=true&endpointing=1000&punctuate=true&language=${encodeURIComponent(sttLang)}`;
     try {
       const resp = await fetch(url, { headers: { Upgrade: "websocket", Authorization: `Bearer ${token}` } });
       const ws = (resp as any).webSocket as WebSocket | undefined;
@@ -413,6 +534,19 @@ export class ReceptionRoomCf {
     let m: any;
     try { m = JSON.parse(typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data as ArrayBuffer)); } catch { return; }
     if (m?.type !== "Results") return;
+    // LANGUAGE (RECEPT-1): if Nova reports a detected language that differs from the
+    // owner's requested language, surface it once so we can catch mis-config / a
+    // caller speaking a different language than the owner set.
+    if (!this.langMismatchEmitted) {
+      const detected = String(
+        m.channel?.detected_language ?? m.channel?.alternatives?.[0]?.languages?.[0] ?? m.language ?? "",
+      ).trim();
+      const requested = baseLang(this.langCode());
+      if (detected && requested && baseLang(detected) !== requested) {
+        this.langMismatchEmitted = true;
+        this.ev("ava_language_mismatch", { requested, detected: baseLang(detected), reason: "stt_detected" });
+      }
+    }
     const t = m.channel?.alternatives?.[0]?.transcript;
     if (m.is_final && typeof t === "string" && t.trim()) this.sttFinals.push(t.trim());
     // Deepgram detected end-of-turn (caller paused) → close now; transcript is ready.
@@ -483,7 +617,7 @@ export class ReceptionRoomCf {
           if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm: chunk }); this.pcmBytes += chunk.byteLength; }
           this.avaBytes += chunk.byteLength; bytesSent += chunk.byteLength;
           if (!firstChunkAt) firstChunkAt = Date.now();
-          if (!this.firstAudioSent) { this.firstAudioSent = true; this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+          if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
           try { this.client?.send(chunk); } catch { /* caller gone */ }
         }
       } else {
@@ -492,7 +626,7 @@ export class ReceptionRoomCf {
         if (pcm && pcm.byteLength) {
           if (this.pcmBytes < ReceptionRoomCf.MAX_REC_BYTES) { this.pcmOut.push({ caller: false, pcm }); this.pcmBytes += pcm.byteLength; }
           this.avaBytes += pcm.byteLength; bytesSent = pcm.byteLength; firstChunkAt = Date.now();
-          if (!this.firstAudioSent) { this.firstAudioSent = true; this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
+          if (!this.firstAudioSent) { this.firstAudioSent = true; this.sendReadyAck(); this.ev("ava_recept_first_audio", { engine: "cf", ms: Date.now() - this.startedAt }); }
           for (let o = 0; o < pcm.byteLength; o += 24000) { try { this.client?.send(pcm.subarray(o, Math.min(o + 24000, pcm.byteLength))); } catch { /* caller gone */ } }
         }
       }
@@ -529,6 +663,18 @@ export class ReceptionRoomCf {
     if (this.finalized) return;
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => this.finalize("inactivity"), ReceptionRoomCf.IDLE_MS);
+  }
+
+  /** AVA-LIVE ACK (RECEPT-1): tell the client the instant Ava is truly live — sent
+   *  the moment her first greeting audio starts streaming. The client gates its
+   *  "Ava is taking your call" text on this frame, so it never shows over dead air
+   *  when the engine failed to start. Fires exactly once. */
+  private sendReadyAck(): void {
+    if (this.readyAckSent) return;
+    this.readyAckSent = true;
+    const ms = Date.now() - this.startedAt;
+    try { this.client?.send(JSON.stringify({ t: "ready", type: "ready", ava_live: true, ms })); } catch { /* caller gone */ }
+    this.ev("ava_live_ack_received", { ack_latency_ms: ms, ms });
   }
 
   private failHard(reason: string): void {

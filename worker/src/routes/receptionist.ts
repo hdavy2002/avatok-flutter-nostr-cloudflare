@@ -409,12 +409,29 @@ export function composeReceptionistPrompt(
   // dead simple so a small/fast model (Haiku) can't wander into questions or stage
   // directions like "<silence>". (Gemini keeps the conversational prompt below.)
   if (ctx?.engine === "cf") {
+    // BUSY SCRIPTS (RECEPT-1, plan §3.2): the busy caller already knows the owner is
+    // on a call (the busy card told them) and CHOSE to leave a message. So Ava frames
+    // it "on another call / will get it the moment ${subj}'s free", never "couldn't
+    // pick up". The no-answer wording is unchanged.
+    const isBusy = ctx?.activationMode === "busy";
+    const cfRole = isBusy
+      ? `You are ${me}, ${who}'s assistant. ${who} is on another call right now, so you're taking a quick message. A greeting has already played and the caller just left a voice message. You ALREADY KNOW the caller (${callerRef}) and ${poss} number — NEVER ask for a name, number, or callback.`
+      : `You are ${me}, ${who}'s voicemail assistant. ${who} couldn't pick up; a greeting has already played and the caller has just left a voice message. You ALREADY KNOW the caller (${callerRef}) and ${poss} number — NEVER ask for a name, number, or callback.`;
+    const cfNormal = isBusy
+      ? `• Normal message → "Got it — <one short clause capturing what they said>. I'll pass it to ${who} the moment ${subj}'s free. Talk soon${firstSuffix}!"`
+      : `• Normal message → "Got it — <one short clause capturing what they said>. I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`;
+    const cfTimeUp = isBusy
+      ? `• If you see "[SYSTEM: time is up]" → "That's all my time, but I've got your message and I'll give it to ${who} as soon as ${subj}'s off the call. Take care${firstSuffix}!"`
+      : `• If you see "[SYSTEM: time is up]" → "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`;
+    const cfNoMsg = isBusy
+      ? `• If the caller left no message → "No message? No problem — I'll let ${who} know you called while ${subj} was on the line. Take care${firstSuffix}!"`
+      : `• If the caller left no message → "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!"`;
     return [
-      `You are ${me}, ${who}'s voicemail assistant. ${who} couldn't pick up; a greeting has already played and the caller has just left a voice message. You ALREADY KNOW the caller (${callerRef}) and ${poss} number — NEVER ask for a name, number, or callback.`,
+      cfRole,
       `Reply with EXACTLY ONE short spoken line and NOTHING else: no questions, no follow-ups, no narration, and NEVER output placeholders or stage directions such as "<silence>", "(listening)", or "…".`,
-      `• Normal message → "Got it — <one short clause capturing what they said>. I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`,
-      `• If you see "[SYSTEM: time is up]" → "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`,
-      `• If the caller left no message → "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!"`,
+      cfNormal,
+      cfTimeUp,
+      cfNoMsg,
       note ? `Context (never read aloud): ${who}'s availability note — "${note}".` : ``,
       // F1: time-bound status note — use it to answer, never read verbatim.
       statusNote ? `${who} left this note for you${statusUntil ? ` (valid until ${statusUntil})` : ""}: "${statusNote}". Use it to answer the caller — but never read it out word-for-word.` : ``,
@@ -440,7 +457,12 @@ export function composeReceptionistPrompt(
   const isBusy = ctx?.activationMode === "busy";
   const step1 = greetLine
     ? `OPEN by warmly saying this greeting, then KEEP the conversation going naturally (do not just stop and go silent): "${greetLine}"`
-    : `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), and that ${subj} can't take the call right now${isBusy ? ` — ${subj}'s on another call at the moment` : note ? ` — ${note}` : ""}.`;
+    // BUSY SCRIPTS (RECEPT-1, plan §3.2 C): the busy caller already knows ${who}'s on a
+    // call and chose to leave a message — Ava says ${subj}'s on another call and she'd
+    // be glad to take a message (never "couldn't pick up"). No-answer wording unchanged.
+    : isBusy
+      ? `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), that ${subj}'s on another call right now, and that you'd be glad to take a message.`
+      : `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), and that ${subj} can't take the call right now${note ? ` — ${note}` : ""}.`;
   const lines: string[] = [
     `You are ${me}, ${who}'s warm, friendly phone assistant. You are having a SHORT, NATURAL CONVERSATION with the caller — you are NOT reading a script and NOT silently recording a voicemail. Sound like a real, kind person; never robotic, never templated.`,
     // P2: language-adaptive from the first words, whole call incl. wrap-up + goodbye.
@@ -476,6 +498,44 @@ export function composeReceptionistPrompt(
     lines.push(`Speak in ${lang}.`);
   }
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// BUSY SCRIPTS (RECEPT-1, plan §3.2 A) + LANGUAGE (§2): the deterministic greeting
+// Ava speaks the instant a caller connects on the CF engine (no LLM round-trip).
+// Branches on the BUSY scenario ("on another call, go ahead and leave a message")
+// vs the no-answer scenario ("can't take the call right now"). Localized to the
+// owner's answer language where we have a template; English is the default and is
+// UNCHANGED for the no-answer path. Ava's feminine self-reference is preserved in
+// every localized template.
+// ---------------------------------------------------------------------------
+function greetingBaseLang(code?: string | null): string {
+  const c = (code || "").trim().toLowerCase();
+  if (!c) return "";
+  if (c.startsWith("cmn")) return "zh";
+  return c.split(/[-_]/)[0];
+}
+function composeDeterministicGreeting(a: {
+  isBusy: boolean; langCode: string; greetPrefix: string; ownerLabel: string;
+  gSubj: string; firstName: string;
+}): string {
+  const base = greetingBaseLang(a.langCode);
+  // Hindi template (plan example). Ava speaks in feminine forms ("पहुँचा दूँगी").
+  if (base === "hi") {
+    const namePart = a.firstName ? `${a.firstName} जी — ` : "";
+    if (a.isBusy) {
+      return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। ${a.ownerLabel} अभी दूसरी कॉल पर हैं — आप मैसेज छोड़ दीजिए, मैं उन तक ज़रूर पहुँचा दूँगी।`;
+    }
+    return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। ${a.ownerLabel} अभी कॉल नहीं ले पा रहे — करीब 25 सेकंड का मैसेज छोड़ दीजिए, मैं उन तक पहुँचा दूँगी।`;
+  }
+  // Default (English + any language without a template — the CF prompt's "Speak in
+  // <lang>" line still steers the LLM close; the greeting itself opens in English).
+  if (a.isBusy) {
+    // §3.2 A busy greeting.
+    return `${a.greetPrefix}it's Ava, ${a.ownerLabel}'s assistant. ${a.ownerLabel}'s on another call right now, but go ahead and leave a message and I'll make sure ${a.gSubj} gets it.`;
+  }
+  // No-answer greeting — UNCHANGED wording from before this change.
+  return `${a.greetPrefix}${a.ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${a.gSubj}'ll get back to you.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -884,6 +944,14 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     ownerGender = gr?.gender ?? null;
   } catch { /* column may be absent on an un-migrated env → neutral */ }
 
+  // v2: how the call was handed off. Standard 2-button incoming UI, so the
+  // triggers are: rings (no answer), first_ring (answer-all), decline (callee
+  // hit Decline with decline-to-Ava on), busy (callee was on another call).
+  // (declared BEFORE the greeting so the greeting can branch on the BUSY scenario.)
+  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy"]);
+  let activationMode = String(b.activation_mode || "rings");
+  if (!VALID_MODES.has(activationMode)) activationMode = "rings";
+
   // DETERMINISTIC GREETING (owner decision 2026-06-29): composed server-side and
   // spoken immediately by the CF engine — NO LLM round-trip — so there's no dead
   // air at the start (was ~5.5s). Uses the caller's FIRST name + owner pronoun.
@@ -899,14 +967,16 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const greetPrefix = greetPhrase
     ? (firstName ? `${greetPhrase} ${firstName}, ` : `${greetPhrase}, `)
     : (firstName ? `Hey ${firstName}, ` : `Hi, `);
-  const greeting = `${greetPrefix}${ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${gSubj}'ll get back to you.`;
-  // (callId already declared above in the CALLFIX-8 answered-guard block)
-  // v2: how the call was handed off. Standard 2-button incoming UI, so the
-  // triggers are: rings (no answer), first_ring (answer-all), decline (callee
-  // hit Decline with decline-to-Ava on), busy (callee was on another call).
-  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy"]);
-  let activationMode = String(b.activation_mode || "rings");
-  if (!VALID_MODES.has(activationMode)) activationMode = "rings";
+  // BUSY SCRIPTS (RECEPT-1, plan §3.2 A) + LANGUAGE (§2): the busy caller already
+  // knows ${owner}'s on a call and chose to leave a message → warm "on another call,
+  // go ahead and leave a message", never "can't take the call". Both wordings are
+  // localized to the owner's answer language where we have a template (Hindi et al.),
+  // falling back to English. Ava's feminine self-reference is preserved per language.
+  const greetLangCode = (s.answer_lang || s.language_code || "").trim();
+  const greeting = composeDeterministicGreeting({
+    isBusy: activationMode === "busy",
+    langCode: greetLangCode, greetPrefix, ownerLabel, gSubj, firstName,
+  });
 
   // Team Receptionist context (Specs/TEAM-RECEPTIONIST-IVR-SPEC.md): when this Ava
   // session is the no-answer fallback for a staffer dialed via a team IVR menu, the
@@ -938,7 +1008,11 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     caller_name: callerName, call_id: callId, rtc_token: rtcToken,
     // CF engine uses ONE fixed female Aura voice; Gemini uses the owner's pick.
     voice_name: useCf ? AVA_CF_VOICE : AVA_VOICE, // P12: Gemini path pinned to Ava's one voice
-    language_code: s.language_code || null,       // v2: DO pins speechConfig.languageCode
+    // LANGUAGE (RECEPT-1): the DO threads this end-to-end (STT lang, TTS voice/model,
+    // and the "Speak in <lang>" prompt line). Prefer the F1 opening language
+    // (answer_lang) and fall back to the legacy language_code. Both are validated
+    // BCP-47 (LANG_CODES), so an unknown value never reaches the DO.
+    language_code: s.answer_lang || s.language_code || null,
     activation_mode: activationMode,              // v2: telemetry context for the DO
     file_search_store: s.file_search_store || null,
     // Caller-aware + status-aware system prompt: "Hi <caller>, <owner> is
