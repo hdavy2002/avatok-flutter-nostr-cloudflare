@@ -166,15 +166,17 @@ class ReceptionistPref {
   ReceptionistPref._();
   static const _kKey = 'receptionist_enabled';
   static const _kDecline = 'receptionist_decline_to_ava';
-  static final ValueNotifier<bool> enabled = ValueNotifier<bool>(false);
+  // ALWAYS-ON (owner decision 2026-07-07): the receptionist can no longer be
+  // turned off by the user — the mirror defaults true and stays true.
+  static final ValueNotifier<bool> enabled = ValueNotifier<bool>(true);
   /// Local mirror of decline_to_ava (kept for the incoming-call handler in
   /// push_service). The simplified settings UI no longer exposes it, so it stays
   /// off, but the mirror is preserved so existing callers don't break.
   static final ValueNotifier<bool> declineToAva = ValueNotifier<bool>(false);
 
   static Future<bool> load() async {
-    final raw = await DiskCache.read(_kKey);
-    final v = raw == '1';
+    // ALWAYS-ON: ignore any stored '0' — Ava answers missed calls for everyone.
+    const v = true;
     if (enabled.value != v) enabled.value = v;
     final d = (await DiskCache.read(_kDecline)) == '1';
     if (declineToAva.value != d) declineToAva.value = d;
@@ -207,7 +209,7 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
   final _note = TextEditingController();
   // F2: the custom greeting free-text (used only when the preset = 'custom').
   final _greeting = TextEditingController();
-  bool _enabled = false;
+  bool _enabled = true; // ALWAYS-ON: kept only for the mirror/save payload
   bool _premium = false;
   bool _loading = true;
   bool _saving = false;
@@ -474,19 +476,17 @@ class _ReceptionistCardState extends State<_ReceptionistCard> {
                     Text('Ava Receptionist', style: ZineText.value(size: 14.5)),
                     const SizedBox(height: 2),
                     Text(
-                      _enabled
-                          ? 'When you miss a call, Ava answers, tells the caller why '
-                              'you can’t pick up, takes a message and leaves you a recording.'
-                          : 'Let Ava answer the calls you miss, take a message, and '
-                              'leave you a recording.',
+                      'When you miss a call, Ava answers, tells the caller why '
+                      'you can’t pick up, takes a message and leaves you a recording. '
+                      'Always on.',
                       style: ZineText.sub(size: 12),
                     ),
                   ]),
                 ),
-                const SizedBox(width: 10),
-                ZineToggle(value: _enabled, onChanged: (v) => _save(enabled: v)),
+                // ALWAYS-ON (owner decision 2026-07-07): the on/off toggle is gone —
+                // Ava Receptionist can no longer be disabled per user.
               ]),
-              if (_enabled) ...[
+              ...[
                 const SizedBox(height: 14),
                 // ── The note: tell Ava your availability ───────────────────
                 ZineField(

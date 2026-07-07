@@ -995,83 +995,46 @@ class PushService {
               {'call_id': incomingId, 'reason': 'dedup_window'});
           return;
         }
-        // CALL-GLARE-1: two users dialing EACH OTHER within ~1s. Our own pending
-        // OUTGOING dial makes callIsGenuinelyActive() true, so the peer's crossing
-        // incoming push would get auto-busied and the caller heard "busy" though
-        // nobody was on a call (PostHog 2026-07-03 18:38:21/22). Detect the glare —
-        // an incoming call FROM the exact peer we are currently DIALING (not yet
-        // connected) — and resolve it DETERMINISTICALLY instead of busying: the
-        // lexicographically SMALLER call_id wins. Both devices compute the same
-        // verdict from the same two ids, so exactly one leg survives.
+        // [CALL-GLARE-3] (owner decision 2026-07-07 — REPLACES the CALL-GLARE-1
+        // auto-merge): two users dialing EACH OTHER at the same time now BOTH get
+        // "busy on another call" + the busy card (Cancel / Notify me / Leave a
+        // message for Ava). No auto-accept, no folding into one room. Symmetric:
+        // each device busy-replies the crossing incoming push and keeps its own
+        // outgoing dial, so each caller sees the other as busy and chooses.
         final glareFrom = (d['from'] ?? '').toString();
         if (glareFrom.isNotEmpty && hasPendingOutgoingTo(glareFrom) &&
             gOutgoingCallId != null && incomingId.isNotEmpty &&
             incomingId != gOutgoingCallId) {
-          final incomingWins = incomingId.compareTo(gOutgoingCallId!) < 0;
           Analytics.capture('call_glare_detected', {
             'call_id_in': incomingId,
             'call_id_out': gOutgoingCallId ?? '',
-            'resolution': incomingWins ? 'accept_incoming' : 'keep_outgoing',
+            'resolution': 'mutual_busy',
           });
-          if (incomingWins) {
-            // Their call wins → cancel OUR outgoing leg and accept theirs. Tell the
-            // peer to stop ringing (our cancel), then answer the incoming call.
-            final outId = gOutgoingCallId!;
-            _signalStatus(outId, 'cancel', (d['fromPub'] ?? '').toString());
-            callStatusBus.add((
-              callId: outId,
-              status: 'glare-yield',
-              busyReason: null,
-              receptionistEnabled: false,
-              pronoun: null,
-            ));
-            gOutgoingCallTo = null; gOutgoingCallId = null; gOutgoingSince = 0;
-            gIncomingRingingFrom = glareFrom;
-            gIncomingRingingCallId = incomingId;
-            // Show the incoming UI so the accept path (and cold-start recovery) can
-            // route into it; the peer keeps its outgoing leg and we connect.
-            _showIncoming(d);
-          } else {
-            // OUR call wins → do NOT busy the incoming; drop this crossing push and
-            // keep dialing. The peer's device will yield ITS outgoing and accept
-            // ours, so both land in the same room.
-            Analytics.capture('call_glare_incoming_dropped',
-                {'call_id': incomingId, 'winner': 'outgoing'});
-          }
+          _signalStatus(incomingId, 'busy', (d['fromPub'] ?? '').toString(),
+              busyReason: 'active_call', receptionistEnabled: true);
+          Analytics.capture('call_incoming_autobusy', {
+            'call_id': incomingId, 'kind': kind, 'busy_reason': 'mutual_dial',
+          });
           return;
         }
-        // [RECEPT-CALLBACK-PREEMPT-1] Missed-call-then-callback bug: if we are
-        // currently leaving a voice message on B's Ava (a live receptionist
-        // session — gReceptionistTargetPub == B) and THIS incoming call is
-        // FROM B calling us back, do NOT auto-busy it — let it ring and
-        // connect instead. A receptionist session makes callIsGenuinelyActive()
-        // true (gLiveCallScreens > 0), which is exactly what used to busy the
-        // callback before it ever rang. Fail-safe: if the target is unknown or
-        // this caller is someone else, fall straight through to the existing
-        // autobusy below — unchanged behavior for every other case (including
-        // the correct "third caller gets busy while we're on B's Ava" case).
-        final receptTarget = gReceptionistTargetPub;
-        final callbackFromPub = (d['fromPub'] ?? '').toString();
-        if (receptTarget != null &&
-            receptTarget.isNotEmpty &&
-            callbackFromPub.isNotEmpty &&
-            callbackFromPub == receptTarget) {
-          Analytics.capture('recept_preempted_by_callback',
-              {'call_id': incomingId, 'from': callbackFromPub});
-          gIncomingRingingFrom = (d['from'] ?? '').toString();
-          gIncomingRingingCallId = incomingId;
-          _showIncoming(d);
-          return;
-        }
+        // [RECEPT-CALLBACK-PREEMPT-1 REMOVED] (owner decision 2026-07-07): while
+        // we're leaving a message on B's Ava and B calls back, B now gets the
+        // normal busy card (Cancel / Notify me / Leave a message) instead of
+        // ringing through into a half-open call where Ava was still audible.
+        // The generic autobusy below handles it.
         if (callIsGenuinelyActive()) {
           // [BUSY-CARD-1] Tell the caller WHY (on another call) and whether Ava can
-          // take a message, so they get the busy card. receptionist_enabled comes
-          // from the per-account local mirror (works even when cold-woken). Always
-          // signals busy even if the read fails (fail-safe → no metadata → legacy).
+          // take a message, so they get the busy card. Ava is ALWAYS-ON as of
+          // 2026-07-07 (per-user off switch retired), so receptionist_enabled
+          // defaults true; the local mirror can only confirm it.
           final fromPub = (d['fromPub'] ?? '').toString();
           (() async {
-            bool re = false;
-            try { re = (await DiskCache.read('receptionist_enabled')) == '1'; } catch (_) {}
+            bool re = true;
+            try {
+              final v = await DiskCache.read('receptionist_enabled');
+              if (v != null && v.isNotEmpty) re = v == '1';
+              re = true; // ALWAYS-ON override — kept for one release of telemetry
+            } catch (_) {}
             _signalStatus(incomingId, 'busy', fromPub,
                 busyReason: 'active_call', receptionistEnabled: re);
           })();

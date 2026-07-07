@@ -1567,8 +1567,13 @@ class CallSession {
   Future<void> _onNoAnswer() async {
     _ringback.stop();
     if (!config.video && !_ended) {
+      // UNREACHABLE-AVA-1 (owner decision 2026-07-07): when the callee's phone is
+      // off / has no data (_callUnreachable), Ava still takes the message — with
+      // the honest "phone is off or unreachable, can I take a message?" script.
       final started = await _tryReceptionist(
-          activationMode: _receptMode == 'first_ring' ? 'first_ring' : 'rings');
+          activationMode: _callUnreachable
+              ? 'unreachable'
+              : (_receptMode == 'first_ring' ? 'first_ring' : 'rings'));
       if (started) return;
     }
     if (!_ended && !_connected) _endWith('no-answer', reason: 'timeout-ringing');

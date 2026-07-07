@@ -418,8 +418,11 @@ export function composeReceptionistPrompt(
     // it "on another call / will get it the moment ${subj}'s free", never "couldn't
     // pick up". The no-answer wording is unchanged.
     const isBusy = ctx?.activationMode === "busy";
+    const isUnreachable = ctx?.activationMode === "unreachable";
     const cfRole = isBusy
       ? `You are ${me}, ${who}'s assistant. ${who} is on another call right now, so you're taking a quick message. A greeting has already played and the caller just left a voice message. You ALREADY KNOW the caller (${callerRef}) and ${poss} number — NEVER ask for a name, number, or callback.`
+      : isUnreachable
+      ? `You are ${me}, ${who}'s assistant. ${who}'s phone appears to be OFF or unreachable right now, so you're taking a message ${subj} will get when back online. A greeting has already played and the caller just left a voice message. You ALREADY KNOW the caller (${callerRef}) and ${poss} number — NEVER ask for a name, number, or callback.`
       : `You are ${me}, ${who}'s voicemail assistant. ${who} couldn't pick up; a greeting has already played and the caller has just left a voice message. You ALREADY KNOW the caller (${callerRef}) and ${poss} number — NEVER ask for a name, number, or callback.`;
     const cfNormal = isBusy
       ? `• Normal message → "Got it — <one short clause capturing what they said>. I'll pass it to ${who} the moment ${subj}'s free. Talk soon${firstSuffix}!"`
@@ -466,6 +469,8 @@ export function composeReceptionistPrompt(
     // be glad to take a message (never "couldn't pick up"). No-answer wording unchanged.
     : isBusy
       ? `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), that ${subj}'s on another call right now, and that you'd be glad to take a message.`
+      : ctx?.activationMode === "unreachable"
+      ? `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), that it looks like ${who}'s phone is off or unreachable right now, and ask if you can take a message for ${obj}.`
       : `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), and that ${subj} can't take the call right now${note ? ` — ${note}` : ""}.`;
   const lines: string[] = [
     `You are ${me}, ${who}'s warm, friendly phone assistant. You are having a SHORT, NATURAL CONVERSATION with the caller — you are NOT reading a script and NOT silently recording a voicemail. Sound like a real, kind person; never robotic, never templated.`,
@@ -520,7 +525,7 @@ function greetingBaseLang(code?: string | null): string {
   return c.split(/[-_]/)[0];
 }
 function composeDeterministicGreeting(a: {
-  isBusy: boolean; langCode: string; greetPrefix: string; ownerLabel: string;
+  isBusy: boolean; isUnreachable?: boolean; langCode: string; greetPrefix: string; ownerLabel: string;
   gSubj: string; firstName: string;
 }): string {
   const base = greetingBaseLang(a.langCode);
@@ -530,6 +535,9 @@ function composeDeterministicGreeting(a: {
     if (a.isBusy) {
       return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। ${a.ownerLabel} अभी दूसरी कॉल पर हैं — आप मैसेज छोड़ दीजिए, मैं उन तक ज़रूर पहुँचा दूँगी।`;
     }
+    if (a.isUnreachable) {
+      return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। लगता है ${a.ownerLabel} का फ़ोन बंद है या नेटवर्क से बाहर है — क्या मैं उनके लिए मैसेज ले लूँ? मैं उन तक ज़रूर पहुँचा दूँगी।`;
+    }
     return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। ${a.ownerLabel} अभी कॉल नहीं ले पा रहे — करीब 25 सेकंड का मैसेज छोड़ दीजिए, मैं उन तक पहुँचा दूँगी।`;
   }
   // Default (English + any language without a template — the CF prompt's "Speak in
@@ -537,6 +545,10 @@ function composeDeterministicGreeting(a: {
   if (a.isBusy) {
     // §3.2 A busy greeting.
     return `${a.greetPrefix}it's Ava, ${a.ownerLabel}'s assistant. ${a.ownerLabel}'s on another call right now, but go ahead and leave a message and I'll make sure ${a.gSubj} gets it.`;
+  }
+  // UNREACHABLE greeting (2026-07-07): honest about the phone being off/offline.
+  if (a.isUnreachable) {
+    return `${a.greetPrefix}it's Ava, ${a.ownerLabel}'s assistant. It looks like ${a.ownerLabel}'s phone is off or unreachable right now — can I take a message? I'll make sure ${a.gSubj} gets it the moment ${a.gSubj}'s back.`;
   }
   // No-answer greeting — UNCHANGED wording from before this change.
   return `${a.greetPrefix}${a.ownerLabel} can't take the call right now — leave a message of about 25 seconds and ${a.gSubj}'ll get back to you.`;
@@ -723,7 +735,9 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   // (saved row with enabled=0) is still respected.
   const freeLaunch = (cfg as any).betaFreePremium === true;
   let s = await loadSettingsCached(env, to);
-  if (s && !s.enabled) { checked(false, "off"); return json({ available: false, reason: "off" }); }
+  // ALWAYS-ON (owner decision 2026-07-07): the per-user off switch is retired.
+  // Ava answers unanswered calls for EVERY user; a saved enabled=0 row is ignored.
+  // (The global receptionistEnabled kill switch above still works for emergencies.)
   if (!s) s = defaultSettings(to);
   const ownerTier = await tierOf(env, to);
   if (!freeLaunch && !isPaidTier(ownerTier)) { checked(false, "not_premium"); return json({ available: false, reason: "not_premium" }); }
@@ -781,7 +795,8 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // paid-tier gate + allowance below.
   const freeLaunch = (cfg as any).betaFreePremium === true;
   let s = await loadSettingsCached(env, to);
-  if (s && !s.enabled) { skip("off"); return json({ error: "receptionist_unavailable", reason: "off" }, 409); }
+  // ALWAYS-ON (owner decision 2026-07-07): the per-user off switch is retired —
+  // a saved enabled=0 row is ignored so Ava can always take the message.
   if (!s) s = defaultSettings(to);
   // Gemini engine needs a Gemini key (dedicated, else global); the CF engine runs
   // entirely on the Workers AI binding and needs no Gemini key.
@@ -953,7 +968,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // triggers are: rings (no answer), first_ring (answer-all), decline (callee
   // hit Decline with decline-to-Ava on), busy (callee was on another call).
   // (declared BEFORE the greeting so the greeting can branch on the BUSY scenario.)
-  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy"]);
+  // 'unreachable' (2026-07-07): the callee's phone is off / has no data — Ava
+  // opens with "looks like <owner>'s phone is off or unreachable, can I take a
+  // message?" instead of the plain no-answer wording.
+  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable"]);
   let activationMode = String(b.activation_mode || "rings");
   if (!VALID_MODES.has(activationMode)) activationMode = "rings";
 
@@ -980,6 +998,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const greetLangCode = (s.answer_lang || s.language_code || "").trim();
   const greeting = composeDeterministicGreeting({
     isBusy: activationMode === "busy",
+    isUnreachable: activationMode === "unreachable",
     langCode: greetLangCode, greetPrefix, ownerLabel, gSubj, firstName,
   });
 
