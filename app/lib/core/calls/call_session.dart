@@ -12,6 +12,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../analytics.dart';
 import '../api_auth.dart';
+import '../ava_log.dart';
 import '../call_log_store.dart';
 import '../call_telemetry.dart';
 import '../config.dart';
