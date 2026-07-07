@@ -205,6 +205,40 @@ export class CallRoom {
         let body: Record<string, unknown> = {};
         try { body = (await req.json()) as Record<string, unknown>; } catch { /* empty */ }
         const type = typeof body.type === "string" ? body.type : "";
+
+        if (type === "register-token") {
+          const token = typeof body.token === "string" ? body.token : "";
+          const expiresAt = typeof body.expiresAt === "number" ? body.expiresAt : 0;
+          if (token && expiresAt) {
+            await this.state.storage.put("ring_receipt_token", token);
+            await this.state.storage.put("token_expires_at", expiresAt);
+          }
+          return Response.json({ ok: true });
+        }
+
+        if (type === "device-ringing") {
+          const clientToken = typeof body.token === "string" ? body.token : "";
+          const storedToken = await this.state.storage.get<string>("ring_receipt_token");
+          const expiresAt = await this.state.storage.get<number>("token_expires_at") ?? 0;
+          const now = Date.now();
+          if (!storedToken || clientToken !== storedToken || now > expiresAt) {
+            return Response.json({
+              error: "invalid_or_expired_token",
+              reason: !storedToken ? "no_token" : (now > expiresAt ? "expired" : "mismatch"),
+            }, { status: 403 });
+          }
+
+          const frame = JSON.stringify({
+            type: "device-ringing",
+            ...(typeof body.callId === "string" ? { callId: body.callId } : {}),
+          });
+          let sent = 0;
+          for (const w of this.state.getWebSockets()) {
+            try { w.send(frame); sent++; } catch { /* peer gone */ }
+          }
+          return Response.json({ ok: true, sent });
+        }
+
         if (type === "ring-ack") {
           const frame = JSON.stringify({
             type: "ring-ack",
@@ -217,6 +251,7 @@ export class CallRoom {
           }
           return Response.json({ ok: true, sent });
         }
+
         return Response.json({ error: "unknown control type" }, { status: 400 });
       }
       return new Response("expected websocket", { status: 426 });

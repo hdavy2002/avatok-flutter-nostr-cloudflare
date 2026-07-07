@@ -259,6 +259,14 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
       // surface the tap-to-call banner even when backgrounded/killed.
       await _showNowFreeNotif(d);
     } else {
+      if (type == 'call') {
+        final callId = (d['callId'] ?? '').toString();
+        final token = (d['ringReceiptToken'] ?? '').toString();
+        if (callId.isNotEmpty && token.isNotEmpty) {
+          // ignore: unawaited_futures
+          PushService.reportRinging(callId, token);
+        }
+      }
       await _showIncoming(d);
     }
     await _bgTrack('fcm_bg_handled', {'type': type});
@@ -760,6 +768,29 @@ class PushService {
         });
       }
     } catch (_) {/* best-effort */}
+  }
+
+  /// Notify the server that this device has received the incoming call push
+  /// and is ringing, so the caller can play ringback and start the ring window.
+  /// Unauthenticated since it runs in the background isolate where Clerk auth is offline.
+  static Future<void> reportRinging(String callId, String ringReceiptToken) async {
+    if (callId.isEmpty || ringReceiptToken.isEmpty) return;
+    try {
+      final client = HttpClient();
+      final uri = Uri.parse('https://$kSignalingHost/api/call/ringing');
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({
+        'callId': callId,
+        'ringReceiptToken': ringReceiptToken,
+      }));
+      final response = await request.close();
+      await response.drain();
+      client.close();
+      AvaLog.I.log('push', 'Reported ringing for callId=$callId: HTTP ${response.statusCode}');
+    } catch (e) {
+      AvaLog.I.log('push', 'Failed to report ringing for callId=$callId: $e');
+    }
   }
 
   /// Completed when [init] finishes (success OR failure) — init now runs

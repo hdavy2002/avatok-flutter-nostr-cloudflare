@@ -169,6 +169,9 @@ export interface PushMsg {
   // through to the callee's FCM `data.trace_id` so both devices + the Worker
   // stitch under one trace_id in PostHog. Optional/additive.
   traceId?: string;
+  // Possession of this capability token authorizes reporting device ringing state.
+  ringReceiptToken?: string;
+  tokenExpiresAt?: number;
   // kind === "group_invite": the inviter added the recipient to a group. Carries
   // the group name + conv id so the app can deep-link straight to the group and
   // show the Accept/Decline prompt.

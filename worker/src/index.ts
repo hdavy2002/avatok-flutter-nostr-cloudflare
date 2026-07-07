@@ -473,6 +473,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/call" && req.method === "POST") return await api.call(req, env);
       if (p === "/api/notify" && req.method === "POST") return await api.notify(req, env);
       if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);
+      if (p === "/api/call/ringing" && req.method === "POST") return await api.callRinging(req, env);
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);
 
       // --- contacts ---

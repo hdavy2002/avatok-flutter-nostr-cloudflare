@@ -257,6 +257,8 @@ class CallSession {
   Timer? _busyCardTimeout;             // abandons an untouched busy card after 60s
   StreamSubscription? _statusSub;
   bool _takeoverGuard = false;
+  bool _deviceRinging = false;
+  Timer? _deviceRingingTimer;
   Duration? _pendingRingWindow;
   Timer? _ringAckFallback;
   bool _ringAckHandled = false;
@@ -590,21 +592,37 @@ class CallSession {
     videoActive.value = _video;
     cameraOn.value = _camOn;
     speakerOn.value = _speaker;
-    _setPhase(config.outgoing ? 'ringing' : 'connecting');
+    _setPhase((config.outgoing && !_takeoverGuard) ? 'ringing' : 'connecting');
     if (config.outgoing) {
       // CALL-GLARE-1: publish our pending outgoing dial for the incoming-push
       // handler's glare detection. Cleared on connect + on teardown.
       gOutgoingCallTo = config.seed;
       gOutgoingCallId = config.room;
       gOutgoingSince = DateTime.now().millisecondsSinceEpoch;
-      _ringTimeout = Timer(const Duration(seconds: 35), () {
-        if (!_ended && !_connected) _onNoAnswer();
-      });
+
+      if (_takeoverGuard) {
+        // Wait up to 6 seconds for the callee's device-ringing or any signaling frame.
+        _deviceRingingTimer = Timer(const Duration(seconds: 6), () {
+          if (!_ended && !_connected && !_deviceRinging) {
+            AvaLog.I.log('call', 'Device ringing timeout: callee unreachable.');
+            _ringback.stop();
+            _callUnreachable = true;
+            _unreachableNotice?.call();
+            _onNoAnswer();
+          }
+        });
+      } else {
+        _ringTimeout = Timer(const Duration(seconds: 35), () {
+          if (!_ended && !_connected) _onNoAnswer();
+        });
+      }
+
       if (!config.video) {
         // ignore: unawaited_futures
         _probeReceptionist();
       }
-      if (RemoteConfig.ringbackEnabled) {
+
+      if (RemoteConfig.ringbackEnabled && !_takeoverGuard) {
         // ignore: unawaited_futures
         _ringback.playRingback(config.ringbackUrl);
         Analytics.capture('ringback_played', {
@@ -1274,6 +1292,9 @@ class CallSession {
       // frames from the SAME sender are rejected (monotonic per sender).
       if (known == null || fg > known) _peerGens[frameFrom] = fg;
     }
+    if (frameFrom.isNotEmpty) {
+      _onDeviceRinging();
+    }
     if (d['country'] is String) _telemetry.setPeerCountry(d['country'] as String);
     switch (d['type']) {
       case 'welcome':
@@ -1331,6 +1352,9 @@ class CallSession {
         } else {
           try { await _pc!.addCandidate(cand); } catch (_) {}
         }
+        break;
+      case 'device-ringing':
+        _onDeviceRinging();
         break;
       case 'ring-ack':
         _onRingAck(d['ok'] == true);
@@ -1750,14 +1774,21 @@ class CallSession {
   void _armNoAnswerWindow(Duration window) {
     if (!_takeoverGuard) { _startRingWindow(window); return; }
     _pendingRingWindow = window;
-    if (_pendingAckResult != null) { _applyRingAck(_pendingAckResult!); return; }
+    if (_deviceRinging) {
+      _startRingWindow(window);
+      return;
+    }
+    if (_pendingAckResult != null && !_pendingAckResult!) {
+      _applyRingAck(false);
+      return;
+    }
     _ringAckHandled = false;
     _ringAckFallback?.cancel();
     _ringAckFallback = Timer(const Duration(seconds: 5), () {
-      if (_ringAckHandled || _connected || _ended) return;
+      if (_ringAckHandled || _connected || _ended || _deviceRinging) return;
       _ringAckHandled = true;
       Analytics.capture('call_ring_ack', {'call_id': config.room, 'source': 'fallback'});
-      _startRingWindow(window);
+      _onDeviceRinging();
     });
   }
 
@@ -1774,17 +1805,47 @@ class CallSession {
 
   void _applyRingAck(bool ok) {
     if (_ringAckHandled) return;
+    if (ok) {
+      // Push sent successfully. Cancel the fallback timer since we got the server's ack,
+      // but do NOT start the ring window or play ringback yet (continue waiting for device-ringing).
+      _ringAckFallback?.cancel();
+      Analytics.capture('call_ring_ack', {'call_id': config.room, 'ok': ok, 'source': 'server'});
+      return;
+    }
     _ringAckHandled = true;
     _ringAckFallback?.cancel();
+    _deviceRingingTimer?.cancel();
     Analytics.capture('call_ring_ack', {'call_id': config.room, 'ok': ok, 'source': 'server'});
-    if (ok) {
-      _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 20));
-    } else if (!_connected) {
+    if (!_connected) {
       _ringback.stop();
       _callUnreachable = true;
       _unreachableNotice?.call();
       _onNoAnswer();
     }
+  }
+
+  void _onDeviceRinging() {
+    if (_connected || _ended) return;
+    if (_deviceRinging) return;
+    _deviceRinging = true;
+    _deviceRingingTimer?.cancel();
+    _ringAckFallback?.cancel();
+
+    AvaLog.I.log('call', 'Device ringing receipted.');
+
+    _setPhase('ringing');
+
+    if (RemoteConfig.ringbackEnabled) {
+      // ignore: unawaited_futures
+      _ringback.playRingback(config.ringbackUrl);
+      Analytics.capture('ringback_played_on_receipt', {
+        'source': config.ringbackUrl.isEmpty ? 'default' : 'custom',
+        'video': config.video,
+        'call_id': config.room,
+      });
+    }
+
+    _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
   }
 
   Future<void> _handoffToAva(String activationMode) async {
@@ -2105,6 +2166,7 @@ class CallSession {
     _timer?.cancel();
     _ringTimeout?.cancel();
     _ringAckFallback?.cancel();
+    _deviceRingingTimer?.cancel();
     _failTimer?.cancel();
     _wsReconnectTimer?.cancel();
     _relayFallbackTimer?.cancel();

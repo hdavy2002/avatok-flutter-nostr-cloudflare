@@ -162,6 +162,10 @@ async function ensureStatusColumns(env: Env): Promise<void> {
     // auto-greeting toggle. Same guarded ADD-COLUMN self-migration pattern.
     "ALTER TABLE receptionist_settings ADD COLUMN greeting_style TEXT",
     "ALTER TABLE receptionist_settings ADD COLUMN festival_greeting INTEGER",
+    // Self-migration for receptionist_sessions columns:
+    "ALTER TABLE receptionist_sessions ADD COLUMN activation_mode TEXT",
+    "ALTER TABLE receptionist_sessions ADD COLUMN team_id TEXT",
+    "ALTER TABLE receptionist_sessions ADD COLUMN team_slot INTEGER",
   ]) { try { await db.prepare(ddl).run(); } catch { /* column already present */ } }
 }
 
@@ -754,6 +758,7 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
 export async function receptionistStart(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  await ensureStatusColumns(env);
   const off = await flagOff(env); if (off) return off;
   const b = (await req.json().catch(() => ({}))) as any;
   const to = String(b.to || "");

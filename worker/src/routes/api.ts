@@ -205,7 +205,26 @@ export async function call(req: Request, env: Env): Promise<Response> {
       return json({ glare: true, join_call_id: gj.join_call_id, reachable: true, sent: 0 });
     }
   } catch { /* best-effort — glare detection never blocks placing a call */ }
-  await env.Q_PUSH.send({ kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName, callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now() });
+  // Generate a cryptographically secure token + expiration for the true ringing receipt
+  const ringReceiptToken = crypto.randomUUID();
+  const expiresAt = Date.now() + 30000; // 30s expiration window
+
+  // Register the receipt capability token in the CallRoom DO
+  try {
+    const callStub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(b.callId));
+    await callStub.fetch("https://call-room/control", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "register-token", token: ringReceiptToken, expiresAt }),
+    });
+  } catch (e) {
+    console.error("Failed to register ring receipt token in CallRoom:", String(e));
+  }
+
+  await env.Q_PUSH.send({
+    kind: "call", to: b.to, from: ctx.uid, fromName: resolvedName,
+    callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
+    ringReceiptToken, tokenExpiresAt: expiresAt
+  });
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so
   // the "incoming call shows uid/uid" fix is measurable and call volume/route is
@@ -780,3 +799,29 @@ export async function backup(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   return json({ error: "backup deprecated — relay removed; history lives in your InboxDO" }, 501);
 }
+
+export async function callRinging(req: Request, env: Env): Promise<Response> {
+  const b = (await req.json().catch(() => ({}))) as { callId?: string; ringReceiptToken?: string };
+  const callId = String(b.callId ?? "").trim();
+  const token = String(b.ringReceiptToken ?? "").trim();
+  if (!callId) return json({ error: "callId required" }, 400);
+  if (!token) return json({ error: "ringReceiptToken required" }, 400);
+  if (!env.CALL_ROOMS) return json({ error: "CALL_ROOMS binding missing" }, 500);
+
+  try {
+    const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
+    const r = await stub.fetch("https://call-room/control", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "device-ringing", callId, token }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ error: "failed to relay ringing to CallRoom" }));
+      return json(err, r.status);
+    }
+    return json({ ok: true });
+  } catch (e) {
+    return json({ error: `error: ${e}` }, 500);
+  }
+}
+

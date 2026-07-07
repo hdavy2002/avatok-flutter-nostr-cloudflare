@@ -206,9 +206,11 @@ function buildPayload(msg: PushMsg): { data: Record<string, string>; highPriorit
     return { highPriority: true, data: {
       type: "call", callId: msg.callId ?? "", fromPub: msg.from ?? "",
       fromName: msg.fromName ?? "AvaTOK", kind: msg.callType ?? "audio",
-      // [TRACE-ID-1] Correlation id → the callee's push handler reads it and
+      // [TRACE-ID-1] Correlation id -> the callee's push handler reads it and
       // stitches its CallSession telemetry to the caller's + Worker's trace.
       trace_id: msg.traceId ?? "",
+      ...(msg.ringReceiptToken ? { ringReceiptToken: msg.ringReceiptToken } : {}),
+      ...(msg.tokenExpiresAt ? { tokenExpiresAt: msg.tokenExpiresAt.toString() } : {}),
     } };
   }
   if (msg.kind === "call-status") {
