@@ -120,7 +120,7 @@ import { convAccept, convBlock, safetyReport, convAcceptState } from "./routes/s
 import { unfurl } from "./routes/unfurl";                                                            // STREAM C
 import { gifSearch, gifTrending } from "./routes/gif";                                               // STREAM E
 import { getAutoResponder, putAutoResponder } from "./routes/auto_responder";                        // STREAM F
-import { aiCatchup, aiSmartReplies, aiTranslate, aiGroupTranslate, safetyScore, aiBio } from "./routes/ai_chat"; // STREAM G + bio writer
+import { aiCatchup, aiSmartReplies, aiTranslate, aiGroupTranslate, safetyScore, aiBio, aiGender } from "./routes/ai_chat"; // STREAM G + bio writer + gender infer
 import { forwardMsg } from "./routes/messaging";                                                     // STREAM I
 import { addFavorite, removeFavorite, listFavorites } from "./routes/listings";                       // STREAM K
 
@@ -368,6 +368,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/safety/score" && req.method === "POST") return await safetyScore(req, env);
       // Profile: AI "write my bio" (moderated in + out)
       if (p === "/api/ai/bio" && req.method === "POST") return await aiBio(req, env);
+      // Profile: AI gender-from-name (prefill + lock the pronoun field)
+      if (p === "/api/ai/gender" && req.method === "POST") return await aiGender(req, env);
 
       // STREAM F — auto-responder ("Ava replies while you're away") per-user settings.
       if (p === "/api/auto-responder" && req.method === "GET") return await getAutoResponder(req, env);

@@ -429,6 +429,54 @@ export async function aiBio(req: Request, env: Env): Promise<Response> {
   return json({ bio });
 }
 
+// [PROFILE-GENDER-1] POST /api/ai/gender { name } → { gender, confidence }
+// Best-effort gender inference from a person's given name, used to PREFILL and
+// lock the profile's pronoun field (owner request 2026-07-08). Returns one of
+// 'male' | 'female' | 'unknown'. 'unknown' (or low confidence) tells the client to
+// let the user pick manually. Convenience only — not stored server-side here.
+// ===========================================================================
+export async function aiGender(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const email = await emailFor(env, ctx.uid);
+
+  let b: any; try { b = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const name = String(b?.name ?? "").trim().slice(0, 80);
+  if (!name) return json({ error: "name required" }, 400);
+
+  const system = [
+    "You infer the most likely gender associated with a person's GIVEN name, for setting pronouns.",
+    "Reply with STRICT JSON only: {\"gender\":\"male|female|unknown\",\"confidence\":0.0-1.0}.",
+    "Use 'male' or 'female' only when reasonably confident from the first name; otherwise 'unknown'.",
+    "Do not guess from a surname alone. Output ONLY the JSON object, no prose.",
+  ].join(" ");
+
+  let out = "";
+  try {
+    out = await llm(env, system, name, 40, 0.0);
+  } catch (e: any) {
+    trackUser(env, ctx.uid, email, "profile_gender_ai_error", "profile", { reason: String(e?.message ?? e).slice(0, 160), email });
+    return json({ gender: "unknown", confidence: 0 }); // fail soft → client lets user pick
+  }
+
+  let gender = "unknown";
+  let confidence = 0;
+  const m = out.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const j = JSON.parse(m[0]);
+      const g = String(j?.gender ?? "").toLowerCase();
+      if (g === "male" || g === "female") gender = g;
+      const c = Number(j?.confidence);
+      confidence = Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : 0;
+    } catch { /* keep unknown */ }
+  }
+  // Only lock when reasonably confident; otherwise hand control back to the user.
+  if (gender !== "unknown" && confidence < 0.6) gender = "unknown";
+  trackUser(env, ctx.uid, email, "profile_gender_ai_detected", "profile", { gender, confidence, email });
+  return json({ gender, confidence });
+}
+
 function bucket(score: number): string {
   if (score >= 0.8) return "high";
   if (score >= 0.5) return "med";
