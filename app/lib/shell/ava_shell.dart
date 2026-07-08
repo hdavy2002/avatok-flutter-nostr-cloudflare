@@ -71,7 +71,16 @@ class _AvaShellState extends State<AvaShell> {
   // NO number must choose one before entering the app — applies to new users at
   // onboarding AND existing users without a number on next open.
   bool _needsNumber = false;
+  // STICKY (dup-number fix 2026-07-08): once a number is picked in THIS app run,
+  // never re-show the gate. The old flow re-showed it because onDone→_load() re-ran
+  // the gate and validateGates() recomputed needsNumber from a STALE AvaNumber.me()
+  // (the assignment hadn't propagated yet), so the user was asked for a number a
+  // second time right after finishing their profile (proven in PostHog:
+  // number_gate_shown fired again immediately after profile_completed).
+  bool _numberAssignedThisSession = false;
   String? _authEmail; // email the user signed in with (Clerk) → shown locked in profile
+  String? _authFirst; // first name from the Google sign-in → prefills the profile
+  String? _authLast;  // last name from the Google sign-in → prefills the profile
 
   @override
   void initState() {
@@ -103,7 +112,7 @@ class _AvaShellState extends State<AvaShell> {
     final haveCache = storedComplete != null && storedComplete.isNotEmpty &&
         storedHasNumber != null && storedHasNumber.isNotEmpty;
     if (haveCache && mounted) {
-      final needsNumber = storedHasNumber != '1';
+      final needsNumber = storedHasNumber != '1' && !_numberAssignedThisSession;
       setState(() {
         _id = id;
         _profileComplete = storedComplete == '1';
@@ -121,11 +130,19 @@ class _AvaShellState extends State<AvaShell> {
       // The signed-in email (from Clerk) — used to prefill + lock the profile's
       // email field and satisfy its required-email validation.
       try {
-        final email = (await widget.clerk.currentUser())?.email;
-        if (mounted && email != null && email != _authEmail) {
-          setState(() => _authEmail = email);
+        final u = await widget.clerk.currentUser();
+        final email = u?.email;
+        // Capture email + Google-provided name for the profile (prefill + lock).
+        if (mounted && (email != _authEmail || u?.firstName != _authFirst || u?.lastName != _authLast)) {
+          setState(() {
+            _authEmail = email ?? _authEmail;
+            _authFirst = u?.firstName ?? _authFirst;
+            _authLast = u?.lastName ?? _authLast;
+          });
         } else {
           _authEmail = email ?? _authEmail;
+          _authFirst = u?.firstName ?? _authFirst;
+          _authLast = u?.lastName ?? _authLast;
         }
       } catch (_) {/* offline */}
       // Mandatory-profile gate (pic5): every entry into the shell — new users after
@@ -161,6 +178,9 @@ class _AvaShellState extends State<AvaShell> {
         final me = await AvaNumber.me();
         needsNumber = me.featureOn && !me.hasNumber;
       } catch (_) { needsNumber = false; }
+      // Dup-number fix: if the user already picked a number in this run, trust that
+      // over a possibly-stale server read so the gate is never re-shown post-profile.
+      if (_numberAssignedThisSession) needsNumber = false;
       // Persist both gate decisions so the NEXT launch enters instantly.
       try {
         await DiskCache.write(_kProfileCompleteFlag, complete ? '1' : '0');
@@ -469,13 +489,21 @@ class _AvaShellState extends State<AvaShell> {
       return NumberSettingsScreen(
         gate: true,
         onSignOut: widget.onSignOut,
-        onAssigned: () => setState(() => _needsNumber = false),
+        onAssigned: () {
+          // Mark sticky + persist the "has number" flag IMMEDIATELY so the
+          // post-profile onDone→_load() reads '1' and never re-shows this gate.
+          _numberAssignedThisSession = true;
+          unawaited(DiskCache.write(_kHasNumberFlag, '1').catchError((_) {}));
+          setState(() => _needsNumber = false);
+        },
       );
     }
     if (_profileComplete == false) {
       return ProfileSetupScreen(
         identity: _id,
         email: _authEmail,
+        prefillFirstName: _authFirst,
+        prefillLastName: _authLast,
         onSignOut: widget.onSignOut,
         // Re-run the gate after the profile is saved (show the loader meanwhile,
         // no flash to the chat list).
