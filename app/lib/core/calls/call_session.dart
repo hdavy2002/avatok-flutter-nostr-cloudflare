@@ -239,7 +239,12 @@ class CallSession {
   Timer? _avaLiveWatchdog;            // fires if no ack within the timeout window
   VoidCallback? _avaLevelListener;    // listens to ReceptionistCall.avaLevel
   ReceptionistCall? _avaLevelSource;  // the call we attached _avaLevelListener to
-  static const int _avaLiveTimeoutMs = 4000; // ~4s per the remediation plan
+  // Fallback window only — the primary gate is now the explicit 'live' status
+  // (ReceptionistCall's first inbound audio frame). Widened from 4000ms because
+  // the unreachable path's dial + Gemini-connect + first-audio latency routinely
+  // reached ~3.8s, landing right on the old deadline and dropping live calls
+  // (AVA-RECEPT-UNREACHABLE-WATCHDOG-RACE). 8s gives the fallback real headroom.
+  static const int _avaLiveTimeoutMs = 8000;
   String _myAvatar = '';
   String _myName = 'You';
   String _mySeed = 'me';
@@ -1916,6 +1921,15 @@ class CallSession {
               _setPhase('receptionist-connecting');
               _armAvaLiveWatchdog(call);
             }
+            break;
+          case 'live':
+            // [AVA-CLIENT-1] Explicit first-audio ack from ReceptionistCall (its
+            // first inbound Ava audio frame). Deterministic proof Ava is speaking —
+            // open the gate immediately instead of waiting for the avaLevel meter to
+            // cross its threshold before the watchdog fires. This is what fixes the
+            // unreachable-mode race where a genuinely-live Ava got dropped as
+            // 'ava_live_timeout' (AVA-RECEPT-UNREACHABLE-WATCHDOG-RACE).
+            _openAvaLiveGate();
             break;
           case 'wrapup':
             // Ava reached her soft-cap → she is unambiguously live: open the

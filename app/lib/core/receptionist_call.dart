@@ -292,6 +292,14 @@ class ReceptionistCall {
           'engine': _useNative ? 'native' : 'fallback',
           if (callId case final id?) 'call_id': id,
         });
+        // [AVA-CLIENT-1] Deterministic "Ava is live" ack. The first inbound audio
+        // frame is unambiguous proof Ava is speaking, so surface it as an explicit
+        // status the session opens its ava-live gate on — no longer reliant on the
+        // avaLevel meter crossing a threshold before the watchdog expires (that
+        // race dropped otherwise-live unreachable-mode calls; see AVA-RECEPT-
+        // UNREACHABLE-WATCHDOG-RACE). Fires even while held (countdown): a held
+        // first frame still means Ava is live, and the gate honours it on release.
+        onStatus?.call('live');
       }
       _bytesIn += data.length;
       _avaChunks++;
