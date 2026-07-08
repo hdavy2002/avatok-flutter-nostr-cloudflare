@@ -1,49 +1,42 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics.dart';
-import 'human_check_page.dart';
-import 'identity_api.dart';
+import '../../core/verification_api.dart';
+import 'phone_verify_screen.dart';
 
-/// First-time liveness "human check" gate for LISTING CREATION (owner decision
-/// 2026-07-03). Liveness is no longer an onboarding gate — instead, anyone who
-/// wants to CREATE a marketplace listing must pass the check ONCE. On PASS the
-/// server flips kyc_status → 'verified' and they never do it again; the Worker
-/// enforces this on publish (403 {error:'liveness_required'}). This helper is
-/// the CLIENT side: it routes an unverified seller through the liveness flow so
-/// they see the friendly check instead of a raw error.
+/// First-time PHONE-OTP gate for LISTING CREATION (owner decision 2026-07-07).
 ///
-/// Returns `true` if the user is (or becomes) verified — the caller may then
-/// open the sell flow. Returns `false` if the user is not verified and either
-/// cancelled or failed the check.
+/// Liveness is now the ONBOARDING gate only. The marketplace "sell" gate is a
+/// one-time PHONE OTP: anyone who wants to CREATE a marketplace listing confirms
+/// a real mobile number ONCE. On confirm the server flips the phone proof →
+/// 'verified' (the phone tick turns GREEN in the Identity menu) and enforces
+/// phone_verified on publish (the Worker returns 403 {error:'phone_required'}
+/// otherwise). This helper is the CLIENT side: it routes an unverified seller
+/// through the phone-OTP flow so they see the friendly check instead of a raw
+/// error.
 ///
-/// "Already verified" is detected via the KYC status the server uses as the real
-/// gate: [IdentityApi] `kyc_status == 'verified'` (IdentityStatus.verified). We
-/// try the per-account cached value first (instant, offline-safe) and confirm
-/// with server truth only when the cache says not-verified.
+/// Kept the name `ensureListingLiveness` so existing call sites (marketplace_hub,
+/// sell_listing_flow) are unchanged; the gate is still flag-gated upstream by
+/// RemoteConfig.listingLivenessGate.
+///
+/// Returns `true` if the user is (or becomes) phone-verified — the caller may
+/// then open the sell flow. Returns `false` if they cancelled or failed.
 Future<bool> ensureListingLiveness(BuildContext context) async {
-  // 1) Already verified? No UI — go straight through. Cache first (instant),
-  //    then confirm with the server if the cache is cold/not-verified.
-  var verified = await IdentityApi.cachedVerified();
-  if (!verified) {
-    verified = (await IdentityApi.status())?.verified ?? false;
-  }
-  if (verified) return true;
+  // 1) Already phone-verified (account-keyed)? No UI — go straight through.
+  if (await VerificationApi.isPhoneVerified()) return true;
 
   if (!context.mounted) return false;
 
-  // 2) Not verified → run the one-time human check (dismissible).
-  Analytics.capture('listing_liveness_gate_shown', const {});
+  // 2) Not verified → run the one-time phone-OTP confirm (dismissible).
+  Analytics.capture('listing_phone_gate_shown', const {});
   final passed = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (_) => const HumanCheckPage(source: HumanCheckSource.listing),
+          builder: (_) => const PhoneVerifyScreen(reason: 'listing'),
         ),
       ) ==
       true;
 
-  if (passed) {
-    Analytics.capture('listing_liveness_passed', const {});
-  } else {
-    Analytics.capture('listing_liveness_cancelled', const {});
-  }
+  Analytics.capture(
+      passed ? 'listing_phone_passed' : 'listing_phone_cancelled', const {});
   return passed;
 }

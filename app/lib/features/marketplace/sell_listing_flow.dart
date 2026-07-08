@@ -233,17 +233,20 @@ class _SellListingFlowState extends State<SellListingFlow> {
       return;
     }
     var res = await ListingsApi.publish(id);
-    // Fallback: the server gate returns 403 {error:'liveness_required'} when the
-    // seller isn't verified. Don't show the raw string — run the one-time human
-    // check and, on PASS, retry publish once. On fail, a friendly message.
-    if (!res.isEmpty && res['error']?.toString() == 'liveness_required') {
+    // Fallback: the server gate returns 403 {error:'phone_required'} when the
+    // seller hasn't confirmed a phone. (Legacy builds may still return
+    // 'liveness_required' — accept both.) Don't show the raw string — run the
+    // one-time phone-OTP confirm and, on PASS, retry publish once. On fail, a
+    // friendly message.
+    final gateErr = res.isEmpty ? '' : (res['error']?.toString() ?? '');
+    if (gateErr == 'phone_required' || gateErr == 'liveness_required') {
       if (!mounted) return;
       final passed = await ensureListingLiveness(context);
       if (!mounted) return;
       if (passed) {
         res = await ListingsApi.publish(id); // retry once, now verified
       } else {
-        setState(() { _busy = false; _error = 'You need to verify you\'re a real person to publish a listing.'; });
+        setState(() { _busy = false; _error = 'You need to confirm your phone number to publish a listing.'; });
         return;
       }
     }

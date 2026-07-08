@@ -204,7 +204,8 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
           const SizedBox(height: 14),
           // D15 — retention sentence. DO NOT REMOVE.
           Text(
-            'Your verification video is stored securely and used only for safety review.',
+            'Your verification video is stored securely and used only for safety review, '
+            'and is deleted the moment you close your account with us.',
             style: ZineText.sub(size: 15).copyWith(fontWeight: FontWeight.w700, color: Zine.ink),
           ),
           const SizedBox(height: 24),
@@ -251,11 +252,17 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
               widget.source == HumanCheckSource.listing
                   ? 'To keep the marketplace trusted, we check that sellers are '
                       'real people. It takes about 15 seconds and you only do this once.'
-                  : 'Let our AI check that you\'re a real person — AI bots keep '
-                      'trying to sign up! No AI agents allowed on AvaTOK. This takes about '
-                      '15 seconds.',
+                  : 'Let\'s check you\'re a real human — and not an alien from Mars. '
+                      'AI bots keep trying to sign up, and no bots (or Martians) are '
+                      'allowed on AvaTOK. It takes about 15 seconds and you only do it once.',
               textAlign: TextAlign.center,
               style: ZineText.sub(size: 15),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Your data is deleted the moment you close your account with us.',
+              textAlign: TextAlign.center,
+              style: ZineText.sub(size: 13).copyWith(fontWeight: FontWeight.w700, color: Zine.ink),
             ),
             const SizedBox(height: 20),
             Center(child: ZineLink('Why are we asking this?', onTap: _openWhy)),

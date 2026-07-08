@@ -31,7 +31,7 @@
 //   POST   /api/report                   A4 → user_reports pipeline
 import type { Env } from "../types";
 import { json } from "../util";
-import { requireUser, isFail, requireKyc, requireLiveness } from "../authz";
+import { requireUser, isFail, requireKyc } from "../authz";
 import { metaDb, metaSession, moderationDb } from "../db/shard";
 import { claimBlock, releaseBlocks, policyViolation } from "../cal/engine";
 import { hold, refund } from "../ledger";
@@ -267,23 +267,25 @@ function normFields(b: any): Record<string, unknown> {
   return out;
 }
 
-// P4 video-liveness gate (the REAL, bypass-proof gate): when listingLivenessGate is
-// ON, NO user may create/publish ANY listing unless kyc_status='verified'. Browsing
-// stays free. Returns a 403 Response to short-circuit, or null to proceed. Fail
-// CLOSED — if the kyc lookup throws we treat the user as unverified (a listing can
+// Marketplace "sell" gate (owner decision 2026-07-07): liveness is now the
+// ONBOARDING gate ONLY; creating/publishing a marketplace listing requires a
+// one-time PHONE OTP instead. When listingLivenessGate is ON (flag reused), NO
+// user may create/publish ANY listing unless contact_verification.phone_verified=1.
+// Browsing stays free. Returns a 403 Response to short-circuit, or null to proceed.
+// Fail CLOSED — if the lookup throws we treat the user as unverified (a listing can
 // wait; a bad actor cannot slip through on an infra hiccup).
-async function livenessGate(env: Env, uid: string, listingKind: string, listingId: string | null): Promise<Response | null> {
+async function phoneGate(env: Env, uid: string, listingKind: string, listingId: string | null): Promise<Response | null> {
   let on = false;
   try { on = (await readConfig(env)).listingLivenessGate === true; } catch { on = false; }
   if (!on) return null;
   let verified = false;
   try {
-    const row = await metaDb(env).prepare("SELECT status FROM kyc_status WHERE uid=?1").bind(uid).first<{ status: string }>();
-    verified = row?.status === "verified";
+    const row = await metaDb(env).prepare("SELECT phone_verified FROM contact_verification WHERE uid=?1").bind(uid).first<{ phone_verified: number }>();
+    verified = Number(row?.phone_verified ?? 0) === 1;
   } catch { verified = false; } // fail closed
   if (verified) return null;
-  track(env, uid, "listing_blocked_unverified", APP, { listing_id: listingId, listing_kind: listingKind });
-  return json({ error: "liveness_required" }, 403);
+  track(env, uid, "listing_blocked_phone_unverified", APP, { listing_id: listingId, listing_kind: listingKind });
+  return json({ error: "phone_required" }, 403);
 }
 
 // POST /api/listings — create a draft.
@@ -293,11 +295,10 @@ export async function createListing(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as any;
   const kind = String(b.kind || "");
   if (!KINDS.has(kind)) return json({ error: "kind must be live_event|consult|sell|buy|social" }, 400);
-  // P4: no listing (of any kind) without video-liveness verification (flag-gated).
-  const gate = await livenessGate(env, ctx.uid, kind, null);
+  // Marketplace sell gate (2026-07-07): phone-OTP instead of liveness. Liveness
+  // is the ONBOARDING gate only and is NOT required to create a listing.
+  const gate = await phoneGate(env, ctx.uid, kind, null);
   if (gate) return gate;
-  // STREAM H [LIVE-GATE-5]: onboarding human-check gate (independent of the P4 flag).
-  { const g = await requireLiveness(env, ctx.uid, "listing/create"); if (g) return json({ error: g.error }, g.status); }
   const id = crypto.randomUUID();
   const now = Date.now();
   const f = normFields(b);
@@ -366,14 +367,11 @@ export async function publishListing(req: Request, env: Env, id: string): Promis
   if (!l || l.creator_id !== ctx.uid) return json({ error: "not found" }, 404);
   if (l.status !== "draft") return json({ error: "already published", status_now: l.status }, 409);
 
-  // P4: liveness gate covers publish AND edit-to-republish (a re-publish always
-  // funnels back through here). Applies to EVERY kind when the flag is on.
-  const lg = await livenessGate(env, ctx.uid, String(l.kind), id);
+  // Marketplace sell gate (2026-07-07): phone-OTP instead of liveness. Covers
+  // publish AND edit-to-republish (a re-publish always funnels back through here).
+  // Liveness is the ONBOARDING gate only and is NOT required to publish a listing.
+  const lg = await phoneGate(env, ctx.uid, String(l.kind), id);
   if (lg) return lg;
-  // STREAM H [LIVE-GATE-5]: independent onboarding human-check gate. Fires even
-  // when listingLivenessGate is OFF but livenessOnboardingGate (KV) is ON — both
-  // reject unverified accounts with 403 liveness_required.
-  { const g = await requireLiveness(env, ctx.uid, "listing/publish"); if (g) return json({ error: g.error }, g.status); }
 
   const isMarket = MARKET_KINDS.has(String(l.kind));
   if (isMarket) {
