@@ -664,10 +664,33 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
       if (done) {
         ContactsStore().pullAndMerge(); // sync contacts from the vault
         await _landOrGate(); // [LIVE-GATE-4] hold at human check if unverified + flag on
-      } else {
-        _to(_Stage.onboarding);
+        return;
       }
-      return;
+      // [RESTORE-FIX 2026-07-08] Local identity exists but onboarding isn't marked
+      // done. Do NOT assume brand-new — this is exactly the state a returning user
+      // hits after a cancelled/reactivated deletion or a DB reset, and sending them
+      // to onboarding makes it look like "my account and data vanished". Reconcile
+      // with the server first: if it knows this account, restore + land (the sync
+      // hub then catches up all messages from the InboxDO); only onboard if the
+      // server positively says there's no account.
+      RestoreState reSt;
+      try { reSt = await AccountRestore.restoreFromServer(); }
+      catch (_) { reSt = const RestoreState(RestoreOutcome.unavailable); }
+      switch (reSt.outcome) {
+        case RestoreOutcome.restored:
+          ContactsStore().pullAndMerge();
+          await _landOrGate();
+          return;
+        case RestoreOutcome.newUser:
+          _to(_Stage.onboarding);
+          return;
+        case RestoreOutcome.needsRecovery:
+        case RestoreOutcome.unavailable:
+          // Can't confirm the account is new → never fork it into onboarding.
+          setState(() => _restoreState = reSt);
+          _to(_Stage.restore);
+          return;
+      }
     }
     // Fresh install / new device → ask the server who this account is.
     RestoreState st;

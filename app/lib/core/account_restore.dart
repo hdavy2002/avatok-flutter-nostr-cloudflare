@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'account_key.dart';
 import 'api_auth.dart';
 import 'config.dart';
 import 'onboarding_store.dart';
@@ -99,6 +100,11 @@ class AccountRestore {
   static Future<void> _install({String? handle, String? displayName}) async {
     final store = IdentityStore();
     if (await store.load() == null) await store.createAndStore();
+    // [RESTORE-FIX 2026-07-08] Restore the Account Encryption Key from server
+    // escrow BEFORE pulling the vault, so contacts / prefs / private media all
+    // decrypt on this device instead of coming back blank. Best-effort: offline
+    // falls back to the lazy restore inside each vault op.
+    try { await AccountKey.I.ensureHex(); } catch (_) {/* lazy restore still covers it */}
     final ps = ProfileStore();
     final cur = await ps.load();
     await ps.save(cur.copyWith(
