@@ -297,7 +297,12 @@ class Outbox {
         // (`conv`). The server accepts exactly one of them (messaging.ts sendMsg).
         if (entry.isGroup) 'conv': entry.conv else 'to': entry.to,
         'kind': entry.kind, 'body': entry.payload, 'client_id': entry.clientId,
-      });
+        // [MSG-SEND-TIMEOUT-1] The 8s postJson default sat below sendMsg's real
+        // tail latency (Clerk verify + D1 + DO append + awaited offline FCM), so
+        // slow-network sends "timed out" client-side while succeeding server-side
+        // (57 TimeoutExceptions / 3 days for one user). 20s covers the tail; the
+        // idempotent client_id retry stays as the backstop.
+      }, timeout: const Duration(seconds: 20));
       // [SRV-MSG-IDEMP-1] A retry of an already-stored client_id returns 200 with
       // already_processed:true — same as a fresh ACK (the row already exists, no
       // duplicate is created). Treat both as ACK.

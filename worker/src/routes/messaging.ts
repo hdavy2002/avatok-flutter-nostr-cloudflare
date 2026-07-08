@@ -451,7 +451,14 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
               app_name: "avatok", service_name: "avatok-api", worker: true } });
         } catch { /* best-effort */ }
       } else if (!r.live) {
-        await pushOffline(env, m, fromName, preview);
+        // [MSG-SEND-TIMEOUT-1] Do NOT await the offline FCM push in the sender's
+        // request path. Durability is already guaranteed by the appendTo() above
+        // (the recipient's InboxDO has the message); the push is a wake-up hint.
+        // Awaiting it added FCM's tail latency to every offline-recipient send and
+        // pushed slow-network senders past their client timeout (PostHog
+        // /api/msg/send TimeoutException x57). Same fire-and-forget pattern as
+        // maybeEnqueueAutoReply / the brain scans below.
+        void pushOffline(env, m, fromName, preview).catch(() => {});
       }
       // STREAM F — auto-responder hook. DM-only (isDm), regular messages only (not a
       // delete-for-everyone control). Fires independent of socket liveness because
