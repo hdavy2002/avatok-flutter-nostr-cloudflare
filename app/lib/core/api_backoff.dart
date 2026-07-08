@@ -30,10 +30,18 @@ class ApiBackoffState {
   /// - 503 (transient): backs off exponentially, keeps retrying.
   /// - success: resets the backoff counter.
   bool shouldRetry(int status) {
-    if (status == 422) {
-      // Validation error — never retry this call
-      AvaLog.I.log('api_backoff', '$endpoint: 422 validation error, no retry');
-      Analytics.capture('api_error', {'endpoint': endpoint, 'status': 422, 'backoff': 'never'});
+    if (status == 422 || status == 400) {
+      // Validation error — never retry this call.
+      // [PROFILE-400-LOOP-1] (2026-07-08): 400 now counts as a validation reject
+      // too. profileUpsert's own validations (invalid_birth_year /
+      // profile_incomplete / implausible_name / photo vet) return 400, not the
+      // 422 this guard was built for, so 400s fell through to "allow retry" and
+      // the per-launch auto-publish re-POSTed the same invalid payload forever
+      // (PostHog: /api/profile 400 x49 across 5 users). Same payload → same
+      // verdict; a resubmit only helps after the user EDITS the profile, and the
+      // save screen calls [reset] for exactly that.
+      AvaLog.I.log('api_backoff', '$endpoint: $status validation error, no retry');
+      Analytics.capture('api_error', {'endpoint': endpoint, 'status': status, 'backoff': 'never'});
       _attemptsSince503 = -1; // Mark as permanently failed
       return false;
     }
