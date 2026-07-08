@@ -59,6 +59,11 @@ class ReceptionistCall {
   /// 'connecting' | 'connected' | 'wrapup' | 'ended'
   void Function(String status)? onStatus;
 
+  /// [RECEPT-START-409-1] Why [start] returned false (server refusal reason,
+  /// 'network', or null if start succeeded / wasn't reached). 'reattach_blocked'
+  /// means another leg already owns a live Ava session for this call — benign.
+  String? failReason;
+
   // ── native full-duplex engine (preferred) ───────────────────────────────────
   final NativeVoiceAudio _native = NativeVoiceAudio();
   bool _useNative = false;
@@ -154,9 +159,14 @@ class ReceptionistCall {
     final s = await ReceptionistApi.start(
       to: calleeUid, callId: callId, callerPhone: callerPhone, callerName: callerName,
       activationMode: activationMode, teamId: teamId, teamSlot: teamSlot);
-    if (s == null) {
+    if (s == null || s['ok'] != true) {
+      // [RECEPT-START-409-1] Record the server's actual refusal reason instead of
+      // the blanket 'start_failed'. 'reattach_blocked' (409) is BENIGN: a session
+      // for this exact call is already live (server RECEPT-REATTACH-1) — callers
+      // read [failReason] to skip the misleading "Couldn't reach Ava" surface.
+      failReason = s == null ? 'network' : (s['reason'] ?? 'start_failed').toString();
       Analytics.capture('ava_recept_skipped', {
-        'reason': 'start_failed',
+        'reason': s == null ? 'start_failed' : 'refused_${s['reason'] ?? s['status']}',
         'activation_mode': activationMode,
         if (callId case final id?) 'call_id': id,
       });

@@ -219,6 +219,8 @@ class CallSession {
   final RingbackPlayer _ringback = RingbackPlayer();
   ReceptionistCall? _receptionist;
   bool _receptionistActive = false;
+  // [RECEPT-START-409-1] Server refusal reason from the last failed /start.
+  String? _receptFailReason;
   int _avaCount = 0;
   bool _avaCountingDown = false;
   // [AVA-CLIENT-1] Server "ava-live" ack gate. The confident "Ava is taking your
@@ -1892,7 +1894,14 @@ class CallSession {
     _ringback.stop();
     final started = await _tryReceptionist(activationMode: activationMode);
     if (!started && !_connected) {
-      _endWith('declined', reason: 'receptionist-unavailable');
+      // [RECEPT-START-409-1] A 409 reattach_blocked means Ava is ALREADY live on
+      // another leg of this exact call — ending with "Couldn't reach Ava" here was
+      // a lie (the message IS being taken). End this duplicate leg quietly.
+      if (_receptFailReason == 'reattach_blocked') {
+        _endWith('ended', reason: 'recept-reattach-noop');
+      } else {
+        _endWith('declined', reason: 'receptionist-unavailable');
+      }
     }
   }
 
@@ -1976,7 +1985,13 @@ class CallSession {
       await _runAvaCountdown();
       final ok = await startFut;
       _avaCountingDown = false;
-      if (!ok) return false;
+      if (!ok) {
+        // [RECEPT-START-409-1] Keep the server's refusal reason so the caller
+        // surface can distinguish "another leg already owns Ava for this call"
+        // (benign 409 reattach) from a genuine receptionist outage.
+        _receptFailReason = call.failReason;
+        return false;
+      }
       _receptionist = call;
       // [RECEPT-CALLBACK-PREEMPT-1] Publish the receptionist's target (the
       // callee whose Ava we're now talking to) so an incoming callback FROM

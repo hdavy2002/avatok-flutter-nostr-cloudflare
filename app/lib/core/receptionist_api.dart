@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'api_auth.dart';
@@ -242,22 +243,46 @@ class ReceptionistApi {
     String? teamId,
     int? teamSlot,
   }) async {
-    try {
-      final r = await ApiAuth.postJson('$_base/start', {
-        'to': to,
-        'call_id': callId,
-        'caller_phone': callerPhone,
-        'caller_name': callerName,
-        'activation_mode': activationMode,
-        if (teamId != null) 'team_id': teamId,
-        if (teamSlot != null) 'team_slot': teamSlot,
-      });
-      if (r.statusCode != 200) return null;
-      final j = jsonDecode(r.body) as Map<String, dynamic>;
-      return j['ok'] == true ? j : null;
-    } catch (_) {
-      return null;
+    final body = {
+      'to': to,
+      'call_id': callId,
+      'caller_phone': callerPhone,
+      'caller_name': callerName,
+      'activation_mode': activationMode,
+      if (teamId != null) 'team_id': teamId,
+      if (teamSlot != null) 'team_slot': teamSlot,
+    };
+    // [RECEPT-START-409-1] /start does real work server-side (D1 + CallRoom DO +
+    // authority probes + session mint) — the 8s postJson default was timing out on
+    // slow links and dead-ending the caller at "NO ANSWER" (PostHog api_error
+    // status=0 → ava_recept_skipped start_failed). 15s + one retry; the server's
+    // RECEPT-REATTACH-1 KV claim makes the retry idempotent (worst case it answers
+    // 409 reattach_blocked, which we now surface instead of swallowing).
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final r = await ApiAuth.postJson('$_base/start', body,
+            timeout: const Duration(seconds: 15));
+        final j = (jsonDecode(r.body) as Map?)?.cast<String, dynamic>() ?? {};
+        if (r.statusCode == 200 && j['ok'] == true) return j;
+        // [RECEPT-START-409-1] Non-200: return the parsed refusal instead of null
+        // so callers can distinguish the benign 409 reattach no-op ("a session for
+        // this exact call is already live — stay on it") from a real failure.
+        // Previously every 409 was swallowed as null → logged start_failed → the
+        // caller saw "NO ANSWER" even though Ava WAS handling the call.
+        return {
+          'ok': false,
+          'status': r.statusCode,
+          'reason': (j['reason'] ?? j['error'] ?? 'http_${r.statusCode}').toString(),
+          if (j['session_id'] != null) 'session_id': j['session_id'],
+        };
+      } on TimeoutException {
+        if (attempt == 0) continue; // one retry on a pure timeout
+        return null;
+      } catch (_) {
+        return null;
+      }
     }
+    return null;
   }
 
   /// Caller: safety finalize if the WS never connected.
