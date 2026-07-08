@@ -1789,8 +1789,12 @@ class CallSession {
       _startRingWindow(window);
       return;
     }
-    if (_pendingAckResult != null && !_pendingAckResult!) {
-      _applyRingAck(false);
+    // [CALL-RINGACK-EXTEND-1] Apply a stored ack of EITHER polarity. Previously an
+    // ok=true ack that arrived before the receptionist probe resolved was silently
+    // dropped here, so the 6s _deviceRingingTimer stayed armed and declared the
+    // callee unreachable even though the push had verifiably left the building.
+    if (_pendingAckResult != null) {
+      _applyRingAck(_pendingAckResult!);
       return;
     }
     _ringAckHandled = false;
@@ -1817,10 +1821,23 @@ class CallSession {
   void _applyRingAck(bool ok) {
     if (_ringAckHandled) return;
     if (ok) {
-      // Push sent successfully. Cancel the fallback timer since we got the server's ack,
-      // but do NOT start the ring window or play ringback yet (continue waiting for device-ringing).
+      // [CALL-RINGACK-EXTEND-1] (2026-07-08 "everyone gets Ava" incident) Push sent
+      // successfully — the ring push verifiably left the building, so the callee
+      // must get the FULL ring window (config.ts receptTakeoverGuard contract:
+      // "ok:true → give the callee the full ring window"). Previously we only
+      // cancelled the fallback and left the 6s _deviceRingingTimer armed; FCM
+      // delivery routinely takes 8-15s, so callers were handed to the Ava
+      // receptionist BEFORE the callee's phone ever rang, even with both users
+      // online (PostHog: ring_ack ok=true at ~4s, call_cancel_sent at ~6s,
+      // callee's call_incoming_* only at ~12s). The device-ringing receipt still
+      // refines phase/ringback when it arrives; only ok=false fast-fails to Ava.
       _ringAckFallback?.cancel();
-      Analytics.capture('call_ring_ack', {'call_id': config.room, 'ok': ok, 'source': 'server'});
+      _deviceRingingTimer?.cancel();
+      if (!_deviceRinging) {
+        _startRingWindow(_pendingRingWindow ?? const Duration(seconds: 25));
+      }
+      Analytics.capture('call_ring_ack',
+          {'call_id': config.room, 'ok': ok, 'source': 'server', 'window_extended': true});
       return;
     }
     _ringAckHandled = true;
