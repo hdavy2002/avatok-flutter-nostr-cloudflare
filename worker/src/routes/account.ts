@@ -10,7 +10,6 @@ import { setVerifiedCache } from "../auth";
 import { requireUser, isFail } from "../authz";
 import { metaDb } from "../db/shard";
 import { track } from "../hooks";
-import { purgeLivenessEvidence } from "./liveness_audit";
 // [SENTINEL-MEM0-PURGE] Guardian Sentinel S2 — best-effort mem0 behaviour-memory
 // purge. Enqueue + retry asynchronously; NEVER blocks canonical deletion (plan §1.1
 // rule 5: an external SaaS can never block account deletion). No-ops without a key.
@@ -36,18 +35,14 @@ export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   // Drop any cached verified flag during grace.
   await setVerifiedCache(env, ctx.uid, false);
 
-  // [LIVE-PURGE-1] The identity-verification UI promises "your video is erased
-  // the moment you close your account" — that can't wait for the 30-day grace
-  // cascade (consumers/deletion.ts only wipes the transient u/<uid>/ prefix
-  // anyway, not the D15 retained liveness/<uid>/ audit prefix). Purge liveness
-  // evidence immediately, best-effort, at request time — everything else in the
-  // account still honors the 30-day grace/cancel window.
-  // TRADE-OFF: if the user cancels within the grace window (cancelDeletion
-  // below), their account is fully restored EXCEPT liveness evidence, which is
-  // already gone — a cancel-and-restore user would need to re-verify. This is
-  // the deliberate cost of honoring the "erased the moment you close your
-  // account" promise literally rather than only after the 30-day grace elapses.
-  void purgeLivenessEvidence(env, ctx.uid).catch(() => {});
+  // [LIVE-PURGE-2] Owner decision 2026-07-08: verification/liveness evidence is
+  // NO LONGER purged at request time. It is wiped by the 30-day-grace cascade
+  // (consumers/deletion.ts already deletes BOTH the u/<uid>/ and liveness/<uid>/
+  // R2 prefixes and the identity_proofs liveness row — a full superset of the old
+  // immediate purge). Rationale: deletion is now cancellable AND reactivatable on
+  // log-back-in, so a user who returns within the grace keeps their verification
+  // instead of being downgraded to "needs re-verify". The delete dialog already
+  // says evidence is wiped "after a 30-day grace period", so this matches the UI.
 
   // [SENTINEL-MEM0-PURGE] Queue a mem0 behaviour-memory purge and move on. This is
   // best-effort and DETACHED — canonical deletion must never wait on an external SaaS
