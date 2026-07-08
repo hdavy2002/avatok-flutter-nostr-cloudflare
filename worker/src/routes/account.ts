@@ -16,7 +16,10 @@ import { purgeLivenessEvidence } from "./liveness_audit";
 // rule 5: an external SaaS can never block account deletion). No-ops without a key.
 import { enqueueMem0Purge } from "../sentinel/purge";
 
-const GRACE_MS = 30 * 86_400_000; // 30-day grace (§10.5)
+// [TEMP-1H-GRACE] Temporarily shortened from 30 days to 1 hour to verify the
+// deletion cascade fully wipes an account end-to-end. Revert to `30 * 86_400_000`
+// (30-day grace, §10.5) once the wipe is confirmed.
+const GRACE_MS = 60 * 60_000; // 1-hour grace (TEMP — normally 30 days)
 
 export async function deleteAccount(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
