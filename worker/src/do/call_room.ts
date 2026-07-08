@@ -147,6 +147,16 @@ export class CallRoom {
           answered_at: this.answeredAt ?? null,
           answered_by: this.answeredBy ?? null,
           ended: this.ended === true,
+          // CALL-ANSWERED-LIVE-1: how many transports are on the call RIGHT NOW.
+          // `answered` is sticky (set the instant a 2nd socket ever joined), so a
+          // transient/zombie join — e.g. an offline callee's FCM-woken socket that
+          // dies before media, or a caller reconnect with a fresh tag — leaves
+          // answered=true forever even though no real conversation happened. That
+          // stale flag was vetoing the unreachable→Ava handoff with 409
+          // call_answered (PostHog: /api/receptionist/start 409, call avatok-8caef3ce
+          // 2026-07-08). Exposing the LIVE peer count lets the receptionist gate
+          // distinguish "genuinely on a call now" (>=2) from "phantom-answered".
+          peers: this.state.getWebSockets().length,
         });
       }
       // P1 ring-ack control-plane (Phase 1, receptTakeoverGuard). A server worker

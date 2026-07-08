@@ -826,16 +826,28 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const callId = b.call_id == null ? null : String(b.call_id).slice(0, 64);
   if (callId) {
     let answered = false;
+    // CALL-ANSWERED-LIVE-1: the DO is the strongly-consistent authority. `answered`
+    // alone is STICKY (set forever once a 2nd socket ever joined), so a transient
+    // /zombie join left it true and 409-blocked the unreachable→Ava handoff even
+    // though no real call happened. Gate on a LIVE call instead: answered AND not
+    // ended AND >=2 transports connected right now. When the DO answers we trust it
+    // exclusively (no KV fallback), because the KV `call_answered` flag has the SAME
+    // stale-phantom problem and would reintroduce the bug.
+    let doStateKnown = false;
     try {
       const stub = env.CALL_ROOMS.get(env.CALL_ROOMS.idFromName(callId));
       const r = await stub.fetch("https://call/state", { method: "GET" });
       if (r.ok) {
-        const st = (await r.json()) as { answered?: boolean };
-        answered = st.answered === true;
+        const st = (await r.json()) as { answered?: boolean; ended?: boolean; peers?: number };
+        doStateKnown = true;
+        answered = st.answered === true && st.ended !== true && (st.peers ?? 0) >= 2;
       }
     } catch { /* DO probe failed — fall through to KV fallback below */ }
-    if (!answered) {
-      // CALL-KV-STATE-1 dual-read fallback — delete with the KV dual-write.
+    if (!doStateKnown) {
+      // DO unreachable only: last-resort KV read (best-effort, may be stale). We
+      // still consume it because a missing DO is rarer than a live answered call,
+      // and the caller-side no-answer/unreachable trigger already implies the caller
+      // is NOT in a live call.
       const kv = await env.TOKENS.get(`call_answered:${callId}`).catch(() => null);
       answered = kv === "true";
     }
