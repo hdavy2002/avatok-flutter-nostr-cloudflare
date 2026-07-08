@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
@@ -21,6 +20,7 @@ import '../../identity/identity.dart';
 import '../avatok/ava_number.dart';
 import '../avatok/contacts.dart';
 import 'avatar_crop_screen.dart';
+import 'personal_phone_field.dart';
 
 /// MANDATORY profile completion (pic5). Shown by [AvaShell] before the app can
 /// be used whenever the saved profile is missing any required field — photo,
@@ -35,12 +35,20 @@ class ProfileSetupScreen extends StatefulWidget {
   /// The email the user signed in with (from Clerk) — shown locked, and used to
   /// satisfy the required-email validation so "Save & continue" enables.
   final String? email;
+  /// Auto-fill values from the Google sign-in (owner request 2026-07-08). Applied
+  /// only when the corresponding local field is still empty, so they never clobber
+  /// something the user already typed. Birthday/phone would arrive here too once the
+  /// extra Google OAuth scopes are enabled in the Clerk dashboard.
+  final String? prefillFirstName;
+  final String? prefillLastName;
   const ProfileSetupScreen({
     super.key,
     required this.identity,
     required this.onDone,
     required this.onSignOut,
     this.email,
+    this.prefillFirstName,
+    this.prefillLastName,
   });
 
   @override
@@ -54,11 +62,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _last = TextEditingController();
   final _email = TextEditingController();
   final _phone = TextEditingController();
-  final _birthYear = TextEditingController();
   final _bio = TextEditingController();
 
   Identity? _id;
   String _avatarUrl = '';
+  // Full date of birth (mandatory, owner request 2026-07-08) + optional time of birth.
+  DateTime? _birthDate;
+  TimeOfDay? _birthTime;
+  // Personal (real) phone — collected + OTP-verified here, then locked. Distinct
+  // from the AvaTOK number. Optional (owner decision: sign-in runs on email).
+  String _privatePhone = '';
+  bool _privatePhoneVerified = false;
   String _gender = ''; // 'male' | 'female' | 'other' — mandatory (Ava's pronouns)
   String _avatokNumber = ''; // chosen in the number gate (shown here, locked)
   bool _photoBusy = false;
@@ -92,6 +106,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   String? _bioModError;         // inline reason when the bio is blocked
   String _bioLastChecked = '';
   bool _bioAiBusy = false;      // "write my bio" sparkle in flight
+
+  // ── Gender: AI-detected from the name and LOCKED (owner request 2026-07-08) ──
+  // When the server is confident it fills [_gender] + sets [_genderLocked] (the
+  // chips become a read-only locked row). An 'unknown'/low-confidence result leaves
+  // it unlocked so the user picks manually — so we never trap someone with an
+  // unusual name.
+  bool _genderLocked = false;
+  bool _genderDetecting = false;
+  Timer? _genderTimer;
+  String _genderNameChecked = '';
 
   // Server-side rejection reason shown as a prominent red banner above the Save
   // button, so the user always sees WHY Ava rejected the profile even if the
@@ -161,6 +185,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         final parts = p.nameParts;
         _first.text = parts.isNotEmpty ? parts.first : '';
         _last.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+        // Google auto-fill: only when the field is still empty (fresh signup).
+        if (_first.text.trim().isEmpty && (widget.prefillFirstName ?? '').isNotEmpty) {
+          _first.text = widget.prefillFirstName!.trim();
+        }
+        if (_last.text.trim().isEmpty && (widget.prefillLastName ?? '').isNotEmpty) {
+          _last.text = widget.prefillLastName!.trim();
+        }
         // Email is the account you signed in with — prefilled and LOCKED here
         // (owner decision 2026-06-27); change it later in Settings if needed.
         // Prefer the email passed from the auth layer, then telemetry, then any
@@ -168,11 +199,29 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         _email.text = (widget.email ?? '').isNotEmpty
             ? widget.email!
             : ((Analytics.currentEmail ?? '').isNotEmpty ? Analytics.currentEmail! : p.email);
-        _birthYear.text = p.birthYear?.toString() ?? '';
+        // Prefer the full stored DOB; fall back to a year-only legacy profile
+        // (construct Jan 1 of that year so the picker has a starting value).
+        if (p.birthDate.isNotEmpty) {
+          _birthDate = DateTime.tryParse(p.birthDate);
+        } else if (p.birthYear != null) {
+          _birthDate = DateTime(p.birthYear!, 1, 1);
+        }
+        if (p.birthTime.isNotEmpty) {
+          final parts = p.birthTime.split(':');
+          if (parts.length == 2) {
+            final h = int.tryParse(parts[0]); final m = int.tryParse(parts[1]);
+            if (h != null && m != null) _birthTime = TimeOfDay(hour: h, minute: m);
+          }
+        }
         _bio.text = p.bio;
         _avatarUrl = p.avatarUrl;
+        _privatePhone = p.privatePhone;
+        _privatePhoneVerified = p.privatePhoneVerified;
         _gender = p.gender;
       });
+      // If a name was auto-filled (Google) or restored and gender isn't set yet,
+      // kick off AI gender detection so it can lock without the user retyping.
+      if (_first.text.trim().isNotEmpty && _gender.isEmpty) _maybeDetectGender();
     });
     // The AvaTOK number was picked in the gate just before this screen — show it
     // (locked) in place of an editable phone field.
@@ -186,17 +235,63 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   @override
   void dispose() {
     _first.dispose(); _last.dispose(); _email.dispose(); _phone.dispose();
-    _birthYear.dispose(); _bio.dispose();
+    _bio.dispose();
     _bioTimer?.cancel();
+    _genderTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
-  int? get _birthYearValue {
-    final y = int.tryParse(_birthYear.text.trim());
-    if (y == null) return null;
-    final maxY = DateTime.now().year - 13;
-    return (y >= 1900 && y <= maxY) ? y : null;
+  /// The chosen DOB, only if valid: a real date, year ≥ 1900, and at least 13
+  /// years ago (the minimum-age rule). Null when unset or invalid.
+  DateTime? get _birthDateValue {
+    final d = _birthDate;
+    if (d == null) return null;
+    final cutoff13 = DateTime(DateTime.now().year - 13, DateTime.now().month, DateTime.now().day);
+    return (d.year >= 1900 && !d.isAfter(cutoff13)) ? d : null;
+  }
+
+  int? get _birthYearValue => _birthDateValue?.year;
+
+  /// Human-readable DOB for the tappable field ('' when unset).
+  String get _birthDateLabel {
+    final d = _birthDate;
+    if (d == null) return '';
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${d.day} ${months[d.month - 1]} ${d.year}';
+  }
+
+  String get _birthTimeLabel {
+    final t = _birthTime;
+    if (t == null) return '';
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final initial = _birthDate ?? DateTime(now.year - 20, 1, 1);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(now.year - 13, now.month, now.day),
+      helpText: 'Select your date of birth',
+    );
+    if (picked != null) {
+      _clearErr('birth_year');
+      setState(() => _birthDate = picked);
+    }
+  }
+
+  Future<void> _pickBirthTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _birthTime ?? const TimeOfDay(hour: 12, minute: 0),
+      helpText: 'Time of birth (optional)',
+    );
+    if (picked != null) setState(() => _birthTime = picked);
   }
 
   // Phone is intentionally NOT required (owner decision 2026-06-27): users sign
@@ -268,7 +363,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       case 'photo': return 'Please add a profile photo.';
       case 'first_name': return 'Please enter your first name.';
       case 'last_name': return 'Please enter your last name.';
-      case 'birth_year': return 'Please enter a valid birth year (you must be 13+).';
+      case 'birth_year': return 'Please choose your date of birth (you must be 13+).';
       case 'gender': return 'Please choose how Ava should refer to you.';
       case 'about': return 'Please tell Ava a little about yourself.';
       default: return 'This field is required.';
@@ -358,6 +453,54 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
+  // ── Gender detection from name ──────────────────────────────────────────
+  /// Debounced trigger, called on every first/last-name edit. Once we have a
+  /// first name we ask the server to infer gender and lock it.
+  void _maybeDetectGender() {
+    final first = _first.text.trim();
+    _genderTimer?.cancel();
+    if (first.isEmpty) return;
+    if (_genderLocked && first == _genderNameChecked) return; // already resolved for this name
+    _genderTimer = Timer(const Duration(milliseconds: 600),
+        () => _detectGender('${_first.text.trim()} ${_last.text.trim()}'.trim()));
+  }
+
+  Future<void> _detectGender(String fullName) async {
+    final first = _first.text.trim();
+    if (first.isEmpty) return;
+    setState(() => _genderDetecting = true);
+    try {
+      final r = await ApiAuth.postJson(
+        'https://$kSignalingHost/api/ai/gender', {'name': fullName},
+        timeout: const Duration(seconds: 12),
+      );
+      if (!mounted) return;
+      final body = jsonDecode(r.body) as Map<String, dynamic>;
+      final g = (body['gender'] ?? 'unknown').toString();
+      _genderNameChecked = first;
+      if (r.statusCode == 200 && (g == 'male' || g == 'female')) {
+        setState(() { _gender = g; _genderLocked = true; _genderDetecting = false; });
+        _clearErr('gender');
+        Analytics.capture('profile_gender_locked', {'gender': g, 'email': _email.text.trim()});
+      } else {
+        // Unknown / low confidence → let the user choose manually.
+        setState(() { _genderLocked = false; _genderDetecting = false; });
+      }
+    } catch (_) {
+      // Fail open: never block the user if the inference call fails.
+      if (mounted) setState(() { _genderDetecting = false; _genderLocked = false; });
+    }
+  }
+
+  String _genderLabel(String g) {
+    switch (g) {
+      case 'male': return 'Male (he/him)';
+      case 'female': return 'Female (she/her)';
+      case 'other': return 'Other (they/them)';
+      default: return 'Not set';
+    }
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     // Block save while the bio is being checked or is flagged unsafe.
@@ -377,6 +520,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       setState(() {
         _fieldErrors.clear();
         for (final f in missing) { _fieldErrors[f] = _missingHelper(f); }
+        // Show a banner RIGHT AT the button the user just tapped, so the block is
+        // never invisible ("it wouldn't budge"). The scroll-to-offender still runs.
+        _rejectBanner = missing.length == 1
+            ? _missingHelper(missing.first)
+            : 'A few things still needed — starting with: ${_missingHelper(missing.first)}';
+      });
+      // Telemetry (was previously EMITTED NOTHING — the block was invisible in
+      // PostHog). Now measurable so we can see how often users hit it and on which field.
+      Analytics.capture('profile_submit_blocked', {
+        'first_missing_field': missing.first,
+        'missing_count': missing.length,
+        'email': _email.text.trim(),
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToField(missing.first));
       return;
@@ -396,9 +551,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final fullName = '$first $last'.trim();
     final email = _email.text.trim();
     final bio = _bio.text.trim();
-    final by = _birthYearValue;
+    final dob = _birthDateValue;
+    final by = dob?.year;
     // Under-18 gate: minors must accept the minor-specific terms before finishing.
-    final minor = by != null && (DateTime.now().year - by) < 18;
+    // Day-precise now that we collect a full date (exact on birthdays).
+    int? ageYears;
+    if (dob != null) {
+      final now = DateTime.now();
+      ageYears = now.year - dob.year;
+      if (now.month < dob.month || (now.month == dob.month && now.day < dob.day)) ageYears = ageYears! - 1;
+    }
+    final minor = ageYears != null && ageYears < 18;
+    final birthDateIso = dob == null
+        ? ''
+        : '${dob.year.toString().padLeft(4, '0')}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
     if (minor) {
       final accepted = await MinorTerms.ensureAccepted(context, isMinor: true);
       if (!accepted) { if (mounted) setState(() { _saving = false; _holdMsg = null; }); return; }
@@ -463,7 +629,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     // stored as complete — the gate would then wave the user through).
     await _store.save(existing.copyWith(
         displayName: fullName, email: email, phone: phone, avatarUrl: _avatarUrl,
-        bio: bio, birthYear: by, gender: _gender));
+        bio: bio, birthYear: by, birthDate: birthDateIso, birthTime: _birthTimeLabel,
+        privatePhone: _privatePhone, privatePhoneVerified: _privatePhoneVerified,
+        gender: _gender));
     Analytics.capture('profile_completed', {
       'has_photo': true, 'via': 'mandatory_gate', 'email': email,
     });
@@ -484,6 +652,50 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     if (_fieldErrors.containsKey(field) || _rejectBanner != null) {
       setState(() { _fieldErrors.remove(field); _rejectBanner = null; });
     }
+  }
+
+  /// A read-only, tappable field styled like [ZineField] — shows [value] (or the
+  /// [hint] placeholder) and opens a picker on tap. Used for the date/time of birth.
+  Widget _tappableField({
+    required String label,
+    required String value,
+    required String hint,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool error = false,
+  }) {
+    final has = value.isNotEmpty;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label.toUpperCase(), style: ZineText.kicker()),
+      const SizedBox(height: 9),
+      GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Zine.card,
+            borderRadius: BorderRadius.circular(Zine.rField),
+            border: Zine.border,
+            boxShadow: error ? Zine.shadowError : Zine.shadowSm,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          child: Row(children: [
+            Icon(icon, size: 20, color: Zine.ink),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                has ? value : hint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: has
+                    ? ZineText.input()
+                    : ZineText.input().copyWith(color: Zine.placeholder, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ]);
   }
 
   @override
@@ -571,13 +783,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ZineField(key: _firstKey, controller: _first, label: 'First name', hint: 'Your first name',
                 error: _fieldErrors.containsKey('first_name'),
                 textCapitalization: TextCapitalization.words,
-                onChanged: (_) { _clearErr('first_name'); setState(() {}); }),
+                onChanged: (_) { _clearErr('first_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('first_name'),
             const SizedBox(height: 14),
             ZineField(key: _lastKey, controller: _last, label: 'Last name', hint: 'Your last name',
                 error: _fieldErrors.containsKey('last_name'),
                 textCapitalization: TextCapitalization.words,
-                onChanged: (_) { _clearErr('last_name'); setState(() {}); }),
+                onChanged: (_) { _clearErr('last_name'); _maybeDetectGender(); setState(() {}); }),
             _errFor('last_name'),
             const SizedBox(height: 14),
             ZineField(controller: _email, label: 'Email', hint: 'you@example.com',
@@ -592,32 +804,88 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             Text('This is your AvaTOK number — it represents you and keeps your real '
                 'phone private. You can change it later in Settings.', style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
-            ZineField(key: _birthYearKey, controller: _birthYear, label: 'Birth year (Private)', hint: 'e.g. 1990',
-                error: _fieldErrors.containsKey('birth_year'),
-                keyboardType: TextInputType.number, maxLength: 4,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: (_) { _clearErr('birth_year'); setState(() {}); }),
+            // Personal (real) phone with SMS OTP → locked once verified.
+            PersonalPhoneField(
+              initialPhone: _privatePhone,
+              initiallyVerified: _privatePhoneVerified,
+              onVerified: (phone) => setState(() {
+                _privatePhone = phone;
+                _privatePhoneVerified = true;
+              }),
+            ),
+            const SizedBox(height: 14),
+            // Date of birth (mandatory) — tappable, opens a date picker.
+            Row(key: _birthYearKey, children: [
+              Expanded(
+                child: _tappableField(
+                  label: 'Date of birth (Private)',
+                  value: _birthDateLabel,
+                  hint: 'Tap to choose',
+                  icon: PhosphorIcons.calendarBlank(PhosphorIconsStyle.bold),
+                  error: _fieldErrors.containsKey('birth_year'),
+                  onTap: _pickBirthDate,
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Time of birth (optional).
+              Expanded(
+                child: _tappableField(
+                  label: 'Time (optional)',
+                  value: _birthTimeLabel,
+                  hint: '--:--',
+                  icon: PhosphorIcons.clock(PhosphorIconsStyle.bold),
+                  onTap: _pickBirthTime,
+                ),
+              ),
+            ]),
             _errFor('birth_year'),
             const SizedBox(height: 4),
             Text('Private — never shown to anyone. Used to confirm your age '
-                '(under-18 accounts get extra safety protections).',
+                '(under-18 accounts get extra safety protections). Time of birth is optional.',
                 style: ZineText.sub(size: 12)),
             const SizedBox(height: 14),
-            // ── Gender (mandatory) — drives how Ava refers to you on calls ──
-            Text('Gender', key: _genderKey, style: ZineText.value(size: 13)),
-            const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final opt in const [
-                ['male', 'Male (he/him)'],
-                ['female', 'Female (she/her)'],
-                ['other', 'Other (they/them)'],
-              ])
-                ChoiceChip(
-                  label: Text(opt[1]),
-                  selected: _gender == opt[0],
-                  onSelected: (_) { _clearErr('gender'); setState(() => _gender = opt[0]); },
-                ),
+            // ── Gender (mandatory) — AI-detected from the name and LOCKED. Only
+            //    editable when detection is uncertain, so an unusual name never traps. ──
+            Row(key: _genderKey, children: [
+              Text('Gender', style: ZineText.value(size: 13)),
+              if (_genderDetecting) ...[
+                const SizedBox(width: 8),
+                const SizedBox(width: 13, height: 13,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Zine.blueInk)),
+                const SizedBox(width: 6),
+                Text('detecting from your name…', style: ZineText.tag(size: 12, color: Zine.inkSoft)),
+              ],
             ]),
+            const SizedBox(height: 6),
+            if (_genderLocked)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Zine.card,
+                  borderRadius: BorderRadius.circular(Zine.rField),
+                  border: Zine.border,
+                  boxShadow: Zine.shadowXs,
+                ),
+                child: Row(children: [
+                  PhosphorIcon(PhosphorIcons.lockSimple(PhosphorIconsStyle.fill), size: 18, color: Zine.inkSoft),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_genderLabel(_gender), style: ZineText.value(size: 15))),
+                  Text('set from your name', style: ZineText.tag(size: 11, color: Zine.inkSoft)),
+                ]),
+              )
+            else
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final opt in const [
+                  ['male', 'Male (he/him)'],
+                  ['female', 'Female (she/her)'],
+                  ['other', 'Other (they/them)'],
+                ])
+                  ChoiceChip(
+                    label: Text(opt[1]),
+                    selected: _gender == opt[0],
+                    onSelected: (_) { _clearErr('gender'); setState(() => _gender = opt[0]); },
+                  ),
+              ]),
             _errFor('gender'),
             const SizedBox(height: 4),
             Text('Ava uses this when she answers your missed calls — '

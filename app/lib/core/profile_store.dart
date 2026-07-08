@@ -19,6 +19,12 @@ class Profile {
   final String bio; // free-text "about you" — AvaBrain learns from it (opt-in via the Brain switch)
   final bool sharePresence; // last-seen / online visible to others
   final int? birthYear; // year of birth — used to compute age (under-18 gate); never shown publicly
+  // Full date of birth (owner request 2026-07-08): 'yyyy-MM-dd', '' = unset. Now the
+  // MANDATORY field the profile screen collects; [birthYear] is kept derived from it
+  // for back-compat with the server payload and existing age logic.
+  final String birthDate;
+  // OPTIONAL time of birth, 'HH:mm' (24h), '' = unset.
+  final String birthTime;
   // OPTIONAL private phone number the user may choose to expose (owner request
   // 2026-06-29). NOT verified yet — VERIFICATION STUB: a future release will move
   // this under identity verification (see [privatePhoneVerified] placeholder).
@@ -27,16 +33,14 @@ class Profile {
   // their AvaTOK number, and the AvaTOK dialpad routes calls to that number to
   // their AvaTOK app. Off by default — privacy-first.
   final bool showPrivateNumber;
+  // True once [privatePhone] has been confirmed via SMS OTP (owner request
+  // 2026-07-08). Once verified the profile screen LOCKS the field.
+  final bool privatePhoneVerified;
   // 'male' | 'female' | 'other' | '' (unset). Drives Ava's pronouns when she
   // answers calls ("can I take a message for him/her/them?") and is a MANDATORY
   // profile field (see [isComplete]).
   final String gender;
-  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true, this.birthYear, this.privatePhone = '', this.showPrivateNumber = false, this.gender = ''});
-
-  // VERIFICATION STUB (future): until phone verification ships, an exposed
-  // private number is always treated as unverified. Wire this to the verification
-  // service when it lands; UI can then show a "verified" check.
-  bool get privatePhoneVerified => false;
+  const Profile({this.displayName = '', this.handle = '', this.phone = '', this.email = '', this.avatarUrl = '', this.bio = '', this.sharePresence = true, this.birthYear, this.birthDate = '', this.birthTime = '', this.privatePhone = '', this.showPrivateNumber = false, this.privatePhoneVerified = false, this.gender = ''});
 
   bool get isEmpty => displayName.isEmpty && handle.isEmpty;
   String get atHandle => handle.isEmpty ? '' : '@$handle';
@@ -59,9 +63,21 @@ class Profile {
       birthYear != null &&
       gender.trim().isNotEmpty;
 
-  /// Age in whole years derived from [birthYear] (year-precision — the profile
-  /// collects a birth year, not a full date). Null when no birth year is set.
-  int? get age => birthYear == null ? null : (DateTime.now().year - birthYear!);
+  /// Age in whole years. Prefers the full [birthDate] (day-precise, so the
+  /// under-18 gate is exact on birthdays); falls back to year-precision
+  /// [birthYear] for older profiles. Null when neither is set.
+  int? get age {
+    if (birthDate.isNotEmpty) {
+      final d = DateTime.tryParse(birthDate);
+      if (d != null) {
+        final now = DateTime.now();
+        var a = now.year - d.year;
+        if (now.month < d.month || (now.month == d.month && now.day < d.day)) a--;
+        return a;
+      }
+    }
+    return birthYear == null ? null : (DateTime.now().year - birthYear!);
+  }
 
   /// True when the user is under 18 — drives the minor-terms acceptance gate.
   bool get isMinor => (age ?? 99) < 18;
@@ -73,7 +89,7 @@ class Profile {
   static bool isValidPhone(String p) =>
       RegExp(r'^\+?\d{8,15}$').hasMatch(p.trim().replaceAll(RegExp(r'[\s\-()]'), ''));
 
-  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence, int? birthYear, String? privatePhone, bool? showPrivateNumber, String? gender}) => Profile(
+  Profile copyWith({String? displayName, String? handle, String? phone, String? email, String? avatarUrl, String? bio, bool? sharePresence, int? birthYear, String? birthDate, String? birthTime, String? privatePhone, bool? showPrivateNumber, bool? privatePhoneVerified, String? gender}) => Profile(
         displayName: displayName ?? this.displayName,
         handle: handle ?? this.handle,
         phone: phone ?? this.phone,
@@ -82,8 +98,11 @@ class Profile {
         bio: bio ?? this.bio,
         sharePresence: sharePresence ?? this.sharePresence,
         birthYear: birthYear ?? this.birthYear,
+        birthDate: birthDate ?? this.birthDate,
+        birthTime: birthTime ?? this.birthTime,
         privatePhone: privatePhone ?? this.privatePhone,
         showPrivateNumber: showPrivateNumber ?? this.showPrivateNumber,
+        privatePhoneVerified: privatePhoneVerified ?? this.privatePhoneVerified,
         gender: gender ?? this.gender,
       );
 }
@@ -116,8 +135,11 @@ class ProfileStore {
         birthYear: (j['birthYear'] is num)
             ? (j['birthYear'] as num).toInt()
             : int.tryParse((j['birthYear'] ?? '').toString()),
+        birthDate: (j['birthDate'] ?? '').toString(),
+        birthTime: (j['birthTime'] ?? '').toString(),
         privatePhone: (j['privatePhone'] ?? '').toString(),
         showPrivateNumber: j['showPrivateNumber'] == true,
+        privatePhoneVerified: j['privatePhoneVerified'] == true,
         gender: (j['gender'] ?? '').toString(),
       );
     } catch (_) {
@@ -127,7 +149,7 @@ class ProfileStore {
 
   Future<void> save(Profile p) => _s.write(
       key: scopedKey(_key),
-      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear, 'privatePhone': p.privatePhone, 'showPrivateNumber': p.showPrivateNumber, 'gender': p.gender}));
+      value: jsonEncode({'name': p.displayName, 'handle': p.handle, 'phone': p.phone, 'email': p.email, 'avatarUrl': p.avatarUrl, 'bio': p.bio, 'sharePresence': p.sharePresence, 'birthYear': p.birthYear, 'birthDate': p.birthDate, 'birthTime': p.birthTime, 'privatePhone': p.privatePhone, 'showPrivateNumber': p.showPrivateNumber, 'privatePhoneVerified': p.privatePhoneVerified, 'gender': p.gender}));
 
   /// Persist just the phone (merging with any existing profile fields).
   Future<void> setPhone(String phone) async {
@@ -174,6 +196,9 @@ class ProfileStore {
     // signup with no profile row yet returns found:false / empty → setup screen.)
     if (name.isEmpty || avatar.isEmpty) return false;
     final by = (j['birth_year'] is num) ? (j['birth_year'] as num).toInt() : null;
+    // Full DOB (best-effort — present once the server stores it; harmless when absent).
+    final bdate = (j['birth_date'] ?? '').toString();
+    final btime = (j['birth_time'] ?? '').toString();
     final bio = (j['bio'] ?? '').toString();
     final gender = (j['gender'] ?? '').toString();
     // Email isn't returned (stored hashed) — take it from the signed-in account.
@@ -184,6 +209,8 @@ class ProfileStore {
       avatarUrl: avatar,
       bio: bio,
       birthYear: by,
+      birthDate: bdate.isNotEmpty ? bdate : null,
+      birthTime: btime.isNotEmpty ? btime : null,
       email: email.isNotEmpty ? email : null,
       gender: gender.isNotEmpty ? gender : null,
     ));
