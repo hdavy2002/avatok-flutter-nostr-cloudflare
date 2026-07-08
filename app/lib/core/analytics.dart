@@ -423,9 +423,30 @@ class Analytics {
   static Future<void> captureException(Object error, StackTrace? stack, {String? screen}) async {
     if (!_ready) return;
     try {
+      final type = error.runtimeType.toString();
+      final value = _scrub(error.toString());
       await Posthog().capture(eventName: '\$exception', properties: _base({
-        '\$exception_message': _scrub(error.toString()),
-        '\$exception_type': error.runtimeType.toString(),
+        // [EXC-SCHEMA-1] (2026-07-08): PostHog Error Tracking derives
+        // $exception_types/$exception_values ONLY from the $exception_list array.
+        // We were sending flat custom keys, so every crash showed up with null
+        // type/message — 108 undiagnosable $exception events in 3 days. Send the
+        // standard schema; keep the old flat keys for existing HogQL queries.
+        '\$exception_list': [
+          {
+            'type': type,
+            'value': value,
+            'mechanism': {'handled': false, 'synthetic': false},
+            if (stack != null)
+              'stacktrace': {
+                'type': 'raw',
+                'frames': [
+                  {'platform': 'dart', 'raw': stack.toString()},
+                ],
+              },
+          },
+        ],
+        '\$exception_message': value,
+        '\$exception_type': type,
         if (stack != null) 'stack': stack.toString(),
         if (screen != null) 'screen': screen,
         'is_fatal': true,
