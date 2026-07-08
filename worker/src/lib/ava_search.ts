@@ -162,7 +162,23 @@ export async function ingestForUser(
   };
   return instrument(env, uid, "ingest", meta, async () => {
     const inst = await shard(env, uid);
-    const item = await inst.items.uploadAndPoll(key, content);
+    // [RAG-INGEST-RETRY-1] uploadAndPoll rides the AI Search upload + embedding/
+    // indexing pipeline, which throws on transient upstream 5xx/429/poll hiccups.
+    // Those exceptions surfaced straight to the route's catch-all 502 (PostHog
+    // /api/ava/rag/ingest 502 x15 in 3 days) with no second chance. Bounded
+    // retry with backoff, mirroring the composio.ts hardening; a genuinely
+    // broken doc still fails after the last attempt and propagates as before.
+    let item: any;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 800 * attempt));
+        item = await inst.items.uploadAndPoll(key, content);
+        lastErr = null;
+        break;
+      } catch (e) { lastErr = e; }
+    }
+    if (lastErr != null) throw lastErr;
     const itemId = String(item?.id ?? item?.item_id ?? key);
     await recordItem(env, uid, itemId, key, bytes);
     return item;
