@@ -147,11 +147,18 @@ export async function call(req: Request, env: Env): Promise<Response> {
         },
       });
     } catch { /* best-effort: telemetry must never block the response */ }
-    // [MULTIACCT-1] Distinct machine-readable result so the caller client can show
-    // "X is unreachable right now" and SUPPRESS fake ringback instead of ringing
-    // into the void. 404 preserved for back-compat; `reachable:false`/`reason` are
-    // the new signals the client keys on.
-    return json({ error: "callee has no registered devices", reachable: false, reason: "no_device", sent: 0 }, 404);
+    // CALL-NODEVICE-AVA-1 (2026-07-08): DON'T dead-end a 0-device callee anymore.
+    // A callee with zero registered devices is the STRONGEST form of "unreachable"
+    // (phone off / logged out / tokens pruned) — exactly the case the Ava
+    // receptionist exists for. Returning 404/reachable:false made the caller's
+    // client abort BEFORE mounting the call screen (chat_thread.dart ~L2187), so
+    // Ava never got a turn and the user just saw "X is unreachable — ask them to
+    // open AvaTOK" (PostHog call_no_device / http_404, e.g. callee "Sat"). Instead
+    // we fall through to the normal ring path below: the push fan-out finds 0
+    // tokens and the consumer emits ring-ack ok=false (and the client's 6s
+    // device-ringing timer is the backstop), which drives the caller into the
+    // unreachable → Ava receptionist handoff. We still returned the telemetry
+    // above, and the final response is the optimistic reachable:true (sent:0).
   }
   // Resolve the caller's real name SERVER-SIDE (Clerk first name → app
   // display_name/handle) instead of trusting the client. The client was sending
