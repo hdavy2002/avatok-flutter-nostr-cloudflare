@@ -107,6 +107,11 @@ const int kMaxRingtonesPerAccount = 5;
 /// down). Registered in pubspec under assets/audio/.
 const String kDefaultRingbackAsset = 'assets/audio/ringback_default.wav';
 const String kBusyToneAsset = 'assets/audio/busy_tone.wav';
+// [CALL-SEARCH-TONE-1] PSTN-style call-progress beeps: played by the CALLER
+// while the network is still locating the callee's device (takeover-guard
+// 'connecting' phase, before the device-ringing receipt). Soft 425 Hz double
+// beep every 2s — honest "working on it", distinct from real ringback.
+const String kSearchingToneAsset = 'assets/audio/searching_tone.wav';
 
 // ---------------------------------------------------------------------------
 // Link previews + inline YouTube (AI Messenger Batch — STREAM C, PREVIEW-4).

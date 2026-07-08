@@ -72,6 +72,20 @@ class RingbackPlayer {
     } catch (_) { /* give up silently — a missing tone must never crash a call */ }
   }
 
+  /// [CALL-SEARCH-TONE-1] PSTN-style call-progress beeps (looped) while the
+  /// network is still locating the callee's device — played before the
+  /// device-ringing receipt arrives, then replaced by [playRingback]. The
+  /// single shared player means the swap is a plain play() call.
+  Future<void> playSearchingTone() async {
+    if (_disposed) return;
+    try {
+      await _p.setReleaseMode(ReleaseMode.loop);
+      await _p.play(AssetSource(_assetRel(kSearchingToneAsset)));
+    } catch (e) {
+      AvaLog.I.log('call', 'searching tone play failed: $e');
+    }
+  }
+
   /// Play the bundled busy tone a few cycles (does not loop forever).
   Future<void> playBusyTone() async {
     if (_disposed) return;

@@ -635,6 +635,18 @@ class CallSession {
           'source': config.ringbackUrl.isEmpty ? 'default' : 'custom',
           'video': config.video,
         });
+      } else if (RemoteConfig.ringbackEnabled && _takeoverGuard) {
+        // [CALL-SEARCH-TONE-1] Guard mode is honest: no fake ringback before the
+        // callee's device confirms it's ringing. But dead silence reads as a hung
+        // app, so — like PSTN — play soft progress beeps while the network locates
+        // the callee. _onDeviceRinging swaps in the real ringback; every existing
+        // stop() path (connect / unreachable / busy / no-answer) kills it too.
+        // ignore: unawaited_futures
+        _ringback.playSearchingTone();
+        Analytics.capture('searching_tone_played', {
+          'call_id': config.room,
+          'video': config.video,
+        });
       }
     }
     // Server-relayed call status (declined / busy / decline-to-Ava) for this call.
