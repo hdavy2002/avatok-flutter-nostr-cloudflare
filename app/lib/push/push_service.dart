@@ -596,6 +596,72 @@ Future<void> _showIncoming(Map<String, dynamic> d) async {
 }
 
 class PushService {
+  /// [WS-RING-1] Incoming ring delivered over the live InboxDO WebSocket
+  /// (SyncHub frame {type:'call_ring', ...}) — the FCM-latency bypass for
+  /// ONLINE callees. Mirrors the foreground FCM 'call' branch's guards
+  /// (duplicate, glare, busy) and — unlike that branch — fires the
+  /// device-ringing receipt immediately, so the caller's true-ringing signal
+  /// arrives in <1s instead of after FCM's 8-15s. Whichever path (WS or FCM)
+  /// lands first wins; the other is deduped by the shared _seenIncoming window.
+  static Future<void> handleWsRing(Map<String, dynamic> f) async {
+    final d = Map<String, dynamic>.from(f)..['type'] = 'call';
+    final incomingId = (d['callId'] ?? '').toString();
+    final kind = (d['kind'] == 'video') ? 'video' : 'audio';
+    final fromPub = (d['fromPub'] ?? '').toString();
+    if (incomingId.isEmpty) return;
+    if (incomingId == gActiveCallId) {
+      Analytics.capture('call_duplicate_push_ignored',
+          {'call_id': incomingId, 'reason': 'ws_active'});
+      return;
+    }
+    if (_seenIncoming(incomingId)) {
+      Analytics.capture('call_duplicate_push_ignored',
+          {'call_id': incomingId, 'reason': 'ws_dedup_window'});
+      return;
+    }
+    // [CALL-GLARE-3] mutual dial → symmetric busy, same as the FCM branch.
+    if (fromPub.isNotEmpty && hasPendingOutgoingTo(fromPub) &&
+        gOutgoingCallId != null && incomingId != gOutgoingCallId) {
+      Analytics.capture('call_glare_detected', {
+        'call_id_in': incomingId,
+        'call_id_out': gOutgoingCallId ?? '',
+        'resolution': 'mutual_busy',
+        'path': 'ws',
+      });
+      _signalStatus(incomingId, 'busy', fromPub,
+          busyReason: 'active_call', receptionistEnabled: true);
+      Analytics.capture('call_incoming_autobusy',
+          {'call_id': incomingId, 'kind': kind, 'busy_reason': 'mutual_dial'});
+      return;
+    }
+    if (callIsGenuinelyActive()) {
+      _signalStatus(incomingId, 'busy', fromPub,
+          busyReason: 'active_call', receptionistEnabled: true);
+      Analytics.capture('call_incoming_autobusy',
+          {'call_id': incomingId, 'kind': kind, 'busy_reason': 'on_another_call'});
+      return;
+    }
+    if (gInCall) {
+      // Stale gInCall — clear so we ring instead of silently rejecting (same
+      // recovery as the FCM branch).
+      gInCall = false;
+      gActiveCallId = null;
+      gInCallSince = 0;
+    }
+    Analytics.capture('call_incoming_received',
+        {'call_id': incomingId, 'kind': kind, 'state': 'ws'});
+    // Fire the true-ringing receipt NOW — this is the entire point of the WS
+    // path: the caller's device-ringing signal no longer waits on FCM.
+    final token = (d['ringReceiptToken'] ?? '').toString();
+    if (token.isNotEmpty) {
+      // ignore: unawaited_futures
+      reportRinging(incomingId, token);
+    }
+    gIncomingRingingFrom = fromPub;
+    gIncomingRingingCallId = incomingId;
+    await _showIncoming(d);
+  }
+
   // ── Incoming-call de-dup ────────────────────────────────────────────────────
   // FCM can deliver the SAME call push more than once (a retry, or our notify +
   // relay copies), and each copy fired `call_incoming_received` + a CallKit ring.

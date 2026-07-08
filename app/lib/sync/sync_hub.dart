@@ -18,6 +18,7 @@ import '../core/disk_cache.dart';
 import '../core/message_store.dart' show SafetyFlagStore;
 import '../core/net/connectivity_coordinator.dart';
 import '../identity/identity.dart';
+import '../push/push_service.dart' show PushService; // [WS-RING-1]
 import 'dm.dart' show DmMessage;
 import 'legacy_stubs.dart';
 import 'outbox.dart';
@@ -606,6 +607,16 @@ class SyncHub {
         try {
           unawaited(CallLogStore().applyRemoteAdd(CallEntry.fromServer(m)));
         } catch (_) {/* tolerate a bad call frame */}
+        break;
+      case 'call_ring':
+        // [WS-RING-1] Live incoming-call ring over the inbox socket — the FCM
+        // latency bypass for online users. PushService.handleWsRing mirrors the
+        // FCM branch's dedupe/glare/busy guards and fires the device-ringing
+        // receipt immediately; whichever of WS/FCM lands first wins. Guarded:
+        // a malformed ring frame must never crash the socket handler.
+        try {
+          unawaited(PushService.handleWsRing(m));
+        } catch (_) {/* tolerate a bad ring frame */}
         break;
       case 'call_del':
         // One call-log entry deleted on another of MY devices.

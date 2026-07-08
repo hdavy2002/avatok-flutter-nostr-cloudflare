@@ -232,6 +232,34 @@ export async function call(req: Request, env: Env): Promise<Response> {
     callId: b.callId, callType: b.kind ?? "audio", traceId, ts: Date.now(),
     ringReceiptToken, tokenExpiresAt: expiresAt
   });
+  // [WS-RING-1] (2026-07-08): PARALLEL ring over the callee's live InboxDO
+  // WebSocket. FCM delivery routinely takes 8-15s (the "everyone gets Ava"
+  // incident), but an ONLINE callee already holds an open hibernatable WS —
+  // broadcast the same ring payload there so their phone rings in <1s and the
+  // device-ringing receipt (same ringReceiptToken) comes back before the
+  // caller's guard window even matters. Transient /event route: nothing is
+  // persisted, offline devices simply miss it and rely on FCM as before.
+  // Field names mirror the FCM data payload (fromPub, not from — client
+  // contract). Best-effort: a DO hiccup must never block placing the call.
+  try {
+    const inboxStub = env.INBOX.get(env.INBOX.idFromName(b.to));
+    const wr = await inboxStub.fetch("https://inbox/event", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "call_ring", callId: b.callId, fromPub: ctx.uid,
+        fromName: resolvedName, kind: b.kind ?? "audio",
+        ringReceiptToken, trace_id: traceId, ts: Date.now(),
+      }),
+    });
+    const wj = (await wr.json().catch(() => ({}))) as { live?: number | boolean };
+    void env.Q_ANALYTICS.send({
+      event: "call_ws_ring_sent", uid: ctx.uid, ts: Date.now(),
+      props: {
+        to: b.to, call_id: b.callId, ok: wr.ok, live: wj.live ?? null, trace_id: traceId,
+        app_name: "avatok", service_name: "avatok-api", worker: true, account_id: ctx.uid,
+      },
+    });
+  } catch { /* best-effort — WS ring is an accelerator, FCM stays authoritative */ }
   // Observability: which path produced the caller name (resolved server-side vs
   // the legacy client value vs the generic fallback), plus the call attempt — so
   // the "incoming call shows uid/uid" fix is measurable and call volume/route is
