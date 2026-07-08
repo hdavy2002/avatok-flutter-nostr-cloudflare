@@ -64,6 +64,7 @@ class SyncHub {
   // "his message took 5 min to arrive even after I reopened the app" bug. If we
   // hear nothing for a while we assume the socket is dead and reconnect.
   int _lastRecvAt = 0;
+  int _pingsUnanswered = 0; // [ZOMBIE-GRACE-1] consecutive pings with no inbound frame
   int _cursor = 0; // highest InboxDO message id ingested (persisted per account)
   static const String _kCursorKey = 'ava_inbox_cursor';
   String? _cursorUid;       // account the in-memory _cursor was loaded for
@@ -361,20 +362,28 @@ class SyncHub {
       _syncStartedAt = DateTime.now().millisecondsSinceEpoch; // P13-A sync_catchup base
       _send({'type': 'hello', 'cursor': _cursor, 'cc': _convSeq}); // cc = per-conv positions (inert unless SYNC_CONV_CURSOR_V2 on server) // request backlog since cursor
       _pingTimer?.cancel();
+      _pingsUnanswered = 0;
       _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
         // Zombie-socket watchdog: if we've received NOTHING (not even a pong)
-        // for ~30s, the socket is half-open — tear it down and reconnect so the
-        // 'hello' cursor sync pulls whatever we missed, instead of silently
-        // stalling live delivery for minutes (the 5-min-message bug). P13-B:
-        // window tightened 60s → 30s (with a 25s ping, that's one missed pong).
+        // across TWO ping cycles, the socket is half-open — tear it down and
+        // reconnect so the 'hello' cursor sync pulls whatever we missed, instead
+        // of silently stalling live delivery for minutes (the 5-min-message bug).
+        // [ZOMBIE-GRACE-1] (2026-07-08): the P13-B 30s window left only 5s of
+        // grace after a 25s ping — ONE pong delayed by radio sleep/GC/RTT jitter
+        // false-declared a healthy socket dead (PostHog: 125 inbox_zombie_reconnect
+        // in 36h for one user). Require 2 consecutive unanswered pings AND >55s
+        // of silence; real half-open sockets are still caught one cycle later,
+        // and the FCM-triggered sync covers any live-delivery gap meanwhile.
         final now = DateTime.now().millisecondsSinceEpoch;
-        if (_lastRecvAt > 0 && now - _lastRecvAt > 30000) {
-          AvaLog.I.log('hub', 'no frames for ${now - _lastRecvAt}ms — dead socket, reconnecting');
-          Analytics.capture('inbox_zombie_reconnect', {'idle_ms': now - _lastRecvAt});
+        if (_lastRecvAt > 0 && now - _lastRecvAt > 55000 && _pingsUnanswered >= 2) {
+          AvaLog.I.log('hub', 'no frames for ${now - _lastRecvAt}ms (${_pingsUnanswered} pings unanswered) — dead socket, reconnecting');
+          Analytics.capture('inbox_zombie_reconnect',
+              {'idle_ms': now - _lastRecvAt, 'pings_unanswered': _pingsUnanswered});
           _syncTrigger = 'zombie';
           _onClosed('zombie');
           return;
         }
+        _pingsUnanswered++;
         _send({'type': 'ping'});
       });
       AvaLog.I.log('hub', 'InboxDO connected; synced from cursor=$_cursor');
@@ -469,6 +478,7 @@ class SyncHub {
     Map<String, dynamic> m;
     try { m = (jsonDecode(raw as String) as Map).cast<String, dynamic>(); } catch (_) { return; }
     _lastRecvAt = DateTime.now().millisecondsSinceEpoch; // liveness: a frame arrived
+    _pingsUnanswered = 0; // [ZOMBIE-GRACE-1] any inbound frame proves the socket is alive
     // Cheap per-connection frame tally (rolled up into hub_disconnected) — lets us
     // confirm a given device is actually RECEIVING live frames over the socket.
     final ft = (m['type'] ?? '').toString();
