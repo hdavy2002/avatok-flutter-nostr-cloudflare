@@ -74,3 +74,18 @@ export async function cancelDeletion(req: Request, env: Env): Promise<Response> 
   track(env, ctx.uid, "account_deletion_cancelled", "platform", {});
   return json({ cancelled: true });
 }
+
+// GET/POST /api/account/deletion-status → is this account in the 30-day grace?
+// Read-only reconcile probe the client calls right after ANY successful sign-in
+// (Google, email-OTP, password) so it can tell the user "this account is scheduled
+// for deletion — logging in reactivates it" and offer to cancel via
+// /api/account/delete/cancel. `pending` is true only while a request is still
+// `pending` AND the grace hasn't elapsed.
+export async function deletionStatus(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const row = await env.DB_META.prepare("SELECT status, scheduled_at FROM deletion_requests WHERE uid=?1")
+    .bind(ctx.uid).first<{ status: string; scheduled_at: number }>();
+  const pending = !!row && row.status === "pending" && Date.now() < row.scheduled_at;
+  return json({ pending, status: row?.status ?? null, grace_ends_at: pending ? row!.scheduled_at : null });
+}

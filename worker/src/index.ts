@@ -12,7 +12,7 @@ import { uploadPublic, uploadPrivate, mediaRedirect, getLibrary, getLibraryTree,
 import { getStorageSummary } from "./storage";
 import { streamWebhook } from "./routes/stream";
 import { brain } from "./routes/brain";
-import { deleteAccount, cancelDeletion } from "./routes/account";
+import { deleteAccount, cancelDeletion, deletionStatus } from "./routes/account";
 import { idSession, idResult, idStatus, idEmailStart, idEmailVerify, idPhoneConfirm, idPasswordStart, idPasswordSet } from "./routes/id";
 import { walletTopup, walletTopupIntent, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
@@ -670,6 +670,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // --- account deletion (right-to-erasure; 30-day grace → queue cascade) ---
       if (p === "/api/account/delete" && (req.method === "POST" || req.method === "DELETE")) return await deleteAccount(req, env);
       if (p === "/api/account/delete/cancel" && req.method === "POST") return await cancelDeletion(req, env);
+      if (p === "/api/account/deletion-status" && (req.method === "POST" || req.method === "GET")) return await deletionStatus(req, env);
 
       // --- Phase 8: AvaVerse dashboard (aggregation only, no new stores) ---
       if (p === "/api/verse/summary" && req.method === "GET") return await verseSummary(req, env);

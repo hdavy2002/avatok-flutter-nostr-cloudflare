@@ -304,8 +304,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         title: Text('Delete account?', style: ZineText.cardTitle()),
         content: Text(
-          'This permanently deletes your AvaTOK account. Your profile, settings, '
-          'and data on our network are removed. This cannot be undone.',
+          'This schedules your AvaTOK account for deletion. You have a 30-day grace '
+          'period — sign back in any time before it ends to cancel the deletion and '
+          'reactivate your account. After 30 days, your profile, settings, and data '
+          'are permanently removed.',
           style: ZineText.sub(size: 14),
         ),
         actions: [
@@ -317,11 +319,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             fontSize: 15,
             onPressed: () async {
               Navigator.pop(ctx);
-              // Purge server-side data FIRST (needs the Clerk session that we
-              // still have here), then delete the Clerk account, then sign out.
-              try { await ApiAuth.postJson(kAccountDeleteUrl, const {}, timeout: const Duration(seconds: 30)); } catch (_) {}
-              try { await widget.clerk.deleteAccount(); } catch (_) {}
-              widget.onSignOut();
+              // Schedule the 30-day-grace deletion server-side, then sign out. Do
+              // NOT delete the Clerk user here — the account must survive the grace
+              // so the user can reactivate by simply signing back in. The cascade
+              // consumer removes the Clerk user only after the grace elapses.
+              var ok = false;
+              try {
+                final r = await ApiAuth.postJson(kAccountDeleteUrl, const {}, timeout: const Duration(seconds: 30));
+                ok = r.statusCode == 200;
+              } catch (_) {/* fall through to error toast */}
+              if (!mounted) return;
+              if (ok) {
+                widget.onSignOut();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Could not schedule deletion — please try again.')));
+              }
             },
           ),
         ],

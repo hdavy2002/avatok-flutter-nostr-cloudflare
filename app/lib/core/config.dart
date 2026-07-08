@@ -269,6 +269,13 @@ const String kCallLogClearUrl = '$kApiBase/call-log/clear';
 /// Right-to-erasure: server-side cascade delete of all the user's media + data. (NIP-98 + Clerk)
 const String kAccountDeleteUrl = 'https://$kSignalingHost/api/account/delete';
 
+/// Cancel a pending deletion during the 30-day grace (also used to reactivate on
+/// log-back-in).
+const String kAccountCancelDeleteUrl = 'https://$kSignalingHost/api/account/delete/cancel';
+
+/// Post-login reconcile probe: is this account currently scheduled for deletion?
+const String kAccountDeletionStatusUrl = 'https://$kSignalingHost/api/account/deletion-status';
+
 /// In-app notification feed (system/transactional — wallet, moderation, briefings). (NIP-98 + Clerk)
 const String kNotificationsUrl = 'https://$kSignalingHost/api/notifications';
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -6,6 +7,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../auth/clerk_client.dart';
 import '../../core/account_restore.dart';
 import '../../core/analytics.dart';
+import '../../core/api_auth.dart';
+import '../../core/config.dart';
 import '../../core/referral_service.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
@@ -187,7 +190,85 @@ class _SignInScreenState extends State<SignInScreen> {
   void _succeed() {
     unawaited(Analytics.capture('signup_succeeded', {'provider': _provider}));
     unawaited(_claimReferral());
+    // A session is now established. Before entering the app, reconcile any pending
+    // account deletion: if this account is inside the 30-day grace, tell the user
+    // and let them reactivate (cancel the deletion) or stay signed out. Covers every
+    // login path (Google, email-OTP, password) because they all funnel through here.
+    unawaited(_reconcileDeletionThenFinish());
+  }
+
+  Future<void> _reconcileDeletionThenFinish() async {
+    try {
+      final res = await ApiAuth.postJson(kAccountDeletionStatusUrl, const {},
+          timeout: const Duration(seconds: 12));
+      if (res.statusCode == 200) {
+        final m = jsonDecode(res.body) as Map<String, dynamic>;
+        if (m['pending'] == true) {
+          if (!mounted) return;
+          final reactivate = await _showReactivateDialog((m['grace_ends_at'] as num?)?.toInt());
+          if (reactivate != true) {
+            // User declined — keep the deletion scheduled and sign back out.
+            unawaited(Analytics.capture('account_deletion_reactivation_declined', {'provider': _provider}));
+            try { await widget.clerk.signOut(); } catch (_) {/* best-effort */}
+            if (!mounted) return;
+            setState(() {
+              _busy = false;
+              _error = 'Your account stays scheduled for deletion. Sign in again before the '
+                  'grace period ends to reactivate it.';
+            });
+            return;
+          }
+          // Reactivate: cancel the pending deletion, then continue into the app.
+          try {
+            await ApiAuth.postJson(kAccountCancelDeleteUrl, const {}, timeout: const Duration(seconds: 15));
+            unawaited(Analytics.capture('account_deletion_reactivated', {'provider': _provider}));
+          } catch (_) {/* best-effort — server also re-checks status on cascade */}
+        }
+      }
+    } catch (_) {/* reconcile is best-effort — never block a valid login on it */}
     _finish();
+  }
+
+  /// "This account is scheduled for deletion" prompt. Returns true to reactivate.
+  Future<bool?> _showReactivateDialog(int? graceEndsAtMs) {
+    String? whenStr;
+    if (graceEndsAtMs != null) {
+      final w = DateTime.fromMillisecondsSinceEpoch(graceEndsAtMs).toLocal();
+      whenStr = '${w.year}-${w.month.toString().padLeft(2, '0')}-${w.day.toString().padLeft(2, '0')}';
+    }
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Zine.r),
+          side: const BorderSide(color: Zine.ink, width: Zine.bw),
+        ),
+        title: Text('This account is scheduled for deletion', style: ZineText.cardTitle()),
+        content: Text(
+          whenStr != null
+              ? 'Your account is set to be permanently deleted on $whenStr. Logging back in '
+                  'will cancel the deletion and reactivate your account.\n\n'
+                  'Reactivate it and continue?'
+              : 'Your account is scheduled for deletion. Logging back in will cancel the '
+                  'deletion and reactivate your account.\n\nReactivate it and continue?',
+          style: ZineText.sub(size: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Not now', style: ZineText.link(size: 14, color: Zine.inkSoft)),
+          ),
+          ZineButton(
+            label: 'Reactivate & continue',
+            variant: ZineButtonVariant.coral,
+            fontSize: 15,
+            onPressed: () => Navigator.of(ctx).pop(true),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _claimReferral() async {
