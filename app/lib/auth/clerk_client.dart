@@ -537,15 +537,29 @@ class ClerkUser {
   final String id; // Clerk user id (e.g. user_abc123) — stable per account
   final String label;
   final String? email;
-  ClerkUser(this.label, {this.id = '', this.email});
+  // Populated from the OAuth provider (Google) on sign-in when available — used to
+  // auto-fill the profile screen (owner request 2026-07-08). NOTE: birthday and
+  // phone are NOT standard Clerk user fields; exposing them needs extra Google
+  // OAuth scopes configured in the Clerk dashboard (owner action) before they can
+  // appear here.
+  final String? firstName;
+  final String? lastName;
+  final String? imageUrl;
+  ClerkUser(this.label, {this.id = '', this.email, this.firstName, this.lastName, this.imageUrl});
   factory ClerkUser.fromJson(Map<String, dynamic>? u) {
     if (u == null) return ClerkUser('Account');
     final first = u['first_name'];
+    final last = u['last_name'];
+    final img = u['image_url'] ?? u['profile_image_url'];
     final emails = u['email_addresses'] as List?;
     final email = (emails != null && emails.isNotEmpty)
         ? (emails.first as Map)['email_address']?.toString()
         : null;
     return ClerkUser((first ?? email ?? 'Account').toString(),
-        id: (u['id'] ?? '').toString(), email: email);
+        id: (u['id'] ?? '').toString(),
+        email: email,
+        firstName: (first ?? '').toString().trim().isEmpty ? null : first.toString().trim(),
+        lastName: (last ?? '').toString().trim().isEmpty ? null : last.toString().trim(),
+        imageUrl: (img ?? '').toString().trim().isEmpty ? null : img.toString().trim());
   }
 }
