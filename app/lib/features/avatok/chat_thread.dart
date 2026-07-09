@@ -786,10 +786,19 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // Peer explicitly left/backgrounded → flip to "last seen" immediately rather
     // than waiting out the 35s online window.
     if (e['type'] == 'offline') {
-      final ts = (e['ts'] as num?)?.toInt() ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+      // [LASTSEEN-HONEST-1] Only a REAL leave carries a ts (peer was online this
+      // session). An absence frame without ts must NOT fabricate "now" — that
+      // painted every offline contact (phone off all night) as "last seen just
+      // now" and PERSISTED the lie via LastSeenStore. Without a ts, keep the
+      // last honest value we already had.
+      final ts = (e['ts'] as num?)?.toInt();
       _onlineClear?.cancel();
-      if (_convKey != null) LastSeenStore().set(_convKey!, '$ts');
-      setState(() { _peerOnline = false; _peerTyping = false; _peerLastSeen = ts; });
+      if (ts != null && _convKey != null) LastSeenStore().set(_convKey!, '$ts');
+      setState(() {
+        _peerOnline = false;
+        _peerTyping = false;
+        if (ts != null) _peerLastSeen = ts;
+      });
       return;
     }
     // Only an explicit peer 'online' frame marks them online — NOT read/delivered/

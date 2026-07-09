@@ -277,7 +277,10 @@ class WallpaperStore extends _KvMapStore {
 /// lets a 1:1 header show "last seen <time>" the moment a thread opens, before
 /// any live presence frame arrives.
 class LastSeenStore extends _KvMapStore {
-  LastSeenStore() : super('avatok_lastseen');
+  // [LASTSEEN-HONEST-1] v2 key: the v1 store was poisoned by fabricated "now"
+  // timestamps (every roster-absent peer got stamped as seen on thread open).
+  // The new key drops the lies; honest values repopulate from real presence.
+  LastSeenStore() : super('avatok_lastseen_v2');
 }
 
 /// Starred (bookmarked) message ids.

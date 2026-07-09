@@ -25,6 +25,7 @@ class PresenceChannel {
   WebSocketChannel? _ws;
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   PartyRoom? _party; // PartyKit path (replaces Ably)
+  bool _peerWasPresent = false; // [LASTSEEN-HONEST-1] peer seen in roster this session
   StreamSubscription? _partySub;
   StreamSubscription? _partyPresSub;
 
@@ -82,9 +83,25 @@ class PresenceChannel {
       final p = peerUid;
       if (p == null || p.isEmpty) return;
       final online = roster.contains(p);
-      _events.add(online
-          ? {'type': 'online', 'who': p}
-          : {'type': 'offline', 'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000, 'who': p});
+      if (online) {
+        _peerWasPresent = true;
+        _events.add({'type': 'online', 'who': p});
+        return;
+      }
+      // [LASTSEEN-HONEST-1] (owner report 2026-07-09): a peer ABSENT from the
+      // roster tells us nothing about WHEN they were last seen — stamping
+      // ts=now here made every sleeping contact (phone off all night) show
+      // "last seen just now" the moment their thread was opened, and the fake
+      // timestamp was then PERSISTED by LastSeenStore. Only a genuine leave
+      // (present earlier in THIS session) may carry a timestamp; plain absence
+      // emits offline with NO ts so the UI keeps the last honest value.
+      if (_peerWasPresent) {
+        _peerWasPresent = false;
+        _events.add({'type': 'offline',
+          'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000, 'who': p});
+      } else {
+        _events.add({'type': 'offline', 'who': p});
+      }
     });
   }
 
