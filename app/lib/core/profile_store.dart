@@ -176,7 +176,19 @@ class ProfileStore {
   /// should let the user straight into the app).
   Future<bool> restoreFromServer() async {
     // Already recovered on this device → trust it, skip the network round-trip.
-    try { if (await readScoped(_s, _recoveredKey) == '1') return true; } catch (_) {}
+    // [ISSUE-RESTORE-FLAG-1] (2026-07-09) …but ONLY if the local profile actually
+    // has content. FlutterSecureStorage (EncryptedSharedPreferences) can SURVIVE
+    // an uninstall via Android Auto Backup, so after a reinstall this flag said
+    // "already recovered" while the profile itself was empty — the server pull
+    // was skipped and the user's name/photo never came back (hdavy2002, build
+    // 12376). An empty profile means the flag is stale: fall through and re-pull.
+    try {
+      if (await readScoped(_s, _recoveredKey) == '1') {
+        final p = await load();
+        if (p.displayName.trim().isNotEmpty && p.avatarUrl.trim().isNotEmpty) return true;
+        Analytics.capture('profile_restore_flag_stale', const {'reason': 'flag_set_but_profile_empty'});
+      }
+    } catch (_) {}
     http.Response res;
     try {
       res = await ApiAuth.getSigned(kMeUrl);
