@@ -25,6 +25,10 @@ custom_domain = true
 # SECRET (`wrangler secret put AI_GATEWAY_TOKEN`), never in this file.
 AI_GATEWAY_ID = "avatok-ai"
 CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
+# [LIVE-DIDIT-1] didit.me liveness — the "AvaTOK Liveness" workflow (LIVENESS
+# feature only) created 2026-07-09 in the owner's Didit console. The API key is
+# a SECRET (`wrangler secret put DIDIT_API_KEY`), never in this file.
+DIDIT_WORKFLOW_ID = "21da9f1d-4fec-4639-a010-cb7299fe6528"
 # GenUI global template cache (Upstash Redis). REST URL is public-safe; the token
 # is a SECRET (`wrangler secret put UPSTASH_REDIS_REST_TOKEN`), never in this file.
 # If unset, the GenUI template cache simply no-ops (composes each time).

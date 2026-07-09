@@ -308,6 +308,10 @@ const DEFAULTS: PlatformConfig = {
   livenessDeviceAuthoritative: false, // [LIVE-DEVAUTH-1] device-authoritative fast path — OFF (dark until device-signal trust is proven)
   livenessAuditSampleRate: 0.08,      // [LIVE-DEVAUTH-1] 8% of device-authoritative verifies also run full LLaVA for disagreement telemetry
   livenessV3Enabled: false,           // Liveness V3 voice-guided/Rekognition pipeline — DARK; extends V2, flip ON in KV once proven
+  // [LIVE-DIDIT-1] didit.me-hosted liveness (owner decision 2026-07-09). Default
+  // ON — this IS the liveness path now; v2/v3 above are retired. The client
+  // routes the human check to DiditLivenessScreen when this is true.
+  diditLivenessEnabled: true,
   safetyScanEnabled: true,         // P6: always-on Nemotron per-message safety scan + red bubbles — ships ON
   profileCompletionGate: false,    // P11: mandatory + AI-vetted profile — dark, flip ON at launch
   chatArchiveV2: false,            // P8 Stage 1: batched R2 cold archive — dark until verified

@@ -13,6 +13,7 @@ import 'identity_api.dart';
 import 'identity_gate.dart';
 import 'ladder_api.dart';
 import 'liveness_check_screen.dart';
+import 'liveness_didit_screen.dart';
 import 'liveness_v2/liveness_v2_screen.dart';
 
 /// AvaIdentity — the ONE-STOP identity hub (replaces the Profile sidebar
@@ -60,10 +61,14 @@ class _IdentityScreenState extends State<IdentityScreen> {
       (_status?.verified == true && _status?.provider == 'stripe_identity');
 
   Future<void> _startLiveness() async {
+    // [LIVE-DIDIT-1] didit.me is the live liveness path; v2/v1 are retired
+    // fallbacks behind the kill switch.
     final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(
-        builder: (_) => RemoteConfig.livenessV2Enabled
-            ? const LivenessV2Screen()
-            : const LivenessCheckScreen()));
+        builder: (_) => RemoteConfig.diditLivenessEnabled
+            ? const DiditLivenessScreen(requester: 'identity_hub')
+            : RemoteConfig.livenessV2Enabled
+                ? const LivenessV2Screen()
+                : const LivenessCheckScreen()));
     if (ok == true) {
       await _refresh();
     } else if (mounted) {

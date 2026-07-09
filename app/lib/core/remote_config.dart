@@ -159,6 +159,10 @@ class RemoteConfig {
   /// in KV `platform_config` once V3 pass-rate is proven. Mirrors config.ts. Takes
   /// precedence over V2 when both are on.
   static bool get livenessV3Enabled => _b('livenessV3Enabled', false);
+  /// [LIVE-DIDIT-1] didit.me-hosted liveness (owner decision 2026-07-09) — THE
+  /// live path; takes precedence over v3/v2/v1. Default TRUE (this is the
+  /// pipeline now); the flag exists only as a kill switch. Mirrors config.ts.
+  static bool get diditLivenessEnabled => _b('diditLivenessEnabled', true);
   /// STREAM H (AI Messenger Batch): onboarding "human check" hard gate. When ON,
   /// every account must pass liveness the moment it's created (D12) and existing
   /// unverified users are redirected on app open (D13, non-dismissible). Server

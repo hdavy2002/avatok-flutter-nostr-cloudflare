@@ -7,6 +7,7 @@ import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'ladder_api.dart';
 import 'liveness_check_screen.dart';
+import 'liveness_didit_screen.dart';
 import 'liveness_v2/liveness_v2_screen.dart';
 import 'liveness_v2/pending_session.dart';
 import 'liveness_v3/liveness_v3_screen.dart';
@@ -88,7 +89,10 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
     // (app backgrounded mid-check), reopen the V2 screen so it can resume that
     // session's result instead of making the user redo the whole video. The V2
     // screen's initState does the actual poll/render. Flag-gated so V1 is unchanged.
-    if (RemoteConfig.livenessV3Enabled || RemoteConfig.livenessV2Enabled) {
+    // [LIVE-DIDIT-1] pending-session resume is a v2/v3 concept — skip it when
+    // didit is the live path (its result poll is stateless on the Worker).
+    if (!RemoteConfig.diditLivenessEnabled &&
+        (RemoteConfig.livenessV3Enabled || RemoteConfig.livenessV2Enabled)) {
       _resumePendingV2();
     }
   }
@@ -116,6 +120,17 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
       ok = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
               builder: (_) {
+                // [LIVE-DIDIT-1] didit.me is THE liveness path (owner decision
+                // 2026-07-09). v3/v2/v1 below are retired fallbacks, reachable
+                // only if the didit kill switch is flipped off.
+                if (RemoteConfig.diditLivenessEnabled) {
+                  return DiditLivenessScreen(
+                    listingContext: widget.source == HumanCheckSource.listing,
+                    requester: widget.source == HumanCheckSource.listing
+                        ? 'marketplace_publish'
+                        : 'onboarding',
+                  );
+                }
                 // V3 (voice-guided) takes precedence when its flag is on, then V2
                 // (ML-Kit-gated), else V1. `requester` records who invoked the
                 // check (plan §0-A): a marketplace listing gate vs onboarding.
