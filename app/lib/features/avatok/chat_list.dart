@@ -649,6 +649,51 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     Db.I.replaceChatList(rows).catchError((Object _) {}); // fire-and-forget
   }
 
+  // [ISSUE-THREAD-RESTORE-1] (2026-07-09) The chat LIST renders from the
+  // contacts/groups stores, but after a reinstall the message history is
+  // restored by the sync hub into SQLite — 219 messages came back for
+  // hdavy2002 while the list showed only the 2 vault contacts. Any 1:1
+  // conversation present in the message store whose peer is missing from
+  // ContactsStore is resurrected here: resolve the peer from the directory,
+  // re-add them as a contact (which live-refreshes the list AND re-syncs the
+  // contacts vault, so the next device gets them for free). Idempotent —
+  // known peers are skipped; runs quietly in the background.
+  bool _resurrecting = false;
+  Future<void> _resurrectThreadsFromMessages() async {
+    if (_resurrecting) return;
+    _resurrecting = true;
+    try {
+      final convs = await Db.I.distinctDmConvs();
+      if (convs.isEmpty) return;
+      final myUid = _id?.uid ?? '';
+      final known = {for (final c in await _contactsStore.load()) c.uid};
+      var restored = 0;
+      for (final conv in convs) {
+        final uid = conv.convKey.startsWith('1:') ? conv.convKey.substring(2) : '';
+        if (uid.isEmpty || uid == myUid || known.contains(uid)) continue;
+        if (uid.startsWith('tel:')) continue; // receptionist threads have their own lane
+        Contact? c;
+        try { c = await Directory.resolve(uid); } catch (_) {}
+        // Deleted/unknown accounts still had a real conversation — keep the
+        // history reachable under a placeholder name instead of hiding it.
+        c ??= Contact(uid: uid, name: 'Unknown user');
+        try {
+          await _contactsStore.add(c); // streams _changes → list refreshes live
+          known.add(uid);
+          restored++;
+        } catch (_) {/* best-effort per peer */}
+      }
+      if (restored > 0) {
+        Analytics.capture('threads_resurrected', {
+          'count': restored,
+          'convs_scanned': convs.length,
+        });
+      }
+    } catch (_) {/* best-effort — never disturb the list */} finally {
+      _resurrecting = false;
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -786,6 +831,13 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // Backfill profile photos for contacts saved before avatars existed — silent.
     _contactsStore.refreshMissingAvatars().then((list) {
       if (mounted) setState(() => _contacts = list);
+    });
+    // [ISSUE-THREAD-RESTORE-1] Resurrect chat threads from restored message
+    // history: once shortly after boot, and again after the sync catch-up has
+    // had time to replay the backlog on a fresh install.
+    unawaited(_resurrectThreadsFromMessages());
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted) unawaited(_resurrectThreadsFromMessages());
     });
     // NOTE: the phone address book is NOT read on cold start — it's read on demand
     // only when the user opens a contacts screen (Invite/Search). This keeps app

@@ -303,6 +303,26 @@ class AppDb extends _$AppDb {
         .write(MessagesCompanion(convKey: Value(to)));
   }
 
+  /// [ISSUE-THREAD-RESTORE-1] (2026-07-09) Distinct 1:1 conversation keys in the
+  /// message store with their latest message time. After a reinstall the sync
+  /// hub replays the full message backlog into [messages], but the chat LIST
+  /// renders from the contacts/groups stores — so conversations whose peer
+  /// wasn't in the (much smaller) contacts vault stayed invisible even though
+  /// their history was fully restored. The chat list uses this to resurrect
+  /// those threads.
+  Future<List<({String convKey, int lastTs})>> distinctDmConvs() async {
+    final maxTs = messages.createdAt.max();
+    final q = selectOnly(messages)
+      ..addColumns([messages.convKey, maxTs])
+      ..where(messages.convKey.like('1:%'))
+      ..groupBy([messages.convKey]);
+    final rows = await q.get();
+    return [
+      for (final r in rows)
+        (convKey: r.read(messages.convKey) ?? '', lastTs: r.read(maxTs) ?? 0),
+    ];
+  }
+
   /// How many messages we already have for a conversation (cheap count).
   Future<int> messageCount(String convKey) async {
     final c = messages.rumorId.count();
