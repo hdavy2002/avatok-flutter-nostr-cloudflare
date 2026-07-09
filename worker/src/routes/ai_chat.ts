@@ -22,46 +22,35 @@ import { trackUser } from "../hooks";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { moderate } from "../lib/moderation";
-
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+import { avaReason } from "../lib/ava_reason";
 
 // Cheap chat model for these utility calls. Override via env.OPENROUTER_UTIL_MODEL.
-// (Distinct from ChatAVA's z-ai/glm-5.2 — these are one-shot, latency-sensitive.)
+// (Distinct from ChatAVA's model — these are one-shot, latency-sensitive.)
+// AVA-CORE-2: kept as the pinned `legacyModel` for avaReason() so current
+// deployments behave IDENTICALLY (same model, same OpenRouter wire call).
+// Clearing this pin later (config-only) flips these routes onto the shared
+// AVA_REASONER ladder.
 function utilModel(env: Env): string {
   return ((env as any).OPENROUTER_UTIL_MODEL as string) || "google/gemini-2.5-flash-lite";
 }
 
-function orHeaders(key: string): Record<string, string> {
-  return {
-    authorization: `Bearer ${key}`,
-    "content-type": "application/json",
-    "HTTP-Referer": "https://avatok.ai",
-    "X-Title": "AvaTOK AI-in-chats",
-  };
-}
+/// Capability tags each call site must provide (sacred rule: every AI invocation
+/// is attributable — Specs/AVA-ENGINEERING-LAW.md).
+interface LlmTags { role: string; capability: string; trigger: string; uid?: string; email?: string | null; appName?: string }
 
-/// One-shot OpenRouter completion. Returns trimmed text, or throws on hard fail.
-async function llm(env: Env, system: string, user: string, maxTokens = 400, temperature = 0.3): Promise<string> {
-  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
-  if (!key) throw new Error("openrouter key missing");
-  const res = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: orHeaders(key),
-    body: JSON.stringify({
-      model: utilModel(env),
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      max_tokens: maxTokens,
-      temperature,
-    }),
+/// One-shot completion via the ONE reasoning gateway (AVA-CORE-2). Returns
+/// trimmed text, or throws on hard fail — same contract the old direct
+/// OpenRouter `llm()` had, so all call-site try/catch behavior is unchanged.
+async function llm(env: Env, tags: LlmTags, system: string, user: string, maxTokens = 400, temperature = 0.3): Promise<string> {
+  return avaReason(env, {
+    ...tags,
+    appName: tags.appName ?? "messaging",
+    system,
+    user,
+    maxTokens,
+    temperature,
+    legacyModel: utilModel(env), // behavior-preserving pin (see utilModel note)
   });
-  const out: any = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(`openrouter ${res.status}: ${String(out?.error?.message ?? out?.error ?? "").slice(0, 160)}`);
-  }
-  return String(out?.choices?.[0]?.message?.content ?? "").trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +140,7 @@ export async function aiCatchup(req: Request, env: Env): Promise<Response> {
 
   let raw = "";
   try {
-    raw = await llm(env, system, transcript, 350, 0.2);
+    raw = await llm(env, { role: "copilot", capability: "catchup", trigger: "user_request", uid: ctx.uid, email }, system, transcript, 350, 0.2);
   } catch (e: any) {
     trackUser(env, ctx.uid, email, "ai_catchup_error", "messaging", { conv, msg_count: msgs.length, reason: String(e?.message ?? e).slice(0, 160) });
     return json({ error: "summary failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
@@ -204,7 +193,7 @@ export async function aiSmartReplies(req: Request, env: Env): Promise<Response> 
 
   let out = "";
   try {
-    out = await llm(env, system, transcript, 60, 0.6);
+    out = await llm(env, { role: "copilot", capability: "smart_replies", trigger: "auto", uid: ctx.uid, email }, system, transcript, 60, 0.6);
   } catch {
     return json({ suggestions: [] }); // silent — chips just don't show
   }
@@ -237,7 +226,7 @@ export async function aiTranslate(req: Request, env: Env): Promise<Response> {
   const system = `Translate the user's message into ${to}. Output ONLY the translation, preserving meaning and tone. If it is already in ${to}, return it unchanged.`;
   let translated = "";
   try {
-    translated = await llm(env, system, text, 600, 0.2);
+    translated = await llm(env, { role: "copilot", capability: "translate", trigger: "user_request", uid: ctx.uid, email }, system, text, 600, 0.2);
   } catch (e: any) {
     return json({ error: "translate failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
   }
@@ -289,7 +278,7 @@ export async function aiGroupTranslate(req: Request, env: Env): Promise<Response
       continue;
     }
     try {
-      const t = await llm(env, `Translate the user's message into ${lang}. Output ONLY the translation.`, m.text, 600, 0.2);
+      const t = await llm(env, { role: "copilot", capability: "group_translate", trigger: "auto", uid: ctx.uid, email }, `Translate the user's message into ${lang}. Output ONLY the translation.`, m.text, 600, 0.2);
       try { await env.TOKENS.put(kvKey, t, { expirationTtl: TR_TTL }); } catch { /* best-effort cache */ }
       items.push({ id: m.id, text: t, cached: false });
     } catch {
@@ -348,7 +337,7 @@ export async function safetyScore(req: Request, env: Env): Promise<Response> {
   let score = 0;
   let reason = "Unable to assess.";
   try {
-    const out = await llm(env, system, transcript, 120, 0.1);
+    const out = await llm(env, { role: "copilot", capability: "safety_score", trigger: auto ? "auto" : "user_request", uid: ctx.uid, email }, system, transcript, 120, 0.1);
     const parsed = parseScore(out);
     score = parsed.score;
     reason = parsed.reason;
@@ -406,7 +395,7 @@ export async function aiBio(req: Request, env: Env): Promise<Response> {
 
   let bio = "";
   try {
-    bio = await llm(env, system, seed, 120, 0.7);
+    bio = await llm(env, { role: "copilot", capability: "bio", trigger: "user_request", uid: ctx.uid, email, appName: "profile" }, system, seed, 120, 0.7);
   } catch (e: any) {
     trackUser(env, ctx.uid, email, "profile_bio_ai_error", "profile", { reason: String(e?.message ?? e).slice(0, 160), email });
     return json({ error: "bio generation failed", detail: String(e?.message ?? e).slice(0, 200) }, 502);
@@ -453,7 +442,7 @@ export async function aiGender(req: Request, env: Env): Promise<Response> {
 
   let out = "";
   try {
-    out = await llm(env, system, name, 40, 0.0);
+    out = await llm(env, { role: "copilot", capability: "gender_infer", trigger: "user_request", uid: ctx.uid, email, appName: "profile" }, system, name, 40, 0.0);
   } catch (e: any) {
     trackUser(env, ctx.uid, email, "profile_gender_ai_error", "profile", { reason: String(e?.message ?? e).slice(0, 160), email });
     return json({ gender: "unknown", confidence: 0 }); // fail soft → client lets user pick
