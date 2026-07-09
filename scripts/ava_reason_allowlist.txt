@@ -12,17 +12,16 @@
 #   - ADDING a line is a REVIEW EVENT: it means new direct-LLM code was introduced.
 #     It must be justified and signed off by the capability owner.
 #
-# NOTE (2026-07-08): Agents W and C are concurrently migrating some of these call
-# sites (ai_chat.ts, ava_gemini.ts, ava_guardian.ts, brain.ts, auto_reply.ts,
-# moderation.ts). This list reflects the tree state at seed time; the orchestrator
-# should REGENERATE it at verification time after W and C land, then delete the
-# now-migrated entries.
+# REGENERATED 2026-07-09 (Phase 0 verification): worker ai_chat.ts + ava_gemini.ts
+# and consumers auto_reply.ts + moderation.ts are fully migrated to avaReason() →
+# removed. consumers/brain.ts STAYS: its remaining direct calls are SENSES
+# (whisper STT + bge embeddings), exempt per Specs/AVA-ENGINEERING-LAW.md.
+# worker/src/lib/moderation.ts STAYS: its remaining direct call is the Nemotron
+# content-safety floor (a sense); classifyThreat() now goes through avaReason().
 
 # --- consumers/src ---
-consumers/src/auto_reply.ts
 consumers/src/brain.ts
 consumers/src/mkt_audio.ts
-consumers/src/moderation.ts
 
 # --- worker/src ---
 worker/src/do/ava_agent.ts
@@ -39,9 +38,7 @@ worker/src/lib/genui_planner.ts
 worker/src/lib/moderation.ts
 worker/src/routes/affiliate_assets.ts
 worker/src/routes/agent_tts.ts
-worker/src/routes/ai_chat.ts
 worker/src/routes/api.ts
-worker/src/routes/ava_gemini.ts
 worker/src/routes/ava_image.ts
 worker/src/routes/ava_live.ts
 worker/src/routes/avavision.ts
