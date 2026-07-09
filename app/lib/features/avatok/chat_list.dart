@@ -819,8 +819,18 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
               : (cu.label.contains('@') || cu.label.contains(RegExp(r'\d'))
                   ? ''
                   : cu.label);
-          await Directory.registerProfile(
-              uid: id!.uid, email: cu.email!, name: dirName, phone: prof.phone);
+          // [ISSUE-PROFILE-PUBLISH-1] (2026-07-09) Don't publish a BLANK profile.
+          // On a fresh reinstall — before the server restore hydrates the local
+          // profile — dirName AND phone are both empty, and this launch publish
+          // got 400 `profile_incomplete` from the Worker's completeness gate on
+          // EVERY cold start, for every account. Pure noise that masqueraded as
+          // a restore failure in telemetry (the misnamed profile_restore_rejected).
+          // The server COALESCEs and keeps its stored fields anyway, so an empty
+          // publish can never contribute anything.
+          if (dirName.isNotEmpty || prof.phone.trim().isNotEmpty) {
+            await Directory.registerProfile(
+                uid: id!.uid, email: cu.email!, name: dirName, phone: prof.phone);
+          }
         }
       } catch (_) {/* not signed in / offline */}
     }());
