@@ -87,11 +87,76 @@ class ContactsStore {
     cs.removeWhere((x) => x.uid == c.uid);
     cs.insert(0, c);
     await _save(cs);
+    // [ISSUE-CONTACT-SEMANTICS-1] An explicit add un-deletes: clear any
+    // tombstone (and un-hide the thread) so the contact behaves like new.
+    final deleted = await deletedContacts();
+    if (deleted.remove(c.uid) != null) await _saveMapKey(_kDeletedKey, deleted);
+    final hidden = await hiddenThreads();
+    if (hidden.remove(c.uid) != null) await _saveMapKey(_kHiddenKey, hidden);
     _changes.add(cs); // live-refresh any open chat list
     _syncUp(cs); // push encrypted copy to the cross-device vault (best-effort)
     return cs;
   }
 
+  // ── [ISSUE-CONTACT-SEMANTICS-1] (owner decision 2026-07-10) ────────────────
+  // Two distinct actions, both restore-proof (persisted locally AND in the
+  // vault blob v2 so they survive reinstall + follow the user across devices):
+  //   • DELETE contact  → gone from the AvaTOK contact book, tombstoned so no
+  //     restore/resurrection can ever bring it back. Re-adding explicitly
+  //     clears the tombstone.
+  //   • HIDE thread ("Remove contact" in the chat-list menu) → the chat row
+  //     disappears, but the contact STAYS in the AvaTOK contact book (user can
+  //     look them up and message them any time). Stored as uid → hiddenAt ms;
+  //     any NEWER message automatically resurrects the row, so no un-hide
+  //     plumbing is needed.
+  static const _kDeletedKey = 'avatok_contacts_deleted'; // JSON {uid: ms}
+  static const _kHiddenKey = 'avatok_threads_hidden';    // JSON {uid: ms}
+
+  Future<Map<String, int>> _loadMapKey(String key) async {
+    try {
+      final raw = await DiskCache.read(key);
+      if (raw == null || raw.isEmpty) return {};
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      return {for (final e in m.entries) e.key: (e.value as num?)?.toInt() ?? 0};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _saveMapKey(String key, Map<String, int> m) =>
+      DiskCache.write(key, jsonEncode(m));
+
+  /// Tombstoned (deleted) contact uids → deleted-at ms.
+  Future<Map<String, int>> deletedContacts() => _loadMapKey(_kDeletedKey);
+
+  /// Hidden 1:1 threads: peer uid → hidden-at ms.
+  Future<Map<String, int>> hiddenThreads() => _loadMapKey(_kHiddenKey);
+
+  /// DELETE from the AvaTOK contact book, permanently (tombstoned).
+  Future<List<Contact>> deleteContact(String uid) async {
+    final deleted = await deletedContacts();
+    deleted[uid] = DateTime.now().millisecondsSinceEpoch;
+    await _saveMapKey(_kDeletedKey, deleted);
+    final cs = await load();
+    cs.removeWhere((x) => x.uid == uid);
+    await _save(cs);
+    _changes.add(cs);
+    Analytics.capture('contact_deleted', const {});
+    _syncUp(cs);
+    return cs;
+  }
+
+  /// Hide the chat thread; the contact itself is untouched.
+  Future<void> hideThread(String uid) async {
+    final hidden = await hiddenThreads();
+    hidden[uid] = DateTime.now().millisecondsSinceEpoch;
+    await _saveMapKey(_kHiddenKey, hidden);
+    Analytics.capture('thread_hidden', const {});
+    _syncUp(await load());
+  }
+
+  /// LEGACY removal — kept for callers outside the chat-list menu. Now maps to
+  /// the hard delete (tombstoned) since that matches the old visible effect.
   Future<List<Contact>> remove(String uid) async {
     final cs = await load();
     cs.removeWhere((x) => x.uid == uid);
@@ -146,8 +211,18 @@ class ContactsStore {
     final keyMat = await AccountKey.I.ensureHex();
     if (keyMat == null) return; // no account key yet (offline) — the next sync carries it
     try {
+      // [ISSUE-CONTACT-SEMANTICS-1] Vault blob v2: carries the deleted-contact
+      // tombstones + hidden-thread map alongside the contacts, so "deleted stays
+      // deleted" and "removed threads stay removed" across reinstalls/devices.
+      // (v1 blobs — a bare JSON list — are still read by pullAndMerge.)
       final blob = await Vault.encrypt(
-          jsonEncode(cs.map((c) => c.toJson()).toList()), keyMat);
+          jsonEncode({
+            'v': 2,
+            'contacts': cs.map((c) => c.toJson()).toList(),
+            'deleted': await deletedContacts(),
+            'hidden': await hiddenThreads(),
+          }),
+          keyMat);
       await Vault.put('contacts', blob);
     } catch (_) {/* best-effort */}
   }
@@ -197,11 +272,24 @@ class ContactsStore {
       return local;
     }
     List<Contact> remote;
+    var remoteDeleted = <String, int>{};
+    var remoteHidden = <String, int>{};
     try {
-      remote = (jsonDecode(plain) as List)
-          .cast<Map<String, dynamic>>()
-          .map(Contact.fromJson)
-          .toList();
+      // [ISSUE-CONTACT-SEMANTICS-1] v2 blob = {v:2, contacts, deleted, hidden};
+      // v1 blob = a bare JSON list of contacts. Read both.
+      final decoded = jsonDecode(plain);
+      final List<dynamic> rawContacts;
+      if (decoded is Map<String, dynamic>) {
+        rawContacts = (decoded['contacts'] as List?) ?? const [];
+        Map<String, int> asMap(Object? o) => o is Map<String, dynamic>
+            ? {for (final e in o.entries) e.key: (e.value as num?)?.toInt() ?? 0}
+            : {};
+        remoteDeleted = asMap(decoded['deleted']);
+        remoteHidden = asMap(decoded['hidden']);
+      } else {
+        rawContacts = decoded as List;
+      }
+      remote = rawContacts.cast<Map<String, dynamic>>().map(Contact.fromJson).toList();
     } catch (_) {
       Analytics.error(
         domain: 'account',
@@ -213,11 +301,25 @@ class ContactsStore {
       return local;
     }
     _vaultHydratedFor = _scopeKey; // pulled + decrypted — pushes are safe now
+    // Merge tombstones + hidden maps (per-uid latest timestamp wins on both sides).
+    final deleted = await deletedContacts();
+    for (final e in remoteDeleted.entries) {
+      if ((deleted[e.key] ?? 0) < e.value) deleted[e.key] = e.value;
+    }
+    await _saveMapKey(_kDeletedKey, deleted);
+    final hidden = await hiddenThreads();
+    for (final e in remoteHidden.entries) {
+      if ((hidden[e.key] ?? 0) < e.value) hidden[e.key] = e.value;
+    }
+    await _saveMapKey(_kHiddenKey, hidden);
     final byNpub = <String, Contact>{for (final c in local) c.uid: c};
     for (final c in remote) {
       byNpub[c.uid] = c;
     }
-    final merged = byNpub.values.where((c) => c.uid.isNotEmpty).toList();
+    // Deleted contacts stay deleted — drop tombstoned uids from the merge.
+    final merged = byNpub.values
+        .where((c) => c.uid.isNotEmpty && !deleted.containsKey(c.uid))
+        .toList();
     await _save(merged);
     _changes.add(merged); // live-refresh the chat list the moment restore lands
     // [ISSUE-VAULT-RESTORE-1] restore counter — proves in PostHog whether the
@@ -226,8 +328,10 @@ class ContactsStore {
       'remote_count': remote.length,
       'local_count': local.length,
       'merged_count': merged.length,
+      'deleted_count': deleted.length,
+      'hidden_count': hidden.length,
     });
-    // If the merge added anything the server didn't have, push the superset back.
+    // If the merge differs from the server copy, push the superset back.
     if (merged.length != remote.length) _syncUp(merged);
     return merged;
   }

@@ -398,8 +398,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
         if (c.gid == null)
           ListTile(
               leading: PhosphorIcon(PhosphorIcons.userMinus(PhosphorIconsStyle.bold), color: Zine.coral),
-              title: Text('Remove contact', style: ZineText.value(size: 15, color: Zine.coral)),
+              // [ISSUE-CONTACT-SEMANTICS-1] Hides the thread; contact stays in
+              // AvaTOK contacts (find them in search any time).
+              title: Text('Remove from chats', style: ZineText.value(size: 15, color: Zine.coral)),
               onTap: () { Navigator.pop(ctx); _removeContact(c); }),
+        if (c.gid == null)
+          ListTile(
+              leading: PhosphorIcon(PhosphorIcons.trash(PhosphorIconsStyle.bold), color: Zine.coral),
+              title: Text('Delete contact', style: ZineText.value(size: 15, color: Zine.coral)),
+              onTap: () { Navigator.pop(ctx); _deleteContact(c); }),
       ],
     );
   }
@@ -441,8 +448,47 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     );
   }
 
+  // [ISSUE-CONTACT-SEMANTICS-1] (owner decision 2026-07-10) uid → hidden-at ms.
+  // Loaded at bootstrap, refreshed after hide/delete. Rendering filters hidden
+  // threads out; a newer message than the hide timestamp resurrects the row.
+  Map<String, int> _hiddenThreads = {};
+
+  /// "Remove contact" = HIDE the thread only. The contact stays in the AvaTOK
+  /// contact book (searchable, messageable); the row disappears from Chats and
+  /// stays gone across restores until a NEW message arrives.
   Future<void> _removeContact(Chat c) async {
-    final list = await _contactsStore.remove(c.seed); // Contact.seed == uid
+    await _contactsStore.hideThread(c.seed); // Contact.seed == uid
+    final hidden = await _contactsStore.hiddenThreads();
+    if (mounted) setState(() => _hiddenThreads = hidden);
+  }
+
+  /// "Delete contact" = permanent, tombstoned delete from the AvaTOK contact
+  /// book. Survives restores; never resurrected from message history. The
+  /// user's PHONE address book is never touched.
+  Future<void> _deleteContact(Chat c) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Zine.paper,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: Zine.ink, width: Zine.bw),
+            borderRadius: BorderRadius.circular(18)),
+        title: Text('Delete ${c.name}?', style: ZineText.value(size: 17)),
+        content: Text(
+            'This deletes them from your AvaTOK contacts for good — the chat '
+            'disappears and won\'t come back after a restore. Your phone\'s own '
+            'address book is not touched.',
+            style: ZineText.value(size: 14)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Delete', style: ZineText.value(size: 15, color: Zine.coral))),
+        ],
+      ),
+    );
+    if (sure != true) return;
+    final list = await _contactsStore.deleteContact(c.seed);
     if (mounted) setState(() => _contacts = list);
   }
 
@@ -663,20 +709,29 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (_resurrecting) return;
     _resurrecting = true;
     try {
+      // Refresh the hidden-thread map (cheap; also picks up vault-restored hides).
+      _hiddenThreads = await _contactsStore.hiddenThreads();
+      if (mounted) setState(() {});
       final convs = await Db.I.distinctDmConvs();
       if (convs.isEmpty) return;
       final myUid = _id?.uid ?? '';
       final known = {for (final c in await _contactsStore.load()) c.uid};
+      // [ISSUE-CONTACT-SEMANTICS-1] Deleted contacts are tombstoned — never
+      // resurrect them from message history.
+      final deleted = await _contactsStore.deletedContacts();
       var restored = 0;
       for (final conv in convs) {
         final uid = conv.convKey.startsWith('1:') ? conv.convKey.substring(2) : '';
         if (uid.isEmpty || uid == myUid || known.contains(uid)) continue;
+        if (deleted.containsKey(uid)) continue;
         if (uid.startsWith('tel:')) continue; // receptionist threads have their own lane
         Contact? c;
         try { c = await Directory.resolve(uid); } catch (_) {}
-        // Deleted/unknown accounts still had a real conversation — keep the
-        // history reachable under a placeholder name instead of hiding it.
-        c ??= Contact(uid: uid, name: 'Unknown user');
+        // [ISSUE-CONTACT-SEMANTICS-1] Peer no longer resolvable (deleted/test
+        // account) → SKIP. The old placeholder behaviour flooded the list with
+        // "Unknown user" rows (2026-07-10 report) — worthless threads nobody
+        // can reply to.
+        if (c == null) continue;
         try {
           await _contactsStore.add(c); // streams _changes → list refreshes live
           known.add(uid);
@@ -752,6 +807,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     // of eleven.
     final fId = _store.load();
     final fContacts = _contactsStore.load();
+    final fHidden = _contactsStore.hiddenThreads(); // [ISSUE-CONTACT-SEMANTICS-1]
     final fGroups = _groupStore.load();
     final fLastRead = _readStore.load();
     final fFlags = _flagsStore.load();
@@ -764,6 +820,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     var id = await fId;
     id ??= await _store.createAndStore();
     final contacts = await fContacts;
+    final hiddenThreads = await fHidden;
     final groups = await fGroups;
     final lastRead = await fLastRead;
     final flags = await fFlags;
@@ -792,6 +849,7 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     if (mounted) {
       setState(() {
         _id = id; _contacts = contacts; _groups = groups;
+        _hiddenThreads = hiddenThreads;
         _lastRead = lastRead; _flags = flags; _setStatuses(status); _drafts = drafts;
         _previews = previews;
         _enabledApps = enabled; _accountKind = kind; _customFilters = customFilters;
@@ -1315,6 +1373,15 @@ class _ChatListScreenState extends State<ChatListScreen> with WidgetsBindingObse
     }
     final contactChats = _contacts.where((c) {
       final k = contactKey(c);
+      // [ISSUE-CONTACT-SEMANTICS-1] "Remove contact" hides the THREAD but keeps
+      // the contact. A row stays hidden while its last message is older than the
+      // hide timestamp — any newer message (sent or received) resurrects it.
+      final hiddenAt = _hiddenThreads[c.uid];
+      if (hiddenAt != null) {
+        final ts = _previews[k]?.ts ?? 0;
+        final tsMs = ts > 0 && ts < 100000000000 ? ts * 1000 : ts; // s → ms
+        if (tsMs <= hiddenAt) return false;
+      }
       return !blocked.contains(k) && (_showArchived || !archived.contains(k));
     }).map((c) {
       final k = contactKey(c);
