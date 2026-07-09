@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -57,7 +58,11 @@ class TraceContext {
 class Analytics {
   static const _apiKey = 'phc_hmYMsHQEYjQU4bYXNdqA4VZVsfHEIkBQdQL0Kv7FIc5';
   static const _host = 'https://eu.i.posthog.com'; // EU ingestion — must match project region
-  static const appVersion = '0.1.17+18'; // keep in sync with pubspec version
+  // [APPVER-RUNTIME-1] Resolved from PackageInfo in init() — the old hardcoded
+  // constant ('0.1.17+18') silently went stale for 10+ builds and made every
+  // event lie about which build it came from (root cause of a wrong "phone is
+  // on an old build" diagnosis, 2026-07-09). Never hardcode this again.
+  static String appVersion = 'unresolved';
   // Git commit SHA stamped at build time (CI: --dart-define=GIT_SHA=<sha>);
   // 'dev' for local/unstamped builds. Sent on every event as `release` so PostHog
   // ties errors/metrics to the exact commit — CI also posts a matching annotation.
@@ -248,6 +253,14 @@ class Analytics {
   }
 
   static Future<void> init() async {
+    // [APPVER-RUNTIME-1] Stamp the REAL installed version+build (e.g.
+    // '0.1.18+12363') on every event. PackageInfo reads the platform package
+    // manager, so this always matches what the About screen shows and can
+    // never go stale like the old hardcoded constant did.
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appVersion = '${info.version}+${info.buildNumber}';
+    } catch (_) {/* keep 'unresolved' — better an honest unknown than a stale lie */}
     try {
       Connectivity().checkConnectivity().then(_applyNet).catchError((_) {});
       Connectivity().onConnectivityChanged.listen(_applyNet, onError: (_) {});
