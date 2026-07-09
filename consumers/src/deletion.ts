@@ -165,6 +165,11 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
 
   // 9. DB_META — identity, social, settings, verification, deletion bookkeeping last.
   const metaStmts = [
+    // [DEL-USERS-TABLE-1] The identity row lives in `users` — `profiles` never
+    // existed in prod, so the old DELETE silently no-oped and the user's
+    // name/bio/avatar/number survived the wipe (found 2026-07-09). Keep the
+    // `profiles` statement for any environment that still has that table.
+    "DELETE FROM users WHERE uid=?1",
     "DELETE FROM profiles WHERE uid=?1",
     "DELETE FROM contact_phone_index WHERE uid=?1",
     "DELETE FROM follows WHERE uid=?1 OR follows_npub=?1",
@@ -254,18 +259,26 @@ export async function handleDeletion(msg: DeletionMsg, env: Env): Promise<void> 
   if (env.CLERK_SECRET_KEY && clerkId) {
     try {
       const r = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}` } });
-      if (r.ok) done.push("clerk");
-    } catch { /* best-effort */ }
+      // [DEL-LOUD-FAIL-1] Record failures instead of vanishing them — a Clerk
+      // user that survives the cascade lets the person log back into a
+      // supposedly-deleted account (found 2026-07-09).
+      if (r.ok || r.status === 404) done.push("clerk"); else done.push(`clerk_failed:${r.status}`);
+    } catch { done.push("clerk_error"); }
+  } else {
+    // Secret missing entirely — surface it in stores_done so it's visible.
+    done.push(clerkId ? "clerk_skipped_no_secret" : "clerk_skipped_no_id");
   }
 
   // 14. PostHog person — guarded.
   if (env.POSTHOG_PERSONAL_API_KEY && env.POSTHOG_PROJECT_ID) {
     try {
-      await fetch(`https://us.posthog.com/api/projects/${env.POSTHOG_PROJECT_ID}/persons/?distinct_id=${encodeURIComponent(uid)}`, {
+      // [DEL-POSTHOG-EU-1] Project lives on EU cloud — us.posthog.com always
+      // 404'd here. Also check the response instead of blindly claiming success.
+      const pr = await fetch(`https://eu.posthog.com/api/projects/${env.POSTHOG_PROJECT_ID}/persons/?distinct_id=${encodeURIComponent(uid)}`, {
         method: "DELETE", headers: { Authorization: `Bearer ${env.POSTHOG_PERSONAL_API_KEY}` },
       });
-      done.push("posthog");
-    } catch { /* best-effort */ }
+      if (pr.ok || pr.status === 404) done.push("posthog"); else done.push(`posthog_failed:${pr.status}`);
+    } catch { done.push("posthog_error"); }
   }
 
   // 15. Stripe customer (Phase 2) — guarded. Customer id lookup lives in wallet rows
