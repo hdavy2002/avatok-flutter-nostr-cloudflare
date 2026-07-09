@@ -100,10 +100,27 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
             _sending = false;
             _error = _friendlySend(e.code);
           });
+          // [ISSUE-OTP-DIAG-2] (2026-07-09) Same fix as ISSUE-OTP-DIAG-1, which only
+          // covered liveness_v2/phone_stage.dart and left THIS screen (the marketplace
+          // listing gate) still logging a bare `e.code`. The Android firebase_auth
+          // plugin collapses every error it can't map to code=='unknown', so the
+          // listing-gate failures on 2026-07-09 (build 12374, screen 'phone_verify',
+          // source 'listing') told us nothing: reason='unknown', message='unknown'.
+          // `e.message` carries the real cause (blocked API, attestation failure,
+          // quota, bad app-check token, …). Capture it.
           Analytics.error(
-            domain: 'otp', code: 'otp_send_failed', message: e.code,
-            screen: _screen, action: 'send',
-            extra: {'reason': e.code, 'source': widget.reason, ..._phoneGeo()},
+            domain: 'otp',
+            code: 'otp_send_failed',
+            message: '${e.code}: ${e.message ?? "no native message"}',
+            screen: _screen,
+            action: 'send',
+            extra: {
+              'reason': e.code,
+              if (e.message != null) 'firebase_message': e.message!,
+              if (e.plugin.isNotEmpty) 'firebase_plugin': e.plugin,
+              'source': widget.reason,
+              ..._phoneGeo(),
+            },
           );
         },
         codeSent: (String verId, int? _) {

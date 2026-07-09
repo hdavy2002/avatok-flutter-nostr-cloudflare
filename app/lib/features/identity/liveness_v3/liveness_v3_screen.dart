@@ -88,6 +88,10 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
 
   // Coaching / recording state.
   CoachState _coachState = const CoachState.searching();
+  /// [ISSUE-LIVE-CAM-1] How many coach states arrived this stage. 0 at dead_screen
+  /// means the camera stream never delivered a frame (or ML Kit never ran) — a
+  /// different bug entirely from "frames arrived but no face was found".
+  int _coachStates = 0;
   bool _recording = false;
   int _challengeIndex = 0;
   final Set<int> _challengesDone = {};
@@ -188,6 +192,7 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _activeWatch?.cancel();
     if (mounted) setState(() => _phase = p);
     _stageStartMs = DateTime.now().millisecondsSinceEpoch;
+    _coachStates = 0; // [ISSUE-LIVE-CAM-1] per-stage, so a retry starts clean
     Analytics.capture('liveness_stage_start', {'stage': p.name, 'v': 3});
     _armWatchdog(p);
   }
@@ -233,6 +238,14 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     Analytics.capture('liveness_dead_screen', {
       'stage': stage,
       'ms': DateTime.now().millisecondsSinceEpoch - _stageStartMs,
+      // [ISSUE-LIVE-CAM-1] Without these, a dead_screen is unactionable — it says
+      // the stage stalled but not which half stalled. coach_states == 0 → no frames
+      // reached the coach at all (camera stream / ML Kit init); > 0 → frames flowed
+      // but the face was never framed well enough to start recording.
+      'coach_states': _coachStates,
+      'cam_initialized': _cam?.value.isInitialized ?? false,
+      'cam_streaming': _cam?.value.isStreamingImages ?? false,
+      'recording': _recording,
       'v': 3,
     });
     setState(() {
@@ -317,7 +330,19 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       _cam = CameraController(front, ResolutionPreset.medium, enableAudio: true);
       await _cam!.initialize();
       _captureCameraInfo(front);
-    } catch (_) {
+    } catch (e) {
+      // [ISSUE-LIVE-CAM-1] (2026-07-09) This used to be `catch (_)` — the real
+      // exception was dropped on the floor and the user got a generic string. Note
+      // enableAudio:true means a DENIED MIC permission throws here too, which reads
+      // to the user as "camera problem". Capture the actual error.
+      Analytics.error(
+        domain: 'liveness',
+        code: 'camera_init_failed',
+        message: e.toString(),
+        screen: 'liveness_v3',
+        action: 'camera_init',
+        extra: {'requester': widget.requester, 'v': 3},
+      );
       setState(() {
         _phase = _Phase.intro;
         _error = 'Could not open the front camera.';
@@ -384,12 +409,35 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       },
     );
     _coach = coach;
-    unawaited(coach.start());
+    // [ISSUE-LIVE-CAM-1] (2026-07-09) `unawaited(coach.start())` swallowed any
+    // exception from startImageStream / ML Kit init. When start() failed, no coach
+    // state was ever emitted, so _onCoachState never ran, so the watchdog never got
+    // poked — and the user sat on a live-looking preview until the 10s watchdog
+    // fired `dead_screen` and told them it was "a lighting or camera permission
+    // hiccup". PostHog 2026-07-09 build 12374: two faceNeck failures, ms=10001 both
+    // times, zero coach hints in between. Surface the real failure instead.
+    unawaited(coach.start().catchError((Object e) {
+      Analytics.error(
+        domain: 'liveness',
+        code: 'coach_start_failed',
+        message: e.toString(),
+        screen: 'liveness_v3',
+        action: 'coach_start',
+        extra: {'requester': widget.requester, 'v': 3},
+      );
+      if (mounted) {
+        setState(() {
+          _phase = _Phase.intro;
+          _error = 'Could not start the face check.';
+        });
+      }
+    }));
   }
 
   void _onCoachState(CoachState s) {
     if (!mounted || _phase != _Phase.faceNeck) return;
     _coachState = s;
+    _coachStates++; // [ISSUE-LIVE-CAM-1] proves whether frames ever arrived
     _activeWatch?.poke(); // any frame with a state = progress (kills the watchdog)
 
     if (!_recording) {

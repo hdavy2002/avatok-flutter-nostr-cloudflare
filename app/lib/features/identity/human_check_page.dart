@@ -69,8 +69,21 @@ class _HumanCheckPageState extends State<HumanCheckPage> {
   @override
   void initState() {
     super.initState();
-    // [LIVE-GATE-6] telemetry (auto-stamps email + uid via Analytics._base).
-    Analytics.capture('liveness_gate_shown', {'source': _source});
+    // [LIVE-GATE-9 2026-07-09] Exactly ONE liveness_gate_shown per gate.
+    //
+    // The router (main.dart _enterHumanCheck) emits for the stages it owns —
+    // 'redirect' (existing unverified user held on open) and 'onboarding' (fresh
+    // signup) — because it decides to gate BEFORE this page mounts. This page then
+    // mounted and emitted again, so every router-driven gate was double-counted
+    // ~40ms apart (15:13:45.429 + .469, build 12374). LIVE-GATE-8 only de-duped the
+    // two emitters inside main.dart and missed this one.
+    //
+    // 'listing' and 'guardian' push HumanCheckPage directly and never touch the
+    // router, so THOSE still need the event emitted here or it is lost entirely.
+    if (widget.source != HumanCheckSource.redirect &&
+        widget.source != HumanCheckSource.signup) {
+      Analytics.capture('liveness_gate_shown', {'source': _source});
+    }
     // Verify-pending resilience (LIVE-V2 P4): if a V2 verify was left in flight
     // (app backgrounded mid-check), reopen the V2 screen so it can resume that
     // session's result instead of making the user redo the whole video. The V2
