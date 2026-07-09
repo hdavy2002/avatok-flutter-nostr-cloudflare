@@ -71,6 +71,9 @@ import '../../sync/sync_hub.dart';
 import '../../push/push_service.dart';
 import '../../core/remote_config.dart';
 import '../ava/ava_invoke.dart';
+import '../ava/ava_doc_actions.dart'; // Phase A (Ava Copilot): doc actions + per-chat toggle
+import '../ava/ava_lane.dart'; // Phase A (Ava Copilot): private Ava-lane bubble
+import '../ava/ava_unread.dart'; // Phase A (Ava Copilot): per-conv ava_unread counter
 import 'ava_email.dart';
 import 'file_viewer_screen.dart';
 import '../genui/a2ui_renderer.dart';
@@ -336,6 +339,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String _aiSearchedQuery = '';              // the query the current hits answer
   bool _aiSearchError = false;               // last request failed
   bool _aiBrainOff = false;                  // messaging AvaBrain toggle is off
+  // Phase A (Ava Copilot, D29): per-chat "Ava in this chat" switch — ON by
+  // default; loaded from GET /api/ava/chat-toggle on open and flipped from the
+  // header ⋮ menu (optimistic). OFF hides the Ava doc context-menu items.
+  bool _avaInChatOn = true;
   bool _aiShowOther = false;                 // reveal "from your other chats" hits
   List<_AiHit> _aiHits = const [];           // matched + unmatched semantic hits
   Map<String, String> _memberNames = {}; // hex → name (group mentions)
@@ -601,6 +608,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _partyJoin(id.uid); // PartyKit live layer (deal-ready nudge etc.); no-op until flag on
     _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
+    _initAvaChatState(); // Phase A: load "Ava in this chat" + reset ava_unread
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
     // Seed instantly from the shared hub's in-memory store (this session).
@@ -754,6 +762,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     _convKey = 'g:${g.id}';
     _loadGuardian();
     onSummonAva = AvaInvoke.makeHandler(_convKey!); // Phase 11: @ava → in-thread turn
+    _initAvaChatState(); // Phase A: load "Ava in this chat" + reset ava_unread
     _bindLocalAva(); // render on-device @ava answers when Local Ava AI is active
     _bindAvaStream(); // render LIVE server @ava answers as they stream in
     _markRead();
@@ -4508,6 +4517,23 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     _action(ctx, PhosphorIcons.translate(PhosphorIconsStyle.bold), 'Translate',
                         () => _translateVoice(m)),
                   ],
+                  // Phase A (Ava Copilot §7): Ava doc actions on doc/PDF/image
+                  // bubbles — Summarize ✨ · Translate ✨ · Auto-translate file ✨,
+                  // in the plan's order BEFORE the download/share rows. Each is
+                  // labelled "only you will see this" (results land in the
+                  // private Ava lane). Hidden when "Ava in this chat" is off
+                  // (D29) or the message has no server media ref.
+                  ...AvaDocActions.menuItems(
+                    sheetContext: ctx,
+                    threadContext: context,
+                    conv: _serverConvId,
+                    mediaRef: m.media?.id,
+                    name: m.media?.name,
+                    show: _avaInChatOn &&
+                        m.media != null &&
+                        (m.media!.kind == MediaKind.file ||
+                            m.media!.kind == MediaKind.image),
+                  ),
                   _action(ctx, PhosphorIcons.arrowBendUpRight(PhosphorIconsStyle.bold), 'Forward', () => _forward(m)),
                   // Share OUT to another app (WhatsApp, Files, etc.) via the OS
                   // share sheet — works for any media, including voice notes.
@@ -5489,6 +5515,45 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   }
 
   // ---- header overflow ----
+  /// Phase A (Ava Copilot, D29/§6): on thread open, reset this conv's private
+  /// Ava-lane unread counter (the user is looking at the lane now) and load the
+  /// per-chat "Ava in this chat" switch state from the worker. Best-effort —
+  /// failures leave the D29 default (ON) in place.
+  void _initAvaChatState() {
+    final key = _convKey;
+    if (key == null) return;
+    // ignore: unawaited_futures
+    AvaUnread.clear(key);
+    final conv = _serverConvId;
+    if (conv == null) return;
+    // ignore: unawaited_futures
+    AvaChatToggle.fetch(conv).then((on) {
+      if (mounted && on != _avaInChatOn) setState(() => _avaInChatOn = on);
+    });
+  }
+
+  /// Flip "Ava in this chat" (D29) — optimistic local state, server write via
+  /// POST /api/ava/chat-toggle. In groups only admins may flip it; the server
+  /// enforces that, and a rejection quietly reverts the switch here.
+  Future<void> _setAvaInChat(bool on) async {
+    final conv = _serverConvId;
+    if (conv == null) return;
+    setState(() => _avaInChatOn = on);
+    Analytics.capture('ava_chat_toggle', {
+      'on': on, 'conv': conv, 'conv_kind': _isGroup ? 'group' : 'dm',
+    });
+    final ok = await AvaChatToggle.set(conv, on);
+    if (!ok && mounted) {
+      setState(() => _avaInChatOn = !on);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_isGroup
+            ? 'Only group admins can change Ava for this group.'
+            : "Couldn't update Ava for this chat — try again."),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
   void _overflow() {
     showModalBottomSheet(
       context: context,
@@ -5503,6 +5568,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
           if (kDiscussWithAvaEnabled && _convKey != null)
             _action(ctx, PhosphorIcons.sparkle(PhosphorIconsStyle.bold), 'Discuss with Ava',
                 _discussWithAva),
+          // Phase A (Ava Copilot, D29): per-chat "Ava in this chat" switch —
+          // ON by default. 1:1 = your own Ava only; groups = admins only (the
+          // server enforces; a rejected flip reverts quietly). OFF hides the
+          // Ava doc context-menu items and stops copilot processing here.
+          if (_convKey != null)
+            StatefulBuilder(builder: (sctx, setSheet) => SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                  secondary: Icon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Zine.ink),
+                  title: Text('Ava in this chat', style: ZineText.value(size: 15, color: Zine.ink)),
+                  subtitle: Text(
+                      _avaInChatOn ? 'Ava can help in this chat' : 'Ava is off for this chat',
+                      style: ZineText.sub(size: 12, color: Zine.inkMute)),
+                  value: _avaInChatOn,
+                  activeColor: Zine.ink,
+                  onChanged: (v) async {
+                    await _setAvaInChat(v);
+                    if (sctx.mounted) setSheet(() {});
+                  },
+                )),
           // STREAM G [GROUP-AI-1]: catch-up on a busy group thread. Shown only for
           // a group with >25 unread; the guardrail is re-checked in _whatDidIMiss.
           if ((widget.chat.group || widget.chat.gid != null) && _unreadIncoming > 25)
@@ -7926,6 +8010,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     // press still opens the reaction/action sheet; tap opens the fullscreen viewer.
     if (isStickerName(m.media?.name ?? '')) {
       return _stickerBubbleLess(m);
+    }
+    // Phase A (Ava Copilot §6/D3): PRIVATE-LANE Ava rows (copilot Moments, doc
+    // results, Guardian notes — lane:"private" or a guardian payload in the
+    // body) render via the dedicated AvaLaneBubble: soft orchid fill, "Ava ✨"
+    // author label, info affordance → disclosure sheet, safety accent for the
+    // Guardian variant. Ava's ordinary @ava turn replies (a2ui/email/image
+    // bubbles etc.) keep the existing lilac path below, unchanged.
+    if (_isAvaBubble(m) && m.media == null &&
+        m.extra?['a2ui'] == null && m.extra?['media_ref'] == null &&
+        (m.extra?['lane'] == 'private' || m.extra?['guardian'] is Map)) {
+      return GestureDetector(
+        onLongPressStart: (d) => _onBubbleLongPressAt(m, d.globalPosition),
+        child: AvaLaneBubble(
+          text: m.text,
+          time: m.time,
+          guardian: (m.extra?['guardian'] as Map?)?.cast<String, dynamic>(),
+        ),
+      );
     }
     final hasMedia = m.media != null || m.localBytes != null;
     // Ava bubbles always render on the LEFT (she is a participant, not "me"),
