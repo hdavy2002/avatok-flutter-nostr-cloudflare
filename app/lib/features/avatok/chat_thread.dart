@@ -5558,9 +5558,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Zine.paper,
+      // This sheet grows to ~14 rows depending on thread type (group, tel
+      // thread, unsaved caller, flags). Without isScrollControlled the sheet is
+      // capped near half-screen and the tail items (Mute / Block / Delete) were
+      // clipped off the bottom with no way to scroll to them.
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
           if (_isTelThread && !_callerSaved)
             _action(ctx, PhosphorIcons.userPlus(PhosphorIconsStyle.bold), 'Save to contacts',
@@ -5629,7 +5638,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               if (mounted) Navigator.pop(context);
             }, danger: true),
           _action(ctx, PhosphorIcons.broom(PhosphorIconsStyle.bold), 'Delete chat', () => Navigator.pop(context)),
-        ]),
+          ]),
+        ),
       ),
     );
   }
