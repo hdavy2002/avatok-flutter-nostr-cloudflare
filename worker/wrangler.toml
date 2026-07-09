@@ -32,6 +32,11 @@ UPSTASH_REDIS_REST_URL = "https://crack-grackle-16293.upstash.io"
 BLOSSOM_BASE_URL = "https://blossom.avatok.ai"   # public R2 read host (no Worker in path)
 FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"  # Gemma 4 26B-A4B MoE (~4B-class cost, thinking-mode reasoning)
+# AVA CORE (Phase 0, AVA-CORE-1): the ONE reasoner slot behind avaReason()
+# (lib/ava_reason.ts). AVA_REASONER runs on Workers AI (env.AI); AVA_REASONER_ALT
+# is the OpenRouter error/429 fallback. Named for the ROLE, not the model (v5 D21).
+AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"
+AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matches avatok-semantic
 BRAIN_RETRO_DELETE = "1"                                    # Phase 9: toggle OFF ⇒ retro-delete indexed items
 POSTHOG_QUERY_HOST = "https://eu.posthog.com"               # investigate() reads (personal key) — EU: project 139917 lives on eu.posthog.com
@@ -466,6 +471,8 @@ FCM_PROJECT = "avatok-e19ef"
 BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"
 BRAIN_RETRO_DELETE = "1"
+AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"        # AVA CORE Phase 0 (see top-level [vars])
+AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 POSTHOG_QUERY_HOST = "https://eu.posthog.com"
 POSTHOG_PROJECT_ID = "139917"
 AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"   # AvaVision snapshot model (PRICING.md §3)

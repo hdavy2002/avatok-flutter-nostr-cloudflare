@@ -240,8 +240,13 @@ export interface Env {
   // and the GenUI planner. Secret; set in secrets/secret-values.env.
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MOD_MODEL?: string;        // override the field-moderation model id (Nemotron)
-  OPENROUTER_SECURITY_MODEL?: string;   // override the shield/guardian model id (Claude Opus 4.8)
+  OPENROUTER_SECURITY_MODEL?: string;   // LEGACY guardian model pin (honored; empty = reasoner ladder)
   OPENROUTER_STT_MODEL?: string;        // override the speech-to-text model id (default openai/whisper-large-v3)
+
+  // AVA CORE Phase 0 (AVA-CORE-1): the ONE reasoner behind avaReason() (lib/ava_reason.ts).
+  AVA_REASONER?: string;       // Workers-AI primary (default @cf/google/gemma-4-26b-a4b-it)
+  AVA_REASONER_ALT?: string;   // OpenRouter fallback (default google/gemini-2.5-flash-lite)
+  GUARDIAN_DEEP_MODEL?: string; // force a specific OpenRouter model for guardian deep pass (optional)
 
   // InboxDO retention (cost control). Days to keep messages in the per-user inbox
   // DO before pruning (the device keeps history locally + in Drive/R2 backup, so
