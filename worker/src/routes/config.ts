@@ -235,6 +235,14 @@ export interface PlatformConfig {
   // in this path can NEVER touch live calls. Flip ON in KV once the client card
   // ships + is device-verified. Client mirror: RemoteConfig.busyCardEnabled.
   busyCardEnabled: boolean;
+  // Ava Copilot Phases A+B (Specs/AVA-COPILOT-FINAL-PLAN-2026-07-08.md §5–§9).
+  // All default OFF — the routes 503 {flag} while dark; flip ON in KV (never code).
+  avaCopilotEnabled: boolean;          // master: private lane posts + per-chat toggle + all /api/ava/doc/* routes
+  avaDocActionsEnabled: boolean;       // context-menu doc actions (Summarize ✨ / Translate ✨)
+  avaAutoTranslateFileEnabled: boolean; // "Auto-translate file ✨" (chunked whole-doc translation — cost watch)
+  // Ava Copilot Phases C+D (ODL — Opportunity Detection Layer, shadow-mode).
+  odlEnabled: boolean;        // Phase C: ODL wake scan from guardianScan (shadow-mode telemetry only)
+  avaMomentsEnabled: boolean; // Phase C: master gate for user-visible Moments (nothing posts while false)
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -325,6 +333,13 @@ const DEFAULTS: PlatformConfig = {
   authorityEnforced: false,       // verdicts NOT yet enforced — one KV flip when shadow data is clean
   callProtocolVersion: 2,
   busyCardEnabled: true,           // Busy-card feature (personalized card + waiter list + now-free FCM) — LIVE 2026-07-07 (glue wired end-to-end). Flip false in KV to force legacy "User is busy".
+  // Ava Copilot Phases A+B — ALL DARK until device-verified; flip ON in KV.
+  avaCopilotEnabled: false,           // master switch (private lane + per-chat toggle + doc routes)
+  avaDocActionsEnabled: false,        // Summarize ✨ / Translate ✨ context-menu actions
+  avaAutoTranslateFileEnabled: false, // Auto-translate file ✨ (chunked — cost watch)
+  // Ava Copilot Phases C+D — ODL ships DARK; flip via scripts/flags.sh set odlEnabled=true
+  odlEnabled: false,          // ODL wake scan (shadow telemetry only; zero AI, zero user-visible output)
+  avaMomentsEnabled: false,   // no user-visible Moments until a capability is production AND this is on
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */

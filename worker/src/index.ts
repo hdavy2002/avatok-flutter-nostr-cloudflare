@@ -111,6 +111,8 @@ import { avaThreadTurn } from "./routes/ava_thread";    // P3
 import { avaGuardianScan } from "./routes/ava_guardian"; // P8
 import { moderateText } from "./routes/moderate";        // save-time content validation (Nemotron)
 import { avaImage } from "./routes/ava_image";          // P9
+import { avaDocSummarize, avaDocTranslate, avaDocTranslateFile, avaChatToggle } from "./routes/ava_copilot"; // Copilot A+B (doc actions + per-chat toggle)
+import { avaTriggersGet, avaLedgerGet, avaMomentOutcome } from "./routes/ava_odl_routes"; // Copilot C+D (ODL trigger sync D31 + cost ledger D25 + learning loop)
 import { backupGet, backupPut, backupStatus } from "./routes/backup"; // P10
 import { ringtone } from "./routes/ringtone"; // AI ringback tones + busy tone
 import { delegateHandler } from "./routes/ava_delegate"; // P7 (Phase 11 route wiring)
@@ -415,6 +417,13 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/moderate" && req.method === "POST") return await moderateText(req, env);         // save-time content validation (Nemotron)
       if (p === "/api/ava/image" && req.method === "POST") return await avaImage(req, env);            // P9
       if (p === "/api/ava/delegate") return await delegateHandler(req, env); // P7 (GET reads prefs, POST writes)
+      if (p === "/api/ava/doc/summarize" && req.method === "POST") return await avaDocSummarize(req, env);        // Copilot A+B
+      if (p === "/api/ava/doc/translate" && req.method === "POST") return await avaDocTranslate(req, env);        // Copilot A+B
+      if (p === "/api/ava/doc/translate-file" && req.method === "POST") return await avaDocTranslateFile(req, env); // Copilot A+B
+      if (p === "/api/ava/chat-toggle" && (req.method === "GET" || req.method === "POST")) return await avaChatToggle(req, env); // D29 per-chat Ava toggle
+      if (p === "/api/ava/triggers" && req.method === "GET") return await avaTriggersGet(req, env);        // ODL: on-device trigger bank sync (D31)
+      if (p === "/api/ava/ledger" && req.method === "GET") return await avaLedgerGet(req, env);            // ODL: capability cost ledger snapshot (D25)
+      if (p === "/api/ava/moment-outcome" && req.method === "POST") return await avaMomentOutcome(req, env); // ODL: learning loop outcome (Constitution 11)
       // Backup & sync (P10): GET pull, PUT push, GET status.
       if (p === "/api/backup/status" && req.method === "GET") return await backupStatus(req, env);
       if (p === "/api/backup" && req.method === "GET") return await backupGet(req, env);
