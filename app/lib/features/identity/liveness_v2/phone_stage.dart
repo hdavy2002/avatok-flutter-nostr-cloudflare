@@ -177,13 +177,23 @@ class PhoneVerifyController extends ChangeNotifier {
           sending = false;
           error = _friendlySend(e.code);
           _safeNotify();
+          // [ISSUE-OTP-DIAG-1] (2026-07-09) Carry the NATIVE message, not just the
+          // code. The Android firebase_auth plugin collapses every error it can't
+          // map to code=='unknown', so `e.code` alone told us nothing — diagnosing
+          // the Play Integrity outage took a console session instead of one query.
+          // `e.message` holds the real cause (blocked API, attestation failure, …).
           Analytics.error(
             domain: 'otp',
             code: 'otp_send_failed',
-            message: e.code,
+            message: '${e.code}: ${e.message ?? "no native message"}',
             screen: _screen,
             action: 'send',
-            extra: {'reason': e.code, ..._geo()},
+            extra: {
+              'reason': e.code,
+              if (e.message != null) 'firebase_message': e.message!,
+              if (e.plugin.isNotEmpty) 'firebase_plugin': e.plugin,
+              ..._geo(),
+            },
           );
         },
         codeSent: (String verId, int? token) {
@@ -252,13 +262,18 @@ class PhoneVerifyController extends ChangeNotifier {
         'attempt': _attempts,
         ..._geo(),
       });
+      // [ISSUE-OTP-DIAG-1] Same reasoning as the send path — keep the native message.
       Analytics.error(
         domain: 'otp',
         code: 'otp_verify_failed',
-        message: e.code,
+        message: '${e.code}: ${e.message ?? "no native message"}',
         screen: _screen,
         action: 'verify',
-        extra: {'reason': e.code, ..._geo()},
+        extra: {
+          'reason': e.code,
+          if (e.message != null) 'firebase_message': e.message!,
+          ..._geo(),
+        },
       );
     } catch (e) {
       if (_disposed) return;
