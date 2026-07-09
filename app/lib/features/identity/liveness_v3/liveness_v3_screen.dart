@@ -9,12 +9,10 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/analytics.dart';
-import '../../../core/verification_api.dart';
 import '../ladder_api.dart';
 import '../liveness_v2/flash_fill.dart';
 import '../liveness_v2/live_theme.dart';
 import '../liveness_v2/pending_session.dart';
-import '../liveness_v2/phone_stage.dart';
 import '../liveness_v2/stage_chrome.dart';
 import 'active_checks.dart';
 import 'challenge_session.dart';
@@ -27,14 +25,20 @@ import 'voice_packs.dart';
 import 'watchdog.dart';
 
 /// Liveness V3 — VOICE-GUIDED orchestrator (Specs/LIVENESS-V3-VOICE-GUIDED-PLAN-
-/// DRAFT.md). Reuses the V2 dark-stage UI (LiveTheme, header/pips/footer, phone/
-/// OTP stages, oval overlay) and ADDS behaviour: a language picker, Ava voice
+/// DRAFT.md). Reuses the V2 dark-stage UI (LiveTheme, header/pips/footer, oval
+/// overlay) and ADDS behaviour: a language picker, Ava voice
 /// coaching from on-device ML Kit, server-randomized challenges rendered on the
 /// existing oval, a per-stage no-dead-screen watchdog, and background upload to
 /// the presigned R2 target. Ships behind `RemoteConfig.livenessV3Enabled`; V2 is
 /// untouched and used when the flag is off.
 ///
-/// Flow: language → phone → otp → intro → faceNeck (framing + challenges,
+/// [ISSUE-LIVE-PHONE-1] (owner decision 2026-07-09): the PHONE + OTP stages were
+/// REMOVED from this flow. V3 is liveness-only — no phone number is collected and
+/// no SMS is sent. `PhoneVerifyController` / `PhoneNumberStage` / `OtpConfirmStage`
+/// still live in `liveness_v2/phone_stage.dart` and are still used by V2 and by
+/// `profile/phone_verify_card.dart`; nothing there changed.
+///
+/// Flow: language → intro → faceNeck (framing + challenges,
 /// continuous recording) → done (background upload; user proceeds immediately).
 /// Verdict arrives via the existing V2 result/push path (green tick via
 /// /api/identity/level refresh).
@@ -60,8 +64,6 @@ class LivenessV3Screen extends StatefulWidget {
 
 enum _Phase {
   language,
-  phone,
-  otp,
   intro,
   preparing,
   faceNeck, // framing + randomized challenges, continuous recording
@@ -74,7 +76,6 @@ enum _Phase {
 
 class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   final FlashFillController _flash = FlashFillController();
-  final PhoneVerifyController _phone = PhoneVerifyController();
   CameraController? _cam;
   CoachingEngine? _coach;
 
@@ -82,8 +83,6 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   String? _error;
 
   String _lang = 'en';
-  bool _phoneVerified = false;
-  bool _phoneStart = false;
 
   LivenessV3Session? _session;
 
@@ -133,8 +132,6 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   void initState() {
     super.initState();
     _lang = LivenessVoice.deviceLang();
-    _phone.addListener(_onPhoneChanged);
-    _phone.loadStoredPhone();
     _boot();
   }
 
@@ -162,22 +159,10 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       // Not yet known at flow entry — the session (with its active_checks block)
       // is fetched later in _begin, which re-emits this with the resolved value.
       'active_checks': 'pending',
+      // [ISSUE-LIVE-PHONE-1] liveness-only from 2026-07-09; no phone/OTP stages.
+      'phone_stage': false,
       'v': 3,
     });
-  }
-
-  void _onPhoneChanged() {
-    if (!mounted) return;
-    if (_phase == _Phase.phone && _phone.codeSent && !_phone.verified) {
-      _setStage(_Phase.otp);
-      return;
-    }
-    if (_phase == _Phase.otp && _phone.verified) {
-      _phoneVerified = true;
-      _setStage(_Phase.intro);
-      return;
-    }
-    setState(() {});
   }
 
   @override
@@ -190,8 +175,6 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _activeTimers.clear();
     unawaited(_sensors.drain());
     _activeWatch?.dispose();
-    _phone.removeListener(_onPhoneChanged);
-    _phone.dispose();
     unawaited(_coach?.dispose());
     unawaited(LivenessVoice.I.stop());
     _flash.dispose();
@@ -271,14 +254,9 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     });
     // Switch voice + strings; kick off (best-effort) pack fetch for non-English.
     unawaited(LivenessVoice.I.ensureLanguage(lang));
-    // Decide phone vs face entry (phone/OTP stays exactly as V2 wired it).
-    bool verified = false;
-    try {
-      verified = await VerificationApi.isPhoneVerified();
-    } catch (_) {}
-    _phoneVerified = verified;
-    _phoneStart = !verified;
-    _setStage(verified ? _Phase.intro : _Phase.phone);
+    // [ISSUE-LIVE-PHONE-1] Straight to the liveness intro — no phone/OTP gate, so
+    // no VerificationApi.isPhoneVerified() round-trip and no SMS is ever sent.
+    _setStage(_Phase.intro);
   }
 
   // ── Intro → session + camera ────────────────────────────────────────────────
@@ -861,16 +839,15 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _frameCapture = null;
     _session = null;
     _retries++;
-    final toPhone = _phoneStart && !_phoneVerified;
-    if (toPhone) _phone.resetAll();
     if (!mounted) return;
     setState(() {
-      _phase = toPhone ? _Phase.phone : _Phase.intro;
+      _phase = _Phase.intro;
       _error = null;
       _failMessages = const [];
       _attemptsLeft = null;
     });
-    Analytics.capture('liveness_restart', {'v': 3, 'to': toPhone ? 'phone' : 'intro'});
+    // [ISSUE-LIVE-PHONE-1] A restart always re-enters at the liveness intro.
+    Analytics.capture('liveness_restart', {'v': 3, 'to': 'intro'});
   }
 
   void _skip() {
@@ -881,28 +858,26 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
 
   // ── Build ────────────────────────────────────────────────────────────────────
 
+  /// [ISSUE-LIVE-PHONE-1] Three steps now (language → liveness → done); the phone
+  /// and OTP pips are gone. Keep in step with [_pipTotal].
+  static const int _pipTotal = 3;
+
   int get _activePip => switch (_phase) {
         _Phase.language => 1,
-        _Phase.phone => 2,
-        _Phase.otp => 3,
-        _Phase.intro || _Phase.preparing || _Phase.faceNeck => 4,
-        _Phase.done => 5,
-        _ => 4,
+        _Phase.intro || _Phase.preparing || _Phase.faceNeck => 2,
+        _Phase.done => 3,
+        _ => 2,
       };
 
   @override
   Widget build(BuildContext context) {
     final canPop = _phase == _Phase.language ||
-        _phase == _Phase.phone ||
-        _phase == _Phase.otp ||
         _phase == _Phase.intro ||
         _phase == _Phase.passed ||
         _phase == _Phase.failed ||
         _phase == _Phase.unavailable ||
         _phase == _Phase.dead;
     final showPips = _phase == _Phase.language ||
-        _phase == _Phase.phone ||
-        _phase == _Phase.otp ||
         _phase == _Phase.intro ||
         _phase == _Phase.preparing ||
         _phase == _Phase.faceNeck ||
@@ -927,7 +902,7 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
                 if (showPips && _phase != _Phase.passed) ...[
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: StepPips(total: 5, active: _activePip),
+                    child: StepPips(total: _pipTotal, active: _activePip),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -946,10 +921,6 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     switch (_phase) {
       case _Phase.language:
         return LanguagePickerStep(initialLang: _lang, onConfirm: _onLanguageConfirmed);
-      case _Phase.phone:
-        return PhoneNumberStage(controller: _phone);
-      case _Phase.otp:
-        return OtpConfirmStage(controller: _phone);
       case _Phase.intro:
         return _intro();
       case _Phase.preparing:
