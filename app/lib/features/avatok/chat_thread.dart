@@ -895,6 +895,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final v = (await LastSeenStore().load())[key];
     final ts = int.tryParse(v ?? '') ?? 0;
     if (ts > 0 && mounted && _peerLastSeen == 0) setState(() => _peerLastSeen = ts);
+    // [LASTSEEN-SERVER-1] WhatsApp-style truth: the peer's InboxDO knows exactly
+    // when their device was last connected — no thread has to be open, no
+    // presence frame has to arrive. Server value wins over the local cache.
+    if (!key.startsWith('1:')) return; // 1:1 only
+    final uid = key.substring(2);
+    try {
+      final r = await ApiAuth.getSigned(
+          'https://$kSignalingHost/api/user/last-seen?uid=${Uri.encodeComponent(uid)}');
+      if (r.statusCode != 200 || !mounted) return;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      final ms = (j['last_active_at'] as num?)?.toInt() ?? 0;
+      final online = j['online'] == true;
+      final srvTs = ms > 0 ? ms ~/ 1000 : 0;
+      if (online) {
+        _markPeerOnline();
+      } else if (srvTs > 0) {
+        LastSeenStore().set(key, '$srvTs');
+        setState(() => _peerLastSeen = srvTs);
+      }
+    } catch (_) {/* offline / older worker — local cache already shown */}
   }
 
   /// Human "last seen <time>" label from the tracked unix-seconds timestamp.

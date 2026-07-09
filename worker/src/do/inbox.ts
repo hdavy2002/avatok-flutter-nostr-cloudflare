@@ -439,6 +439,15 @@ export class InboxDO {
       // GDPR deletion cascade (Phase 9 A1): wipe ALL DO storage for this user.
       // Peers keep their own copies in their own InboxDOs (their side of the
       // conversation survives, as the spec requires).
+      // [LASTSEEN-SERVER-1] WhatsApp-style presence truth: online = a live
+      // hibernatable socket exists RIGHT NOW; last_seen = the last connect/
+      // disconnect stamp. Read-only, no SQLite touch — cheap even when idle.
+      if (url.pathname.endsWith("/last-seen") && req.method === "GET") {
+        const online = this.state.getWebSockets().length > 0;
+        const lastActiveAt = (await this.state.storage.get<number>("last_active_at")) ?? null;
+        return new Response(JSON.stringify({ ok: true, online, last_active_at: lastActiveAt }),
+          { headers: { "content-type": "application/json" } });
+      }
       if (url.pathname.endsWith("/purge") && req.method === "POST") {
         // Row deletes keep the schema valid for any in-flight access; the DO
         // then idles back to (near-)nothing.
@@ -461,6 +470,10 @@ export class InboxDO {
     const pair = new WebSocketPair();
     // Hibernation: the runtime owns the socket; all durable state is in SQLite.
     this.state.acceptWebSocket(pair[1]);
+    // [LASTSEEN-SERVER-1] WhatsApp-style last seen: the DO is the one place that
+    // truthfully knows when this user's device was last connected. Stamp on
+    // connect; webSocketClose stamps on disconnect (hibernation wakes for both).
+    void this.state.storage.put("last_active_at", Date.now());
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -1105,9 +1118,12 @@ export class InboxDO {
     return { type: "searchResults", reqId, results: rows };
   }
   webSocketClose(ws: WebSocket, code: number): void {
+    // [LASTSEEN-SERVER-1] The moment of disconnect IS the honest "last seen".
+    void this.state.storage.put("last_active_at", Date.now());
     try { ws.close(code <= 1000 || code >= 3000 ? code : 1000); } catch { /* */ }
   }
   webSocketError(ws: WebSocket): void {
+    void this.state.storage.put("last_active_at", Date.now());
     try { ws.close(1011); } catch { /* */ }
   }
 }

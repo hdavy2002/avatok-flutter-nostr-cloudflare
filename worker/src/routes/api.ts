@@ -835,6 +835,25 @@ export async function backup(req: Request, env: Env): Promise<Response> {
   return json({ error: "backup deprecated — relay removed; history lives in your InboxDO" }, 501);
 }
 
+// [LASTSEEN-SERVER-1] WhatsApp-style last seen. GET /api/user/last-seen?uid=X →
+// { online, last_active_at } from X's InboxDO — the one component that truthfully
+// knows when their device's socket was last connected. Auth required (no anonymous
+// presence oracle); the client's per-thread privacy toggle still governs display.
+export async function userLastSeen(req: Request, env: Env): Promise<Response> {
+  const ctx = await requireUser(req, env);
+  if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  const uid = new URL(req.url).searchParams.get("uid") ?? "";
+  if (!uid) return json({ error: "uid required" }, 400);
+  try {
+    const stub = env.INBOX.get(env.INBOX.idFromName(uid));
+    const r = await stub.fetch("https://inbox/last-seen", { method: "GET" });
+    const j = (await r.json().catch(() => ({}))) as { online?: boolean; last_active_at?: number | null };
+    return json({ ok: true, online: j.online === true, last_active_at: j.last_active_at ?? null });
+  } catch {
+    return json({ ok: false, online: false, last_active_at: null });
+  }
+}
+
 export async function callRinging(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as { callId?: string; ringReceiptToken?: string };
   const callId = String(b.callId ?? "").trim();

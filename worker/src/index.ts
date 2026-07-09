@@ -477,6 +477,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/call-status" && req.method === "POST") return await api.callStatus(req, env);
       if (p === "/api/call/ringing" && req.method === "POST") return await api.callRinging(req, env);
       if (p === "/api/call/notify-register" && req.method === "POST") return await api.callNotifyRegister(req, env);
+      // [LASTSEEN-SERVER-1] WhatsApp-style last seen (InboxDO socket truth).
+      if (p === "/api/user/last-seen" && req.method === "GET") return await api.userLastSeen(req, env);
 
       // --- contacts ---
       if (p === "/api/contacts/sync" && req.method === "POST") return await api.contactsSync(req, env);
