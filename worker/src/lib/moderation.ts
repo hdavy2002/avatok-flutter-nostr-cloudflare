@@ -18,6 +18,7 @@
 // All network calls fail OPEN (treat as safe) so an OpenRouter outage never
 // bricks a save or a chat — the verdict carries `ok:false` so telemetry can see it.
 import type { Env } from "../types";
+import { avaReason } from "./ava_reason"; // AVA-CORE-3: guardian deep pass gateway
 
 export const MOD_MODEL = "nvidia/nemotron-3.5-content-safety:free";
 
@@ -226,13 +227,14 @@ export async function isSafeText(env: Env, text: string, field: ModField = "mess
   return r.safe;
 }
 
-// ── SECURITY classifier — the shield watchdog (Claude Opus 4.8 via OpenRouter) ──
-// Owner decision 2026-06-24: SECURITY matters (grooming / predator / scam / sextortion
-// detection on user-to-user chat) use the strongest reasoner — Claude Opus 4.8 — not the
-// lightweight content-safety model. Nemotron remains for save-time FIELD validation; this
-// is for the live shield watchdog where nuance (e.g. "don't tell your mom, meet me secretly")
-// matters and a content-safety label alone misses the predatory INTENT.
-export const SECURITY_MODEL = "anthropic/claude-opus-4.8";
+// ── SECURITY classifier — the shield watchdog (AVA-CORE-3: now on the reasoner) ──
+// v4/v5 owner decision (Specs/AVA-COPILOT-FINAL-PLAN D21, resolves open item #7):
+// Guardian's deep pass runs on the ONE cheap core reasoner via avaReason() — Opus is
+// REMOVED (~100× cheaper per scan). Nemotron remains for save-time FIELD validation;
+// this is the live shield watchdog where nuance ("don't tell your mom, meet me
+// secretly") matters. To force a specific OpenRouter model instead of the reasoner
+// ladder, set GUARDIAN_DEEP_MODEL (or the legacy OPENROUTER_SECURITY_MODEL).
+export const SECURITY_MODEL = ""; // retired Opus pin (kept exported for compat; empty = reasoner ladder)
 
 export interface ThreatResult {
   unsafe: boolean;
@@ -250,8 +252,9 @@ export interface ThreatResult {
 export async function classifyThreat(env: Env, text: string): Promise<ThreatResult> {
   const t = (text ?? "").trim();
   if (!t) return { unsafe: false, category: "none", severity: 0, reason: "", ms: 0, ok: true };
-  const key = (env as any).OPENROUTER_API_KEY as string | undefined;
-  if (!key) return { unsafe: false, category: "none", severity: 0, reason: "", ms: 0, ok: false };
+  // Optional forced model pin (GUARDIAN_DEEP_MODEL wins; legacy OPENROUTER_SECURITY_MODEL
+  // honored). Empty → the shared AVA_REASONER ladder (Workers AI + ALT fallback).
+  const forced = String((env as any).GUARDIAN_DEEP_MODEL ?? (env as any).OPENROUTER_SECURITY_MODEL ?? "").trim();
 
   const sys =
     "You are a safety guardian for a chat app used by adults AND minors. The user RECEIVED the message " +
@@ -266,30 +269,20 @@ export async function classifyThreat(env: Env, text: string): Promise<ThreatResu
 
   const t0 = Date.now();
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${key}`,
-        "HTTP-Referer": "https://avatok.ai",
-        "X-Title": "AvaTOK Guardian",
-      },
-      body: JSON.stringify({
-        model: (env as any).OPENROUTER_SECURITY_MODEL || SECURITY_MODEL,
-        messages: [
-          { role: "system", content: sys },
-          { role: "user", content: `MESSAGE:\n"""${t.slice(0, 4000)}"""` },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0,
-        max_tokens: 200,
-      }),
-      signal: AbortSignal.timeout(15000),
+    // AVA-CORE-3: through the ONE reasoning gateway. Guardian bypasses budgets and
+    // consent by design (Constitution law 12) but NOT attribution (law 15).
+    const content = await avaReason(env, {
+      role: "guardian", capability: "stay_safe", trigger: "watched_scan",
+      appName: "guardian",
+      system: sys,
+      user: `MESSAGE:\n"""${t.slice(0, 4000)}"""`,
+      json: true,
+      temperature: 0,
+      maxTokens: 200,
+      timeoutMs: 15000,
+      ...(forced ? { legacyModel: forced } : {}),
     });
     const ms = Date.now() - t0;
-    if (!res.ok) return { unsafe: false, category: "none", severity: 0, reason: "", ms, ok: false };
-    const out: any = await res.json().catch(() => null);
-    const content: string = out?.choices?.[0]?.message?.content ?? "";
     const m = content.match(/\{[\s\S]*\}/);
     if (!m) return { unsafe: false, category: "none", severity: 0, reason: "", ms, ok: true };
     const j = JSON.parse(m[0]);

@@ -906,7 +906,8 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
     if (guardianOn) {
       // Guardian-ON: full pipeline. Cheap keyword heuristic is a fast first flag.
       if (cheap.hit) { category = cheap.category; severity = cheap.severity; detail = cheap.signals.join(", "); }
-      // Run the AI SECURITY classifier (Claude Opus 4.8): the deep classifier runs
+      // Run the AI SECURITY classifier (AVA-CORE-3: the core reasoner via avaReason;
+      // Opus retired per plan D21): the deep classifier runs
       // when the chat is watched OR to triage a cheap-regex hit. THIS is what catches
       // nuanced grooming the keyword list misses ("don't tell your mom, meet me
       // secretly tonight").
@@ -990,7 +991,7 @@ export async function guardianScan(env: Env, args: GuardianScanArgs): Promise<Gu
       sender_uid: senderUid, recipient_uid: uid,
       watched: prefs.secureChat, guardian_on: guardianOn, minor, suppressed: suppressWarning,
       classifier_ms: classifierMs, model_category: modelCategory,
-      engine: "claude-opus-4.8",
+      engine: "ava_reasoner", // AVA-CORE-3: deep pass on the core reasoner (Opus retired)
       country: geo.country ?? null, region: geo.region ?? null, city: geo.city ?? null,
       colo: geo.colo ?? null,
       asn: geo.asn ?? null, as_org: geo.asOrganization ?? null,

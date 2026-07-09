@@ -25,6 +25,7 @@ import { friendlyAiError } from "../lib/ai_gate";       // truthful provider-err
 import { generateAvaImageSync } from "./ava_image";    // synchronous image gen → URL (rendered inline)
 import { brainSearchLines } from "../lib/ava_memory";  // the ONE Cloudflare AI Search store per user
 import { searchForUser } from "../lib/ava_search";     // sharded tenancy boundary (folder-filtered per user)
+import { avaReason } from "../lib/ava_reason";         // the ONE reasoning gateway (AVA-CORE-3)
 
 // Ava chat text model: Gemini 3 Flash (preview) as a Workers-AI THIRD-PARTY model
 // ({author}/{model} id), called through env.AI.run so it flows via our CF AI
@@ -37,7 +38,9 @@ const CHAT_MODEL = "gemini-2.5-flash";           // (legacy, unused) DIRECT Goog
 const FALLBACK_MODEL = "gemini-2.5-flash-lite";  // (legacy, unused) DIRECT Google API id
 // ChatAVA now runs on OpenRouter (owner decision 2026-06-27 — replace the direct
 // Gemini key). Default model z-ai/glm-5.2; override via env.OPENROUTER_CHAT_MODEL.
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+// AVA-CORE-3: calls go through avaReason() with this model pinned as `legacyModel`
+// so wire behavior is IDENTICAL today; clearing the pin later (config-only) moves
+// ChatAVA onto the shared AVA_REASONER ladder (v5 plan D21 — GLM retirement).
 function openRouterModel(env: Env): string {
   return ((env as any).OPENROUTER_CHAT_MODEL as string) || "z-ai/glm-5.2";
 }
@@ -146,59 +149,48 @@ async function retrieveMemory(env: Env, uid: string, query: string): Promise<str
   } catch { return ""; }
 }
 
-/// Common OpenRouter request headers.
-function orHeaders(key: string): Record<string, string> {
-  return {
-    "authorization": `Bearer ${key}`,
-    "content-type": "application/json",
-    "HTTP-Referer": "https://avatok.ai",
-    "X-Title": "AvaTOK ChatAVA",
-  };
-}
-
-/// ChatAVA reply via OpenRouter (z-ai/glm-5.2 by default). Throws on a hard
-/// failure so the caller's gate surfaces a truthful reason (quota/safety).
+/// ChatAVA reply via the ONE reasoning gateway (AVA-CORE-3; model pinned via
+/// legacyModel = openRouterModel(env)). Throws on a hard failure so the caller's
+/// gate surfaces a truthful reason (quota/safety).
 async function generate(env: Env, uid: string, email: string | null, system: string, history: Turn[], message: string, images: Array<{ mime: string; data: string }>, steer?: string): Promise<string> {
   const sys = steer ? `${system}\n${steer}` : system;
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) return "Ava is temporarily unavailable.";
   const model = openRouterModel(env);
-  const res = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: orHeaders(key),
-    body: JSON.stringify({
-      model,
+  let raw: string;
+  try {
+    raw = await avaReason(env, {
+      role: "chatava", capability: "chat", trigger: "user_message",
+      uid, email, appName: "avaai",
       messages: buildMessages(sys, history, message, images),
-      max_tokens: MAX_TOKENS,
+      maxTokens: MAX_TOKENS,
       temperature: 0.7,
-    }),
-  });
-  const out: any = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const reason = `${res.status}: ${String(out?.error?.message ?? out?.error ?? "").slice(0, 160)}`;
+      legacyModel: model, // behavior-preserving pin (see openRouterModel note)
+    });
+  } catch (e: any) {
+    const reason = String(e?.message ?? e).slice(0, 200);
     trackUser(env, uid, email, "ava_model_error", "avaai", { route: "chat", provider: "openrouter", model, reason });
-    throw new Error(`openrouter ${reason}`);
+    throw e instanceof Error ? e : new Error(reason);
   }
-  const t = stripReasoning(String(out?.choices?.[0]?.message?.content ?? "").trim());
+  const t = stripReasoning(raw);
   return t || "I couldn't reach my thoughts just now — try again?";
 }
 
-/// Streaming ChatAVA reply via OpenRouter (SSE). Calls [onDelta] for each chunk.
+/// Streaming ChatAVA reply (SSE) via avaReason's OpenRouter streaming passthrough.
+/// Calls [onDelta] for each chunk.
 async function streamGenerate(env: Env, system: string, history: Turn[], message: string,
     images: Array<{ mime: string; data: string }>, onDelta: (t: string) => void): Promise<void> {
   const key = (env as any).OPENROUTER_API_KEY as string | undefined;
   if (!key) throw new Error("openrouter key missing");
   const model = openRouterModel(env);
-  const res = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: orHeaders(key),
-    body: JSON.stringify({
-      model,
-      messages: buildMessages(system, history, message, images),
-      max_tokens: MAX_TOKENS,
-      temperature: 0.7,
-      stream: true,
-    }),
+  const res = await avaReason(env, {
+    role: "chatava", capability: "chat", trigger: "user_message",
+    appName: "avaai",
+    messages: buildMessages(system, history, message, images),
+    maxTokens: MAX_TOKENS,
+    temperature: 0.7,
+    legacyModel: model,
+    stream: true,
   });
   if (!res.ok || !res.body) {
     const e = await res.text().catch(() => "");
