@@ -31,6 +31,10 @@ export interface Env {
   MODERATION_MODEL: string;        // image moderation model
   MODERATION_MODEL_TYPE?: string;  // "vision" (LLM, parse text) | "classifier" (label+score)
   TEXT_MODERATION_MODEL?: string;  // text safety classifier (Llama Guard default)
+  // AVA CORE Phase 0 (AVA-CORE-4): the ONE reasoner behind avaReason() (src/ava_reason.ts).
+  AVA_REASONER?: string;       // Workers-AI primary (default @cf/google/gemma-4-26b-a4b-it)
+  AVA_REASONER_ALT?: string;   // OpenRouter fallback (default google/gemini-2.5-flash-lite)
+  OPENROUTER_API_KEY?: string; // enables the ALT fallback path (unset today in consumers)
   POSTHOG_HOST: string;
   AI_DAILY_CALL_BUDGET?: string; // daily Workers AI call budget (default 5000); cron alarms past it
   STORAGE_COINS_PER_GB?: string; // AvaStorage over-quota price (coins/GB/month, default 20)

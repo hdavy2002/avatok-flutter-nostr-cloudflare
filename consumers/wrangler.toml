@@ -281,6 +281,10 @@ DEMO_MUTE_NONCALL_PUSH = "0"
 # when ai_spend.calls exceeds this.
 AI_DAILY_CALL_BUDGET = "5000"
 ALERT_EMAIL = "hdavy2005@gmail.com"
+# AVA CORE (Phase 0, AVA-CORE-4): the ONE reasoner slot behind avaReason()
+# (src/ava_reason.ts). Per-call overrides (BRAIN_EXTRACT_MODEL etc.) still WIN.
+AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"
+AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 # Image moderation: Gemma 4 26B-A4B (MoE: 26B total / ~4B active per token → ~4B-
 # class cost, far higher quality; native vision + thinking) rates NSFW + violence
 # via prompt+parse. Text moderation: Llama Guard binary safe/unsafe classifier
@@ -489,6 +493,8 @@ crons = ["*/15 * * * *", "0 */6 * * *"]
 FCM_PROJECT = "avatok-e19ef"
 AI_DAILY_CALL_BUDGET = "5000"
 ALERT_EMAIL = "hdavy2005@gmail.com"
+AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"        # AVA CORE Phase 0 (see top-level [vars])
+AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
 MODERATION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 MODERATION_MODEL_TYPE = "vision"
 TEXT_MODERATION_MODEL = "@cf/meta/llama-guard-3-8b"
