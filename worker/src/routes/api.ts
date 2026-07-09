@@ -844,6 +844,29 @@ export async function userLastSeen(req: Request, env: Env): Promise<Response> {
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
   const uid = new URL(req.url).searchParams.get("uid") ?? "";
   if (!uid) return json({ error: "uid required" }, 400);
+  // [LASTSEEN-PRIVACY-1] Enforce the TARGET's visibility choice server-side —
+  // everyone | contacts | list | nobody (WhatsApp-style). 'contacts' and 'list'
+  // both check the requester against the target's last_seen_allow uid set.
+  // Missing columns / NULL (pre-migration rows) fail open to 'everyone'.
+  try {
+    const row = await env.DB_META.prepare(
+      "SELECT last_seen_visibility, last_seen_allow FROM users WHERE uid=?1",
+    ).bind(uid).first<any>().catch(() => null);
+    const vis = (row?.last_seen_visibility as string | null) ?? "everyone";
+    if (vis === "nobody") {
+      return json({ ok: true, online: false, last_active_at: null, restricted: true });
+    }
+    if (vis === "contacts" || vis === "list") {
+      let allowed = false;
+      try {
+        const a = JSON.parse(row?.last_seen_allow ?? "[]");
+        allowed = Array.isArray(a) && a.map(String).includes(ctx.uid);
+      } catch { /* corrupt allow list → treat as empty */ }
+      if (!allowed) {
+        return json({ ok: true, online: false, last_active_at: null, restricted: true });
+      }
+    }
+  } catch { /* privacy read failed → fail open (everyone), matching NULL rows */ }
   try {
     const stub = env.INBOX.get(env.INBOX.idFromName(uid));
     const r = await stub.fetch("https://inbox/last-seen", { method: "GET" });

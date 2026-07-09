@@ -356,34 +356,72 @@ export async function addResolve(req: Request, env: Env): Promise<Response> {
   return json({ uid: r.uid, name, avatar_url: r.avatar_url ?? null, card });
 }
 
+// [LASTSEEN-PRIVACY-1] Lazy column add for the last-seen visibility setting —
+// same pattern as receptionist.ts ensureStatusColumns: ALTER TABLE is idempotent
+// via the duplicate-column catch, so no deploy-time migration step is needed.
+// last_seen_visibility: everyone | contacts | list | nobody (default everyone).
+// last_seen_allow: JSON array of uids — the allow set for 'contacts' (synced
+// from the client's on-device address book, uids only) and 'list' (hand-picked).
+let lastSeenColsEnsured = false;
+async function ensureLastSeenCols(env: Env): Promise<void> {
+  if (lastSeenColsEnsured) return;
+  for (const ddl of [
+    "ALTER TABLE users ADD COLUMN last_seen_visibility TEXT",
+    "ALTER TABLE users ADD COLUMN last_seen_allow TEXT",
+  ]) {
+    try { await env.DB_META.prepare(ddl).run(); } catch { /* already exists */ }
+  }
+  lastSeenColsEnsured = true;
+}
+
 // GET /api/number/privacy — auth. Current discoverability settings.
 export async function privacyGet(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
-  const r = await metaSession(env).prepare("SELECT phone_discoverable, email_discoverable, who_can_add FROM users WHERE uid=?1").bind(ctx.uid).first<any>();
+  await ensureLastSeenCols(env);
+  const r = await metaSession(env).prepare("SELECT phone_discoverable, email_discoverable, who_can_add, last_seen_visibility, last_seen_allow FROM users WHERE uid=?1").bind(ctx.uid).first<any>();
+  let allow: string[] = [];
+  try { const a = JSON.parse(r?.last_seen_allow ?? "[]"); if (Array.isArray(a)) allow = a.map(String); } catch { /* corrupt → empty */ }
   return json({
     phone_discoverable: !!(r?.phone_discoverable),
     email_discoverable: r ? r.email_discoverable !== 0 : true,
     who_can_add: r?.who_can_add ?? "everyone",
+    last_seen_visibility: r?.last_seen_visibility ?? "everyone",
+    last_seen_allow: allow,
   });
 }
 
-// POST /api/number/privacy {phone_discoverable?, email_discoverable?, who_can_add?} — auth.
+// POST /api/number/privacy {phone_discoverable?, email_discoverable?, who_can_add?,
+// last_seen_visibility?, last_seen_allow?} — auth.
 export async function privacySet(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  await ensureLastSeenCols(env);
   const b = (await req.json().catch(() => ({}))) as any;
   const who = ["everyone", "number_only", "nobody"].includes(b.who_can_add) ? b.who_can_add : null;
+  // [LASTSEEN-PRIVACY-1] WhatsApp-style visibility. 'contacts' and 'list' both
+  // enforce against last_seen_allow (uids only — never phone numbers/emails, per
+  // the 2026-06-27 privacy rule). Allow list capped at 1000 uids.
+  const lsv = ["everyone", "contacts", "list", "nobody"].includes(b.last_seen_visibility)
+    ? b.last_seen_visibility : null;
+  const lsAllow = Array.isArray(b.last_seen_allow)
+    ? JSON.stringify(b.last_seen_allow.map((u: unknown) => String(u).slice(0, 128)).slice(0, 1000))
+    : null;
   await env.DB_META.prepare(
     `UPDATE users SET phone_discoverable=COALESCE(?2,phone_discoverable),
-       email_discoverable=COALESCE(?3,email_discoverable), who_can_add=COALESCE(?4,who_can_add), updated_at=?5 WHERE uid=?1`,
+       email_discoverable=COALESCE(?3,email_discoverable), who_can_add=COALESCE(?4,who_can_add),
+       last_seen_visibility=COALESCE(?6,last_seen_visibility),
+       last_seen_allow=COALESCE(?7,last_seen_allow), updated_at=?5 WHERE uid=?1`,
   ).bind(
     ctx.uid,
     typeof b.phone_discoverable === "boolean" ? (b.phone_discoverable ? 1 : 0) : null,
     typeof b.email_discoverable === "boolean" ? (b.email_discoverable ? 1 : 0) : null,
-    who, Date.now(),
+    who, Date.now(), lsv, lsAllow,
   ).run();
-  analytics(env, "discoverability_changed", ctx.uid, { who_can_add: who, phone: b.phone_discoverable, email: b.email_discoverable }, req);
+  analytics(env, "discoverability_changed", ctx.uid, {
+    who_can_add: who, phone: b.phone_discoverable, email: b.email_discoverable,
+    last_seen_visibility: lsv,
+  }, req);
   return json({ ok: true });
 }
 

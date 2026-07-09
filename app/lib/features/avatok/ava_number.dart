@@ -74,11 +74,17 @@ class Discoverability {
   final bool phoneDiscoverable;
   final bool emailDiscoverable;
   final String whoCanAdd; // everyone | number_only | nobody
-  const Discoverability({required this.phoneDiscoverable, required this.emailDiscoverable, required this.whoCanAdd});
+  // [LASTSEEN-PRIVACY-1] WhatsApp-style last-seen visibility.
+  final String lastSeenWho; // everyone | contacts | list | nobody
+  final List<String> lastSeenAllow; // uids for 'contacts' (synced) / 'list' (picked)
+  const Discoverability({required this.phoneDiscoverable, required this.emailDiscoverable,
+      required this.whoCanAdd, this.lastSeenWho = 'everyone', this.lastSeenAllow = const []});
   factory Discoverability.fromJson(Map<String, dynamic> j) => Discoverability(
         phoneDiscoverable: j['phone_discoverable'] == true,
         emailDiscoverable: j['email_discoverable'] != false,
         whoCanAdd: (j['who_can_add'] ?? 'everyone').toString(),
+        lastSeenWho: (j['last_seen_visibility'] ?? 'everyone').toString(),
+        lastSeenAllow: [for (final u in (j['last_seen_allow'] as List? ?? const [])) u.toString()],
       );
 }
 
@@ -301,22 +307,32 @@ class AvaNumber {
     return Discoverability.fromJson(fresh);
   }
 
-  static Future<bool> setPrivacy({bool? phoneDiscoverable, bool? emailDiscoverable, String? whoCanAdd}) async {
+  static Future<bool> setPrivacy({bool? phoneDiscoverable, bool? emailDiscoverable, String? whoCanAdd,
+      String? lastSeenWho, List<String>? lastSeenAllow}) async {
     try {
       final body = <String, dynamic>{
         if (phoneDiscoverable != null) 'phone_discoverable': phoneDiscoverable,
         if (emailDiscoverable != null) 'email_discoverable': emailDiscoverable,
         if (whoCanAdd != null) 'who_can_add': whoCanAdd,
+        // [LASTSEEN-PRIVACY-1] visibility + the uid allow set (uids only — never
+        // phone numbers or emails, per the on-device contacts privacy rule).
+        if (lastSeenWho != null) 'last_seen_visibility': lastSeenWho,
+        if (lastSeenAllow != null) 'last_seen_allow': lastSeenAllow,
       };
       final r = await ApiAuth.postJson('$kNumberBase/privacy', body);
       if (r.statusCode == 200) {
-        Analytics.capture('discoverability_changed', {'who_can_add': whoCanAdd ?? ''});
+        Analytics.capture('discoverability_changed', {
+          'who_can_add': whoCanAdd ?? '',
+          if (lastSeenWho != null) 'last_seen_visibility': lastSeenWho,
+        });
         // Write-through so the cached settings page reflects the change instantly
         // on the next open (no stale toggle until the background refresh lands).
         final cur = (await _readCache(_privCacheKey)) ?? <String, dynamic>{};
         if (phoneDiscoverable != null) cur['phone_discoverable'] = phoneDiscoverable;
         if (emailDiscoverable != null) cur['email_discoverable'] = emailDiscoverable;
         if (whoCanAdd != null) cur['who_can_add'] = whoCanAdd;
+        if (lastSeenWho != null) cur['last_seen_visibility'] = lastSeenWho;
+        if (lastSeenAllow != null) cur['last_seen_allow'] = lastSeenAllow;
         await _writeCache(_privCacheKey, cur);
       }
       return r.statusCode == 200;
