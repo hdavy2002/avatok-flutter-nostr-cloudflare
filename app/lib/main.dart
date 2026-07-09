@@ -414,8 +414,7 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
           // (_validateClerkInBackground still runs; the gate page confirms server
           // truth before letting the user proceed.)
           if (RemoteConfig.livenessOnboardingGate && await LadderApi.cachedLevel() < 2) {
-            Analytics.capture('liveness_gate_shown', const {'source': 'redirect'});
-            _to(_Stage.humanCheck);
+            _enterHumanCheck('redirect'); // [LIVE-GATE-8] single emitter, no double-count
             unawaited(_validateClerkInBackground());
             return;
           }
@@ -563,12 +562,33 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
     return level < 2;
   }
 
+  /// [LIVE-GATE-8 2026-07-09] One-shot guard for the gate-shown event. Two call
+  /// sites route into _Stage.humanCheck (the cold-boot fast path in _boot and
+  /// _landOrGate), and on a sign-in both ran within ~30ms of each other — PostHog
+  /// shows liveness_gate_shown duplicated on EVERY gate (08:52:09.146 + .173,
+  /// 12:39:50.070 + .099). That double-counts the top of the gate funnel, which is
+  /// the one number that tells us whether liveness converts. Reset on pass so a
+  /// later gate for the same session counts again.
+  bool _gateShownSent = false;
+
+  /// The ONLY place that enters the human-check stage, so the telemetry can't
+  /// drift from the navigation again. [source] distinguishes a fresh signup
+  /// ('onboarding') from an existing unverified user being held on open
+  /// ('redirect') — previously every gate reported 'redirect', which made the
+  /// onboarding gate impossible to verify in telemetry.
+  void _enterHumanCheck(String source) {
+    if (!_gateShownSent) {
+      _gateShownSent = true;
+      Analytics.capture('liveness_gate_shown', {'source': source});
+    }
+    _to(_Stage.humanCheck);
+  }
+
   /// Land the signed-in member on the shell, OR hold them at the human-check gate
   /// first (D13). Centralised so every "go to shell" path honours the gate.
-  Future<void> _landOrGate() async {
+  Future<void> _landOrGate({String source = 'redirect'}) async {
     if (await _needsHumanCheck()) {
-      Analytics.capture('liveness_gate_shown', const {'source': 'redirect'});
-      _to(_Stage.humanCheck);
+      _enterHumanCheck(source);
       return;
     }
     _to(_Stage.shell);
@@ -772,7 +792,8 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         // _afterAuth) already honours the human-check gate; this one jumped it, so
         // a BRAND-NEW signup — the exact user liveness exists to screen — never saw
         // it. Confirmed in PostHog: no liveness_gate_shown on any 2026-07-09 signup.
-        return OnboardingFlow(onComplete: () => unawaited(_landOrGate()));
+        return OnboardingFlow(
+            onComplete: () => unawaited(_landOrGate(source: 'onboarding')));
       case _Stage.restore:
         return RestoreScreen(
           state: _restoreState ?? const RestoreState(RestoreOutcome.unavailable),
@@ -785,7 +806,10 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
         // On pass, re-route through _landOrGate → the app shell.
         return HumanCheckPage(
           source: HumanCheckSource.redirect,
-          onVerified: () { unawaited(_landOrGate()); },
+          onVerified: () {
+            _gateShownSent = false; // [LIVE-GATE-8] arm the guard for a future gate
+            unawaited(_landOrGate());
+          },
         );
       case _Stage.shell:
         return AvaShell(clerk: _clerk, onSignOut: _signOut);
