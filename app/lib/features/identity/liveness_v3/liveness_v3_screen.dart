@@ -327,7 +327,23 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
         orElse: () => cams.first,
       );
       // 720p cap (plan §6). medium ≈ 480–720p, keeps the clip small.
-      _cam = CameraController(front, ResolutionPreset.medium, enableAudio: true);
+      //
+      // [ISSUE-LIVE-CAM-1] (2026-07-09) imageFormatGroup was UNSET, so Android gave
+      // us YUV420_888 (three strided planes). CoachingEngine._toInputImage then
+      // concatenated those planes and told ML Kit it was NV21 — which it is not
+      // (NV21 is one buffer with interleaved chroma). Every processImage() threw
+      // into a bare `catch (_) { return; }`, so the coach emitted ZERO states, the
+      // stage watchdog was never poked, and 10s later the user was told "the camera
+      // didn't get going… a lighting or camera permission hiccup." Neither the
+      // camera nor the lighting was ever at fault. Ask for NV21 directly (Android)
+      // / BGRA8888 (iOS) — both are single-plane and exactly what ML Kit accepts.
+      _cam = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: true,
+        imageFormatGroup:
+            Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+      );
       await _cam!.initialize();
       _captureCameraInfo(front);
     } catch (e) {
@@ -406,6 +422,19 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       onLuma: _onLuma,
       onImage: (image) {
         if (_recording) _frameCapture?.offer(image);
+      },
+      // [ISSUE-LIVE-CAM-1] Frames are arriving but none can be analysed → this is a
+      // client bug (format mismatch / ML Kit reject), not the user's lighting. Say so
+      // immediately rather than letting the watchdog blame them 10 seconds later.
+      onFatal: (reason, error) {
+        Analytics.error(
+          domain: 'liveness',
+          code: 'coach_frames_unusable',
+          message: '$reason${error != null ? " :: $error" : ""}',
+          screen: 'liveness_v3',
+          action: 'analyse',
+          extra: {'requester': widget.requester, 'v': 3},
+        );
       },
     );
     _coach = coach;

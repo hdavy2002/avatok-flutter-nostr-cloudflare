@@ -335,7 +335,18 @@ class _LivenessV2ScreenState extends State<LivenessV2Screen> {
       );
       // [LIVE-COMPRESS-1] low(er) resolution for the whole capture: medium is
       // ~480–720p, well below the sensor max, cutting clip + still bytes.
-      _cam = CameraController(front, ResolutionPreset.medium, enableAudio: true);
+      // [ISSUE-LIVE-CAM-1] (2026-07-09) Same fix as V3. FaceGate feeds ML Kit through
+      // the same concat-the-planes path, which is only valid for a SINGLE-plane NV21 /
+      // BGRA8888 buffer. Left unset, Android hands us 3-plane YUV420_888 and every
+      // detection throws — a silently dead face gate. V2 is one remote flag
+      // (livenessV3Enabled) away from being the live path, so fix it here too.
+      _cam = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: true,
+        imageFormatGroup:
+            Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+      );
       await _cam!.initialize();
     } catch (_) {
       setState(() {

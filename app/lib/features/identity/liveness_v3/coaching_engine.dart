@@ -29,7 +29,13 @@ import 'voice_packs.dart';
 ///   • off-centre / tilted    → face-left/right/up/down nudges toward centre
 ///   • stable + framed ≥2s    → holdStill (the caller starts/continues recording)
 class CoachingEngine {
-  CoachingEngine({required this.controller, this.onState, this.onLuma, this.onImage});
+  CoachingEngine({
+    required this.controller,
+    this.onState,
+    this.onLuma,
+    this.onImage,
+    this.onFatal,
+  });
 
   final CameraController controller;
 
@@ -75,14 +81,39 @@ class CoachingEngine {
   CoachState _state = const CoachState.searching();
   CoachState get state => _state;
 
+  // [ISSUE-LIVE-CAM-1] Every frame failing to analyse is a BUG, not a user problem.
+  // Report it once, well before the 10s stage watchdog would blame the user's
+  // lighting. ~15 frames ≈ 0.5s at the 33ms gap — long enough to rule out a blip.
+  static const _fatalDropThreshold = 15;
+  int _consecutiveDrops = 0;
+  bool _fatalReported = false;
+
+  void _noteDrop(String reason, Object? error, CameraImage image) {
+    if (_fatalReported) return;
+    if (++_consecutiveDrops < _fatalDropThreshold) return;
+    _fatalReported = true;
+    onFatal?.call(
+      '$reason (format=${image.format.raw} planes=${image.planes.length})',
+      error,
+    );
+  }
+
+  /// Fired once per engine if frames are arriving but NONE can be analysed —
+  /// i.e. the image format can't be converted, or ML Kit rejects every frame.
+  /// The caller can then fail loudly instead of waiting for a dead-screen watchdog.
+  final void Function(String reason, Object? error)? onFatal;
+
+  /// [ISSUE-LIVE-CAM-1] Rethrows. The old body ended in
+  /// `catch (_) {/* preview still shows; coaching just won't update */}` — which is
+  /// precisely the dead-screen bug: the preview looked alive, no coach state was
+  /// ever emitted, and the caller had no way to know. A caller that can't start the
+  /// stream must be told.
   Future<void> start() async {
     if (_running) return;
     _running = true;
-    try {
-      if (!controller.value.isStreamingImages) {
-        await controller.startImageStream(_onFrame);
-      }
-    } catch (_) {/* preview still shows; coaching just won't update */}
+    if (!controller.value.isStreamingImages) {
+      await controller.startImageStream(_onFrame);
+    }
   }
 
   Future<void> dispose() async {
@@ -114,13 +145,21 @@ class CoachingEngine {
 
   Future<void> _analyse(CameraImage image) async {
     final input = _toInputImage(image);
-    if (input == null) return;
+    if (input == null) {
+      _noteDrop('input_image_null', null, image);
+      return;
+    }
     List<Face> faces;
     try {
       faces = await _detector.processImage(input);
-    } catch (_) {
+    } catch (e) {
+      // [ISSUE-LIVE-CAM-1] Was `catch (_) { return; }`. When the frame format is
+      // wrong EVERY frame lands here, so the engine silently emitted nothing and
+      // the screen died on its watchdog with no clue why.
+      _noteDrop('process_image_threw', e, image);
       return;
     }
+    _consecutiveDrops = 0; // a frame made it through — reset the fatal counter
     if (!_running) return;
 
     final meanLuma = _meanLuma(image);
