@@ -427,9 +427,11 @@ export function composeReceptionistPrompt(
     const cfNormal = isBusy
       ? `• Normal message → "Got it — <one short clause capturing what they said>. I'll pass it to ${who} the moment ${subj}'s free. Talk soon${firstSuffix}!"`
       : `• Normal message → "Got it — <one short clause capturing what they said>. I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`;
+    // [AVA-NATURAL-CLOSE-1] Never mention time limits — even at the cap, she just
+    // confirms she has the message and closes warmly.
     const cfTimeUp = isBusy
-      ? `• If you see "[SYSTEM: time is up]" → "That's all my time, but I've got your message and I'll give it to ${who} as soon as ${subj}'s off the call. Take care${firstSuffix}!"`
-      : `• If you see "[SYSTEM: time is up]" → "That's all the time I have, but I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`;
+      ? `• If you see "[SYSTEM: time is up]" → "I've got your message and I'll give it to ${who} as soon as ${subj}'s off the call. Take care${firstSuffix}!"`
+      : `• If you see "[SYSTEM: time is up]" → "I've got your message and I'll pass it on to ${who}. Have a great ${tod}${firstSuffix}!"`;
     const cfNoMsg = isBusy
       ? `• If the caller left no message → "No message? No problem — I'll let ${who} know you called while ${subj} was on the line. Take care${firstSuffix}!"`
       : `• If the caller left no message → "No message? No problem — I'll let ${who} know you called. Have a great ${tod}${firstSuffix}!"`;
@@ -483,9 +485,13 @@ export function composeReceptionistPrompt(
     step1,
     `THEN offer a warm choice and let the caller lead: would they like to leave a message for ${who}, or is there something quick you can help with or answer for them?`,
     `Have a brief, natural back-and-forth: if they ask something you can reasonably answer from what you know, answer kindly and concisely; if they want to leave a message, listen and acknowledge it warmly. Keep YOUR turns SHORT (a sentence or two) so the caller does most of the talking. Never interrogate, never stall, and never invent facts about ${who} or ${poss} plans.`,
-    `Keep the WHOLE call to about a minute. If the caller goes quiet, gently check in ("Anything else, or shall I pass this along to ${who}?") instead of leaving dead air or hanging up in silence.`,
-    `WRAP-UP: when you get a system note that time is nearly up (e.g. "[SYSTEM: 20 seconds remain …]"), OR the chat naturally winds down, warmly say that's about all the time you have, give a one-line summary of what you'll pass on, promise to tell ${who}, and say a warm goodbye (e.g. "have a great ${tod}${firstSuffix}") — in your OWN natural words. Then ${endWith}. NEVER end the call silently.`,
-    `If the caller clearly has nothing to say, warmly offer to just let ${who} know they called, then wrap up and ${endWith}.`,
+    // [AVA-NATURAL-CLOSE-1] (owner decision 2026-07-09): silence AFTER a message
+    // means DONE — no "anything else?" wake-ups. A short message deserves a short
+    // call; a long message gets wound down naturally. ONE goodbye, ever.
+    `Keep the WHOLE call short and natural. Once the caller has given their message and goes quiet, that silence means they are DONE — do NOT check in, do NOT ask "anything else?", just close. Only if they go quiet BEFORE saying anything at all may you check in once.`,
+    `CLOSING: when the message is complete, OR you receive a system note asking you to wind down, close in your OWN fresh words each time: briefly acknowledge you've got it and will pass it on to ${who}, then say ONE short warm goodbye (e.g. "have a great ${tod}${firstSuffix}") and ${endWith}. NEVER use a stock line, NEVER mention time or time limits, NEVER end silently — and NEVER speak again after your goodbye: goodbye means the call is over.`,
+    `If the message is short ("tell ${obj} to call me back"), close right away — a ten-second call is a GOOD call. If it's long, let a system wind-down note guide you to close gracefully without cutting the caller off mid-thought.`,
+    `If the caller clearly has nothing to say, warmly offer to just let ${who} know they called, then say your one goodbye and ${endWith}.`,
     // AVA-VM-CLOSE-1: event-driven close. The moment the caller's message is complete
     // AND they fall silent, OR they say goodbye / "that's all", END the call yourself —
     // do NOT wait for a timer or leave the line open hoping for more.
@@ -748,8 +754,14 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
   //  - rings       → wait for `rings` unanswered rings, then hand off (Mode A)
   // Manual hand-off (Mode C) and decline-to-Ava are owner-side and don't depend
   // on this; we surface decline_to_ava so the incoming UI knows its options.
-  const rings = Math.max(1, Math.round(Number((cfg as any).receptionistRings ?? 5)));
-  const mode = s.answer_all ? "first_ring" : "rings";
+  // [ONE-FLOW-1] (owner decision 2026-07-09): ONE global ring flow for every
+  // user — beeps → ring → 4 rings (20s) → Ava. first_ring / per-user ring
+  // counts are RETIRED for callers: at 1M users, per-owner variance made every
+  // support case a bespoke diagnosis ("some users the beep goes long, some get
+  // Ava instantly"). rings stays KV-overridable (receptionistRings) as ONE
+  // global knob; s.answer_all no longer changes the caller's flow.
+  const rings = Math.max(1, Math.round(Number((cfg as any).receptionistRings ?? 4)));
+  const mode = "rings";
   if (!freeLaunch && !res.allowed) {
     checked(false, "plan_limit", mode);
     return json({ available: false, reason: "plan_limit", remaining: 0, cap: res.cap });

@@ -261,7 +261,7 @@ const DEFAULTS: PlatformConfig = {
   avavoiceEnabled: false,          // FREE LAUNCH: agent builder hidden
   avavisionEnabled: false,         // FREE LAUNCH: agent builder hidden
   receptionistEnabled: true,       // FREE LAUNCH: AI receptionist ON (Gemini Live)
-  receptionistRings: 6,            // v2 Mode A: auto-handoff after 6 unanswered rings (CALLFIX-10: changed from 4; KV can override)
+  receptionistRings: 4,            // [ONE-FLOW-1] owner 2026-07-09: 4 rings (20s) GLOBAL — one flow for everyone; KV can override
   receptionistUseCf: false,        // engine switch: false = Gemini Live (default), true = Cloudflare Workers AI engine
   receptTakeoverGuard: false,      // P1: gate Ava takeover on FCM ring-ack — ships dark, flip after device test
 
@@ -358,8 +358,17 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
 
   // Whitelist merge — unknown keys are rejected so a typo can't ship a dead flag.
+  //
+  // [ENV-ISOLATION-1] KV stores OVERRIDES ONLY — never `{...DEFAULTS, ...current}`.
+  // The old code materialized all ~40 flags into the blob on every write, which
+  // meant (a) flipping one switch rewrote the entire config, and (b) once the
+  // blob existed, changing a default in this file silently stopped taking effect
+  // because the stale value was pinned in KV forever. Readers (readConfig /
+  // getConfig) already layer DEFAULTS underneath, so an absent key is correct and
+  // self-healing. To drop a stale pinned key: `scripts/flags.sh unset <key>`
+  // (or `scripts/flags.sh prune` to sweep every key that just restates a default).
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
-  const next: Record<string, unknown> = { ...DEFAULTS, ...current };
+  const next: Record<string, unknown> = { ...current };
   const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate", "guardianInlineBudgetMs", "callProtocolVersion"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
@@ -369,5 +378,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     next[k] = v;
   }
   await env.TOKENS.put(KEY, JSON.stringify(next));
-  return json({ ok: true, config: next });
+  // Echo the EFFECTIVE config (defaults + overrides) so the admin UI still sees
+  // every flag, even though only `next` was persisted.
+  return json({ ok: true, config: { ...DEFAULTS, ...next }, overrides: next });
 }

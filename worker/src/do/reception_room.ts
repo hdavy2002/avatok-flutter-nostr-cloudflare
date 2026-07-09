@@ -126,6 +126,13 @@ export class ReceptionRoom {
   private wrapCueInjected = false; // the 40s wrap cue is injected exactly once
   private idleNudges = 0; // silence escalation: 1st = spoken check-in, 2nd = spoken close
   private closePending = false;    // 60s reached while Ava was mid-utterance → close on her next turnComplete
+  // [AVA-NATURAL-CLOSE-1] (owner decision 2026-07-09): caller SPEECH budget —
+  // steer at 20s of caller speaking time, close at 25s. Measured from streaming
+  // inputTranscription arrival gaps (a chunk means the caller is talking), NOT
+  // wall clock, so a slow-to-start caller isn't robbed of message time.
+  private callerSpeechMs = 0;      // cumulative caller speaking time
+  private lastInTAt = 0;           // last inputTranscription chunk arrival
+  private steerInjected = false;   // the silent 20s "wind it down" hint (once)
   private avaSpeaking = false;     // true between an Ava audio chunk and her turnComplete
   private selfClosed = false;      // AVA-VM-CLOSE-1: Ava ended via the end_call tool (healthy close, not a cap)
 
@@ -441,19 +448,27 @@ export class ReceptionRoom {
   // call therefore ALWAYS ends on Ava's voice, never a silent drop.
   private onIdle(): void {
     if (this.finalized) return;
-    // Wrap already spoken (40s cue or a prior escalation) and STILL silent → the
-    // goodbye is said, so it's safe to close now.
+    // Wrap already spoken (goodbye said/requested) and STILL silent → close.
+    // ONE goodbye, ever — the "Ava said goodbye then woke up asking if there's
+    // anything else" bug (owner report 2026-07-09) came from nudging after wrap.
     if (this.wrapCueInjected) { void this.finalize("inactivity"); return; }
-    // Second unbroken silence → escalate to the spoken close (Ava says goodbye).
+    // [AVA-NATURAL-CLOSE-1] If the caller already left message content and went
+    // quiet, the message is DONE — go straight to the natural close (brief ack
+    // + one goodbye). No "anything else?" wake-ups after a delivered message;
+    // silence after content IS the completion signal.
+    if (this.inText.join("").trim().length > 0) { this.onWrapCue(); return; }
+    // Second unbroken silence with NO message at all → spoken close.
     if (this.idleNudges >= 1) { this.onWrapCue(); return; }
-    // First silence → a warm spoken check-in, then re-arm; don't end the call.
+    // First silence with nothing captured yet → ONE warm check-in ("still
+    // there?"). This is the only nudge that can ever happen, and only before
+    // any message content exists.
     this.idleNudges++;
     this.ev("ava_recept_idle_nudge", { at_ms: Date.now() - this.startedAt });
     // End the caller's still-open (silent) turn so the model actually answers.
     this.sendGem({ realtimeInput: { audioStreamEnd: true } });
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[SYSTEM: The caller has gone quiet. In ONE short, warm sentence, check if they're still there and ask if there's anything you can pass on. Do NOT say goodbye yet.]" }] }],
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM: The caller has gone quiet without leaving a message. In ONE short, warm sentence, check if they're still there and ask if there's anything you can pass on. Do NOT say goodbye yet.]" }] }],
         turnComplete: true,
       },
     });
@@ -513,7 +528,33 @@ export class ReceptionRoom {
         this.ev("ava_recept_barge_in", { route: "gemini_vad", ms: Date.now() - this.startedAt });
       }
       const inT = sc.inputTranscription?.text;
-      if (inT) { this.inText.push(String(inT)); this.pushDialog("caller", String(inT)); }
+      if (inT) {
+        this.inText.push(String(inT)); this.pushDialog("caller", String(inT));
+        // [AVA-NATURAL-CLOSE-1] Caller speech budget. Consecutive transcription
+        // chunks ≤1.5s apart count as continuous speech; a first/isolated chunk
+        // counts a nominal 300ms. At 20s: ONE silent hint so Ava winds the
+        // caller down in her own words on her next turn. At 25s: close the
+        // message — mic gated, Ava says her one short goodbye and end_call.
+        const now = Date.now();
+        const gap = this.lastInTAt > 0 ? now - this.lastInTAt : 0;
+        this.callerSpeechMs += gap > 0 && gap <= 1500 ? gap : 300;
+        this.lastInTAt = now;
+        if (!this.steerInjected && this.callerSpeechMs >= 20_000) {
+          this.steerInjected = true;
+          // turnComplete:false — pure context, no forced reply: she must NOT
+          // interrupt the caller mid-sentence, just steer her NEXT turn.
+          this.sendGem({
+            clientContent: {
+              turns: [{ role: "user", parts: [{ text: "[SYSTEM: The message is getting long. On your NEXT turn, gently wind the caller down in your own words and move to your one short goodbye. Never mention time limits or that time is up.]" }] }],
+              turnComplete: false,
+            },
+          });
+          this.ev("ava_recept_steer_cue", { at_ms: now - this.startedAt, speech_ms: this.callerSpeechMs });
+        } else if (this.callerSpeechMs >= 25_000 && !this.wrapCueInjected) {
+          this.ev("ava_recept_speech_cap", { at_ms: now - this.startedAt, speech_ms: this.callerSpeechMs });
+          this.onWrapCue(); // budget spent → graceful close (her words, one goodbye)
+        }
+      }
       const outT = sc.outputTranscription?.text;
       if (outT) { this.outText.push(String(outT)); this.pushDialog("ava", String(outT)); }
       // Per-turn observability: each completed exchange, with server-truth audio
@@ -571,9 +612,13 @@ export class ReceptionRoom {
     // actually answers the wrap nudge (gating the mic alone leaves the turn open
     // forever → silence → hard cap without a spoken close, the 2026-06-30 bug).
     this.sendGem({ realtimeInput: { audioStreamEnd: true } });
+    // [AVA-NATURAL-CLOSE-1] No template, no "that's all the time I have". She
+    // closes in her own fresh words: brief acknowledgment that she has the
+    // message, ONE short goodbye, then end_call. Never mention time limits,
+    // never ask anything further, never speak again after the goodbye.
     this.sendGem({
       clientContent: {
-        turns: [{ role: "user", parts: [{ text: "[SYSTEM: 20 seconds remain. Warmly say this is about all the time you have, give a one-line summary of their message, and say goodbye. Do not ask new questions.]" }] }],
+        turns: [{ role: "user", parts: [{ text: "[SYSTEM: Close the call now, in your own words: briefly acknowledge you've got their message and will pass it on, then say ONE short warm goodbye and immediately invoke end_call. Vary your phrasing — never use a stock line, never mention time or time limits, do not ask any question, and do not speak again after the goodbye.]" }] }],
         turnComplete: true,
       },
     });
