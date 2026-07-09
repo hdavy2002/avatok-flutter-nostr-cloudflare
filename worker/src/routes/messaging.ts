@@ -333,6 +333,53 @@ export async function sendMsg(req: Request, env: Env): Promise<Response> {
   if (others.length === 1 && blockers.has(others[0])) return json({ error: "blocked" }, 403);
   const recipients = others.filter((m) => !blockers.has(m)); // group: silently skip blockers
 
+  // ── CALL-OUTCOME-MENU stranger note caps (owner 2026-07-09, Specs/CALL-OUTCOME-
+  // MENU-SPEC-2026-07-09.md §5): a STRANGER (never-accepted first contact) gets
+  // strangerVoiceNotesPerDay voice notes and strangerTextNotesPerDay texts per
+  // recipient per UTC day. Known contacts are UNLIMITED. Stranger detection is a
+  // cheap KV marker (`cmstranger:<sender>:<recipient>`, set on first-ever contact,
+  // cleared when the recipient ACCEPTS the thread, 7-day TTL) — no DO read on the
+  // hot path. Active only while callMenuEnabled && callMenuRateLimitEnabled, so
+  // this ships dark; fail-open on any KV error. Delete-controls are exempt.
+  if (isDm && recipients.length === 1 && !delTarget && (kind === "text" || kind === "audio")) {
+    try {
+      const cfgCm = await readConfig(env) as Record<string, unknown>;
+      if (cfgCm.callMenuEnabled === true && cfgCm.callMenuRateLimitEnabled !== false) {
+        const peer = recipients[0];
+        const markerKey = `cmstranger:${ctx.uid}:${peer}`;
+        let stranger: boolean;
+        if (!dmPreexisted) {
+          stranger = true; // first-ever contact — start tracking as a stranger
+          await env.TOKENS.put(markerKey, "1", { expirationTtl: 7 * 86_400 });
+        } else {
+          stranger = (await env.TOKENS.get(markerKey)) === "1";
+        }
+        if (stranger) {
+          // Classify voice vs text: the Flutter client POSTs kind='text' with the
+          // real type inside the envelope ({"t":"media","kind":"audio",…} = voice
+          // note), so inspect the body rather than trusting the top-level kind.
+          const isVoice = kind === "audio" ||
+            (!!text && text.includes('"t":"media"') && text.includes('"kind":"audio"'));
+          const noteKind = isVoice ? "audio" : "text";
+          const cap = isVoice
+            ? Math.max(1, Math.round(Number(cfgCm.strangerVoiceNotesPerDay ?? 5)))
+            : Math.max(1, Math.round(Number(cfgCm.strangerTextNotesPerDay ?? 10)));
+          const day = new Date().toISOString().slice(0, 10);
+          const cKey = `usage:cmnote:${noteKind}:${ctx.uid}:${peer}:${day}`;
+          const used = Math.max(0, parseInt((await env.TOKENS.get(cKey)) ?? "0", 10) || 0);
+          if (used >= cap) {
+            try {
+              void env.Q_ANALYTICS.send({ event: "stranger_note_rate_limited", uid: ctx.uid, ts: Date.now(),
+                props: { kind: noteKind, cap, peer, email: (req.headers.get("x-user-email") || ""), account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });
+            } catch { /* best-effort */ }
+            return json({ error: "note_rate_limited", kind: noteKind, cap, retry: "tomorrow" }, 429);
+          }
+          await env.TOKENS.put(cKey, String(used + 1), { expirationTtl: 2 * 86_400 });
+        }
+      }
+    } catch { /* fail-open — a counter error never blocks a message */ }
+  }
+
   // [MSG-DELETE-1] AUTHOR-ONLY UNSEND (Issue 3). A per-message delete-for-everyone is
   // peer-visible, so we MUST verify ctx.uid actually authored the target message
   // BEFORE applying/fanning it out. An unauthored retract is rejected (403) and never

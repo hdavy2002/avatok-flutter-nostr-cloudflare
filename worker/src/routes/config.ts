@@ -243,6 +243,15 @@ export interface PlatformConfig {
   // Ava Copilot Phases C+D (ODL — Opportunity Detection Layer, shadow-mode).
   odlEnabled: boolean;        // Phase C: ODL wake scan from guardianScan (shadow-mode telemetry only)
   avaMomentsEnabled: boolean; // Phase C: master gate for user-visible Moments (nothing posts while false)
+  // CALL OUTCOME MENU (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md). One server-
+  // driven menu for every non-answered call (declined / no-answer / unreachable /
+  // phone-off / Ava-mode / busy): Talk to Ava, voice note, text note, See Listings.
+  callMenuEnabled: boolean;          // master switch — client shows the menu; server serves /api/call-menu
+  callMenuListingsEnabled: boolean;  // "See Listings" button + Ava listings context — OFF until marketplace goes public
+  callMenuRateLimitEnabled: boolean; // master switch for the per-caller daily caps below
+  avaSessionsPerCallerPerDay: number;   // Talk-to-Ava cap per caller per owner per UTC day (owner 2026-07-09: 2)
+  strangerVoiceNotesPerDay: number;     // stranger voice notes per caller per owner per day
+  strangerTextNotesPerDay: number;      // stranger text notes per caller per owner per day
 }
 
 // FREE LAUNCH (2026-06-28, owner-locked Specs/FREE-LAUNCH-DIRECTION.md): ship an
@@ -340,6 +349,14 @@ const DEFAULTS: PlatformConfig = {
   // Ava Copilot Phases C+D — ODL ships DARK; flip via scripts/flags.sh set odlEnabled=true
   odlEnabled: false,          // ODL wake scan (shadow telemetry only; zero AI, zero user-visible output)
   avaMomentsEnabled: false,   // no user-visible Moments until a capability is production AND this is on
+  // Call Outcome Menu (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md) — ships DARK;
+  // flip callMenuEnabled=true in KV (scripts/flags.sh) on staging first.
+  callMenuEnabled: false,            // master switch for the unified call outcome menu
+  callMenuListingsEnabled: false,    // See Listings button — stays OFF until marketplace goes public
+  callMenuRateLimitEnabled: true,    // per-caller daily caps live whenever the menu is on
+  avaSessionsPerCallerPerDay: 2,     // owner 2026-07-09: 2 Ava sessions/caller/owner/day, then greyed out
+  strangerVoiceNotesPerDay: 5,       // stranger voice-note cap (known contacts unlimited)
+  strangerTextNotesPerDay: 10,       // stranger text-note cap (known contacts unlimited)
 };
 
 /** Merged config for server-side gates (same blob getConfig serves). */
@@ -384,7 +401,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
   // (or `scripts/flags.sh prune` to sweep every key that just restates a default).
   const current = ((await env.TOKENS.get(KEY, "json")) ?? {}) as Partial<PlatformConfig>;
   const next: Record<string, unknown> = { ...current };
-  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate", "guardianInlineBudgetMs", "callProtocolVersion"]);
+  const numericKeys = new Set(["minAppBuild", "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate", "guardianInlineBudgetMs", "callProtocolVersion", "avaSessionsPerCallerPerDay", "strangerVoiceNotesPerDay", "strangerTextNotesPerDay"]);
   for (const [k, v] of Object.entries(body)) {
     if (!(k in DEFAULTS)) return json({ error: `unknown key: ${k}` }, 400);
     if (numericKeys.has(k) ? typeof v !== "number" : typeof v !== "boolean") {

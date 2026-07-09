@@ -15,6 +15,7 @@ import '../../core/calls/call_session_manager.dart';
 import '../../core/ui/zine.dart';
 import '../../core/ui/zine_widgets.dart';
 import 'busy_card.dart';
+import 'call_outcome_menu.dart';
 // Ringing globals (gIncomingRingingFrom/CallId) live here — cleared by
 // clearCallState() on account switch. push_service.dart also imports this file
 // (Dart permits the library cycle).
@@ -377,12 +378,24 @@ class _CallScreenState extends State<CallScreen> {
                         style: ZineText.hero(size: 30)),
                   ],
                   const SizedBox(height: 16),
+                  // [CALL-OUTCOME-MENU-1] Unified call outcome menu — ONE surface
+                  // for declined / no-answer / unreachable / busy while
+                  // callMenuEnabled (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md).
+                  // Renders instead of the busy card / plain sticker; with the
+                  // flag off it never constructs and everything below is legacy.
+                  if (s.showOutcomeMenu)
+                    CallOutcomeMenu(
+                      session: s,
+                      name: widget.title,
+                      peerUid: widget.seed,
+                      onClosed: _popIfMounted,
+                    )
                   // [BUSY-CARD-1] Personalized busy card — replaces the cold
                   // "User is busy" sticker when the server told us WHY the callee
                   // is busy (Specs §3.1). Only on the terminal 'busy' phase and
                   // only when the field/flag gate is satisfied; otherwise the
                   // legacy sticker below renders unchanged.
-                  if (s.showBusyCard)
+                  else if (s.showBusyCard)
                     BusyCard(
                       name: widget.title,
                       busyReason: s.busyReason ?? '',

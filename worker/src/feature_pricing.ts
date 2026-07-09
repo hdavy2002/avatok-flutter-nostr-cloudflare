@@ -27,6 +27,11 @@ export const FEATURE_COSTS: Record<string, number> = {
   ava_vision_snapshot: 1,    // $0.01 — one analyzed snapshot beyond the free quota
   ava_mcp_tool: 1,           // $0.01 — one connected-app (Composio) tool call
   guardian_always_on: 30,    // $0.30/mo — always-on safety monitoring for a chat
+  // CALL OUTCOME MENU (owner 2026-07-09, Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md):
+  // one minute of an Ava receptionist/sales-agent call, charged to the OWNER whose
+  // Ava answered (ceil(duration/60) units per session, max 3). Free while
+  // betaFreePremium is on — chargeFeature already short-circuits to charged:0.
+  ava_receptionist_minute: 3, // $0.03/min
 };
 
 export function featureCost(key: string): number | null {

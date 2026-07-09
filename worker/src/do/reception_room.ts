@@ -21,6 +21,7 @@ import type { Env } from "../types";
 import { trackUserContact, metric } from "../hooks";
 import { dmConvId } from "../authz";
 import { contactFor } from "../lib/identity";
+import { chargeFeature } from "../feature_pricing"; // Ava minute billing (CALL-OUTCOME-MENU §6)
 
 /** Redact secrets from free-text error strings BEFORE they go into telemetry.
  *  The Gemini Live URL carries `?key=AIza…` / `?access_token=auth_tokens/…`, so a
@@ -86,7 +87,7 @@ interface InitBlob {
   caller_phone: string | null; caller_name: string | null; call_id: string | null;
   rtc_token: string; voice_name: string; file_search_store: string | null;
   system_prompt: string; model: string;
-  soft_cap_ms: number; hard_cap_ms: number; wrap_cue_ms?: number; started_at: number;
+  soft_cap_ms: number; hard_cap_ms: number; wrap_cue_ms?: number; wrap_soft?: boolean; started_at: number;
   // v2
   language_code?: string | null; activation_mode?: string | null;
   owner_name?: string | null; // owner's display name, for the caller-side ack
@@ -607,6 +608,22 @@ export class ReceptionRoom {
   private onWrapCue(): void {
     if (this.finalized || this.wrapCueInjected) return;
     this.wrapCueInjected = true;
+    // CALL-OUTCOME-MENU soft wrap (owner 2026-07-09): with the 3-min budget the
+    // wrap cue opens a graceful WIND-DOWN PHASE (2:00→~2:40) — Ava steers to a
+    // close but the caller's mic stays open so they can finish their thought.
+    // The firm close is the soft_cap timer; the hard cap remains the backstop.
+    if (this.init?.wrap_soft === true) {
+      this.sendGem({
+        clientContent: {
+          turns: [{ role: "user", parts: [{ text: "[SYSTEM: Time is nearly up. Over your next turns, gently steer the conversation to a close: let the caller finish their current point, then briefly acknowledge what you'll pass on, say ONE short warm goodbye and invoke end_call. Never mention time or time limits, do not open new topics, and do not speak again after the goodbye.]" }] }],
+          turnComplete: true,
+        },
+      });
+      try { this.client?.send(JSON.stringify({ t: "softcap" })); } catch { /* ignore */ }
+      metric(this.env, "ava_recept_softcap", [1]);
+      this.ev("ava_recept_wrap_cue", { at_ms: Date.now() - this.startedAt, soft: true });
+      return;
+    }
     this.wrapping = true;
     // CRITICAL under automatic VAD: end the caller's still-open turn so the model
     // actually answers the wrap nudge (gating the mic alone leaves the turn open
@@ -755,6 +772,23 @@ export class ReceptionRoom {
       out_chars: this.outText.join("").length, has_recording: !!recordingUrl,
     });
     metric(this.env, reason === "hard_cap" ? "ava_recept_hardcap" : "ava_recept_completed", [1, durationS]);
+
+    // ── TOKEN BILLING (owner 2026-07-09, Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md
+    // §6): Ava minutes cost the OWNER `ava_receptionist_minute` tokens (3/min =
+    // 3¢/min) — ceil(duration/60), one idempotent charge unit per minute
+    // (op_id = `<sid>:min<N>`, deduped by the WalletDO on retry). FREE while
+    // betaFreePremium is on: chargeFeature short-circuits to charged:0, so this is
+    // dormant wiring until billing turns on. Best-effort — a wallet error must
+    // never break message delivery (which already happened above).
+    if (hadConversation && durationS > 0) {
+      try {
+        const minutes = Math.min(10, Math.ceil(durationS / 60)); // sanity clamp
+        for (let m = 1; m <= minutes; m++) {
+          await chargeFeature(this.env, init.owner_uid, "ava_receptionist_minute", `${init.sid}:min${m}`);
+        }
+        this.ev("ava_recept_billed", { minutes, feature: "ava_receptionist_minute" });
+      } catch { /* best-effort */ }
+    }
 
     // ── COST telemetry (Gemini Live audio) ────────────────────────────────────
     // Estimate $ spent on this call from audio throughput both ways:

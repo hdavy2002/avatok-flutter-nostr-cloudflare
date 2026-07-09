@@ -708,6 +708,14 @@ class CallSession {
         return;
       }
       if (e.callId == config.room && !_connected) {
+        // [CALL-OUTCOME-MENU-1] Declines land on the unified menu (all call
+        // kinds — video simply hides Talk to Ava) instead of auto-Ava/plain end.
+        if (_menuEnabled && !_ended &&
+            (e.status == 'decline' || e.status == 'decline_ava')) {
+          _ringTimeout?.cancel();
+          _showOutcomeMenu('declined');
+          return;
+        }
         if (e.status == 'decline_ava' && !config.video && !_ended) {
           _ringTimeout?.cancel();
           // ignore: unawaited_futures
@@ -768,6 +776,9 @@ class CallSession {
       case 'network-error':
       // [AVA-CLIENT-1] terminal honest fallback — Ava never went live.
       case 'receptionist-unavailable':
+      // [CALL-OUTCOME-MENU-1] terminal like 'busy': the view renders the menu
+      // and the session stays alive for the buttons (no teardown/auto-pop).
+      case 'outcome-menu':
         return CallPhase.ended;
       case 'reconnecting':
         return CallPhase.reconnecting;
@@ -1418,6 +1429,12 @@ class CallSession {
         break;
       case 'decline':
         if (_receptionistActive) break;
+        // [CALL-OUTCOME-MENU-1] Fast-WS decline → unified menu (all call kinds).
+        if (_menuEnabled && !_connected && !_ended) {
+          _ringTimeout?.cancel();
+          _showOutcomeMenu('declined');
+          break;
+        }
         if (!config.video && !_connected && !_ended) {
           _ringTimeout?.cancel();
           // ignore: unawaited_futures
@@ -1625,6 +1642,13 @@ class CallSession {
     // not end the call under her ("no-answer"/timeout-ringing mid-voicemail).
     if (_receptionistActive || _receptionist != null || _avaCountingDown) return;
     _ringback.stop();
+    // [CALL-OUTCOME-MENU-1] Unified menu replaces the auto-Ava handoff: the
+    // caller heard the ring beeps, now gets an honest status + choices. Applies
+    // to VIDEO too (menu minus Talk to Ava — owner 2026-07-09).
+    if (_menuEnabled && !_ended && !_connected) {
+      _showOutcomeMenu(_callUnreachable ? 'unreachable' : 'no-answer');
+      return;
+    }
     if (!config.video && !_ended) {
       // UNREACHABLE-AVA-1 (owner decision 2026-07-07): when the callee's phone is
       // off / has no data (_callUnreachable), Ava still takes the message — with
@@ -1662,6 +1686,13 @@ class CallSession {
       'recept_mode': _receptMode,
       'video': config.video,
     });
+    // [CALL-OUTCOME-MENU-1] Busy = scenario 6 of the unified menu (red "busy"
+    // banner above the buttons — owner 2026-07-09). Replaces the busy card
+    // while the flag is on; legacy card/behaviour untouched otherwise.
+    if (_menuEnabled) {
+      _showOutcomeMenu('busy');
+      return;
+    }
     // [BUSY-CARD-1] Personalized busy card. When the server told us WHY the callee
     // is busy (busy_reason present) AND the client kill switch is on, show the
     // warm card (§3.1) and let the caller CHOOSE — Ava never auto-engages on a
@@ -1696,6 +1727,81 @@ class CallSession {
       if (started) return;
     }
     if (!_connected && !_ended) _endWith('busy', reason: 'busy');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  [CALL-OUTCOME-MENU-1] Unified call outcome menu (Specs/CALL-OUTCOME-MENU-
+  //  SPEC-2026-07-09.md). ONE caller-facing menu for every non-answered call —
+  //  declined / no-answer / unreachable / busy — with Talk to Ava, voice note,
+  //  text note (and later See Listings). Gated on RemoteConfig.callMenuEnabled:
+  //  with the flag off, every legacy path is byte-for-byte unchanged (busy card,
+  //  auto-Ava handoff, plain end states).
+  // ─────────────────────────────────────────────────────────────────────────
+
+  String? _menuScenario;
+  Timer? _menuTimeout;
+
+  bool get _menuEnabled => RemoteConfig.callMenuEnabled;
+
+  /// View-facing: 'declined' | 'no-answer' | 'unreachable' | 'busy'.
+  String? get menuScenario => _menuScenario;
+  bool get showOutcomeMenu => _phase == 'outcome-menu';
+
+  void _showOutcomeMenu(String scenario) {
+    if (_ended || _connected || _receptionistActive) return;
+    // A stale timer/status racing in must not overwrite an already-shown menu
+    // (e.g. the device-ringing timer firing after a decline already landed).
+    if (_phase == 'outcome-menu') return;
+    _ringTimeout?.cancel();
+    _ringback.stop();
+    // Tear down the dialing leg (stops the callee's phone ringing, frees the
+    // mic) — same teardown _tryReceptionist performs before handing off. The
+    // menu is the caller's follow-up surface; Talk to Ava re-uses the session.
+    try { _send({'type': 'bye'}); } catch (_) {}
+    try { _stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    // ignore: unawaited_futures
+    try { _pc?.close(); } catch (_) {}
+    _pc = null;
+    _notifyCalleeCanceled();
+    _menuScenario = scenario;
+    _setPhase('outcome-menu');
+    Analytics.capture('call_menu_shown', {
+      'call_id': config.room, 'scenario': scenario, 'video': config.video,
+    });
+    // An abandoned menu must not hold the session forever (mirror of the busy
+    // card's 60s guard, longer here because notes take time to record/type).
+    _menuTimeout?.cancel();
+    _menuTimeout = Timer(const Duration(seconds: 180), () {
+      if (!_ended && _phase == 'outcome-menu' && !_receptionistActive) {
+        Analytics.capture('call_menu_abandoned',
+            {'call_id': config.room, 'scenario': scenario});
+        _endWith('ended', reason: 'menu-timeout');
+      }
+    });
+  }
+
+  /// Menu → "Talk to Ava" (audio only; the widget hides it on video calls).
+  Future<void> menuTalkToAva() async {
+    if (_ended || _receptionistActive) return;
+    Analytics.capture('call_menu_option_selected', {
+      'call_id': config.room, 'option': 'talk_to_ava', 'scenario': _menuScenario ?? '',
+    });
+    _menuTimeout?.cancel();
+    await _handoffToAva('menu');
+  }
+
+  /// Menu closed — by the caller, or after a note was sent successfully.
+  void menuDismiss({String reason = 'menu-dismissed'}) {
+    if (_ended) return;
+    _menuTimeout?.cancel();
+    _endWith('ended', reason: reason);
+  }
+
+  /// The widget logs option taps that it handles itself (notes).
+  void menuLogOption(String option) {
+    Analytics.capture('call_menu_option_selected', {
+      'call_id': config.room, 'option': option, 'scenario': _menuScenario ?? '',
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -2354,6 +2460,13 @@ class CallSession {
         'declined' => 'Call declined',
         'busy' => 'User is busy',
         'no-answer' => 'No answer',
+        // [CALL-OUTCOME-MENU-1] honest per-scenario status header (spec §1).
+        'outcome-menu' => switch (_menuScenario) {
+          'busy' => '$_peerFirst is busy on another call',
+          'unreachable' => "$_peerFirst's phone appears to be off or unreachable",
+          'declined' => "$_peerFirst can't take your call right now",
+          _ => "$_peerFirst isn't answering",
+        },
         // [CALL-DIAL-FAIL-1]
         'network-error' => "Can't reach the network — check your connection",
         'ava-countdown' => "$_peerFirst isn't picking up — Ava is taking your call…",

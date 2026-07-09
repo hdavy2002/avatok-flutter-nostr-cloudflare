@@ -80,6 +80,9 @@ export async function convAccept(req: Request, env: Env): Promise<Response> {
   if (!conv) return json({ error: "conv required" }, 400);
   const peer = peerOfDm(conv, ctx.uid) ?? undefined;
   await setInboxAcceptState(env, ctx.uid, conv, "accepted", peer);
+  // CALL-OUTCOME-MENU: accepting the thread promotes the sender to a KNOWN
+  // contact — clear the stranger marker so their note rate-caps lift immediately.
+  if (peer) { try { await env.TOKENS.delete(`cmstranger:${peer}:${ctx.uid}`); } catch { /* best-effort */ } }
   try {
     void env.Q_ANALYTICS?.send({ event: "stranger_gate_accept", uid: ctx.uid, ts: Date.now(),
       props: { conv, account_id: ctx.uid, app_name: "avatok", service_name: "avatok-api", worker: true } });

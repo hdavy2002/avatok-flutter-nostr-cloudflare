@@ -99,6 +99,56 @@ export const HARD_CAP_MS = 90_000;
 // Back-compat: the client + settings routes read soft_cap_ms/hard_cap_ms. soft_cap
 // now carries the SESSION-CLOSE deadline (the wrap point the client can surface).
 export const SOFT_CAP_MS = SESSION_CLOSE_MS;
+// CALL OUTCOME MENU timing (owner decision 2026-07-09, Specs/CALL-OUTCOME-MENU-
+// SPEC-2026-07-09.md §3): Ava is a receptionist/sales agent having a real
+// conversation, not a voicemail box. Free conversation to 2:00, wrap-up cue at
+// 2:00, graceful close by ~2:40, hard stall backstop at 3:00. ACTIVE ONLY while
+// `callMenuEnabled` is on — with the flag off, the legacy 40/60/90s caps above
+// apply unchanged, so this ships dark.
+export const MENU_WRAP_CUE_AT_MS = 120_000;
+export const MENU_SESSION_CLOSE_MS = 160_000;
+export const MENU_HARD_CAP_MS = 180_000;
+function capsFor(cfg: unknown): { wrap: number; close: number; hard: number } {
+  const menuOn = (cfg as { callMenuEnabled?: boolean } | null)?.callMenuEnabled === true;
+  return menuOn
+    ? { wrap: MENU_WRAP_CUE_AT_MS, close: MENU_SESSION_CLOSE_MS, hard: MENU_HARD_CAP_MS }
+    : { wrap: WRAP_CUE_AT_MS, close: SESSION_CLOSE_MS, hard: HARD_CAP_MS };
+}
+
+// ---------------------------------------------------------------------------
+// CALL OUTCOME MENU — per-CALLER daily Ava cap (owner 2026-07-09: 2 sessions per
+// caller per OWNER per UTC day, so one caller can't burn the owner's budget).
+// KV day-counter, same pattern as lib/usage.ts (`usage:<dim>:<uid>:<day>`), keyed
+// by caller+owner. Fail-open: a KV error never blocks a session. Enforced only
+// while callMenuEnabled && callMenuRateLimitEnabled.
+// ---------------------------------------------------------------------------
+const CALLER_CAP_TTL_SEC = 2 * 24 * 60 * 60;
+function callerCapKey(callerUid: string, ownerUid: string): string {
+  const day = new Date().toISOString().slice(0, 10);
+  return `usage:cmava:${callerUid}:${ownerUid}:${day}`;
+}
+async function callerSessionsUsed(env: Env, callerUid: string, ownerUid: string): Promise<number> {
+  try {
+    const raw = await env.TOKENS.get(callerCapKey(callerUid, ownerUid));
+    return raw ? Math.max(0, parseInt(raw, 10) || 0) : 0;
+  } catch { return 0; }
+}
+async function bumpCallerSessions(env: Env, callerUid: string, ownerUid: string): Promise<void> {
+  try {
+    const key = callerCapKey(callerUid, ownerUid);
+    const raw = await env.TOKENS.get(key);
+    const used = (raw ? Math.max(0, parseInt(raw, 10) || 0) : 0) + 1;
+    await env.TOKENS.put(key, String(used), { expirationTtl: CALLER_CAP_TTL_SEC });
+  } catch { /* fail open */ }
+}
+/** Remaining Ava sessions today for caller→owner, or null when the cap is off. */
+export async function callerSessionsLeft(env: Env, cfg: unknown, callerUid: string, ownerUid: string): Promise<number | null> {
+  const c = cfg as { callMenuEnabled?: boolean; callMenuRateLimitEnabled?: boolean; avaSessionsPerCallerPerDay?: number } | null;
+  if (c?.callMenuEnabled !== true || c?.callMenuRateLimitEnabled === false) return null;
+  const cap = Math.max(1, Math.round(Number(c?.avaSessionsPerCallerPerDay ?? 2)));
+  const used = await callerSessionsUsed(env, callerUid, ownerUid);
+  return Math.max(0, cap - used);
+}
 const MAX_INSTRUCTIONS = 2000;
 const INIT_TTL_SEC = 300;           // caller must connect the WS within 5 min
 
@@ -469,6 +519,12 @@ export function composeReceptionistPrompt(
     // BUSY SCRIPTS (RECEPT-1, plan §3.2 C): the busy caller already knows ${who}'s on a
     // call and chose to leave a message — Ava says ${subj}'s on another call and she'd
     // be glad to take a message (never "couldn't pick up"). No-answer wording unchanged.
+    : ctx?.activationMode === "menu"
+      // CALL-OUTCOME-MENU (owner 2026-07-09): the caller PRESSED "Talk to Ava" on
+      // the outcome menu — a deliberate choice to have a conversation. Open as a
+      // capable assistant: find out what they need, answer what you can about
+      // ${who}, and promise to pass the essentials on.
+      ? `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), and ask what you can help with — the caller chose to speak with you, so lead with "what can I do for you?", not "can I take a message?".`
     : isBusy
       ? `OPEN warmly in one or two friendly sentences: say hello, that you're ${me} (${who}'s assistant), that ${subj}'s on another call right now, and that you'd be glad to take a message.`
       : ctx?.activationMode === "unreachable"
@@ -531,10 +587,20 @@ function greetingBaseLang(code?: string | null): string {
   return c.split(/[-_]/)[0];
 }
 function composeDeterministicGreeting(a: {
-  isBusy: boolean; isUnreachable?: boolean; langCode: string; greetPrefix: string; ownerLabel: string;
+  isBusy: boolean; isUnreachable?: boolean; isMenu?: boolean; langCode: string; greetPrefix: string; ownerLabel: string;
   gSubj: string; firstName: string;
 }): string {
   const base = greetingBaseLang(a.langCode);
+  // CALL-OUTCOME-MENU "menu" mode: the caller PRESSED "Talk to Ava" — they chose a
+  // conversation, so the greeting is a helpful "what can I do for you?", never
+  // "leave a message of about 25 seconds".
+  if (a.isMenu) {
+    if (base === "hi") {
+      const namePart = a.firstName ? `${a.firstName} जी — ` : "";
+      return `नमस्ते ${namePart}मैं Ava हूँ, ${a.ownerLabel} की असिस्टेंट। ${a.ownerLabel} अभी कॉल नहीं ले पा रहे — बताइए, मैं आपकी क्या मदद कर सकती हूँ?`;
+    }
+    return `${a.greetPrefix}it's Ava, ${a.ownerLabel}'s assistant. ${a.ownerLabel} can't take the call right now, but I'm happy to help — what can I do for you?`;
+  }
   // Hindi template (plan example). Ava speaks in feminine forms ("पहुँचा दूँगी").
   if (base === "hi") {
     const namePart = a.firstName ? `${a.firstName} जी — ` : "";
@@ -767,13 +833,18 @@ export async function receptionistConfigFor(req: Request, env: Env): Promise<Res
     return json({ available: false, reason: "plan_limit", remaining: 0, cap: res.cap });
   }
   checked(true, "available", mode);
+  // CALL OUTCOME MENU: per-caller daily allowance (null = cap not active). The
+  // menu greys "Talk to Ava" when 0; server-side enforcement lives in /start.
+  const menuCaps = capsFor(cfg);
+  const sessionsLeft = await callerSessionsLeft(env, cfg, ctx.uid, to);
   return json({
     available: true, mode, rings,
     decline_to_ava: !!s.decline_to_ava,
     voice_name: AVA_VOICE, // P12: pinned — stored custom voice is overridden
     display_name: s.display_name ?? "",
     recept_remaining: res.remaining, recept_cap: res.cap,
-    soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
+    soft_cap_ms: menuCaps.close, hard_cap_ms: menuCaps.hard,
+    caller_sessions_left: sessionsLeft,
   });
 }
 
@@ -801,6 +872,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // once so the init blob the DO consumes pins the engine for THIS call.
   const cfg = await readConfig(env);
   const useCf = (cfg as any).receptionistUseCf === true;
+  const sessionCaps = capsFor(cfg); // 3-min menu budget vs legacy 40/60/90s
 
   // FREE FOR NOW + DEFAULT-ON: unconfigured owners get Ava by default; an explicit
   // opt-out (saved row with enabled=0) is respected. betaFreePremium skips the
@@ -828,6 +900,19 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_recept_plan_block", APP,
       { owner: to, tier, cap: res.cap, used: res.used });
     return json({ error: "receptionist_unavailable", reason: "plan_limit", ...planLimitBody(res) }, 402);
+  }
+
+  // CALL OUTCOME MENU: per-CALLER daily cap (2/day per owner, owner 2026-07-09).
+  // Applies on top of the owner-side allowance above; active only while the menu
+  // + rate limiting flags are on. Self-calls (owner testing their own Ava) exempt.
+  if (ctx.uid !== to) {
+    const left = await callerSessionsLeft(env, cfg, ctx.uid, to);
+    if (left !== null && left <= 0) {
+      skip("caller_daily_cap");
+      trackUserContact(env, ctx.uid, caller.email, caller.phone, "ava_session_capped", APP,
+        { owner: to, cap: (cfg as any).avaSessionsPerCallerPerDay ?? 2 });
+      return json({ error: "receptionist_unavailable", reason: "caller_daily_cap" }, 429);
+    }
   }
 
   // CALLFIX-8 / CALL-KV-STATE-1: check if the call was already answered by the
@@ -995,7 +1080,10 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   // 'unreachable' (2026-07-07): the callee's phone is off / has no data — Ava
   // opens with "looks like <owner>'s phone is off or unreachable, can I take a
   // message?" instead of the plain no-answer wording.
-  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable"]);
+  // "menu" (CALL-OUTCOME-MENU 2026-07-09): the caller pressed "Talk to Ava" on the
+  // call outcome menu — a deliberate choice, so Ava opens as a helpful assistant
+  // ("what can I do for you?") rather than a voicemail-style message-taker.
+  const VALID_MODES = new Set(["rings", "first_ring", "decline", "busy", "unreachable", "menu"]);
   let activationMode = String(b.activation_mode || "rings");
   if (!VALID_MODES.has(activationMode)) activationMode = "rings";
 
@@ -1023,6 +1111,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   const greeting = composeDeterministicGreeting({
     isBusy: activationMode === "busy",
     isUnreachable: activationMode === "unreachable",
+    isMenu: activationMode === "menu",
     langCode: greetLangCode, greetPrefix, ownerLabel, gSubj, firstName,
   });
 
@@ -1074,8 +1163,13 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     cf_voice: useCf ? AVA_CF_VOICE : null,
     greeting,                                     // CF engine speaks this immediately (no LLM)
     model: useCf ? "cf-workers-ai" : ((env as any).RECEPTIONIST_MODEL || RECEPTIONIST_MODEL_DEFAULT),
-    soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
-    wrap_cue_ms: WRAP_CUE_AT_MS, // P2: relay injects the wrap cue here (once)
+    // CALL OUTCOME MENU: 3-min conversation budget (wrap at 2:00) while
+    // callMenuEnabled; legacy 40/60/90s otherwise (capsFor).
+    soft_cap_ms: sessionCaps.close, hard_cap_ms: sessionCaps.hard,
+    wrap_cue_ms: sessionCaps.wrap, // P2: relay injects the wrap cue here (once)
+    // Soft wrap = graceful wind-down phase instead of instant mic-cut close
+    // (only meaningful with the 3-min menu budget; see reception_room.onWrapCue).
+    wrap_soft: (cfg as any).callMenuEnabled === true,
     started_at: now,
   };
   await env.TOKENS.put(`recept_rtc:${sid}`, JSON.stringify(init), { expirationTtl: INIT_TTL_SEC });
@@ -1117,6 +1211,12 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
   if (statusActive) track(env, to, "recept_status_used_in_call", APP, { call_id: callId });
   metric(env, "ava_recept_triggered", [1]);
 
+  // CALL OUTCOME MENU: consume one unit of the caller's daily allowance for this
+  // owner (only when the cap is active; self-calls exempt; fail-open).
+  if (ctx.uid !== to && (await callerSessionsLeft(env, cfg, ctx.uid, to)) !== null) {
+    await bumpCallerSessions(env, ctx.uid, to);
+  }
+
   return json({
     ok: true, session_id: sid,
     // Same client, same route — `&engine=cf` makes index.ts hand the WS to the
@@ -1124,7 +1224,7 @@ export async function receptionistStart(req: Request, env: Env): Promise<Respons
     rtc_url: `/api/receptionist/rtc?session=${sid}&t=${rtcToken}${useCf ? "&engine=cf" : ""}`,
     rtc_token: rtcToken,
     voice_name: init.voice_name, model: init.model,
-    soft_cap_ms: SOFT_CAP_MS, hard_cap_ms: HARD_CAP_MS,
+    soft_cap_ms: sessionCaps.close, hard_cap_ms: sessionCaps.hard,
   });
 }
 

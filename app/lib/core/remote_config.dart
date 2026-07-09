@@ -122,6 +122,15 @@ class RemoteConfig {
   /// sends no reason falls back to the plain "User is busy" line. Default ON;
   /// flip to false in KV to force legacy behaviour everywhere. Mirrors config.ts.
   static bool get busyCardEnabled => _b('busyCardEnabled', true);
+  /// CALL OUTCOME MENU (Specs/CALL-OUTCOME-MENU-SPEC-2026-07-09.md): one unified
+  /// caller-facing menu for every non-answered call (declined / no-answer /
+  /// unreachable / busy). Talk to Ava, voice note, text note, See Listings.
+  /// Ships DARK (default false); flip callMenuEnabled=true in KV to activate.
+  /// Mirrors config.ts.
+  static bool get callMenuEnabled => _b('callMenuEnabled', false);
+  /// "See Listings" button on the call outcome menu — OFF until the marketplace
+  /// goes public (owner 2026-07-09). Mirrors config.ts.
+  static bool get callMenuListingsEnabled => _b('callMenuListingsEnabled', false);
   /// MKT-LANG (AI Messenger Batch, STREAM A): the "Marketplace Agent" settings
   /// surface (default language/voice/tone + negotiation guardrails). Default ON;
   /// the settings tile hides when false. Mirrors config.ts.
