@@ -24,10 +24,29 @@ import 'ava_log.dart';
 // │ Never read/write a raw constant key for user data. The ONLY exceptions are  │
 // │ device-level, account-agnostic values (e.g. the Clerk client token).        │
 // └──────────────────────────────────────────────────────────────────────────┘
+/// The namespace used when no Clerk account is active (L0 guest, or any read
+/// that races ahead of `AccountScope.id` being set right after auth).
+///
+/// [PROFILE-LEAK 2026-07-09] This used to fall back to the RAW `base` key. Two
+/// ways that leaked one account's data into another's:
+///   1. `_enterAsGuest()` sets `AccountScope.id = null`, so every guest-scope
+///      write landed on the un-namespaced key.
+///   2. Any read/write that ran before `AccountScope.id` was assigned (the
+///      window between Clerk sign-in and `_afterAuth`) hit the same raw key.
+/// The next account to sign in then found its own scoped key empty and inherited
+/// the raw value via the legacy migration below — name, bio and AVATAR included.
+/// A guest now gets its own explicit namespace, so nothing ever writes `base`.
+const String kGuestScope = 'guest';
+
 String scopedKey(String base) =>
     (AccountScope.id == null || AccountScope.id!.isEmpty)
-        ? base
+        ? '${base}_$kGuestScope'
         : '${base}_${AccountScope.id}';
+
+/// Device-level marker: set the first time ANY scope claims the pre-namespacing
+/// value of [base]. Intentionally un-namespaced — it describes the device, not
+/// an account (same class of exception as the Clerk client token).
+String _legacyClaimKey(String base) => 'legacy_claimed_v1_$base';
 
 /// Reads a per-account key, migrating a legacy (un-namespaced) value the first
 /// time a real account reads it. Returns null when nothing is stored yet.
@@ -54,14 +73,31 @@ Future<String?> readScoped(FlutterSecureStorage s, String base) async {
     rethrow; // Re-throw other PlatformExceptions
   }
 
-  // Try legacy migration only if current key read succeeded and is empty/null
+  // Try legacy migration only if current key read succeeded and is empty/null.
+  //
+  // [PROFILE-LEAK 2026-07-09] The pre-namespacing value belongs to exactly ONE
+  // account — whoever was using the device before scoping existed. It must be
+  // claimed AT MOST ONCE. Without this guard every subsequent account that found
+  // its own scoped key empty re-read `base` and adopted the previous user's
+  // profile (the "my new account has the last account's photo" bug). We set the
+  // claim marker on the first attempt whether or not a legacy value was present,
+  // so a later account can never inherit one that shows up afterwards.
   if ((v == null || v.isEmpty) && key != base) {
+    final claimKey = _legacyClaimKey(base);
+    String? claimed;
+    try { claimed = await s.read(key: claimKey); } catch (_) {/* treat as unclaimed */}
+    if (claimed == '1') return v; // already claimed by another scope — clean slate
     try {
       final legacy = await s.read(key: base);
+      try { await s.write(key: claimKey, value: '1'); } catch (_) {/* best-effort */}
       if (legacy != null && legacy.isNotEmpty) {
         await s.write(key: key, value: legacy);
         await s.delete(key: base);
         v = legacy;
+        Analytics.capture('legacy_key_claimed', {
+          'key_hint': base,
+          'scope': (AccountScope.id == null || AccountScope.id!.isEmpty) ? kGuestScope : 'account',
+        });
       }
     } on PlatformException catch (e) {
       // Corruption in the legacy key during migration attempt

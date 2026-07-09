@@ -767,7 +767,12 @@ class _RootFlowState extends State<RootFlow> with WidgetsBindingObserver {
           onSignUpRequested: () => _to(_Stage.handleClaim),
         );
       case _Stage.onboarding:
-        return OnboardingFlow(onComplete: () => _to(_Stage.shell));
+        // [LIVE-GATE-7 2026-07-09] Route finished onboarding through _landOrGate,
+        // NOT straight to the shell. Every other landing path (_route, restore,
+        // _afterAuth) already honours the human-check gate; this one jumped it, so
+        // a BRAND-NEW signup — the exact user liveness exists to screen — never saw
+        // it. Confirmed in PostHog: no liveness_gate_shown on any 2026-07-09 signup.
+        return OnboardingFlow(onComplete: () => unawaited(_landOrGate()));
       case _Stage.restore:
         return RestoreScreen(
           state: _restoreState ?? const RestoreState(RestoreOutcome.unavailable),

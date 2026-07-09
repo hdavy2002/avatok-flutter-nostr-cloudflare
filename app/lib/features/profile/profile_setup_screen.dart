@@ -66,6 +66,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   Identity? _id;
   String _avatarUrl = '';
+  /// What the store handed us on open, so telemetry can tell a photo the user
+  /// actually picked from one that was restored (or leaked) into the form.
+  String _prefilledAvatarUrl = '';
   // Full date of birth (mandatory, owner request 2026-07-08) + optional time of birth.
   DateTime? _birthDate;
   TimeOfDay? _birthTime;
@@ -215,6 +218,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         }
         _bio.text = p.bio;
         _avatarUrl = p.avatarUrl;
+        _prefilledAvatarUrl = p.avatarUrl;
         _privatePhone = p.privatePhone;
         _privatePhoneVerified = p.privatePhoneVerified;
         _gender = p.gender;
@@ -632,8 +636,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         bio: bio, birthYear: by, birthDate: birthDateIso, birthTime: _birthTimeLabel,
         privatePhone: _privatePhone, privatePhoneVerified: _privatePhoneVerified,
         gender: _gender));
+    // [PROFILE-LEAK 2026-07-09] has_photo was hardcoded `true`, so the property
+    // was worthless for diagnosing the avatar-carryover bug. Report the truth,
+    // and stamp the scope so a cross-account leak is visible in telemetry.
     Analytics.capture('profile_completed', {
-      'has_photo': true, 'via': 'mandatory_gate', 'email': email,
+      'has_photo': _avatarUrl.trim().isNotEmpty,
+      'avatar_is_prefilled': _prefilledAvatarUrl.isNotEmpty && _prefilledAvatarUrl == _avatarUrl,
+      'via': 'mandatory_gate',
+      'email': email,
+      'phone': _privatePhone,
     });
     if (!mounted) return;
     setState(() { _saving = false; _holdMsg = null; });

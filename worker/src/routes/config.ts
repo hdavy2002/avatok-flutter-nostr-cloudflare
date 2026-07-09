@@ -324,7 +324,12 @@ const DEFAULTS: PlatformConfig = {
   groupTranslationEnabled: false,        // STREAM G — OFF (cost watch)
   smartRepliesEnabled: true,             // STREAM G — ships ON
   scamAutoScanEnabled: true,             // STREAM G — ships ON
-  livenessOnboardingGate: false,         // OFF 2026-07-03: liveness moved to listing-creation gate, NOT onboarding
+  // ON 2026-07-09 (owner decision). Reverses the 2026-07-03 change that quietly
+  // moved liveness to the listing-creation gate — the owner's standing requirement
+  // is that liveness is part of ONBOARDING. Paired with [LIVE-GATE-7] in main.dart,
+  // which routes a finished onboarding through _landOrGate so new signups are
+  // actually gated (before that fix this flag only ever caught existing users).
+  livenessOnboardingGate: true,
   unlimitedForwardEnabled: true,         // STREAM I — ships ON
   dohFallbackEnabled: true,              // PERF-DNS-2 — DoH-to-1.1.1.1 fallback ON
   routingV2Enabled: false,               // [ARCH-ROUTING-V2] v4 routing path — DORMANT until wired + validated; legacy path unaffected
