@@ -117,3 +117,9 @@ theme/design/AvaTOK Design System/
 theme/design/AvaTOK Design System.zip
 theme/design/calender/
 theme/design/calender.zip
+
+# [ENV-ISOLATION-1] Per-machine staging/prod marker read by scripts/cf.sh.
+# NEVER commit: committing "prod" would make production the default for every
+# clone and every agent. Absent => cf.sh falls back to the branch (main => prod,
+# which is fail-closed behind ALLOW_PROD=1 anyway).
+.avatok-target

@@ -12,3 +12,31 @@ APP_ID = "7e5b20c0-da74-4848-9884-73af53bb3fb0"
 [[kv_namespaces]]
 binding = "ROOMS"
 id = "7dd03bd92252484093870d3af7cd7f83"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STAGING [ENV-ISOLATION-1]. Until now this Worker had NO staging env, and the
+# Flutter client hardcoded the prod hostname regardless of AVATOK_ENV — so a
+# staging APK minted tokens against the PROD calls Worker and wrote PROD ROOMS
+# KV. Deploy with:
+#
+#   scripts/cf.sh calls deploy          # -> avatok-calls-staging (safe default)
+#
+# ONE-TIME SETUP before the first staging deploy — create the KV namespace and
+# paste its id below (it is NOT the prod id above):
+#
+#   cd calls && npx wrangler kv namespace create ROOMS --env staging
+#   npx wrangler secret put CF_API_TOKEN --env staging
+#
+# Keep ACCOUNT_ID/APP_ID: Cloudflare RealtimeKit rooms are namespaced by the KV
+# key, and staging rooms are ephemeral, so sharing the RealtimeKit app is fine.
+# ═══════════════════════════════════════════════════════════════════════════
+[env.staging]
+name = "avatok-calls-staging"
+
+[env.staging.vars]
+ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
+APP_ID = "7e5b20c0-da74-4848-9884-73af53bb3fb0"
+
+[[env.staging.kv_namespaces]]
+binding = "ROOMS"
+id = "REPLACE_ME_RUN_WRANGLER_KV_NAMESPACE_CREATE"

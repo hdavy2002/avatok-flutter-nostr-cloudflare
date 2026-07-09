@@ -2,6 +2,97 @@
 
 ---
 
+## 🚨 STAGING vs PRODUCTION — AI READ THIS FIRST (2026-07-09)
+
+**The owner is not a developer and will never type a deploy command. You handle all
+of this. He tells you WHICH environment in plain English; you do the rest.**
+
+### RULE 1 — At the start of EVERY new session, ask with a widget
+
+Before doing any real work in a fresh session (first substantive request — not for
+pure chat or a one-line factual question), call **AskUserQuestion**:
+
+> **header:** `Scope`
+> **question:** "What are we working on in this session?"
+> **options:** `Staging feature` · `Staging bug` · `Production feature` · `Production bug`
+>
+> (the tool always offers "Other" automatically, where he can type a custom issue)
+
+Then **write the resulting environment into `.avatok-target`** (`staging` or `prod`)
+and say so in one short line. That file is the single source of truth for the rest
+of the session; `scripts/cf.sh` and `scripts/flags.sh` read it.
+
+- Answer is *Other* / ambiguous → ask one follow-up, or default to **staging**.
+- Anything production → say plainly that production is live, and confirm before
+  each write.
+- If the owner already stated the environment in his message, skip the widget and
+  just write the file.
+
+### RULE 2 — On any build request, ask TWO widget questions, then do it all
+
+Any request to build, deploy, ship, release, or "push it up" starts with
+AskUserQuestion — **never** infer the answer from `.avatok-target` or the branch.
+A build is the moment a mistake reaches real users.
+
+1. **`Environment`** — "Staging build or production build?" → `Staging` · `Production`
+2. **`Format`** — "APK or AAB?" → `APK (Recommended)` · `AAB` · `Both`
+   (APK is the standing default — owner decision 2026-07-04.)
+
+Then do the whole thing yourself. Do **not** hand him commands:
+
+```bash
+# staging build  (staging code, staging backend)
+gh workflow run android.yml --ref staging -f environment=staging -f artifact=apk
+
+# production build (main code, prod backend) — only on an explicit request
+gh workflow run android.yml --ref main    -f environment=prod    -f artifact=apk
+```
+
+`android.yml` has a **guard step**: prod must be built from `main`, staging from
+`staging`. A mismatched dispatch fails fast instead of shipping the wrong code.
+
+Builds are `workflow_dispatch` only. **Never trigger one unless the owner explicitly
+asks** (see the Git protocol section below). Report back the run URL.
+
+### How you actually do it (owner never sees these)
+
+Never invoke `wrangler` / `npx wrangler` directly. Bare `wrangler deploy` and
+`wrangler kv key put …` resolve the TOP-LEVEL `wrangler.toml` block — that is
+**PRODUCTION**, silently, with live users on it. That was the root cause of
+"staging flag work broke my prod testers." Everything goes through the wrapper,
+which reads `.avatok-target` and **refuses prod unless `ALLOW_PROD=1`**:
+
+```bash
+scripts/cf.sh worker deploy       # obeys .avatok-target
+scripts/cf.sh consumers deploy
+scripts/cf.sh calls deploy
+
+scripts/flags.sh set ringbackEnabled=true   # feature flags, same protection
+scripts/flags.sh get / effective / unset / prune
+```
+
+`npm run deploy` in `worker/` and `consumers/` is **disabled on purpose** — it used
+to deploy to prod. KV holds **overrides only**; `DEFAULTS` in
+`worker/src/routes/config.ts` is the source of truth and readers layer it
+underneath. Never re-materialize all flags into the blob (`{...DEFAULTS, ...current}`)
+— that pins stale values forever and makes one flag flip rewrite all ~76.
+
+Builds themselves are `workflow_dispatch` only and **you never trigger one unless
+the owner explicitly asks** (see the Git protocol section below).
+
+### Promotion to production is CODE + MIGRATIONS ONLY
+
+Merge `staging` → `main`, then deploy with `ALLOW_PROD=1` and run any D1 migration
+against prod as a deliberate step. **Never copy staging D1 rows, DO SQLite, R2
+objects, or the KV flag blob into production** — staging data is throwaway and
+copying the flag blob would wipe every real user's config. Prod flags are flipped
+one at a time, when the owner says so.
+
+If a task seems to require a production write and the owner has not explicitly said
+"production", **stop and ask.**
+
+---
+
 ## ⚠️ ARCHITECTURE PIVOT — NOSTR IS DEPRECATED (2026-06-09)
 
 **The Nostr/relay/E2E-gift-wrap messaging design is NULLED going forward.** AvaVerse

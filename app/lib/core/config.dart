@@ -50,16 +50,24 @@ const String kMeUrl = 'https://$kSignalingHost/api/me';
 const String kSignalingHost =
     kAvatokEnv == 'staging' ? 'api-staging.avatok.ai' : 'api.avatok.ai';
 
+/// Calls-worker host. [ENV-ISOLATION-1] These four URLs used to hardcode the PROD
+/// worker, so a staging APK minted RealtimeKit tokens against production and wrote
+/// the production ROOMS KV. Now they follow AVATOK_ENV exactly like [kSignalingHost].
+/// Staging deploy target: `scripts/cf.sh calls deploy` (see calls/wrangler.toml).
+const String kCallsHost = kAvatokEnv == 'staging'
+    ? 'avatok-calls-staging.getmystuffme.workers.dev'
+    : 'avatok-calls.getmystuffme.workers.dev';
+
 /// Calls backend — mints Cloudflare RealtimeKit participant tokens (AvaConsult).
-const String kCallsJoinUrl = 'https://avatok-calls.getmystuffme.workers.dev/join';
+const String kCallsJoinUrl = 'https://$kCallsHost/join';
 
 /// AvaLive — creates/reuses a Cloudflare Stream live input, returns WHIP (publish)
 /// + WHEP (play) URLs.
-const String kLiveUrl = 'https://avatok-calls.getmystuffme.workers.dev/live';
+const String kLiveUrl = 'https://$kCallsHost/live';
 
 /// AvaLive discovery — list announced live streams / end a stream.
-const String kLiveListUrl = 'https://avatok-calls.getmystuffme.workers.dev/live/list';
-const String kLiveEndUrl = 'https://avatok-calls.getmystuffme.workers.dev/live/end';
+const String kLiveListUrl = 'https://$kCallsHost/live/list';
+const String kLiveEndUrl = 'https://$kCallsHost/live/end';
 
 /// Endpoint that returns ICE servers (Cloudflare STUN + short-lived TURN) so
 /// 1:1 calls connect off-Wi-Fi / on cellular.

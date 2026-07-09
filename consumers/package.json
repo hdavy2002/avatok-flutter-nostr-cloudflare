@@ -5,7 +5,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "dry-run": "wrangler deploy --dry-run --outdir=dist",
-    "deploy": "wrangler deploy"
+    "deploy": "echo '[ENV-ISOLATION-1] `npm run deploy` is disabled: it deployed to PRODUCTION with no warning. Use `npm run deploy:staging` (safe) or `npm run deploy:prod` (requires ALLOW_PROD=1).' && exit 1",
+    "deploy:staging": "AVATOK_TARGET=staging ../scripts/cf.sh consumers deploy",
+    "deploy:prod": "AVATOK_TARGET=prod ../scripts/cf.sh consumers deploy"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250510.0",
