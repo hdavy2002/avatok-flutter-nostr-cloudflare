@@ -173,6 +173,8 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   void dispose() {
     _recordCap?.cancel();
     _challengeTimer?.cancel();
+    _readTimer?.cancel();
+    _autoStartTimer?.cancel();
     for (final t in _activeTimers) {
       t.cancel();
     }
@@ -461,6 +463,19 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
         });
       }
     }));
+    // [LIVE-SCRIPT-1] (owner decision 2026-07-09) NO framing gate. The old flow
+    // waited for readyToRecord (face inside the oval, held steady 2s) before
+    // recording — on real phones users got stuck forever on "look up a little /
+    // fit the oval" and nothing ever happened. Recording now starts on the FIRST
+    // detected face, or unconditionally after this grace timer. The coach keeps
+    // running for telemetry (luma/frames/nudges) but never blocks anyone.
+    _autoStartTimer?.cancel();
+    _autoStartTimer = Timer(const Duration(milliseconds: 2500), () {
+      if (mounted && _phase == _Phase.faceNeck && !_recording) {
+        Analytics.capture('liveness_record_autostart', {'reason': 'grace_timer', 'v': 3});
+        _startRecording();
+      }
+    });
   }
 
   void _onCoachState(CoachState s) {
@@ -470,21 +485,21 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     _activeWatch?.poke(); // any frame with a state = progress (kills the watchdog)
 
     if (!_recording) {
-      // Framing phase: voice-coach the user toward a good, steady frame. The voice
-      // manager debounces same-instruction repeats within 3s (plan §3).
-      unawaited(LivenessVoice.I.play(
-        s.instruction,
-        localizedText: LivenessStrings.text(_lang, s.instruction),
-      ));
+      // [LIVE-SCRIPT-1] Framing is a ≤2.5s formality now: the first frame with a
+      // face (any face, anywhere on screen) starts the recording, and the grace
+      // timer starts it regardless. No oval, no hold-still, no "look up a little"
+      // treadmill — the server judges quality from the clip afterwards.
       _emitCoachHint(s.instruction);
-      if (s.readyToRecord) {
+      if (s.faceFound) {
         _startRecording();
       }
       setState(() {});
       return;
     }
-    // Recording phase: run the current challenge against the live coach state.
-    _evaluateChallenge(s);
+    // Recording phase: coach states are advisory only. During the read-aloud step
+    // nothing is evaluated; during head prompts a detected pose advances early,
+    // but the timer advances regardless (never stuck, never failed client-side).
+    if (!_reading) _evaluateChallenge(s);
     setState(() {});
   }
 
@@ -509,11 +524,26 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
     }
   }
 
+  // ── [LIVE-SCRIPT-1] Read-aloud step ──────────────────────────────────────────
+  // The clip records AUDIO (enableAudio: true) — asking the user to read a short
+  // random phrase captures their voice + a moving, talking face, which is far
+  // stronger liveness evidence than a silent oval-hold. Random digits make a
+  // pre-recorded replay unable to match the session.
+  bool _reading = false;
+  Timer? _readTimer;
+  Timer? _autoStartTimer;
+  late final String _readPhrase = _makeReadPhrase();
+
+  String _makeReadPhrase() {
+    final d = List.generate(4, (_) => _rng.nextInt(10)).join(' ');
+    return 'My AvaTOK code is $d';
+  }
+
   Future<void> _startRecording() async {
     final cam = _cam;
     if (cam == null || _recording) return;
     _recording = true;
-    unawaited(LivenessVoice.I.play(LivenessInstruction.holdStill));
+    _autoStartTimer?.cancel();
     try {
       await cam.startVideoRecording();
     } catch (_) {
@@ -537,9 +567,24 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       Analytics.capture('liveness_record_capped', {'seconds': capS, 'v': 3});
       _finishCapture();
     });
-    // Begin the first challenge.
-    _challengeIndex = 0;
-    _announceChallenge();
+    // [LIVE-SCRIPT-1] Step 1: read the phrase out loud (~5s), THEN the timed
+    // head prompts. Everything advances on a clock — the user can never be stuck.
+    _reading = true;
+    Analytics.capture('liveness_read_phrase_shown', {
+      'phrase': _readPhrase,
+      'language': _lang,
+      'v': 3,
+    });
+    if (mounted) setState(() {});
+    _readTimer?.cancel();
+    _readTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted || !_recording) return;
+      _reading = false;
+      Analytics.capture('liveness_read_phrase_done', {'v': 3});
+      setState(() {});
+      _challengeIndex = 0;
+      _announceChallenge();
+    });
   }
 
   /// Schedule the server's flash sequence + haptic buzz relative to record start.
@@ -629,12 +674,16 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
       'index': _challengeIndex,
       'v': 3,
     });
-    // Per-challenge watchdog: if the user can't complete it in 10s, the whole
-    // stage watchdog (still poking on frames) covers the true dead-screen case;
-    // here we just re-announce once at 6s so nobody is left guessing.
+    // [LIVE-SCRIPT-1] Timed script: each prompt holds for 3.5s and then ADVANCES
+    // regardless of what ML Kit saw. The old flow only re-announced and waited —
+    // if the on-device detector never registered the pose ("look up a little…"
+    // forever) the user was stuck for the whole 20s cap. A detected pose still
+    // advances early (nicer cadence); the server verifies the actual motion from
+    // the sampled frames + sensor/luma timelines, so a missed client detection
+    // costs nothing.
     _challengeTimer?.cancel();
-    _challengeTimer = Timer(const Duration(seconds: 6), () {
-      if (mounted && _recording) unawaited(LivenessVoice.I.play(c.instruction));
+    _challengeTimer = Timer(const Duration(milliseconds: 3000), () {
+      if (mounted && _recording) _advanceChallenge(cleared: false);
     });
   }
 
@@ -679,37 +728,49 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
         cleared = s.faceFound && s.readyToRecord;
         break;
     }
-    if (cleared) {
-      _challengesDone.add(_challengeIndex);
-      unawaited(LivenessVoice.I.play(LivenessInstruction.good));
-      Analytics.capture('liveness_stage_complete', {
-        'stage': 'challenge_${c.kind.name}',
-        'index': _challengeIndex,
+    if (cleared) _advanceChallenge(cleared: true);
+  }
+
+  /// [LIVE-SCRIPT-1] Move to the next prompt — reached EITHER by ML Kit seeing
+  /// the pose (cleared: true, advances early with a "good" chirp) OR by the
+  /// 3.5s prompt timer (cleared: false). The client never fails a prompt; the
+  /// `cleared` flag is recorded so the server/analytics know which prompts the
+  /// on-device detector actually confirmed.
+  void _advanceChallenge({required bool cleared}) {
+    final ch = _session?.challenges;
+    if (ch == null || _challengeIndex >= ch.length) return;
+    if (_challengesDone.contains(_challengeIndex)) return;
+    final c = ch[_challengeIndex];
+    _challengesDone.add(_challengeIndex);
+    if (cleared) unawaited(LivenessVoice.I.play(LivenessInstruction.good));
+    Analytics.capture('liveness_stage_complete', {
+      'stage': 'challenge_${c.kind.name}',
+      'index': _challengeIndex,
+      'client_cleared': cleared,
+      'v': 3,
+    });
+    _challengeIndex++;
+    if (_challengeIndex >= ch.length) {
+      _finishCapture();
+    } else {
+      // Randomized wait between prompts so the challenge cadence isn't
+      // predictable (server value if present, else local 700–1900 ms). During
+      // the gap we hold evaluation so a lingering pose can't clear the NEXT
+      // challenge before it's announced.
+      final gapMs = (_session?.activeChecks ?? const ActiveChecks.none())
+          .gapForIndex(_challengeIndex - 1, _rng);
+      _gapActive = true;
+      Analytics.capture('liveness_active_check', {
+        'check': 'gap',
+        'scheduled_ms': gapMs,
+        'actual_ms': gapMs,
         'v': 3,
       });
-      _challengeIndex++;
-      if (_challengeIndex >= ch.length) {
-        _finishCapture();
-      } else {
-        // Randomized wait between prompts so the challenge cadence isn't
-        // predictable (server value if present, else local 700–1900 ms). During
-        // the gap we hold evaluation so a lingering pose can't clear the NEXT
-        // challenge before it's announced.
-        final gapMs = (_session?.activeChecks ?? const ActiveChecks.none())
-            .gapForIndex(_challengeIndex - 1, _rng);
-        _gapActive = true;
-        Analytics.capture('liveness_active_check', {
-          'check': 'gap',
-          'scheduled_ms': gapMs,
-          'actual_ms': gapMs,
-          'v': 3,
-        });
-        _challengeTimer?.cancel();
-        _challengeTimer = Timer(Duration(milliseconds: gapMs), () {
-          _gapActive = false;
-          if (mounted && _recording) _announceChallenge();
-        });
-      }
+      _challengeTimer?.cancel();
+      _challengeTimer = Timer(Duration(milliseconds: gapMs), () {
+        _gapActive = false;
+        if (mounted && _recording) _announceChallenge();
+      });
     }
   }
 
@@ -718,6 +779,8 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   Future<void> _finishCapture() async {
     _recordCap?.cancel();
     _challengeTimer?.cancel();
+    _readTimer?.cancel();
+    _autoStartTimer?.cancel();
     _activeWatch?.cancel();
     for (final t in _activeTimers) {
       t.cancel();
@@ -883,6 +946,8 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
   Future<void> _restart() async {
     _recordCap?.cancel();
     _challengeTimer?.cancel();
+    _readTimer?.cancel();
+    _autoStartTimer?.cancel();
     _activeWatch?.cancel();
     for (final t in _activeTimers) {
       t.cancel();
@@ -1039,9 +1104,9 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
         LiveTheme.stageHeadline('Prove you are ', markWord: 'real'),
         const SizedBox(height: 12),
         Text(
-          "I'll talk you through it. Prop your phone up so I can see your face, "
-          'then just follow along — come closer, blink, turn your head. It takes '
-          'about 15 seconds, and the clip is deleted after the check.',
+          "Quick and easy: I'll record a short clip. Read one line out loud, "
+          'then follow a couple of prompts — turn your head, look up. '
+          'About 15 seconds, and the clip is deleted after the check.',
           style: LiveTheme.subStyle,
         ),
         if (_error != null) ...[
@@ -1126,32 +1191,52 @@ class _LivenessV3ScreenState extends State<LivenessV3Screen> {
           ),
         ),
         const SizedBox(height: 16),
-        LiveTheme.stageHeadline(
-          _recording ? 'Follow along — ' : 'Fit your face in the ',
-          markWord: _recording ? 'nice work' : 'oval',
-        ),
-        const SizedBox(height: 6),
-        Text(
-          _recording && ch != null
-              ? LivenessStrings.text(_lang, ch.instruction)
-              : LivenessStrings.text(_lang, s.instruction),
-          style: LiveTheme.subStyle,
-        ),
-        if (_recording && challenges.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text('${_challengesDone.length} / ${challenges.length}',
-              style: LiveTheme.subStyle),
+        // [LIVE-SCRIPT-1] Script UI: read-aloud phrase first (big card), then the
+        // timed head prompts. No more "fit your face in the oval" demand — the
+        // pre-record window lasts ≤2.5s and needs nothing from the user.
+        if (_reading) ...[
+          LiveTheme.stageHeadline('Read this ', markWord: 'out loud'),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            decoration: BoxDecoration(
+              color: LiveTheme.card,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: LiveTheme.ink, width: 2),
+            ),
+            child: Text(
+              '“$_readPhrase”',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w800, color: LiveTheme.ink),
+            ),
+          ),
+        ] else ...[
+          LiveTheme.stageHeadline(
+            _recording ? 'Follow along — ' : 'Look at the ',
+            markWord: _recording ? 'nice work' : 'camera',
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _recording && ch != null
+                ? LivenessStrings.text(_lang, ch.instruction)
+                : 'Starting in a moment — no need to line anything up.',
+            style: LiveTheme.subStyle,
+          ),
+          if (_recording && challenges.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('${_challengesDone.length} / ${challenges.length}',
+                style: LiveTheme.subStyle),
+          ],
         ],
       ],
     );
   }
 
   String _hintLabel() {
+    if (_reading) return 'Speak clearly';
     if (_recording) return 'Keep going';
-    final s = _coachState;
-    if (s.readyToRecord) return 'Perfect';
-    final t = LivenessStrings.text(_lang, s.instruction);
-    return t.length > 24 ? 'Align your face' : t;
+    return 'Get comfy';
   }
 
   Widget _doneView() {
