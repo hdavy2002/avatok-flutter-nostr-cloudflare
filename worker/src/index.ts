@@ -23,7 +23,7 @@ import { setTestClock } from "./clock";
 import { stripeIdentityWebhook, agreementStatus, agreementDoc, agreementAccept } from "./routes/kyc";
 import { livenessStart, livenessUpload, livenessVerify, livenessResult, runLivenessChecks } from "./routes/liveness";
 import { livenessV3Session, livenessV3Upload, livenessV3Verify, livenessV3Result, runLivenessV3Checks } from "./routes/liveness_v3";
-import { diditSession, diditResult } from "./routes/liveness_didit";
+import { diditSession, diditResult, diditDone } from "./routes/liveness_didit";
 import { guestCreate, guestHandleCheck, guestUpgrade, getIdentityLevel } from "./routes/ladder";
 import { createSlot, listSlots, cancelSlot, bookSlot, cancelBooking, listEvents, listBlocks, getRules, putRules, getTime } from "./routes/calendar";
 import { listBookings, getPolicies, putPolicies, proposeReschedule, respondReschedule, listReschedules, joinInfo } from "./routes/booking";
@@ -545,6 +545,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       // the LIVE path; v2/v3 above are retired behind diditLivenessEnabled.
       if (p === "/api/liveness/didit/session" && req.method === "POST") return await diditSession(req, env);
       if (p === "/api/liveness/didit/result" && req.method === "GET") return await diditResult(req, env);
+      if (p === "/api/liveness/didit/done" && req.method === "GET") return diditDone();
       // Progressive Identity ladder — guest tier (no auth) + level (Clerk auth).
       if (p === "/api/identity/guest" && req.method === "POST") return await guestCreate(req, env);
       if (p === "/api/identity/guest/check" && req.method === "GET") return await guestHandleCheck(req, env);

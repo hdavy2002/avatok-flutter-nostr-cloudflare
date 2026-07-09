@@ -16,7 +16,15 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+// [LIVE-DIDIT-2] (owner decision 2026-07-10) The Didit flow renders in an
+// IN-APP WebView styled with LiveTheme — the user never leaves the app and no
+// third-party branding chrome (browser bar, external tab) is visible. This is
+// Didit's documented Flutter WebView integration (docs.didit.me → web-sdks →
+// webview-in-ios-android): JS + DOM storage on, camera permission auto-granted,
+// inline media playback, callback URL intercepted to detect completion.
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../../core/analytics.dart';
 import '../../core/api_auth.dart';
@@ -32,7 +40,7 @@ class DiditLivenessScreen extends StatefulWidget {
   State<DiditLivenessScreen> createState() => _DiditLivenessScreenState();
 }
 
-enum _Phase { intro, starting, waiting, passed, failed, unavailable }
+enum _Phase { intro, starting, webview, waiting, passed, failed, unavailable }
 
 class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
   _Phase _phase = _Phase.intro;
@@ -76,13 +84,10 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         return;
       }
       _attemptsRemaining = (j['attempts_remaining'] as num?)?.toInt();
-      final url = Uri.parse(j['url'].toString());
-      final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-      if (!opened) {
-        setState(() { _phase = _Phase.unavailable; _error = 'Could not open the browser for the check.'; });
-        return;
-      }
-      setState(() => _phase = _Phase.waiting);
+      // [LIVE-DIDIT-2] Render Didit INSIDE the app. Poll runs alongside the
+      // webview so a mid-flow decision is caught even if the callback is missed.
+      _buildWebView(j['url'].toString());
+      setState(() => _phase = _Phase.webview);
       _pollCount = 0;
       _poll?.cancel();
       _poll = Timer.periodic(const Duration(seconds: 3), (_) => _checkResult());
@@ -95,8 +100,49 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
     }
   }
 
+  // ── [LIVE-DIDIT-2] In-app WebView hosting the Didit flow ────────────────────
+  WebViewController? _web;
+
+  void _buildWebView(String sessionUrl) {
+    late final PlatformWebViewControllerCreationParams params;
+    if (WebViewPlatform.instance is WebKitWebViewPlatform) {
+      params = WebKitWebViewControllerCreationParams(
+        allowsInlineMediaPlayback: true,
+        mediaTypesRequiringUserAction: const {},
+      );
+    } else {
+      params = const PlatformWebViewControllerCreationParams();
+    }
+    final controller = WebViewController.fromPlatformCreationParams(params)
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(LiveTheme.stage)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            // Completion callback → stop the webview and let the result poll
+            // (authoritative: our Worker reads Didit's decision) take over.
+            if (request.url.contains('/api/liveness/didit/done')) {
+              if (mounted) setState(() => _phase = _Phase.waiting);
+              _checkResult();
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(sessionUrl));
+    // Auto-grant the camera/mic permission prompts INSIDE the webview (the app
+    // already holds the OS-level camera permission from the old liveness flow).
+    controller.platform.setOnPlatformPermissionRequest((request) => request.grant());
+    if (controller.platform is AndroidWebViewController) {
+      (controller.platform as AndroidWebViewController)
+          .setMediaPlaybackRequiresUserGesture(false);
+    }
+    _web = controller;
+  }
+
   Future<void> _checkResult() async {
-    if (!mounted || _phase != _Phase.waiting) return;
+    if (!mounted || (_phase != _Phase.waiting && _phase != _Phase.webview)) return;
     if (++_pollCount > _maxPolls) { _poll?.cancel(); return; }
     try {
       final res = await ApiAuth.getSigned('https://$kSignalingHost/api/liveness/didit/result');
@@ -156,6 +202,8 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
       case _Phase.intro:
       case _Phase.starting:
         return _intro();
+      case _Phase.webview:
+        return _webviewStage();
       case _Phase.waiting:
         return _waiting();
       case _Phase.passed:
@@ -219,9 +267,9 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
         LiveTheme.stageHeadline('Prove you are ', markWord: 'real'),
         const SizedBox(height: 12),
         Text(
-          'A quick face check opens in your browser — look at the camera for a '
-          'few seconds and come straight back. Nothing to line up, nothing to '
-          'read. Your check is deleted if it fails.',
+          'A quick face check — look at the camera for a few seconds and '
+          "you're done. Nothing to line up, nothing to read. "
+          'Your check is deleted if it fails.',
           style: LiveTheme.subStyle,
         ),
         if (_error != null) ...[
@@ -238,6 +286,36 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
     );
   }
 
+  /// The Didit capture flow inside the SAME dark stage card the old liveness
+  /// used — rounded, ink-bordered, LiveTheme all around. No browser chrome.
+  Widget _webviewStage() {
+    final web = _web;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: LiveTheme.cameraCard,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: LiveTheme.ink, width: 2.5),
+            ),
+            child: web == null
+                ? const Center(
+                    child: CircularProgressIndicator(color: LiveTheme.lime))
+                : WebViewWidget(controller: web),
+          ),
+        ),
+        const SizedBox(height: 14),
+        LiveTheme.stageHeadline('Quick face ', markWord: 'check'),
+        const SizedBox(height: 6),
+        Text('Look at the camera and follow along — takes a few seconds.',
+            style: LiveTheme.subStyle),
+      ],
+    );
+  }
+
   Widget _waiting() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -250,16 +328,15 @@ class _DiditLivenessScreenState extends State<DiditLivenessScreen> {
           ),
         ),
         const SizedBox(height: 26),
-        LiveTheme.stageHeadline('Finish in your ', markWord: 'browser'),
+        LiveTheme.stageHeadline('Checking', markWord: '…'),
         const SizedBox(height: 12),
         Text(
-          "Complete the face check in the browser tab that just opened, then "
-          "come back here — I'll spot the result automatically.",
+          'One moment — verifying your clip.',
           style: LiveTheme.subStyle,
         ),
         const Spacer(),
         TextButton(
-          onPressed: () { _poll?.cancel(); setState(() => _phase = _Phase.intro); },
+          onPressed: () { _poll?.cancel(); _web = null; setState(() => _phase = _Phase.intro); },
           child: const Text('Start over', style: TextStyle(color: LiveTheme.subPaper)),
         ),
       ],

@@ -157,6 +157,13 @@ dependencies:
   # Location share + open-in-maps
   geolocator: ^13.0.1
   url_launcher: ^6.3.0
+  # [LIVE-DIDIT-1] In-app Didit liveness (owner decision 2026-07-10: the check
+  # must FEEL native — no external browser, no visible third-party hop). Didit's
+  # documented Flutter WebView integration; NATIVE plugins — validated by the CI
+  # APK build (can't compile headless).
+  webview_flutter: ^4.10.0
+  webview_flutter_android: ^4.3.0
+  webview_flutter_wkwebview: ^3.16.0
   # Native Google Play Billing (Android in-app subscriptions). Wraps
   # com.android.billingclient; the client buys avatok_*_monthly then the Worker
   # verifies the token server-side (core/play_billing.dart → /subscribe/android/verify).

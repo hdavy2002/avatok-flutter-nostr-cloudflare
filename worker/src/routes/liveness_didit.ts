@@ -82,10 +82,20 @@ export async function diditSession(req: Request, env: Env): Promise<Response> {
   const workflowId = (env as { DIDIT_WORKFLOW_ID?: string }).DIDIT_WORKFLOW_ID!;
   let r: Response;
   try {
+    // [LIVE-DIDIT-2] callback: the client renders the Didit flow in an IN-APP
+    // WebView (owner decision 2026-07-10 — must feel native) and intercepts
+    // navigation to this URL to know the flow finished. The route below also
+    // serves a friendly fallback page in case interception ever misses.
+    const callback = `${new URL(req.url).origin}/api/liveness/didit/done`;
     r = await fetch(`${DIDIT_BASE}/v3/session/`, {
       method: "POST",
       headers: { "x-api-key": key, "Content-Type": "application/json" },
-      body: JSON.stringify({ workflow_id: workflowId, vendor_data: ctx.uid }),
+      body: JSON.stringify({
+        workflow_id: workflowId,
+        vendor_data: ctx.uid,
+        callback,
+        callback_method: "both",
+      }),
     });
   } catch (e) {
     void track(env, ctx.uid, "didit_session_error", "platform", { reason: "fetch_failed", detail: String(e).slice(0, 200) });
@@ -105,6 +115,21 @@ export async function diditSession(req: Request, env: Env): Promise<Response> {
   void track(env, ctx.uid, "didit_session_created", "platform", { session_id: j.session_id, attempts_remaining: MAX_FAILS_MONTH - fails });
   metric(env, "didit_session_created", [1], ["didit"]);
   return json({ url: j.url, session_id: j.session_id, attempts_remaining: MAX_FAILS_MONTH - fails });
+}
+
+// ── GET /api/liveness/didit/done — WebView callback landing (no auth) ────────
+// The in-app WebView intercepts navigation to this URL BEFORE it loads; this
+// page only renders if interception missed (e.g. an OS webview quirk), so it
+// just tells the user to return to the app. Nothing sensitive is exposed.
+export function diditDone(): Response {
+  return new Response(
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AvaTOK</title></head>
+<body style="font-family:sans-serif;background:#062D2A;color:#F9F7ED;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="text-align:center"><h2>All done ✓</h2><p>You can head back to AvaTOK now.</p></div>
+</body></html>`,
+    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+  );
 }
 
 // ── GET /api/liveness/didit/result ───────────────────────────────────────────
